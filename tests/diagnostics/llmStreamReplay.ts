@@ -71,13 +71,6 @@ function getReplayConnection(provider: LLMProviderName): ReplayConnection {
                     process.env.DEEPSEEK_BASE_URL ||
                     "https://api.deepseek.com",
             };
-        case "jeniya":
-            return {
-                apiKeyVariable: "JENIYA_API_KEY",
-                apiKey: process.env.JENIYA_API_KEY,
-                baseUrl:
-                    process.env.JENIYA_BASE_URL || "https://jeniya.cn/v1",
-            };
     }
 }
 

@@ -2,7 +2,7 @@ import {z} from "zod";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import {createLLMCaller} from "../llm/index.js";
 import type {LLMCaller, Message, OpenAITool} from "../llm/types.js";
-import type {LLMProviderName} from "../llm/providerRegistry.js";
+import type {LLMSourceConnection} from "../llm/types.js";
 import {createTurnAbortController} from "../runtime/abort.js";
 import type {HookExecution, HookInput, HookSettings} from "./types.js";
 import type {HookJSONOutput} from "./schema.js";
@@ -236,11 +236,11 @@ export function createHookPromptExecutorFactory(
 }
 
 export function createHookPromptExecutor(options: {
-    provider: LLMProviderName;
+    source: LLMSourceConnection;
     cwd: string;
     model: string;
 }): HookPromptExecutor {
     return createHookPromptExecutorFactory({
-        callLLM: createLLMCaller(options.provider),
+        callLLM: createLLMCaller(options.source),
     })(options);
 }

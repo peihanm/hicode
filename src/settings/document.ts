@@ -3,9 +3,11 @@ import {homedir} from "node:os";
 import {resolve} from "node:path";
 import {hasFileSystemErrorCode} from "../persistence/index.js";
 import {pillarSettingsFileSchema} from "./schema.js";
+import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
 import type {LoadedSettingsDocument, SettingsFileSource, SettingsIssue,} from "./types.js";
 
 const KNOWN_TOP_LEVEL_KEYS = new Set([
+    "sources",
     "models",
     "permissions",
     "hooks",
@@ -13,8 +15,11 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
     "checkpointing",
     "sandbox",
 ]);
-const KNOWN_MODEL_TARGET_KEYS = new Set(["model", "provider"]);
+const KNOWN_MODEL_TARGET_KEYS = new Set(["model", "source"]);
 const KNOWN_MODELS_KEYS = new Set(["primary", "fast"]);
+const KNOWN_SOURCE_KEYS = new Set(["label", "apiKeyEnv", "baseUrl", "models"]);
+const KNOWN_SOURCE_MODEL_KEYS = new Set(["id", "label"]);
+const KNOWN_SOURCE_NAMES = new Set<string>(LLM_PROVIDER_NAMES);
 const KNOWN_PERMISSION_KEYS = new Set([
     "defaultMode",
     "allow",
@@ -108,7 +113,45 @@ function collectUnknownFieldIssues(
         KNOWN_TOP_LEVEL_KEYS
     );
 
-    const {models, permissions, memory, checkpointing, sandbox} = document.value;
+    const {sources, models, permissions, memory, checkpointing, sandbox} = document.value;
+    if (sources) {
+        appendUnknownFieldIssues(
+            issues,
+            document,
+            sources,
+            KNOWN_SOURCE_NAMES,
+            "sources"
+        );
+        for (const sourceName of LLM_PROVIDER_NAMES) {
+            const source = sources[sourceName];
+            if (!source || typeof source !== "object") continue;
+            appendUnknownFieldIssues(
+                issues,
+                document,
+                source,
+                KNOWN_SOURCE_KEYS,
+                `sources.${sourceName}`
+            );
+            for (const [index, model] of (source.models ?? []).entries()) {
+                appendUnknownFieldIssues(
+                    issues,
+                    document,
+                    model,
+                    KNOWN_SOURCE_MODEL_KEYS,
+                    `sources.${sourceName}.models.${index}`
+                );
+            }
+        }
+        if (document.source !== "user") {
+            issues.push({
+                source: document.source,
+                path: document.path,
+                field: "sources",
+                severity: "warning",
+                message: "sources 只允许在用户级 Settings 中定义；当前来源已忽略",
+            });
+        }
+    }
     if (models) {
         appendUnknownFieldIssues(
             issues,

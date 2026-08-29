@@ -1,15 +1,22 @@
 import {afterEach, describe, expect, test} from "bun:test";
 import {createLLMCaller} from "../../src/llm/index.js";
-import {
-    createDeepSeekRequestFields,
-    deepseekProvider,
-} from "../../src/llm/providers/deepseek.js";
+import {deepseekProvider} from "../../src/llm/providers/deepseek.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import type {LLMCallOptions, LLMProvider} from "../../src/llm/types.js";
+
+const DEEPSEEK_SOURCE = {
+    id: "deepseek" as const,
+    label: "DeepSeek",
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    baseUrl: "https://deepseek.test/v1/",
+};
+
+function callDeepSeek(provider: LLMProvider, options: LLMCallOptions) {
+    return provider.call(options, DEEPSEEK_SOURCE);
+}
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.DEEPSEEK_API_KEY;
-const originalBaseUrl = process.env.DEEPSEEK_BASE_URL;
-const originalReasoningEffort = process.env.PILLAR_REASONING_EFFORT;
 
 function restore(name: string, value: string | undefined): void {
     if (value === undefined) delete process.env[name];
@@ -19,8 +26,6 @@ function restore(name: string, value: string | undefined): void {
 afterEach(() => {
     globalThis.fetch = originalFetch;
     restore("DEEPSEEK_API_KEY", originalApiKey);
-    restore("DEEPSEEK_BASE_URL", originalBaseUrl);
-    restore("PILLAR_REASONING_EFFORT", originalReasoningEffort);
 });
 
 function stream(events: readonly Record<string, unknown>[]): Response {
@@ -42,8 +47,6 @@ describe("DeepSeek provider", () => {
     test("流式工具调用保留 reasoning_content 并在下一次请求回传", async () => {
         await withTempProject(async (cwd) => {
             process.env.DEEPSEEK_API_KEY = "deepseek-token";
-            process.env.DEEPSEEK_BASE_URL = "https://deepseek.test/v1/";
-            process.env.PILLAR_REASONING_EFFORT = "max";
             const requests: Array<Record<string, unknown>> = [];
             let fetchCalls = 0;
 
@@ -114,7 +117,7 @@ describe("DeepSeek provider", () => {
                 }]);
             }) as typeof fetch;
 
-            const first = await deepseekProvider.call({
+            const first = await callDeepSeek(deepseekProvider, {
                 messages: [{role: "user", content: "读取入口"}],
                 tools: [{
                     type: "function",
@@ -133,9 +136,9 @@ describe("DeepSeek provider", () => {
                 model: "deepseek-v4-pro",
                 stream: true,
                 thinking: {type: "enabled"},
-                reasoning_effort: "max",
                 stream_options: {include_usage: true},
             });
+            expect(requests[0]).not.toHaveProperty("reasoning_effort");
             expect(requests[0]).not.toHaveProperty("tool_stream");
             expect(requests[0]).not.toHaveProperty("tool_choice");
             expect(first.message).toEqual({
@@ -152,7 +155,7 @@ describe("DeepSeek provider", () => {
                 }],
             });
 
-            const second = await deepseekProvider.call({
+            const second = await callDeepSeek(deepseekProvider, {
                 messages: [
                     {role: "user", content: "读取入口"},
                     first.message,
@@ -196,7 +199,7 @@ describe("DeepSeek provider", () => {
         expect(deepseekProvider.supports("glm-5.2")).toBe(false);
         delete process.env.DEEPSEEK_API_KEY;
 
-        await expect(deepseekProvider.call({
+        await expect(callDeepSeek(deepseekProvider, {
             messages: [{role: "user", content: "hello"}],
             tools: [],
             cwd: process.cwd(),
@@ -204,29 +207,15 @@ describe("DeepSeek provider", () => {
             kind: "main",
         })).rejects.toThrow("缺少 DEEPSEEK_API_KEY");
 
-        await expect(createLLMCaller("deepseek")(
+        await expect(createLLMCaller(DEEPSEEK_SOURCE)(
             [{role: "user", content: "hello"}],
             [],
             process.cwd(),
             "qwen3.6-plus",
             "main"
         )).rejects.toThrow(
-            "Provider deepseek 不支持模型 qwen3.6-plus"
+            "模型来源 DeepSeek 不支持模型 qwen3.6-plus"
         );
     });
 
-    test("推理强度沿用统一配置并拒绝无效值", () => {
-        delete process.env.PILLAR_REASONING_EFFORT;
-        expect(createDeepSeekRequestFields()).toMatchObject({
-            reasoning_effort: "high",
-        });
-        process.env.PILLAR_REASONING_EFFORT = "max";
-        expect(createDeepSeekRequestFields()).toMatchObject({
-            reasoning_effort: "max",
-        });
-        process.env.PILLAR_REASONING_EFFORT = "medium";
-        expect(() => createDeepSeekRequestFields()).toThrow(
-            "PILLAR_REASONING_EFFORT 只支持 high 或 max"
-        );
-    });
 });

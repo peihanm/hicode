@@ -70,7 +70,7 @@ interface ProbeResult {
 }
 
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_JENIYA_BASE_URL = "https://jeniya.cn/v1";
+const DEFAULT_GLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_GLM_MODEL = "glm-5.2";
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -119,8 +119,8 @@ const USAGE = [
     "  DEEPSEEK_API_KEY      必填；DeepSeek 官方 API Key",
     `  DEEPSEEK_BASE_URL     可选；默认 ${DEFAULT_DEEPSEEK_BASE_URL}`,
     `  DEEPSEEK_PROBE_MODEL  可选；默认 ${DEFAULT_DEEPSEEK_MODEL}`,
-    "  JENIYA_API_KEY        --compare-glm 时必填",
-    `  JENIYA_BASE_URL       可选；默认 ${DEFAULT_JENIYA_BASE_URL}`,
+    "  GLM_API_KEY           --compare-glm 时必填",
+    `  GLM_BASE_URL          可选；默认 ${DEFAULT_GLM_BASE_URL}`,
     `  GLM_COMPARE_MODEL     可选；默认 ${DEFAULT_GLM_MODEL}`,
     "",
     "默认关闭 DeepSeek 思考模式，以最小成本隔离工具流行为；--thinking 会开启思考模式。",
@@ -509,24 +509,23 @@ async function main(): Promise<void> {
             model: process.env.DEEPSEEK_PROBE_MODEL || DEFAULT_DEEPSEEK_MODEL,
             requestFields: {
                 thinking: {type: options.thinking ? "enabled" : "disabled"},
-                ...(options.thinking ? {reasoning_effort: "high"} : {}),
             },
             ...(options.thinking ? {} : {toolChoice: "required" as const}),
         },
     ];
 
     if (options.compareGlm) {
-        const glmApiKey = process.env.JENIYA_API_KEY;
+        const glmApiKey = process.env.GLM_API_KEY;
         if (!glmApiKey) {
-            throw new Error("--compare-glm 需要在 .env 中填写 JENIYA_API_KEY");
+            throw new Error("--compare-glm 需要在 .env 中填写 GLM_API_KEY");
         }
         const glmModel = process.env.GLM_COMPARE_MODEL || DEFAULT_GLM_MODEL;
         configs.push({
             label: "GLM",
             apiKey: glmApiKey,
-            baseUrl: process.env.JENIYA_BASE_URL || DEFAULT_JENIYA_BASE_URL,
+            baseUrl: process.env.GLM_BASE_URL || DEFAULT_GLM_BASE_URL,
             model: glmModel,
-            requestFields: createGlmRequestFields(glmModel),
+            requestFields: createGlmRequestFields(),
         });
     }
 

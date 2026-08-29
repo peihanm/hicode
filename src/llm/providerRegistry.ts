@@ -2,7 +2,6 @@ export const LLM_PROVIDER_NAMES = [
     "glm",
     "qwen",
     "deepseek",
-    "jeniya",
 ] as const;
 
 export type LLMProviderName = typeof LLM_PROVIDER_NAMES[number];

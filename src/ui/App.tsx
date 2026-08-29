@@ -18,6 +18,7 @@ import {RewindDialog} from "./rewind/RewindDialog.js";
 import {GitDiffDialog} from "./git/GitDiffDialog.js";
 import {AgentsDialog} from "./agents/AgentsDialog.js";
 import {QueuedInputPreview} from "./input/QueuedInputPreview.js";
+import {ModelDialog} from "./model/ModelDialog.js";
 
 function runningActivityLabel(
     threads: UIThread[],
@@ -69,20 +70,30 @@ export function App({
         const [showRewind, setShowRewind] = useState(false);
         const [showAgents, setShowAgents] = useState(false);
         const [showGitDiff, setShowGitDiff] = useState(false);
+        const [showModel, setShowModel] = useState(false);
         const openRewind = useCallback(() => {
             setShowAgents(false);
             setShowGitDiff(false);
+            setShowModel(false);
             setShowRewind(true);
         }, []);
         const openAgents = useCallback(() => {
             setShowRewind(false);
             setShowGitDiff(false);
+            setShowModel(false);
             setShowAgents(true);
         }, []);
         const openGitDiff = useCallback(() => {
             setShowRewind(false);
             setShowAgents(false);
+            setShowModel(false);
             setShowGitDiff(true);
+        }, []);
+        const openModel = useCallback(() => {
+            setShowRewind(false);
+            setShowAgents(false);
+            setShowGitDiff(false);
+            setShowModel(true);
         }, []);
         const turn = useTurnController({
             resources,
@@ -91,6 +102,7 @@ export function App({
             openRewind,
             openAgents,
             openGitDiff,
+            openModel,
         });
         const [showTodos, setShowTodos] = useState(true);
         const [showTranscript, setShowTranscript] = useState(false);
@@ -114,7 +126,7 @@ export function App({
 
         useInput((input, key) => {
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showRewind || showAgents || showGitDiff) return;
+            if (showRewind || showAgents || showGitDiff || showModel) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             const planDialogHandlesEscape =
                 turn.confirmRequest?.toolName === "exit_plan_mode" &&
@@ -149,7 +161,7 @@ export function App({
             }
         });
 
-        const {cwd, model, mcpManager} = resources;
+        const {cwd, mcpManager} = resources;
         const mcpSnapshots = mcpManager?.getSnapshots() ?? [];
         const activityLabel = runningActivityLabel(
             turn.liveThreads,
@@ -169,14 +181,14 @@ export function App({
                     <TranscriptDetails threads={turn.staticThreads}/>
                 )}
 
-                {showTodos && !showRewind && !showAgents && !showGitDiff && (
+                {showTodos && !showRewind && !showAgents && !showGitDiff && !showModel && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showRewind && !showAgents && !showGitDiff && (
+                {turn.busy && !turn.confirmRequest && !showRewind && !showAgents && !showGitDiff && !showModel && (
                     <ModelStreamStatus
                         modelStream={turn.modelStream}
                         progressRef={turn.modelStreamProgressRef}
@@ -185,7 +197,17 @@ export function App({
                     />
                 )}
 
-                {showAgents ? (
+                {showModel ? (
+                    <ModelDialog
+                        models={turn.availableModels}
+                        current={turn.primaryModel}
+                        onSelect={(target) => {
+                            turn.setPrimaryModel(target);
+                            setShowModel(false);
+                        }}
+                        onClose={() => setShowModel(false)}
+                    />
+                ) : showAgents ? (
                     <AgentsDialog
                         manager={resources.agentDefinitions}
                         authoring={resources.agentAuthoring}
@@ -252,7 +274,7 @@ export function App({
 
                 <StatusBar
                     cwd={cwd}
-                    model={model}
+                    model={turn.primaryModel.label}
                     permissionMode={turn.permissionMode}
                     tokenCount={turn.tokenInfo.count}
                     percentUsed={turn.tokenInfo.percentUsed}

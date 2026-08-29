@@ -149,6 +149,9 @@ export function createSubagentRunnerFactory(
             const runChildAgent = modelSelection === "fast"
                 ? dependencies.fastRunAgent
                 : dependencies.primaryRunAgent;
+            const childProvider = modelSelection === "fast"
+                ? parentContext.fastProvider
+                : parentContext.provider;
             const agentId = options.agentId ?? randomUUID();
             const childSessionId = `subagent-${agentId}`;
             const childHistory: Message[] = request.kind === "fork"
@@ -168,7 +171,9 @@ export function createSubagentRunnerFactory(
                 resources: {
                     ...runtimeConfig.contextResources,
                     model: childModel,
+                    provider: childProvider,
                     fastModel: dependencies.fastModel,
+                    fastProvider: parentContext.fastProvider,
                 },
                 session: {
                     sessionId: childSessionId,

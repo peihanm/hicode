@@ -172,11 +172,12 @@ describe("multiline input box", () => {
 
     const initial = instance.lastFrame() ?? "";
     expect(initial).toContain("❯ /help");
-    expect(initial).toContain("/memory");
+    expect(initial).toContain("/model");
+    expect(initial).toContain("/agents");
     expect(initial).not.toContain("/rewind");
     expect(initial).toContain("↑/↓ 选择 · Tab 补全");
 
-    for (let index = 0; index < 6; index += 1) {
+    for (let index = 0; index < 7; index += 1) {
       instance.stdin.write("\u001B[B");
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
@@ -184,7 +185,7 @@ describe("multiline input box", () => {
     const scrolled = instance.lastFrame() ?? "";
     expect(scrolled).not.toContain("/help");
     expect(scrolled).toContain("❯ /rewind");
-    expect(scrolled).toContain("2–7 / 10");
+    expect(scrolled).toContain("3–8 / 11");
   });
 
   test("Up/Down 浏览已提交输入并恢复当前草稿", async () => {

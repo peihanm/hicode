@@ -14,12 +14,15 @@ import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
+import type {LLMProviderName} from "../llm/providerRegistry.js";
 
 export interface ToolContextResources {
     cwd: string;
     workspaceBoundary?: string;
     model: string;
+    provider: LLMProviderName;
     fastModel: string;
+    fastProvider: LLMProviderName;
     skills: LoadedSkill[];
     instructions?: ProjectInstructions;
     mcpManager?: McpManagerLike;
@@ -83,7 +86,9 @@ export function createToolContext({
         skills: resources.skills,
         instructions: resources.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
         model: resources.model,
+        provider: resources.provider,
         fastModel: resources.fastModel,
+        fastProvider: resources.fastProvider,
         cwd: resources.cwd,
         workspaceBoundary: resources.workspaceBoundary,
         compactState: session.compactState,

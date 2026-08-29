@@ -2,7 +2,9 @@ import {Buffer} from "node:buffer";
 import type {AgentRunner} from "../agent/index.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
+import type {LLMSourceConnection} from "../llm/types.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
+import type {ModelTargetSettings} from "../settings/types.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import {createMemoryExtractor, type MemoryExtractor} from "./extractor.js";
 import {classifyMemoryPath, getMemoryDirectory} from "./paths.js";
@@ -121,8 +123,6 @@ class MemoryRuntime implements MemoryRuntimeLike {
         ) => MemoryExtractor
     ) {
     }
-
-    private extractor: MemoryExtractor | undefined;
 
     private record(change: MemoryChange, source: MemorySource): MemoryChange {
         this.revision += 1;
@@ -351,10 +351,8 @@ class MemoryRuntime implements MemoryRuntimeLike {
     private async extractBatch(batch: ExtractionBatch): Promise<void> {
         try {
             const revision = this.getRevision();
-            this.extractor ??= this.createExtractor(
-                this.fileAccess("automatic")
-            );
-            await this.extractor.extract({
+            const extractor = this.createExtractor(this.fileAccess("automatic"));
+            await extractor.extract({
                 turns: batch.turns,
                 signal: this.controller.signal,
             });
@@ -413,6 +411,7 @@ export interface MemoryRuntimeFactoryDependencies {
         cwd: string;
         model: string;
         provider: LLMProviderName;
+        source: LLMSourceConnection;
         shellRunner: ShellRunnerLike;
         memoryFiles: MemoryFileAccess;
     }): MemoryExtractor;
@@ -428,8 +427,10 @@ export function createMemoryRuntimeFactory(
         ((options) => createMemoryExtractor(options));
     return function createMemoryRuntime(options: {
         cwd: string;
-        model: string;
-        provider: LLMProviderName;
+        getModelTarget(): ModelTargetSettings;
+        getModelSource(
+            source: ModelTargetSettings["source"]
+        ): ResolvedPillarSettings["sources"][ModelTargetSettings["source"]];
         shellRunner: ShellRunnerLike;
         settings: ResolvedPillarSettings["memory"];
     }): MemoryRuntimeLike {
@@ -440,13 +441,17 @@ export function createMemoryRuntimeFactory(
             options.settings.enabled,
             options.settings.autoExtract,
             store,
-            (memoryFiles) => createExtractor({
-                cwd: options.cwd,
-                model: options.model,
-                provider: options.provider,
-                shellRunner: options.shellRunner,
-                memoryFiles,
-            })
+            (memoryFiles) => {
+                const target = options.getModelTarget();
+                return createExtractor({
+                    model: target.model,
+                    provider: target.provider,
+                    source: options.getModelSource(target.source),
+                    cwd: options.cwd,
+                    shellRunner: options.shellRunner,
+                    memoryFiles,
+                });
+            }
         );
     };
 }

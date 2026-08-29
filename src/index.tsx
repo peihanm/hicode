@@ -29,7 +29,7 @@ let loadedSettings: LoadedPillarSettings;
 try {
     loadedSettings = loadPillarSettings(cwd, {
         model: cliOptions.model,
-        provider: cliOptions.provider,
+        source: cliOptions.source,
     });
 } catch (error) {
     console.error(

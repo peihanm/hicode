@@ -325,6 +325,10 @@ export class UITurnEventStore {
         return this.modelStreamProgressRef;
     }
 
+    updateTokenInfo(tokenInfo: UITokenInfo): void {
+        this.update({...this.snapshot, tokenInfo});
+    }
+
     restore(input: {
         history: Message[];
         uiEvents: PersistedUIEvent[];

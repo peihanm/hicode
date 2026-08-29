@@ -16,9 +16,7 @@ Pillar 按以下顺序读取配置，后面的标量值覆盖前面的值：
   -> ~/.pillar/settings.json
   -> <项目>/.pillar/settings.json
   -> <项目>/.pillar/settings.local.json
-  -> PILLAR_PRIMARY_PROVIDER / PILLAR_PRIMARY_MODEL
-  -> PILLAR_FAST_PROVIDER / PILLAR_FAST_MODEL
-  -> CLI --provider / --model
+  -> CLI --source / --model
 ```
 
 - `~/.pillar/settings.json`：当前用户的默认配置。
@@ -32,14 +30,25 @@ Pillar 按以下顺序读取配置，后面的标量值覆盖前面的值：
 
 ```json
 {
+  "sources": {
+    "qwen": {
+      "label": "阿里云百炼",
+      "apiKeyEnv": "DASHSCOPE_API_KEY",
+      "models": [
+        {"id": "qwen3.6-plus", "label": "Qwen 3.6 Plus"},
+        {"id": "qwen3.6-flash", "label": "Qwen 3.6 Flash"},
+        {"id": "qwen3.8-flash", "label": "Qwen 3.8 Flash"}
+      ]
+    }
+  },
   "models": {
     "primary": {
-      "provider": "glm",
-      "model": "glm-5.2"
+      "source": "qwen",
+      "model": "qwen3.6-plus"
     },
     "fast": {
-      "provider": "glm",
-      "model": "glm-4.7"
+      "source": "qwen",
+      "model": "qwen3.6-flash"
     }
   },
   "permissions": {
@@ -109,16 +118,23 @@ Pillar 按以下顺序读取配置，后面的标量值覆盖前面的值：
 
 | 字段 | 类型 | 允许值或含义 | 默认值 |
 | --- | --- | --- | --- |
-| `models.primary.provider` | string | `glm`、`qwen`、`deepseek`、`jeniya` | `glm` |
-| `models.primary.model` | string | 对应 Provider 支持的非空模型名称 | `glm-5.2` |
-| `models.fast.provider` | string | `glm`、`qwen`、`deepseek`、`jeniya` | `glm` |
-| `models.fast.model` | string | 对应 Provider 支持的非空模型名称 | `glm-4.7` |
+| `sources.<name>.label` | string | 来源的用户可见名称 | 内置名称 |
+| `sources.<name>.apiKeyEnv` | string | 保存该来源凭证的环境变量名 | 来源内置值 |
+| `sources.<name>.baseUrl` | URL | 可选的请求地址 | 来源默认地址 |
+| `sources.<name>.models` | array | `{id, label}` 模型目录 | 来源内置目录 |
+| `models.primary.source` | string | `glm`、`qwen`、`deepseek` | `glm` |
+| `models.primary.model` | string | 对应 source 目录中的模型 ID | `glm-5.2` |
+| `models.fast.source` | string | `glm`、`qwen`、`deepseek` | `glm` |
+| `models.fast.model` | string | 对应 source 目录中的模型 ID | `glm-4.7` |
 
 `primary` 用于 Root Agent、Compact、Memory 和默认子 Agent；`fast` 用于 Explore 及显式选择
 `model=fast` 的子 Agent。两者可以使用不同 Provider，`fast` 不是请求失败后的自动降级模型。
 
-API Key 和 endpoint 不写入 Settings。它们使用各 Provider 的环境变量，例如
-`GLM_API_KEY`、`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY` 和 `JENIYA_API_KEY`。
+`sources` 只允许在用户级 `~/.pillar/settings.json` 定义；项目和本机项目 Settings 只能选择
+`source/model`，不能改变凭证变量或 Base URL。API key 的值仍只写在 `.env`，不会进入 Settings。
+
+交互式 `/model` 只切换 primary，不修改 fast。一个 source 的 `apiKeyEnv` 对应凭证存在时，
+该 source 中所有受支持的模型都会按 `label` 展示。
 
 ### `permissions`
 
@@ -216,7 +232,8 @@ Prompt Hook 固定使用 `models.fast`，只得到一个私有结构化提交工
 - JSON 损坏或已知字段类型错误时，该配置来源不会生效。
 - 未知字段会保留，但会产生 warning，不能依赖未知字段影响运行行为。
 - Secret、MCP、LSP、CODE.md、Skills、Session 和自定义 Agent 定义不属于 Settings。
-- 修改 Settings 后应重启 Pillar，使 Root Runtime 获取新的不可变配置快照。
+- 修改 Settings 或 `.env` 后应重启 Pillar，使 Root Runtime 获取新的配置与 `/model` 候选快照；
+  进程内使用 `/model` 切换 primary 不需要重启。
 
 实现细节见 [`document.ts`](./document.ts)、[`schema.ts`](./schema.ts)、
 [`resolve.ts`](./resolve.ts) 和 [`load.ts`](./load.ts)。

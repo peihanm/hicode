@@ -19,6 +19,7 @@ import {
   type AgentRuntime,
 } from "../../src/runtime/agentRuntime.js";
 import type { ResolvedPillarSettings } from "../../src/settings/index.js";
+import { resolvePillarSettings } from "../../src/settings/index.js";
 import {
   createAgentDefinitionManager,
   createAgentDefinitionStore,
@@ -36,14 +37,36 @@ import {
 import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 import { createGitWorkspaceRuntime } from "../../src/git/index.js";
+import { createPrimaryModelRuntime } from "../../src/runtime/primaryModel.js";
 
 export function createTestSettings(
   overrides: Partial<ResolvedPillarSettings> = {}
 ): ResolvedPillarSettings {
+  const defaultSources = resolvePillarSettings([]).values.sources;
   return {
+    sources: {
+      ...defaultSources,
+      glm: {
+        ...defaultSources.glm,
+        models: [
+          {id: "glm-test", label: "GLM Test"},
+          {id: "glm-fast-test", label: "GLM Fast Test"},
+        ],
+      },
+    },
     models: {
-      primary: {model: "glm-test", provider: "glm"},
-      fast: {model: "glm-fast-test", provider: "glm"},
+      primary: {
+        source: "glm",
+        provider: "glm",
+        model: "glm-test",
+        label: "GLM Test",
+      },
+      fast: {
+        source: "glm",
+        provider: "glm",
+        model: "glm-fast-test",
+        label: "GLM Fast Test",
+      },
     },
     permissions: {
       defaultMode: "default",
@@ -78,6 +101,11 @@ export function createTestRuntimeResources(
   const sandbox = createDisabledSandboxRuntime();
   const shellRunner = createShellRunner(sandbox);
   const settings = overrides.settings ?? createTestSettings();
+  const primaryModel = overrides.primaryModel ?? createPrimaryModelRuntime(
+    settings.models.primary,
+    settings.sources,
+    [settings.models.primary]
+  );
   const defaultCatalog = createSubagentCatalog({
     load: async () => ({definitions: [], issues: []}),
   });
@@ -89,14 +117,19 @@ export function createTestRuntimeResources(
     overrides.memory ??
     createMemoryRuntime({
       cwd,
-      model: settings.models.primary.model,
-      provider: settings.models.primary.provider,
+      getModelTarget: () => primaryModel.target,
+      getModelSource: (source) => settings.sources[source],
       shellRunner,
       settings: settings.memory,
     });
   const agentRuntime =
     overrides.agentRuntime ??
-    createAgentRuntime({models: settings.models, subagents, memory});
+    createAgentRuntime({
+      fastModel: settings.models.fast,
+      sources: settings.sources,
+      subagents,
+      memory,
+    });
   const taskRuntime = createTaskRuntimeForTest(
     cwd,
     shellRunner,
@@ -117,8 +150,15 @@ export function createTestRuntimeResources(
   };
   const base: RootRuntimeResources = {
     cwd,
-    model: settings.models.primary.model,
+    get model() {
+      return primaryModel.target.model;
+    },
+    get provider() {
+      return primaryModel.target.provider;
+    },
     fastModel: settings.models.fast.model,
+    fastProvider: settings.models.fast.provider,
+    primaryModel,
     settings,
     agentRuntime,
     subagents,
@@ -139,7 +179,7 @@ export function createTestRuntimeResources(
       await sandbox.close();
     },
   };
-  return {
+  const result = {
     ...base,
     ...overrides,
     settings,
@@ -148,6 +188,11 @@ export function createTestRuntimeResources(
     agentDefinitions,
     agentAuthoring,
   };
+  Object.defineProperties(result, {
+    model: {get: () => primaryModel.target.model, enumerable: true},
+    provider: {get: () => primaryModel.target.provider, enumerable: true},
+  });
+  return result;
 }
 
 function createStaticTestCatalog(registry: SubagentRegistry): SubagentCatalog {

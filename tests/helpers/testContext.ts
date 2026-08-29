@@ -27,6 +27,7 @@ import {
   createGitSessionRuntime,
   createGitWorkspaceRuntime,
 } from "../../src/git/index.js";
+import type { LLMProviderName } from "../../src/llm/providerRegistry.js";
 
 export function createTestContext(
   cwd: string,
@@ -43,7 +44,9 @@ export function createTestContext(
     instructions?: ProjectInstructions;
     shellRunner?: ShellRunnerLike;
     model?: string;
+    provider?: LLMProviderName;
     fastModel?: string;
+    fastProvider?: LLMProviderName;
     memoryFiles?: MemoryFileAccess;
   } = {}
 ): ToolContext {
@@ -64,7 +67,9 @@ export function createTestContext(
     resources: {
       cwd,
       model: options.model ?? "glm-test",
+      provider: options.provider ?? "glm",
       fastModel: options.fastModel ?? "glm-fast-test",
+      fastProvider: options.fastProvider ?? "glm",
       skills: [],
       instructions: options.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
       lspManager: options.lspManager,

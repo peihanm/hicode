@@ -8,10 +8,20 @@ import {
 import { createOpenAICompatibleCaller } from "../../src/llm/providers/openAICompatible.js";
 import { createTurnAbortController } from "../../src/runtime/abort.js";
 import { withTempProject } from "../helpers/tempProject.js";
+import type { LLMCallOptions, LLMProvider } from "../../src/llm/types.js";
+
+const GLM_SOURCE = {
+  id: "glm" as const,
+  label: "GLM",
+  apiKeyEnv: "GLM_API_KEY",
+};
+
+function callGlm(provider: LLMProvider, options: LLMCallOptions) {
+  return provider.call(options, GLM_SOURCE);
+}
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.GLM_API_KEY;
-const originalReasoningEffort = process.env.PILLAR_REASONING_EFFORT;
 
 function createTestGlmProvider(
   config: Parameters<typeof createOpenAICompatibleCaller>[0]
@@ -23,11 +33,6 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalApiKey === undefined) delete process.env.GLM_API_KEY;
   else process.env.GLM_API_KEY = originalApiKey;
-  if (originalReasoningEffort === undefined) {
-    delete process.env.PILLAR_REASONING_EFFORT;
-  } else {
-    process.env.PILLAR_REASONING_EFFORT = originalReasoningEffort;
-  }
 });
 
 describe("GLM cancellation", () => {
@@ -54,7 +59,7 @@ describe("GLM cancellation", () => {
         });
       }) as typeof fetch;
 
-      const running = glmProvider.call({
+      const running = callGlm(glmProvider, {
         messages: [{ role: "user", content: "hello" }],
         tools: [],
         cwd,
@@ -111,7 +116,7 @@ describe("GLM cancellation", () => {
           retryBaseDelayMs: 1,
         });
         await expect(
-          provider.call({
+          callGlm(provider, {
             messages: [{ role: "user", content: "hello" }],
             tools: [],
             cwd,
@@ -162,7 +167,7 @@ describe("GLM cancellation", () => {
         return Promise.resolve(new Response(body, { status: 200 }));
       }) as typeof fetch;
 
-      const result = await glmProvider.call({
+      const result = await callGlm(glmProvider, {
         messages: [{ role: "user", content: "create it" }],
         tools: [],
         cwd,
@@ -267,7 +272,7 @@ describe("GLM cancellation", () => {
         outputStallTimeoutMs: 20,
         retryBaseDelayMs: 1,
       });
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "create game" }],
         tools: [],
         cwd,
@@ -332,7 +337,7 @@ describe("GLM cancellation", () => {
       }) as typeof fetch;
 
       const provider = createTestGlmProvider({ retryBaseDelayMs: 1 });
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "continue" }],
         tools: [],
         cwd,
@@ -383,7 +388,7 @@ describe("GLM cancellation", () => {
       }) as typeof fetch;
 
       const provider = createTestGlmProvider({ retryBaseDelayMs: 1 });
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "continue" }],
         tools: [],
         cwd,
@@ -423,7 +428,7 @@ describe("GLM cancellation", () => {
 
       const provider = createTestGlmProvider({ retryBaseDelayMs: 1 });
       await expect(
-        provider.call({
+        callGlm(provider, {
           messages: [{ role: "user", content: "continue" }],
           tools: [],
           cwd,
@@ -440,10 +445,9 @@ describe("GLM cancellation", () => {
     });
   });
 
-  test("GLM 默认开启 thinking 并使用 high，显式配置可切换到 max", async () => {
+  test("GLM 开启 thinking 并让服务端决定推理强度", async () => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
-      delete process.env.PILLAR_REASONING_EFFORT;
       const requestBodies: Array<Record<string, unknown>> = [];
       const encoder = new TextEncoder();
 
@@ -463,15 +467,7 @@ describe("GLM cancellation", () => {
         return Promise.resolve(new Response(body, { status: 200 }));
       }) as typeof fetch;
 
-      await glmProvider.call({
-        messages: [{ role: "user", content: "hello" }],
-        tools: [],
-        cwd,
-        model: "glm-5.2",
-        kind: "main",
-      });
-      process.env.PILLAR_REASONING_EFFORT = "max";
-      await glmProvider.call({
+      await callGlm(glmProvider, {
         messages: [{ role: "user", content: "hello" }],
         tools: [],
         cwd,
@@ -480,28 +476,14 @@ describe("GLM cancellation", () => {
       });
 
       expect(requestBodies[0]?.thinking).toEqual({ type: "enabled" });
-      expect(requestBodies[0]?.reasoning_effort).toBe("high");
-      expect(requestBodies[1]?.thinking).toEqual({ type: "enabled" });
-      expect(requestBodies[1]?.reasoning_effort).toBe("max");
-
-      process.env.PILLAR_REASONING_EFFORT = "medium";
-      await expect(
-        glmProvider.call({
-          messages: [{ role: "user", content: "hello" }],
-          tools: [],
-          cwd,
-          model: "glm-5.2",
-          kind: "main",
-        })
-      ).rejects.toThrow("PILLAR_REASONING_EFFORT 只支持 high 或 max");
-      expect(requestBodies).toHaveLength(2);
+      expect(requestBodies[0]?.reasoning_effort).toBeUndefined();
+      expect(requestBodies).toHaveLength(1);
     });
   });
 
-  test("GLM-4.7 保留 thinking 与工具流，但不发送 5.2 专属 reasoning_effort", async () => {
+  test("GLM-4.7 保留 thinking 与工具流", async () => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
-      process.env.PILLAR_REASONING_EFFORT = "max";
       let requestBody: Record<string, unknown> = {};
       const encoder = new TextEncoder();
 
@@ -521,7 +503,7 @@ describe("GLM cancellation", () => {
         return Promise.resolve(new Response(body, { status: 200 }));
       }) as typeof fetch;
 
-      await glmProvider.call({
+      await callGlm(glmProvider, {
         messages: [{ role: "user", content: "hello" }],
         tools: [],
         cwd,
@@ -574,7 +556,7 @@ describe("GLM cancellation", () => {
         outputStallTimeoutMs: 20,
         retryBaseDelayMs: 1,
       });
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "continue after stall" }],
         tools: [],
         cwd,
@@ -585,9 +567,9 @@ describe("GLM cancellation", () => {
 
       expect(fetchCalls).toBe(2);
       expect(requestBodies[0]?.thinking).toEqual({ type: "enabled" });
-      expect(requestBodies[0]?.reasoning_effort).toBe("high");
       expect(requestBodies[1]?.thinking).toEqual({ type: "enabled" });
-      expect(requestBodies[1]?.reasoning_effort).toBe("high");
+      expect(requestBodies[0]?.reasoning_effort).toBeUndefined();
+      expect(requestBodies[1]?.reasoning_effort).toBeUndefined();
       expect(result.message.content).toBe("重试成功");
       expect(progress).toContain("retrying");
       const logs = (await readdir(join(cwd, ".pillar", "prompt-log"))).sort();
@@ -648,7 +630,7 @@ describe("GLM cancellation", () => {
         outputStallTimeoutMs: 20,
         retryBaseDelayMs: 1,
       });
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "degrade after two stalls" }],
         tools: [],
         cwd,
@@ -698,7 +680,7 @@ describe("GLM cancellation", () => {
         retryBaseDelayMs: 1,
       });
       await expect(
-        provider.call({
+        callGlm(provider, {
           messages: [{ role: "user", content: "stall twice" }],
           tools: [],
           cwd,
@@ -755,7 +737,7 @@ describe("GLM cancellation", () => {
         outputStallTimeoutMs: 20,
       });
       const startedAt = Date.now();
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "keep thinking" }],
         tools: [],
         cwd,
@@ -809,7 +791,7 @@ describe("GLM cancellation", () => {
 
       const provider = createTestGlmProvider({ streamIdleTimeoutMs: 200 });
       const startedAt = Date.now();
-      const result = await provider.call({
+      const result = await callGlm(provider, {
         messages: [{ role: "user", content: "slow output" }],
         tools: [],
         cwd,

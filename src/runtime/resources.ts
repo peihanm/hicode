@@ -30,11 +30,15 @@ import {createHookPromptExecutor, createHookRuntime, type HookRuntime, type Hook
 import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/index.js";
+import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
 
 export interface RootRuntimeResources {
     readonly cwd: string;
     readonly model: string;
+    readonly provider: ResolvedPillarSettings["models"]["primary"]["provider"];
     readonly fastModel: string;
+    readonly fastProvider: ResolvedPillarSettings["models"]["fast"]["provider"];
+    readonly primaryModel: PrimaryModelRuntime;
     readonly settings: ResolvedPillarSettings;
     readonly agentRuntime: AgentRuntime;
     readonly subagents: SubagentCatalog;
@@ -156,14 +160,18 @@ export function createRootRuntimeResourcesFactory(
             settings: options.settings.sandbox,
         });
         const shellRunner = createShellRunner(sandbox);
+        const primaryModel = createPrimaryModelRuntime(
+            options.settings.models.primary,
+            options.settings.sources
+        );
 
         try {
             const fileState = dependencies.createFileStateTracker();
             const gitWorkspace = createGitWorkspaceRuntime(options.cwd);
             const createdMemory = dependencies.createMemoryRuntime({
                 cwd: options.cwd,
-                model: options.settings.models.primary.model,
-                provider: options.settings.models.primary.provider,
+                getModelTarget: () => primaryModel.target,
+                getModelSource: (source) => options.settings.sources[source],
                 shellRunner,
                 settings: options.settings.memory,
             });
@@ -182,7 +190,7 @@ export function createRootRuntimeResourcesFactory(
                 headless: options.headless,
                 signal: options.signal,
                 promptExecutor: createHookPromptExecutor({
-                    provider: options.settings.models.fast.provider,
+                    source: options.settings.sources[options.settings.models.fast.source],
                     cwd: options.cwd,
                     model: options.settings.models.fast.model,
                 }),
@@ -206,9 +214,9 @@ export function createRootRuntimeResourcesFactory(
                 availableToolNames: toolCatalog.toolNames,
             });
             const agentAuthoring = createAgentAuthoringRuntime({
-                provider: options.settings.models.primary.provider,
                 cwd: options.cwd,
-                model: options.settings.models.primary.model,
+                getModelTarget: () => primaryModel.target,
+                getModelSource: (source) => options.settings.sources[source],
                 instructions,
                 availableToolNames: toolCatalog.toolNames.filter(
                     (name) => !name.startsWith("mcp__")
@@ -228,7 +236,8 @@ export function createRootRuntimeResourcesFactory(
                 hooks,
             });
             const agentRuntime = dependencies.createAgentRuntime({
-                models: options.settings.models,
+                fastModel: options.settings.models.fast,
+                sources: options.settings.sources,
                 subagents,
                 memory: createdMemory,
             });
@@ -249,8 +258,15 @@ export function createRootRuntimeResourcesFactory(
 
             return {
                 cwd: options.cwd,
-                model: options.settings.models.primary.model,
+                get model() {
+                    return primaryModel.target.model;
+                },
+                get provider() {
+                    return primaryModel.target.provider;
+                },
                 fastModel: options.settings.models.fast.model,
+                fastProvider: options.settings.models.fast.provider,
+                primaryModel,
                 settings: options.settings,
                 agentRuntime,
                 subagents,

@@ -17,13 +17,20 @@ export function AppForTest({
   runAgentImpl: AgentRunner;
 }) {
   const testResources = useMemo<RootRuntimeResources>(
-    () => ({
-      ...resources,
-      agentRuntime: {
-        ...resources.agentRuntime,
-        runAgent: runAgentImpl,
-      },
-    }),
+    () => {
+      const configured = {
+        ...resources,
+        agentRuntime: {
+          ...resources.agentRuntime,
+          runAgent: runAgentImpl,
+        },
+      };
+      Object.defineProperties(configured, {
+        model: {get: () => resources.model, enumerable: true},
+        provider: {get: () => resources.provider, enumerable: true},
+      });
+      return configured;
+    },
     [resources, runAgentImpl]
   );
   return (

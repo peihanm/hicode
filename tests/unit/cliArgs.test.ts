@@ -44,24 +44,24 @@ describe("parseCliArgs", () => {
     });
   });
 
-  test("解析本次启动的 model 和 provider 覆盖", () => {
+  test("解析本次启动的 model 和 source 覆盖", () => {
     expect(
-      parseCliArgs(["--model", "glm-5.2", "--provider=JENIYA"])
+      parseCliArgs(["--model", "glm-5.2", "--source=GLM"])
     ).toMatchObject({
       model: "glm-5.2",
-      provider: "jeniya",
+      source: "glm",
     });
     expect(
-      parseCliArgs(["--model=qwen3.6-plus", "--provider", "QWEN"])
+      parseCliArgs(["--model=qwen3.6-plus", "--source", "QWEN"])
     ).toMatchObject({
       model: "qwen3.6-plus",
-      provider: "qwen",
+      source: "qwen",
     });
     expect(
-      parseCliArgs(["--model=deepseek-v4-pro", "--provider", "DEEPSEEK"])
+      parseCliArgs(["--model=deepseek-v4-pro", "--source", "DEEPSEEK"])
     ).toMatchObject({
       model: "deepseek-v4-pro",
-      provider: "deepseek",
+      source: "deepseek",
     });
   });
 
@@ -76,8 +76,8 @@ describe("parseCliArgs", () => {
       "未知权限模式"
     );
     expect(() => parseCliArgs(["--model="])).toThrow("--model 需要提供非空");
-    expect(() => parseCliArgs(["--provider", "unknown"])).toThrow(
-      "未知 LLM Provider"
+    expect(() => parseCliArgs(["--source", "unknown"])).toThrow(
+      "未知模型来源"
     );
     expect(() =>
       parseCliArgs(["--rewind", "checkpoint-1"])

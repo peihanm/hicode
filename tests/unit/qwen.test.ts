@@ -5,24 +5,32 @@ import {
     qwenProvider,
 } from "../../src/llm/providers/qwen.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import type {LLMCallOptions, LLMProvider} from "../../src/llm/types.js";
+
+const QWEN_SOURCE = {
+    id: "qwen" as const,
+    label: "Qwen",
+    apiKeyEnv: "DASHSCOPE_API_KEY",
+    baseUrl: "https://qwen.test/v1",
+};
+
+function callQwenProvider(provider: LLMProvider, options: LLMCallOptions) {
+    return provider.call(options, QWEN_SOURCE);
+}
 
 const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.DASHSCOPE_API_KEY;
-const originalBaseUrl = process.env.QWEN_BASE_URL;
 
 afterEach(() => {
     globalThis.fetch = originalFetch;
     if (originalApiKey === undefined) delete process.env.DASHSCOPE_API_KEY;
     else process.env.DASHSCOPE_API_KEY = originalApiKey;
-    if (originalBaseUrl === undefined) delete process.env.QWEN_BASE_URL;
-    else process.env.QWEN_BASE_URL = originalBaseUrl;
 });
 
 describe("Qwen provider", () => {
     test("请求流式 Function Calling，并读取 finish_reason 后的 usage 尾包", async () => {
         await withTempProject(async (cwd) => {
             process.env.DASHSCOPE_API_KEY = "test-dashscope-token";
-            process.env.QWEN_BASE_URL = "https://qwen.test/v1";
             let requestedUrl = "";
             let requestBody: Record<string, unknown> | undefined;
             const encoder = new TextEncoder();
@@ -81,7 +89,7 @@ describe("Qwen provider", () => {
                 return new Response(body, {status: 200});
             }) as typeof fetch;
 
-            const result = await qwenProvider.call({
+            const result = await callQwenProvider(qwenProvider, {
                 messages: [{role: "user", content: "读取入口"}],
                 tools: [{
                     type: "function",
@@ -163,7 +171,7 @@ describe("Qwen provider", () => {
                 }), {status: 200});
             }) as typeof fetch;
 
-            await qwenProvider.call({
+            await callQwenProvider(qwenProvider, {
                 messages: [
                     {role: "user", content: "继续"},
                     {
@@ -202,7 +210,7 @@ describe("Qwen provider", () => {
         expect(qwenProvider.supports("glm-5.2")).toBe(false);
         delete process.env.DASHSCOPE_API_KEY;
 
-        await expect(qwenProvider.call({
+        await expect(callQwenProvider(qwenProvider, {
             messages: [{role: "user", content: "hello"}],
             tools: [],
             cwd: process.cwd(),
@@ -210,13 +218,13 @@ describe("Qwen provider", () => {
             kind: "main",
         })).rejects.toThrow("缺少 DASHSCOPE_API_KEY");
 
-        const callQwen = createLLMCaller("qwen");
+        const callQwen = createLLMCaller(QWEN_SOURCE);
         await expect(callQwen(
             [{role: "user", content: "hello"}],
             [],
             process.cwd(),
             "glm-5.2",
             "main"
-        )).rejects.toThrow("Provider qwen 不支持模型 glm-5.2");
+        )).rejects.toThrow("模型来源 Qwen 不支持模型 glm-5.2");
     });
 });

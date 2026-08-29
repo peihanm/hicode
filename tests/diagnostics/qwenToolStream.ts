@@ -69,7 +69,7 @@ interface ProbeResult {
 
 const DEFAULT_BASE_URL =
     "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
-const DEFAULT_JENIYA_BASE_URL = "https://jeniya.cn/v1";
+const DEFAULT_GLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 const DEFAULT_QWEN_MODEL = "qwen3.6-plus";
 const DEFAULT_GLM_MODEL = "glm-5.2";
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -117,11 +117,11 @@ const USAGE = [
     "  DASHSCOPE_API_KEY   Qwen 模式必填；百炼 API Key",
     `  QWEN_BASE_URL       可选；默认 ${DEFAULT_BASE_URL}`,
     `  QWEN_PROBE_MODEL    可选；默认 ${DEFAULT_QWEN_MODEL}`,
-    `  JENIYA_API_KEY      GLM 对照时必填；Jeniya API Key`,
-    `  JENIYA_BASE_URL     可选；默认 ${DEFAULT_JENIYA_BASE_URL}`,
+    `  GLM_API_KEY         GLM 对照时必填；智谱 API Key`,
+    `  GLM_BASE_URL        可选；默认 ${DEFAULT_GLM_BASE_URL}`,
     `  GLM_COMPARE_MODEL   可选；默认 ${DEFAULT_GLM_MODEL}`,
     "",
-    "--compare-glm 会通过 Jeniya 追加一次 GLM 对照请求，不会使用百炼调用 GLM。",
+    "--compare-glm 会通过智谱官方接口追加一次 GLM 对照请求。",
     "脚本只打印工具参数片段的长度与短预览，不打印 API Key。",
 ].join("\n");
 
@@ -494,20 +494,19 @@ async function main(): Promise<void> {
         });
     }
     if (options.compareGlm || options.glmOnly) {
-        const glmApiKey = process.env.JENIYA_API_KEY;
+        const glmApiKey = process.env.GLM_API_KEY;
         if (!glmApiKey) {
             throw new Error(
-                "GLM 诊断缺少 JENIYA_API_KEY，无法通过 Jeniya 调用 GLM"
+                "GLM 诊断缺少 GLM_API_KEY"
             );
         }
         const model = process.env.GLM_COMPARE_MODEL || DEFAULT_GLM_MODEL;
         configs.push({
             label: "GLM",
             apiKey: glmApiKey,
-            baseUrl:
-                process.env.JENIYA_BASE_URL || DEFAULT_JENIYA_BASE_URL,
+            baseUrl: process.env.GLM_BASE_URL || DEFAULT_GLM_BASE_URL,
             model,
-            requestFields: createGlmRequestFields(model),
+            requestFields: createGlmRequestFields(),
         });
     }
 

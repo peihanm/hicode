@@ -1,14 +1,117 @@
-import {DEFAULT_LLM_PROVIDER, type LLMProviderName,} from "../llm/providerRegistry.js";
+import {DEFAULT_LLM_PROVIDER, LLM_PROVIDER_NAMES, type LLMProviderName,} from "../llm/providerRegistry.js";
 import {parsePermissionRule} from "../permissions/rules.js";
 import type {PermissionMode, PermissionRule, PermissionRules,} from "../permissions/types.js";
 import type {HookEvent, ResolvedHookMatcher, ResolvedHookSettings,} from "../hooks/types.js";
-import type {PillarSettingsOverrides, LoadedPillarSettings, LoadedSettingsDocument, SettingsOrigins,} from "./types.js";
+import type {
+    LoadedPillarSettings,
+    LoadedSettingsDocument,
+    ModelSourceSettings,
+    ModelTargetSettings,
+    PillarSettingsOverrides,
+    SettingsOrigins,
+} from "./types.js";
 
 export const DEFAULT_MODEL = "glm-5.2";
 
-export interface EnvironmentSettingsOverrides {
-    primary?: Partial<{provider: LLMProviderName; model: string}>;
-    fast?: Partial<{provider: LLMProviderName; model: string}>;
+const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
+    glm: {
+        id: "glm",
+        label: "智谱 GLM",
+        apiKeyEnv: "GLM_API_KEY",
+        models: [
+            {id: "glm-5.2", label: "GLM 5.2"},
+            {id: "glm-4.7", label: "GLM 4.7"},
+        ],
+    },
+    qwen: {
+        id: "qwen",
+        label: "阿里云百炼",
+        apiKeyEnv: "DASHSCOPE_API_KEY",
+        models: [
+            {id: "qwen3.6-plus", label: "Qwen 3.6 Plus"},
+            {id: "qwen3.6-flash", label: "Qwen 3.6 Flash"},
+        ],
+    },
+    deepseek: {
+        id: "deepseek",
+        label: "DeepSeek",
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        models: [
+            {id: "deepseek-v4-pro", label: "DeepSeek V4 Pro"},
+            {id: "deepseek-v4-flash", label: "DeepSeek V4 Flash"},
+        ],
+    },
+};
+
+function cloneSources(): Record<LLMProviderName, ModelSourceSettings> {
+    const sources = {} as Record<LLMProviderName, ModelSourceSettings>;
+    for (const name of LLM_PROVIDER_NAMES) {
+        const source = DEFAULT_SOURCES[name];
+        sources[name] = {
+            ...source,
+            models: source.models.map((model) => ({...model})),
+        };
+    }
+    return sources;
+}
+
+function mergeUserSources(
+    documents: readonly LoadedSettingsDocument[]
+): Record<LLMProviderName, ModelSourceSettings> {
+    const sources = cloneSources();
+    for (const document of documents) {
+        if (document.source !== "user") continue;
+        for (const name of LLM_PROVIDER_NAMES) {
+            const override = document.value.sources?.[name];
+            if (!override || typeof override !== "object") continue;
+            const current = sources[name];
+            sources[name] = {
+                id: name,
+                label: override.label ?? current.label,
+                apiKeyEnv: override.apiKeyEnv ?? current.apiKeyEnv,
+                ...(override.baseUrl !== undefined
+                    ? {baseUrl: override.baseUrl}
+                    : current.baseUrl !== undefined
+                        ? {baseUrl: current.baseUrl}
+                        : {}),
+                models: (override.models ?? current.models).map((model) => ({
+                    id: model.id,
+                    label: model.label,
+                })),
+            };
+        }
+    }
+    for (const source of Object.values(sources)) {
+        const ids = new Set<string>();
+        for (const model of source.models) {
+            if (ids.has(model.id)) {
+                throw new Error(`模型来源 ${source.id} 重复定义模型 ${model.id}`);
+            }
+            ids.add(model.id);
+        }
+    }
+    return sources;
+}
+
+function resolveModelTarget(
+    sources: Record<LLMProviderName, ModelSourceSettings>,
+    sourceName: LLMProviderName,
+    modelId: string,
+    slot: "primary" | "fast"
+): ModelTargetSettings {
+    const source = sources[sourceName];
+    const model = source.models.find((candidate) => candidate.id === modelId);
+    if (!model) {
+        throw new Error(
+            `${slot} 模型 ${sourceName}/${modelId} 未在 sources.${sourceName}.models 中定义`
+        );
+    }
+    return {
+        source: sourceName,
+        provider: sourceName,
+        model: model.id,
+        label: model.label,
+    };
 }
 
 function mergePermissionRules(
@@ -24,10 +127,7 @@ function mergePermissionRules(
             for (const ruleText of document.value.permissions?.[behavior] ?? []) {
                 const parsed = parsePermissionRule(ruleText);
                 const key = `${parsed.toolName}\u0000${parsed.content ?? ""}`;
-                buckets[behavior].set(key, {
-                    ...parsed,
-                    source: document.source,
-                });
+                buckets[behavior].set(key, {...parsed, source: document.source});
             }
         }
     }
@@ -52,13 +152,11 @@ function mergeHooks(
     for (const document of documents) {
         for (const [event, matchers] of Object.entries(document.value.hooks ?? {})) {
             const target = event as HookEvent;
-            resolved[target].push(
-                ...(matchers ?? []).map((matcher) => ({
-                    ...matcher,
-                    source: document.source,
-                    path: document.path,
-                }))
-            );
+            resolved[target].push(...(matchers ?? []).map((matcher) => ({
+                ...matcher,
+                source: document.source,
+                path: document.path,
+            })));
         }
     }
     return resolved;
@@ -66,13 +164,13 @@ function mergeHooks(
 
 export function resolvePillarSettings(
     documents: readonly LoadedSettingsDocument[],
-    environment: EnvironmentSettingsOverrides = {},
     cli: PillarSettingsOverrides = {}
 ): Pick<LoadedPillarSettings, "values" | "origins"> {
+    const sources = mergeUserSources(documents);
     let primaryModel = DEFAULT_MODEL;
-    let primaryProvider = DEFAULT_LLM_PROVIDER;
+    let primarySource = DEFAULT_LLM_PROVIDER;
     let fastModel = "glm-4.7";
-    let fastProvider = DEFAULT_LLM_PROVIDER;
+    let fastSource = DEFAULT_LLM_PROVIDER;
     let permissionMode: PermissionMode = "default";
     let memoryEnabled = true;
     let memoryAutoExtract = true;
@@ -87,9 +185,9 @@ export function resolvePillarSettings(
     let sandboxAllowLocalBinding = false;
     const origins: SettingsOrigins = {
         primaryModel: "default",
-        primaryProvider: "default",
+        primarySource: "default",
         fastModel: "default",
-        fastProvider: "default",
+        fastSource: "default",
         permissionMode: "default",
         memoryEnabled: "default",
         memoryAutoExtract: "default",
@@ -103,17 +201,17 @@ export function resolvePillarSettings(
             primaryModel = value.models.primary.model;
             origins.primaryModel = document.source;
         }
-        if (value.models?.primary?.provider !== undefined) {
-            primaryProvider = value.models.primary.provider;
-            origins.primaryProvider = document.source;
+        if (value.models?.primary?.source !== undefined) {
+            primarySource = value.models.primary.source;
+            origins.primarySource = document.source;
         }
         if (value.models?.fast?.model !== undefined) {
             fastModel = value.models.fast.model;
             origins.fastModel = document.source;
         }
-        if (value.models?.fast?.provider !== undefined) {
-            fastProvider = value.models.fast.provider;
-            origins.fastProvider = document.source;
+        if (value.models?.fast?.source !== undefined) {
+            fastSource = value.models.fast.source;
+            origins.fastSource = document.source;
         }
         const documentMode = value.permissions?.defaultMode;
         if (documentMode !== undefined) {
@@ -165,25 +263,9 @@ export function resolvePillarSettings(
         }
     }
 
-    if (environment.primary?.provider !== undefined) {
-        primaryProvider = environment.primary.provider;
-        origins.primaryProvider = "environment";
-    }
-    if (environment.primary?.model !== undefined) {
-        primaryModel = environment.primary.model;
-        origins.primaryModel = "environment";
-    }
-    if (environment.fast?.provider !== undefined) {
-        fastProvider = environment.fast.provider;
-        origins.fastProvider = "environment";
-    }
-    if (environment.fast?.model !== undefined) {
-        fastModel = environment.fast.model;
-        origins.fastModel = "environment";
-    }
-    if (cli.provider !== undefined) {
-        primaryProvider = cli.provider;
-        origins.primaryProvider = "cli";
+    if (cli.source !== undefined) {
+        primarySource = cli.source;
+        origins.primarySource = "cli";
     }
     if (cli.model !== undefined) {
         primaryModel = cli.model;
@@ -192,9 +274,10 @@ export function resolvePillarSettings(
 
     return {
         values: {
+            sources,
             models: {
-                primary: {provider: primaryProvider, model: primaryModel},
-                fast: {provider: fastProvider, model: fastModel},
+                primary: resolveModelTarget(sources, primarySource, primaryModel, "primary"),
+                fast: resolveModelTarget(sources, fastSource, fastModel, "fast"),
             },
             permissions: {
                 defaultMode: permissionMode,
@@ -205,9 +288,7 @@ export function resolvePillarSettings(
                 enabled: memoryEnabled,
                 autoExtract: memoryEnabled && memoryAutoExtract,
             },
-            checkpointing: {
-                enabled: checkpointingEnabled,
-            },
+            checkpointing: {enabled: checkpointingEnabled},
             sandbox: {
                 enabled: sandboxEnabled,
                 filesystem: {

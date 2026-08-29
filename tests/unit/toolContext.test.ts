@@ -22,7 +22,9 @@ describe("ToolContext builder", () => {
         resources: {
           cwd,
           model: "glm-test",
+          provider: "glm",
           fastModel: "glm-fast-test",
+          fastProvider: "glm",
           skills: [],
           shellRunner: createShellRunner(createDisabledSandboxRuntime()),
         },
@@ -86,7 +88,9 @@ describe("ToolContext builder", () => {
       const resources = {
         cwd,
         model: "glm-test",
+        provider: "glm" as const,
         fastModel: "glm-fast-test",
+        fastProvider: "glm" as const,
         skills,
         shellRunner: createShellRunner(createDisabledSandboxRuntime()),
       };

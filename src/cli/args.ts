@@ -12,7 +12,7 @@ type CliOutputFormat = "text" | "json";
 export interface CliOptions {
     help: boolean;
     model?: string;
-    provider?: LLMProviderName;
+    source?: LLMProviderName;
     permissionMode?: PermissionMode;
     resumeMode: ResumeMode;
     printPrompt?: string;
@@ -33,7 +33,7 @@ Options:
   -r, --resume [sessionId]       Resume an existing session; omit sessionId to pick from a list
   -c, --continue                 Resume the most recently updated session
   --model <model>                Override the primary model for this run
-  --provider <provider>          Override primary provider: ${LLM_PROVIDER_NAMES.join(" | ")}
+  --source <source>              Override primary model source: ${LLM_PROVIDER_NAMES.join(" | ")}
   --permission-mode <mode>       default | acceptEdits | plan | bypassPermissions | dontAsk
   --dangerously-skip-permissions Start in bypassPermissions mode
   -h, --help                     Show help
@@ -78,14 +78,14 @@ export function parseCliArgs(args: string[]): CliOptions {
         options.model = model;
     };
 
-    const setProvider = (value: string) => {
-        const provider = value.trim().toLowerCase();
-        if (!isLLMProviderName(provider)) {
+    const setSource = (value: string) => {
+        const source = value.trim().toLowerCase();
+        if (!isLLMProviderName(source)) {
             throw new Error(
-                `未知 LLM Provider: ${value}。可选值：${formatLLMProviderNames()}`
+                `未知模型来源: ${value}。可选值：${formatLLMProviderNames()}`
             );
         }
-        options.provider = provider;
+        options.source = source;
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -150,15 +150,15 @@ export function parseCliArgs(args: string[]): CliOptions {
             setModel(arg.slice("--model=".length));
             continue;
         }
-        if (arg === "--provider") {
+        if (arg === "--source") {
             const value = args[i + 1];
-            if (!value) throw new Error("--provider 需要提供 provider");
-            setProvider(value);
+            if (!value) throw new Error("--source 需要提供 source");
+            setSource(value);
             i++;
             continue;
         }
-        if (arg.startsWith("--provider=")) {
-            setProvider(arg.slice("--provider=".length));
+        if (arg.startsWith("--source=")) {
+            setSource(arg.slice("--source=".length));
             continue;
         }
         if (arg === "-r" || arg === "--resume") {

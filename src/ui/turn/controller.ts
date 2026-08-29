@@ -52,6 +52,7 @@ export interface UITurnControllerDependencies {
     openAgents?(): void;
 
     openGitDiff?(): void;
+    openModel?(): void;
 
     runUserPromptHooks(
         input: string,
@@ -119,6 +120,7 @@ export class UITurnController {
                     openRewind: this.dependencies.openRewind,
                     openAgents: this.dependencies.openAgents,
                     openGitDiff: this.dependencies.openGitDiff,
+                    openModel: this.dependencies.openModel,
                 });
                 if (handled) return true;
             }
@@ -285,6 +287,7 @@ export class UITurnController {
             openRewind: this.dependencies.openRewind,
             openAgents: this.dependencies.openAgents,
             openGitDiff: this.dependencies.openGitDiff,
+            openModel: this.dependencies.openModel,
         }).then((result) => {
             if (result !== true) {
                 throw new Error(`运行中 Slash 未按本地命令完成: ${input}`);

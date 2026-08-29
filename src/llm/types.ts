@@ -78,6 +78,13 @@ export interface LLMCallResult {
     usage: TokenUsage;
 }
 
+export interface LLMSourceConnection {
+    id: LLMProviderName;
+    label: string;
+    apiKeyEnv: string;
+    baseUrl?: string;
+}
+
 export type LLMCaller = (
     messages: Message[],
     tools: OpenAITool[],
@@ -93,7 +100,10 @@ export interface LLMProvider {
 
     supports(model: string): boolean;
 
-    call(options: LLMCallOptions): Promise<LLMCallResult>;
+    call(
+        options: LLMCallOptions,
+        source: LLMSourceConnection
+    ): Promise<LLMCallResult>;
 }
 
 export interface PromptLogRequest {

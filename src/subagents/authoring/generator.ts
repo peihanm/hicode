@@ -1,7 +1,7 @@
 import {createLLMCaller} from "../../llm/index.js";
 import type {LLMCaller} from "../../llm/types.js";
-import type {LLMProviderName} from "../../llm/providerRegistry.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
+import type {ModelSourceSettings, ModelTargetSettings} from "../../settings/types.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "../custom.js";
 import type {AgentDefinitionDraft} from "../store.js";
 import {createAgentAuthoringPrompt} from "./prompt.js";
@@ -112,14 +112,25 @@ export function createAgentDefinitionGenerator(
 }
 
 export function createAgentAuthoringRuntime(options: {
-    provider: LLMProviderName;
     cwd: string;
-    model: string;
+    getModelTarget(): ModelTargetSettings;
+    getModelSource(source: ModelTargetSettings["source"]): ModelSourceSettings;
     instructions: ProjectInstructions;
     availableToolNames: readonly string[];
     getExistingAgentNames(): readonly string[];
 }): AgentAuthoringRuntime {
-    return createAgentDefinitionGenerator({
-        callLLM: createLLMCaller(options.provider),
-    })(options);
+    return {
+        generate(requirement, signal) {
+            const target = options.getModelTarget();
+            return createAgentDefinitionGenerator({
+                callLLM: createLLMCaller(options.getModelSource(target.source)),
+            })({
+                cwd: options.cwd,
+                model: target.model,
+                instructions: options.instructions,
+                availableToolNames: options.availableToolNames,
+                getExistingAgentNames: options.getExistingAgentNames,
+            }).generate(requirement, signal);
+        },
+    };
 }

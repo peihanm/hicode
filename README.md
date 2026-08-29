@@ -11,7 +11,7 @@ Pillar 是一个运行在终端中的 Code Agent，使用 Bun、TypeScript、Rea
 - Session 恢复、Checkpoint 和代码回退
 - 子 Agent、后台任务和 Git Worktree 隔离
 - MCP、LSP、Skills、Hooks 和持久 Memory
-- GLM、Qwen、DeepSeek 与 Jeniya OpenAI-compatible 中转
+- GLM、Qwen 与 DeepSeek Provider
 
 ## 环境要求
 
@@ -55,7 +55,6 @@ Pillar 优先读取当前目录的 `.env`，找不到时读取 `~/.pillar/.env`�
 | GLM | `GLM_API_KEY` |
 | Qwen | `DASHSCOPE_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
-| Jeniya | `JENIYA_API_KEY` |
 
 不要提交 `.env`、`.mcp.json` 或任何包含凭证和私人上下文的本地配置。
 

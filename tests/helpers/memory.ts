@@ -31,8 +31,18 @@ export function createTestMemoryRuntime(
             options.createExtractor ?? (() => options.extractor ?? noChanges),
     })({
         cwd,
-        model: "glm-test",
-        provider: "glm",
+        getModelTarget: () => ({
+            source: "glm",
+            provider: "glm",
+            model: "glm-test",
+            label: "GLM Test",
+        }),
+        getModelSource: () => ({
+            id: "glm",
+            label: "GLM Test",
+            apiKeyEnv: "GLM_API_KEY",
+            models: [{id: "glm-test", label: "GLM Test"}],
+        }),
         shellRunner: createShellRunner(createDisabledSandboxRuntime()),
         settings: {
             enabled: options.enabled ?? true,

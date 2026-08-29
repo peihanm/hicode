@@ -3,6 +3,8 @@ import {type CompactHistoryRunner, createCompactHistoryRunner,} from "../context
 import {createCompactSummaryGenerator} from "../context/compactSummary.js";
 import {createLLMCaller} from "../llm/index.js";
 import type {ModelTargetSettings} from "../settings/types.js";
+import type {LLMProviderName} from "../llm/providerRegistry.js";
+import type {ResolvedPillarSettings} from "../settings/types.js";
 import {createSubagentRunnerFactory} from "../subagents/runSubagent.js";
 import type {CreateSubagentRunner} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
@@ -15,8 +17,10 @@ export interface AgentRuntime {
     createSubagentRunner: CreateSubagentRunner;
 }
 
-function createModelRunner(target: ModelTargetSettings) {
-    const callLLM = createLLMCaller(target.provider);
+function createProviderRunner(
+    source: ResolvedPillarSettings["sources"][LLMProviderName]
+) {
+    const callLLM = createLLMCaller(source);
     const generateSummary = createCompactSummaryGenerator({callLLM});
     const compactHistory = createCompactHistoryRunner({generateSummary});
     return {
@@ -25,18 +29,45 @@ function createModelRunner(target: ModelTargetSettings) {
     };
 }
 
-/** Bind independent primary and fast model targets to one application runtime. */
+function createPrimaryRouter(sources: ResolvedPillarSettings["sources"]) {
+    const runners = new Map<LLMProviderName, ReturnType<typeof createProviderRunner>>();
+    const getRunner = (provider: LLMProviderName) => {
+        let runner = runners.get(provider);
+        if (!runner) {
+            runner = createProviderRunner(sources[provider]);
+            runners.set(provider, runner);
+        }
+        return runner;
+    };
+    return {
+        runAgent: ((userInput, history, onEvent, ctx, inputChannel, options) =>
+            getRunner(ctx.provider).runAgent(
+                userInput,
+                history,
+                onEvent,
+                ctx,
+                inputChannel,
+                options
+            )) satisfies AgentRunner,
+        compactHistory: ((input) =>
+            getRunner(input.ctx.provider).compactHistory(input)) satisfies CompactHistoryRunner,
+    };
+}
+
+/** Route the per-Turn primary target while keeping the fast target fixed. */
 export function createAgentRuntime({
-    models,
+    fastModel,
+    sources,
     subagents,
     memory,
 }: {
-    models: {primary: ModelTargetSettings; fast: ModelTargetSettings};
+    fastModel: ModelTargetSettings;
+    sources: ResolvedPillarSettings["sources"];
     subagents: SubagentRegistry;
     memory: MemoryRuntimeLike;
 }): AgentRuntime {
-    const primary = createModelRunner(models.primary);
-    const fast = createModelRunner(models.fast);
+    const primary = createPrimaryRouter(sources);
+    const fast = createProviderRunner(sources[fastModel.source]);
     const rootRunAgent = createMemoryAwareAgentRunner(
         primary.runAgent,
         memory
@@ -47,7 +78,7 @@ export function createAgentRuntime({
         createSubagentRunner: createSubagentRunnerFactory({
             primaryRunAgent: primary.runAgent,
             fastRunAgent: fast.runAgent,
-            fastModel: models.fast.model,
+            fastModel: fastModel.model,
             registry: subagents,
             createToolResultStore,
         }),

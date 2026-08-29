@@ -15,6 +15,7 @@ import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
+import type {LLMProviderName} from "../llm/providerRegistry.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";
 export type PermissionMatcher = (
@@ -66,8 +67,13 @@ export interface ToolContext {
     // 当前模型名（env 探测 + context window 判断用）
     model: string;
 
+    // 当前主模型对应的 Provider。每个 Turn 固化一次，运行中切换不会改变旧 Turn。
+    provider: LLMProviderName;
+
     // 当前 Runtime 配置的快速模型名（Agent 描述与 model=fast 路由说明用）
     fastModel: string;
+
+    fastProvider: LLMProviderName;
 
     // 当前工作目录（attachment 探测 env / prompt-log 落盘用）
     cwd: string;

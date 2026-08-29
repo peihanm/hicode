@@ -44,18 +44,50 @@ interface SandboxSettingsFile {
     [key: string]: unknown;
 }
 
+export interface ModelDefinitionSettings {
+    id: string;
+    label: string;
+}
+
+export interface ModelSourceSettings {
+    id: LLMProviderName;
+    label: string;
+    apiKeyEnv: string;
+    baseUrl?: string;
+    models: readonly ModelDefinitionSettings[];
+}
+
 export interface ModelTargetSettings {
+    source: LLMProviderName;
     provider: LLMProviderName;
     model: string;
+    label: string;
 }
 
 interface ModelTargetSettingsFile {
-    provider?: LLMProviderName;
+    source?: LLMProviderName;
     model?: string;
     [key: string]: unknown;
 }
 
+interface ModelDefinitionSettingsFile {
+    id: string;
+    label: string;
+    [key: string]: unknown;
+}
+
+interface ModelSourceSettingsFile {
+    label?: string;
+    apiKeyEnv?: string;
+    baseUrl?: string;
+    models?: ModelDefinitionSettingsFile[];
+    [key: string]: unknown;
+}
+
 export interface PillarSettingsFile {
+    sources?: Partial<Record<LLMProviderName, ModelSourceSettingsFile>> & {
+        [key: string]: unknown;
+    };
     models?: {
         primary?: ModelTargetSettingsFile;
         fast?: ModelTargetSettingsFile;
@@ -84,6 +116,7 @@ export interface SettingsIssue {
 }
 
 export interface ResolvedPillarSettings {
+    sources: Record<LLMProviderName, ModelSourceSettings>;
     models: {
         primary: ModelTargetSettings;
         fast: ModelTargetSettings;
@@ -116,9 +149,9 @@ export interface ResolvedPillarSettings {
 
 export interface SettingsOrigins {
     primaryModel: SettingsValueSource;
-    primaryProvider: SettingsValueSource;
+    primarySource: SettingsValueSource;
     fastModel: SettingsValueSource;
-    fastProvider: SettingsValueSource;
+    fastSource: SettingsValueSource;
     permissionMode: SettingsValueSource;
     memoryEnabled: SettingsValueSource;
     memoryAutoExtract: SettingsValueSource;
@@ -135,5 +168,5 @@ export interface LoadedPillarSettings {
 
 export interface PillarSettingsOverrides {
     model?: string;
-    provider?: LLMProviderName;
+    source?: LLMProviderName;
 }

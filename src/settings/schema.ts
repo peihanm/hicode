@@ -12,24 +12,48 @@ const permissionModeSchema = z.enum([
 ]);
 
 const configuredLLMProviderSchema = z.enum(LLM_PROVIDER_NAMES);
+const modelDefinitionSchema = z
+    .object({
+        id: z.string().trim().min(1).max(200),
+        label: z.string().trim().min(1).max(200),
+    })
+    .passthrough();
+const modelSourceSchema = z
+    .object({
+        label: z.string().trim().min(1).max(100).optional(),
+        apiKeyEnv: z
+            .string()
+            .trim()
+            .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+            .optional(),
+        baseUrl: z.string().url().optional(),
+        models: z.array(modelDefinitionSchema).max(100).optional(),
+    })
+    .passthrough();
 
 const permissionRuleListSchema = z.array(z.string().trim().min(1));
 
 export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
     .object({
+        sources: z
+            .object(Object.fromEntries(
+                LLM_PROVIDER_NAMES.map((name) => [name, modelSourceSchema.optional()])
+            ))
+            .passthrough()
+            .optional(),
         models: z
             .object({
                 primary: z
                     .object({
                         model: z.string().trim().min(1).optional(),
-                        provider: configuredLLMProviderSchema.optional(),
+                        source: configuredLLMProviderSchema.optional(),
                     })
                     .passthrough()
                     .optional(),
                 fast: z
                     .object({
                         model: z.string().trim().min(1).optional(),
-                        provider: configuredLLMProviderSchema.optional(),
+                        source: configuredLLMProviderSchema.optional(),
                     })
                     .passthrough()
                     .optional(),

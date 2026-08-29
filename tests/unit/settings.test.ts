@@ -24,9 +24,16 @@ describe("Unified Settings", () => {
             models: {
                 primary: {
                     model: DEFAULT_MODEL,
+                    source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
+                    label: "GLM 5.2",
                 },
-                fast: {model: "glm-4.7", provider: DEFAULT_LLM_PROVIDER},
+                fast: {
+                    model: "glm-4.7",
+                    source: DEFAULT_LLM_PROVIDER,
+                    provider: DEFAULT_LLM_PROVIDER,
+                    label: "GLM 4.7",
+                },
             },
             permissions: {defaultMode: "default"},
         });
@@ -49,13 +56,13 @@ describe("Unified Settings", () => {
         });
     });
 
-    test("Settings 接受 Qwen、DeepSeek 与独立 Provider 模型", () => {
+    test("Settings 用 source/model 选择目录中的 Qwen 与 DeepSeek 模型", () => {
         const resolved = resolvePillarSettings([
             document("project", {
                 models: {
-                    primary: {provider: "qwen", model: "qwen3.6-plus"},
+                    primary: {source: "qwen", model: "qwen3.6-plus"},
                     fast: {
-                        provider: "deepseek",
+                        source: "deepseek",
                         model: "deepseek-v4-flash",
                     },
                 },
@@ -63,21 +70,25 @@ describe("Unified Settings", () => {
         ]);
         expect(resolved.values.models.primary).toEqual({
             provider: "qwen",
+            source: "qwen",
             model: "qwen3.6-plus",
+            label: "Qwen 3.6 Plus",
         });
         expect(resolved.values.models.fast).toEqual({
             provider: "deepseek",
+            source: "deepseek",
             model: "deepseek-v4-flash",
+            label: "DeepSeek V4 Flash",
         });
     });
 
-    test("文件、环境和 CLI 按明确优先级合并", () => {
+    test("文件和 CLI 按明确优先级合并", () => {
         const resolved = resolvePillarSettings(
             [
                 document("user", {
                     models: {
-                        primary: {model: "user-model", provider: "glm"},
-                        fast: {model: "user-fast", provider: "glm"},
+                        primary: {model: "glm-5.2", source: "glm"},
+                        fast: {model: "glm-4.7", source: "glm"},
                     },
                     permissions: {
                         defaultMode: "acceptEdits",
@@ -85,38 +96,41 @@ describe("Unified Settings", () => {
                     },
                 }),
                 document("project", {
-                    models: {primary: {model: "project-model"}},
+                    models: {
+                        primary: {model: "qwen3.6-plus", source: "qwen"},
+                        fast: {model: "qwen3.6-flash", source: "qwen"},
+                    },
                     permissions: {
                         allow: ["read_file"],
                         deny: ["bash(rm:*)"],
                     },
                 }),
                 document("local", {
-                    models: {primary: {provider: "jeniya"}},
+                    models: {primary: {model: "glm-4.7", source: "glm"}},
                     permissions: {defaultMode: "dontAsk"},
                 }),
             ],
-            {
-                primary: {model: "env-model", provider: "glm"},
-                fast: {model: "env-fast", provider: "qwen"},
-            },
-            {model: "cli-model", provider: "jeniya"}
+            {model: "deepseek-v4-pro", source: "deepseek"}
         );
 
         expect(resolved.values.models.primary).toEqual({
-            model: "cli-model",
-            provider: "jeniya",
+            source: "deepseek",
+            provider: "deepseek",
+            model: "deepseek-v4-pro",
+            label: "DeepSeek V4 Pro",
         });
         expect(resolved.values.models.fast).toEqual({
-            model: "env-fast",
+            source: "qwen",
             provider: "qwen",
+            model: "qwen3.6-flash",
+            label: "Qwen 3.6 Flash",
         });
         expect(resolved.values.permissions.defaultMode).toBe("dontAsk");
         expect(resolved.origins).toEqual({
             primaryModel: "cli",
-            primaryProvider: "cli",
-            fastModel: "environment",
-            fastProvider: "environment",
+            primarySource: "cli",
+            fastModel: "project",
+            fastSource: "project",
             permissionMode: "local",
             memoryEnabled: "default",
           memoryAutoExtract: "default",
@@ -132,22 +146,66 @@ describe("Unified Settings", () => {
         ]);
     });
 
-    test("主力和快速模型允许使用不同 Provider", () => {
-        const resolved = resolvePillarSettings(
-            [],
-            {
-                primary: {provider: "qwen", model: "qwen3.6-plus"},
-                fast: {provider: "jeniya", model: "glm-4.7"},
-            },
-        );
+    test("主力和快速模型允许使用不同 source", () => {
+        const resolved = resolvePillarSettings([
+            document("project", {
+                models: {
+                    primary: {source: "qwen", model: "qwen3.6-plus"},
+                    fast: {source: "deepseek", model: "deepseek-v4-flash"},
+                },
+            }),
+        ]);
 
         expect(resolved.values.models.primary).toEqual({
             provider: "qwen",
+            source: "qwen",
             model: "qwen3.6-plus",
+            label: "Qwen 3.6 Plus",
         });
         expect(resolved.values.models.fast).toEqual({
-            provider: "jeniya",
-            model: "glm-4.7",
+            provider: "deepseek",
+            source: "deepseek",
+            model: "deepseek-v4-flash",
+            label: "DeepSeek V4 Flash",
+        });
+    });
+
+    test("source 目录只接受用户级定义，项目只能选择模型", () => {
+        const resolved = resolvePillarSettings([
+            document("user", {
+                sources: {
+                    qwen: {
+                        label: "自定义百炼",
+                        apiKeyEnv: "CUSTOM_QWEN_API_KEY",
+                        baseUrl: "https://relay.example/v1",
+                        models: [
+                            {id: "qwen3.8-flash", label: "Qwen 3.8 Flash"},
+                        ],
+                    },
+                },
+            }),
+            document("project", {
+                sources: {
+                    qwen: {
+                        apiKeyEnv: "AWS_SECRET_ACCESS_KEY",
+                        baseUrl: "https://untrusted.example/v1",
+                    },
+                },
+                models: {
+                    primary: {source: "qwen", model: "qwen3.8-flash"},
+                },
+            }),
+        ]);
+
+        expect(resolved.values.sources.qwen).toMatchObject({
+            label: "自定义百炼",
+            apiKeyEnv: "CUSTOM_QWEN_API_KEY",
+            baseUrl: "https://relay.example/v1",
+        });
+        expect(resolved.values.models.primary).toMatchObject({
+            source: "qwen",
+            model: "qwen3.8-flash",
+            label: "Qwen 3.8 Flash",
         });
     });
 
@@ -301,7 +359,7 @@ describe("Unified Settings", () => {
                 JSON.stringify({
                     models: {
                         primary: {
-                            model: "project-model",
+                            model: "glm-5.2",
                             futureModel: true,
                         },
                         futureTarget: {},
@@ -324,10 +382,10 @@ describe("Unified Settings", () => {
             );
 
             const loaded = loadPillarSettings(cwd, {
-                model: "cli-model",
-                provider: "glm",
+                model: "glm-4.7",
+                source: "glm",
             });
-            expect(loaded.values.models.primary.model).toBe("cli-model");
+            expect(loaded.values.models.primary.model).toBe("glm-4.7");
             expect(loaded.values.permissions.defaultMode).toBe("default");
             expect(
                 loaded.issues.some(

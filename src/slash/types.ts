@@ -16,6 +16,7 @@ interface SlashCommandContext {
     openRewind?: () => void;
     openAgents?: () => void;
     openGitDiff?: () => void;
+    openModel?: () => void;
 }
 
 export type SlashCommandHostContext = Omit<

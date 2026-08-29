@@ -50,7 +50,10 @@ export function validateBackgroundAgent(
 
 export interface SubagentRuntimeConfig {
     toolRuntimeOptions: CreateToolRuntimeOptions;
-    contextResources: Omit<ToolContextResources, "model" | "fastModel">;
+    contextResources: Omit<
+        ToolContextResources,
+        "model" | "provider" | "fastModel" | "fastProvider"
+    >;
     permissionRules: PermissionRules;
     permissionMode: PermissionMode;
     prePlanMode?: PermissionMode;

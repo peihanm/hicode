@@ -47,3 +47,15 @@ export function createInitialHistory(cwd: string, model: string): Message[] {
 
     return [{role: "system", content: systemContent}];
 }
+
+export function updateInitialHistoryModel(
+    history: readonly Message[],
+    model: string
+): Message[] {
+    const [system, ...conversation] = history;
+    if (!system || system.role !== "system") return [...history];
+    return [{
+        role: "system",
+        content: system.content.replace(/^模型：.*$/m, `模型：${model}`),
+    }, ...conversation];
+}

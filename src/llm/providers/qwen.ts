@@ -28,17 +28,17 @@ export const qwenProvider: LLMProvider = {
         return model.toLowerCase().startsWith("qwen");
     },
 
-    async call(options) {
-        const apiKey = process.env.DASHSCOPE_API_KEY;
+    async call(options, source) {
+        const apiKey = process.env[source.apiKeyEnv];
         if (!apiKey) {
             throw new Error(
-                "缺少 DASHSCOPE_API_KEY，请检查当前项目 .env 或 ~/.pillar/.env"
+                `缺少 ${source.apiKeyEnv}，请检查当前项目 .env 或 ~/.pillar/.env`
             );
         }
 
         return callOpenAICompatible(options, {
-            displayName: "Qwen",
-            baseUrl: process.env.QWEN_BASE_URL || DEFAULT_QWEN_BASE_URL,
+            displayName: source.label,
+            baseUrl: source.baseUrl || DEFAULT_QWEN_BASE_URL,
             apiKey,
             requestFields: createQwenRequestFields(
                 options.model,

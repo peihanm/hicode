@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState, useSyncExternalStore,} from "react";
 import {createCompactState} from "../../context/index.js";
-import {createInitialHistory} from "../../prompt/index.js";
+import {createInitialHistory, updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
 import {
     createSessionId,
@@ -23,6 +23,8 @@ import {estimateRestoredTokenInfo} from "./tokenInfo.js";
 import {formatAgentLoadWarning} from "../../subagents/diagnostics.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../../hooks/index.js";
 import {createRootSessionRuntime, type RootSessionRuntime,} from "../../runtime/sessionRuntime.js";
+import type {ModelTargetSettings} from "../../settings/types.js";
+import {formatModelTarget} from "../../llm/modelCatalog.js";
 
 export interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
@@ -31,6 +33,7 @@ export interface UseTurnControllerOptions {
     openRewind?: () => void;
     openAgents?: () => void;
     openGitDiff?: () => void;
+    openModel?: () => void;
 }
 
 /**
@@ -58,6 +61,7 @@ export function useTurnController({
                                           openRewind,
                                           openAgents,
                                           openGitDiff,
+                                          openModel,
                                       }: UseTurnControllerOptions) {
         const {cwd, model, toolRuntime} = resources;
         const runAgentImpl = resources.agentRuntime.runAgent;
@@ -114,6 +118,9 @@ export function useTurnController({
                 initialPermissionMode ??
                 initialSession?.permissionMode ??
                 resources.settings.permissions.defaultMode
+        );
+        const [primaryModel, setPrimaryModelState] = useState<ModelTargetSettings>(
+            () => resources.primaryModel.target
         );
         const permissionModeRef = useRef<PermissionMode>(permissionMode);
         const prePlanModeRef = useRef<PermissionMode | undefined>(
@@ -324,6 +331,7 @@ export function useTurnController({
                 openRewind,
                 openAgents,
                 openGitDiff,
+                openModel,
                 runUserPromptHooks: async (input, ctx) => {
                     await startSessionHooks();
                     if (ctx.signal.aborted) {
@@ -467,6 +475,29 @@ export function useTurnController({
             [cwd]
         );
 
+        const setPrimaryModel = useCallback(
+            (target: ModelTargetSettings) => {
+                resources.primaryModel.select(target);
+                rootSession.replaceConversation(
+                    updateInitialHistoryModel(rootSession.history, target.model),
+                    rootSession.compactState
+                );
+                setPrimaryModelState(target);
+                eventStore.updateTokenInfo(estimateRestoredTokenInfo(
+                    rootSession.history,
+                    resources.skills,
+                    resources.instructions,
+                    toolRuntime.getToolSchemas(),
+                    target.model
+                ));
+                eventStore.appendNotice(
+                    `已切换主模型：${formatModelTarget(target)}。Fast model 未改变。`
+                );
+                void persistSnapshot();
+            },
+            [eventStore, persistSnapshot, resources, rootSession, toolRuntime]
+        );
+
         const listCheckpoints = useCallback(
             () => fileCheckpoints.listCheckpoints(),
             [fileCheckpoints]
@@ -493,8 +524,9 @@ export function useTurnController({
                 if (!checkpoint) {
                     throw new Error(`找不到对话 Checkpoint: ${checkpointId}`);
                 }
+                const currentModel = resources.model;
                 const history = [
-                    ...createInitialHistory(cwd, model),
+                    ...createInitialHistory(cwd, currentModel),
                     ...checkpoint.conversation,
                 ];
                 const compactState = checkpoint.compactState
@@ -506,7 +538,7 @@ export function useTurnController({
                 try {
                     await sessionQueue.enqueueCritical({
                         cwd,
-                        model,
+                        model: currentModel,
                         sessionId: sessionIdRef.current,
                         history,
                         todos: checkpoint.todos,
@@ -539,7 +571,7 @@ export function useTurnController({
                         resources.skills,
                         resources.instructions,
                         toolRuntime.getToolSchemas(),
-                        model
+                        currentModel
                     ),
                 });
                 setInputReplacement((current) => ({
@@ -553,7 +585,7 @@ export function useTurnController({
                 eventStore,
                 fileCheckpoints,
                 gitSession,
-                model,
+                resources,
                 resources.instructions,
                 resources.skills,
                 sessionQueue,
@@ -621,6 +653,8 @@ export function useTurnController({
             modelStreamProgressRef: eventStore.getModelStreamProgressRef(),
             todos,
             permissionMode,
+            primaryModel,
+            availableModels: resources.primaryModel.available,
             prePlanMode: prePlanModeRef.current,
             confirmRequest,
             submit: turnController.submit.bind(turnController),
@@ -629,6 +663,7 @@ export function useTurnController({
             takeQueuedInputsForEditing:
                 turnController.takeQueuedInputsForEditing.bind(turnController),
             setPermissionMode,
+            setPrimaryModel,
             clearConfirmRequest: (request: ConfirmReq | null) =>
                 permissionRequests.clear(request),
             handleAddToAllowList,

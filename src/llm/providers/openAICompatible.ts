@@ -118,7 +118,6 @@ function createRequestBody(
     const effectiveRequestFields = {...requestFields};
     if (disableThinking) {
         effectiveRequestFields.thinking = {type: "disabled"};
-        delete effectiveRequestFields.reasoning_effort;
     }
     const tools = options.tools.map((tool) => ({
         type: tool.type,
