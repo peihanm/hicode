@@ -8,7 +8,6 @@ import type {ToolExecutor} from "../../agent/toolBatch.js";
 import type {ToolSchemaProvider} from "../../agent/invokePreparation.js";
 import {QueryGuard} from "./queryGuard.js";
 import {RuntimeMessageQueue} from "../../runtime/messageQueue.js";
-import {applyCommandToolPolicy} from "../../slash/toolPolicy.js";
 
 interface UserPromptHookResult {
     blocked: boolean;
@@ -112,15 +111,8 @@ export class UITurnController {
             const ctx = this.dependencies.createContext(controller.signal);
             this.dependencies.onUserInput(input);
 
-            let agentInput = input;
-            let agentTools = {
-                getToolSchemas: this.dependencies.getToolSchemas,
-                executeTool: this.dependencies.executeTool,
-                isToolConcurrencySafe: this.dependencies.isToolConcurrencySafe,
-            };
-
             if (input.trim().startsWith("/")) {
-                const slashResult = await this.dependencies.slashCommands.process(input, {
+                const handled = await this.dependencies.slashCommands.process(input, {
                     history,
                     ctx,
                     onEvent: this.dependencies.onEvent,
@@ -128,20 +120,13 @@ export class UITurnController {
                     openAgents: this.dependencies.openAgents,
                     openGitDiff: this.dependencies.openGitDiff,
                 });
-                if (slashResult === true) return true;
-                if (slashResult && typeof slashResult === "object") {
-                    agentInput = slashResult.prompt;
-                    agentTools = applyCommandToolPolicy(
-                        agentTools,
-                        slashResult.allowedTools
-                    );
-                }
+                if (handled) return true;
             }
 
             await this.dependencies.beginCheckpoint(input);
 
             const hookResult = await this.dependencies.runUserPromptHooks(
-                agentInput,
+                input,
                 ctx
             );
             if (controller.signal.aborted) {
@@ -159,41 +144,28 @@ export class UITurnController {
                 return true;
             }
 
-            const historyLengthBeforeRun = history.length;
-            try {
-                await this.dependencies.runAgent(
-                    agentInput,
-                    history,
-                    this.dependencies.onEvent,
-                    ctx,
-                    this.dependencies.messageQueue.createAgentInputChannel(
-                        (message) => {
-                            if (message.type === "user_input") {
-                                this.dependencies.onQueuedInputConsumed(
-                                    message.content
-                                );
-                            }
+            await this.dependencies.runAgent(
+                input,
+                history,
+                this.dependencies.onEvent,
+                ctx,
+                this.dependencies.messageQueue.createAgentInputChannel(
+                    (message) => {
+                        if (message.type === "user_input") {
+                            this.dependencies.onQueuedInputConsumed(
+                                message.content
+                            );
                         }
-                    ),
-                    {
-                        getToolSchemas: agentTools.getToolSchemas,
-                        executeTool: agentTools.executeTool,
-                        isToolConcurrencySafe: agentTools.isToolConcurrencySafe,
-                        additionalUserContextBlocks:
-                            hookResult.additionalUserContextBlocks,
                     }
-                );
-            } finally {
-                if (agentInput !== input) {
-                    const expandedMessage = history.slice(historyLengthBeforeRun)
-                        .find((message) =>
-                            message.role === "user" && message.content === agentInput
-                        );
-                    if (expandedMessage?.role === "user") {
-                        expandedMessage.content = input;
-                    }
+                ),
+                {
+                    getToolSchemas: this.dependencies.getToolSchemas,
+                    executeTool: this.dependencies.executeTool,
+                    isToolConcurrencySafe: this.dependencies.isToolConcurrencySafe,
+                    additionalUserContextBlocks:
+                        hookResult.additionalUserContextBlocks,
                 }
-            }
+            );
             return true;
         } catch (error) {
             if (controller.signal.aborted) {

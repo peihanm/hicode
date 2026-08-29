@@ -6,7 +6,6 @@ function isMemoryType(value: string): value is MemoryType {
 }
 
 export const memoryCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "defer",
     name: "memory",
     description: "查看和维护跨 Session 的持久 Memory",

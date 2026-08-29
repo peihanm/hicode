@@ -184,7 +184,7 @@ describe("multiline input box", () => {
     const scrolled = instance.lastFrame() ?? "";
     expect(scrolled).not.toContain("/help");
     expect(scrolled).toContain("❯ /rewind");
-    expect(scrolled).toContain("2–7 / 11");
+    expect(scrolled).toContain("2–7 / 10");
   });
 
   test("Up/Down 浏览已提交输入并恢复当前草稿", async () => {

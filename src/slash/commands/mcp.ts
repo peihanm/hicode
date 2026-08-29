@@ -1,7 +1,6 @@
 import type {SlashCommand} from "../types.js";
 
 export const mcpCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "immediate",
     name: "mcp",
     description: "显示 MCP Server 连接状态",

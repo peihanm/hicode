@@ -505,9 +505,3 @@ export class ToolResultStore {
 }
 
 export const createToolResultStore = ToolResultStore.create;
-
-export function createToolResultStoreFactory(
-    options: ToolResultStoreOptions = {}
-) {
-    return ToolResultStore.createFactory(options);
-}

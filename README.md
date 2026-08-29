@@ -68,3 +68,21 @@ bun run verify
 ```
 
 `bun run verify` 会运行完整测试和 TypeScript 检查。
+
+### 冗余代码审计
+
+生产代码和测试代码使用独立的 TypeScript 配置。下面的命令会在排除测试入口后检查无生产消费者的文件、导出和类型，并补充检查仅被测试引用的生产 API：
+
+```bash
+bun run audit:unused
+```
+
+报告默认不修改文件，也不会让 CI 失败。`TEST_ONLY_EXPORT` 表示对应实现可能仍被定义文件内部使用，但它的 `export` 目前只服务于测试；应先让测试经过真实生产边界，再决定删除导出还是整个实现。
+
+字段和方法的静态归属存在不确定性。需要查看包含同名属性歧义项的完整候选时运行：
+
+```bash
+bun run audit:test-only-members
+```
+
+清理并建立基线后，可以用 `bun run check:dead-code` 和 `bun run check:test-only-api` 作为严格检查；它们在发现候选时返回非零退出码。

@@ -36,18 +36,6 @@ function options(cwd: string): HeadlessOptions {
 const ignoreOutput = async () => {};
 
 describe("headless integration", () => {
-  test("/commit 在 Headless 明确拒绝，不静默转换成危险操作", async () => {
-    await withTempProject(async (cwd) => {
-      await expect(runHeadless({
-        ...options(cwd),
-        prompt: "/commit save this",
-      }, {
-        mcpManager: false,
-        writeOutput: ignoreOutput,
-      })).rejects.toThrow("Headless 不支持交互式 /commit");
-    });
-  });
-
   test("输出写入失败仍关闭本轮 Root resources", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([assistantText("完成")]);

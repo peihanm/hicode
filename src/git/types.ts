@@ -139,9 +139,6 @@ export interface GitRepositorySnapshot {
     headOid: string | null;
     detached: boolean;
     unborn: boolean;
-    upstream: string | null;
-    ahead: number;
-    behind: number;
     operation: GitOperationState;
     clean: boolean;
     files: readonly GitFileStatus[];
@@ -179,8 +176,5 @@ export interface ParsedGitStatus {
     headOid: string | null;
     detached: boolean;
     unborn: boolean;
-    upstream: string | null;
-    ahead: number;
-    behind: number;
     files: readonly GitFileStatus[];
 }

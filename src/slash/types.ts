@@ -23,15 +23,11 @@ export type SlashCommandHostContext = Omit<
     "compactHistory" | "getToolSchemas" | "subagents" | "memory"
 >;
 
-interface SlashCommandBase {
+export interface SlashCommand {
     name: string;
     aliases?: string[];
     description: string;
     argumentHint?: string;
-}
-
-export interface LocalSlashCommand extends SlashCommandBase {
-    kind: "local";
     busyBehavior: "defer" | "immediate";
 
     execute(
@@ -40,33 +36,13 @@ export interface LocalSlashCommand extends SlashCommandBase {
     ): Promise<void>;
 }
 
-export interface PromptSlashCommandDefinition extends SlashCommandBase {
-    kind: "prompt";
-
-    execute(
-        args: string,
-        context: SlashCommandContext
-    ): Promise<SlashPromptCommand>;
-}
-
-export type SlashCommand = LocalSlashCommand | PromptSlashCommandDefinition;
-
-export interface SlashPromptCommand {
-    kind: "prompt";
-    prompt: string;
-    /** 只约束该 Prompt Slash 启动的当前 Agent Turn，不改变 Session 权限。 */
-    allowedTools?: readonly string[];
-}
-
-export type SlashCommandProcessResult = boolean | SlashPromptCommand;
-
 export type SlashCommandBusyBehavior = "defer" | "immediate";
 
 export interface SlashCommandProcessor {
     process(
         input: string,
         context: SlashCommandHostContext
-    ): Promise<SlashCommandProcessResult>;
+    ): Promise<boolean>;
 
     getBusyBehavior(input: string): SlashCommandBusyBehavior;
 }

@@ -14,10 +14,18 @@
     "test:contract": "bun test tests/contract",
     "test:integration": "bun test tests/integration",
     "test:ui": "bun test tests/ui",
+    "audit:dead-code": "knip --production --no-progress --no-exit-code",
+    "audit:test-only-api": "bun scripts/audit-test-only-api.ts",
+    "audit:test-only-members": "bun scripts/audit-test-only-api.ts --include-ambiguous-members",
+    "audit:unused": "bun run audit:dead-code && bun run audit:test-only-api",
+    "check:dead-code": "knip --production --no-progress",
+    "check:test-only-api": "bun scripts/audit-test-only-api.ts --fail-on-findings",
     "diagnose:llm-stall": "bun tests/diagnostics/llmStreamReplay.ts",
     "diagnose:qwen-tool-stream": "bun tests/diagnostics/qwenToolStream.ts",
     "diagnose:deepseek-tool-stream": "bun tests/diagnostics/deepseekToolStream.ts",
-    "check": "tsc --noEmit",
+    "check:production": "tsc -p tsconfig.production.json",
+    "check:tests": "tsc -p tsconfig.test.json",
+    "check": "bun run check:production && bun run check:tests",
     "verify": "bun test && bun run check"
   },
   "engines": {
@@ -45,6 +53,7 @@
     "@types/react": "^18.3.12",
     "@types/turndown": "^5.0.6",
     "ink-testing-library": "^4.0.0",
+    "knip": "^6.33.0",
     "typescript": "^5.8.0"
   }
 }

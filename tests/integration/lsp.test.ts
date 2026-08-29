@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { DocumentSymbol } from "vscode-languageserver-protocol";
 import { LSPManager } from "../../src/lsp/manager.js";
 import { withTempProject } from "../helpers/tempProject.js";
 
@@ -11,7 +10,7 @@ const fixturePath = fileURLToPath(
 );
 
 describe("LSP stdio integration", () => {
-  test("真实完成 initialize、request、diagnostics 和 shutdown/exit", async () => {
+  test("真实完成 initialize、diagnostics 和 shutdown/exit", async () => {
     await withTempProject(async (cwd) => {
       const pillarDir = join(cwd, ".pillar");
       const sourcePath = join(cwd, "fixture.fixture");
@@ -31,17 +30,6 @@ describe("LSP stdio integration", () => {
 
       const manager = new LSPManager(cwd);
       try {
-        const symbols = await manager.sendRequest<DocumentSymbol[]>(
-          sourcePath,
-          "textDocument/documentSymbol",
-          {
-            textDocument: {
-              uri: new URL(`file://${sourcePath}`).href,
-            },
-          }
-        );
-        expect(symbols?.[0]?.name).toBe("fixtureSymbol");
-
         const diagnostics = await manager.syncFileAndGetDiagnostics(
           sourcePath,
           "export const fixtureSymbol = true;\n",
@@ -61,7 +49,6 @@ describe("LSP stdio integration", () => {
       expect(events).toContain("process/start");
       expect(events).toContain("initialize");
       expect(events).toContain("initialized");
-      expect(events).toContain("textDocument/documentSymbol");
       expect(events).toContain("textDocument/didOpen");
       expect(events).toContain("textDocument/didSave");
       expect(events).toContain("shutdown");

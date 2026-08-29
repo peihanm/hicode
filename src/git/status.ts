@@ -91,9 +91,6 @@ function parseHeader(record: string, parsed: {
     headOid: string | null;
     detached: boolean;
     unborn: boolean;
-    upstream: string | null;
-    ahead: number;
-    behind: number;
 }): void {
     if (record.startsWith("# branch.oid ")) {
         const value = record.slice("# branch.oid ".length);
@@ -107,16 +104,6 @@ function parseHeader(record: string, parsed: {
         parsed.branch = parsed.detached ? null : value;
         return;
     }
-    if (record.startsWith("# branch.upstream ")) {
-        parsed.upstream = record.slice("# branch.upstream ".length);
-        return;
-    }
-    if (record.startsWith("# branch.ab ")) {
-        const match = /^# branch\.ab \+(\d+) -(\d+)$/.exec(record);
-        if (!match) throw new Error(`无效 Git branch.ab header: ${record}`);
-        parsed.ahead = Number(match[1]);
-        parsed.behind = Number(match[2]);
-    }
 }
 
 export function parseGitStatusPorcelainV2(
@@ -129,9 +116,6 @@ export function parseGitStatusPorcelainV2(
         headOid: null as string | null,
         detached: false,
         unborn: false,
-        upstream: null as string | null,
-        ahead: 0,
-        behind: 0,
     };
     const files: GitFileStatus[] = [];
 
@@ -352,7 +336,7 @@ export async function readGitRepositorySnapshot(
             "--porcelain=v2",
             "-z",
             "--branch",
-            "--ahead-behind",
+            "--no-ahead-behind",
             "--find-renames=50%",
             "--untracked-files=all",
             "--ignore-submodules=none",

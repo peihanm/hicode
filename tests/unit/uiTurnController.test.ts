@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { AgentRunner } from "../../src/agent/index.js";
 import type { AgentEvent } from "../../src/agent/types.js";
 import type { ToolContext } from "../../src/tools/types.js";
-import type { Message } from "../../src/llm/types.js";
 import { UITurnController } from "../../src/ui/turn/controller.js";
 import { RuntimeMessageQueue } from "../../src/runtime/messageQueue.js";
 import type {SlashCommandProcessor} from "../../src/slash/types.js";
@@ -222,94 +221,6 @@ describe("UITurnController", () => {
     expect(slashCalls).toBe(1);
     expect(harness.agentCalls).toBe(0);
     expect(checkpointCalls).toBe(0);
-  });
-
-  test("Prompt Slash 建立 Checkpoint，并把展开后的 Prompt 交给 Hook 和主 Agent", async () => {
-    const calls: string[] = [];
-    let agentInput = "";
-    let hookInput = "";
-    let agentHistory: Message[] | undefined;
-    const harness = createHarness({
-      processSlashCommand: async () => ({
-        kind: "prompt",
-        prompt: "expanded safe commit prompt",
-      }),
-      beginCheckpoint: async (input) => {
-        calls.push(`checkpoint:${input}`);
-      },
-      runUserPromptHooks: async (input) => {
-        hookInput = input;
-        return {blocked: false, additionalUserContextBlocks: []};
-      },
-      runAgent: (async (input, history) => {
-        agentInput = input;
-        agentHistory = history;
-        history.push({role: "user", content: input});
-        return {reply: "ok", reason: "completed", iterations: 1};
-      }) as AgentRunner,
-    });
-
-    await harness.controller.submit("/commit except roadmap");
-    expect(harness.users).toEqual(["/commit except roadmap"]);
-    expect(calls).toEqual(["checkpoint:/commit except roadmap"]);
-    expect(hookInput).toBe("expanded safe commit prompt");
-    expect(agentInput).toBe("expanded safe commit prompt");
-    const persistedUser = agentHistory?.findLast((item) => item.role === "user");
-    expect(persistedUser?.role === "user" ? persistedUser.content : "")
-      .toBe("/commit except roadmap");
-  });
-
-  test("Prompt Slash Tool Policy 同时收窄 Agent Schema 与伪造执行", async () => {
-    const delegated: string[] = [];
-    const harness = createHarness({
-      processSlashCommand: async () => ({
-        kind: "prompt",
-        prompt: "inspect repository",
-        allowedTools: ["read_file"],
-      }),
-      getToolSchemas: () => [
-        {
-          type: "function",
-          function: {
-            name: "read_file",
-            description: "read",
-            parameters: {type: "object"},
-          },
-        },
-        {
-          type: "function",
-          function: {
-            name: "edit_file",
-            description: "edit",
-            parameters: {type: "object"},
-          },
-        },
-      ],
-      executeTool: async (name) => {
-        delegated.push(name);
-        return "ok";
-      },
-      isToolConcurrencySafe: () => true,
-      runAgent: (async (_input, _history, _onEvent, ctx, _channel, options) => {
-        if (!options) throw new Error("missing AgentRunOptions");
-        expect(options.getToolSchemas?.().map((tool) => tool.function.name))
-          .toEqual(["read_file"]);
-        expect(options.isToolConcurrencySafe?.("edit_file", "{}")).toBe(false);
-        const denied = await options.executeTool?.(
-          "edit_file",
-          "{}",
-          ctx,
-          "forged-edit"
-        );
-        expect(typeof denied === "string" ? denied : denied?.outcome).toBe("denied");
-        await options.executeTool?.("read_file", "{}", ctx, "allowed-read");
-        return {reply: "reviewed", reason: "completed", iterations: 1};
-      }) as AgentRunner,
-    });
-
-    await harness.controller.submit("/inspect");
-    expect(delegated).toEqual(["read_file"]);
-    expect(harness.errors).toEqual([]);
   });
 
   test("普通 Prompt 在 Hook 和 Agent 前建立 Checkpoint，结束后先收尾再保存", async () => {

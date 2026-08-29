@@ -2,7 +2,6 @@ import {formatAgentRegistryReport} from "../../subagents/diagnostics.js";
 import type {SlashCommand} from "../types.js";
 
 export const agentsCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "defer",
     name: "agents",
     description: "创建、管理或重新加载 Agent",

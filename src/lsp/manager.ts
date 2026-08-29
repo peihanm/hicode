@@ -87,18 +87,6 @@ export class LSPManager implements LspManagerLike {
         return server;
     }
 
-    // 发请求（按文件路由到对应 server）
-    async sendRequest<T>(
-        filePath: string,
-        method: string,
-        params: unknown,
-        signal?: AbortSignal
-    ): Promise<T | undefined> {
-        const server = await this.ensureServerStarted(filePath, signal);
-        if (!server) return undefined;
-        return server.sendRequest<T>(method, params, signal);
-    }
-
     // 文件打开（didOpen）
     async openFile(filePath: string, signal?: AbortSignal): Promise<void> {
         const server = await this.ensureServerStarted(filePath, signal);
@@ -184,10 +172,6 @@ export class LSPManager implements LspManagerLike {
         return this.waitForDiagnostics(filePath, timeoutMs, before, signal);
     }
 
-    getDiagnostics(filePath: string): Diagnostic[] | undefined {
-        return this.diagnosticCache.get(this.uriForFile(filePath))?.diagnostics;
-    }
-
     async waitForDiagnostics(
         filePath: string,
         timeoutMs = 1200,
@@ -254,11 +238,6 @@ export class LSPManager implements LspManagerLike {
         this.fileVersions.clear();
         this.diagnosticCache.clear();
         this.diagnosticWaiters.clear();
-    }
-
-    // 是否有任何 server ready
-    anyReady(): boolean {
-        return [...this.servers.values()].some((s) => s.isHealthy());
     }
 
     // 列出所有配置的 server（调试用）

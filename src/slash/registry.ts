@@ -7,7 +7,6 @@ import {rewindCommand} from "./commands/rewind.js";
 import {sandboxCommand} from "./commands/sandbox.js";
 import {tasksCommand} from "./commands/tasks.js";
 import {diffCommand} from "./commands/diff.js";
-import {commitCommand} from "./commands/commit.js";
 import type {SlashCommand} from "./types.js";
 
 const COMMANDS: SlashCommand[] = [
@@ -18,7 +17,6 @@ const COMMANDS: SlashCommand[] = [
     memoryCommand,
     rewindCommand,
     diffCommand,
-    commitCommand,
     sandboxCommand,
     tasksCommand,
 ];

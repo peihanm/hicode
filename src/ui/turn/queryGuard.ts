@@ -1,4 +1,4 @@
-export type QueryGuardStatus = "idle" | "dispatching" | "running";
+type QueryGuardStatus = "idle" | "dispatching" | "running";
 
 /** 同步占有 UI query，避免 React batched state 允许重复 submit。 */
 export class QueryGuard {
@@ -35,15 +35,4 @@ export class QueryGuard {
         return true;
     }
 
-    get status(): QueryGuardStatus {
-        return this.statusValue;
-    }
-
-    get generation(): number {
-        return this.generationValue;
-    }
-
-    get isActive(): boolean {
-        return this.statusValue !== "idle";
-    }
 }

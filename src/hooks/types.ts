@@ -205,17 +205,6 @@ export function createHookSessionRuntime(): HookSessionRuntime {
     };
 }
 
-export function createEmptyResolvedHookSettings(): ResolvedHookSettings {
-    return {
-        SessionStart: [],
-        UserPromptSubmit: [],
-        PreToolUse: [],
-        PostToolUse: [],
-        PostToolUseFailure: [],
-        SessionEnd: [],
-    };
-}
-
 export function countResolvedHooks(settings: ResolvedHookSettings): number {
     return HOOK_EVENTS.reduce(
         (total, event) =>

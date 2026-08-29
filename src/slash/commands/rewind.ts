@@ -1,7 +1,6 @@
 import type {SlashCommand} from "../types.js";
 
 export const rewindCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "defer",
     name: "rewind",
     aliases: ["checkpoint"],

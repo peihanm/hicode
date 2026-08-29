@@ -25,7 +25,6 @@ function formatTask(task: TaskSnapshot): string {
 }
 
 export const tasksCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "immediate",
     name: "tasks",
     description: "查看当前 Session 的后台任务",

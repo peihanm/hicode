@@ -1013,9 +1013,3 @@ export interface FileCheckpointStoreOptions {
 }
 
 export const createFileCheckpointStore = FileCheckpointStore.create;
-
-export function createFileCheckpointStoreFactory(
-    options: FileCheckpointStoreOptions = {}
-) {
-    return FileCheckpointStore.createFactory(options);
-}

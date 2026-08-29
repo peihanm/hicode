@@ -46,11 +46,6 @@ export function createHeadlessRunner(
         options: HeadlessOptions,
         signal?: AbortSignal
     ): Promise<HeadlessRunSummary> {
-        if (/^\s*\/commit(?:\s|$)/i.test(options.prompt)) {
-            throw new Error(
-                "Headless 不支持交互式 /commit；请改用明确的自然语言请求，并为需要的 Git Bash 命令配置权限。"
-            );
-        }
         const state = loadHeadlessSession(options);
         const permissionRules = options.settings.permissions.rules;
         const collector = new HeadlessEventCollector();

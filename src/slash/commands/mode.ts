@@ -10,7 +10,6 @@ function formatModes(currentMode: string): string {
 }
 
 export const modeCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "immediate",
     name: "mode",
     description: "查看或切换当前权限模式",

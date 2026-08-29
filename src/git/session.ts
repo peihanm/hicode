@@ -215,14 +215,6 @@ function createState(
     };
 }
 
-export function classifyGitProvenance(
-    path: string,
-    state: GitSessionState,
-    dirty = true
-): GitProvenanceHint {
-    return createProvenanceClassifier(state)(path, dirty);
-}
-
 function createProvenanceClassifier(
     state: GitSessionState
 ): (path: string, dirty?: boolean) => GitProvenanceHint {

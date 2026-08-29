@@ -1,6 +1,6 @@
 import {findSlashCommand, getSlashCommands} from "./registry.js";
 import type {CompactHistoryRunner, ToolSchemaProvider,} from "../agent/invokePreparation.js";
-import type {SlashCommandHostContext, SlashCommandProcessResult, SlashCommandProcessor,} from "./types.js";
+import type {SlashCommandHostContext, SlashCommandProcessor,} from "./types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {MemoryRuntimeLike} from "../memory/index.js";
 
@@ -46,7 +46,7 @@ export function createSlashCommandProcessor({
     const process = async function processConfiguredSlashCommand(
         input: string,
         context: SlashCommandHostContext
-    ): Promise<SlashCommandProcessResult> {
+    ): Promise<boolean> {
         const parsed = parseSlashInput(input);
         if (!parsed) {
             if (input.trim() !== "/") {
@@ -76,14 +76,14 @@ export function createSlashCommandProcessor({
             return true;
         }
 
-        const result = await command.execute(parsed.args, {
+        await command.execute(parsed.args, {
             ...context,
             compactHistory: compactHistoryImpl,
             getToolSchemas: getToolSchemasImpl,
             subagents,
             memory,
         });
-        return result ?? true;
+        return true;
     };
 
     return {
@@ -95,9 +95,7 @@ export function createSlashCommandProcessor({
                 return "immediate";
             }
             const command = findSlashCommand(parsed.name);
-            return command?.kind === "local"
-                ? command.busyBehavior
-                : "defer";
+            return command?.busyBehavior ?? "defer";
         },
     };
 }

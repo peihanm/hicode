@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {readFile, stat, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {FileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
-import {createFileCheckpointStoreFactory} from "../../src/checkpoints/store.js";
+import {FileCheckpointStore} from "../../src/checkpoints/store.js";
 import {
     getCheckpointBlobPath,
     getCheckpointManifestPath,
@@ -13,7 +13,7 @@ import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 function createRuntime(cwd: string) {
-    const store = createFileCheckpointStoreFactory({
+    const store = FileCheckpointStore.createFactory({
         projectsRoot: join(cwd, ".checkpoint-projects"),
     })(cwd, "checkpoint-session");
     return new FileCheckpointRuntime(store, createFileStateTracker());
@@ -140,7 +140,7 @@ describe("File Checkpoint Store", () => {
             await runtime.settleTurn();
             const record = (await runtime.listCheckpoints())[0]!;
             const blobId = record.mutations[0]!.beforeBlobId!;
-            const store = createFileCheckpointStoreFactory({
+            const store = FileCheckpointStore.createFactory({
                 projectsRoot: join(cwd, ".checkpoint-projects"),
             })(cwd, "checkpoint-session");
             await writeFile(getCheckpointBlobPath(store.directory, blobId), "corrupt");
@@ -194,7 +194,7 @@ describe("File Checkpoint Store", () => {
             expect(listed[0]?.mutations).toHaveLength(600);
             expect(listed[0]?.fileCoverage).toBe("complete");
 
-            const store = createFileCheckpointStoreFactory({
+            const store = FileCheckpointStore.createFactory({
                 projectsRoot: join(cwd, ".checkpoint-projects"),
             })(cwd, "checkpoint-session");
             const manifest = await readFile(
@@ -274,7 +274,7 @@ describe("File Checkpoint Store", () => {
             }
 
             expect(await runtime.listCheckpoints()).toHaveLength(100);
-            const store = createFileCheckpointStoreFactory({
+            const store = FileCheckpointStore.createFactory({
                 projectsRoot: join(cwd, ".checkpoint-projects"),
             })(cwd, "checkpoint-session");
             await expect(stat(getCheckpointBlobPath(

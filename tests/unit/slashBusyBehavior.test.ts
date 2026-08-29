@@ -22,7 +22,6 @@ describe("Slash busy behavior", () => {
             "/memory",
             "/rewind",
             "/diff",
-            "/commit",
             "/unknown",
         ]) {
             expect(slashCommandProcessor.getBusyBehavior(input)).toBe("defer");

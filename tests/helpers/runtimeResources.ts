@@ -27,7 +27,7 @@ import {
   type SubagentRegistry,
 } from "../../src/subagents/index.js";
 import type { LoadedCustomAgents } from "../../src/subagents/index.js";
-import { createEmptyResolvedHookSettings } from "../../src/hooks/index.js";
+import { createEmptyResolvedHookSettings } from "./hooks.js";
 import type { HookRuntime } from "../../src/hooks/types.js";
 import {
   createMemoryRuntime,

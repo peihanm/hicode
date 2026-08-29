@@ -34,7 +34,6 @@ export function formatSandboxStatus(status: SandboxStatus): string {
 }
 
 export const sandboxCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "immediate",
     name: "sandbox",
     description: "显示 Bash OS Sandbox 状态",

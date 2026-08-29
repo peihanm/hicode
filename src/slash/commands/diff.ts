@@ -1,7 +1,6 @@
 import type {SlashCommand} from "../types.js";
 
 export const diffCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "defer",
     name: "diff",
     description: "交互查看当前修改与历史任务差异",

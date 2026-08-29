@@ -13,9 +13,7 @@ import type { CreateLspManager } from "../../src/lsp/types.js";
 import type { McpManagerLike } from "../../src/mcp/index.js";
 import { createRootRuntimeResources } from "../../src/runtime/resources.js";
 import { saveSessionSnapshot } from "../../src/session/index.js";
-import {
-  createToolResultStoreFactory,
-} from "../../src/toolResults/store.js";
+import {ToolResultStore} from "../../src/toolResults/store.js";
 import type {ToolResultStoreOptions} from "../../src/toolResults/types.js";
 import { createRootRuntimeResourcesForTest } from "./runtimeResources.js";
 import {
@@ -78,7 +76,7 @@ export function runHeadlessForTest(
       return {...resources, agentRuntime};
     },
     createToolResultStore: (cwd, sessionId) =>
-      createToolResultStoreFactory(test.toolResultStoreOptions)(cwd, sessionId),
+      ToolResultStore.createFactory(test.toolResultStoreOptions ?? {})(cwd, sessionId),
     saveSession: test.saveSession ?? saveSessionSnapshot,
     writeOutput: test.writeOutput ?? writeHeadlessOutput,
     writeDiagnostic: test.writeDiagnostic ?? writeHeadlessDiagnostic,

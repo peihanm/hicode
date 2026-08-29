@@ -5,7 +5,6 @@ import {
     createGitSessionRuntime,
     createGitWorkspaceRuntime,
 } from "../../src/git/index.js";
-import {classifyGitProvenance} from "../../src/git/session.js";
 import {loadSession, saveSessionSnapshot} from "../../src/session/index.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {executeToolResult} from "../helpers/executeTool.js";
@@ -74,12 +73,6 @@ describe("Git Session baseline", () => {
                 "pillar.txt": "pillar-observed",
                 "external.txt": "external-or-unknown",
             });
-            expect(classifyGitProvenance(
-                "base.txt",
-                result.snapshot.session,
-                false
-            )).toBe("clean");
-
             const diff = await runtime.diff(new AbortController().signal);
             expect(diff.status).toBe("available");
             if (diff.status === "available") {

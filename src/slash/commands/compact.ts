@@ -4,7 +4,6 @@ import {getAutoCompactThreshold, getTokenWarningState, tokenCountWithEstimation,
 import type {SlashCommand} from "../types.js";
 
 export const compactCommand: SlashCommand = {
-    kind: "local",
     busyBehavior: "defer",
     name: "compact",
     description: "压缩当前会话上下文；可追加自定义总结要求",

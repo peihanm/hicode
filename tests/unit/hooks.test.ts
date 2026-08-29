@@ -3,7 +3,6 @@ import {z} from "zod";
 import {join} from "node:path";
 import {
     HookWorkspaceNotTrustedError,
-    createEmptyResolvedHookSettings,
     createHookSessionRuntime,
     createHookRuntimeFactory,
     getHookTrust,
@@ -14,6 +13,7 @@ import {
     type HookRuntime,
     type ResolvedHookSettings,
 } from "../../src/hooks/index.js";
+import {createEmptyResolvedHookSettings} from "../helpers/hooks.js";
 import {matchesToolPermissionRule} from "../../src/permissions/index.js";
 import {bashTool} from "../../src/tools/bash/bash.js";
 import {createToolRuntime} from "../../src/tools/registry.js";

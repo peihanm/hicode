@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {FileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
-import {createFileCheckpointStoreFactory} from "../../src/checkpoints/store.js";
+import {FileCheckpointStore} from "../../src/checkpoints/store.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
 import {createTestContext} from "../helpers/testContext.js";
@@ -13,7 +13,7 @@ describe("Checkpoint tool integration", () => {
         await withTempProject(async (cwd) => {
             const fileState = createFileStateTracker();
             const runtime = new FileCheckpointRuntime(
-                createFileCheckpointStoreFactory({
+                FileCheckpointStore.createFactory({
                     projectsRoot: join(cwd, ".checkpoint-projects"),
                 })(
                     cwd,
