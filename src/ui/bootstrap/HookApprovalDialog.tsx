@@ -2,6 +2,7 @@ import {Box, Text} from "ink";
 import SelectInput from "ink-select-input";
 import type {HookTrustDecision, HookTrustRequest} from "../../hooks/index.js";
 import {COLORS} from "../theme.js";
+import {DialogFrame, DialogIndicator, DialogItem} from "../dialogs/DialogFrame.js";
 
 const OPTIONS: Array<{label: string; value: HookTrustDecision}> = [
     {label: "1. Allow once", value: "once"},
@@ -22,16 +23,14 @@ export function HookApprovalDialog({
     onDecision: (decision: HookTrustDecision) => void;
 }) {
     return (
-        <Box flexDirection="column">
-            <Box
-                flexDirection="column"
-                borderStyle="round"
-                borderColor={COLORS.confirm}
-                paddingX={1}
-            >
-                <Text color={COLORS.confirm}>
-                    当前项目配置了会执行命令或调用模型的 Hooks
-                </Text>
+        <DialogFrame
+            title="Workspace Hook request"
+            subtitle={
+                <Text>当前项目配置了会执行命令或调用模型的 Hooks</Text>
+            }
+            footer="↑↓ 选择 · Enter 确认"
+        >
+            <Box marginTop={1} flexDirection="column">
                 {request.hooks.slice(0, 8).map((hook, index) => (
                     <Box key={`${hook.event}-${index}`} flexDirection="column">
                         <Text>
@@ -63,8 +62,10 @@ export function HookApprovalDialog({
                 <SelectInput
                     items={OPTIONS}
                     onSelect={(item) => onDecision(item.value)}
+                    indicatorComponent={DialogIndicator}
+                    itemComponent={DialogItem}
                 />
             </Box>
-        </Box>
+        </DialogFrame>
     );
 }

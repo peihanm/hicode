@@ -26,7 +26,7 @@ describe("multiline input box", () => {
         onSubmit={() => {}}
       />
     );
-    expect(running.lastFrame()).toContain("◷ Working for 2m 02s\n─");
+    expect(running.lastFrame()).toContain("◷ Working for 2m 02s\n...");
     running.unmount();
 
     const completed = render(
@@ -37,7 +37,7 @@ describe("multiline input box", () => {
         onSubmit={() => {}}
       />
     );
-    expect(completed.lastFrame()).toContain("◷ Worked for 2m 02s\n─");
+    expect(completed.lastFrame()).toContain("◷ Worked for 2m 02s\n❯");
     expect(completed.lastFrame()).not.toContain("─ Worked for");
   });
 
@@ -158,8 +158,8 @@ describe("multiline input box", () => {
     );
     expect(inputLine).toBeGreaterThanOrEqual(0);
     expect(suggestionLine).toBeGreaterThan(inputLine);
-    expect(dividerLines).toHaveLength(2);
-    expect(suggestionLine).toBeGreaterThan(dividerLines[1]!);
+    expect(dividerLines).toHaveLength(1);
+    expect(suggestionLine).toBeGreaterThan(dividerLines[0]!);
   });
 
   test("Slash 候选用上下键滚动完整命令列表", async () => {

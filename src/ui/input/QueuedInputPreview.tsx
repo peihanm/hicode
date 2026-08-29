@@ -1,7 +1,8 @@
-import {Box, Text, useStdout} from "ink";
+import {Box, Text} from "ink";
 import type {RuntimeQueuedMessage} from "../../runtime/messageQueue.js";
 import {layoutInputRows} from "./MultilineTextInput.js";
 import {COLORS, SYMBOLS} from "../theme.js";
+import {useTerminalWidth} from "../terminalSize.js";
 
 const MAX_VISIBLE_INPUTS = 3;
 const MAX_VISUAL_LINES_PER_INPUT = 2;
@@ -15,13 +16,13 @@ export function QueuedInputPreview({
                                    }: {
     messages: readonly RuntimeQueuedMessage[];
 }) {
-    const {stdout} = useStdout();
+    const terminalWidth = useTerminalWidth();
     const userInputs = messages.filter(
         (message) => message.type === "user_input"
     );
     if (userInputs.length === 0) return null;
 
-    const contentWidth = Math.max(8, (stdout?.columns ?? 80) - 4);
+    const contentWidth = Math.max(1, terminalWidth - 4);
     const visible = userInputs.slice(0, MAX_VISIBLE_INPUTS);
     const remaining = userInputs.length - visible.length;
 

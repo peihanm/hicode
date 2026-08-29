@@ -3,6 +3,7 @@ import {Box, Text, useInput} from "ink";
 import TextInput from "ink-text-input";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
+import {DialogFrame} from "./DialogFrame.js";
 
 // 多选题对话框：LLM 调 ask_user 工具时弹出
 //
@@ -175,18 +176,10 @@ export function AskDialog({
     // ── Submit 视图 ──
     if (currentIndex === totalQuestions) {
         return (
-            <Box flexDirection="column">
-                <Box
-                    flexDirection="column"
-                    borderStyle="round"
-                    borderColor={COLORS.confirm}
-                    paddingX={1}
-                >
-                    <Text color={COLORS.confirm} bold>
-                        请确认你的回答
-                    </Text>
-                </Box>
-
+            <DialogFrame
+                title="请确认你的回答"
+                footer="Enter 提交 · Esc 取消"
+            >
                 <Box marginTop={1} flexDirection="column">
                     {questions.map((q, i) => (
                         <Box key={i} flexDirection="column" marginTop={i > 0 ? 1 : 0}>
@@ -200,18 +193,12 @@ export function AskDialog({
                         </Box>
                     ))}
                 </Box>
-
                 <Box marginTop={1}>
                     <Text color={COLORS.accent} bold>
                         ❯ Submit
                     </Text>
                 </Box>
-                <Box marginTop={1}>
-                    <Text color={COLORS.dim}>
-                        Enter to submit · Esc to cancel
-                    </Text>
-                </Box>
-            </Box>
+            </DialogFrame>
         );
     }
 
@@ -233,21 +220,16 @@ export function AskDialog({
             : null;
 
     return (
-        <Box flexDirection="column">
-            {/* 问题框 */}
-            <Box
-                flexDirection="column"
-                borderStyle="round"
-                borderColor={COLORS.confirm}
-                paddingX={1}
-            >
-                <Text color={COLORS.confirm}>{currentQ.question}</Text>
-                {progress && (
-                    <Text color={COLORS.dim}>（{progress}）</Text>
-                )}
-            </Box>
-
-            {/* 选项列表 */}
+        <DialogFrame
+            title="Pillar needs your input"
+            subtitle={
+                <Box flexDirection="column">
+                    <Text>{currentQ.question}</Text>
+                    {progress && <Text color={COLORS.dim}>{progress}</Text>}
+                </Box>
+            }
+            footer={hint}
+        >
             <Box marginTop={1} flexDirection="column">
                 {currentQ.options.map((opt, i) => {
                     const isSelected = i === selectedIndex && !isTyping;
@@ -257,7 +239,10 @@ export function AskDialog({
                                 <Text color={isSelected ? COLORS.accent : COLORS.dim}>
                                     {isSelected ? "❯ " : "  "}
                                 </Text>
-                                <Text color={isSelected ? COLORS.accent : ""} bold={isSelected}>
+                                <Text
+                                    color={isSelected ? COLORS.accent : undefined}
+                                    bold={isSelected}
+                                >
                                     {i + 1}. {opt.label}
                                 </Text>
                             </Box>
@@ -270,7 +255,6 @@ export function AskDialog({
                     );
                 })}
 
-                {/* Type something 选项 / 输入框 */}
                 <Box
                     marginTop={currentQ.options.length > 0 ? 1 : 0}
                     flexDirection="column"
@@ -332,11 +316,6 @@ export function AskDialog({
                     )}
                 </Box>
             </Box>
-
-            {/* 快捷键提示 */}
-            <Box marginTop={1}>
-                <Text color={COLORS.dim}>{hint}</Text>
-            </Box>
-        </Box>
+        </DialogFrame>
     );
 }

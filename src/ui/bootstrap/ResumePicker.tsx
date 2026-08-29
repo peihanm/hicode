@@ -3,6 +3,7 @@ import {Box, Text, useInput} from "ink";
 import SelectInput from "ink-select-input";
 import type {SessionIndexEntry} from "../../session/index.js";
 import {COLORS} from "../theme.js";
+import {DialogIndicator, DialogItem} from "../dialogs/DialogFrame.js";
 
 interface ResumeItem {
     label: string;
@@ -75,6 +76,8 @@ export function ResumePicker({
             <SelectInput
                 items={items}
                 onSelect={(item: ResumeItem) => onSelect(item.value)}
+                indicatorComponent={DialogIndicator}
+                itemComponent={DialogItem}
             />
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>↑↓ 选择 · enter 恢复 · esc 退出</Text>

@@ -130,6 +130,7 @@ export function MultilineTextInput({
                                        onChange,
                                        onSubmit,
                                        width,
+                                       placeholder,
                                        maxRows = 10,
                                        handleVerticalNavigation = true,
                                        onVerticalBoundary,
@@ -141,6 +142,7 @@ export function MultilineTextInput({
     onChange: (value: string) => void;
     onSubmit: (value: string) => void;
     width: number;
+    placeholder?: string;
     maxRows?: number;
     handleVerticalNavigation?: boolean;
     onVerticalBoundary?: (
@@ -322,6 +324,9 @@ export function MultilineTextInput({
                             </Text>
                         )}
                         <Text>{after}</Text>
+                        {hasCursor && !value && placeholder && (
+                            <Text color={COLORS.dim}>{placeholder}</Text>
+                        )}
                     </Box>
                 );
             })}

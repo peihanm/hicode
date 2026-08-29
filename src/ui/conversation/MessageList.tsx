@@ -1,4 +1,4 @@
-import {Box, Static, Text, useStdout} from "ink";
+import {Box, Static, Text} from "ink";
 import stringWidth from "string-width";
 import type {UIThread} from "./types.js";
 import {COLORS, SYMBOLS} from "../theme.js";
@@ -7,6 +7,7 @@ import {Welcome} from "../bootstrap/Welcome.js";
 import {type InputRow, layoutInputRows} from "../input/MultilineTextInput.js";
 import {parseVerificationSummary} from "../../subagents/builtins/verification/index.js";
 import {TerminalMarkdown} from "./TerminalMarkdown.js";
+import {useTerminalWidth} from "../terminalSize.js";
 import {
     describeToolCall,
     isSuccessfulToolActivity,
@@ -506,13 +507,24 @@ function ThreadView({
     }
     if (thread.role === "assistant") {
         return (
-            <Box>
-                <Text color={COLORS.assistant}>{SYMBOLS.assistantMark}</Text>
-                <Text> </Text>
-                <TerminalMarkdown
-                    value={thread.text}
-                    width={Math.max(20, terminalWidth - 2)}
-                />
+            <Box marginTop={1} alignItems="flex-start">
+                <Text color={COLORS.assistant}>{SYMBOLS.assistantMark} </Text>
+                <Box
+                    flexDirection="column"
+                    flexGrow={1}
+                    borderStyle="single"
+                    borderTop={false}
+                    borderRight={false}
+                    borderBottom={false}
+                    borderLeftColor={COLORS.border}
+                    borderLeftDimColor
+                    paddingLeft={1}
+                >
+                    <TerminalMarkdown
+                        value={thread.text}
+                        width={Math.max(20, terminalWidth - 5)}
+                    />
+                </Box>
             </Box>
         );
     }
@@ -550,8 +562,7 @@ export function MessageList({
     transcript?: boolean;
     terminalWidth?: number;
 }) {
-    const {stdout} = useStdout();
-    const terminalWidth = widthOverride ?? stdout?.columns ?? 80;
+    const terminalWidth = useTerminalWidth(widthOverride);
     return (
         <Box flexDirection="column">
             {(transcript ? threads : projectDefaultThreads(threads)).map((item) => (
@@ -584,8 +595,7 @@ export function StaticMessageList({
     showWelcome?: boolean;
     terminalWidth?: number;
 }) {
-    const {stdout} = useStdout();
-    const terminalWidth = widthOverride ?? stdout?.columns ?? 80;
+    const terminalWidth = useTerminalWidth(widthOverride);
     // Ink 的 reconciler 每个 root 只保存一个 staticNode。Welcome 和完成消息
     // 必须共享同一个 Static，否则后挂载的消息 Static 会覆盖欢迎框。
     const items: StaticListItem[] = [

@@ -6,6 +6,7 @@ import {runHeadlessFromCli} from "./headless/cli.js";
 import {runCheckpointRewindFromCli} from "./checkpoints/index.js";
 import {loadPillarSettings, type LoadedPillarSettings} from "./settings/index.js";
 import {createTerminalCursorOutput, enableTerminalCursorAnchor,} from "./ui/input/terminalCursor.js";
+import {TerminalSizeProvider} from "./ui/terminalSize.js";
 
 let cliOptions: CliOptions;
 try {
@@ -68,12 +69,14 @@ if (
     enableTerminalCursorAnchor();
     const stdout = createTerminalCursorOutput(process.stdout);
     render(
-        <Root
-            cwd={cwd}
-            settings={loadedSettings.values}
-            initialPermissionMode={cliOptions.permissionMode}
-            resumeMode={cliOptions.resumeMode}
-        />,
+        <TerminalSizeProvider>
+            <Root
+                cwd={cwd}
+                settings={loadedSettings.values}
+                initialPermissionMode={cliOptions.permissionMode}
+                resumeMode={cliOptions.resumeMode}
+            />
+        </TerminalSizeProvider>,
         {patchConsole: false, exitOnCtrlC: false, stdout}
     );
 }

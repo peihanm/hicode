@@ -45,6 +45,7 @@ describe("App cancellation", () => {
         />
       );
 
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("运行时切换模式");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
@@ -82,6 +83,7 @@ describe("App cancellation", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("等待模型");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
@@ -138,6 +140,7 @@ describe("App cancellation", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("执行长任务");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
@@ -190,6 +193,7 @@ describe("App cancellation", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("创建长文件");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
@@ -237,6 +241,7 @@ describe("App cancellation", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("创建大型文件");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");

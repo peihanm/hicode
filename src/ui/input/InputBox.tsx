@@ -1,9 +1,10 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, useInput, useStdout} from "ink";
+import {Box, Text, useInput} from "ink";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {getSlashCommandSuggestions} from "../../slash/index.js";
 import {MultilineTextInput, type InputBoundaryReplacement, type InputBoundaryState,} from "./MultilineTextInput.js";
 import {inputHistoryStore, type InputHistoryStore,} from "../../session/inputHistory/index.js";
+import {useTerminalWidth} from "../terminalSize.js";
 import {
     collapsePromptText,
     EMPTY_PASTE_CAPSULE_STATE,
@@ -39,7 +40,7 @@ export function formatTurnDuration(durationMs: number): string {
 }
 
 export function formatInputDivider(width: number): string {
-    const totalWidth = Math.max(20, width - 1);
+    const totalWidth = Math.max(1, width - 1);
     return "─".repeat(totalWidth);
 }
 
@@ -66,7 +67,7 @@ function padCommandLabel(label: string): string {
     return label.length >= width ? `${label}  ` : label.padEnd(width, " ");
 }
 
-// 输入框：上下横线分隔，满屏宽。disabled 只用于取消收尾等不可接收新输入的短暂阶段。
+// 输入框：单条下边界与状态栏形成输入区域。disabled 只用于取消收尾等短暂阶段。
 export function createInputBox(
     overrides: Partial<InputBoxDependencies> = {}
 ) {
@@ -118,8 +119,7 @@ export function createInputBox(
         const historyDraftRef = useRef("");
         const clearRevisionRef = useRef(clearRevision);
         const [selectedSuggestion, setSelectedSuggestion] = useState(0);
-        const {stdout} = useStdout();
-        const width = terminalWidth ?? stdout?.columns ?? 80;
+        const width = useTerminalWidth(terminalWidth);
         const [currentTime, setCurrentTime] = useState(now);
         useEffect(() => {
             if (startedAt === undefined) return;
@@ -135,7 +135,6 @@ export function createInputBox(
         const durationLabel = duration === undefined
             ? undefined
             : `${startedAt === undefined ? "Worked" : "Working"} for ${formatTurnDuration(duration)}`;
-        const topLine = formatInputDivider(width);
         const line = formatInputDivider(width);
         const suggestions = useMemo(
             () => getSlashCommandSuggestions(value),
@@ -316,7 +315,6 @@ export function createInputBox(
                             {SYMBOLS.timer} {durationLabel}
                         </Text>
                     )}
-                    <Text color={COLORS.dim}>{topLine}</Text>
                     <Text color={COLORS.dim}>...</Text>
                     <Text color={COLORS.dim}>{line}</Text>
                 </Box>
@@ -330,11 +328,11 @@ export function createInputBox(
                         {SYMBOLS.timer} {durationLabel}
                     </Text>
                 )}
-                <Text color={COLORS.border}>{topLine}</Text>
                 <MultilineTextInput
                     value={value}
                     onChange={replaceValue}
                     width={width}
+                    placeholder="Ask Pillar to build, inspect, or fix something"
                     handleVerticalNavigation={!showSuggestions}
                     onVerticalBoundary={(direction, state) =>
                         navigateHistory(direction, {

@@ -19,6 +19,28 @@ async function flush(ms = 20): Promise<void> {
 }
 
 describe("permission confirmation UI", () => {
+  test("权限问题、选项和操作提示位于同一个确认框内", async () => {
+    const instance = render(
+      <ConfirmDialog
+        req={{
+          question: "bash 需要确认",
+          toolName: "bash",
+          input: { command: "git status" },
+          resolve: () => {},
+        }}
+        onDone={() => {}}
+      />
+    );
+
+    await flush();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("◆ Permission request");
+    expect(frame).toContain("bash 需要确认");
+    expect(frame).toContain("❯ 1. Yes");
+    expect(frame).toContain("↑↓ 选择 · Enter 确认 · Esc 取消");
+    expect(frame.split("\n").every((line) => line.startsWith("│"))).toBe(true);
+  });
+
   test("exit_plan_mode 使用专用三项审批并更新当前 Session 模式", async () => {
     await withTempProject(async (cwd) => {
       let modeAfterApproval: PermissionMode | undefined;
@@ -46,12 +68,14 @@ describe("permission confirmation UI", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await flush(10);
       instance.stdin.write("提交计划");
       await flush(10);
       instance.stdin.write(ENTER);
       await flush();
 
       expect(instance.lastFrame()).toContain("Ready to code?");
+      expect(instance.lastFrame()).toContain("Explore commands and workflows");
       expect(instance.lastFrame()).toContain("3. No, keep planning");
       instance.stdin.write(ENTER);
       await done;
@@ -87,6 +111,7 @@ describe("permission confirmation UI", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await flush(10);
       instance.stdin.write("提交计划");
       await flush(10);
       instance.stdin.write(ENTER);
@@ -221,6 +246,7 @@ describe("permission confirmation UI", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await flush(10);
       instance.stdin.write("修改文件");
       await flush(10);
       instance.stdin.write(ENTER);

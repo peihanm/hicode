@@ -43,7 +43,7 @@ describe("App input cursor layout", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(instance.frames.join("\n")).toContain(
-        "◆ pillar · terminal pillar agent"
+        "◆ PILLAR"
       );
 
       instance.stdin.write("输入法定位");
@@ -55,8 +55,8 @@ describe("App input cursor layout", () => {
         line.includes("❯ 输入法定位")
       );
       expect(inputLineIndex).toBeGreaterThan(0);
-      expect(lines[inputLineIndex - 1]).toMatch(/^─+$/);
       expect(lines[inputLineIndex + 1]).toMatch(/^─+$/);
+      expect(frame).toContain("ctrl+o transcript");
       expect(frame.indexOf("esc to cancel")).toBeGreaterThan(
         frame.lastIndexOf("❯ 输入法定位")
       );

@@ -1,11 +1,13 @@
 import {useRef, useState} from "react";
-import {Box, Text, useInput, useStdout} from "ink";
+import {Box, Text, useInput} from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import type {PermissionMode} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {TerminalMarkdown} from "../conversation/TerminalMarkdown.js";
 import {COLORS} from "../theme.js";
+import {DialogFrame, DialogIndicator, DialogItem} from "./DialogFrame.js";
+import {useTerminalWidth} from "../terminalSize.js";
 
 const MAX_PLAN_PREVIEW_CHARS = 4000;
 
@@ -61,8 +63,7 @@ export function PlanApprovalDialog({
     onApprove: (mode: ExitPermissionMode) => void;
     onDone: () => void;
 }) {
-    const {stdout} = useStdout();
-    const width = Math.max(20, (stdout?.columns ?? 80) - 4);
+    const width = Math.max(1, useTerminalWidth() - 4);
     const plan = readPlan(req.input);
     const preview = plan ? planPreview(plan) : undefined;
     const completedRef = useRef(false);
@@ -88,10 +89,12 @@ export function PlanApprovalDialog({
 
     if (!plan || !preview) {
         return (
-            <Box flexDirection="column" borderStyle="round" borderColor={COLORS.error} paddingX={1}>
-                <Text color={COLORS.error}>无法审批计划：exit_plan_mode 输入缺少有效 plan。</Text>
-                <Text color={COLORS.dim}>按 Esc 关闭并继续留在 Plan 模式。</Text>
-            </Box>
+            <DialogFrame
+                title="无法审批计划"
+                tone="error"
+                subtitle={<Text>exit_plan_mode 输入缺少有效 plan。</Text>}
+                footer="Esc 关闭并继续留在 Plan 模式"
+            />
         );
     }
 
@@ -126,8 +129,12 @@ export function PlanApprovalDialog({
     };
 
     return (
-        <Box flexDirection="column" borderStyle="round" borderColor={COLORS.confirm} paddingX={1}>
-            <Text color={COLORS.confirm}>Ready to code?</Text>
+        <DialogFrame
+            title="Ready to code?"
+            footer={feedbackMode
+                ? "Enter 提交 · Esc 返回选项"
+                : "↑↓ 选择 · Enter 确认 · Esc 继续规划"}
+        >
             <Box marginTop={1} flexDirection="column">
                 <TerminalMarkdown value={preview.value} width={width}/>
                 {preview.truncated && (
@@ -138,7 +145,7 @@ export function PlanApprovalDialog({
                 <Box marginTop={1} flexDirection="column">
                     <Text>No, keep planning · Tell pillar what to change</Text>
                     <Box>
-                        <Text color={COLORS.confirm}>❯ </Text>
+                        <Text color={COLORS.accent}>❯ </Text>
                         <TextInput
                             value={feedback}
                             onChange={setFeedback}
@@ -146,14 +153,18 @@ export function PlanApprovalDialog({
                             focus
                         />
                     </Box>
-                    <Text color={COLORS.dim}>Enter 提交 · Esc 返回选项</Text>
                 </Box>
             ) : (
                 <Box marginTop={1} flexDirection="column">
                     <Text color={COLORS.dim}>Would you like to proceed?</Text>
-                    <SelectInput items={options} onSelect={handleSelect}/>
+                    <SelectInput
+                        items={options}
+                        onSelect={handleSelect}
+                        indicatorComponent={DialogIndicator}
+                        itemComponent={DialogItem}
+                    />
                 </Box>
             )}
-        </Box>
+        </DialogFrame>
     );
 }

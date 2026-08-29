@@ -34,6 +34,7 @@ describe("running input queue UI", () => {
                 <AppForTest resources={resources} runAgentImpl={runAgentImpl}/>
             );
 
+            await new Promise((resolve) => setTimeout(resolve, 10));
             instance.stdin.write("原始任务");
             await new Promise((resolve) => setTimeout(resolve, 10));
             instance.stdin.write("\r");
@@ -76,6 +77,7 @@ describe("running input queue UI", () => {
                 <AppForTest resources={resources} runAgentImpl={runAgentImpl}/>
             );
 
+            await new Promise((resolve) => setTimeout(resolve, 10));
             instance.stdin.write("原始任务\r");
             await new Promise((resolve) => setTimeout(resolve, 30));
             instance.stdin.write("排队补充\r");

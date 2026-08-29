@@ -2,6 +2,7 @@ import {Box, Text} from "ink";
 import SelectInput from "ink-select-input";
 import type {McpApprovalDecision, McpApprovalRequest} from "../../mcp/index.js";
 import {COLORS} from "../theme.js";
+import {DialogFrame, DialogIndicator, DialogItem} from "../dialogs/DialogFrame.js";
 
 const OPTIONS: Array<{ label: string; value: McpApprovalDecision }> = [
     {label: "1. Allow once", value: "once"},
@@ -34,16 +35,24 @@ export function McpApprovalDialog({
     onDecision: (decision: McpApprovalDecision) => void;
 }) {
     return (
-        <Box flexDirection="column">
-            <Box flexDirection="column" borderStyle="round" borderColor={COLORS.confirm} paddingX={1}>
-                <Text color={COLORS.confirm}>项目请求启动 MCP Server：{request.serverName}</Text>
+        <DialogFrame
+            title="MCP Server request"
+            subtitle={<Text>项目请求启动 MCP Server：{request.serverName}</Text>}
+            footer="↑↓ 选择 · Enter 确认"
+        >
+            <Box marginTop={1} flexDirection="column">
                 <Text>Command: {request.command}</Text>
                 <Text>Args: {formatArgs(request.args) || "(none)"}</Text>
                 <Text color={COLORS.dim}>Project: {request.projectPath}</Text>
             </Box>
             <Box marginTop={1}>
-                <SelectInput items={OPTIONS} onSelect={(item) => onDecision(item.value)}/>
+                <SelectInput
+                    items={OPTIONS}
+                    onSelect={(item) => onDecision(item.value)}
+                    indicatorComponent={DialogIndicator}
+                    itemComponent={DialogItem}
+                />
             </Box>
-        </Box>
+        </DialogFrame>
     );
 }

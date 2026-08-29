@@ -134,6 +134,7 @@ describe("subagent UI", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("验证");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
@@ -201,6 +202,7 @@ describe("subagent UI", () => {
           runAgentImpl={runAgentImpl}
         />
       );
+      await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("调查");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
@@ -366,7 +368,7 @@ describe("subagent UI", () => {
     const frame = render(
       <MessageList threads={threads} terminalWidth={90} />
     ).lastFrame() ?? "";
-    expect(frame).toContain("● 完成");
+    expect(frame).toContain("● │ 完成");
     expect(frame).toContain("服务地址：http://localhost:3000");
     expect(frame).toContain("题目");
     expect(frame).toContain("两数之和");

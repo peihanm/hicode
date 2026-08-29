@@ -1,12 +1,13 @@
 import {basename} from "node:path";
 import {useEffect, useMemo, useState} from "react";
-import {Box, Text, useInput, useStdout} from "ink";
+import {Box, Text, useInput} from "ink";
 import stringWidth from "string-width";
 import type {GitDiffFile, GitDiffSnapshotResult,} from "../../git/index.js";
 import {type DiffHunk, type FileChange, mergeFileChanges,} from "../../fileChanges/index.js";
 import type {PersistedUIEvent} from "../../session/index.js";
 import {StructuredDiff} from "../fileChanges/StructuredDiff.js";
 import {COLORS} from "../theme.js";
+import {useTerminalWidth} from "../terminalSize.js";
 
 interface DiffViewFile {
     path: string;
@@ -152,8 +153,7 @@ export function GitDiffDialog({
     listFileChangeEvents: () => PersistedUIEvent[];
     onClose: () => void;
 }) {
-    const {stdout} = useStdout();
-    const width = Math.max(40, stdout.columns || 80);
+    const width = useTerminalWidth();
     const sources = useMemo(
         () => buildGitDiffDialogSources(listFileChangeEvents()),
         [listFileChangeEvents]

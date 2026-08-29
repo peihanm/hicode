@@ -1,8 +1,9 @@
 import {memo} from "react";
-import {Box, Text, useStdout} from "ink";
+import {Box, Text} from "ink";
 import type {FileChange} from "../../fileChanges/index.js";
 import {COLORS} from "../theme.js";
 import {FileChangeView} from "./FileChangeView.js";
+import {useTerminalWidth} from "../terminalSize.js";
 
 function total(changes: FileChange[], field: "linesAdded" | "linesRemoved") {
     return changes.every((change) => change[field] !== null)
@@ -17,8 +18,7 @@ export const FileChangeGroup = memo(function FileChangeGroup({
     changes: FileChange[];
     expanded: boolean;
 }) {
-    const {stdout} = useStdout();
-    const width = Math.max(30, stdout.columns || 80);
+    const width = Math.max(3, useTerminalWidth());
     const grouped = new Map<string, FileChange[]>();
     for (const change of changes) {
         grouped.set(change.path, [...(grouped.get(change.path) ?? []), change]);

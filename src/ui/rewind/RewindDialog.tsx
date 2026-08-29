@@ -1,9 +1,10 @@
 import {useEffect, useMemo, useState} from "react";
-import {Box, Text, useInput, useStdout} from "ink";
+import {Box, Text, useInput} from "ink";
 import SelectInput, {type IndicatorProps, type ItemProps,} from "ink-select-input";
 import stringWidth from "string-width";
 import type {CheckpointRestorePlan, CheckpointRestoreResult, FileCheckpointRecord,} from "../../checkpoints/index.js";
 import {COLORS} from "../theme.js";
+import {useTerminalWidth} from "../terminalSize.js";
 
 interface SelectItem<T> {
     label: string;
@@ -97,8 +98,7 @@ export function RewindDialog({
     restoreCheckpoint: (checkpointId: string) => Promise<CheckpointRestoreResult>;
     onClose: () => void;
 }) {
-    const {stdout} = useStdout();
-    const panelWidth = Math.max(32, Math.min(96, stdout.columns || 80));
+    const panelWidth = Math.min(96, useTerminalWidth());
     const [checkpoints, setCheckpoints] = useState<FileCheckpointRecord[]>();
     const [selected, setSelected] = useState<FileCheckpointRecord>();
     const [plan, setPlan] = useState<CheckpointRestorePlan>();

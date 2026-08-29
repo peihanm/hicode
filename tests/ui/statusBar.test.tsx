@@ -34,4 +34,11 @@ describe("StatusBar token state", () => {
     expect(renderStatusBar("estimated")).toContain("~1234 tokens (~12%)");
     expect(renderStatusBar("actual")).toContain("1234 tokens (12%)");
   });
+
+  test("保留完整模型、项目路径和快捷键说明", () => {
+    const frame = renderStatusBar("actual");
+    expect(frame).toContain("glm-4.7 | /tmp/project | 1234 tokens (12%)");
+    expect(frame).toContain("shift+tab switch mode");
+    expect(frame).toContain("ctrl+o transcript");
+  });
 });

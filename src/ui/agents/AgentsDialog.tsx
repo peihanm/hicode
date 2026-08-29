@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, useInput, useStdout} from "ink";
+import {Box, Text, useInput} from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import type {
@@ -14,6 +14,8 @@ import type {
 import {formatSubagentModel} from "../../subagents/index.js";
 import {MultilineTextInput} from "../input/MultilineTextInput.js";
 import {COLORS} from "../theme.js";
+import {DialogIndicator, DialogItem} from "../dialogs/DialogFrame.js";
+import {useTerminalWidth} from "../terminalSize.js";
 
 type Stage =
     | "list"
@@ -122,8 +124,7 @@ export function AgentsDialog({
     fastModel: string;
     onClose(): void;
 }) {
-    const {stdout} = useStdout();
-    const width = Math.max(48, Math.min(100, stdout.columns || 80));
+    const width = Math.min(100, useTerminalWidth());
     const [stage, setStage] = useState<Stage>("list");
     const [selected, setSelected] = useState<AgentDefinition>();
     const [scope, setScope] = useState<AgentDefinitionScope>("project");
@@ -301,6 +302,8 @@ export function AgentsDialog({
                         </Text>
                         <SelectInput
                             items={listItems}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                             onSelect={(item: DialogItem) => {
                                 if (item.value === "close") return onClose();
                                 if (item.value === "create") {
@@ -346,6 +349,8 @@ export function AgentsDialog({
                         <SelectInput
                             items={[{label: "返回", value: "back"}]}
                             onSelect={() => setStage("list")}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                         />
                     </Box>
                 )}
@@ -358,6 +363,8 @@ export function AgentsDialog({
                                 {label: "Project · 当前项目 .pillar/agents", value: "project"},
                                 {label: "Personal · ~/.pillar/agents", value: "user"},
                             ]}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                             onSelect={(item: DialogItem) => {
                                 setScope(item.value as AgentDefinitionScope);
                                 setStage("method");
@@ -374,6 +381,8 @@ export function AgentsDialog({
                                 {label: "Generate with Pillar · 根据描述生成候选", value: "generate"},
                                 {label: "Manual · 手工填写", value: "manual"},
                             ]}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                             onSelect={(item: DialogItem) => {
                                 if (item.value === "generate") setStage("generate");
                                 else beginEditor(EMPTY_DRAFT);
@@ -455,6 +464,8 @@ export function AgentsDialog({
                                     {label: "删除", value: "delete"},
                                     {label: "返回", value: "back"},
                                 ]}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                             onSelect={(item: DialogItem) => {
                                 if (item.value === "edit" && stored) {
                                     beginEditor(draftFromStored(stored), stored);
@@ -476,6 +487,8 @@ export function AgentsDialog({
                                 {label: "取消", value: "cancel"},
                                 {label: "确认删除", value: "delete"},
                             ]}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                             onSelect={(item: DialogItem) => {
                                 if (item.value === "delete") void deleteSelected();
                                 else setStage("detail");
@@ -509,6 +522,8 @@ export function AgentsDialog({
                                             : "返回 Agent 列表",
                                 value: "back",
                             }]}
+                            indicatorComponent={DialogIndicator}
+                            itemComponent={DialogItem}
                             onSelect={() => {
                                 setError(undefined);
                                 setStage(errorReturnStage);
