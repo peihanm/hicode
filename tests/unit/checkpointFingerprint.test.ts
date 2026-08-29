@@ -26,10 +26,11 @@ describe("Checkpoint path and disabled runtime", () => {
     });
 
     test("disabled runtime 的 turn 捕获路径完全不创建存储目录", async () => {
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             const sessionId = `disabled-${Date.now()}-${Math.random()}`;
-            const directory = getCheckpointDirectory(cwd, sessionId);
+            const directory = getCheckpointDirectory(storage, cwd, sessionId);
             const runtime = createFileCheckpointRuntime({
+                storage,
                 cwd,
                 sessionId,
                 enabled: false,

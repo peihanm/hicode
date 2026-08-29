@@ -20,6 +20,7 @@ import {
     ToolResultStoreError,
     type ToolResultStoreOptions,
 } from "./types.js";
+import {createPillarStorageLayout, type PillarStorageLayout} from "../persistence/index.js";
 
 function isAlreadyExists(error: unknown): boolean {
     return Boolean(
@@ -48,24 +49,32 @@ export class ToolResultStore {
     private temporaryFilesCleaned = false;
 
     private constructor(
+        storage: PillarStorageLayout,
         readonly cwd: string,
         sessionId: string,
         options: ToolResultStoreOptions = {}
     ) {
         this.sessionId = sessionId;
-        this.sessionDir = getToolResultSessionDir(cwd, sessionId, options.rootDir);
+        this.sessionDir = getToolResultSessionDir(storage, cwd, sessionId);
         this.maxArtifactBytes = options.maxArtifactBytes ?? DEFAULT_MAX_ARTIFACT_BYTES;
         this.maxSessionBytes = options.maxSessionBytes ?? DEFAULT_MAX_SESSION_ARTIFACT_BYTES;
         this.previewChars = options.previewChars ?? DEFAULT_PREVIEW_CHARS;
     }
 
-    static create(cwd: string, sessionId: string): ToolResultStore {
-        return new ToolResultStore(cwd, sessionId);
+    static create(
+        storage: PillarStorageLayout,
+        cwd: string,
+        sessionId: string
+    ): ToolResultStore {
+        return new ToolResultStore(storage, cwd, sessionId);
     }
 
-    static createFactory(options: ToolResultStoreOptions) {
+    static createFactory(options: ToolResultStoreOptions = {}) {
+        const storage = createPillarStorageLayout({
+            ...(options.rootDir ? {projectsRoot: options.rootDir} : {}),
+        });
         return (cwd: string, sessionId: string): ToolResultStore =>
-            new ToolResultStore(cwd, sessionId, options);
+            new ToolResultStore(storage, cwd, sessionId, options);
     }
 
     resultIdFor(toolCallId: string): string {

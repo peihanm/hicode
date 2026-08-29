@@ -11,7 +11,7 @@ afterEach(() => cleanup());
 
 describe("RuntimeBootstrap lifecycle", () => {
   test("把 MCP approval callback 映射到对话框后进入 App", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const resources = createTestRuntimeResources(cwd);
       let decision: string | undefined;
       const RuntimeBootstrap = createRuntimeBootstrap({
@@ -28,6 +28,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
+          storage={storage}
           cwd={cwd}
           settings={createTestSettings()}
         />
@@ -43,7 +44,7 @@ describe("RuntimeBootstrap lifecycle", () => {
   });
 
   test("resources 初始化失败显示有界错误状态", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const RuntimeBootstrap = createRuntimeBootstrap({
         createResources: async () => {
           throw new Error("runtime fixture failed");
@@ -51,6 +52,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
+          storage={storage}
           cwd={cwd}
           settings={createTestSettings()}
         />
@@ -63,7 +65,7 @@ describe("RuntimeBootstrap lifecycle", () => {
   });
 
   test("把 Hook workspace trust callback 映射到独立确认框", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const resources = createTestRuntimeResources(cwd);
       let decision: string | undefined;
       const RuntimeBootstrap = createRuntimeBootstrap({
@@ -93,6 +95,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
+          storage={storage}
           cwd={cwd}
           settings={createTestSettings()}
         />
@@ -112,7 +115,7 @@ describe("RuntimeBootstrap lifecycle", () => {
   });
 
   test("unmount 关闭 bootstrap 创建的 resources 一次", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       let closeCount = 0;
       const resources = createTestRuntimeResources(cwd, {
         async close() {
@@ -128,6 +131,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
+          storage={storage}
           cwd={cwd}
           settings={createTestSettings()}
         />
@@ -142,7 +146,7 @@ describe("RuntimeBootstrap lifecycle", () => {
   });
 
   test("初始化晚于 unmount 时立即关闭迟到 resources", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
@@ -161,6 +165,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
+          storage={storage}
           cwd={cwd}
           settings={createTestSettings()}
         />

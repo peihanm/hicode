@@ -56,6 +56,7 @@ export function createFakeLLM(steps: FakeLLMStep[]): {
   const callLLM: LLMCaller = async (
     messages,
     tools,
+    storage,
     cwd = process.cwd(),
     model = "glm-test",
     kind = "main",
@@ -64,6 +65,7 @@ export function createFakeLLM(steps: FakeLLMStep[]): {
     const options: LLMCallOptions = {
       messages: structuredClone(messages),
       tools: structuredClone(tools),
+      storage,
       cwd,
       model,
       kind,

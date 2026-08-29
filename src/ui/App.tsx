@@ -254,6 +254,7 @@ export function App({
                     <Box marginTop={1} flexDirection="column">
                         <QueuedInputPreview messages={turn.queuedMessages}/>
                         <InputBox
+                            persistentHistory={resources.inputHistory}
                             onSubmit={handleSubmit}
                             disabled={turn.stopping}
                             cwd={resources.cwd}

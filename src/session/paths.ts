@@ -1,22 +1,41 @@
-import {mkdirSync} from "node:fs";
+import {chmodSync, mkdirSync} from "node:fs";
 import {join} from "node:path";
+import {
+    getProjectSessionsDirectory,
+    getSessionStorageDirectory,
+    type PillarStorageLayout,
+} from "../persistence/index.js";
 
-function getSessionsDirectory(cwd: string): string {
-    return join(cwd, ".pillar", "sessions");
+export function getSessionIndexPath(
+    storage: PillarStorageLayout,
+    cwd: string
+): string {
+    return join(getProjectSessionsDirectory(storage, cwd), "index.json");
 }
 
-export function getSessionIndexPath(cwd: string): string {
-    return join(getSessionsDirectory(cwd), "index.json");
+export function getSessionPersistenceLockPath(
+    storage: PillarStorageLayout,
+    cwd: string
+): string {
+    return join(getProjectSessionsDirectory(storage, cwd), ".persistence.lock");
 }
 
-export function getSessionPersistenceLockPath(cwd: string): string {
-    return join(getSessionsDirectory(cwd), ".persistence.lock");
+export function getSessionLogPath(
+    storage: PillarStorageLayout,
+    cwd: string,
+    sessionId: string
+): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "events.jsonl");
 }
 
-export function getSessionLogPath(cwd: string, sessionId: string): string {
-    return join(getSessionsDirectory(cwd), `${sessionId}.jsonl`);
-}
-
-export function ensureSessionsDirectory(cwd: string): void {
-    mkdirSync(getSessionsDirectory(cwd), {recursive: true});
+export function ensureSessionsDirectory(
+    storage: PillarStorageLayout,
+    cwd: string
+): void {
+    const directory = getProjectSessionsDirectory(storage, cwd);
+    mkdirSync(directory, {
+        recursive: true,
+        mode: 0o700,
+    });
+    chmodSync(directory, 0o700);
 }

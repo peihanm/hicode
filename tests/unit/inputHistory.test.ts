@@ -6,7 +6,7 @@ import { withTempProject } from "../helpers/tempProject.js";
 
 describe("persistent input history", () => {
   test("全局 JSONL 按 Session 和项目过滤、最近优先去重并跳过损坏行", async () => {
-    await withTempProject(async (root) => {
+    await withTempProject(async (root, storage) => {
       const projectA = join(root, "a");
       const projectB = join(root, "b");
       const historyPath = join(root, "user", "history.jsonl");
@@ -16,7 +16,7 @@ describe("persistent input history", () => {
         mkdir(projectA, { recursive: true }),
         mkdir(projectB, { recursive: true }),
       ]);
-      const store = createInputHistoryStore({ historyPath });
+      const store = createInputHistoryStore(storage, { historyPath });
 
       await store.append(projectA, sessionA, "第一条");
       await store.append(projectB, sessionA, "其他项目");
@@ -44,9 +44,9 @@ describe("persistent input history", () => {
   });
 
   test("并发 append 不丢失不同输入", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const historyPath = join(cwd, "user", "history.jsonl");
-      const store = createInputHistoryStore({ historyPath, limit: 50 });
+      const store = createInputHistoryStore(storage, { historyPath, limit: 50 });
       const inputs = Array.from({ length: 12 }, (_, index) => `prompt-${index}`);
 
       await Promise.all(
@@ -58,9 +58,9 @@ describe("persistent input history", () => {
   });
 
   test("超过 1 MiB 的输入只留在当前 UI，不写入用户历史", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const historyPath = join(cwd, "user", "history.jsonl");
-      const store = createInputHistoryStore({ historyPath });
+      const store = createInputHistoryStore(storage, { historyPath });
 
       await store.append(cwd, "session-a", "x".repeat(1024 * 1024 + 1));
 

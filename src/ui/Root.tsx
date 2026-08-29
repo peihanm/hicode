@@ -13,43 +13,51 @@ import type {PermissionMode} from "../permissions/index.js";
 import {COLORS} from "./theme.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
 import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 type RootState =
     | { view: "app"; session?: LoadedSession }
     | { view: "picker"; sessions: SessionIndexEntry[] }
     | { view: "error"; message: string };
 
-function createRootState(cwd: string, model: string, resumeMode: ResumeMode): RootState {
+function createRootState(
+    storage: PillarStorageLayout,
+    cwd: string,
+    model: string,
+    resumeMode: ResumeMode
+): RootState {
     if (resumeMode.kind === "none") {
         return {view: "app"};
     }
 
     if (resumeMode.kind === "continue") {
-        const session = loadLatestSession(cwd, model);
+        const session = loadLatestSession(storage, cwd, model);
         return session
             ? {view: "app", session}
             : {view: "error", message: "没有找到可继续的历史会话。"};
     }
 
     if (resumeMode.kind === "session") {
-        const session = loadSession(cwd, resumeMode.sessionId, model);
+        const session = loadSession(storage, cwd, resumeMode.sessionId, model);
         return session
             ? {view: "app", session}
             : {view: "error", message: `没有找到会话: ${resumeMode.sessionId}`};
     }
 
-    const sessions = listSessionIndex(cwd);
+    const sessions = listSessionIndex(storage, cwd);
     return sessions.length > 0
         ? {view: "picker", sessions}
         : {view: "error", message: "没有找到可恢复的历史会话。"};
 }
 
 export function Root({
+                         storage,
                          cwd,
                          settings,
                          initialPermissionMode,
                          resumeMode,
                      }: {
+    storage: PillarStorageLayout;
     cwd: string;
     settings: ResolvedPillarSettings;
     initialPermissionMode?: PermissionMode;
@@ -58,7 +66,7 @@ export function Root({
     const {exit} = useApp();
     const model = settings.models.primary.model;
     const [state, setState] = useState<RootState>(() =>
-        createRootState(cwd, model, resumeMode)
+        createRootState(storage, cwd, model, resumeMode)
     );
 
     useInput(
@@ -73,7 +81,7 @@ export function Root({
             <ResumePicker
                 sessions={state.sessions}
                 onSelect={(sessionId) => {
-                    const session = loadSession(cwd, sessionId, model);
+                    const session = loadSession(storage, cwd, sessionId, model);
                     setState(
                         session
                             ? {view: "app", session}
@@ -96,6 +104,7 @@ export function Root({
 
     return (
         <RuntimeBootstrap
+            storage={storage}
             cwd={cwd}
             settings={settings}
             initialPermissionMode={initialPermissionMode}

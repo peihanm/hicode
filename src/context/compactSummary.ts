@@ -1,5 +1,6 @@
 import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
 import type {LLMCaller, Message} from "../llm/types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {buildCompactPrompt, parseCompactSummary} from "./compactPrompt.js";
 
 const MAX_COMPACT_RETRIES = 3;
@@ -46,6 +47,7 @@ async function generateCompactSummaryCore({
                                               system,
                                               conversation,
                                               signal,
+                                              storage,
                                               cwd,
                                               model,
                                               customInstructions,
@@ -53,6 +55,7 @@ async function generateCompactSummaryCore({
     system: Extract<Message, { role: "system" }>;
     conversation: Message[];
     signal: AbortSignal;
+    storage: PillarStorageLayout;
     cwd: string;
     model: string;
     customInstructions?: string;
@@ -72,6 +75,7 @@ async function generateCompactSummaryCore({
             const {message} = await callLLMImpl(
                 compactMessages,
                 [],
+                storage,
                 cwd,
                 model,
                 "compact",

@@ -9,8 +9,9 @@ import { withTempProject } from "../helpers/tempProject.js";
 
 describe("subagent transcript", () => {
   test("标识经过哈希，不能穿越工作目录", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const path = getSubagentTranscriptPath(
+        storage,
         cwd,
         "../../parent",
         "../../../agent"
@@ -19,6 +20,7 @@ describe("subagent transcript", () => {
       expect(path).not.toContain("../");
 
       const writer = new SubagentTranscriptWriter(
+        storage,
         cwd,
         "../../parent",
         "../../../agent"

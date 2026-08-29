@@ -3,6 +3,7 @@ import {zodToJsonSchema} from "zod-to-json-schema";
 import {createLLMCaller} from "../llm/index.js";
 import type {LLMCaller, Message, OpenAITool} from "../llm/types.js";
 import type {LLMSourceConnection} from "../llm/types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {createTurnAbortController} from "../runtime/abort.js";
 import type {HookExecution, HookInput, HookSettings} from "./types.js";
 import type {HookJSONOutput} from "./schema.js";
@@ -156,6 +157,7 @@ export function createHookPromptExecutorFactory(
     dependencies: HookPromptExecutorDependencies
 ) {
     return function createConfiguredHookPromptExecutor(options: {
+        storage: PillarStorageLayout;
         cwd: string;
         model: string;
     }): HookPromptExecutor {
@@ -174,6 +176,7 @@ export function createHookPromptExecutorFactory(
                     const result = await dependencies.callLLM(
                         promptMessages(input.prompt, input.event),
                         [submitDecisionTool],
+                        options.storage,
                         options.cwd,
                         options.model,
                         "hook",
@@ -236,6 +239,7 @@ export function createHookPromptExecutorFactory(
 }
 
 export function createHookPromptExecutor(options: {
+    storage: PillarStorageLayout;
     source: LLMSourceConnection;
     cwd: string;
     model: string;

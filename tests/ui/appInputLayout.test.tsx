@@ -33,7 +33,7 @@ describe("App input cursor layout", () => {
     });
   });
 
-  test("保留完整输入框和原有底部状态栏顺序", async () => {
+  test("输入内容上方留白、下方紧贴分隔线并保留状态栏顺序", async () => {
     await withTempProject(async (cwd) => {
       const instance = render(
         <App
@@ -55,11 +55,10 @@ describe("App input cursor layout", () => {
         line.includes("❯ 输入法定位")
       );
       expect(inputLineIndex).toBeGreaterThan(0);
+      expect(lines[inputLineIndex - 1]).toBe("");
       expect(lines[inputLineIndex + 1]).toMatch(/^─+$/);
       expect(frame).toContain("ctrl+o transcript");
-      expect(frame.indexOf("esc to cancel")).toBeGreaterThan(
-        frame.lastIndexOf("❯ 输入法定位")
-      );
+      expect(frame).not.toContain("esc to cancel");
     });
   });
 

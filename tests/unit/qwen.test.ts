@@ -4,7 +4,7 @@ import {
     createQwenRequestFields,
     qwenProvider,
 } from "../../src/llm/providers/qwen.js";
-import {withTempProject} from "../helpers/tempProject.js";
+import {createTestStorage, withTempProject} from "../helpers/tempProject.js";
 import type {LLMCallOptions, LLMProvider} from "../../src/llm/types.js";
 
 const QWEN_SOURCE = {
@@ -14,8 +14,14 @@ const QWEN_SOURCE = {
     baseUrl: "https://qwen.test/v1",
 };
 
-function callQwenProvider(provider: LLMProvider, options: LLMCallOptions) {
-    return provider.call(options, QWEN_SOURCE);
+function callQwenProvider(
+    provider: LLMProvider,
+    options: Omit<LLMCallOptions, "storage">
+) {
+    return provider.call({
+        ...options,
+        storage: createTestStorage(options.cwd),
+    }, QWEN_SOURCE);
 }
 
 const originalFetch = globalThis.fetch;
@@ -222,6 +228,7 @@ describe("Qwen provider", () => {
         await expect(callQwen(
             [{role: "user", content: "hello"}],
             [],
+            createTestStorage(process.cwd()),
             process.cwd(),
             "glm-5.2",
             "main"

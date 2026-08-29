@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {CreateSubagentRunner} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {
     type AgentWorktreeRecord,
     createWorktreeRuntime,
@@ -587,6 +588,7 @@ export class TaskRuntime implements TaskRuntimeLike {
 }
 
 export function createTaskRuntime(
+    storage: PillarStorageLayout,
     cwd: string,
     shellRunner: ShellRunnerLike,
     createSubagentRunner: CreateSubagentRunner,
@@ -595,8 +597,8 @@ export function createTaskRuntime(
     return new TaskRuntime(
         shellRunner,
         createSubagentRunner,
-        createTaskJournal(cwd),
-        createWorktreeRuntime(cwd),
+        createTaskJournal(storage, cwd),
+        createWorktreeRuntime(storage, cwd),
         subagents
     );
 }

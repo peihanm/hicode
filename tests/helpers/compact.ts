@@ -1,6 +1,7 @@
 import { createCompactHistoryRunner } from "../../src/context/compact.js";
 import { createCompactSummaryGenerator } from "../../src/context/compactSummary.js";
 import type { LLMCaller } from "../../src/llm/types.js";
+import {createTestStorage} from "./tempProject.js";
 
 type CompactHistoryInput = Parameters<
   ReturnType<typeof createCompactHistoryRunner>
@@ -20,12 +21,18 @@ export function compactHistoryForTest(
 }
 
 export function generateCompactSummaryForTest(
-  input: CompactSummaryInput & { callLLM?: LLMCaller }
+  input: Omit<CompactSummaryInput, "storage"> & {
+    storage?: CompactSummaryInput["storage"];
+    callLLM?: LLMCaller;
+  }
 ) {
   const { callLLM: callLLMOverride, ...options } = input;
   return createCompactSummaryGenerator({
     callLLM: callLLMOverride ?? unexpectedCompactLLM,
-  })(options);
+  })({
+    ...options,
+    storage: options.storage ?? createTestStorage(options.cwd),
+  });
 }
 
 const unexpectedCompactLLM: LLMCaller = async () => {

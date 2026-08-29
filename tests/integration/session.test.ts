@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { appendFile, readFile, stat, writeFile } from "node:fs/promises";
+import {dirname} from "node:path";
 import { createCompactState } from "../../src/context/index.js";
 import {
   listSessionIndex,
@@ -14,11 +14,12 @@ import {
 import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
+import {getSessionIndexPath, getSessionLogPath} from "../../src/session/paths.js";
 
 describe("session persistence", () => {
   test("保存并恢复尚未消费的运行中消息", async () => {
-    await withTempProject(async (cwd) => {
-      await saveSessionSnapshot({
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "queued-session",
@@ -37,7 +38,7 @@ describe("session persistence", () => {
         }],
       });
 
-      expect(loadSession(cwd, "queued-session", "glm-test")?.queuedInputs)
+      expect(loadSession(storage, cwd, "queued-session", "glm-test")?.queuedInputs)
         .toEqual([{
           id: "queued-1",
           type: "user_input",
@@ -49,13 +50,13 @@ describe("session persistence", () => {
   });
 
   test("保存 snapshot、建立索引并恢复最新对话", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const history: Message[] = [
         { role: "system", content: "不会持久化" },
         { role: "user", content: "第一个任务" },
         { role: "assistant", content: "已完成" },
       ];
-      await saveSessionSnapshot({
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "session-1",
@@ -69,7 +70,7 @@ describe("session persistence", () => {
         },
       });
 
-      const index = listSessionIndex(cwd);
+      const index = listSessionIndex(storage, cwd);
       expect(index).toHaveLength(1);
       expect(index[0]).toMatchObject({
         sessionId: "session-1",
@@ -78,7 +79,7 @@ describe("session persistence", () => {
         messageCount: 2,
       });
 
-      const loaded = loadSession(cwd, "session-1", "glm-test");
+      const loaded = loadSession(storage, cwd, "session-1", "glm-test");
       expect(loaded?.history[0]?.role).toBe("system");
       expect(loaded?.history.filter((message) => message.role === "system")).toHaveLength(1);
       expect(loaded?.history.slice(-2)).toEqual(history.slice(-2));
@@ -88,18 +89,24 @@ describe("session persistence", () => {
       });
       const snapshot = JSON.parse(
         await readFile(
-          join(cwd, ".pillar", "sessions", "session-1.jsonl"),
+          getSessionLogPath(storage, cwd, "session-1"),
           "utf8"
         )
       );
       expect(snapshot.version).toBe(2);
-      expect(loadLatestSession(cwd, "glm-test")?.sessionId).toBe("session-1");
+      expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
+      expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
+        .toBe(0o600);
+      expect((await stat(dirname(
+        getSessionLogPath(storage, cwd, "session-1")
+      ))).mode & 0o777).toBe(0o700);
+      expect(loadLatestSession(storage, cwd, "glm-test")?.sessionId).toBe("session-1");
     });
   });
 
   test("不读取版本 1 或缺少当前格式版本的旧 snapshot", async () => {
-    await withTempProject(async (cwd) => {
-      await saveSessionSnapshot({
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "unversioned",
@@ -110,26 +117,26 @@ describe("session persistence", () => {
         todos: [],
         permissionMode: "default",
       });
-      const path = join(cwd, ".pillar", "sessions", "unversioned.jsonl");
+      const path = getSessionLogPath(storage, cwd, "unversioned");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
         string,
         unknown
       >;
       snapshot.version = 1;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(loadSession(cwd, "unversioned", "glm-test")).toBeNull();
+      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
 
       delete snapshot.version;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
 
-      expect(loadSession(cwd, "unversioned", "glm-test")).toBeNull();
-      expect(listSessionIndex(cwd)).toEqual([]);
+      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
+      expect(listSessionIndex(storage, cwd)).toEqual([]);
     });
   });
 
   test("turn checkpoint 保存提交前状态且不影响最新 snapshot 恢复", async () => {
-    await withTempProject(async (cwd) => {
-      await saveSessionTurnCheckpoint({
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionTurnCheckpoint(storage, {
         cwd,
         model: "glm-test",
         sessionId: "checkpoint-session",
@@ -153,7 +160,7 @@ describe("session persistence", () => {
           discoveredNames: ["mcp__fixture__echo"],
         },
       });
-      await saveSessionSnapshot({
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "checkpoint-session",
@@ -170,9 +177,9 @@ describe("session persistence", () => {
         },
       });
 
-      expect(listSessionTurnCheckpoints(cwd, "checkpoint-session")).toHaveLength(1);
+      expect(listSessionTurnCheckpoints(storage, cwd, "checkpoint-session")).toHaveLength(1);
       expect(
-        loadSessionTurnCheckpoint(cwd, "checkpoint-session", "checkpoint-1")
+        loadSessionTurnCheckpoint(storage, cwd, "checkpoint-session", "checkpoint-1")
       ).toMatchObject({
         prompt: "下一步修改",
         conversation: [
@@ -185,20 +192,20 @@ describe("session persistence", () => {
           discoveredNames: ["mcp__fixture__echo"],
         },
       });
-      expect(loadSession(cwd, "checkpoint-session", "glm-test")).toMatchObject({
+      expect(loadSession(storage, cwd, "checkpoint-session", "glm-test")).toMatchObject({
         checkpointHead: {
           branchId: "branch-1",
           checkpointId: "checkpoint-1",
         },
       });
-      expect(loadSession(cwd, "checkpoint-session", "glm-test")?.history.at(-1))
+      expect(loadSession(storage, cwd, "checkpoint-session", "glm-test")?.history.at(-1))
         .toEqual({role: "assistant", content: "修改完成"});
     });
   });
 
   test("忽略末尾损坏行并恢复最后一个有效 snapshot", async () => {
-    await withTempProject(async (cwd) => {
-      await saveSessionSnapshot({
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "session-2",
@@ -210,18 +217,18 @@ describe("session persistence", () => {
         permissionMode: "default",
       });
       await appendFile(
-        join(cwd, ".pillar", "sessions", "session-2.jsonl"),
+        getSessionLogPath(storage, cwd, "session-2"),
         "{partial-json"
       );
 
-      const loaded = loadSession(cwd, "session-2", "glm-test");
+      const loaded = loadSession(storage, cwd, "session-2", "glm-test");
       expect(loaded?.history.at(-1)).toEqual({ role: "user", content: "保留我" });
     });
   });
 
   test("没有真实用户输入时不创建空 session", async () => {
-    await withTempProject(async (cwd) => {
-      await saveSessionSnapshot({
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "empty",
@@ -229,19 +236,19 @@ describe("session persistence", () => {
         todos: [],
         permissionMode: "default",
       });
-      expect(listSessionIndex(cwd)).toEqual([]);
+      expect(listSessionIndex(storage, cwd)).toEqual([]);
     });
   });
 
   test("结构化文件修改独立保存并恢复", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const change = createFileChange({
         path: "src/a.ts",
         kind: "update",
         oldContent: "const a = 1;\n",
         newContent: "const a = 2;\n",
       });
-      await saveSessionSnapshot({
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "with-ui",
@@ -272,7 +279,7 @@ describe("session persistence", () => {
         }],
       });
 
-      const loaded = loadSession(cwd, "with-ui", "glm-test");
+      const loaded = loadSession(storage, cwd, "with-ui", "glm-test");
       expect(loaded?.uiEvents).toHaveLength(1);
       const restoredChange = loaded?.uiEvents.find(
         (event) => event.type === "file_change"
@@ -290,10 +297,10 @@ describe("session persistence", () => {
   });
 
   test("并发保存不同 session 时 index 保留完整并集", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       await Promise.all(
         Array.from({ length: 12 }, (_, index) =>
-          saveSessionSnapshot({
+          saveSessionSnapshot(storage, {
             cwd,
             model: "glm-test",
             sessionId: `parallel-${index}`,
@@ -308,7 +315,7 @@ describe("session persistence", () => {
       );
 
       expect(
-        listSessionIndex(cwd)
+        listSessionIndex(storage, cwd)
           .map((entry) => entry.sessionId)
           .sort()
       ).toEqual(
@@ -317,11 +324,11 @@ describe("session persistence", () => {
     });
   });
 
-  test("同一 session 并发保存时 JSONL 保持完整且 index 可用", async () => {
-    await withTempProject(async (cwd) => {
+  test("同一 session 并发保存时只保留最新 snapshot 且 index 可用", async () => {
+    await withTempProject(async (cwd, storage) => {
       await Promise.all(
         Array.from({ length: 8 }, (_, index) =>
-          saveSessionSnapshot({
+          saveSessionSnapshot(storage, {
             cwd,
             model: "glm-test",
             sessionId: "shared",
@@ -336,21 +343,61 @@ describe("session persistence", () => {
       );
 
       const lines = (
-        await readFile(join(cwd, ".pillar", "sessions", "shared.jsonl"), "utf8")
+        await readFile(getSessionLogPath(storage, cwd, "shared"), "utf8")
       )
         .trim()
         .split("\n");
-      expect(lines).toHaveLength(8);
+      expect(lines).toHaveLength(1);
       expect(lines.every((line) => JSON.parse(line).type === "snapshot")).toBe(true);
-      expect(listSessionIndex(cwd)).toHaveLength(1);
-      expect(loadSession(cwd, "shared", "glm-test")).not.toBeNull();
+      expect(listSessionIndex(storage, cwd)).toHaveLength(1);
+      expect(loadSession(storage, cwd, "shared", "glm-test")).not.toBeNull();
+    });
+  });
+
+  test("重复保存只替换 snapshot，保留 turn checkpoint", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionTurnCheckpoint(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "compact-log",
+        checkpointId: "checkpoint-1",
+        branchId: "branch-1",
+        prompt: "修改前",
+        history: [{role: "system", content: "system"}],
+        todos: [],
+        permissionMode: "default",
+      });
+      for (const content of ["first", "latest"]) {
+        await saveSessionSnapshot(storage, {
+          cwd,
+          model: "glm-test",
+          sessionId: "compact-log",
+          history: [
+            {role: "system", content: "system"},
+            {role: "user", content},
+          ],
+          todos: [],
+          permissionMode: "default",
+        });
+      }
+
+      const lines = (await readFile(
+        getSessionLogPath(storage, cwd, "compact-log"),
+        "utf8"
+      )).trim().split("\n").map((line) => JSON.parse(line) as {type: string});
+      expect(lines.map((line) => line.type)).toEqual([
+        "turn_checkpoint",
+        "snapshot",
+      ]);
+      expect(loadSession(storage, cwd, "compact-log", "glm-test")?.history.at(-1))
+        .toEqual({role: "user", content: "latest"});
     });
   });
 
   test("损坏 index 时拒绝覆盖，但已经追加的 snapshot 仍可按 id 恢复", async () => {
-    await withTempProject(async (cwd) => {
-      const indexPath = join(cwd, ".pillar", "sessions", "index.json");
-      await saveSessionSnapshot({
+    await withTempProject(async (cwd, storage) => {
+      const indexPath = getSessionIndexPath(storage, cwd);
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "existing",
@@ -364,7 +411,7 @@ describe("session persistence", () => {
       await writeFile(indexPath, "{corrupt-index", "utf8");
 
       await expect(
-        saveSessionSnapshot({
+        saveSessionSnapshot(storage, {
           cwd,
           model: "glm-test",
           sessionId: "after-corruption",
@@ -377,7 +424,7 @@ describe("session persistence", () => {
         })
       ).rejects.toThrow("Cannot update corrupt session index");
       expect(await readFile(indexPath, "utf8")).toBe("{corrupt-index");
-      expect(loadSession(cwd, "after-corruption", "glm-test")?.history.at(-1)).toEqual({
+      expect(loadSession(storage, cwd, "after-corruption", "glm-test")?.history.at(-1)).toEqual({
         role: "user",
         content: "recoverable",
       });

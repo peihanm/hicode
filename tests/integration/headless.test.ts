@@ -22,7 +22,7 @@ import { runHeadlessForTest as runHeadless } from "../helpers/headless.js";
 import { createSubagentRegistry } from "../../src/subagents/index.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
 
-function options(cwd: string): HeadlessOptions {
+function options(cwd: string): Omit<HeadlessOptions, "storage"> {
   return {
     cwd,
     settings: createTestSettings(),

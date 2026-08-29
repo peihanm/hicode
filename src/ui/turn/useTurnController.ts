@@ -6,6 +6,7 @@ import {
     createSessionId,
     type LoadedSession,
     loadSessionTurnCheckpoint,
+    saveSessionSnapshot,
     type SaveSessionSnapshotInput,
 } from "../../session/index.js";
 import type {PermissionDecision} from "../../permissions/index.js";
@@ -96,6 +97,7 @@ export function useTurnController({
                     queuedInputs: resumedQueueRef.current.remaining,
                 },
                 toolResultStore: createToolResultStore(
+                    resources.storage,
                     cwd,
                     sessionIdRef.current
                 ),
@@ -210,7 +212,7 @@ export function useTurnController({
         const sessionQueueRef = useRef<SessionSnapshotQueue | null>(null);
         if (sessionQueueRef.current === null) {
             sessionQueueRef.current = new SessionSnapshotQueue(
-                undefined,
+                (snapshot) => saveSessionSnapshot(resources.storage, snapshot),
                 (error) => {
                     const detail = error instanceof Error ? error.message : String(error);
                     const bounded = detail.length > 240 ? `${detail.slice(0, 239)}…` : detail;
@@ -517,6 +519,7 @@ export function useTurnController({
         const restoreConversation = useCallback(
             async (checkpointId: string) => {
                 const checkpoint = loadSessionTurnCheckpoint(
+                    resources.storage,
                     cwd,
                     sessionIdRef.current,
                     checkpointId

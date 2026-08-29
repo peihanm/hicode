@@ -1,12 +1,12 @@
 import {join} from "node:path";
-import {getSessionStorageDirectory, hashProjectValue,} from "../persistence/index.js";
+import {getSessionStorageDirectory, hashProjectValue, type PillarStorageLayout,} from "../persistence/index.js";
 
 export function getToolResultSessionDir(
+    storage: PillarStorageLayout,
     cwd: string,
-    sessionId: string,
-    rootDir?: string
+    sessionId: string
 ): string {
-    return join(getSessionStorageDirectory(cwd, sessionId, rootDir), "tool-results");
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "tool-results");
 }
 
 export function getResultId(toolCallId: string): string {

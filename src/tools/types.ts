@@ -16,6 +16,7 @@ import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";
 export type PermissionMatcher = (
@@ -33,6 +34,7 @@ interface ToolSearchSource {
 // 工具运行时上下文：注入权限裁决、规则、模式等依赖
 // 避免工具直接耦合 UI / 配置加载
 export interface ToolContext {
+    storage: PillarStorageLayout;
     // 当前 turn 的取消信号。每轮必须创建新的 signal，不能复用已取消 signal。
     signal: AbortSignal;
 
@@ -75,7 +77,7 @@ export interface ToolContext {
 
     fastProvider: LLMProviderName;
 
-    // 当前工作目录（attachment 探测 env / prompt-log 落盘用）
+    // 当前工作目录（工具路径解析、attachment 探测与项目 identity 用）
     cwd: string;
 
     // Worktree Agent 的执行层文件边界；Root Runtime 默认不设置。

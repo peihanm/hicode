@@ -64,6 +64,7 @@ export interface ToolExecutionResult {
 }
 
 export interface ToolResultStoreOptions {
+    /** Host-owned projects root; tests and embedded hosts use an isolated root. */
     rootDir?: string;
     maxArtifactBytes?: number;
     maxSessionBytes?: number;

@@ -107,6 +107,7 @@ export function createRootSessionRuntime({
         resumed,
     });
     const fileCheckpoints = createFileCheckpointRuntime({
+        storage: resources.storage,
         cwd: resources.cwd,
         sessionId: seed.sessionId,
         enabled: resources.settings.checkpointing.enabled,
@@ -194,7 +195,7 @@ export function createRootSessionRuntime({
         async beginCheckpoint(prompt, state) {
             const checkpoint = await fileCheckpoints.beginTurn({prompt});
             if (!checkpoint) return;
-            await saveSessionTurnCheckpoint({
+            await saveSessionTurnCheckpoint(resources.storage, {
                 cwd: resources.cwd,
                 model: resources.model,
                 sessionId: seed.sessionId,

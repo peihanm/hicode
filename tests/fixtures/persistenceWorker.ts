@@ -4,6 +4,7 @@ import { saveSessionSnapshot } from "../../src/session/index.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { join } from "node:path";
 import { MemoryStore } from "../../src/memory/index.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 const [mode, cwd, prefix, countValue, readyPath, barrierPath] = process.argv.slice(2);
 if (!mode || !cwd || !prefix || !countValue || !readyPath || !barrierPath) {
@@ -11,6 +12,7 @@ if (!mode || !cwd || !prefix || !countValue || !readyPath || !barrierPath) {
 }
 const count = Number.parseInt(countValue, 10);
 if (!Number.isFinite(count) || count < 1) throw new Error("invalid worker count");
+const storage = createPillarStorageLayout({pillarHome: join(cwd, ".pillar-test-storage")});
 
 await writeFile(readyPath, "ready\n", "utf8");
 while (true) {
@@ -24,7 +26,7 @@ while (true) {
 
 if (mode === "session") {
   for (let index = 0; index < count; index += 1) {
-    await saveSessionSnapshot({
+    await saveSessionSnapshot(storage, {
       cwd,
       model: "worker-model",
       sessionId: `${prefix}-${index}`,

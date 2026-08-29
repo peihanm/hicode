@@ -3,7 +3,7 @@ import type {PermissionDecision} from "../permissions/index.js";
 import {createRootRuntimeResources} from "../runtime/resources.js";
 import {createTurnAbortController} from "../runtime/abort.js";
 import {saveSessionSnapshot} from "../session/index.js";
-import {createToolResultStore, type ToolResultStore,} from "../toolResults/index.js";
+import {createToolResultStore} from "../toolResults/index.js";
 import type {AgentEvent} from "../agent/types.js";
 import {HeadlessEventCollector} from "./collector.js";
 import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
@@ -15,7 +15,7 @@ import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createRootSessionRuntime} from "../runtime/sessionRuntime.js";
 
-type CreateToolResultStore = (cwd: string, sessionId: string) => ToolResultStore;
+type CreateToolResultStore = typeof createToolResultStore;
 
 interface HeadlessRunnerDependencies {
     createResources: typeof createRootRuntimeResources;
@@ -52,6 +52,7 @@ export function createHeadlessRunner(
         const fallbackController = createTurnAbortController();
         const activeSignal = signal ?? fallbackController.signal;
         const resources = await dependencies.createResources({
+            storage: options.storage,
             cwd: options.cwd,
             settings: options.settings,
             signal: activeSignal,
@@ -68,6 +69,7 @@ export function createHeadlessRunner(
                 gitSession: state.gitSession,
             },
             toolResultStore: dependencies.createToolResultStore(
+                options.storage,
                 options.cwd,
                 state.sessionId
             ),
@@ -208,6 +210,7 @@ export function createHeadlessRunner(
             sessionEndReason = result.reason;
             const collectorSnapshot = collector.getSnapshot();
             await dependencies.saveSession(
+                options.storage,
                 rootSession.createSnapshot({
                     todos: state.todos,
                     permissionMode: state.permissionMode,
@@ -245,7 +248,7 @@ export function createHeadlessRunner(
             if (!sessionSaved) {
                 try {
                     const collectorSnapshot = collector.getSnapshot();
-                    await dependencies.saveSession(rootSession.createSnapshot({
+                    await dependencies.saveSession(options.storage, rootSession.createSnapshot({
                         todos: state.todos,
                         permissionMode: state.permissionMode,
                         prePlanMode: state.prePlanMode,

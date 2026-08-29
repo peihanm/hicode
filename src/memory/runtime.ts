@@ -6,6 +6,7 @@ import type {LLMSourceConnection} from "../llm/types.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
 import type {ModelTargetSettings} from "../settings/types.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {createMemoryExtractor, type MemoryExtractor} from "./extractor.js";
 import {classifyMemoryPath, getMemoryDirectory} from "./paths.js";
 import {formatMemoryContext} from "./prompt.js";
@@ -408,6 +409,7 @@ export interface MemoryRuntimeFactoryDependencies {
     createStore(directory: string): MemoryStoreLike;
 
     createExtractor(options: {
+        storage: PillarStorageLayout;
         cwd: string;
         model: string;
         provider: LLMProviderName;
@@ -426,6 +428,7 @@ export function createMemoryRuntimeFactory(
         overrides.createExtractor ??
         ((options) => createMemoryExtractor(options));
     return function createMemoryRuntime(options: {
+        storage: PillarStorageLayout;
         cwd: string;
         getModelTarget(): ModelTargetSettings;
         getModelSource(
@@ -434,7 +437,7 @@ export function createMemoryRuntimeFactory(
         shellRunner: ShellRunnerLike;
         settings: ResolvedPillarSettings["memory"];
     }): MemoryRuntimeLike {
-        const directory = getMemoryDirectory(options.cwd);
+        const directory = getMemoryDirectory(options.storage, options.cwd);
         const store = createStore(directory);
         return new MemoryRuntime(
             store.directory,
@@ -444,6 +447,7 @@ export function createMemoryRuntimeFactory(
             (memoryFiles) => {
                 const target = options.getModelTarget();
                 return createExtractor({
+                    storage: options.storage,
                     model: target.model,
                     provider: target.provider,
                     source: options.getModelSource(target.source),

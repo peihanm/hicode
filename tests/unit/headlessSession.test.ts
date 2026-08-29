@@ -7,8 +7,8 @@ import { createTestSettings } from "../helpers/runtimeResources.js";
 
 describe("headless session boundary", () => {
   test("none 创建默认 state 且使用 CLI permission override", async () => {
-    await withTempProject(async (cwd) => {
-      const state = loadHeadlessSession({
+    await withTempProject(async (cwd, storage) => {
+      const state = loadHeadlessSession({ storage,
         cwd,
         settings: createTestSettings(),
         resumeMode: { kind: "none" },
@@ -21,8 +21,8 @@ describe("headless session boundary", () => {
   });
 
   test("没有 CLI 或 Session mode 时使用同一 Settings snapshot", async () => {
-    await withTempProject(async (cwd) => {
-      const state = loadHeadlessSession({
+    await withTempProject(async (cwd, storage) => {
+      const state = loadHeadlessSession({ storage,
         cwd,
         settings: createTestSettings({
           permissions: {
@@ -37,23 +37,23 @@ describe("headless session boundary", () => {
   });
 
   test("picker、missing continue 和 missing id 保持错误", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       expect(() =>
-        loadHeadlessSession({
+        loadHeadlessSession({ storage,
           cwd,
           settings: createTestSettings(),
           resumeMode: { kind: "picker" },
         })
       ).toThrow("headless 模式不能使用交互式 -r");
       expect(() =>
-        loadHeadlessSession({
+        loadHeadlessSession({ storage,
           cwd,
           settings: createTestSettings(),
           resumeMode: { kind: "continue" },
         })
       ).toThrow("没有找到可继续的历史会话");
       expect(() =>
-        loadHeadlessSession({
+        loadHeadlessSession({ storage,
           cwd,
           settings: createTestSettings(),
           resumeMode: { kind: "session", sessionId: "missing" },
@@ -63,8 +63,8 @@ describe("headless session boundary", () => {
   });
 
   test("resume mode 恢复，CLI mode 优先于 snapshot mode", async () => {
-    await withTempProject(async (cwd) => {
-      await saveSessionSnapshot({
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "session-1",
@@ -82,7 +82,7 @@ describe("headless session boundary", () => {
           discoveredNames: ["mcp__fixture__echo"],
         },
       });
-      const resumed = loadHeadlessSession({
+      const resumed = loadHeadlessSession({ storage,
           cwd,
           settings: createTestSettings(),
           resumeMode: { kind: "continue" },
@@ -93,7 +93,7 @@ describe("headless session boundary", () => {
         discoveredNames: ["mcp__fixture__echo"],
       });
       expect(
-        loadHeadlessSession({
+        loadHeadlessSession({ storage,
           cwd,
           settings: createTestSettings(),
           resumeMode: { kind: "session", sessionId: "session-1" },

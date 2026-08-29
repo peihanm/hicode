@@ -1,13 +1,13 @@
 import {createHash} from "node:crypto";
 import {join} from "node:path";
-import {getSessionStorageDirectory} from "../persistence/index.js";
+import {getSessionStorageDirectory, type PillarStorageLayout} from "../persistence/index.js";
 
 export function getCheckpointDirectory(
+    storage: PillarStorageLayout,
     cwd: string,
-    sessionId: string,
-    projectsRoot?: string
+    sessionId: string
 ): string {
-    return join(getSessionStorageDirectory(cwd, sessionId, projectsRoot), "checkpoints");
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "checkpoints");
 }
 
 export function getCheckpointManifestPath(directory: string): string {

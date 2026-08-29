@@ -40,5 +40,6 @@ describe("StatusBar token state", () => {
     expect(frame).toContain("glm-4.7 | /tmp/project | 1234 tokens (12%)");
     expect(frame).toContain("shift+tab switch mode");
     expect(frame).toContain("ctrl+o transcript");
+    expect(frame).not.toContain("esc to cancel");
   });
 });

@@ -1,8 +1,8 @@
 import {constants} from "node:fs";
 import {chmod, type FileHandle, mkdir, open, realpath,} from "node:fs/promises";
-import {homedir} from "node:os";
 import {dirname, join, resolve} from "node:path";
 import {withFileLock} from "../../persistence/fileLock.js";
+import type {PillarStorageLayout} from "../../persistence/index.js";
 
 const HISTORY_VERSION = 2;
 const DEFAULT_HISTORY_LIMIT = 100;
@@ -26,10 +26,6 @@ export interface InputHistoryStore {
 export interface CreateInputHistoryStoreOptions {
     historyPath?: string;
     limit?: number;
-}
-
-function getInputHistoryPath(): string {
-    return join(homedir(), ".pillar", "history.jsonl");
 }
 
 async function canonicalProject(cwd: string): Promise<string> {
@@ -83,9 +79,10 @@ async function readRecentLines(path: string): Promise<string[]> {
 }
 
 export function createInputHistoryStore(
+    storage: PillarStorageLayout,
     options: CreateInputHistoryStoreOptions = {}
 ): InputHistoryStore {
-    const historyPath = options.historyPath ?? getInputHistoryPath();
+    const historyPath = options.historyPath ?? join(storage.pillarHome, "history.jsonl");
     const limit = Math.max(1, Math.floor(options.limit ?? DEFAULT_HISTORY_LIMIT));
     let appendQueue = Promise.resolve();
 
@@ -158,5 +155,3 @@ export function createInputHistoryStore(
         },
     };
 }
-
-export const inputHistoryStore = createInputHistoryStore();

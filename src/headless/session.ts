@@ -26,19 +26,19 @@ export interface HeadlessSessionState {
 export function loadHeadlessSession(
     options: Pick<
         HeadlessOptions,
-        "cwd" | "settings" | "resumeMode" | "permissionMode"
+        "storage" | "cwd" | "settings" | "resumeMode" | "permissionMode"
     >
 ): HeadlessSessionState {
-    const {cwd, settings, resumeMode, permissionMode} = options;
+    const {storage, cwd, settings, resumeMode, permissionMode} = options;
     const model = settings.models.primary.model;
     if (resumeMode.kind === "picker") {
         throw new Error("headless 模式不能使用交互式 -r；请使用 -c 或 -r <sessionId>");
     }
 
     const loaded = resumeMode.kind === "continue"
-        ? loadLatestSession(cwd, model)
+        ? loadLatestSession(storage, cwd, model)
         : resumeMode.kind === "session"
-            ? loadSession(cwd, resumeMode.sessionId, model)
+            ? loadSession(storage, cwd, resumeMode.sessionId, model)
             : null;
 
     if (resumeMode.kind !== "none" && !loaded) {

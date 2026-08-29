@@ -37,6 +37,7 @@ import {
     type FileCheckpointRecord,
     type FileFingerprint,
 } from "./types.js";
+import {createPillarStorageLayout, type PillarStorageLayout} from "../persistence/index.js";
 
 const MAX_CHECKPOINTS_PER_SESSION = 100;
 const MAX_CHECKPOINT_MUTATIONS = 100_000;
@@ -290,14 +291,6 @@ function uniqueWarnings(
     return warnings;
 }
 
-function isCaptureFailure(warning: CheckpointCoverageWarning): boolean {
-    return warning.code === "checkpoint_write_failed" ||
-        warning.code === "checkpoint_after_write_failed" ||
-        warning.code === "unsupported_path" ||
-        warning.code === "unsupported_file" ||
-        warning.code === "file_too_large";
-}
-
 export class FileCheckpointStore {
     readonly cwd: string;
     readonly directory: string;
@@ -307,9 +300,9 @@ export class FileCheckpointStore {
     private readonly mutationPathCache = new Map<string, Set<string>>();
 
     private constructor(
+        storage: PillarStorageLayout,
         cwd: string,
-        readonly sessionId: string,
-        options: FileCheckpointStoreOptions = {}
+        readonly sessionId: string
     ) {
         this.pathCwd = resolve(cwd);
         try {
@@ -318,21 +311,30 @@ export class FileCheckpointStore {
             this.cwd = resolve(cwd).normalize("NFC");
         }
         this.directory = getCheckpointDirectory(
+            storage,
             this.cwd,
-            sessionId,
-            options.projectsRoot
+            sessionId
         );
         this.manifestPath = getCheckpointManifestPath(this.directory);
         this.lockPath = getCheckpointLockPath(this.directory);
     }
 
-    static create(cwd: string, sessionId: string): FileCheckpointStore {
-        return new FileCheckpointStore(cwd, sessionId);
+    static create(
+        storage: PillarStorageLayout,
+        cwd: string,
+        sessionId: string
+    ): FileCheckpointStore {
+        return new FileCheckpointStore(storage, cwd, sessionId);
     }
 
     static createFactory(options: FileCheckpointStoreOptions = {}) {
+        const storage = createPillarStorageLayout({
+            ...(options.projectsRoot
+                ? {projectsRoot: options.projectsRoot}
+                : {}),
+        });
         return (cwd: string, sessionId: string): FileCheckpointStore =>
-            new FileCheckpointStore(cwd, sessionId, options);
+            new FileCheckpointStore(storage, cwd, sessionId);
     }
 
     private async readManifest(): Promise<FileCheckpointManifest> {
@@ -684,9 +686,7 @@ export class FileCheckpointStore {
                     item.message === warning.message
             );
             if (!duplicate) checkpoint.coverageWarnings.push(warning);
-            if (isCaptureFailure(warning)) {
-                checkpoint.fileCoverage = "incomplete";
-            }
+            checkpoint.fileCoverage = "incomplete";
         });
     }
 

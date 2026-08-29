@@ -74,10 +74,10 @@ async function runConcurrentWorkers(
 
 describe("cross-process persistence", () => {
   test("两个进程同时保存 session 时 index 不丢条目", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       await runConcurrentWorkers(cwd, "session", 8);
       expect(
-        listSessionIndex(cwd)
+        listSessionIndex(storage, cwd)
           .map((entry) => entry.sessionId)
           .sort()
       ).toEqual(

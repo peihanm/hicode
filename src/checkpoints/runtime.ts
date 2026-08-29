@@ -1,4 +1,5 @@
 import type {FileStateTracker} from "../tools/shared/fileState.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {randomUUID} from "node:crypto";
 import {createFileCheckpointStore, FileCheckpointStore} from "./store.js";
 import type {
@@ -206,6 +207,7 @@ class DisabledFileCheckpointRuntime implements FileCheckpointRuntimeLike {
 }
 
 export function createFileCheckpointRuntime(input: {
+    storage: PillarStorageLayout;
     cwd: string;
     sessionId: string;
     enabled: boolean;
@@ -213,7 +215,11 @@ export function createFileCheckpointRuntime(input: {
     initialHead?: CheckpointHead;
 }): FileCheckpointRuntimeLike {
     const head = input.initialHead ?? {branchId: randomUUID()};
-    const store = createFileCheckpointStore(input.cwd, input.sessionId);
+    const store = createFileCheckpointStore(
+        input.storage,
+        input.cwd,
+        input.sessionId
+    );
     if (!input.enabled) {
         return new DisabledFileCheckpointRuntime(head, store, input.fileState);
     }

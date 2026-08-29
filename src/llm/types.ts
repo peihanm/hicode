@@ -1,4 +1,5 @@
 import type {LLMProviderName} from "./providerRegistry.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 // OpenAI-compatible chat message and Function Calling protocols belong to the
 // LLM boundary. Agent/UI application types live in their owning modules.
@@ -62,6 +63,7 @@ export interface LLMStreamProgress {
 }
 
 export interface LLMCallOptions {
+    storage: PillarStorageLayout;
     messages: Message[];
     tools: OpenAITool[];
     cwd: string;
@@ -88,6 +90,7 @@ export interface LLMSourceConnection {
 export type LLMCaller = (
     messages: Message[],
     tools: OpenAITool[],
+    storage: PillarStorageLayout,
     cwd: string,
     model: string,
     kind: LLMCallKind,
@@ -109,6 +112,7 @@ export interface LLMProvider {
 export interface PromptLogRequest {
     messages: unknown[];
     tools?: unknown[];
+    [key: string]: unknown;
 }
 
 export type PromptLogResponse =

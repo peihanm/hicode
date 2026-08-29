@@ -167,6 +167,11 @@ describe("File Checkpoint Store", () => {
                 code: "bash_side_effects",
                 message: "Bash 可能修改文件",
             }]);
+            expect(listed[0]?.fileCoverage).toBe("incomplete");
+            const preview = await runtime.previewRestore(
+                listed[0]!.checkpointId
+            );
+            expect(preview.conflicts[0]?.reason).toBe("incomplete_checkpoint");
         });
     });
 

@@ -8,6 +8,15 @@ export {
 export {
     getPillarHome,
     getProjectsRoot,
+} from "./paths.js";
+export {
+    createPillarStorageLayout,
+    getProjectDebugDirectory,
+    getProjectSessionsDirectory,
     getProjectStorageDirectory,
     getSessionStorageDirectory,
-} from "./paths.js";
+} from "./layout.js";
+export type {
+    CreatePillarStorageLayoutOptions,
+    PillarStorageLayout,
+} from "./layout.js";

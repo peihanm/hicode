@@ -14,6 +14,7 @@ import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import {createToolRuntime} from "../tools/registry.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {MemoryFileAccess} from "./types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 const MEMORY_AGENT_MAX_ITERATIONS = 5;
 const MEMORY_AGENT_TOOLS = [
@@ -36,6 +37,7 @@ export interface MemoryExtractor {
 }
 
 export interface CreateMemoryExtractorOptions {
+    storage: PillarStorageLayout;
     cwd: string;
     model: string;
     provider: LLMProviderName;
@@ -97,6 +99,7 @@ export function createMemoryExtractor(
             const ctx = createToolContext({
                 signal: input.signal,
                 resources: {
+                    storage: options.storage,
                     cwd: options.cwd,
                     workspaceBoundary: options.memoryFiles.directory,
                     model: options.model,
@@ -112,7 +115,11 @@ export function createMemoryExtractor(
                 session: {
                     sessionId,
                     compactState: createCompactState(),
-                    toolResultStore: createToolResultStore(options.cwd, sessionId),
+                    toolResultStore: createToolResultStore(
+                        options.storage,
+                        options.cwd,
+                        sessionId
+                    ),
                     fileCheckpoints: createDisabledFileCheckpointRuntime(),
                 },
                 host: {

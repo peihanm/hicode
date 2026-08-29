@@ -14,6 +14,7 @@ import type {
     TokenUsage,
     ToolCall,
 } from "./types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 const providers: Record<LLMProviderName, LLMProvider> = {
     glm: glmProvider,
@@ -39,6 +40,7 @@ export function createLLMCaller(
     return async function callConfiguredLLM(
         messages: Message[],
         tools: OpenAITool[],
+        storage: PillarStorageLayout,
         cwd: string = process.cwd(),
         model: string = DEFAULT_MODEL,
         kind: LLMCallKind = "main",
@@ -53,6 +55,7 @@ export function createLLMCaller(
         return provider.call({
             messages,
             tools,
+            storage,
             cwd,
             model,
             kind,

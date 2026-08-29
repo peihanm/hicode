@@ -425,7 +425,9 @@ describe("UITurnEventStore", () => {
     const restored = JSON.parse(
       JSON.stringify(store.getPersistedUIEvents())
     ) as ReturnType<UITurnEventStore["getPersistedUIEvents"]>;
-    expect(restored).toHaveLength(4);
+    expect(restored).toHaveLength(3);
+    expect(restored.filter((event) => event.type === "file_change")).toHaveLength(1);
+    expect(restored.filter((event) => event.type === "tool_call")).toHaveLength(2);
     const restoredChange = restored.findLast(
       (event) => event.type === "file_change"
     );

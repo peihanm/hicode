@@ -157,6 +157,7 @@ async function runAgentCore(
                 llmResult = await callLLMImpl(
                     invokeMessages,
                     tools,
+                    ctx.storage,
                     ctx.cwd,
                     ctx.model,
                     "main",

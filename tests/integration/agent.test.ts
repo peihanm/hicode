@@ -128,6 +128,7 @@ describe("agent loop", () => {
         async (
           _messages,
           _tools,
+          _storage,
           _cwd,
           _model,
           _kind,
@@ -174,6 +175,7 @@ describe("agent loop", () => {
         async (
           _messages,
           _tools,
+          _storage,
           _cwd,
           _model,
           _kind,

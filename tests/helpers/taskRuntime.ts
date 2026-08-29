@@ -10,6 +10,7 @@ import {
 import type {ShellRunnerLike} from "../../src/tools/bash/shellRunner.js";
 import {WorktreeRuntime} from "../../src/worktrees/runtime.js";
 import {WorktreeManifestStore} from "../../src/worktrees/manifest.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 export function createTaskRuntimeForTest(
     cwd: string,
@@ -20,10 +21,11 @@ export function createTaskRuntimeForTest(
     projectsRoot = join(cwd, ".test-task-projects"),
     subagents: SubagentRegistry = BUILTIN_SUBAGENT_REGISTRY
 ): TaskRuntimeLike {
+    const storage = createPillarStorageLayout({projectsRoot});
     return new TaskRuntime(
         shellRunner,
         createSubagentRunner,
-        new TaskJournal(cwd, projectsRoot),
+        new TaskJournal(storage, cwd),
         new WorktreeRuntime(
             cwd,
             new WorktreeManifestStore(join(projectsRoot, "worktree-manifests"))

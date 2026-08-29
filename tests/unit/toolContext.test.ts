@@ -13,13 +13,14 @@ import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 
 describe("ToolContext builder", () => {
   test("同一个 context 通过 host getters 读取最新权限状态", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       let rules: PermissionRules = { allow: [], ask: [], deny: [] };
       let mode: PermissionMode = "default";
       let prePlanMode: PermissionMode | undefined;
       const context = createToolContext({
         signal: new AbortController().signal,
         resources: {
+          storage,
           cwd,
           model: "glm-test",
           provider: "glm",
@@ -69,7 +70,7 @@ describe("ToolContext builder", () => {
   });
 
   test("每次构造保留独立 signal，同时复用稳定 resources/session", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const controllerA = new AbortController();
       const controllerB = new AbortController();
       const skills = [{
@@ -86,6 +87,7 @@ describe("ToolContext builder", () => {
         rootDir: `${cwd}/results`,
       });
       const resources = {
+        storage,
         cwd,
         model: "glm-test",
         provider: "glm" as const,

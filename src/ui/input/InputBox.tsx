@@ -3,7 +3,7 @@ import {Box, Text, useInput} from "ink";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {getSlashCommandSuggestions} from "../../slash/index.js";
 import {MultilineTextInput, type InputBoundaryReplacement, type InputBoundaryState,} from "./MultilineTextInput.js";
-import {inputHistoryStore, type InputHistoryStore,} from "../../session/inputHistory/index.js";
+import type {InputHistoryStore} from "../../session/inputHistory/index.js";
 import {useTerminalWidth} from "../terminalSize.js";
 import {
     collapsePromptText,
@@ -19,6 +19,13 @@ import {
 const INPUT_HISTORY_LIMIT = 100;
 const MAX_VISIBLE_SLASH_SUGGESTIONS = 6;
 const DEFAULT_CLOCK = () => Date.now();
+const EMPTY_INPUT_HISTORY: InputHistoryStore = {
+    async load() {
+        return [];
+    },
+    async append() {
+    },
+};
 
 interface InputBoxDependencies {
     now(): number;
@@ -72,8 +79,8 @@ export function createInputBox(
     overrides: Partial<InputBoxDependencies> = {}
 ) {
     const now = overrides.now ?? DEFAULT_CLOCK;
-    const persistentHistory =
-        overrides.persistentHistory ?? inputHistoryStore;
+    const defaultPersistentHistory =
+        overrides.persistentHistory ?? EMPTY_INPUT_HISTORY;
 
     return function InputBox({
                                  onSubmit,
@@ -81,6 +88,7 @@ export function createInputBox(
                                  terminalWidth,
                                  cwd,
                                  sessionId,
+                                 persistentHistory = defaultPersistentHistory,
                                  startedAt,
                                  elapsedMs,
                                  replacement,
@@ -93,6 +101,7 @@ export function createInputBox(
         terminalWidth?: number;
         cwd?: string;
         sessionId?: string;
+        persistentHistory?: InputHistoryStore;
         startedAt?: number;
         elapsedMs?: number;
         replacement?: {
@@ -313,9 +322,12 @@ export function createInputBox(
                     {durationLabel && (
                         <Text color={COLORS.dim}>
                             {SYMBOLS.timer} {durationLabel}
+                            {startedAt !== undefined ? " (esc to cancel)" : ""}
                         </Text>
                     )}
-                    <Text color={COLORS.dim}>...</Text>
+                    <Box paddingTop={1}>
+                        <Text color={COLORS.dim}>...</Text>
+                    </Box>
                     <Text color={COLORS.dim}>{line}</Text>
                 </Box>
             );
@@ -326,86 +338,89 @@ export function createInputBox(
                 {durationLabel && (
                     <Text color={COLORS.dim}>
                         {SYMBOLS.timer} {durationLabel}
+                        {startedAt !== undefined ? " (esc to cancel)" : ""}
                     </Text>
                 )}
-                <MultilineTextInput
-                    value={value}
-                    onChange={replaceValue}
-                    width={width}
-                    placeholder="Ask Pillar to build, inspect, or fix something"
-                    handleVerticalNavigation={!showSuggestions}
-                    onVerticalBoundary={(direction, state) =>
-                        navigateHistory(direction, {
-                            value: expandPasteCapsules(
-                                state.value,
-                                pasteCapsulesRef.current
-                            ),
-                            cursorOffset: expandPasteCapsuleCursor(
+                <Box paddingTop={1} flexDirection="column">
+                    <MultilineTextInput
+                        value={value}
+                        onChange={replaceValue}
+                        width={width}
+                        placeholder="Ask Pillar to build, inspect, or fix something"
+                        handleVerticalNavigation={!showSuggestions}
+                        onVerticalBoundary={(direction, state) =>
+                            navigateHistory(direction, {
+                                value: expandPasteCapsules(
+                                    state.value,
+                                    pasteCapsulesRef.current
+                                ),
+                                cursorOffset: expandPasteCapsuleCursor(
+                                    state.value,
+                                    state.cursorOffset,
+                                    pasteCapsulesRef.current
+                                ),
+                            })
+                        }
+                        atomicRanges={atomicRanges}
+                        onAtomicRangeDelete={(range) => {
+                            replacePasteCapsules(
+                                removePasteCapsule(
+                                    pasteCapsulesRef.current,
+                                    range.id
+                                )
+                            );
+                        }}
+                        onInsertText={(text, state) => {
+                            const insertion = insertPasteCapsule(
                                 state.value,
                                 state.cursorOffset,
+                                text,
                                 pasteCapsulesRef.current
-                            ),
-                        })
-                    }
-                    atomicRanges={atomicRanges}
-                    onAtomicRangeDelete={(range) => {
-                        replacePasteCapsules(
-                            removePasteCapsule(
-                                pasteCapsulesRef.current,
-                                range.id
-                            )
-                        );
-                    }}
-                    onInsertText={(text, state) => {
-                        const insertion = insertPasteCapsule(
-                            state.value,
-                            state.cursorOffset,
-                            text,
-                            pasteCapsulesRef.current
-                        );
-                        if (insertion.collapsed) {
-                            replacePasteCapsules(insertion.state);
-                        }
-                        return {
-                            value: insertion.value,
-                            cursorOffset: insertion.cursorOffset,
-                        };
-                    }}
-                    onSubmit={(v) => {
-                        const suggestion = showSuggestions
-                            ? suggestions[activeSuggestionIndex] || suggestions[0]
-                            : undefined;
-                        const submitted = suggestion
-                            ? `/${suggestion.name}`
-                            : expandPasteCapsules(
-                                v,
-                                pasteCapsulesRef.current
-                            ).trim();
-                        if (submitted) {
-                            onSubmit(submitted);
-                            const isDuplicate = historyRef.current.at(-1) === submitted;
-                            const nextHistory = isDuplicate
-                                ? historyRef.current
-                                : mergeHistory(historyRef.current, [submitted]);
-                            historyRef.current = nextHistory;
-                            setHistory(nextHistory);
-                            if (cwd && sessionId && !isDuplicate) {
-                                void persistentHistory.append(
-                                    cwd,
-                                    sessionId,
-                                    submitted
-                                ).catch(() => {
-                                    // 持久化失败不能影响已经提交的 turn。
-                                });
+                            );
+                            if (insertion.collapsed) {
+                                replacePasteCapsules(insertion.state);
                             }
-                            historyIndexRef.current = null;
-                            setHistoryIndex(null);
-                            historyDraftRef.current = "";
-                            replacePasteCapsules(EMPTY_PASTE_CAPSULE_STATE);
-                            replaceValue("");
-                        }
-                    }}
-                />
+                            return {
+                                value: insertion.value,
+                                cursorOffset: insertion.cursorOffset,
+                            };
+                        }}
+                        onSubmit={(v) => {
+                            const suggestion = showSuggestions
+                                ? suggestions[activeSuggestionIndex] || suggestions[0]
+                                : undefined;
+                            const submitted = suggestion
+                                ? `/${suggestion.name}`
+                                : expandPasteCapsules(
+                                    v,
+                                    pasteCapsulesRef.current
+                                ).trim();
+                            if (submitted) {
+                                onSubmit(submitted);
+                                const isDuplicate = historyRef.current.at(-1) === submitted;
+                                const nextHistory = isDuplicate
+                                    ? historyRef.current
+                                    : mergeHistory(historyRef.current, [submitted]);
+                                historyRef.current = nextHistory;
+                                setHistory(nextHistory);
+                                if (cwd && sessionId && !isDuplicate) {
+                                    void persistentHistory.append(
+                                        cwd,
+                                        sessionId,
+                                        submitted
+                                    ).catch(() => {
+                                        // 持久化失败不能影响已经提交的 turn。
+                                    });
+                                }
+                                historyIndexRef.current = null;
+                                setHistoryIndex(null);
+                                historyDraftRef.current = "";
+                                replacePasteCapsules(EMPTY_PASTE_CAPSULE_STATE);
+                                replaceValue("");
+                            }
+                        }}
+                    />
+                </Box>
                 <Text color={COLORS.border}>{line}</Text>
                 {showSuggestions && (
                     <Box flexDirection="column">

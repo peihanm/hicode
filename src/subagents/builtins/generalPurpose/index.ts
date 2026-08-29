@@ -39,6 +39,7 @@ export const GENERAL_PURPOSE_SUBAGENT: SubagentRegistration = {
                 allowedToolNames: GENERAL_PURPOSE_AGENT.allowedTools,
             },
             contextResources: {
+                storage: parentContext.storage,
                 cwd: parentContext.cwd,
                 workspaceBoundary:
                     parentContext.workspaceBoundary ?? parentContext.cwd,

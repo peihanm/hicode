@@ -36,6 +36,7 @@ export function createCustomSubagentRegistration(
                     additionalTools: mcpTools,
                 },
                 contextResources: {
+                    storage: parentContext.storage,
                     cwd: parentContext.cwd,
                     workspaceBoundary:
                         parentContext.workspaceBoundary ?? parentContext.cwd,

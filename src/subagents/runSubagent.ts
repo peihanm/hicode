@@ -75,6 +75,7 @@ function createForkRegistration(
             return {
                 toolRuntimeOptions: {allowedToolNames: allowedTools},
                 contextResources: {
+                    storage: parentContext.storage,
                     cwd: parentContext.cwd,
                     workspaceBoundary:
                         parentContext.workspaceBoundary ?? parentContext.cwd,
@@ -207,6 +208,7 @@ export function createSubagentRunnerFactory(
             });
             // subagentLauncher 故意缺失，形成不可递归的运行时边界。
             const transcript = new SubagentTranscriptWriter(
+                parentContext.storage,
                 options.storageCwd ?? parentContext.cwd,
                 parentContext.sessionId,
                 agentId

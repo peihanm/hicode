@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {createInitialHistory} from "../prompt/index.js";
 import {normalizeGitSessionState} from "../git/index.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {
     countSessionConversationMessages,
     isRuntimeQueuedMessage,
@@ -13,6 +14,7 @@ import {
 import {readSessionIndex, upsertSessionIndex} from "./indexStore.js";
 import {
     appendSessionEntry,
+    replaceLatestSessionSnapshot,
     readLatestSessionSnapshot,
     readSessionEntries,
     withSessionPersistenceLock,
@@ -32,6 +34,7 @@ export function createSessionId(): string {
 }
 
 export async function saveSessionSnapshot(
+    storage: PillarStorageLayout,
     input: SaveSessionSnapshotInput
 ): Promise<void> {
     const conversation = stripSystemMessage(input.history);
@@ -44,7 +47,7 @@ export async function saveSessionSnapshot(
         : {firstPrompt: hint, lastPrompt: hint, summary: hint};
     if (!summary.summary && !input.allowEmpty) return;
 
-    await withSessionPersistenceLock(input.cwd, async () => {
+    await withSessionPersistenceLock(storage, input.cwd, async () => {
         const timestamp = new Date().toISOString();
         const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
         const gitSession = normalizeGitSessionState(input.gitSession);
@@ -71,8 +74,13 @@ export async function saveSessionSnapshot(
             ...(gitSession ? {gitSession} : {}),
         };
 
-        await appendSessionEntry(input.cwd, input.sessionId, entry);
-        await upsertSessionIndex({
+        await replaceLatestSessionSnapshot(
+            storage,
+            input.cwd,
+            input.sessionId,
+            entry
+        );
+        await upsertSessionIndex(storage, {
             cwd: input.cwd,
             sessionId: input.sessionId,
             model: input.model,
@@ -84,6 +92,7 @@ export async function saveSessionSnapshot(
 }
 
 export async function saveSessionTurnCheckpoint(
+    storage: PillarStorageLayout,
     input: SaveSessionTurnCheckpointInput
 ): Promise<void> {
     const conversation = stripSystemMessage(input.history);
@@ -109,16 +118,17 @@ export async function saveSessionTurnCheckpoint(
         uiEvents: limitSessionUIEvents(input.uiEvents),
         ...(toolDiscovery ? {toolDiscovery} : {}),
     };
-    await withSessionPersistenceLock(input.cwd, () =>
-        appendSessionEntry(input.cwd, input.sessionId, entry)
+    await withSessionPersistenceLock(storage, input.cwd, () =>
+        appendSessionEntry(storage, input.cwd, input.sessionId, entry)
     );
 }
 
 export function listSessionTurnCheckpoints(
+    storage: PillarStorageLayout,
     cwd: string,
     sessionId: string
 ): SessionTurnCheckpointEntry[] {
-    return readSessionEntries(cwd, sessionId)
+    return readSessionEntries(storage, cwd, sessionId)
         .filter(
             (entry): entry is SessionTurnCheckpointEntry =>
                 entry.type === "turn_checkpoint" &&
@@ -136,19 +146,23 @@ export function listSessionTurnCheckpoints(
 }
 
 export function loadSessionTurnCheckpoint(
+    storage: PillarStorageLayout,
     cwd: string,
     sessionId: string,
     checkpointId: string
 ): SessionTurnCheckpointEntry | null {
-    return listSessionTurnCheckpoints(cwd, sessionId)
+    return listSessionTurnCheckpoints(storage, cwd, sessionId)
         .findLast((entry) => entry.checkpointId === checkpointId) ?? null;
 }
 
-export function listSessionIndex(cwd: string): SessionIndexEntry[] {
-    return readSessionIndex(cwd).sessions
+export function listSessionIndex(
+    storage: PillarStorageLayout,
+    cwd: string
+): SessionIndexEntry[] {
+    return readSessionIndex(storage, cwd).sessions
         .filter((entry) => entry.cwd === cwd && !entry.archived)
         .flatMap((entry) => {
-            const snapshot = readLatestSessionSnapshot(cwd, entry.sessionId);
+            const snapshot = readLatestSessionSnapshot(storage, cwd, entry.sessionId);
             return snapshot
                 ? [{
                     ...entry,
@@ -166,13 +180,14 @@ export function listSessionIndex(cwd: string): SessionIndexEntry[] {
 }
 
 export function loadSession(
+    storage: PillarStorageLayout,
     cwd: string,
     sessionId: string,
     model: string
 ): LoadedSession | null {
-    const snapshot = readLatestSessionSnapshot(cwd, sessionId);
+    const snapshot = readLatestSessionSnapshot(storage, cwd, sessionId);
     if (!snapshot) return null;
-    const index = readSessionIndex(cwd).sessions.find(
+    const index = readSessionIndex(storage, cwd).sessions.find(
         (entry) => entry.sessionId === sessionId
     );
     return {
@@ -198,9 +213,10 @@ export function loadSession(
 }
 
 export function loadLatestSession(
+    storage: PillarStorageLayout,
     cwd: string,
     model: string
 ): LoadedSession | null {
-    const latest = listSessionIndex(cwd)[0];
-    return latest ? loadSession(cwd, latest.sessionId, model) : null;
+    const latest = listSessionIndex(storage, cwd)[0];
+    return latest ? loadSession(storage, cwd, latest.sessionId, model) : null;
 }

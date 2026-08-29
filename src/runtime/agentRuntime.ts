@@ -10,6 +10,7 @@ import type {CreateSubagentRunner} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import {createToolResultStore} from "../toolResults/index.js";
 import {createMemoryAwareAgentRunner, type MemoryRuntimeLike,} from "../memory/index.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 export interface AgentRuntime {
     runAgent: AgentRunner;
@@ -56,11 +57,13 @@ function createPrimaryRouter(sources: ResolvedPillarSettings["sources"]) {
 
 /** Route the per-Turn primary target while keeping the fast target fixed. */
 export function createAgentRuntime({
+    storage,
     fastModel,
     sources,
     subagents,
     memory,
 }: {
+    storage: PillarStorageLayout;
     fastModel: ModelTargetSettings;
     sources: ResolvedPillarSettings["sources"];
     subagents: SubagentRegistry;
@@ -80,7 +83,8 @@ export function createAgentRuntime({
             fastRunAgent: fast.runAgent,
             fastModel: fastModel.model,
             registry: subagents,
-            createToolResultStore,
+            createToolResultStore: (cwd, sessionId) =>
+                createToolResultStore(storage, cwd, sessionId),
         }),
     };
 }

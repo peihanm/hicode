@@ -1,12 +1,12 @@
 import {isAbsolute, join, relative, resolve} from "node:path";
-import {getProjectStorageDirectory} from "../persistence/index.js";
+import {getProjectStorageDirectory, type PillarStorageLayout} from "../persistence/index.js";
 import {memoryKeySchema} from "./schema.js";
 
 export function getMemoryDirectory(
-    cwd: string,
-    projectsRoot?: string
+    storage: PillarStorageLayout,
+    cwd: string
 ): string {
-    return join(getProjectStorageDirectory(cwd, projectsRoot), "memory");
+    return join(getProjectStorageDirectory(storage, cwd), "memory");
 }
 
 export function getMemoryIndexPath(directory: string): string {

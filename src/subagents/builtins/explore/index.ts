@@ -10,6 +10,7 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
                 allowedToolNames: EXPLORE_AGENT.allowedTools,
             },
             contextResources: {
+                storage: parentContext.storage,
                 cwd: parentContext.cwd,
                 workspaceBoundary:
                     parentContext.workspaceBoundary ?? parentContext.cwd,

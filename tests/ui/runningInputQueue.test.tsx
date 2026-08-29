@@ -100,7 +100,7 @@ describe("running input queue UI", () => {
     });
 
     test("恢复 Session 时用户排队输入变成可编辑草稿", async () => {
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             const resources = createTestRuntimeResources(cwd);
             const inputs: string[] = [];
             const initialSession: LoadedSession = {
@@ -148,7 +148,7 @@ describe("running input queue UI", () => {
             expect(instance.lastFrame()).toContain("恢复后的草稿");
             expect(inputs).toEqual([]);
             expect(
-                loadSession(cwd, initialSession.sessionId, resources.model)
+                loadSession(storage, cwd, initialSession.sessionId, resources.model)
                     ?.queuedInputs
             ).toEqual([initialSession.queuedInputs[1]]);
 

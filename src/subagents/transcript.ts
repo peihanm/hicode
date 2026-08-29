@@ -1,6 +1,7 @@
 import {createHash} from "node:crypto";
 import {appendFile, mkdir} from "node:fs/promises";
 import {dirname, join} from "node:path";
+import {getSessionStorageDirectory, type PillarStorageLayout} from "../persistence/index.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {Message} from "../llm/types.js";
 import type {AgentType, SubagentResult} from "./types.js";
@@ -33,16 +34,14 @@ function safeKey(value: string): string {
 }
 
 export function getSubagentTranscriptPath(
+    storage: PillarStorageLayout,
     cwd: string,
     parentSessionId: string,
     agentId: string
 ): string {
     return join(
-        cwd,
-        ".pillar",
-        "sessions",
+        getSessionStorageDirectory(storage, cwd, parentSessionId),
         "subagents",
-        safeKey(parentSessionId),
         `${safeKey(agentId)}.jsonl`
     );
 }
@@ -50,8 +49,18 @@ export function getSubagentTranscriptPath(
 export class SubagentTranscriptWriter {
     readonly path: string;
 
-    constructor(cwd: string, parentSessionId: string, agentId: string) {
-        this.path = getSubagentTranscriptPath(cwd, parentSessionId, agentId);
+    constructor(
+        storage: PillarStorageLayout,
+        cwd: string,
+        parentSessionId: string,
+        agentId: string
+    ) {
+        this.path = getSubagentTranscriptPath(
+            storage,
+            cwd,
+            parentSessionId,
+            agentId
+        );
     }
 
     async append(entry: SubagentTranscriptEntry): Promise<void> {

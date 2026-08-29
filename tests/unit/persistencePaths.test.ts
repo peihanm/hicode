@@ -3,6 +3,7 @@ import {homedir} from "node:os";
 import {join} from "node:path";
 import {
     getPillarHome,
+    createPillarStorageLayout,
     getProjectKey,
     getProjectStorageDirectory,
     getProjectsRoot,
@@ -23,33 +24,35 @@ describe("persistence paths", () => {
     test("Project 与 Session 目录只计算一次 identity", async () => {
         await withTempProject(async (cwd) => {
             const projectsRoot = join(cwd, "storage-root");
+            const storage = createPillarStorageLayout({projectsRoot});
             const sessionId = "session-path-test";
             const projectDirectory = join(projectsRoot, getProjectKey(cwd));
             const sessionDirectory = join(
                 projectDirectory,
+                "sessions",
                 `session-${hashProjectValue(sessionId, 24)}`
             );
 
-            expect(getProjectStorageDirectory(cwd, projectsRoot)).toBe(
+            expect(getProjectStorageDirectory(storage, cwd)).toBe(
                 projectDirectory
             );
             expect(getSessionStorageDirectory(
+                storage,
                 cwd,
-                sessionId,
-                projectsRoot
+                sessionId
             )).toBe(sessionDirectory);
-            expect(getMemoryDirectory(cwd, projectsRoot)).toBe(
+            expect(getMemoryDirectory(storage, cwd)).toBe(
                 join(projectDirectory, "memory")
             );
             expect(getCheckpointDirectory(
+                storage,
                 cwd,
-                sessionId,
-                projectsRoot
+                sessionId
             )).toBe(join(sessionDirectory, "checkpoints"));
             expect(getToolResultSessionDir(
+                storage,
                 cwd,
-                sessionId,
-                projectsRoot
+                sessionId
             )).toBe(join(sessionDirectory, "tool-results"));
         });
     });

@@ -26,7 +26,9 @@ describe("multiline input box", () => {
         onSubmit={() => {}}
       />
     );
-    expect(running.lastFrame()).toContain("◷ Working for 2m 02s\n...");
+    expect(running.lastFrame()).toContain(
+      "◷ Working for 2m 02s (esc to cancel)\n\n...\n─"
+    );
     running.unmount();
 
     const completed = render(
@@ -37,7 +39,11 @@ describe("multiline input box", () => {
         onSubmit={() => {}}
       />
     );
-    expect(completed.lastFrame()).toContain("◷ Worked for 2m 02s\n❯");
+    expect(completed.lastFrame()).toContain("◷ Worked for 2m 02s\n\n❯");
+    expect(completed.lastFrame()).toContain(
+      "Ask Pillar to build, inspect, or fix something\n─"
+    );
+    expect(completed.lastFrame()).not.toContain("esc to cancel");
     expect(completed.lastFrame()).not.toContain("─ Worked for");
   });
 

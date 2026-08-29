@@ -107,7 +107,7 @@ describe("Git Session baseline", () => {
     });
 
     test("Snapshot/Resume 保留 Baseline，外部 HEAD 变化会 Reconcile", async () => {
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             await initializeRepository(cwd);
             const runtime = createGitSessionRuntime({
                 cwd,
@@ -118,7 +118,7 @@ describe("Git Session baseline", () => {
             runtime.observePaths(["observed.txt"], cwd);
             await writeFile(join(cwd, "observed.txt"), "observed\n");
 
-            await saveSessionSnapshot({
+            await saveSessionSnapshot(storage, {
                 cwd,
                 model: "glm-test",
                 sessionId: "git-session",
@@ -130,7 +130,7 @@ describe("Git Session baseline", () => {
                 permissionMode: "default",
                 gitSession: runtime.getState(),
             });
-            const loaded = loadSession(cwd, "git-session", "glm-test");
+            const loaded = loadSession(storage, cwd, "git-session", "glm-test");
             expect(loaded?.gitSession?.observedPaths).toContain("observed.txt");
 
             const resumed = createGitSessionRuntime({

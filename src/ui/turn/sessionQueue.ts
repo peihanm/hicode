@@ -1,4 +1,4 @@
-import {saveSessionSnapshot, type SaveSessionSnapshotInput,} from "../../session/index.js";
+import type {SaveSessionSnapshotInput} from "../../session/index.js";
 
 export type SessionSnapshotWriter = (
     snapshot: SaveSessionSnapshotInput
@@ -17,7 +17,7 @@ export class SessionSnapshotQueue {
     private lastErrorFingerprint: string | null = null;
 
     constructor(
-        private readonly writeSnapshot: SessionSnapshotWriter = saveSessionSnapshot,
+        private readonly writeSnapshot: SessionSnapshotWriter,
         private readonly onError?: SessionPersistenceErrorHandler
     ) {
     }

@@ -7,8 +7,9 @@ import {
 } from "../../src/llm/providers/glm.js";
 import { createOpenAICompatibleCaller } from "../../src/llm/providers/openAICompatible.js";
 import { createTurnAbortController } from "../../src/runtime/abort.js";
-import { withTempProject } from "../helpers/tempProject.js";
+import { createTestStorage, withTempProject } from "../helpers/tempProject.js";
 import type { LLMCallOptions, LLMProvider } from "../../src/llm/types.js";
+import {getProjectDebugDirectory} from "../../src/persistence/index.js";
 
 const GLM_SOURCE = {
   id: "glm" as const,
@@ -16,8 +17,18 @@ const GLM_SOURCE = {
   apiKeyEnv: "GLM_API_KEY",
 };
 
-function callGlm(provider: LLMProvider, options: LLMCallOptions) {
-  return provider.call(options, GLM_SOURCE);
+function callGlm(
+  provider: LLMProvider,
+  options: Omit<LLMCallOptions, "storage">
+) {
+  return provider.call({
+    ...options,
+    storage: createTestStorage(options.cwd),
+  }, GLM_SOURCE);
+}
+
+function promptLogDirectory(cwd: string): string {
+  return join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "prompt-logs");
 }
 
 const originalFetch = globalThis.fetch;
@@ -68,11 +79,11 @@ describe("GLM cancellation", () => {
         signal: controller.signal,
       });
       await didStart;
-      const pendingLogs = await readdir(join(cwd, ".pillar", "prompt-log"));
+      const pendingLogs = await readdir(promptLogDirectory(cwd));
       expect(pendingLogs).toHaveLength(1);
       const pending = JSON.parse(
         await readFile(
-          join(cwd, ".pillar", "prompt-log", pendingLogs[0]!),
+          join(promptLogDirectory(cwd), pendingLogs[0]!),
           "utf8"
         )
       ) as { response: unknown };
@@ -86,7 +97,7 @@ describe("GLM cancellation", () => {
       expect(fetchCalls).toBe(1);
       const cancelled = JSON.parse(
         await readFile(
-          join(cwd, ".pillar", "prompt-log", pendingLogs[0]!),
+          join(promptLogDirectory(cwd), pendingLogs[0]!),
           "utf8"
         )
       ) as { response: { error?: string } };
@@ -202,9 +213,9 @@ describe("GLM cancellation", () => {
         toolName: "write_file",
         estimatedOutputTokens: expect.any(Number),
       });
-      const [promptLog] = await readdir(join(cwd, ".pillar", "prompt-log"));
+      const [promptLog] = await readdir(promptLogDirectory(cwd));
       const logged = JSON.parse(
-        await readFile(join(cwd, ".pillar", "prompt-log", promptLog!), "utf8")
+        await readFile(join(promptLogDirectory(cwd), promptLog!), "utf8")
       ) as {
         response: Record<string, unknown>;
       };
@@ -347,10 +358,10 @@ describe("GLM cancellation", () => {
 
       expect(fetchCalls).toBe(2);
       expect(result.message.content).toBe("恢复成功");
-      const logs = (await readdir(join(cwd, ".pillar", "prompt-log"))).sort();
+      const logs = (await readdir(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);
       const first = JSON.parse(
-        await readFile(join(cwd, ".pillar", "prompt-log", logs[0]!), "utf8")
+        await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8")
       ) as { response: { error?: string } };
       expect(first.response.error).toContain("API 返回空响应 (attempt 1/3");
     });
@@ -440,7 +451,7 @@ describe("GLM cancellation", () => {
       );
       expect(fetchCalls).toBe(3);
       expect(
-        await readdir(join(cwd, ".pillar", "prompt-log"))
+        await readdir(promptLogDirectory(cwd))
       ).toHaveLength(3);
     });
   });
@@ -572,10 +583,10 @@ describe("GLM cancellation", () => {
       expect(requestBodies[1]?.reasoning_effort).toBeUndefined();
       expect(result.message.content).toBe("重试成功");
       expect(progress).toContain("retrying");
-      const logs = (await readdir(join(cwd, ".pillar", "prompt-log"))).sort();
+      const logs = (await readdir(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);
       const logged = JSON.parse(
-        await readFile(join(cwd, ".pillar", "prompt-log", logs[0]!), "utf8")
+        await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8")
       ) as {
         response: {
           error?: string;

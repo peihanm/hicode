@@ -2,6 +2,8 @@ import {describe, expect, test} from "bun:test";
 import {mkdir, readFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {getSessionLogPath} from "../../src/session/paths.js";
 
 const repositoryRoot = resolve(import.meta.dir, "..", "..");
 
@@ -66,7 +68,11 @@ describe("Checkpoint Headless CLI", () => {
             expect(await readFile(join(cwd, "headless.txt"), "utf8"))
                 .toBe("before\n");
             const sessionEntries = (await readFile(
-                join(cwd, ".pillar", "sessions", `${identity.sessionId}.jsonl`),
+                getSessionLogPath(
+                    createPillarStorageLayout({pillarHome: join(home, ".pillar")}),
+                    cwd,
+                    identity.sessionId
+                ),
                 "utf8"
             )).trim().split("\n").map((line) => JSON.parse(line) as unknown);
             expect(sessionEntries.at(-1)).toMatchObject({

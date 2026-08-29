@@ -4,6 +4,9 @@ import {
     createHookPromptExecutorFactory,
 } from "../../src/hooks/prompt.js";
 import type {LLMCaller} from "../../src/llm/types.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
+
+const storage = createPillarStorageLayout({pillarHome: "/tmp/pillar-hook-test"});
 
 const usage = {
     prompt_tokens: 10,
@@ -35,6 +38,7 @@ describe("Prompt Hook executor", () => {
             };
         };
         const executor = createHookPromptExecutorFactory({callLLM})({
+            storage,
             cwd: "/project",
             model: "fast-model",
         });
@@ -59,8 +63,8 @@ describe("Prompt Hook executor", () => {
             additionalContext: "Use safe.ts instead.",
         });
         expect(calls).toHaveLength(1);
-        expect(calls[0]?.[3]).toBe("fast-model");
-        expect(calls[0]?.[4]).toBe("hook");
+        expect(calls[0]?.[4]).toBe("fast-model");
+        expect(calls[0]?.[5]).toBe("hook");
         expect(calls[0]?.[1].map((tool) => tool.function.name)).toEqual([
             "submit_hook_decision",
         ]);
@@ -93,7 +97,7 @@ describe("Prompt Hook executor", () => {
         for (const fixture of cases) {
             const executor = createHookPromptExecutorFactory({
                 callLLM: async () => ({...fixture, usage}),
-            })({cwd: "/project", model: "fast-model"});
+            })({storage, cwd: "/project", model: "fast-model"});
             await expect(executor.execute({
                 prompt: "Review",
                 event: {
@@ -112,6 +116,7 @@ describe("Prompt Hook executor", () => {
         const callLLM: LLMCaller = async (
             _messages,
             _tools,
+            _storage,
             _cwd,
             _model,
             _kind,
@@ -122,6 +127,7 @@ describe("Prompt Hook executor", () => {
             });
         });
         const executor = createHookPromptExecutorFactory({callLLM})({
+            storage,
             cwd: "/project",
             model: "fast-model",
         });

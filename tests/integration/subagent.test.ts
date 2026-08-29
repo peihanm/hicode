@@ -665,8 +665,8 @@ describe("synchronous subagent", () => {
   });
 
   test("transcript 不可写时仍返回已生成报告", async () => {
-    await withTempProject(async (cwd) => {
-      await writeFile(`${cwd}/.pillar`, "阻止创建 transcript 目录");
+    await withTempProject(async (cwd, storage) => {
+      await writeFile(storage.pillarHome, "阻止创建 transcript 目录");
       const child = createFakeLLM([assistantText("仍然完成调查")]);
       const ctx = createTestContext(cwd);
       const runner = createSubagentRunner({

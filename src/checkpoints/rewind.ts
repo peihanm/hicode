@@ -9,13 +9,20 @@ import {
 import {createFileCheckpointRuntime} from "./runtime.js";
 import type {CheckpointRestoreResult, FileCheckpointRuntimeLike,} from "./types.js";
 import {createGitSessionRuntime, createGitWorkspaceRuntime, type GitSessionState,} from "../git/index.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 function requireTurnCheckpoint(
+    storage: PillarStorageLayout,
     cwd: string,
     sessionId: string,
     checkpointId: string
 ): SessionTurnCheckpointEntry {
-    const checkpoint = loadSessionTurnCheckpoint(cwd, sessionId, checkpointId);
+    const checkpoint = loadSessionTurnCheckpoint(
+        storage,
+        cwd,
+        sessionId,
+        checkpointId
+    );
     if (!checkpoint) {
         throw new Error(`找不到对话 Checkpoint: ${checkpointId}`);
     }
@@ -34,6 +41,7 @@ function checkpointHistory(
 }
 
 async function saveConversationState(input: {
+    storage: PillarStorageLayout;
     cwd: string;
     model: string;
     sessionId: string;
@@ -41,7 +49,7 @@ async function saveConversationState(input: {
     runtime: FileCheckpointRuntimeLike;
     gitSession?: GitSessionState;
 }): Promise<void> {
-    await saveSessionSnapshot({
+    await saveSessionSnapshot(input.storage, {
         cwd: input.cwd,
         model: input.model,
         sessionId: input.sessionId,
@@ -60,14 +68,21 @@ async function saveConversationState(input: {
 }
 
 export async function rewindSessionCheckpoint(input: {
+    storage: PillarStorageLayout;
     cwd: string;
     model: string;
     sessionId: string;
     checkpointId: string;
 }): Promise<CheckpointRestoreResult> {
-    const loaded = loadSession(input.cwd, input.sessionId, input.model);
+    const loaded = loadSession(
+        input.storage,
+        input.cwd,
+        input.sessionId,
+        input.model
+    );
     if (!loaded) throw new Error(`没有找到会话: ${input.sessionId}`);
     const runtime = createFileCheckpointRuntime({
+        storage: input.storage,
         cwd: input.cwd,
         sessionId: input.sessionId,
         enabled: false,
@@ -82,6 +97,7 @@ export async function rewindSessionCheckpoint(input: {
     await gitSession.initialize();
 
     const checkpoint = requireTurnCheckpoint(
+        input.storage,
         input.cwd,
         input.sessionId,
         input.checkpointId
@@ -97,6 +113,7 @@ export async function rewindSessionCheckpoint(input: {
 
     try {
         await saveConversationState({
+            storage: input.storage,
             cwd: input.cwd,
             model: input.model,
             sessionId: input.sessionId,

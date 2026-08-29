@@ -22,6 +22,7 @@ import {
 } from "./agent.js";
 import { createSubagentRunnerForTest } from "./subagent.js";
 import type { AgentRuntime } from "../../src/runtime/agentRuntime.js";
+import {createTestStorage} from "./tempProject.js";
 
 interface HeadlessTestOptions {
   agent?: AgentTestOptions;
@@ -40,7 +41,7 @@ interface HeadlessTestOptions {
 }
 
 export function runHeadlessForTest(
-  options: HeadlessOptions,
+  options: Omit<HeadlessOptions, "storage"> & {storage?: HeadlessOptions["storage"]},
   test: HeadlessTestOptions = {}
 ): Promise<HeadlessRunSummary> {
   const agentRuntime: AgentRuntime = {
@@ -75,12 +76,15 @@ export function runHeadlessForTest(
           });
       return {...resources, agentRuntime};
     },
-    createToolResultStore: (cwd, sessionId) =>
+    createToolResultStore: (_storage, cwd, sessionId) =>
       ToolResultStore.createFactory(test.toolResultStoreOptions ?? {})(cwd, sessionId),
     saveSession: test.saveSession ?? saveSessionSnapshot,
     writeOutput: test.writeOutput ?? writeHeadlessOutput,
     writeDiagnostic: test.writeDiagnostic ?? writeHeadlessDiagnostic,
   });
 
-  return runner(options, test.signal);
+  return runner({
+    ...options,
+    storage: options.storage ?? createTestStorage(options.cwd),
+  }, test.signal);
 }

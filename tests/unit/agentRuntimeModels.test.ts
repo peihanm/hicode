@@ -45,7 +45,7 @@ function textStream(content: string): Response {
 
 describe("AgentRuntime model targets", () => {
     test("inherit 使用 primary Provider，fast 使用独立 Provider", async () => {
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             process.env.DASHSCOPE_API_KEY = "qwen-key";
             process.env.GLM_API_KEY = "glm-key";
             process.env.DEEPSEEK_API_KEY = "deepseek-key";
@@ -64,6 +64,7 @@ describe("AgentRuntime model targets", () => {
 
             const memory = createTestMemoryRuntime(cwd, {enabled: false});
             const runtime = createAgentRuntime({
+                storage,
                 fastModel: {
                     source: "glm",
                     provider: "glm",

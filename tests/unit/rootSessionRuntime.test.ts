@@ -47,6 +47,7 @@ describe("RootSessionRuntime", () => {
           }],
         },
         toolResultStore: createToolResultStore(
+          resources.storage,
           cwd,
           "session-runtime-test"
         ),

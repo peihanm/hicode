@@ -1,6 +1,6 @@
 import {existsSync, readFileSync} from "node:fs";
 import {readFile} from "node:fs/promises";
-import {writeFileAtomically} from "../persistence/index.js";
+import {type PillarStorageLayout, writeFileAtomically} from "../persistence/index.js";
 import {ensureSessionsDirectory, getSessionIndexPath} from "./paths.js";
 import {SESSION_INDEX_VERSION, type SessionIndexEntry, type SessionIndexFile,} from "./types.js";
 
@@ -20,8 +20,11 @@ function emptySessionIndex(): SessionIndexFile {
 }
 
 /** Read-only callers treat a missing or invalid index as an empty picker. */
-export function readSessionIndex(cwd: string): SessionIndexFile {
-    const path = getSessionIndexPath(cwd);
+export function readSessionIndex(
+    storage: PillarStorageLayout,
+    cwd: string
+): SessionIndexFile {
+    const path = getSessionIndexPath(storage, cwd);
     if (!existsSync(path)) return emptySessionIndex();
 
     try {
@@ -38,8 +41,11 @@ export function readSessionIndex(cwd: string): SessionIndexFile {
     }
 }
 
-async function readSessionIndexForMutation(cwd: string): Promise<SessionIndexFile> {
-    const path = getSessionIndexPath(cwd);
+async function readSessionIndexForMutation(
+    storage: PillarStorageLayout,
+    cwd: string
+): Promise<SessionIndexFile> {
+    const path = getSessionIndexPath(storage, cwd);
     let content: string;
     try {
         content = await readFile(path, "utf8");
@@ -72,25 +78,28 @@ async function readSessionIndexForMutation(cwd: string): Promise<SessionIndexFil
 }
 
 async function writeSessionIndex(
+    storage: PillarStorageLayout,
     cwd: string,
     index: SessionIndexFile
 ): Promise<void> {
-    ensureSessionsDirectory(cwd);
+    ensureSessionsDirectory(storage, cwd);
     const sessions = [...index.sessions].sort(
         (left, right) =>
             new Date(right.updatedAt).getTime() -
             new Date(left.updatedAt).getTime()
     );
     await writeFileAtomically(
-        getSessionIndexPath(cwd),
-        `${JSON.stringify({version: SESSION_INDEX_VERSION, sessions}, null, 2)}\n`
+        getSessionIndexPath(storage, cwd),
+        `${JSON.stringify({version: SESSION_INDEX_VERSION, sessions}, null, 2)}\n`,
+        0o600
     );
 }
 
 export async function upsertSessionIndex(
+    storage: PillarStorageLayout,
     input: UpsertSessionIndexInput
 ): Promise<void> {
-    const index = await readSessionIndexForMutation(input.cwd);
+    const index = await readSessionIndexForMutation(storage, input.cwd);
     const existing = index.sessions.find(
         (entry) => entry.sessionId === input.sessionId
     );
@@ -111,7 +120,7 @@ export async function upsertSessionIndex(
             entry.sessionId === input.sessionId ? next : entry
         )
         : [...index.sessions, next];
-    await writeSessionIndex(input.cwd, {
+    await writeSessionIndex(storage, input.cwd, {
         version: SESSION_INDEX_VERSION,
         sessions,
     });

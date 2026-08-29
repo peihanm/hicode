@@ -70,7 +70,7 @@ export function StatusBar({
         ...runtimeDetails,
     ].join(" | ");
     const shortcuts =
-        "? for shortcuts · shift+tab switch mode · ctrl+o transcript · ctrl+t toggle todos · esc to cancel";
+        "? for shortcuts · shift+tab switch mode · ctrl+o transcript · ctrl+t toggle todos";
     const firstPadding = " ".repeat(Math.max(0, width - stringWidth(firstPlain) - 1));
     const shortcutPadding = " ".repeat(Math.max(0, width - stringWidth(shortcuts) - 1));
 

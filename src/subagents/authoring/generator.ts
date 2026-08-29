@@ -2,6 +2,7 @@ import {createLLMCaller} from "../../llm/index.js";
 import type {LLMCaller} from "../../llm/types.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
 import type {ModelSourceSettings, ModelTargetSettings} from "../../settings/types.js";
+import type {PillarStorageLayout} from "../../persistence/index.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "../custom.js";
 import type {AgentDefinitionDraft} from "../store.js";
 import {createAgentAuthoringPrompt} from "./prompt.js";
@@ -19,12 +20,14 @@ export function createAgentDefinitionGenerator(
     dependencies: AgentDefinitionGeneratorDependencies
 ) {
     return function createConfiguredAgentAuthoringRuntime({
+        storage,
         cwd,
         model,
         instructions,
         availableToolNames,
         getExistingAgentNames,
     }: {
+        storage: PillarStorageLayout;
         cwd: string;
         model: string;
         instructions: ProjectInstructions;
@@ -49,6 +52,7 @@ export function createAgentDefinitionGenerator(
                         }),
                     }, {role: "user", content: normalized}],
                     [submitAgentDefinitionTool],
+                    storage,
                     cwd,
                     model,
                     "agent_authoring",
@@ -112,6 +116,7 @@ export function createAgentDefinitionGenerator(
 }
 
 export function createAgentAuthoringRuntime(options: {
+    storage: PillarStorageLayout;
     cwd: string;
     getModelTarget(): ModelTargetSettings;
     getModelSource(source: ModelTargetSettings["source"]): ModelSourceSettings;
@@ -125,6 +130,7 @@ export function createAgentAuthoringRuntime(options: {
             return createAgentDefinitionGenerator({
                 callLLM: createLLMCaller(options.getModelSource(target.source)),
             })({
+                storage: options.storage,
                 cwd: options.cwd,
                 model: target.model,
                 instructions: options.instructions,

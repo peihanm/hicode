@@ -5,7 +5,7 @@ import {
     getMemoryDirectory,
     getMemoryEntryPath,
 } from "../../src/memory/index.js";
-import {getProjectKey} from "../../src/persistence/index.js";
+import {createPillarStorageLayout, getProjectKey} from "../../src/persistence/index.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("Memory paths", () => {
@@ -15,9 +15,10 @@ describe("Memory paths", () => {
             await symlink(cwd, alias);
             try {
                 const projectsRoot = join(cwd, "memory-projects");
+                const storage = createPillarStorageLayout({projectsRoot});
                 expect(getProjectKey(alias)).toBe(getProjectKey(cwd));
-                expect(getMemoryDirectory(alias, projectsRoot)).toBe(
-                    getMemoryDirectory(cwd, projectsRoot)
+                expect(getMemoryDirectory(storage, alias)).toBe(
+                    getMemoryDirectory(storage, cwd)
                 );
             } finally {
                 await unlink(alias);

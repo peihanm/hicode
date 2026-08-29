@@ -38,6 +38,8 @@ import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 import { createGitWorkspaceRuntime } from "../../src/git/index.js";
 import { createPrimaryModelRuntime } from "../../src/runtime/primaryModel.js";
+import {createTestStorage} from "./tempProject.js";
+import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
 
 export function createTestSettings(
   overrides: Partial<ResolvedPillarSettings> = {}
@@ -101,6 +103,7 @@ export function createTestRuntimeResources(
   const sandbox = createDisabledSandboxRuntime();
   const shellRunner = createShellRunner(sandbox);
   const settings = overrides.settings ?? createTestSettings();
+  const storage = overrides.storage ?? createTestStorage(cwd);
   const primaryModel = overrides.primaryModel ?? createPrimaryModelRuntime(
     settings.models.primary,
     settings.sources,
@@ -116,6 +119,7 @@ export function createTestRuntimeResources(
   const memory =
     overrides.memory ??
     createMemoryRuntime({
+      storage,
       cwd,
       getModelTarget: () => primaryModel.target,
       getModelSource: (source) => settings.sources[source],
@@ -125,6 +129,7 @@ export function createTestRuntimeResources(
   const agentRuntime =
     overrides.agentRuntime ??
     createAgentRuntime({
+      storage,
       fastModel: settings.models.fast,
       sources: settings.sources,
       subagents,
@@ -149,6 +154,8 @@ export function createTestRuntimeResources(
     },
   };
   const base: RootRuntimeResources = {
+    storage,
+    inputHistory: createInputHistoryStore(storage),
     cwd,
     get model() {
       return primaryModel.target.model;
@@ -239,7 +246,9 @@ interface RootRuntimeTestDependencies {
 }
 
 export function createRootRuntimeResourcesForTest(
-  options: CreateRootRuntimeResourcesOptions,
+  options: Omit<CreateRootRuntimeResourcesOptions, "storage"> & {
+    storage?: CreateRootRuntimeResourcesOptions["storage"];
+  },
   test: RootRuntimeTestDependencies = {}
 ) {
   return createRootRuntimeResourcesFactory({
@@ -274,5 +283,8 @@ export function createRootRuntimeResourcesForTest(
     loadCustomAgentDefinitions: async () =>
       test.loadedCustomAgents ?? { definitions: [], issues: [] },
     createHookRuntime: async () => createDisabledTestHookRuntime(),
-  })(options);
+  })({
+    ...options,
+    storage: options.storage ?? createTestStorage(options.cwd),
+  });
 }

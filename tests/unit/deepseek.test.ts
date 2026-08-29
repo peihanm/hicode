@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, test} from "bun:test";
 import {createLLMCaller} from "../../src/llm/index.js";
 import {deepseekProvider} from "../../src/llm/providers/deepseek.js";
-import {withTempProject} from "../helpers/tempProject.js";
+import {createTestStorage, withTempProject} from "../helpers/tempProject.js";
 import type {LLMCallOptions, LLMProvider} from "../../src/llm/types.js";
 
 const DEEPSEEK_SOURCE = {
@@ -11,8 +11,14 @@ const DEEPSEEK_SOURCE = {
     baseUrl: "https://deepseek.test/v1/",
 };
 
-function callDeepSeek(provider: LLMProvider, options: LLMCallOptions) {
-    return provider.call(options, DEEPSEEK_SOURCE);
+function callDeepSeek(
+    provider: LLMProvider,
+    options: Omit<LLMCallOptions, "storage">
+) {
+    return provider.call({
+        ...options,
+        storage: createTestStorage(options.cwd),
+    }, DEEPSEEK_SOURCE);
 }
 
 const originalFetch = globalThis.fetch;
@@ -210,6 +216,7 @@ describe("DeepSeek provider", () => {
         await expect(createLLMCaller(DEEPSEEK_SOURCE)(
             [{role: "user", content: "hello"}],
             [],
+            createTestStorage(process.cwd()),
             process.cwd(),
             "qwen3.6-plus",
             "main"

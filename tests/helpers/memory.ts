@@ -8,6 +8,7 @@ import {
 } from "../../src/memory/index.js";
 import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
+import {createTestStorage} from "./tempProject.js";
 
 const noChanges: MemoryExtractor = {
     async extract() {
@@ -30,6 +31,7 @@ export function createTestMemoryRuntime(
         createExtractor:
             options.createExtractor ?? (() => options.extractor ?? noChanges),
     })({
+        storage: createTestStorage(cwd),
         cwd,
         getModelTarget: () => ({
             source: "glm",

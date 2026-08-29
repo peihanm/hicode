@@ -15,8 +15,10 @@ import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 export interface ToolContextResources {
+    storage: PillarStorageLayout;
     cwd: string;
     workspaceBoundary?: string;
     model: string;
@@ -89,6 +91,7 @@ export function createToolContext({
         provider: resources.provider,
         fastModel: resources.fastModel,
         fastProvider: resources.fastProvider,
+        storage: resources.storage,
         cwd: resources.cwd,
         workspaceBoundary: resources.workspaceBoundary,
         compactState: session.compactState,

@@ -7,6 +7,7 @@ import {runCheckpointRewindFromCli} from "./checkpoints/index.js";
 import {loadPillarSettings, type LoadedPillarSettings} from "./settings/index.js";
 import {createTerminalCursorOutput, enableTerminalCursorAnchor,} from "./ui/input/terminalCursor.js";
 import {TerminalSizeProvider} from "./ui/terminalSize.js";
+import {createPillarStorageLayout} from "./persistence/index.js";
 
 let cliOptions: CliOptions;
 try {
@@ -25,6 +26,7 @@ if (cliOptions.help) {
 loadEnv({required: cliOptions.rewindCheckpointId === undefined});
 
 const cwd = process.cwd();
+const storage = createPillarStorageLayout();
 let loadedSettings: LoadedPillarSettings;
 try {
     loadedSettings = loadPillarSettings(cwd, {
@@ -50,6 +52,7 @@ if (
     cliOptions.resumeMode.kind === "session"
 ) {
     await runCheckpointRewindFromCli({
+        storage,
         cwd,
         model: loadedSettings.values.models.primary.model,
         sessionId: cliOptions.resumeMode.sessionId,
@@ -58,6 +61,7 @@ if (
     });
 } else if (cliOptions.printPrompt !== undefined) {
     await runHeadlessFromCli({
+        storage,
         cwd,
         settings: loadedSettings.values,
         prompt: cliOptions.printPrompt,
@@ -71,6 +75,7 @@ if (
     render(
         <TerminalSizeProvider>
             <Root
+                storage={storage}
                 cwd={cwd}
                 settings={loadedSettings.values}
                 initialPermissionMode={cliOptions.permissionMode}

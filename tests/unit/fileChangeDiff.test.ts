@@ -206,4 +206,30 @@ describe("file change diff", () => {
     ]);
     expect(limitPersistedUIEvents(events, 5, 1)).toEqual([]);
   });
+
+  test("持久化时用同 turn 同路径的最终净变更替换中间 patch", () => {
+    const first = createFileChange({
+      path: "a.txt",
+      kind: "create",
+      oldContent: "",
+      newContent: "a\n",
+    });
+    const final = createFileChange({
+      path: "a.txt",
+      kind: "create",
+      oldContent: "",
+      newContent: "a\nb\n",
+    });
+    final.scope = "turn";
+    const events = [first, final].map((change, index) => ({
+      version: 1 as const,
+      type: "file_change" as const,
+      turnId: "turn-1",
+      toolCallId: `call-${index}`,
+      timestamp: `2026-07-12T00:00:0${index}.000Z`,
+      change,
+    }));
+
+    expect(limitPersistedUIEvents(events)).toEqual([events[1]]);
+  });
 });

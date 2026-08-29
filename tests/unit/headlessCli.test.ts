@@ -8,9 +8,11 @@ import type {
   HeadlessRunSummary,
 } from "../../src/headless/types.js";
 import { createTestSettings } from "../helpers/runtimeResources.js";
+import {createTestStorage} from "../helpers/tempProject.js";
 
 function options(format: "text" | "json" = "json"): HeadlessOptions {
   return {
+    storage: createTestStorage("/tmp/project"),
     cwd: "/tmp/project",
     settings: createTestSettings(),
     prompt: "hello",

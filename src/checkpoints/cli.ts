@@ -1,5 +1,6 @@
 import {rewindSessionCheckpoint} from "./rewind.js";
 import type {CheckpointRestoreResult} from "./types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 function formatTextResult(result: CheckpointRestoreResult): string {
     const lines = [
@@ -21,6 +22,7 @@ function formatTextResult(result: CheckpointRestoreResult): string {
 }
 
 export async function runCheckpointRewindFromCli(input: {
+    storage: PillarStorageLayout;
     cwd: string;
     model: string;
     sessionId: string;

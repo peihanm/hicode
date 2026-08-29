@@ -6,10 +6,12 @@ import type {ResumeMode} from "../session/index.js";
 import type {PersistedToolResult} from "../toolResults/index.js";
 import type {FileChange, ToolUIData} from "../fileChanges/index.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 export type HeadlessOutputFormat = "text" | "json";
 
 export interface HeadlessOptions {
+    storage: PillarStorageLayout;
     cwd: string;
     settings: ResolvedPillarSettings;
     prompt: string;

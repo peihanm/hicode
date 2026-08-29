@@ -27,6 +27,7 @@ import {
   createGitSessionRuntime,
   createGitWorkspaceRuntime,
 } from "../../src/git/index.js";
+import {createTestStorage} from "./tempProject.js";
 import type { LLMProviderName } from "../../src/llm/providerRegistry.js";
 
 export function createTestContext(
@@ -65,6 +66,7 @@ export function createTestContext(
   return createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
+      storage: createTestStorage(cwd),
       cwd,
       model: options.model ?? "glm-test",
       provider: options.provider ?? "glm",

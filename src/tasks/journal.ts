@@ -1,6 +1,6 @@
 import {appendFile, mkdir, readFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
-import {getSessionStorageDirectory} from "../persistence/index.js";
+import {getSessionStorageDirectory, type PillarStorageLayout, withFileLock,} from "../persistence/index.js";
 import type {TaskEventEnvelope, TaskSnapshot} from "./types.js";
 
 type TaskJournalEntry =
@@ -30,12 +30,12 @@ export interface TaskJournalLike {
 }
 
 function journalPath(
+    storage: PillarStorageLayout,
     cwd: string,
-    sessionId: string,
-    projectsRoot?: string
+    sessionId: string
 ): string {
     return join(
-        getSessionStorageDirectory(cwd, sessionId, projectsRoot),
+        getSessionStorageDirectory(storage, cwd, sessionId),
         "tasks",
         "events.jsonl"
     );
@@ -149,8 +149,8 @@ export class TaskJournal implements TaskJournalLike {
     private appendTail: Promise<void> = Promise.resolve();
 
     constructor(
+        private readonly storage: PillarStorageLayout,
         private readonly cwd: string,
-        private readonly projectsRoot?: string
     ) {}
 
     async append(event: TaskEventEnvelope): Promise<void> {
@@ -173,7 +173,7 @@ export class TaskJournal implements TaskJournalLike {
         let content: string;
         try {
             content = await readFile(
-                journalPath(this.cwd, sessionId, this.projectsRoot),
+                journalPath(this.storage, this.cwd, sessionId),
                 "utf8"
             );
         } catch (error) {
@@ -212,14 +212,16 @@ export class TaskJournal implements TaskJournalLike {
             .catch(() => undefined)
             .then(async () => {
                 const path = journalPath(
+                    this.storage,
                     this.cwd,
-                    entry.sessionId,
-                    this.projectsRoot
+                    entry.sessionId
                 );
-                await mkdir(dirname(path), {recursive: true, mode: 0o700});
-                await appendFile(path, `${JSON.stringify(entry)}\n`, {
-                    encoding: "utf8",
-                    mode: 0o600,
+                await withFileLock(`${path}.lock`, async () => {
+                    await mkdir(dirname(path), {recursive: true, mode: 0o700});
+                    await appendFile(path, `${JSON.stringify(entry)}\n`, {
+                        encoding: "utf8",
+                        mode: 0o600,
+                    });
                 });
             });
         this.appendTail = append;
@@ -227,6 +229,9 @@ export class TaskJournal implements TaskJournalLike {
     }
 }
 
-export function createTaskJournal(cwd: string): TaskJournalLike {
-    return new TaskJournal(cwd);
+export function createTaskJournal(
+    storage: PillarStorageLayout,
+    cwd: string
+): TaskJournalLike {
+    return new TaskJournal(storage, cwd);
 }

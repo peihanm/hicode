@@ -3,7 +3,7 @@ import {join, resolve} from "node:path";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {formatGitProcessError, runGitCommand} from "../git/process.js";
 import {readGitRepositorySnapshot} from "../git/status.js";
-import {getProjectStorageDirectory} from "../persistence/index.js";
+import {getProjectStorageDirectory, type PillarStorageLayout} from "../persistence/index.js";
 import {loadProjectInstructions} from "../prompt/instructions.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {ToolContext} from "../tools/types.js";
@@ -300,9 +300,12 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
     }
 }
 
-export function createWorktreeRuntime(cwd: string): WorktreeRuntimeLike {
+export function createWorktreeRuntime(
+    storage: PillarStorageLayout,
+    cwd: string
+): WorktreeRuntimeLike {
     const manifests = new WorktreeManifestStore(
-        join(getProjectStorageDirectory(cwd), "worktrees", "manifests")
+        join(getProjectStorageDirectory(storage, cwd), "worktrees", "manifests")
     );
     return new WorktreeRuntime(resolve(cwd), manifests);
 }

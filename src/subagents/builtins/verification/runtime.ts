@@ -38,6 +38,7 @@ export function createVerificationRuntimeConfig(
             ],
         },
         contextResources: {
+            storage: parentContext.storage,
             cwd: parentContext.cwd,
             workspaceBoundary:
                 parentContext.workspaceBoundary ?? parentContext.cwd,

@@ -31,8 +31,12 @@ import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/index.js";
 import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
+import {createInputHistoryStore, type InputHistoryStore,} from "../session/inputHistory/index.js";
 
 export interface RootRuntimeResources {
+    readonly storage: PillarStorageLayout;
+    readonly inputHistory: InputHistoryStore;
     readonly cwd: string;
     readonly model: string;
     readonly provider: ResolvedPillarSettings["models"]["primary"]["provider"];
@@ -62,6 +66,7 @@ export interface RootRuntimeResources {
 }
 
 export interface CreateRootRuntimeResourcesOptions {
+    storage: PillarStorageLayout;
     cwd: string;
     settings: ResolvedPillarSettings;
     signal?: AbortSignal;
@@ -84,6 +89,7 @@ interface RootRuntimeDependencies {
     createHookRuntime: typeof createHookRuntime;
 
     createTaskRuntime(
+        storage: PillarStorageLayout,
         cwd: string,
         shellRunner: ShellRunnerLike,
         createSubagentRunner: CreateSubagentRunner,
@@ -169,6 +175,7 @@ export function createRootRuntimeResourcesFactory(
             const fileState = dependencies.createFileStateTracker();
             const gitWorkspace = createGitWorkspaceRuntime(options.cwd);
             const createdMemory = dependencies.createMemoryRuntime({
+                storage: options.storage,
                 cwd: options.cwd,
                 getModelTarget: () => primaryModel.target,
                 getModelSource: (source) => options.settings.sources[source],
@@ -190,6 +197,7 @@ export function createRootRuntimeResourcesFactory(
                 headless: options.headless,
                 signal: options.signal,
                 promptExecutor: createHookPromptExecutor({
+                    storage: options.storage,
                     source: options.settings.sources[options.settings.models.fast.source],
                     cwd: options.cwd,
                     model: options.settings.models.fast.model,
@@ -214,6 +222,7 @@ export function createRootRuntimeResourcesFactory(
                 availableToolNames: toolCatalog.toolNames,
             });
             const agentAuthoring = createAgentAuthoringRuntime({
+                storage: options.storage,
                 cwd: options.cwd,
                 getModelTarget: () => primaryModel.target,
                 getModelSource: (source) => options.settings.sources[source],
@@ -236,12 +245,14 @@ export function createRootRuntimeResourcesFactory(
                 hooks,
             });
             const agentRuntime = dependencies.createAgentRuntime({
+                storage: options.storage,
                 fastModel: options.settings.models.fast,
                 sources: options.settings.sources,
                 subagents,
                 memory: createdMemory,
             });
             const createdTaskRuntime = dependencies.createTaskRuntime(
+                options.storage,
                 options.cwd,
                 shellRunner,
                 agentRuntime.createSubagentRunner,
@@ -257,6 +268,8 @@ export function createRootRuntimeResourcesFactory(
             );
 
             return {
+                storage: options.storage,
+                inputHistory: createInputHistoryStore(options.storage),
                 cwd: options.cwd,
                 get model() {
                     return primaryModel.target.model;

@@ -3,21 +3,24 @@ import {join} from "node:path";
 import {createFileCheckpointRuntime} from "../../src/checkpoints/index.js";
 import {saveSessionSnapshot, saveSessionTurnCheckpoint} from "../../src/session/index.js";
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 const cwd = process.argv[2];
 if (!cwd) throw new Error("missing cwd");
+const storage = createPillarStorageLayout();
 
 const sessionId = `headless-rewind-${process.pid}`;
 const path = join(cwd, "headless.txt");
 await writeFile(path, "before\n");
 const runtime = createFileCheckpointRuntime({
+    storage,
     cwd,
     sessionId,
     enabled: true,
     fileState: createFileStateTracker(),
 });
 const checkpoint = await runtime.beginTurn({prompt: "修改 headless 文件"});
-await saveSessionTurnCheckpoint({
+await saveSessionTurnCheckpoint(storage, {
     cwd,
     model: "glm-test",
     sessionId,
@@ -40,7 +43,7 @@ await runtime.afterWrite({
     toolCallId: "headless-write",
 });
 await runtime.settleTurn();
-await saveSessionSnapshot({
+await saveSessionSnapshot(storage, {
     cwd,
     model: "glm-test",
     sessionId,

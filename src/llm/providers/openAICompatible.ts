@@ -4,7 +4,7 @@ import {
     throwIfTurnAborted,
     TurnInterruptedError,
 } from "../../runtime/abort.js";
-import {beginPromptLog, nextPromptLogSeq} from "../promptLog.js";
+import {beginPromptLog} from "../promptLog.js";
 import type {LLMCallOptions, LLMCallResult, LLMStreamProgress, Message, PromptLogResponse,} from "../types.js";
 import {consumeOpenAICompatibleSSE} from "./openAICompatibleStream.js";
 
@@ -223,10 +223,9 @@ async function callOpenAICompatibleCore(
             disableThinking,
             endpoint.preserveToolCallReasoning === true
         );
-        const seq = nextPromptLogSeq();
         const promptLog = beginPromptLog(
+            options.storage,
             options.cwd,
-            seq,
             options.kind,
             options.model,
             requestBody

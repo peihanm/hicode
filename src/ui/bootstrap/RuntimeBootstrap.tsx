@@ -17,6 +17,7 @@ import {COLORS, SYMBOLS} from "../theme.js";
 import {HookApprovalDialog} from "./HookApprovalDialog.js";
 import {McpApprovalDialog} from "./McpApprovalDialog.js";
 import {Welcome} from "./Welcome.js";
+import type {PillarStorageLayout} from "../../persistence/index.js";
 
 interface PendingMcpApproval {
     request: McpApprovalRequest;
@@ -29,6 +30,7 @@ interface PendingHookApproval {
 }
 
 interface RuntimeBootstrapProps {
+    storage: PillarStorageLayout;
     cwd: string;
     settings: ResolvedPillarSettings;
     initialPermissionMode?: PermissionMode;
@@ -46,6 +48,7 @@ export function createRuntimeBootstrap(
         overrides.createResources ?? createRootRuntimeResources;
 
     return function RuntimeBootstrap({
+        storage,
         cwd,
         settings,
         initialPermissionMode,
@@ -74,6 +77,7 @@ export function createRuntimeBootstrap(
             const controller = new AbortController();
             let ownedResources: RootRuntimeResources | undefined;
             void createResources({
+                storage,
                 cwd,
                 settings,
                 signal: controller.signal,

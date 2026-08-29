@@ -6,6 +6,7 @@ import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
 import {buildCompactSummaryMessage} from "./compactPrompt.js";
 import {findCompactTailStart} from "./compactTail.js";
 import type {CompactState} from "./state.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 const DEFAULT_TAIL_MIN_TOKENS = 10_000;
 const DEFAULT_TAIL_MIN_TEXT_MESSAGES = 5;
@@ -37,6 +38,7 @@ type CompactSummaryGenerator = (input: {
     system: Extract<Message, { role: "system" }>;
     conversation: Message[];
     signal: AbortSignal;
+    storage: PillarStorageLayout;
     cwd: string;
     model: string;
     customInstructions?: string;
@@ -121,6 +123,7 @@ async function compactHistoryCore({
             system,
             conversation: history.slice(1),
             signal: ctx.signal,
+            storage: ctx.storage,
             cwd: ctx.cwd,
             model: ctx.model,
             customInstructions,

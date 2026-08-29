@@ -31,7 +31,19 @@ export function limitPersistedUIEvents(
     maxEvents = MAX_PERSISTED_UI_EVENTS,
     maxBytes = MAX_PERSISTED_UI_EVENT_BYTES
 ): PersistedUIEvent[] {
-    const candidates = events.slice(-maxEvents);
+    const supersededNetChanges = new Set<string>();
+    const compacted: PersistedUIEvent[] = [];
+    for (const event of [...events].reverse()) {
+        if (event.type !== "file_change") {
+            compacted.push(event);
+            continue;
+        }
+        const key = `${event.turnId}\u0000${event.change.path}`;
+        if (supersededNetChanges.has(key)) continue;
+        compacted.push(event);
+        if (event.change.scope === "turn") supersededNetChanges.add(key);
+    }
+    const candidates = compacted.reverse().slice(-maxEvents);
     const kept: PersistedUIEvent[] = [];
     let bytes = 0;
     for (const event of [...candidates].reverse()) {
