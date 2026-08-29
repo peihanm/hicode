@@ -1,0 +1,79 @@
+#!/usr/bin/env bun
+import {render} from "ink";
+import {Root} from "./ui/Root.js";
+import {type CliOptions, loadEnv, parseCliArgs, printHelp} from "./cli/index.js";
+import {runHeadlessFromCli} from "./headless/cli.js";
+import {runCheckpointRewindFromCli} from "./checkpoints/index.js";
+import {loadPillarSettings, type LoadedPillarSettings} from "./settings/index.js";
+import {createTerminalCursorOutput, enableTerminalCursorAnchor,} from "./ui/input/terminalCursor.js";
+
+let cliOptions: CliOptions;
+try {
+    cliOptions = parseCliArgs(process.argv.slice(2));
+} catch (err) {
+    console.error(`\x1b[31m${err instanceof Error ? err.message : String(err)}\x1b[0m`);
+    printHelp();
+    process.exit(1);
+}
+
+if (cliOptions.help) {
+    printHelp();
+    process.exit(0);
+}
+
+loadEnv({required: cliOptions.rewindCheckpointId === undefined});
+
+const cwd = process.cwd();
+let loadedSettings: LoadedPillarSettings;
+try {
+    loadedSettings = loadPillarSettings(cwd, {
+        model: cliOptions.model,
+        provider: cliOptions.provider,
+    });
+} catch (error) {
+    console.error(
+        `\x1b[31m${error instanceof Error ? error.message : String(error)}\x1b[0m`
+    );
+    process.exit(1);
+}
+
+for (const issue of loadedSettings.issues) {
+    const color = issue.severity === "error" ? "\x1b[31m" : "\x1b[33m";
+    console.error(
+        `${color}Settings ${issue.severity}: ${issue.path}${issue.field ? ` (${issue.field})` : ""}: ${issue.message}\x1b[0m`
+    );
+}
+
+if (
+    cliOptions.rewindCheckpointId &&
+    cliOptions.resumeMode.kind === "session"
+) {
+    await runCheckpointRewindFromCli({
+        cwd,
+        model: loadedSettings.values.models.primary.model,
+        sessionId: cliOptions.resumeMode.sessionId,
+        checkpointId: cliOptions.rewindCheckpointId,
+        outputFormat: cliOptions.outputFormat,
+    });
+} else if (cliOptions.printPrompt !== undefined) {
+    await runHeadlessFromCli({
+        cwd,
+        settings: loadedSettings.values,
+        prompt: cliOptions.printPrompt,
+        permissionMode: cliOptions.permissionMode,
+        resumeMode: cliOptions.resumeMode,
+        outputFormat: cliOptions.outputFormat,
+    });
+} else {
+    enableTerminalCursorAnchor();
+    const stdout = createTerminalCursorOutput(process.stdout);
+    render(
+        <Root
+            cwd={cwd}
+            settings={loadedSettings.values}
+            initialPermissionMode={cliOptions.permissionMode}
+            resumeMode={cliOptions.resumeMode}
+        />,
+        {patchConsole: false, exitOnCtrlC: false, stdout}
+    );
+}

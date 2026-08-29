@@ -1,0 +1,249 @@
+import type {AgentEvent} from "../agent/types.js";
+import type {CompactState} from "../context/index.js";
+import type {PersistedUIEvent} from "../session/index.js";
+import {createHookSessionRuntime, type HookBatchResult,} from "../hooks/index.js";
+import type {Message} from "../llm/types.js";
+import type {PermissionMode} from "../permissions/index.js";
+import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint,} from "../session/index.js";
+import {createSubagentLauncher} from "../subagents/launcher.js";
+import type {TaskSessionLike} from "../tasks/index.js";
+import type {Todo} from "../todos.js";
+import type {ToolResultStore} from "../toolResults/index.js";
+import type {ToolDiscoverySnapshot} from "../tools/registry.js";
+import type {ToolContext} from "../tools/types.js";
+import {
+    type CheckpointHead,
+    createFileCheckpointRuntime,
+    type FileCheckpointRuntimeLike,
+} from "../checkpoints/index.js";
+import {createGitSessionRuntime, type GitSessionRuntimeLike, type GitSessionState,} from "../git/index.js";
+import type {RuntimeQueuedMessage} from "./messageQueue.js";
+import {RuntimeMessageQueue} from "./messageQueue.js";
+import type {RootRuntimeResources} from "./resources.js";
+import {createToolContext, type ToolContextHost} from "./toolContext.js";
+
+export interface RootSessionSeed {
+    sessionId: string;
+    history: Message[];
+    compactState: CompactState;
+    checkpointHead?: CheckpointHead;
+    toolDiscovery?: ToolDiscoverySnapshot;
+    gitSession?: GitSessionState;
+    queuedInputs?: readonly RuntimeQueuedMessage[];
+}
+
+interface RootSessionSnapshotState {
+    todos: readonly Todo[];
+    permissionMode: PermissionMode;
+    prePlanMode?: PermissionMode;
+    uiEvents: readonly PersistedUIEvent[];
+    allowEmpty?: boolean;
+    summaryHint?: string;
+}
+
+export interface RootSessionRuntime {
+    readonly sessionId: string;
+    readonly history: Message[];
+    readonly compactState: CompactState;
+    readonly toolResultStore: ToolResultStore;
+    readonly fileCheckpoints: FileCheckpointRuntimeLike;
+    readonly gitSession: GitSessionRuntimeLike;
+    readonly taskSession: TaskSessionLike;
+    readonly messageQueue: RuntimeMessageQueue;
+
+    initialize(): Promise<void>;
+
+    replaceConversation(history: Message[], compactState: CompactState): void;
+
+    createContext(input: {
+        signal: AbortSignal;
+        host: ToolContextHost;
+        onEvent: (event: AgentEvent) => void | Promise<void>;
+    }): ToolContext;
+
+    createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
+
+    beginCheckpoint(
+        prompt: string,
+        state: Omit<RootSessionSnapshotState, "allowEmpty" | "summaryHint">
+    ): Promise<void>;
+
+    settleCheckpoint(status?: "settled" | "no_agent_run"): Promise<void>;
+
+    runSessionStart(
+        source: "startup" | "resume",
+        signal: AbortSignal
+    ): Promise<HookBatchResult>;
+
+    runUserPromptHooks(
+        prompt: string,
+        permissionMode: PermissionMode,
+        signal: AbortSignal
+    ): Promise<HookBatchResult>;
+
+    runSessionEnd(reason: string, signal: AbortSignal): Promise<HookBatchResult>;
+}
+
+export function createRootSessionRuntime({
+    resources,
+    seed,
+    toolResultStore,
+    resumed,
+    allowBackgroundTasks = true,
+}: {
+    resources: RootRuntimeResources;
+    seed: RootSessionSeed;
+    toolResultStore: ToolResultStore;
+    resumed: boolean;
+    allowBackgroundTasks?: boolean;
+}): RootSessionRuntime {
+    let history = seed.history;
+    let compactState = seed.compactState;
+    resources.toolRuntime.restoreToolDiscovery(seed.toolDiscovery);
+    const gitSession = createGitSessionRuntime({
+        cwd: resources.cwd,
+        workspace: resources.gitWorkspace,
+        persistedState: seed.gitSession,
+        resumed,
+    });
+    const fileCheckpoints = createFileCheckpointRuntime({
+        cwd: resources.cwd,
+        sessionId: seed.sessionId,
+        enabled: resources.settings.checkpointing.enabled,
+        fileState: resources.fileState,
+        initialHead: seed.checkpointHead,
+    });
+    const taskSession = resources.taskRuntime.forSession({
+        sessionId: seed.sessionId,
+        toolResultStore,
+        allowBackgroundTasks,
+    });
+    const messageQueue = new RuntimeMessageQueue({
+        messages: seed.queuedInputs,
+    });
+    const hookSession = createHookSessionRuntime();
+    let initializePromise: Promise<void> | undefined;
+
+    const snapshot = (
+        state: RootSessionSnapshotState
+    ): SaveSessionSnapshotInput => ({
+        cwd: resources.cwd,
+        model: resources.model,
+        sessionId: seed.sessionId,
+        history: [...history],
+        todos: [...state.todos],
+        permissionMode: state.permissionMode,
+        prePlanMode: state.prePlanMode,
+        compactState: {...compactState},
+        uiEvents: [...state.uiEvents],
+        checkpointHead: fileCheckpoints.getHead(),
+        queuedInputs: messageQueue.list(),
+        toolDiscovery: resources.toolRuntime.getToolDiscoverySnapshot(),
+        gitSession: gitSession.getState(),
+        ...(state.allowEmpty ? {allowEmpty: true} : {}),
+        ...(state.summaryHint ? {summaryHint: state.summaryHint} : {}),
+    });
+
+    return {
+        sessionId: seed.sessionId,
+        get history() {
+            return history;
+        },
+        get compactState() {
+            return compactState;
+        },
+        toolResultStore,
+        fileCheckpoints,
+        gitSession,
+        taskSession,
+        messageQueue,
+        initialize() {
+            initializePromise ??= gitSession.initialize();
+            return initializePromise;
+        },
+        replaceConversation(nextHistory, nextCompactState) {
+            history = nextHistory;
+            compactState = nextCompactState;
+        },
+        createContext({signal, host, onEvent}) {
+            const ctx = createToolContext({
+                signal,
+                resources: {...resources, gitSession, tasks: taskSession},
+                session: {
+                    sessionId: seed.sessionId,
+                    compactState,
+                    toolResultStore,
+                    fileCheckpoints,
+                    allowBackgroundTasks,
+                    hookSession,
+                },
+                host,
+            });
+            const runSubagent = resources.agentRuntime.createSubagentRunner({
+                parentContext: ctx,
+                onEvent,
+            });
+            ctx.subagentLauncher = createSubagentLauncher({
+                parentContext: ctx,
+                getHistory: () => history,
+                runSubagent,
+            });
+            return ctx;
+        },
+        createSnapshot: snapshot,
+        async beginCheckpoint(prompt, state) {
+            const checkpoint = await fileCheckpoints.beginTurn({prompt});
+            if (!checkpoint) return;
+            await saveSessionTurnCheckpoint({
+                cwd: resources.cwd,
+                model: resources.model,
+                sessionId: seed.sessionId,
+                checkpointId: checkpoint.checkpointId,
+                branchId: checkpoint.branchId,
+                parentCheckpointId: checkpoint.parentCheckpointId,
+                prompt,
+                history,
+                todos: [...state.todos],
+                permissionMode: state.permissionMode,
+                prePlanMode: state.prePlanMode,
+                compactState,
+                uiEvents: [...state.uiEvents],
+                toolDiscovery:
+                    resources.toolRuntime.getToolDiscoverySnapshot(),
+            });
+        },
+        settleCheckpoint(status = "settled") {
+            return fileCheckpoints.settleTurn(status);
+        },
+        runSessionStart(source, signal) {
+            return resources.hooks.execute({
+                hook_event_name: "SessionStart",
+                session_id: seed.sessionId,
+                source,
+                model: resources.model,
+            }, signal, {session: hookSession});
+        },
+        async runUserPromptHooks(prompt, permissionMode, signal) {
+            const result = await resources.hooks.execute({
+                hook_event_name: "UserPromptSubmit",
+                session_id: seed.sessionId,
+                permission_mode: permissionMode,
+                prompt,
+            }, signal, {session: hookSession});
+            if (resources.hooks.mayRunCommands) {
+                await fileCheckpoints.markCoverageWarning({
+                    code: "hook_side_effects",
+                    message: "UserPromptSubmit Hook 可能产生未被 File Checkpoint 捕获的文件副作用",
+                });
+            }
+            return result;
+        },
+        runSessionEnd(reason, signal) {
+            return resources.hooks.execute({
+                hook_event_name: "SessionEnd",
+                session_id: seed.sessionId,
+                reason,
+            }, signal, {session: hookSession});
+        },
+    };
+}

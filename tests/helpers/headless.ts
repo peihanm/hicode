@@ -1,0 +1,88 @@
+import type { AgentRunner } from "../../src/agent/index.js";
+import { createHeadlessRunner } from "../../src/headless/host.js";
+import {
+  writeHeadlessDiagnostic,
+  writeHeadlessOutput,
+} from "../../src/headless/io.js";
+import type {
+  HeadlessOptions,
+  HeadlessOutputFormat,
+  HeadlessRunSummary,
+} from "../../src/headless/types.js";
+import type { CreateLspManager } from "../../src/lsp/types.js";
+import type { McpManagerLike } from "../../src/mcp/index.js";
+import { createRootRuntimeResources } from "../../src/runtime/resources.js";
+import { saveSessionSnapshot } from "../../src/session/index.js";
+import {
+  createToolResultStoreFactory,
+} from "../../src/toolResults/store.js";
+import type {ToolResultStoreOptions} from "../../src/toolResults/types.js";
+import { createRootRuntimeResourcesForTest } from "./runtimeResources.js";
+import {
+  runAgentForTest,
+  type AgentTestOptions,
+} from "./agent.js";
+import { createSubagentRunnerForTest } from "./subagent.js";
+import type { AgentRuntime } from "../../src/runtime/agentRuntime.js";
+
+interface HeadlessTestOptions {
+  agent?: AgentTestOptions;
+  signal?: AbortSignal;
+  writeOutput?: (
+    summary: HeadlessRunSummary,
+    format: HeadlessOutputFormat
+  ) => void | Promise<void>;
+  writeDiagnostic?: (line: string) => void | Promise<void>;
+  toolResultStoreOptions?: ToolResultStoreOptions;
+  mcpManager?: McpManagerLike | false;
+  createLspManager?: CreateLspManager;
+  createResources?: typeof createRootRuntimeResources;
+  runAgent?: AgentRunner;
+  saveSession?: typeof saveSessionSnapshot;
+}
+
+export function runHeadlessForTest(
+  options: HeadlessOptions,
+  test: HeadlessTestOptions = {}
+): Promise<HeadlessRunSummary> {
+  const agentRuntime: AgentRuntime = {
+    runAgent:
+      test.runAgent ??
+      ((prompt, history, onEvent, ctx, inputChannel, agentOptions) =>
+        runAgentForTest(prompt, history, onEvent, ctx, {
+          ...agentOptions,
+          ...test.agent,
+          inputChannel,
+        })),
+    createSubagentRunner: (subagentOptions) =>
+      createSubagentRunnerForTest({
+        ...subagentOptions,
+        agentOptions: test.agent,
+        toolResultStoreOptions: test.toolResultStoreOptions,
+      }),
+    compactHistory: async () => ({
+      compacted: false,
+      preTokenCount: 0,
+      threshold: 0,
+    }),
+  };
+  const runner = createHeadlessRunner({
+    createResources: async (resourceOptions) => {
+      const resources = test.createResources
+        ? await test.createResources(resourceOptions)
+        : await createRootRuntimeResourcesForTest(resourceOptions, {
+            mcpManager: test.mcpManager,
+            createLspManager: test.createLspManager,
+            agentRuntime,
+          });
+      return {...resources, agentRuntime};
+    },
+    createToolResultStore: (cwd, sessionId) =>
+      createToolResultStoreFactory(test.toolResultStoreOptions)(cwd, sessionId),
+    saveSession: test.saveSession ?? saveSessionSnapshot,
+    writeOutput: test.writeOutput ?? writeHeadlessOutput,
+    writeDiagnostic: test.writeDiagnostic ?? writeHeadlessDiagnostic,
+  });
+
+  return runner(options, test.signal);
+}

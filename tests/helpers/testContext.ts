@@ -1,0 +1,101 @@
+import { createCompactState } from "../../src/context/index.js";
+import type { PermissionDecision, PermissionMode } from "../../src/permissions/index.js";
+import type { ToolContext } from "../../src/tools/types.js";
+import type { MemoryFileAccess } from "../../src/memory/index.js";
+import { createTestToolResultStore } from "./toolResultStore.js";
+import type { ToolResultStore } from "../../src/toolResults/index.js";
+import { join } from "node:path";
+import type { LspManagerLike } from "../../src/lsp/types.js";
+import { createToolContext } from "../../src/runtime/toolContext.js";
+import type { TaskSessionLike } from "../../src/tasks/index.js";
+import type { McpManagerLike } from "../../src/mcp/types.js";
+import {
+  createFileStateTracker,
+  type FileStateTracker,
+} from "../../src/tools/shared/fileState.js";
+import {
+  EMPTY_PROJECT_INSTRUCTIONS,
+  type ProjectInstructions,
+} from "../../src/prompt/instructions.js";
+import { createDisabledFileCheckpointRuntime } from "../../src/checkpoints/index.js";
+import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
+import {
+  createShellRunner,
+  type ShellRunnerLike,
+} from "../../src/tools/bash/shellRunner.js";
+import {
+  createGitSessionRuntime,
+  createGitWorkspaceRuntime,
+} from "../../src/git/index.js";
+
+export function createTestContext(
+  cwd: string,
+  options: {
+    permissionMode?: PermissionMode;
+    canUseTool?: ToolContext["canUseTool"];
+    signal?: AbortSignal;
+    sessionId?: string;
+    toolResultStore?: ToolResultStore;
+    lspManager?: LspManagerLike;
+    tasks?: TaskSessionLike;
+    mcpManager?: McpManagerLike;
+    fileState?: FileStateTracker;
+    instructions?: ProjectInstructions;
+    shellRunner?: ShellRunnerLike;
+    model?: string;
+    fastModel?: string;
+    memoryFiles?: MemoryFileAccess;
+  } = {}
+): ToolContext {
+  let permissionMode = options.permissionMode ?? "bypassPermissions";
+
+  const allow: PermissionDecision = { behavior: "allow" };
+
+  const permissionRules = { allow: [], ask: [], deny: [] };
+  const sessionId = options.sessionId ?? "test-session";
+  const gitWorkspace = createGitWorkspaceRuntime(cwd);
+  const gitSession = createGitSessionRuntime({
+    cwd,
+    workspace: gitWorkspace,
+    resumed: false,
+  });
+  return createToolContext({
+    signal: options.signal ?? new AbortController().signal,
+    resources: {
+      cwd,
+      model: options.model ?? "glm-test",
+      fastModel: options.fastModel ?? "glm-fast-test",
+      skills: [],
+      instructions: options.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
+      lspManager: options.lspManager,
+      tasks: options.tasks,
+      mcpManager: options.mcpManager,
+      fileState: options.fileState ?? createFileStateTracker(),
+      gitSession,
+      memoryFiles: options.memoryFiles,
+      shellRunner:
+        options.shellRunner ??
+        createShellRunner(createDisabledSandboxRuntime()),
+    },
+    session: {
+      sessionId,
+      compactState: createCompactState(),
+      toolResultStore:
+        options.toolResultStore ??
+        createTestToolResultStore(cwd, sessionId, {
+          rootDir: join(cwd, ".pillar-test-results"),
+        }),
+      fileCheckpoints: createDisabledFileCheckpointRuntime(),
+    },
+    host: {
+      canUseTool: options.canUseTool ?? (async () => allow),
+      getPermissionRules: () => permissionRules,
+      getPermissionMode: () => permissionMode,
+      getPrePlanMode: () => undefined,
+      setPermissionMode(mode) {
+        permissionMode = mode;
+      },
+      setTodos() {},
+    },
+  });
+}

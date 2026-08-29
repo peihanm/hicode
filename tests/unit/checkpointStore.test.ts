@@ -1,0 +1,290 @@
+import {describe, expect, test} from "bun:test";
+import {readFile, stat, writeFile} from "node:fs/promises";
+import {join} from "node:path";
+import {FileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
+import {createFileCheckpointStoreFactory} from "../../src/checkpoints/store.js";
+import {
+    getCheckpointBlobPath,
+    getCheckpointManifestPath,
+    getCheckpointMutationLogPath,
+} from "../../src/checkpoints/paths.js";
+import {hashCheckpointContent} from "../../src/checkpoints/fingerprint.js";
+import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
+import {withTempProject} from "../helpers/tempProject.js";
+
+function createRuntime(cwd: string) {
+    const store = createFileCheckpointStoreFactory({
+        projectsRoot: join(cwd, ".checkpoint-projects"),
+    })(cwd, "checkpoint-session");
+    return new FileCheckpointRuntime(store, createFileStateTracker());
+}
+
+describe("File Checkpoint Store", () => {
+    test("同一 Turn 多次写入只保留第一次 Preimage", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "app.ts");
+            await writeFile(path, "const value = 1;\n");
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "修改 value"});
+            expect(checkpoint).not.toBeNull();
+
+            expect((await runtime.beforeWrite({
+                path,
+                content: "const value = 1;\n",
+                toolCallId: "call-1",
+            })).captured).toBe(true);
+            await writeFile(path, "const value = 2;\n");
+            await runtime.afterWrite({
+                path,
+                content: "const value = 2;\n",
+                toolCallId: "call-1",
+            });
+
+            await runtime.beforeWrite({
+                path,
+                content: "const value = 2;\n",
+                toolCallId: "call-2",
+            });
+            await writeFile(path, "const value = 3;\n");
+            await runtime.afterWrite({
+                path,
+                content: "const value = 3;\n",
+                toolCallId: "call-2",
+            });
+            await runtime.settleTurn();
+
+            const listed = await runtime.listCheckpoints();
+            expect(listed).toHaveLength(1);
+            expect(listed[0]?.mutations).toHaveLength(1);
+            expect(listed[0]?.mutations[0]?.firstToolCallId).toBe("call-1");
+            expect(listed[0]?.mutations[0]?.lastToolCallId).toBe("call-2");
+
+            const result = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(result.status).toBe("complete");
+            expect(await readFile(path, "utf8")).toBe("const value = 1;\n");
+        });
+    });
+
+    test("新建文件恢复为 missing 并删除", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "new.txt");
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "新建文件"});
+            await runtime.beforeWrite({
+                path,
+                content: null,
+                toolCallId: "create-1",
+            });
+            await writeFile(path, "created\n");
+            await runtime.afterWrite({
+                path,
+                content: "created\n",
+                toolCallId: "create-1",
+            });
+            await runtime.settleTurn();
+
+            const preview = await runtime.previewRestore(checkpoint!.checkpointId);
+            expect(preview.files[0]?.action).toBe("delete");
+            const result = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(result.deletedFiles).toEqual(["new.txt"]);
+            await expect(readFile(path, "utf8")).rejects.toMatchObject({
+                code: "ENOENT",
+            });
+        });
+    });
+
+    test("外部修改触发 conflict 且不覆盖文件", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "config.json");
+            await writeFile(path, "old\n");
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "修改配置"});
+            await runtime.beforeWrite({
+                path,
+                content: "old\n",
+                toolCallId: "edit-1",
+            });
+            await writeFile(path, "agent\n");
+            await runtime.afterWrite({
+                path,
+                content: "agent\n",
+                toolCallId: "edit-1",
+            });
+            await runtime.settleTurn();
+            await writeFile(path, "external\n");
+
+            const result = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(result.status).toBe("conflict");
+            expect(result.conflicts[0]?.reason).toBe("external_change");
+            expect(await readFile(path, "utf8")).toBe("external\n");
+        });
+    });
+
+    test("Blob 损坏时预览和恢复均拒绝覆盖当前文件", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "safe.txt");
+            await writeFile(path, "before\n");
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "修改 safe"});
+            await runtime.beforeWrite({
+                path,
+                content: "before\n",
+                toolCallId: "edit-safe",
+            });
+            await writeFile(path, "after\n");
+            await runtime.afterWrite({
+                path,
+                content: "after\n",
+                toolCallId: "edit-safe",
+            });
+            await runtime.settleTurn();
+            const record = (await runtime.listCheckpoints())[0]!;
+            const blobId = record.mutations[0]!.beforeBlobId!;
+            const store = createFileCheckpointStoreFactory({
+                projectsRoot: join(cwd, ".checkpoint-projects"),
+            })(cwd, "checkpoint-session");
+            await writeFile(getCheckpointBlobPath(store.directory, blobId), "corrupt");
+
+            const preview = await runtime.previewRestore(checkpoint!.checkpointId);
+            expect(preview.conflicts[0]?.reason).toBe("corrupt_blob");
+            const restored = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(restored.status).toBe("conflict");
+            expect(await readFile(path, "utf8")).toBe("after\n");
+        });
+    });
+
+    test("Bash 等未捕获副作用进入 partial coverage", async () => {
+        await withTempProject(async (cwd) => {
+            const runtime = createRuntime(cwd);
+            await runtime.beginTurn({prompt: "运行脚本"});
+            await runtime.markCoverageWarning({
+                code: "bash_side_effects",
+                message: "Bash 可能修改文件",
+            });
+            await runtime.settleTurn();
+            const listed = await runtime.listCheckpoints();
+            expect(listed[0]?.coverageWarnings).toEqual([{
+                code: "bash_side_effects",
+                message: "Bash 可能修改文件",
+            }]);
+        });
+    });
+
+    test("超过 500 个文件时继续使用分片 mutation log 完整记录", async () => {
+        await withTempProject(async (cwd) => {
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "批量生成文件"});
+            for (let index = 0; index < 600; index++) {
+                const path = join(cwd, `generated-${index}.txt`);
+                expect((await runtime.beforeWrite({
+                    path,
+                    content: null,
+                    toolCallId: `write-${index}`,
+                })).captured).toBe(true);
+                await writeFile(path, `${index}\n`);
+                expect((await runtime.afterWrite({
+                    path,
+                    content: `${index}\n`,
+                    toolCallId: `write-${index}`,
+                })).captured).toBe(true);
+            }
+            await runtime.settleTurn();
+
+            const listed = await runtime.listCheckpoints();
+            expect(listed[0]?.mutations).toHaveLength(600);
+            expect(listed[0]?.fileCoverage).toBe("complete");
+
+            const store = createFileCheckpointStoreFactory({
+                projectsRoot: join(cwd, ".checkpoint-projects"),
+            })(cwd, "checkpoint-session");
+            const manifest = await readFile(
+                getCheckpointManifestPath(store.directory),
+                "utf8"
+            );
+            expect(manifest).not.toContain("mutations");
+            expect((await stat(getCheckpointMutationLogPath(
+                store.directory,
+                checkpoint!.checkpointId
+            ))).size).toBeGreaterThan(0);
+
+            const result = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(result.status).toBe("complete");
+            expect(result.deletedFiles).toHaveLength(600);
+            await expect(readFile(join(cwd, "generated-599.txt"), "utf8"))
+                .rejects.toMatchObject({code: "ENOENT"});
+        });
+    });
+
+    test("文件 Preimage 捕获失败后禁止把恢复描述成完整成功", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "safe.txt");
+            await writeFile(path, "before\n");
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "修改多个文件"});
+            await runtime.beforeWrite({
+                path,
+                content: "before\n",
+                toolCallId: "edit-safe",
+            });
+            await writeFile(path, "after\n");
+            await runtime.afterWrite({
+                path,
+                content: "after\n",
+                toolCallId: "edit-safe",
+            });
+            await runtime.markCoverageWarning({
+                code: "checkpoint_write_failed",
+                path: "not-captured.txt",
+                message: "无法保存 Preimage",
+            });
+            await runtime.settleTurn();
+
+            const listed = await runtime.listCheckpoints();
+            expect(listed[0]?.fileCoverage).toBe("incomplete");
+            const preview = await runtime.previewRestore(checkpoint!.checkpointId);
+            expect(preview.conflicts[0]?.reason).toBe("incomplete_checkpoint");
+            const result = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(result.status).toBe("conflict");
+            expect(result.restoredFiles).toEqual([]);
+            expect(await readFile(path, "utf8")).toBe("after\n");
+        });
+    });
+
+    test("超过 100 个 Checkpoint 后淘汰旧 metadata 并回收无引用 Blob", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "rolling.txt");
+            await writeFile(path, "v0\n");
+            const runtime = createRuntime(cwd);
+            for (let index = 0; index < 101; index++) {
+                await runtime.beginTurn({prompt: `turn-${index}`});
+                const before = `v${index}\n`;
+                const after = `v${index + 1}\n`;
+                await runtime.beforeWrite({
+                    path,
+                    content: before,
+                    toolCallId: `write-${index}`,
+                });
+                await writeFile(path, after);
+                await runtime.afterWrite({
+                    path,
+                    content: after,
+                    toolCallId: `write-${index}`,
+                });
+                await runtime.settleTurn();
+            }
+
+            expect(await runtime.listCheckpoints()).toHaveLength(100);
+            const store = createFileCheckpointStoreFactory({
+                projectsRoot: join(cwd, ".checkpoint-projects"),
+            })(cwd, "checkpoint-session");
+            await expect(stat(getCheckpointBlobPath(
+                store.directory,
+                hashCheckpointContent("v0\n")
+            ))).rejects.toMatchObject({code: "ENOENT"});
+            await expect(stat(getCheckpointBlobPath(
+                store.directory,
+                hashCheckpointContent("v1\n")
+            ))).resolves.toBeDefined();
+        });
+    });
+});

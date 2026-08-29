@@ -1,0 +1,378 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { cleanup, render } from "ink-testing-library";
+import stringWidth from "string-width";
+import { reduceThreads } from "../../src/ui/conversation/threadReducer.js";
+import type { UIThread } from "../../src/ui/conversation/types.js";
+import {
+  layoutUserMessageRows,
+  MessageList,
+} from "../../src/ui/conversation/MessageList.js";
+import { AppForTest as App } from "../helpers/AppForTest.js";
+import type { AgentRunner } from "../../src/agent/index.js";
+import { withTempProject } from "../helpers/tempProject.js";
+import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
+
+afterEach(() => cleanup());
+
+describe("subagent UI", () => {
+  test("长中文用户消息不会留下只有一两个词的孤立尾行", () => {
+    const prompt = "我想做一个能让我自己刷leetcode的网站，你能帮我做一个嘛，我希望能把服务起来，然后在本地web页面上写题目，然后跑程序。题目可以就一道先，主要是把整体框架搭起";
+    const rows = layoutUserMessageRows(prompt, 150);
+
+    expect(rows).toHaveLength(2);
+    expect(stringWidth(rows.at(-1)!.text)).toBeGreaterThanOrEqual(12);
+
+    expect(rows.map((row) => row.text).join("")).toBe(prompt);
+    expect(rows.at(-1)!.text).not.toBe("搭起");
+    expect(rows.at(-1)!.text).toEndWith("搭起");
+  });
+
+  test("生命周期更新同一个 Agent tool thread，不展开内部工具噪音", () => {
+    let threads: UIThread[] = [];
+    threads = reduceThreads(threads, {
+      type: "tool_call_start",
+      turnId: "turn-1",
+      toolCallId: "agent-call",
+      name: "agent",
+      args: JSON.stringify({
+        description: "调查 Session",
+        prompt: "调查 Session",
+        subagent_type: "Explore",
+      }),
+    });
+    threads = reduceThreads(threads, {
+      type: "subagent_start",
+      agentId: "child-1",
+      agentType: "Explore",
+      description: "调查 Session",
+      parentToolCallId: "agent-call",
+    });
+    threads = reduceThreads(threads, {
+      type: "subagent_end",
+      agentId: "child-1",
+      agentType: "Explore",
+      reason: "completed",
+      iterations: 3,
+      toolUseCount: 5,
+      durationMs: 25,
+      report: "完整 Explore 调查报告",
+    });
+    threads = reduceThreads(threads, {
+      type: "tool_call_end",
+      turnId: "turn-1",
+      toolCallId: "agent-call",
+      result: "完整 Explore 调查报告",
+      outcome: "ok",
+    });
+
+    expect(threads).toHaveLength(1);
+    const instance = render(<MessageList threads={threads} />);
+    expect(instance.lastFrame()).toContain("Explore Agent · 调查 Session");
+    expect(instance.lastFrame()).toContain("Done (5 tool calls · 3 iterations");
+    expect(instance.lastFrame()).not.toContain("完整 Explore 调查报告");
+
+    const expanded = render(
+      <MessageList threads={threads} transcript />
+    );
+    expect(expanded.lastFrame()).toContain("Explore response");
+    expect(expanded.lastFrame()).toContain("完整 Explore 调查报告");
+  });
+
+  test("运行中 Agent 只有底部状态动画，标题不使用静态假 spinner 或重复描述", async () => {
+    await withTempProject(async (cwd) => {
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started!: () => void;
+      const didStart = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const runAgentImpl: AgentRunner = async (_input, _history, onEvent) => {
+        onEvent({
+          type: "tool_call_start",
+          turnId: "turn-1",
+          toolCallId: "verify-running",
+          name: "agent",
+          args: JSON.stringify({
+            description: "独立验证本轮实现",
+            subagent_type: "Verification",
+          }),
+        });
+        onEvent({
+          type: "subagent_start",
+          agentId: "verification-running",
+          agentType: "Verification",
+          description: "独立验证本轮实现",
+          parentToolCallId: "verify-running",
+        });
+        started();
+        await released;
+        onEvent({
+          type: "subagent_end",
+          agentId: "verification-running",
+          agentType: "Verification",
+          reason: "completed",
+          iterations: 1,
+          toolUseCount: 0,
+          durationMs: 10,
+          report: "SUMMARY: 验证完成\nVERDICT: PASS",
+          verificationVerdict: "PASS",
+        });
+        onEvent({
+          type: "tool_call_end",
+          turnId: "turn-1",
+          toolCallId: "verify-running",
+          result: "VERDICT: PASS",
+          outcome: "ok",
+        });
+        return { reply: "完成", reason: "completed", iterations: 1 };
+      };
+      const instance = render(
+        <App
+          resources={createTestRuntimeResources(cwd)}
+          runAgentImpl={runAgentImpl}
+        />
+      );
+      instance.stdin.write("验证");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      instance.stdin.write("\r");
+      await didStart;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const frame = instance.lastFrame() ?? "";
+      expect(frame).toContain("● Verification Agent · 独立验证本轮实现");
+      expect(frame).toContain("正在运行 Verification Agent...");
+      expect(frame).not.toContain("✻ Verification Agent");
+      expect(frame).not.toContain("Verification: 独立验证本轮实现");
+
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  });
+
+  test("App 中 Ctrl+O 切换 Explore response", async () => {
+    await withTempProject(async (cwd) => {
+      const runAgentImpl: AgentRunner = async (
+        _input,
+        _history,
+        onEvent
+      ) => {
+        onEvent({
+          type: "tool_call_start",
+          turnId: "turn-1",
+          toolCallId: "agent-call",
+          name: "agent",
+          args: JSON.stringify({
+            description: "调查 Session",
+            prompt: "调查 Session",
+            subagent_type: "Explore",
+          }),
+        });
+        onEvent({
+          type: "subagent_start",
+          agentId: "child-1",
+          agentType: "Explore",
+          description: "调查 Session",
+          parentToolCallId: "agent-call",
+        });
+        onEvent({
+          type: "subagent_end",
+          agentId: "child-1",
+          agentType: "Explore",
+          reason: "completed",
+          iterations: 2,
+          toolUseCount: 4,
+          durationMs: 1200,
+          report: "可展开的 Explore 报告",
+        });
+        onEvent({
+          type: "tool_call_end",
+          turnId: "turn-1",
+          toolCallId: "agent-call",
+          result: "可展开的 Explore 报告",
+          outcome: "ok",
+        });
+        return { reply: "完成", reason: "completed", iterations: 1 };
+      };
+      const instance = render(
+        <App
+          resources={createTestRuntimeResources(cwd)}
+          runAgentImpl={runAgentImpl}
+        />
+      );
+      instance.stdin.write("调查");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      instance.stdin.write("\r");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      expect(instance.lastFrame()).toContain("Done (4 tool calls · 2 iterations");
+      expect(instance.lastFrame()).not.toContain("可展开的 Explore 报告");
+
+      instance.stdin.write("\x0f");
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(instance.lastFrame()).toContain("可展开的 Explore 报告");
+    });
+  });
+
+  test("Verification 区分运行失败和验证结论，并展示折叠摘要", () => {
+    let threads: UIThread[] = reduceThreads([], {
+      type: "tool_call_start",
+      turnId: "turn-1",
+      toolCallId: "verify-call",
+      name: "agent",
+      args: JSON.stringify({
+        description: "验证页面",
+        prompt: "验证",
+        subagent_type: "Verification",
+      }),
+    });
+    threads = reduceThreads(threads, {
+      type: "subagent_start",
+      agentId: "verify-1",
+      agentType: "Verification",
+      description: "验证页面",
+      parentToolCallId: "verify-call",
+    });
+    threads = reduceThreads(threads, {
+      type: "subagent_end",
+      agentId: "verify-1",
+      agentType: "Verification",
+      reason: "completed",
+      iterations: 6,
+      toolUseCount: 9,
+      durationMs: 2_000,
+      report: [
+        "后端和 API 已验证。",
+        "",
+        "SUMMARY: 后端和 API 已验证；浏览器渲染与点击运行尚未验证",
+        "VERDICT: PARTIAL",
+      ].join("\n"),
+      verificationVerdict: "PARTIAL",
+    });
+
+    const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
+    expect(frame).toContain("Verified with gaps (9 tool calls · 6 iterations · 2s)");
+    expect(frame).toContain("└ 后端和 API 已验证；浏览器渲染与点击运行尚未验证");
+    expect(frame).not.toContain("Done (");
+    expect(frame).not.toContain("Partial (");
+
+    threads = reduceThreads([], {
+      type: "tool_call_start",
+      turnId: "turn-1",
+      toolCallId: "failed-verify-call",
+      name: "agent",
+      args: JSON.stringify({ subagent_type: "Verification" }),
+    });
+    threads = reduceThreads(threads, {
+      type: "subagent_start",
+      agentId: "verify-2",
+      agentType: "Verification",
+      description: "验证页面",
+      parentToolCallId: "failed-verify-call",
+    });
+    threads = reduceThreads(threads, {
+      type: "subagent_end",
+      agentId: "verify-2",
+      agentType: "Verification",
+      reason: "completed",
+      iterations: 4,
+      toolUseCount: 5,
+      durationMs: 1_000,
+      report: "SUMMARY: 页面加载时发生确定性 TypeError\nVERDICT: FAIL",
+      verificationVerdict: "FAIL",
+    });
+    const issueFrame = render(<MessageList threads={threads} />).lastFrame() ?? "";
+    expect(issueFrame).toContain("Issue found (5 tool calls · 4 iterations · 1s)");
+    expect(issueFrame).toContain("└ 页面加载时发生确定性 TypeError");
+    expect(issueFrame).not.toContain("Failed (");
+  });
+
+  test("长 Bash 命令用可见符号保留换行边界并截断摘要", () => {
+    const command = [
+      'echo "=== first ==="',
+      "curl -s http://localhost:3000/api/first",
+      "curl -s http://localhost:3000/api/second",
+      "x".repeat(240),
+    ].join("\n");
+    const threads = reduceThreads([], {
+      type: "tool_call_start",
+      turnId: "turn-1",
+      toolCallId: "long-bash",
+      name: "bash",
+      args: JSON.stringify({ command }),
+    });
+
+    const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
+    expect(frame).toContain("● Bash");
+    expect(frame).toContain('Bash echo "=== first ===" ⏎ curl -s');
+    expect(frame).toContain("…");
+    expect(frame).not.toContain("x".repeat(200));
+  });
+
+  test("read_file 结果只展示读取范围，不泄露模型协议头", () => {
+    let threads = reduceThreads([], {
+      type: "tool_call_start",
+      turnId: "turn-1",
+      toolCallId: "read-readme",
+      name: "read_file",
+      args: JSON.stringify({ path: "/project/README.md" }),
+    });
+    threads = reduceThreads(threads, {
+      type: "tool_call_end",
+      turnId: "turn-1",
+      toolCallId: "read-readme",
+      result: [
+        "文件: /project/README.md",
+        "行范围: 1-60 / 60",
+        "注意: 左侧行号不是文件内容，edit_file.old_string 不要包含这些行号。",
+        "",
+        "     1\t# README",
+      ].join("\n"),
+      outcome: "ok",
+    });
+
+    const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
+    expect(frame).toContain("● Read /project/README.md");
+    expect(frame).toContain("⎿ Read 60 lines");
+    expect(frame).not.toContain("左侧行号不是文件内容");
+
+    const transcript = render(
+      <MessageList threads={threads} transcript />
+    ).lastFrame() ?? "";
+    expect(transcript).toContain("Read /project/README.md");
+    expect(transcript).toContain("行范围: 1-60 / 60");
+    expect(transcript).toContain("左侧行号不是文件内容");
+  });
+
+  test("Assistant 常用 Markdown 转为终端层级且标记间距稳定", () => {
+    const threads: UIThread[] = [{
+      id: "markdown-answer",
+      role: "assistant",
+      text: [
+        "## 完成",
+        "",
+        "服务地址：**http://localhost:3000**",
+        "",
+        "### 题目",
+        "| 题目 | 难度 |",
+        "|---|---|",
+        "| 两数之和 | Easy |",
+        "",
+        "- 使用 `bash_task` 管理服务",
+      ].join("\n"),
+    }];
+
+    const frame = render(
+      <MessageList threads={threads} terminalWidth={90} />
+    ).lastFrame() ?? "";
+    expect(frame).toContain("● 完成");
+    expect(frame).toContain("服务地址：http://localhost:3000");
+    expect(frame).toContain("题目");
+    expect(frame).toContain("两数之和");
+    expect(frame).toContain("• 使用 bash_task 管理服务");
+    expect(frame).not.toContain("##");
+    expect(frame).not.toContain("**");
+    expect(frame).not.toContain("|---|");
+  });
+});

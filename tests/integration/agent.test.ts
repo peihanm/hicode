@@ -1,0 +1,695 @@
+import { describe, expect, test } from "bun:test";
+import { runAgentForTest as runAgent } from "../helpers/agent.js";
+import type { LLMCaller } from "../../src/llm/types.js";
+import type { AgentEvent } from "../../src/agent/types.js";
+import type { Message, ToolCall } from "../../src/llm/types.js";
+import {
+  assistantText,
+  assistantToolCall,
+  createFakeLLM,
+} from "../helpers/fakeLLM.js";
+import { createTestContext } from "../helpers/testContext.js";
+import { withTempProject } from "../helpers/tempProject.js";
+import { createFileChange } from "../../src/fileChanges/index.js";
+
+function initialHistory(): Message[] {
+  return [{ role: "system", content: "test system prompt" }];
+}
+
+function assistantToolCalls(calls: ToolCall[]) {
+  return {
+    message: { role: "assistant" as const, content: null, tool_calls: calls },
+    toolCalls: calls,
+    usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+  };
+}
+
+describe("agent loop", () => {
+  test("同一 root turn 的文件修改事件携带稳定 turnId 和 uiData", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      const change = createFileChange({
+        path: "a.ts",
+        kind: "update",
+        oldContent: "a\n",
+        newContent: "b\n",
+      });
+      const fake = createFakeLLM([
+        assistantToolCall("edit_file", {}, "edit-event"),
+        assistantText("完成"),
+      ]);
+      await runAgent(
+        "修改",
+        initialHistory(),
+        (event) => events.push(event),
+        createTestContext(cwd),
+        {
+          turnId: "stable-turn",
+          callLLM: fake.callLLM,
+          executeTool: async () => ({
+            modelContent: "已修改",
+            displayContent: "已修改",
+            outcome: "ok",
+            uiData: { type: "file_change", change },
+          }),
+        }
+      );
+
+      const start = events.find((event) => event.type === "tool_call_start");
+      const end = events.find((event) => event.type === "tool_call_end");
+      expect(start).toMatchObject({ turnId: "stable-turn" });
+      expect(end).toMatchObject({
+        turnId: "stable-turn",
+        uiData: { type: "file_change", change: { path: "a.ts" } },
+      });
+    });
+  });
+  test("无工具调用时返回最终文本并记录事件", async () => {
+    await withTempProject(async (cwd) => {
+      const history = initialHistory();
+      const events: AgentEvent[] = [];
+      const fake = createFakeLLM([assistantText("任务完成")]);
+
+      const result = await runAgent(
+        "处理任务",
+        history,
+        (event) => events.push(event),
+        createTestContext(cwd),
+        { callLLM: fake.callLLM }
+      );
+
+      expect(result).toEqual({
+        reply: "任务完成",
+        reason: "completed",
+        iterations: 1,
+      });
+      expect(history.map((message) => message.role)).toEqual([
+        "system",
+        "user",
+        "assistant",
+      ]);
+      expect(events.some((event) => event.type === "assistant_text")).toBe(true);
+      expect(events.some((event) => event.type === "token_update")).toBe(true);
+      expect(fake.calls).toHaveLength(1);
+    });
+  });
+
+  test("Provider 缺失 usage 时用本地上下文估算，不发布真实零 token", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      await runAgent(
+        "处理任务",
+        initialHistory(),
+        (event) => events.push(event),
+        createTestContext(cwd),
+        {
+          callLLM: async () => ({
+            message: { role: "assistant", content: "完成" },
+            toolCalls: [],
+            usage: {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+          }),
+        }
+      );
+
+      const update = events.find((event) => event.type === "token_update");
+      expect(update).toMatchObject({ type: "token_update", status: "estimated" });
+      expect(update?.tokenCount).toBeGreaterThan(0);
+    });
+  });
+
+  test("把 Provider 的流式生成进度转发给宿主并在完成时收口", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      const streamingCall: LLMCaller =
+        async (
+          _messages,
+          _tools,
+          _cwd,
+          _model,
+          _kind,
+          _signal,
+          onStreamProgress
+        ) => {
+          onStreamProgress?.({
+            phase: "tool_input",
+            outputCharacters: 400,
+            estimatedOutputTokens: 100,
+            toolName: "write_file",
+          });
+          return assistantText("完成");
+        };
+
+      await runAgent(
+        "处理任务",
+        initialHistory(),
+        (event) => events.push(event),
+        createTestContext(cwd),
+        { callLLM: streamingCall }
+      );
+
+      expect(
+        events.filter((event) => event.type.startsWith("model_stream"))
+      ).toEqual([
+        { type: "model_stream_start" },
+        {
+          type: "model_stream_progress",
+          phase: "tool_input",
+          outputCharacters: 400,
+          estimatedOutputTokens: 100,
+          toolName: "write_file",
+        },
+        { type: "model_stream_end" },
+      ]);
+    });
+  });
+
+  test("模型 stream 失败时也发送 end，避免 UI 保留过期进度", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      const failedCall: LLMCaller =
+        async (
+          _messages,
+          _tools,
+          _cwd,
+          _model,
+          _kind,
+          _signal,
+          onStreamProgress
+        ) => {
+          onStreamProgress?.({
+            phase: "content",
+            outputCharacters: 40,
+            estimatedOutputTokens: 10,
+          });
+          throw new Error("stream disconnected");
+        };
+
+      await expect(
+        runAgent(
+          "处理任务",
+          initialHistory(),
+          (event) => events.push(event),
+          createTestContext(cwd),
+          { callLLM: failedCall }
+        )
+      ).rejects.toThrow("stream disconnected");
+      expect(events.at(-1)).toEqual({ type: "model_stream_end" });
+    });
+  });
+
+  test("工具结果进入下一轮模型上下文并保持 call id 配对", async () => {
+    await withTempProject(async (cwd) => {
+      const history = initialHistory();
+      const events: AgentEvent[] = [];
+      const fake = createFakeLLM([
+        assistantToolCall("synthetic_tool", { value: 1 }, "call-42"),
+        (options) => {
+          const toolResult = options.messages.find(
+            (message) => message.role === "tool" && message.tool_call_id === "call-42"
+          );
+          expect(toolResult?.content).toBe("synthetic result");
+          return assistantText("已使用工具结果");
+        },
+      ]);
+
+      const result = await runAgent(
+        "调用工具",
+        history,
+        (event) => events.push(event),
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => "synthetic result",
+        }
+      );
+
+      expect(result.reason).toBe("completed");
+      expect(fake.calls).toHaveLength(2);
+      expect(
+        history.some(
+          (message) =>
+            message.role === "tool" && message.tool_call_id === "call-42"
+        )
+      ).toBe(true);
+      expect(events.map((event) => event.type)).toContain("tool_call_start");
+      expect(events.map((event) => event.type)).toContain("tool_call_end");
+    });
+  });
+
+  test("连续并发安全工具同时执行且按原调用顺序回写", async () => {
+    await withTempProject(async (cwd) => {
+      const calls: ToolCall[] = ["safe-1", "safe-2", "safe-3"].map((id) => ({
+        id,
+        type: "function",
+        function: { name: id, arguments: "{}" },
+      }));
+      let arrivals = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fake = createFakeLLM([
+        assistantToolCalls(calls),
+        (options) => {
+          const ids = options.messages
+            .filter((message) => message.role === "tool")
+            .map((message) => message.tool_call_id);
+          expect(ids).toEqual(["safe-1", "safe-2", "safe-3"]);
+          return assistantText("并发完成");
+        },
+      ]);
+
+      const result = await runAgent(
+        "并发读取",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          isToolConcurrencySafe: () => true,
+          executeTool: async (name) => {
+            arrivals += 1;
+            if (arrivals === calls.length) release();
+            await Promise.race([
+              gate,
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("工具未并发启动")), 200)
+              ),
+            ]);
+            return `${name} result`;
+          },
+        }
+      );
+
+      expect(result.reply).toBe("并发完成");
+      expect(arrivals).toBe(3);
+    });
+  });
+
+  test("非安全工具在并发安全批次之间独占执行", async () => {
+    await withTempProject(async (cwd) => {
+      const names = ["read-1", "read-2", "write", "read-3", "read-4"];
+      const calls: ToolCall[] = names.map((name) => ({
+        id: name,
+        type: "function",
+        function: { name, arguments: "{}" },
+      }));
+      let active = 0;
+      let unsafeOverlap = false;
+      const activeNames = new Set<string>();
+      const fake = createFakeLLM([
+        assistantToolCalls(calls),
+        assistantText("分批完成"),
+      ]);
+
+      await runAgent(
+        "混合调用",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          isToolConcurrencySafe: (name) => name.startsWith("read-"),
+          executeTool: async (name) => {
+            if (name === "write" ? active > 0 : activeNames.has("write")) {
+              unsafeOverlap = true;
+            }
+            active += 1;
+            activeNames.add(name);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            active -= 1;
+            activeNames.delete(name);
+            return `${name} result`;
+          },
+        }
+      );
+
+      expect(unsafeOverlap).toBe(false);
+    });
+  });
+
+  test("工具失败仍作为 tool result 回喂模型", async () => {
+    await withTempProject(async (cwd) => {
+      const fake = createFakeLLM([
+        assistantToolCall("broken_tool", {}, "broken-1"),
+        (options) => {
+          const result = options.messages.find(
+            (message) => message.role === "tool" && message.tool_call_id === "broken-1"
+          );
+          expect(result?.content).toContain("工具执行出错");
+          return assistantText("已处理失败");
+        },
+      ]);
+
+      const result = await runAgent(
+        "处理失败",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => "工具执行出错: synthetic failure",
+        }
+      );
+
+      expect(result.reply).toBe("已处理失败");
+    });
+  });
+
+  test("Verification 报告交给主模型处理，不由主循环追加固定结论", async () => {
+    await withTempProject(async (cwd) => {
+      const fake = createFakeLLM([
+        assistantToolCall(
+          "agent",
+          {
+            description: "独立验证",
+            prompt: "检查当前实现",
+            subagent_type: "Verification",
+          },
+          "verification-1"
+        ),
+        assistantText("验证未覆盖浏览器交互，我暂时不能确认端到端通过。"),
+      ]);
+
+      const result = await runAgent(
+        "验证实现",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => ({
+            modelContent: "SUMMARY: 浏览器交互未覆盖\nVERDICT: PARTIAL",
+            displayContent: "SUMMARY: 浏览器交互未覆盖\nVERDICT: PARTIAL",
+            outcome: "ok",
+          }),
+        }
+      );
+
+      expect(result.reply).toBe(
+        "验证未覆盖浏览器交互，我暂时不能确认端到端通过。"
+      );
+    });
+  });
+
+  test("最后相关工具仍失败时有界阻止一次完成声明", async () => {
+    await withTempProject(async (cwd) => {
+      const history = initialHistory();
+      const fake = createFakeLLM([
+        assistantToolCall("bash", {}, "failed-bash"),
+        assistantText("游戏已经启动"),
+        (options) => {
+          expect(options.messages.some(
+            (message) =>
+              typeof message.content === "string" &&
+              message.content.includes("本轮存在失败工具记录") &&
+              message.content.includes("bash (failed-bash)") &&
+              message.content.includes("<candidate-reply>\n游戏已经启动\n</candidate-reply>")
+          )).toBe(true);
+          return assistantText("启动验证失败，程序没有保持运行");
+        },
+      ]);
+
+      const result = await runAgent(
+        "启动游戏",
+        history,
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => ({
+            modelContent: "执行失败 (timeout 30000ms)",
+            displayContent: "执行失败 (timeout 30000ms)",
+            outcome: "failed",
+          }),
+        }
+      );
+
+      expect(result.reply).toBe("启动验证失败，程序没有保持运行");
+      expect(fake.calls).toHaveLength(3);
+      expect(history.some(
+        (message) => message.content === "游戏已经启动"
+      )).toBe(false);
+      expect(history.some(
+        (message) =>
+          typeof message.content === "string" &&
+          message.content.includes("<system-reminder>")
+      )).toBe(false);
+    });
+  });
+
+  test("后台服务仍运行时要求最终回答披露 Runtime 生命周期", async () => {
+    await withTempProject(async (cwd) => {
+      const fake = createFakeLLM([
+        assistantToolCall("bash", {
+          command: "node server.js",
+          run_in_background: true,
+        }, "server-bash"),
+        assistantText("服务已启动：http://localhost:3000"),
+        (options) => {
+          expect(options.messages.some(
+            (message) =>
+              typeof message.content === "string" &&
+              message.content.includes("仍有由 Pillar Runtime 管理的后台 Shell") &&
+              message.content.includes("server-123") &&
+              message.content.includes("退出 Pillar 后会终止") &&
+              message.content.includes("<candidate-reply>\n服务已启动：http://localhost:3000\n</candidate-reply>")
+          )).toBe(true);
+          return assistantText(
+            "服务已启动：http://localhost:3000。服务只在当前 Pillar Runtime 内运行，退出 Pillar 后会终止。"
+          );
+        },
+      ]);
+
+      const result = await runAgent(
+        "启动服务",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => [
+            "后台任务已启动。",
+            "Task: server-123",
+            "Status: running",
+            "Lifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。",
+          ].join("\n"),
+        }
+      );
+
+      expect(result.reply).toContain("退出 Pillar 后会终止");
+      expect(fake.calls).toHaveLength(3);
+    });
+  });
+
+  test("仅有 curl 抽样时纠正全链路和虚假沙箱声明", async () => {
+    await withTempProject(async (cwd) => {
+      const fake = createFakeLLM([
+        assistantToolCall("write_file", {
+          path: "server.js",
+          content: "console.log('server')",
+        }, "write-server"),
+        assistantToolCall("bash", {
+          command: [
+            "curl --fail-with-body -X POST http://localhost:3000/api/run",
+            "-H 'Content-Type: application/json'",
+            "-d '{\"code\":\"ok\"}'",
+          ].join(" "),
+        }, "curl-api"),
+        assistantText("完成，全链路验证通过。后端沙箱执行用户代码。"),
+        (options) => {
+          expect(options.messages.some(
+            (message) =>
+              typeof message.content === "string" &&
+              message.content.includes("只有 1 次 localhost HTTP 探测") &&
+              message.content.includes("没有 Browser/Playwright 证据") &&
+              message.content.includes("不是沙箱") &&
+              message.content.includes(
+                "<candidate-reply>\n完成，全链路验证通过。后端沙箱执行用户代码。\n</candidate-reply>"
+              )
+          )).toBe(true);
+          return assistantText(
+            "已验证一个 localhost POST 样例。浏览器交互、其他语言路径尚未验证；用户代码由本机子进程执行，仍可访问宿主文件和网络。"
+          );
+        },
+      ]);
+
+      const result = await runAgent(
+        "创建本地代码练习站",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => ({
+            modelContent: "ok",
+            displayContent: "ok",
+            outcome: "ok",
+          }),
+        }
+      );
+
+      expect(result.reply).toContain("浏览器交互、其他语言路径尚未验证");
+      expect(result.reply).toContain("本机子进程执行");
+      expect(result.reply).not.toContain("全链路验证通过");
+      expect(fake.calls).toHaveLength(4);
+    });
+  });
+
+  test("同名工具后续成功不会凭名称自动抹掉旧失败", async () => {
+    await withTempProject(async (cwd) => {
+      const fake = createFakeLLM([
+        assistantToolCall("bash", {}, "bash-failed"),
+        assistantToolCall("bash", {}, "bash-passed"),
+        assistantText("重新验证通过"),
+        (options) => {
+          expect(options.messages.some(
+            (message) =>
+              typeof message.content === "string" &&
+              message.content.includes("bash (bash-failed)")
+          )).toBe(true);
+          return assistantText("失败已由后续实际检查替代，重新验证通过");
+        },
+      ]);
+      let executions = 0;
+
+      const result = await runAgent(
+        "运行验证",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => {
+            executions += 1;
+            return {
+              modelContent: executions === 1 ? "failed" : "passed",
+              displayContent: executions === 1 ? "failed" : "passed",
+              outcome: executions === 1 ? "failed" : "ok",
+            };
+          },
+        }
+      );
+
+      expect(result.reply).toBe("失败已由后续实际检查替代，重新验证通过");
+      expect(fake.calls).toHaveLength(4);
+    });
+  });
+
+  test("同一并发批次的同名失败优先于成功", async () => {
+    await withTempProject(async (cwd) => {
+      const calls: ToolCall[] = ["failed", "passed"].map((id) => ({
+        id,
+        type: "function",
+        function: { name: "check", arguments: "{}" },
+      }));
+      const fake = createFakeLLM([
+        assistantToolCalls(calls),
+        assistantText("检查通过"),
+        assistantText("其中一个并发检查仍然失败"),
+      ]);
+
+      const result = await runAgent(
+        "并发检查",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          isToolConcurrencySafe: () => true,
+          executeTool: async (_name, _args, _ctx, toolCallId) => ({
+            modelContent: toolCallId,
+            displayContent: toolCallId,
+            outcome: toolCallId === "failed" ? "failed" : "ok",
+          }),
+        }
+      );
+
+      expect(result.reply).toBe("其中一个并发检查仍然失败");
+      expect(fake.calls).toHaveLength(3);
+    });
+  });
+
+  test("可配置 max iterations，防止无限工具循环", async () => {
+    await withTempProject(async (cwd) => {
+      let sequence = 0;
+      const fake = createFakeLLM([
+        () => assistantToolCall("loop", {}, `loop-${++sequence}`),
+        () => assistantToolCall("loop", {}, `loop-${++sequence}`),
+      ]);
+
+      const result = await runAgent(
+        "不要停止",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => "continue",
+          maxIterations: 2,
+        }
+      );
+
+      expect(result).toEqual({
+        reply: "(达到最大迭代次数 2，已停止)",
+        reason: "max_turns",
+        iterations: 2,
+      });
+      expect(fake.calls).toHaveLength(2);
+    });
+  });
+
+  test("空 assistant 回复安全重试一次后恢复最终回答", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      const fake = createFakeLLM([
+        assistantText(null),
+        (options) => {
+          expect(options.messages.some(
+            (message) =>
+              typeof message.content === "string" &&
+              message.content.includes("上一次模型响应没有有效正文或工具调用")
+          )).toBe(true);
+          return assistantText("恢复后的完整回答");
+        },
+      ]);
+      const result = await runAgent(
+        "空回复",
+        initialHistory(),
+        (event) => events.push(event),
+        createTestContext(cwd),
+        { callLLM: fake.callLLM }
+      );
+
+      expect(result.reason).toBe("completed");
+      expect(result.reply).toBe("恢复后的完整回答");
+      expect(fake.calls).toHaveLength(2);
+      expect(events.filter((event) => event.type === "assistant_text")).toHaveLength(1);
+    });
+  });
+
+  test("连续空 assistant 回复向用户显示明确错误", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      const fake = createFakeLLM([assistantText(null), assistantText("   \n")]);
+      const result = await runAgent(
+        "空回复",
+        initialHistory(),
+        (event) => events.push(event),
+        createTestContext(cwd),
+        { callLLM: fake.callLLM }
+      );
+
+      expect(result.reason).toBe("no_tool_calls");
+      expect(result.reply).toBe("模型连续两次未返回有效正文或工具调用，已停止本轮。");
+      expect(events).toContainEqual({
+        type: "assistant_text",
+        content: "模型连续两次未返回有效正文或工具调用，已停止本轮。",
+      });
+    });
+  });
+});

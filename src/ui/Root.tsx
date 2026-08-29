@@ -1,0 +1,105 @@
+import {useState} from "react";
+import {Box, Text, useApp, useInput} from "ink";
+import {ResumePicker} from "./bootstrap/ResumePicker.js";
+import {
+    listSessionIndex,
+    type LoadedSession,
+    loadLatestSession,
+    loadSession,
+    type ResumeMode,
+    type SessionIndexEntry,
+} from "../session/index.js";
+import type {PermissionMode} from "../permissions/index.js";
+import {COLORS} from "./theme.js";
+import type {ResolvedPillarSettings} from "../settings/index.js";
+import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
+
+type RootState =
+    | { view: "app"; session?: LoadedSession }
+    | { view: "picker"; sessions: SessionIndexEntry[] }
+    | { view: "error"; message: string };
+
+function createRootState(cwd: string, model: string, resumeMode: ResumeMode): RootState {
+    if (resumeMode.kind === "none") {
+        return {view: "app"};
+    }
+
+    if (resumeMode.kind === "continue") {
+        const session = loadLatestSession(cwd, model);
+        return session
+            ? {view: "app", session}
+            : {view: "error", message: "没有找到可继续的历史会话。"};
+    }
+
+    if (resumeMode.kind === "session") {
+        const session = loadSession(cwd, resumeMode.sessionId, model);
+        return session
+            ? {view: "app", session}
+            : {view: "error", message: `没有找到会话: ${resumeMode.sessionId}`};
+    }
+
+    const sessions = listSessionIndex(cwd);
+    return sessions.length > 0
+        ? {view: "picker", sessions}
+        : {view: "error", message: "没有找到可恢复的历史会话。"};
+}
+
+export function Root({
+                         cwd,
+                         settings,
+                         initialPermissionMode,
+                         resumeMode,
+                     }: {
+    cwd: string;
+    settings: ResolvedPillarSettings;
+    initialPermissionMode?: PermissionMode;
+    resumeMode: ResumeMode;
+}) {
+    const {exit} = useApp();
+    const model = settings.models.primary.model;
+    const [state, setState] = useState<RootState>(() =>
+        createRootState(cwd, model, resumeMode)
+    );
+
+    useInput(
+        (input, key) => {
+            if ((key.ctrl && input === "c") || input === "\x03") exit();
+        },
+        {isActive: state.view !== "app"}
+    );
+
+    if (state.view === "picker") {
+        return (
+            <ResumePicker
+                sessions={state.sessions}
+                onSelect={(sessionId) => {
+                    const session = loadSession(cwd, sessionId, model);
+                    setState(
+                        session
+                            ? {view: "app", session}
+                            : {view: "error", message: `没有找到会话: ${sessionId}`}
+                    );
+                }}
+                onCancel={exit}
+            />
+        );
+    }
+
+    if (state.view === "error") {
+        return (
+            <Box flexDirection="column">
+                <Text color={COLORS.assistant}>● {state.message}</Text>
+                <Text color={COLORS.dim}>请直接运行 pillar 开始新会话。</Text>
+            </Box>
+        );
+    }
+
+    return (
+        <RuntimeBootstrap
+            cwd={cwd}
+            settings={settings}
+            initialPermissionMode={initialPermissionMode}
+            session={state.session}
+        />
+    );
+}

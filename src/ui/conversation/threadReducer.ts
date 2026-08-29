@@ -1,0 +1,393 @@
+import {mergeFileChange} from "../../fileChanges/index.js";
+import type {PersistedUIEvent} from "../../session/index.js";
+import type {AgentEvent} from "../../agent/types.js";
+import type {Message} from "../../llm/types.js";
+import type {TaskNotification} from "../../tasks/index.js";
+import type {SubagentProgressItem, UIThread} from "./types.js";
+
+// UI 线程 ID 生成（模块级，简单递增）
+let threadIdCounter = 0;
+
+function nextId(): string {
+    threadIdCounter += 1;
+    return `t${threadIdCounter}`;
+}
+
+// 构造单条 UI 线程（user 输入 / assistant 文本 / 错误信息）
+// ID 生成封装在内部，调用方不直接接触 nextId
+export function createUserThread(text: string): UIThread {
+    return {id: nextId(), role: "user", text};
+}
+
+export function createAssistantThread(text: string): UIThread {
+    return {id: nextId(), role: "assistant", text};
+}
+
+export function createTaskNotificationThread(
+    notification: TaskNotification
+): UIThread {
+    return {
+        id: nextId(),
+        role: "task_notification",
+        taskId: notification.taskId,
+        ownerToolCallId: notification.ownerToolCallId,
+        kind: notification.kind,
+        label: notification.label,
+        status: notification.status,
+        summary: notification.summary,
+        ...(notification.resultId ? {resultId: notification.resultId} : {}),
+    };
+}
+
+function textFromUserMessage(message: Extract<Message, { role: "user" }>): string {
+    return message.content;
+}
+
+function shouldShowUserText(text: string): boolean {
+    const trimmed = text.trim();
+    return (
+        trimmed.length > 0 &&
+        !trimmed.startsWith("<system-reminder>") &&
+        !trimmed.startsWith("[为了重试压缩")
+    );
+}
+
+export function threadsFromHistory(
+    history: Message[],
+    uiEvents: PersistedUIEvent[] = []
+): UIThread[] {
+    let threads: UIThread[] = [];
+
+    for (const message of history) {
+        if (message.role === "user") {
+            const text = textFromUserMessage(message);
+            if (shouldShowUserText(text)) {
+                threads.push(createUserThread(text));
+            }
+            continue;
+        }
+
+        if (message.role === "assistant") {
+            if (typeof message.content === "string" && message.content.trim()) {
+                threads.push(createAssistantThread(message.content));
+            }
+            for (const toolCall of message.tool_calls ?? []) {
+                threads.push({
+                    id: nextId(),
+                    role: "tool_call",
+                    toolCallId: toolCall.id,
+                    name: toolCall.function.name,
+                    args: toolCall.function.arguments,
+                    status: "done",
+                });
+            }
+            continue;
+        }
+
+        if (message.role === "tool") {
+            const target = threads.find(
+                (thread) =>
+                    thread.role === "tool_call" &&
+                    thread.toolCallId === message.tool_call_id
+            );
+            if (target?.role === "tool_call") {
+                target.status = "done";
+                if (target.name === "agent") {
+                    target.result = "Done (resumed session)";
+                    target.subagentReport = message.content;
+                } else {
+                    target.result = message.content;
+                }
+            }
+        }
+    }
+
+    for (const event of uiEvents) {
+        const target = threads.find(
+            (thread) =>
+                thread.role === "tool_call" && thread.toolCallId === event.toolCallId
+        );
+        if (!target || target.role !== "tool_call") continue;
+        if (event.type === "tool_call") {
+            target.outcome = event.outcome;
+            continue;
+        }
+        threads = reduceThreads(threads, {
+            type: "tool_call_end",
+            turnId: event.turnId,
+            toolCallId: event.toolCallId,
+            result: target.result ?? "文件已修改",
+            outcome: "ok",
+            uiData: {type: "file_change", change: event.change},
+        });
+    }
+    return threads;
+}
+
+function formatTokens(tokens: number): string {
+    if (tokens >= 1000) return `${Math.round(tokens / 1000)}k`;
+    return String(tokens);
+}
+
+function subagentCompletionLabel(
+    event: Extract<AgentEvent, { type: "subagent_end" }>
+): string {
+    if (event.verificationVerdict === "PASS") return "Verified";
+    if (event.verificationVerdict === "FAIL") return "Issue found";
+    if (event.verificationVerdict === "PARTIAL") return "Verified with gaps";
+    if (
+        event.reason === "max_turns" ||
+        event.reason === "permission_denied" ||
+        event.reason === "interrupted"
+    ) {
+        return "Stopped";
+    }
+    return "Done";
+}
+
+const MAX_SUBAGENT_PROGRESS_ITEMS = 100;
+
+function updateSubagentProgress(
+    items: SubagentProgressItem[] | undefined,
+    event: Extract<AgentEvent, {type: "subagent_progress"}>["event"]
+): SubagentProgressItem[] | undefined {
+    if (event.type === "token_update") return items;
+    if (event.type === "tool_start") {
+        return [
+            ...(items ?? []),
+            {
+                toolCallId: event.toolCallId,
+                name: event.name,
+                args: event.args,
+                status: "running" as const,
+            },
+        ].slice(-MAX_SUBAGENT_PROGRESS_ITEMS);
+    }
+    return (items ?? []).map((item) =>
+        item.toolCallId === event.toolCallId
+            ? {
+                ...item,
+                status: "done" as const,
+            }
+            : item
+    );
+}
+
+// AgentEvent → UIThread 的纯 reducer
+// App.tsx 调用：setThreads((prev) => reduceThreads(prev, event))
+//
+// 为什么用 reducer 而不是 eventToThread(event): UIThread | null：
+//   tool_call_end 不是"新增一条"，而是"更新已有的一条"，
+//   形态是 (threads, event) → threads，reducer 天然对齐
+export function reduceThreads(
+    threads: UIThread[],
+    event: AgentEvent
+): UIThread[] {
+    switch (event.type) {
+        case "iteration":
+            return threads;
+        case "model_stream_start":
+        case "model_stream_progress":
+        case "model_stream_end":
+            return threads;
+        case "token_update":
+            // token_update 只更新 StatusBar，不影响消息列表
+            return threads;
+        case "memory_update":
+            // Memory 工具和 slash command 已经拥有可见反馈。该事件只负责
+            // Runtime/Headless 状态通知，TUI 不再额外插入重复的 assistant 消息。
+            return threads;
+        case "turn_interrupted":
+            return [
+                ...threads,
+                {
+                    id: nextId(),
+                    role: "assistant",
+                    text: `任务已取消（${event.reason}）`,
+                },
+            ];
+        case "subagent_start":
+            return threads.map((thread) =>
+                thread.role === "tool_call" &&
+                thread.toolCallId === event.parentToolCallId
+                    ? {
+                        ...thread,
+                        subagentId: event.agentId,
+                        subagentType: event.agentType,
+                        ...(event.agentName ? {subagentName: event.agentName} : {}),
+                        // 标题已经包含 Agent 类型和 description；运行中不再用 result
+                        // 重复一遍。唯一动态进度由底部 ModelStreamStatus 承担。
+                        result: "",
+                    }
+                    : thread
+            );
+        case "subagent_progress":
+            return threads.map((thread) =>
+                thread.role === "tool_call" && thread.subagentId === event.agentId
+                    ? event.event.type === "token_update"
+                        ? {...thread, subagentTokenCount: event.event.tokenCount}
+                        : {
+                            ...thread,
+                            subagentProgress: updateSubagentProgress(
+                                thread.subagentProgress,
+                                event.event
+                            ),
+                        }
+                    : thread
+            );
+        case "subagent_end":
+            return threads.map((thread) =>
+                thread.role === "tool_call" && thread.subagentId === event.agentId
+                    ? {
+                        ...thread,
+                        result: `${subagentCompletionLabel(event)} (${event.toolUseCount} tool calls · ${event.iterations} iterations · ${formatDuration(event.durationMs)})`,
+                        subagentReport: event.report,
+                        subagentIterations: event.iterations,
+                        subagentToolUseCount: event.toolUseCount,
+                        subagentDurationMs: event.durationMs,
+                        ...(event.transcriptPath
+                            ? {subagentTranscriptPath: event.transcriptPath}
+                            : {}),
+                        ...(event.verificationVerdict
+                            ? {
+                                subagentVerificationVerdict:
+                                event.verificationVerdict,
+                            }
+                            : {}),
+                    }
+                    : thread
+            );
+        case "subagent_error":
+            return threads.map((thread) =>
+                thread.role === "tool_call" && thread.subagentId === event.agentId
+                    ? {...thread, result: `${event.agentType} failed: ${event.message}`}
+                    : thread
+            );
+        case "assistant_text":
+            return [
+                ...threads,
+                {id: nextId(), role: "assistant", text: event.content},
+            ];
+        case "compact_start": {
+            const label = event.trigger === "manual" ? "Compact" : "Auto-compact";
+            return [
+                ...threads,
+                {
+                    id: nextId(),
+                    role: "assistant",
+                    text: `${label}: ${formatTokens(event.tokenCount)} / ${formatTokens(event.threshold)} tokens，正在压缩上下文...`,
+                },
+            ];
+        }
+        case "compact_end": {
+            const label = event.trigger === "manual" ? "Compact" : "Auto-compact";
+            return [
+                ...threads,
+                {
+                    id: nextId(),
+                    role: "assistant",
+                    text: `${label} 完成: ${formatTokens(event.preTokenCount)} -> ${formatTokens(event.postTokenCount)} tokens`,
+                },
+            ];
+        }
+        case "compact_error": {
+            const label = event.trigger === "manual" ? "Compact" : "Auto-compact";
+            return [
+                ...threads,
+                {
+                    id: nextId(),
+                    role: "assistant",
+                    text: `${label} 失败: ${event.message}`,
+                },
+            ];
+        }
+        case "tool_call_start":
+            return [
+                ...threads,
+                {
+                    id: nextId(),
+                    role: "tool_call",
+                    turnId: event.turnId,
+                    toolCallId: event.toolCallId,
+                    name: event.name,
+                    args: event.args,
+                    status: "running",
+                },
+            ];
+        case "tool_call_end": {
+            const updated: UIThread[] = threads.map((t): UIThread =>
+                t.role === "tool_call" && t.toolCallId === event.toolCallId
+                    ? t.name === "agent" && t.subagentReport
+                        ? {
+                            ...t,
+                            status: "done" as const,
+                            outcome: event.outcome ?? "ok",
+                            ...(event.persisted ? {persisted: event.persisted} : {}),
+                        }
+                        : {
+                            ...t,
+                            status: "done" as const,
+                            outcome: event.outcome ?? "ok",
+                            result: event.result,
+                            turnId: event.turnId,
+                            ...(event.uiData ? {uiData: event.uiData} : {}),
+                            ...(event.uiData?.type === "file_change"
+                                ? {hiddenByFileChange: true}
+                                : {}),
+                            ...(event.persisted ? {persisted: event.persisted} : {}),
+                        }
+                    : t
+            );
+            if (event.outcome !== "ok" || event.uiData?.type !== "file_change") {
+                return updated;
+            }
+            const turnId = event.turnId;
+            const groupIndex = updated.findIndex(
+                (thread) =>
+                    thread.role === "file_change_group" && thread.turnId === turnId
+            );
+            if (groupIndex >= 0) {
+                return updated.map((thread, index) =>
+                    index === groupIndex && thread.role === "file_change_group"
+                        ? {
+                            ...thread,
+                            changes: mergeFileChange(
+                                thread.changes,
+                                event.uiData!.change
+                            ),
+                        }
+                        : thread
+                );
+            }
+            const toolIndex = updated.findIndex(
+                (thread) =>
+                    thread.role === "tool_call" && thread.toolCallId === event.toolCallId
+            );
+            const group: UIThread = {
+                id: nextId(),
+                role: "file_change_group",
+                turnId,
+                changes: [event.uiData.change],
+            };
+            if (toolIndex < 0) return [...updated, group];
+            return [
+                ...updated.slice(0, toolIndex + 1),
+                group,
+                ...updated.slice(toolIndex + 1),
+            ];
+        }
+        case "tool_result_persisted":
+            return threads.map((t) =>
+                t.role === "tool_call" && t.toolCallId === event.toolCallId
+                    ? {...t, persisted: event.persisted}
+                    : t
+            );
+    }
+}
+
+function formatDuration(durationMs: number): string {
+    if (durationMs < 1000) return `${durationMs}ms`;
+    const seconds = Math.round(durationMs / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    return `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+}

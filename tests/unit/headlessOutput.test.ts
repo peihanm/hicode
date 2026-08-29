@@ -1,0 +1,207 @@
+import { describe, expect, test } from "bun:test";
+import {
+  buildHeadlessRunSummary,
+  formatHeadlessCliError,
+  formatHeadlessOutput,
+  formatHeadlessProgress,
+  getHeadlessExitCode,
+} from "../../src/headless/output.js";
+import type { AgentResult } from "../../src/agent/index.js";
+import type { HeadlessToolCall } from "../../src/headless/types.js";
+
+const completed: AgentResult = {
+  reply: "完成",
+  reason: "completed",
+  iterations: 1,
+};
+const denied: HeadlessToolCall = {
+  toolCallId: "denied",
+  name: "write_file",
+  args: "{}",
+  outcome: "permission_denied",
+};
+const failed: HeadlessToolCall = {
+  toolCallId: "failed",
+  name: "bash",
+  args: "{}",
+  outcome: "failed",
+};
+
+describe("headless output", () => {
+  test("exit code 遵守 interrupted > max turns > tool issue > success", () => {
+    expect(
+      getHeadlessExitCode({
+        result: { ...completed, reason: "interrupted" },
+        permissionDenials: [denied],
+        toolFailures: [failed],
+      })
+    ).toBe(130);
+    expect(
+      getHeadlessExitCode({
+        result: { ...completed, reason: "max_turns" },
+        permissionDenials: [denied],
+        toolFailures: [],
+      })
+    ).toBe(3);
+    expect(
+      getHeadlessExitCode({
+        result: { ...completed, reason: "permission_denied" },
+        permissionDenials: [],
+        toolFailures: [],
+      })
+    ).toBe(2);
+    expect(
+      getHeadlessExitCode({
+        result: completed,
+        permissionDenials: [denied],
+        toolFailures: [],
+      })
+    ).toBe(2);
+    expect(
+      getHeadlessExitCode({
+        result: completed,
+        permissionDenials: [],
+        toolFailures: [],
+      })
+    ).toBe(0);
+    expect(
+      getHeadlessExitCode({
+        result: completed,
+        permissionDenials: [],
+        toolFailures: [],
+        subagents: [
+          {
+            agentId: "verification-1",
+            agentType: "Verification",
+            description: "验证",
+            status: "completed",
+            verificationVerdict: "PARTIAL",
+          },
+        ],
+      })
+    ).toBe(2);
+    expect(
+      getHeadlessExitCode({
+        result: completed,
+        permissionDenials: [],
+        toolFailures: [],
+        subagents: [
+          {
+            agentId: "verification-fail",
+            agentType: "Verification",
+            description: "首次验证",
+            status: "completed",
+            verificationVerdict: "FAIL",
+          },
+          {
+            agentId: "verification-pass",
+            agentType: "Verification",
+            description: "复验",
+            status: "completed",
+            verificationVerdict: "PASS",
+          },
+        ],
+      })
+    ).toBe(0);
+  });
+
+  test("summary 分类 tool calls 并保持公开字段", () => {
+    const summary = buildHeadlessRunSummary({
+      result: completed,
+      sessionId: "session-1",
+      permissionMode: "default",
+      collector: {
+        toolCalls: [denied, failed],
+        subagents: [],
+        currentUIEvents: [],
+      },
+      mcpServers: [],
+    });
+    expect(Object.keys(summary)).toEqual([
+      "ok",
+      "exitCode",
+      "sessionId",
+      "reason",
+      "iterations",
+      "reply",
+      "permissionMode",
+      "toolCalls",
+      "permissionDenials",
+      "toolFailures",
+      "subagents",
+      "fileChanges",
+      "mcpServers",
+    ]);
+    expect(summary).toMatchObject({ ok: false, exitCode: 2 });
+  });
+
+  test("text notes 保持顺序，JSON 使用两空格", () => {
+    const summary = buildHeadlessRunSummary({
+      result: { ...completed, reply: "  partial  " },
+      sessionId: "session-1",
+      permissionMode: "default",
+      collector: {
+        toolCalls: [denied, failed],
+        subagents: [],
+        currentUIEvents: [],
+      },
+      mcpServers: [],
+    });
+    const text = formatHeadlessOutput(summary, "text");
+    expect(text.startsWith("partial\n\nHeadless note:")).toBe(true);
+    expect(text.indexOf("denied")).toBeLessThan(text.indexOf("failed"));
+    expect(formatHeadlessOutput(summary, "json")).toContain('\n  "exitCode": 2');
+  });
+
+  test("progress 只格式化受支持事件", () => {
+    expect(
+      formatHeadlessProgress({
+        type: "tool_call_start",
+        turnId: "turn-1",
+        toolCallId: "call-1",
+        name: "read_file",
+        args: JSON.stringify({ path: "src/a.ts" }),
+      })
+    ).toBe("● read_file src/a.ts");
+    expect(
+      formatHeadlessProgress({
+        type: "compact_end",
+        preTokenCount: 100,
+        postTokenCount: 40,
+        trigger: "auto",
+      })
+    ).toBe("  compact complete 100 -> 40");
+    expect(
+      formatHeadlessProgress({
+        type: "memory_update",
+        source: "explicit",
+        changes: [
+          {
+            action: "updated",
+            key: "project-release-context",
+            memoryType: "project",
+          },
+        ],
+      })
+    ).toBe("● memory explicit: updated project-release-context");
+    expect(
+      formatHeadlessProgress({
+        type: "token_update",
+        tokenCount: 10,
+        percentUsed: 0.1,
+        warning: false,
+      })
+    ).toBeNull();
+  });
+
+  test("CLI error 保持 JSON envelope 与 ANSI text", () => {
+    expect(JSON.parse(formatHeadlessCliError(new Error("boom"), "json"))).toEqual({
+      ok: false,
+      exitCode: 1,
+      error: "boom",
+    });
+    expect(formatHeadlessCliError("boom", "text")).toBe(
+      "\x1b[31mboom\x1b[0m"
+    );
+  });
+});

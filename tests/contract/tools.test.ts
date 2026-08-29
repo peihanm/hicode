@@ -1,0 +1,611 @@
+import { describe, expect, test } from "bun:test";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import {
+  executeTool,
+  executeToolResult,
+  getToolSchemas,
+} from "../helpers/executeTool.js";
+import { createTestContext } from "../helpers/testContext.js";
+import { withTempProject } from "../helpers/tempProject.js";
+import { createTurnAbortController } from "../../src/runtime/abort.js";
+import { attachSubagentLauncher } from "../helpers/subagentLauncher.js";
+
+describe("tool registry contract", () => {
+  test("所有工具都有唯一名称和 object schema", () => {
+    const schemas = getToolSchemas();
+    const names = schemas.map((tool) => tool.function.name);
+
+    expect(schemas).toHaveLength(19);
+    expect(new Set(names).size).toBe(names.length);
+    for (const tool of schemas) {
+      expect(tool.type).toBe("function");
+      expect(tool.function.description.length).toBeGreaterThan(0);
+      expect(tool.function.parameters.type).toBe("object");
+    }
+  });
+
+  test("bash schema 将 curl 收敛为可达性探测", () => {
+    const bash = getToolSchemas().find(
+      (tool) => tool.function.name === "bash"
+    );
+    expect(bash?.function.description).toContain(
+      "curl 只适合少量本地 API/HTML GET/HEAD 可达性探测"
+    );
+    expect(JSON.stringify(bash?.function.parameters)).toContain(
+      "不要用临时 curl 测试矩阵代替项目测试或浏览器验证"
+    );
+    expect(bash?.function.description).toContain("每次调用都是独立进程");
+    expect(bash?.function.description).toContain("拒绝 shell 后台操作符 &");
+    expect(JSON.stringify(bash?.function.parameters)).toContain(
+      "不要假设上一次 cd 会保留"
+    );
+  });
+
+  test("agent 工具校验类型并通过注入 runner 返回结构化报告", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd);
+      attachSubagentLauncher(ctx, async (request) => ({
+        agentId: "agent-test",
+        agentType: request.agentType,
+        description: request.description,
+        reply: "找到 src/agent.ts",
+        reason: "completed",
+        iterations: 2,
+        toolUseCount: 3,
+        durationMs: 15,
+        transcriptPath: "/private/child-transcript.jsonl",
+      }));
+      const result = await executeToolResult(
+        "agent",
+        JSON.stringify({
+          description: "调查主循环",
+          prompt: "调查主循环的工具执行路径并报告证据",
+          subagent_type: "Explore",
+        }),
+        ctx,
+        "agent-call"
+      );
+      expect(result.outcome).toBe("ok");
+      expect(result.modelContent).toBe("找到 src/agent.ts");
+      expect(result.modelContent).not.toContain("child-transcript.jsonl");
+
+      const missingRunner = await executeToolResult(
+        "agent",
+        JSON.stringify({
+          description: "调查",
+          prompt: "调查代码",
+          subagent_type: "Explore",
+        }),
+        createTestContext(cwd),
+        "agent-no-runner"
+      );
+      expect(missingRunner.outcome).toBe("failed");
+      expect(missingRunner.modelContent).toContain("没有配置子 Agent launcher");
+    });
+  });
+
+  test("agent schema 前置 Explore 委派边界和前后台选择", () => {
+    const agent = getToolSchemas().find(
+      (tool) => tool.function.name === "agent"
+    );
+
+    expect(agent?.function.description).toContain("深入理解 src");
+    expect(agent?.function.description).toContain("不要先由 Root 遍历多个目录");
+    expect(agent?.function.description).toContain("使用前台默认模式");
+    expect(agent?.function.description).toContain("run_in_background=true");
+    expect(agent?.function.description).toContain(
+      "model=fast 使用独立配置的快速 Provider 与模型"
+    );
+    expect(JSON.stringify(agent?.function.parameters)).toContain("fast");
+  });
+
+  test("agent 调用把显式模型层级传给 registered runner", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd);
+      let selectedModel: string | undefined;
+      attachSubagentLauncher(ctx, async (request) => {
+        selectedModel = request.kind === "fork" ? undefined : request.model;
+        return {
+          agentId: "agent-model-test",
+          agentType: request.agentType,
+          description: request.description,
+          reply: "done",
+          reason: "completed",
+          iterations: 1,
+          toolUseCount: 0,
+          durationMs: 1,
+        };
+      });
+
+      const result = await executeToolResult(
+        "agent",
+        JSON.stringify({
+          description: "快速调查",
+          prompt: "调查一个边界明确的问题",
+          subagent_type: "Explore",
+          model: "inherit",
+        }),
+        ctx,
+        "agent-model-call"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(selectedModel).toBe("inherit");
+    });
+  });
+
+  test("未知工具、非法 JSON 和 schema 错误会变成工具结果", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd);
+      expect(await executeTool("missing", "{}", ctx)).toStartWith("未知工具:");
+      expect(await executeTool("read_file", "{", ctx)).toStartWith(
+        "工具参数不是合法 JSON:"
+      );
+      expect(await executeTool("read_file", JSON.stringify({}), ctx)).toStartWith(
+        "参数校验失败:"
+      );
+    });
+  });
+
+  test("list_files 将目录放在文件前并保持排序", async () => {
+    await withTempProject(async (cwd) => {
+      await mkdir(join(cwd, "z-dir"));
+      await mkdir(join(cwd, "a-dir"));
+      await writeFile(join(cwd, "z.txt"), "z");
+      await writeFile(join(cwd, "a.txt"), "a");
+
+      const result = await executeTool(
+        "list_files",
+        JSON.stringify({ dir: "." }),
+        createTestContext(cwd)
+      );
+      expect(result.split("\n")).toEqual([
+        "a-dir/",
+        "z-dir/",
+        "a.txt",
+        "z.txt",
+      ]);
+    });
+  });
+
+  test("glob 按路径模式查找文件并忽略 Git 元数据", async () => {
+    await withTempProject(async (cwd) => {
+      await mkdir(join(cwd, "src", "nested"), { recursive: true });
+      await mkdir(join(cwd, ".git"), { recursive: true });
+      await writeFile(join(cwd, "src", "main.ts"), "export {};");
+      await writeFile(join(cwd, "src", "nested", "helper.ts"), "export {};");
+      await writeFile(join(cwd, "src", "nested", "notes.md"), "notes");
+      await writeFile(join(cwd, ".git", "hidden.ts"), "ignored");
+
+      const result = await executeTool(
+        "glob",
+        JSON.stringify({ pattern: "**/*.ts", path: "." }),
+        createTestContext(cwd)
+      );
+
+      expect(result.split("\n")).toEqual([
+        "src/main.ts",
+        "src/nested/helper.ts",
+      ]);
+    });
+  });
+
+  test("read_file 普通文件默认整份读取", async () => {
+    await withTempProject(async (cwd) => {
+      const content = Array.from(
+        { length: 367 },
+        (_, index) => `line-${index + 1}`
+      ).join("\n");
+      await writeFile(join(cwd, "page.html"), content);
+      const result = await executeTool(
+        "read_file",
+        JSON.stringify({ path: "page.html" }),
+        createTestContext(cwd)
+      );
+
+      expect(result).toContain("行范围: 1-367 / 367");
+      expect(result).toContain("   367\tline-367");
+      expect(result).not.toContain("本次未返回后续");
+    });
+  });
+
+  test("read_file 已知区间支持分页并返回稳定行号", async () => {
+    await withTempProject(async (cwd) => {
+      await writeFile(join(cwd, "notes.txt"), "alpha\nbeta\ngamma\ndelta");
+      const result = await executeTool(
+        "read_file",
+        JSON.stringify({ path: "notes.txt", offset: 2, limit: 2 }),
+        createTestContext(cwd)
+      );
+
+      expect(result).toContain("行范围: 2-3 / 4");
+      expect(result).toContain("     2\tbeta");
+      expect(result).toContain("本次未返回后续 1 行");
+      expect(result).not.toContain("继续读取请用");
+    });
+  });
+
+  test("delete_file 要求完整读取并返回删除结果", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "remove.txt");
+      await writeFile(path, "remove me\n");
+      const ctx = createTestContext(cwd, {permissionMode: "acceptEdits"});
+
+      const unread = await executeToolResult(
+        "delete_file",
+        JSON.stringify({path: "remove.txt"}),
+        ctx,
+        "delete-unread"
+      );
+      expect(unread.outcome).toBe("denied");
+
+      await executeTool("read_file", JSON.stringify({path: "remove.txt"}), ctx);
+      const deleted = await executeToolResult(
+        "delete_file",
+        JSON.stringify({path: "remove.txt"}),
+        ctx,
+        "delete-read"
+      );
+      expect(deleted.outcome).toBe("ok");
+      expect(deleted.uiData).toMatchObject({
+        type: "file_change",
+        change: {kind: "delete", linesAdded: 0, linesRemoved: 1},
+      });
+      expect(existsSync(path)).toBe(false);
+    });
+  });
+
+  test("read_tool_result 只能按 result id 分页读取当前 Session 结果", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd);
+      const persisted = await ctx.toolResultStore.persistText({
+        toolCallId: "stored-call",
+        toolName: "synthetic",
+        content: "abcdefghijklmnopqrstuvwxyz",
+      });
+      const result = await executeToolResult(
+        "read_tool_result",
+        JSON.stringify({ result_id: persisted.resultId, offset: 5, limit: 6 }),
+        ctx,
+        "read-result-call"
+      );
+      expect(result.outcome).toBe("ok");
+      expect(result.modelContent).toContain("fghijk");
+      expect(result.modelContent).toContain("continue with offset=11");
+
+      const missing = await executeToolResult(
+        "read_tool_result",
+        JSON.stringify({ result_id: "tr_other-session" }),
+        ctx,
+        "missing-result-call"
+      );
+      expect(missing.outcome).toBe("failed");
+      expect(missing.modelContent).toContain("not found");
+    });
+  });
+
+  test("grep 超过旧 100 条限制后保留完整可恢复结果", async () => {
+    await withTempProject(async (cwd) => {
+      const lines = Array.from(
+        { length: 320 },
+        (_, index) => `MATCH-${String(index).padStart(3, "0")}-${"x".repeat(80)}`
+      );
+      await writeFile(join(cwd, "many.txt"), lines.join("\n"));
+      const ctx = createTestContext(cwd);
+      const result = await executeToolResult(
+        "grep",
+        JSON.stringify({ pattern: "MATCH-", path: "." }),
+        ctx,
+        "large-grep"
+      );
+      expect(result.persisted?.complete).toBe(true);
+      expect(result.modelContent).toContain("共 320 条匹配");
+
+      let offset = 0;
+      let recovered = "";
+      while (offset < result.persisted!.byteLength) {
+        const chunk = await ctx.toolResultStore.readRange({
+          resultId: result.persisted!.resultId,
+          offset,
+          limit: 16 * 1024,
+        });
+        recovered += chunk.content;
+        offset = chunk.nextOffset;
+      }
+      expect(recovered).toContain("MATCH-100");
+      expect(recovered).toContain("MATCH-319");
+    });
+  });
+
+  test("grep 支持类型过滤、输出模式、分页和跨行匹配", async () => {
+    await withTempProject(async (cwd) => {
+      await writeFile(
+        join(cwd, "theme.ts"),
+        ["const", "  theme = 'dark'", "const accent = 'blue'", "const end = true"].join("\n")
+      );
+      await writeFile(join(cwd, "theme.py"), "theme = 'python'\n");
+      const ctx = createTestContext(cwd);
+
+      const multiline = await executeToolResult(
+        "grep",
+        JSON.stringify({
+          pattern: "const\\s+theme",
+          path: ".",
+          type: "ts",
+          multiline: true,
+          output_mode: "files_with_matches",
+        }),
+        ctx,
+        "grep-multiline"
+      );
+      expect(multiline.modelContent).toContain("theme.ts");
+      expect(multiline.modelContent).not.toContain("theme.py");
+
+      const paged = await executeToolResult(
+        "grep",
+        JSON.stringify({
+          pattern: "const",
+          path: "theme.ts",
+          output_mode: "content",
+          offset: 1,
+          head_limit: 1,
+        }),
+        ctx,
+        "grep-page"
+      );
+      expect(paged.modelContent).toContain("theme.ts:3");
+      expect(paged.modelContent).not.toContain("theme.ts:1");
+      expect(paged.modelContent).toContain("显示 offset=1 后的 1/3");
+
+      const counted = await executeToolResult(
+        "grep",
+        JSON.stringify({
+          pattern: "const",
+          path: ".",
+          type: "ts",
+          output_mode: "count",
+        }),
+        ctx,
+        "grep-count"
+      );
+      expect(counted.modelContent).toContain("theme.ts: 3");
+    });
+  });
+
+  test("write_file 默认不能覆盖，先读后显式覆盖才成功", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "existing.txt");
+      await writeFile(path, "before");
+      const ctx = createTestContext(cwd);
+
+      const denied = await executeTool(
+        "write_file",
+        JSON.stringify({ path: "existing.txt", content: "after" }),
+        ctx
+      );
+      expect(denied).toContain("文件已存在");
+
+      await executeTool("read_file", JSON.stringify({ path: "existing.txt" }), ctx);
+      const written = await executeTool(
+        "write_file",
+        JSON.stringify({
+          path: "existing.txt",
+          content: "after",
+          overwrite_existing: true,
+        }),
+        ctx
+      );
+      expect(written).toContain("已写入 existing.txt");
+      expect(await readFile(path, "utf8")).toBe("after");
+    });
+  });
+
+  test("edit_file 成功结果包含结构化 diff，模型内容保持简短", async () => {
+    await withTempProject(async (cwd) => {
+      await writeFile(join(cwd, "edit-me.txt"), "before\ncontext\n");
+      const ctx = createTestContext(cwd, { permissionMode: "bypassPermissions" });
+      await executeToolResult(
+        "read_file",
+        JSON.stringify({ path: "edit-me.txt" }),
+        ctx,
+        "read-edit"
+      );
+      const result = await executeToolResult(
+        "edit_file",
+        JSON.stringify({
+          path: "edit-me.txt",
+          old_string: "before",
+          new_string: "after",
+        }),
+        ctx,
+        "edit-structured"
+      );
+
+      expect(result.modelContent).toContain("已修改 edit-me.txt");
+      expect(result.modelContent).not.toContain("- before");
+      expect(result.uiData).toMatchObject({
+        type: "file_change",
+        change: {
+          path: "edit-me.txt",
+          kind: "update",
+          linesAdded: 1,
+          linesRemoved: 1,
+        },
+      });
+      expect(await readFile(join(cwd, "edit-me.txt"), "utf8")).toBe("after\ncontext\n");
+    });
+  });
+
+  test("edit_file 的部分读取只授权可见片段，且状态不跨 Runtime 泄漏", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "partial.txt");
+      await writeFile(path, "alpha\nbeta\ngamma\n");
+      const first = createTestContext(cwd);
+      const second = createTestContext(cwd);
+
+      await executeTool(
+        "read_file",
+        JSON.stringify({ path: "partial.txt", offset: 2, limit: 1 }),
+        first
+      );
+      const hidden = await executeTool(
+        "edit_file",
+        JSON.stringify({
+          path: "partial.txt",
+          old_string: "alpha",
+          new_string: "ALPHA",
+        }),
+        first
+      );
+      expect(hidden).toContain("未展示要修改的完整内容");
+
+      const visible = await executeTool(
+        "edit_file",
+        JSON.stringify({
+          path: "partial.txt",
+          old_string: "beta",
+          new_string: "BETA",
+        }),
+        first
+      );
+      expect(visible).toContain("已修改 partial.txt");
+
+      const leaked = await executeTool(
+        "edit_file",
+        JSON.stringify({
+          path: "partial.txt",
+          old_string: "BETA",
+          new_string: "Beta",
+        }),
+        second
+      );
+      expect(leaked).toContain("必须先用 read_file");
+    });
+  });
+
+  test("edit_file 保留 CRLF 换行，replace_all 要求完整读取", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "crlf.txt");
+      await writeFile(path, "one\r\ntwo\r\ntwo\r\n");
+      const ctx = createTestContext(cwd);
+
+      await executeTool(
+        "read_file",
+        JSON.stringify({ path: "crlf.txt", offset: 2, limit: 1 }),
+        ctx
+      );
+      const denied = await executeTool(
+        "edit_file",
+        JSON.stringify({
+          path: "crlf.txt",
+          old_string: "two",
+          new_string: "TWO",
+          replace_all: true,
+        }),
+        ctx
+      );
+      expect(denied).toContain("replace_all 必须先完整读取");
+
+      await executeTool(
+        "read_file",
+        JSON.stringify({ path: "crlf.txt" }),
+        ctx
+      );
+      const edited = await executeTool(
+        "edit_file",
+        JSON.stringify({
+          path: "crlf.txt",
+          old_string: "two",
+          new_string: "TWO",
+          replace_all: true,
+        }),
+        ctx
+      );
+      expect(edited).toContain("替换 2 处");
+      expect(await readFile(path, "utf8")).toBe("one\r\nTWO\r\nTWO\r\n");
+    });
+  });
+
+  test("edit_file 用内容哈希拒绝读取后发生的外部修改", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "stale.txt");
+      await writeFile(path, "before\n");
+      const ctx = createTestContext(cwd);
+
+      await executeTool(
+        "read_file",
+        JSON.stringify({ path: "stale.txt" }),
+        ctx
+      );
+      await writeFile(path, "changed elsewhere\n");
+
+      const result = await executeTool(
+        "edit_file",
+        JSON.stringify({
+          path: "stale.txt",
+          old_string: "changed elsewhere",
+          new_string: "edited",
+        }),
+        ctx
+      );
+      expect(result).toContain("自上次 read_file 后已被修改");
+      expect(await readFile(path, "utf8")).toBe("changed elsewhere\n");
+    });
+  });
+
+  test("dontAsk 模式拒绝需要确认的新文件写入", async () => {
+    await withTempProject(async (cwd) => {
+      let asked = false;
+      const ctx = createTestContext(cwd, {
+        permissionMode: "dontAsk",
+        canUseTool: async () => {
+          asked = true;
+          return { behavior: "allow" };
+        },
+      });
+      const result = await executeTool(
+        "write_file",
+        JSON.stringify({ path: "new.txt", content: "hello" }),
+        ctx
+      );
+
+      expect(result).toContain("dontAsk 模式下需要确认的操作被拒绝");
+      expect(asked).toBe(false);
+    });
+  });
+
+  test("权限等待结束前取消不会执行写工具", async () => {
+    await withTempProject(async (cwd) => {
+      const controller = createTurnAbortController();
+      let resolveDecision!: (value: { behavior: "allow" }) => void;
+      let permissionRequested!: () => void;
+      const requested = new Promise<void>((resolve) => {
+        permissionRequested = resolve;
+      });
+      const ctx = createTestContext(cwd, {
+        permissionMode: "default",
+        signal: controller.signal,
+        canUseTool: async () => {
+          permissionRequested();
+          return new Promise((resolve) => {
+            resolveDecision = resolve;
+          });
+        },
+      });
+
+      const running = executeTool(
+        "write_file",
+        JSON.stringify({ path: "cancelled.txt", content: "nope" }),
+        ctx
+      );
+      await requested;
+      controller.abort("user-cancel");
+      resolveDecision({ behavior: "allow" });
+
+      expect(await running).toBe("工具调用已取消（user-cancel）");
+      expect(existsSync(join(cwd, "cancelled.txt"))).toBe(false);
+    });
+  });
+});

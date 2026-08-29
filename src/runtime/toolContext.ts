@@ -1,0 +1,106 @@
+import type {CompactState} from "../context/index.js";
+import type {LspManagerLike} from "../lsp/types.js";
+import type {McpManagerLike} from "../mcp/types.js";
+import type {PermissionMode, PermissionRules,} from "../permissions/index.js";
+import type {LoadedSkill} from "../skills/types.js";
+import type {ToolResultStore} from "../toolResults/index.js";
+import type {Todo} from "../todos.js";
+import type {ToolContext} from "../tools/types.js";
+import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
+import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
+import {createFileStateTracker, type FileStateTracker,} from "../tools/shared/fileState.js";
+import {EMPTY_PROJECT_INSTRUCTIONS, type ProjectInstructions,} from "../prompt/instructions.js";
+import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
+import type {GitSessionRuntimeLike} from "../git/index.js";
+import type {HookSessionRuntime} from "../hooks/index.js";
+import type {MemoryFileAccess} from "../memory/types.js";
+
+export interface ToolContextResources {
+    cwd: string;
+    workspaceBoundary?: string;
+    model: string;
+    fastModel: string;
+    skills: LoadedSkill[];
+    instructions?: ProjectInstructions;
+    mcpManager?: McpManagerLike;
+    lspManager?: LspManagerLike;
+    taskRuntime?: TaskRuntimeLike;
+    tasks?: TaskSessionLike;
+    shellRunner: ShellRunnerLike;
+    fileState?: FileStateTracker;
+    gitSession?: GitSessionRuntimeLike;
+    memoryFiles?: MemoryFileAccess;
+}
+
+export interface ToolContextSession {
+    sessionId: string;
+    compactState: CompactState;
+    toolResultStore: ToolResultStore;
+    fileCheckpoints: FileCheckpointRuntimeLike;
+    allowBackgroundTasks?: boolean;
+    hookSession?: HookSessionRuntime;
+}
+
+export interface ToolContextHost {
+    canUseTool: ToolContext["canUseTool"];
+
+    getPermissionRules(): PermissionRules;
+
+    getPermissionMode(): PermissionMode;
+
+    getPrePlanMode(): PermissionMode | undefined;
+
+    setPermissionMode(mode: PermissionMode): void;
+
+    setTodos(todos: Todo[]): void;
+}
+
+export function createToolContext({
+                                      signal,
+                                      resources,
+                                      session,
+                                      host,
+                                  }: {
+    signal: AbortSignal;
+    resources: ToolContextResources;
+    session: ToolContextSession;
+    host: ToolContextHost;
+}): ToolContext {
+    return {
+        signal,
+        canUseTool: host.canUseTool,
+        get permissionRules() {
+            return host.getPermissionRules();
+        },
+        get permissionMode() {
+            return host.getPermissionMode();
+        },
+        get prePlanMode() {
+            return host.getPrePlanMode();
+        },
+        setPermissionMode: host.setPermissionMode,
+        setTodos: host.setTodos,
+        skills: resources.skills,
+        instructions: resources.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
+        model: resources.model,
+        fastModel: resources.fastModel,
+        cwd: resources.cwd,
+        workspaceBoundary: resources.workspaceBoundary,
+        compactState: session.compactState,
+        sessionId: session.sessionId,
+        toolResultStore: session.toolResultStore,
+        fileState: resources.fileState ?? createFileStateTracker(),
+        gitSession: resources.gitSession,
+        memoryFiles: resources.memoryFiles,
+        fileCheckpoints: session.fileCheckpoints,
+        mcpManager: resources.mcpManager,
+        lspManager: resources.lspManager,
+        tasks: resources.tasks ?? resources.taskRuntime?.forSession({
+            sessionId: session.sessionId,
+            toolResultStore: session.toolResultStore,
+            allowBackgroundTasks: session.allowBackgroundTasks,
+        }),
+        ...(session.hookSession ? {hookSession: session.hookSession} : {}),
+        shellRunner: resources.shellRunner,
+    };
+}
