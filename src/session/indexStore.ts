@@ -1,6 +1,7 @@
-import {existsSync, readFileSync} from "node:fs";
-import {readFile} from "node:fs/promises";
+import {existsSync, readFileSync, statSync} from "node:fs";
+import {readFile, stat} from "node:fs/promises";
 import {type PillarStorageLayout, writeFileAtomically} from "../persistence/index.js";
+import {decodeSessionIndexEntries} from "./codec.js";
 import {ensureSessionsDirectory, getSessionIndexPath} from "./paths.js";
 import {SESSION_INDEX_VERSION, type SessionIndexEntry, type SessionIndexFile,} from "./types.js";
 
@@ -15,6 +16,9 @@ interface UpsertSessionIndexInput {
     summary?: string;
 }
 
+const MAX_SESSION_INDEX_BYTES = 8 * 1024 * 1024;
+const MAX_SESSION_INDEX_ENTRIES = 10_000;
+
 function emptySessionIndex(): SessionIndexFile {
     return {version: SESSION_INDEX_VERSION, sessions: []};
 }
@@ -28,6 +32,9 @@ export function readSessionIndex(
     if (!existsSync(path)) return emptySessionIndex();
 
     try {
+        if (statSync(path).size > MAX_SESSION_INDEX_BYTES) {
+            return emptySessionIndex();
+        }
         const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<SessionIndexFile>;
         if (
             parsed.version !== SESSION_INDEX_VERSION ||
@@ -35,7 +42,10 @@ export function readSessionIndex(
         ) {
             return emptySessionIndex();
         }
-        return {version: parsed.version, sessions: parsed.sessions};
+        const sessions = decodeSessionIndexEntries(parsed.sessions, cwd);
+        return sessions
+            ? {version: parsed.version, sessions}
+            : emptySessionIndex();
     } catch {
         return emptySessionIndex();
     }
@@ -48,6 +58,10 @@ async function readSessionIndexForMutation(
     const path = getSessionIndexPath(storage, cwd);
     let content: string;
     try {
+        const metadata = await stat(path);
+        if (metadata.size > MAX_SESSION_INDEX_BYTES) {
+            throw new Error(`Session index size limit exceeded: ${path}`);
+        }
         content = await readFile(path, "utf8");
     } catch (error) {
         if (
@@ -69,7 +83,9 @@ async function readSessionIndexForMutation(
         ) {
             throw new Error(`Unsupported session index format: ${path}`);
         }
-        return {version: parsed.version, sessions: parsed.sessions};
+        const sessions = decodeSessionIndexEntries(parsed.sessions, cwd);
+        if (!sessions) throw new Error(`Invalid session index entries: ${path}`);
+        return {version: parsed.version, sessions};
     } catch (error) {
         throw new Error(`Cannot update corrupt session index: ${path}`, {
             cause: error,
@@ -88,9 +104,19 @@ async function writeSessionIndex(
             new Date(right.updatedAt).getTime() -
             new Date(left.updatedAt).getTime()
     );
+    if (sessions.length > MAX_SESSION_INDEX_ENTRIES) {
+        throw new Error(`Session index entry limit exceeded: ${cwd}`);
+    }
+    const content = `${JSON.stringify({
+        version: SESSION_INDEX_VERSION,
+        sessions,
+    }, null, 2)}\n`;
+    if (Buffer.byteLength(content, "utf8") > MAX_SESSION_INDEX_BYTES) {
+        throw new Error(`Session index size limit exceeded: ${cwd}`);
+    }
     await writeFileAtomically(
         getSessionIndexPath(storage, cwd),
-        `${JSON.stringify({version: SESSION_INDEX_VERSION, sessions}, null, 2)}\n`,
+        content,
         0o600
     );
 }

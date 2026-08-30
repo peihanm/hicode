@@ -108,8 +108,9 @@ export class TaskNotificationCenter {
         taskId: string,
         markClaimed: MarkClaimed
     ): Promise<void> {
-        if (!this.archivedPending.delete(taskId)) return;
+        if (!this.archivedPending.has(taskId)) return;
         await markClaimed(sessionId, taskId);
+        this.archivedPending.delete(taskId);
     }
 
     claim(

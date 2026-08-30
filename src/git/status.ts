@@ -1,6 +1,10 @@
 import {access, realpath} from "node:fs/promises";
 import {join} from "node:path";
-import {formatGitProcessError, type GitProcessTermination, runGitCommand,} from "./process.js";
+import {
+    formatGitProcessError,
+    type GitCommandRunner,
+    type GitProcessTermination,
+} from "./process.js";
 import type {
     GitFileChangeKind,
     GitFileStatus,
@@ -255,11 +259,12 @@ function unavailableReason(
     return fallback;
 }
 
-export async function resolveGitRepositoryRoot(
+async function resolveGitRepositoryRoot(
+    runGit: GitCommandRunner,
     cwd: string,
     signal?: AbortSignal
 ): Promise<GitRepositoryRootResult> {
-    const result = await runGitCommand(cwd, [
+    const result = await runGit(cwd, [
         "--no-optional-locks",
         "rev-parse",
         "--show-toplevel",
@@ -323,14 +328,15 @@ async function readOperationState(gitDirectory: string): Promise<GitOperationSta
 }
 
 export async function readGitRepositorySnapshot(
+    runGit: GitCommandRunner,
     cwd: string,
     signal?: AbortSignal
 ): Promise<GitRepositorySnapshotResult> {
-    const root = await resolveGitRepositoryRoot(cwd, signal);
+    const root = await resolveGitRepositoryRoot(runGit, cwd, signal);
     if (root.status === "unavailable") return root;
 
     const [statusResult, gitDirectoryResult] = await Promise.all([
-        runGitCommand(root.repositoryRoot, [
+        runGit(root.repositoryRoot, [
             "--no-optional-locks",
             "status",
             "--porcelain=v2",
@@ -341,7 +347,7 @@ export async function readGitRepositorySnapshot(
             "--untracked-files=all",
             "--ignore-submodules=none",
         ], signal),
-        runGitCommand(root.repositoryRoot, [
+        runGit(root.repositoryRoot, [
             "--no-optional-locks",
             "rev-parse",
             "--absolute-git-dir",
@@ -377,7 +383,7 @@ export async function readGitRepositorySnapshot(
         const operation = await readOperationState(gitDirectory);
         const recentCommitTitles = parsed.unborn
             ? []
-            : await readRecentCommitTitles(root.repositoryRoot, signal);
+            : await readRecentCommitTitles(runGit, root.repositoryRoot, signal);
         if (signal?.aborted) return cancelledRepositoryResult;
         return {
             status: "available",
@@ -401,10 +407,11 @@ export async function readGitRepositorySnapshot(
 }
 
 async function readRecentCommitTitles(
+    runGit: GitCommandRunner,
     repositoryRoot: string,
     signal?: AbortSignal
 ): Promise<string[]> {
-    const result = await runGitCommand(repositoryRoot, [
+    const result = await runGit(repositoryRoot, [
         "--no-optional-locks",
         "log",
         "-5",

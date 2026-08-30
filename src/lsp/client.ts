@@ -7,19 +7,19 @@
 import {type ChildProcess, spawn} from "child_process";
 import type {InitializeParams, InitializeResult} from "vscode-languageserver-protocol";
 import {normalizeTurnAbortReason, TurnInterruptedError,} from "../runtime/abort.js";
+import {
+    mergeChildProcessEnvironment,
+    type ChildProcessEnvironment,
+} from "../runtime/childEnvironment.js";
 
 const LSP_REQUEST_TIMEOUT_MS = 10_000;
 const LSP_SHUTDOWN_TIMEOUT_MS = 2_000;
 const LSP_EXIT_GRACE_MS = 250;
+const MAX_HEADER_BYTES = 8 * 1024;
+const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
+const MAX_INPUT_BUFFER_BYTES = MAX_HEADER_BYTES + MAX_MESSAGE_BYTES;
 
 type JsonRpcId = number | string;
-
-interface JsonRpcResponse {
-    jsonrpc: "2.0";
-    id: JsonRpcId;
-    result?: unknown;
-    error?: { code: number; message: string; data?: unknown };
-}
 
 interface JsonRpcRequest {
     jsonrpc: "2.0";
@@ -57,7 +57,10 @@ async function waitForProcessExit(
 }
 
 export interface LSPClient {
-    start(command: string, args: string[], options?: { cwd?: string }): Promise<void>;
+    start(command: string, args: string[], options: {
+        cwd: string;
+        environment: ChildProcessEnvironment;
+    }): Promise<void>;
 
     initialize(params: InitializeParams, signal?: AbortSignal): Promise<InitializeResult>;
 
@@ -83,6 +86,17 @@ export function createLSPClient(
     let inputBuffer = Buffer.alloc(0);
     const pending = new Map<JsonRpcId, PendingRequest>();
     const notificationHandlers = new Map<string, NotificationHandler<unknown>[]>();
+
+    function protocolFailure(message: string): void {
+        const error = new Error(`LSP server ${serverName} protocol error: ${message}`);
+        inputBuffer = Buffer.alloc(0);
+        rejectAllPending(error);
+        try {
+            proc?.kill();
+        } catch {
+            // 进程可能已经退出。
+        }
+    }
 
     function rejectAllPending(err: Error): void {
         for (const request of pending.values()) {
@@ -122,41 +136,105 @@ export function createLSPClient(
         sendResponse(message.id, result);
     }
 
-    function handleMessage(message: JsonRpcResponse | JsonRpcRequest): void {
-        if ("method" in message) {
-            handleServerRequest(message);
+    function handleMessage(message: unknown): void {
+        if (
+            !message ||
+            typeof message !== "object" ||
+            Array.isArray(message) ||
+            (message as {jsonrpc?: unknown}).jsonrpc !== "2.0"
+        ) {
+            throw new Error("invalid JSON-RPC envelope");
+        }
+        const record = message as Record<string, unknown>;
+        if ("method" in record) {
+            if (typeof record.method !== "string" || record.method.length > 1024) {
+                throw new Error("invalid JSON-RPC method");
+            }
+            if (
+                record.id !== undefined &&
+                typeof record.id !== "string" &&
+                typeof record.id !== "number"
+            ) throw new Error("invalid JSON-RPC request id");
+            handleServerRequest({
+                jsonrpc: "2.0",
+                method: record.method,
+                ...(record.id !== undefined ? {id: record.id} : {}),
+                ...(record.params !== undefined ? {params: record.params} : {}),
+            });
             return;
         }
 
-        const request = pending.get(message.id);
+        if (
+            typeof record.id !== "string" &&
+            typeof record.id !== "number"
+        ) throw new Error("invalid JSON-RPC response id");
+        const responseId = record.id;
+        const request = pending.get(responseId);
         if (!request) return;
-        pending.delete(message.id);
+        let responseError:
+            | {code: number; message: string; data?: unknown}
+            | undefined;
+        if (record.error !== undefined) {
+            if (
+                !record.error ||
+                typeof record.error !== "object" ||
+                Array.isArray(record.error)
+            ) throw new Error("invalid JSON-RPC error response");
+            const rawError = record.error as Record<string, unknown>;
+            if (
+                typeof rawError.code !== "number" ||
+                typeof rawError.message !== "string"
+            ) throw new Error("invalid JSON-RPC error response");
+            responseError = {
+                code: rawError.code,
+                message: rawError.message,
+                ...(rawError.data !== undefined ? {data: rawError.data} : {}),
+            };
+        }
+        pending.delete(responseId);
         clearTimeout(request.timer);
         request.cleanupAbort?.();
-
-        if (message.error) {
-            const err = new Error(message.error.message);
-            (err as Error & { code?: number; data?: unknown }).code = message.error.code;
-            (err as Error & { code?: number; data?: unknown }).data = message.error.data;
+        if (responseError) {
+            const err = new Error(responseError.message.slice(0, 16_384));
+            (err as Error & { code?: number; data?: unknown }).code =
+                responseError.code;
+            (err as Error & { code?: number; data?: unknown }).data =
+                responseError.data;
             request.reject(err);
             return;
         }
-        request.resolve(message.result);
+        request.resolve(record.result);
     }
 
     function parseMessages(): void {
         while (true) {
             const headerEnd = inputBuffer.indexOf("\r\n\r\n");
-            if (headerEnd === -1) return;
-
-            const header = inputBuffer.slice(0, headerEnd).toString("ascii");
-            const match = header.match(/Content-Length:\s*(\d+)/i);
-            if (!match) {
-                inputBuffer = inputBuffer.slice(headerEnd + 4);
-                continue;
+            if (headerEnd === -1) {
+                if (inputBuffer.length > MAX_HEADER_BYTES) {
+                    protocolFailure("header exceeds limit");
+                }
+                return;
+            }
+            if (headerEnd > MAX_HEADER_BYTES) {
+                protocolFailure("header exceeds limit");
+                return;
             }
 
-            const length = Number(match[1]);
+            const header = inputBuffer.slice(0, headerEnd).toString("ascii");
+            const lengths = header
+                .split("\r\n")
+                .filter((line) => /^Content-Length:/i.test(line))
+                .map((line) => line.slice(line.indexOf(":") + 1).trim());
+            if (lengths.length !== 1 || !/^\d+$/.test(lengths[0]!)) {
+                protocolFailure("invalid Content-Length header");
+                return;
+            }
+
+            const length = Number(lengths[0]);
+            if (!Number.isSafeInteger(length) || length > MAX_MESSAGE_BYTES) {
+                protocolFailure("Content-Length exceeds limit");
+                return;
+            }
             const bodyStart = headerEnd + 4;
             const bodyEnd = bodyStart + length;
             if (inputBuffer.length < bodyEnd) return;
@@ -166,12 +244,11 @@ export function createLSPClient(
 
             try {
                 handleMessage(JSON.parse(body));
-            } catch (err) {
-                process.stderr.write(
-                    `[lsp:${serverName}] JSON-RPC parse error: ${
-                        err instanceof Error ? err.message : String(err)
-                    }\n`
+            } catch (error) {
+                protocolFailure(
+                    error instanceof Error ? error.message : String(error)
                 );
+                return;
             }
         }
     }
@@ -249,7 +326,8 @@ export function createLSPClient(
         async start(command, args, options) {
             proc = spawn(command, args, {
                 stdio: ["pipe", "pipe", "pipe"],
-                cwd: options?.cwd,
+                cwd: options.cwd,
+                env: mergeChildProcessEnvironment(options.environment),
                 windowsHide: true,
             });
 
@@ -258,14 +336,16 @@ export function createLSPClient(
             }
 
             proc.stdout.on("data", (chunk: Buffer) => {
+                if (inputBuffer.length + chunk.length > MAX_INPUT_BUFFER_BYTES) {
+                    protocolFailure("input buffer exceeds limit");
+                    return;
+                }
                 inputBuffer = Buffer.concat([inputBuffer, chunk]);
                 parseMessages();
             });
 
-            proc.stderr?.on("data", (data: Buffer) => {
-                const out = data.toString().trim();
-                if (out) process.stderr.write(`[lsp:${serverName}] ${out}\n`);
-            });
+            // 始终消费 stderr，但不直接写终端，避免污染 Ink 输出或泄漏 Server 数据。
+            proc.stderr?.on("data", () => undefined);
 
             proc.on("exit", (code) => {
                 initialized = false;
@@ -304,11 +384,7 @@ export function createLSPClient(
         },
 
         async sendNotification(method: string, params: unknown): Promise<void> {
-            try {
-                writeMessage({jsonrpc: "2.0", method, params});
-            } catch (err) {
-                process.stderr.write(`[lsp:${serverName}] notification ${method} 失败: ${err}\n`);
-            }
+            writeMessage({jsonrpc: "2.0", method, params});
         },
 
         onNotification<T>(method: string, handler: (params: T) => void): void {

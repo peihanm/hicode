@@ -1,19 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { writeFile } from "node:fs/promises";
+import {mkdir, writeFile} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createMcpManager } from "../../src/mcp/index.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import { runHeadlessForTest as runHeadless } from "../helpers/headless.js";
 import { createTestContext } from "../helpers/testContext.js";
-import { withTempProject } from "../helpers/tempProject.js";
+import {createTestStorage, withTempProject} from "../helpers/tempProject.js";
 import { assistantText, assistantToolCall, createFakeLLM } from "../helpers/fakeLLM.js";
 import { createTestSettings } from "../helpers/runtimeResources.js";
 import type {ToolRuntime} from "../../src/tools/registry.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
+import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 
 const fixture = resolve(import.meta.dir, "../fixtures/mcp/stdioServer.ts");
 
 async function createFixtureManager(cwd: string) {
-  const userConfigPath = join(cwd, "mcp.json");
+  const storage = createTestStorage(cwd);
+  const userConfigPath = join(storage.pillarHome, "mcp.json");
+  await mkdir(storage.pillarHome, {recursive: true});
   await writeFile(userConfigPath, JSON.stringify({
     mcpServers: {
       fixture: {
@@ -26,11 +30,10 @@ async function createFixtureManager(cwd: string) {
     },
   }));
   const manager = createMcpManager({
+    storage,
     cwd,
+    childEnvironment: testChildEnvironment,
     headless: true,
-    userConfigPath,
-    projectConfigPath: join(cwd, "missing-project-mcp.json"),
-    approvalPath: join(cwd, "approvals.json"),
   });
   await manager.initialize();
   return manager;
@@ -58,7 +61,7 @@ describe("MCP stdio integration", () => {
       const manager = await createFixtureManager(cwd);
       try {
         expect(manager.getSnapshots()).toEqual([
-          expect.objectContaining({ name: "fixture", status: "connected", toolCount: 7 }),
+          expect.objectContaining({ name: "fixture", status: "connected", toolCount: 8 }),
         ]);
         const runtime = createToolRuntime({ additionalTools: manager.getTools() });
         const name = "mcp__fixture__echo";
@@ -83,9 +86,60 @@ describe("MCP stdio integration", () => {
     });
   });
 
+  test("MCP 子进程不能继承或由配置重新注入 Secret", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await mkdir(storage.pillarHome, {recursive: true});
+      await writeFile(join(storage.pillarHome, "mcp.json"), JSON.stringify({
+        mcpServers: {
+          fixture: {
+            command: process.execPath,
+            args: [fixture],
+            env: {
+              PILLAR_TEST_PROVIDER_API_KEY: "override-secret",
+              PILLAR_TEST_SAFE_VALUE: "visible",
+            },
+          },
+        },
+      }));
+      const childEnvironment = createChildProcessEnvironment({
+        PATH: process.env.PATH,
+        PILLAR_TEST_PROVIDER_API_KEY: "host-secret",
+      }, ["PILLAR_TEST_PROVIDER_API_KEY"]);
+      const manager = createMcpManager({
+        storage,
+        cwd,
+        childEnvironment,
+        headless: true,
+      });
+      await manager.initialize();
+      try {
+        const runtime = createToolRuntime({additionalTools: manager.getTools()});
+        await exposeDeferredTools(runtime, cwd, "mcp__fixture__environment");
+        const ctx = createTestContext(cwd, {permissionMode: "bypassPermissions"});
+        const secret = await runtime.executeTool(
+          "mcp__fixture__environment",
+          JSON.stringify({name: "PILLAR_TEST_PROVIDER_API_KEY"}),
+          ctx,
+          "mcp-secret-env"
+        );
+        const safe = await runtime.executeTool(
+          "mcp__fixture__environment",
+          JSON.stringify({name: "PILLAR_TEST_SAFE_VALUE"}),
+          ctx,
+          "mcp-safe-env"
+        );
+        expect(secret.modelContent).toBe("<missing>");
+        expect(safe.modelContent).toBe("visible");
+      } finally {
+        await manager.closeAll();
+      }
+    });
+  });
+
   test("只读 Annotation 自动放行，破坏性 Tool 询问且单个 Spawn 失败不影响健康 Server", async () => {
-    await withTempProject(async (cwd) => {
-      const userConfigPath = join(cwd, "mixed-mcp.json");
+    await withTempProject(async (cwd, storage) => {
+      const userConfigPath = join(storage.pillarHome, "mcp.json");
+      await mkdir(storage.pillarHome, {recursive: true});
       await writeFile(userConfigPath, JSON.stringify({
         mcpServers: {
           fixture: { command: process.execPath, args: [fixture] },
@@ -93,10 +147,10 @@ describe("MCP stdio integration", () => {
         },
       }));
       const manager = createMcpManager({
+        storage,
         cwd,
+        childEnvironment: testChildEnvironment,
         headless: true,
-        userConfigPath,
-        projectConfigPath: join(cwd, "missing-project.json"),
       });
       await manager.initialize();
       try {
@@ -266,7 +320,7 @@ describe("MCP stdio integration", () => {
         expect.objectContaining({name: "tool_search", outcome: "ok"}),
         expect.objectContaining({name: "mcp__fixture__echo", outcome: "ok"}),
       ]));
-      expect(summary.mcpServers[0]).toMatchObject({ name: "fixture", status: "connected", toolCount: 7 });
+      expect(summary.mcpServers[0]).toMatchObject({ name: "fixture", status: "connected", toolCount: 8 });
       expect(manager.getSnapshots()[0]?.status).toBe("closed");
 
       const resumedManager = await createFixtureManager(cwd);
@@ -295,7 +349,7 @@ describe("MCP stdio integration", () => {
   });
 
   test("项目 Server 未批准时不启动，允许后才连接", async () => {
-    await withTempProject(async (cwd) => {
+    await withTempProject(async (cwd, storage) => {
       const projectConfigPath = join(cwd, ".mcp.json");
       await writeFile(projectConfigPath, JSON.stringify({
         mcpServers: {
@@ -304,21 +358,19 @@ describe("MCP stdio integration", () => {
       }));
       let requests = 0;
       const pending = createMcpManager({
+        storage,
         cwd,
+        childEnvironment: testChildEnvironment,
         headless: true,
-        userConfigPath: join(cwd, "missing-user.json"),
-        projectConfigPath,
-        approvalPath: join(cwd, "approvals.json"),
       });
       await pending.initialize();
       expect(pending.getSnapshots()[0]).toMatchObject({ status: "pending-approval", toolCount: 0 });
       await pending.closeAll();
 
       const allowed = createMcpManager({
+        storage,
         cwd,
-        userConfigPath: join(cwd, "missing-user.json"),
-        projectConfigPath,
-        approvalPath: join(cwd, "approvals.json"),
+        childEnvironment: testChildEnvironment,
         requestApproval: async () => {
           requests++;
           return "once";
@@ -327,7 +379,7 @@ describe("MCP stdio integration", () => {
       await allowed.initialize();
       try {
         expect(requests).toBe(1);
-        expect(allowed.getSnapshots()[0]).toMatchObject({ status: "connected", toolCount: 7 });
+        expect(allowed.getSnapshots()[0]).toMatchObject({ status: "connected", toolCount: 8 });
       } finally {
         await allowed.closeAll();
       }

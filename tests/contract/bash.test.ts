@@ -10,17 +10,18 @@ import { join } from "node:path";
 import { createTaskRuntimeForTest } from "../helpers/taskRuntime.js";
 import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 function createTaskSession(cwd: string) {
   const runtime = createTaskRuntimeForTest(
     cwd,
-    createShellRunner(createDisabledSandboxRuntime()),
+    createShellRunner(createDisabledSandboxRuntime(), testChildEnvironment),
     () => async () => {
       throw new Error("Bash contract 不启动 Agent Task");
     }
   );
   const store = createTestToolResultStore(cwd, "bash-task-session", {
-    rootDir: join(cwd, ".pillar-test-results"),
+    pillarHome: join(cwd, ".pillar-test-results"),
   });
   return {
     runtime,
@@ -307,7 +308,7 @@ describe("bash tool contract", () => {
   test("命中 artifact cap 时保留 partial 结果并返回失败状态", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "capped-session", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
         maxArtifactBytes: 1024,
       });
       const ctx = createTestContext(cwd, {

@@ -46,7 +46,7 @@ export function createAtomicFileWriter(
 
     return async function writeFileAtomically(
         targetPath: string,
-        content: string,
+        content: string | Uint8Array,
         mode?: number
     ): Promise<void> {
         const directory = dirname(targetPath);
@@ -61,7 +61,7 @@ export function createAtomicFileWriter(
         await operations.mkdir(directory);
         try {
             handle = await operations.open(temporaryPath, "wx", mode);
-            await handle.writeFile(content, "utf8");
+            await handle.writeFile(content);
             await handle.sync();
             await handle.close();
             handle = undefined;

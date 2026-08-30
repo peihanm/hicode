@@ -10,6 +10,7 @@ import { withTempProject } from "../helpers/tempProject.js";
 import { createDisabledFileCheckpointRuntime } from "../../src/checkpoints/index.js";
 import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 describe("ToolContext builder", () => {
   test("同一个 context 通过 host getters 读取最新权限状态", async () => {
@@ -27,13 +28,16 @@ describe("ToolContext builder", () => {
           fastModel: "glm-fast-test",
           fastProvider: "glm",
           skills: [],
-          shellRunner: createShellRunner(createDisabledSandboxRuntime()),
+          shellRunner: createShellRunner(
+            createDisabledSandboxRuntime(),
+            testChildEnvironment,
+          ),
         },
         session: {
           sessionId: "session-live",
           compactState: createCompactState(),
           toolResultStore: createTestToolResultStore(cwd, "session-live", {
-            rootDir: `${cwd}/results`,
+            pillarHome: `${cwd}/results`,
           }),
           fileCheckpoints: createDisabledFileCheckpointRuntime(),
         },
@@ -84,7 +88,7 @@ describe("ToolContext builder", () => {
       }];
       const compactState = createCompactState();
       const toolResultStore = createTestToolResultStore(cwd, "shared-session", {
-        rootDir: `${cwd}/results`,
+        pillarHome: `${cwd}/results`,
       });
       const resources = {
         storage,
@@ -94,7 +98,10 @@ describe("ToolContext builder", () => {
         fastModel: "glm-fast-test",
         fastProvider: "glm" as const,
         skills,
-        shellRunner: createShellRunner(createDisabledSandboxRuntime()),
+        shellRunner: createShellRunner(
+          createDisabledSandboxRuntime(),
+          testChildEnvironment,
+        ),
       };
       const session = {
         sessionId: "shared-session",

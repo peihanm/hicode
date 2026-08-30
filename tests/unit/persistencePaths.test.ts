@@ -2,11 +2,9 @@ import {describe, expect, test} from "bun:test";
 import {homedir} from "node:os";
 import {join} from "node:path";
 import {
-    getPillarHome,
     createPillarStorageLayout,
     getProjectKey,
     getProjectStorageDirectory,
-    getProjectsRoot,
     getSessionStorageDirectory,
     hashProjectValue,
 } from "../../src/persistence/index.js";
@@ -17,16 +15,21 @@ import {withTempProject} from "../helpers/tempProject.js";
 
 describe("persistence paths", () => {
     test("默认 Pillar Home 与 Projects Root 使用统一布局", () => {
-        expect(getPillarHome()).toBe(join(homedir(), ".pillar"));
-        expect(getProjectsRoot()).toBe(join(homedir(), ".pillar", "projects"));
+        const storage = createPillarStorageLayout();
+        expect(storage.pillarHome).toBe(join(homedir(), ".pillar"));
+        expect(storage.projectsRoot).toBe(join(homedir(), ".pillar", "projects"));
     });
 
     test("Project 与 Session 目录只计算一次 identity", async () => {
         await withTempProject(async (cwd) => {
-            const projectsRoot = join(cwd, "storage-root");
-            const storage = createPillarStorageLayout({projectsRoot});
+            const pillarHome = join(cwd, "storage-root");
+            const storage = createPillarStorageLayout({pillarHome});
             const sessionId = "session-path-test";
-            const projectDirectory = join(projectsRoot, getProjectKey(cwd));
+            const projectDirectory = join(
+                pillarHome,
+                "projects",
+                getProjectKey(cwd)
+            );
             const sessionDirectory = join(
                 projectDirectory,
                 "sessions",

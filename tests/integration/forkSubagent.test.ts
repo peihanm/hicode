@@ -6,6 +6,7 @@ import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import type {Message} from "../../src/llm/types.js";
 import {executeToolResult} from "../helpers/executeTool.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {
     assistantText,
     assistantToolCall,
@@ -81,18 +82,21 @@ describe("fork subagent", () => {
                     return assistantText("frontend 已理解父上下文");
                 },
             ]);
-            const shellRunner = createShellRunner(createDisabledSandboxRuntime());
+            const shellRunner = createShellRunner(
+                createDisabledSandboxRuntime(),
+                testChildEnvironment
+            );
             const runtime = createTaskRuntimeForTest(
                 cwd,
                 shellRunner,
                 (options) => createSubagentRunnerForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {rootDir: `${cwd}/child-results`},
+                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
                 })
             );
             const store = createTestToolResultStore(cwd, "fork-session", {
-                rootDir: `${cwd}/root-results`,
+                pillarHome: `${cwd}/root-results`,
             });
             const tasks = runtime.forSession({
                 sessionId: "fork-session",
@@ -186,7 +190,8 @@ describe("fork subagent", () => {
                     },
                 ]);
                 const shellRunner = createShellRunner(
-                    createDisabledSandboxRuntime()
+                    createDisabledSandboxRuntime(),
+                    testChildEnvironment
                 );
                 runtime = createTaskRuntimeForTest(
                     cwd,
@@ -195,13 +200,13 @@ describe("fork subagent", () => {
                         ...options,
                         agentOptions: {callLLM: child.callLLM},
                         toolResultStoreOptions: {
-                            rootDir: join(projectsRoot, "child-results"),
+                            pillarHome: join(projectsRoot, "child-results"),
                         },
                     }),
                     projectsRoot
                 );
                 const store = createTestToolResultStore(cwd, "fork-worktree", {
-                    rootDir: join(projectsRoot, "root-results"),
+                    pillarHome: join(projectsRoot, "root-results"),
                 });
                 const tasks = runtime.forSession({
                     sessionId: "fork-worktree",

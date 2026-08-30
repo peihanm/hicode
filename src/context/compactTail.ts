@@ -1,7 +1,7 @@
 import type {Message} from "../llm/types.js";
 import {estimateMessageTokens} from "./tokens.js";
 
-export interface CompactTailOptions {
+interface CompactTailOptions {
     minTokens: number;
     minTextMessages: number;
     maxTokens: number;
@@ -27,7 +27,7 @@ function getToolUseIds(message: Message): string[] {
         : [];
 }
 
-export function adjustTailStartForToolPairs(
+function adjustTailStartForToolPairs(
     history: Message[],
     start: number
 ): number {
@@ -62,7 +62,7 @@ export function adjustTailStartForToolPairs(
     return adjustedStart;
 }
 
-export function createCompactTailFinder(
+function createCompactTailFinder(
     estimateTokens: (message: Message) => number
 ) {
     return function findCompactTailStart(

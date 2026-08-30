@@ -1,8 +1,8 @@
 import {describe, expect, test} from "bun:test";
 import {
     formatSubagentModel,
-    resolveSubagentModel,
 } from "../../src/subagents/index.js";
+import {resolveSubagentModel} from "../../src/subagents/model.js";
 
 describe("subagent model routing", () => {
     test("inherit 保留 Root 模型，fast 使用独立配置模型", () => {
@@ -23,7 +23,7 @@ describe("subagent model routing", () => {
             .toBe("fast (glm-4.7)");
     });
 
-    test("调用级选择优先于 Definition，精确模型保持原值", () => {
+    test("调用级选择优先于 Definition", () => {
         expect(resolveSubagentModel({
             definitionModel: "fast",
             parentModel: "qwen3.6-plus",
@@ -36,10 +36,5 @@ describe("subagent model routing", () => {
             fastModel: "glm-4.7",
             override: "fast",
         })).toBe("glm-4.7");
-        expect(resolveSubagentModel({
-            definitionModel: "qwen-custom-reviewer",
-            parentModel: "qwen3.6-plus",
-            fastModel: "glm-4.7",
-        })).toBe("qwen-custom-reviewer");
     });
 });

@@ -16,5 +16,7 @@ export function buildMcpToolName(serverName: string, toolName: string): string {
 }
 
 export function validateMcpServerName(name: string): boolean {
-    return /^[A-Za-z0-9_.-]+$/.test(name);
+    return name.length >= 1 &&
+        name.length <= 64 &&
+        /^[A-Za-z0-9_.-]+$/.test(name);
 }

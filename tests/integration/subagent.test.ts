@@ -60,7 +60,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: {callLLM: child.callLLM},
-        toolResultStoreOptions: {rootDir: `${cwd}/tool-results`},
+        toolResultStoreOptions: {pillarHome: `${cwd}/tool-results`},
       });
       attachSubagentLauncher(ctx, runner);
 
@@ -79,6 +79,53 @@ describe("synchronous subagent", () => {
       expect(confirmations).toBe(1);
       expect(await readFile(`${cwd}/general-purpose.txt`, "utf8"))
         .toBe("implemented\n");
+    });
+  });
+
+  test("子 Agent 不能复用父 Agent 的文件读取授权", async () => {
+    await withTempProject(async (cwd) => {
+      const path = `${cwd}/owned-by-parent.ts`;
+      const original = "export const value = 1;\n";
+      await writeFile(path, original);
+      const ctx = createTestContext(cwd, {permissionMode: "acceptEdits"});
+      ctx.fileState.recordRead({
+        path,
+        content: original,
+        observedContent: original,
+        fullRead: true,
+      });
+      const child = createFakeLLM([
+        assistantToolCall("edit_file", {
+          path: "owned-by-parent.ts",
+          old_string: "value = 1",
+          new_string: "value = 2",
+        }, "child-edit-without-read"),
+        (options) => {
+          const result = options.messages.find((message) =>
+            message.role === "tool" &&
+            message.tool_call_id === "child-edit-without-read"
+          );
+          expect(result?.content).toContain("必须先用 read_file");
+          return assistantText("子 Agent 没有自己的读取证据，因此未修改文件。");
+        },
+      ]);
+      const runner = createSubagentRunner({
+        parentContext: ctx,
+        onEvent: () => {},
+        agentOptions: {callLLM: child.callLLM},
+        toolResultStoreOptions: {pillarHome: `${cwd}/tool-results`},
+      });
+
+      const result = await runner({
+        kind: "registered",
+        agentType: "GeneralPurpose",
+        description: "验证文件观察隔离",
+        prompt: "不要读取文件，直接修改 owned-by-parent.ts",
+        parentToolCallId: "parent-observation",
+      });
+
+      expect(result.reply).toContain("未修改文件");
+      expect(await readFile(path, "utf8")).toBe(original);
     });
   });
 
@@ -118,7 +165,7 @@ describe("synchronous subagent", () => {
         parentContext: createTestContext(cwd),
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -178,7 +225,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -281,7 +328,7 @@ describe("synchronous subagent", () => {
         }),
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -299,6 +346,7 @@ describe("synchronous subagent", () => {
     await withTempProject(async (cwd) => {
       const tasks: TaskSessionLike = {
         sessionId: "test-session",
+        async initialize() {},
         async startShell() {
           throw new Error("不应启动新任务");
         },
@@ -327,6 +375,9 @@ describe("synchronous subagent", () => {
         },
         hasRunning() {
           return false;
+        },
+        getRunningSummary() {
+          return {total: 0, shell: 0, agent: 0};
         },
         async list() { return []; },
         async claimNotifications() { return []; },
@@ -363,7 +414,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -406,7 +457,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -503,7 +554,7 @@ describe("synchronous subagent", () => {
           events.push(event);
         },
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       }));
       const history: Message[] = [{ role: "system", content: "parent system" }];
 
@@ -558,7 +609,7 @@ describe("synchronous subagent", () => {
           events.push(event);
         },
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const running = runner({
@@ -603,7 +654,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -648,7 +699,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
       const result = await runner({
         agentType: "Explore",
@@ -673,7 +724,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { rootDir: `${cwd}/tool-results` },
+        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
       const result = await runner({
         agentType: "Explore",

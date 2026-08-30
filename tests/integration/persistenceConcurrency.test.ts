@@ -129,7 +129,7 @@ describe("cross-process persistence", () => {
     await withTempProject(async (cwd) => {
       await runConcurrentWorkers(cwd, "tool-result-quota", 1);
       const store = createTestToolResultStore(cwd, "shared-tool-result", {
-        rootDir: join(cwd, "tool-result-artifacts"),
+        pillarHome: join(cwd, "tool-result-artifacts"),
         maxArtifactBytes: 100,
         maxSessionBytes: 100,
       });
@@ -153,7 +153,7 @@ describe("cross-process persistence", () => {
         1
       );
       const store = createTestToolResultStore(cwd, "shared-binary", {
-        rootDir: join(cwd, "tool-result-artifacts"),
+        pillarHome: join(cwd, "tool-result-artifacts"),
       });
       const key = getArtifactKey("shared-binary", "shared-artifact");
       const metadata = JSON.parse(

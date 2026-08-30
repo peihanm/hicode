@@ -21,7 +21,9 @@ function isValidLength(value: unknown): value is number {
 function hasValidCommonMetadata(value: Record<string, unknown>): boolean {
     return (
         typeof value.toolCallId === "string" &&
+        value.toolCallId.length > 0 && value.toolCallId.length <= 512 &&
         typeof value.toolName === "string" &&
+        value.toolName.length > 0 && value.toolName.length <= 256 &&
         isValidLength(value.byteLength) &&
         isValidLength(value.originalByteLength) &&
         value.originalByteLength >= value.byteLength &&
@@ -44,7 +46,15 @@ export function parseTextArtifactMetadata(
         ) {
             return null;
         }
-        return value as unknown as TextArtifactMetadata;
+        return {
+            resultId: expectedResultId,
+            toolCallId: value.toolCallId as string,
+            toolName: value.toolName as string,
+            byteLength: value.byteLength as number,
+            originalByteLength: value.originalByteLength as number,
+            complete: value.complete as boolean,
+            encoding: "utf-8",
+        };
     } catch {
         return null;
     }
@@ -60,13 +70,24 @@ export function parseBinaryArtifactMetadata(
             !isRecord(value) ||
             value.artifactId !== expectedArtifactId ||
             value.encoding !== "binary" ||
-            typeof value.path !== "string" ||
+            typeof value.path !== "string" || value.path.length > 16_384 ||
             typeof value.mimeType !== "string" ||
+            value.mimeType.length === 0 || value.mimeType.length > 256 ||
             !hasValidCommonMetadata(value)
         ) {
             return null;
         }
-        return value as unknown as PersistedBinaryArtifact;
+        return {
+            artifactId: expectedArtifactId,
+            toolCallId: value.toolCallId as string,
+            toolName: value.toolName as string,
+            path: value.path,
+            byteLength: value.byteLength as number,
+            originalByteLength: value.originalByteLength as number,
+            complete: value.complete as boolean,
+            encoding: "binary",
+            mimeType: value.mimeType,
+        };
     } catch {
         return null;
     }

@@ -1,5 +1,6 @@
 import {describe, expect, test} from "bun:test";
 import {RuntimeMessageQueue} from "../../src/runtime/messageQueue.js";
+import type {RuntimeQueuedMessage} from "../../src/runtime/messageQueue.js";
 
 describe("RuntimeMessageQueue", () => {
     test("next 只由 Agent 安全边界消费，later 留给新 turn", () => {
@@ -80,5 +81,30 @@ describe("RuntimeMessageQueue", () => {
             taskId: "task-1",
             content: "<task-notification>\ntask done\n</task-notification>",
         });
+    });
+
+    test("恢复时同样拒绝超过实时队列限制的持久化消息", () => {
+        const messages: RuntimeQueuedMessage[] = Array.from(
+            {length: 33},
+            (_, index) => ({
+                id: `queued-${index}`,
+                type: "user_input",
+                priority: "later",
+                content: `message-${index}`,
+                createdAt: "2026-07-20T00:00:00.000Z",
+            })
+        );
+        expect(() => new RuntimeMessageQueue({messages})).toThrow(
+            "无效的运行中消息队列快照"
+        );
+    });
+
+    test("subscriber 异常不会回滚已经完成的队列 mutation", () => {
+        const queue = new RuntimeMessageQueue();
+        queue.subscribe(() => {
+            throw new Error("render failed");
+        });
+        expect(queue.enqueueUser("继续", "next").content).toBe("继续");
+        expect(queue.list()).toHaveLength(1);
     });
 });

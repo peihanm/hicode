@@ -1,4 +1,8 @@
 import {type ChildProcess, spawn} from "node:child_process";
+import {
+    type ChildProcessEnvironment,
+    mergeChildProcessEnvironment,
+} from "../runtime/childEnvironment.js";
 import {createProcessTreeKiller} from "../tools/bash/process.js";
 
 const GIT_TIMEOUT_MS = 15_000;
@@ -22,6 +26,15 @@ export interface GitProcessResult {
 export interface GitProcessOptions {
     timeoutMs?: number;
     maxOutputBytes?: number;
+}
+
+export interface GitCommandRunner {
+    (
+        cwd: string,
+        args: readonly string[],
+        signal?: AbortSignal,
+        options?: GitProcessOptions
+    ): Promise<GitProcessResult>;
 }
 
 function resultCode(termination: GitProcessTermination): number {
@@ -65,7 +78,8 @@ export function formatGitProcessError(result: GitProcessResult): string {
     return stderr || stdout || terminationMessage(result.termination);
 }
 
-export function runGitCommand(
+function runGitCommand(
+    environment: ChildProcessEnvironment,
     cwd: string,
     args: readonly string[],
     signal?: AbortSignal,
@@ -142,15 +156,14 @@ export function runGitCommand(
                 detached: process.platform !== "win32",
                 windowsHide: true,
                 stdio: ["ignore", "pipe", "pipe"],
-                env: {
-                    ...process.env,
+                env: mergeChildProcessEnvironment(environment, {
                     GIT_TERMINAL_PROMPT: "0",
                     GIT_ASKPASS: "",
                     GCM_INTERACTIVE: "Never",
                     GIT_PAGER: "cat",
                     PAGER: "cat",
                     LC_ALL: "C",
-                },
+                }),
             });
         } catch (error) {
             const termination: GitProcessTermination = {
@@ -184,4 +197,12 @@ export function runGitCommand(
         );
         timeout.unref?.();
     });
+}
+
+/** Bind Git execution to the Root-owned, secret-filtered child environment. */
+export function createGitCommandRunner(
+    environment: ChildProcessEnvironment
+): GitCommandRunner {
+    return (cwd, args, signal, options) =>
+        runGitCommand(environment, cwd, args, signal, options);
 }

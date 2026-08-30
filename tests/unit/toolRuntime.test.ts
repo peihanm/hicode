@@ -9,7 +9,7 @@ import { withTempProject } from "../helpers/tempProject.js";
 describe("scoped tool runtime", () => {
   test("schema 和执行层都只允许白名单工具", async () => {
     await withTempProject(async (cwd) => {
-      const runtime = createToolRuntime(["read_file", "grep"]);
+      const runtime = createToolRuntime({allowedToolNames: ["read_file", "grep"]});
       expect(runtime.toolNames).toEqual(["read_file", "grep"]);
       expect(runtime.getToolSchemas().map((tool) => tool.function.name)).toEqual([
         "read_file",
@@ -37,7 +37,8 @@ describe("scoped tool runtime", () => {
   });
 
   test("未知白名单配置立即失败", () => {
-    expect(() => createToolRuntime(["not-a-tool"])).toThrow("未知工具");
+    expect(() => createToolRuntime({allowedToolNames: ["not-a-tool"]}))
+      .toThrow("未知工具");
   });
 
   test("内置 web_fetch 默认 deferred，可由 tool_search 按需加载", async () => {

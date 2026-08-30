@@ -1,5 +1,14 @@
-const SHELL_SEPARATOR_RE = /\s*(?:&&|\|\||;|\|)\s*/;
-const REDIRECTION_OR_SUBSTITUTION_RE = /(?:^|\s)(?:\d?>>|\d?>|<)|`|\$\(/;
+const SHELL_SEPARATOR_RE = /\s*(?:&&|\|\||;|\||\r?\n)\s*/;
+const UNSAFE_READ_ONLY_FLAGS = new Map<string, ReadonlySet<string>>([
+    ["rg", new Set(["--pre", "--hostname-bin"])],
+    ["sort", new Set(["-o", "--output", "--compress-program"])],
+    ["tree", new Set(["-o", "--output"])],
+]);
+const UNSAFE_READ_ONLY_GIT_FLAGS = new Set([
+    "--ext-diff",
+    "--textconv",
+    "--open-files-in-pager",
+]);
 
 const READ_ONLY_COMMANDS = new Set([
     "cat",
@@ -82,17 +91,62 @@ export function hasShellBackgroundOperator(command: string): boolean {
 }
 
 function getShellCommandPrefix(command: string): string | null {
-    const first = command.trim().split(/\s+/)[0];
-    return first || null;
+    const tokens = tokenize(command);
+    if (tokens.length === 0) return null;
+    const prefixLength =
+        tokens[0] === "npm" || tokens[0] === "pnpm" ||
+        tokens[0] === "yarn" || tokens[0] === "bun"
+            ? Math.min(3, tokens.length)
+            : Math.min(2, tokens.length);
+    return tokens.slice(0, prefixLength).join(" ");
 }
 
 function tokenize(command: string): string[] {
     return command.trim().split(/\s+/).filter(Boolean);
 }
 
+function hasUnsafeShellSyntax(command: string): boolean {
+    let quote: "single" | "double" | undefined;
+    for (let index = 0; index < command.length; index += 1) {
+        const char = command[index];
+        if (char === "\\" && quote !== "single") {
+            index += 1;
+            continue;
+        }
+        if (char === "'" && quote !== "double") {
+            quote = quote === "single" ? undefined : "single";
+            continue;
+        }
+        if (char === '"' && quote !== "single") {
+            quote = quote === "double" ? undefined : "double";
+            continue;
+        }
+        if (quote === "single") continue;
+        if (char === "`" || (char === "$" && command[index + 1] === "(")) {
+            return true;
+        }
+        if (!quote && (char === ">" || char === "<")) return true;
+    }
+    return false;
+}
+
+function hasUnsafeReadOnlyFlags(tokens: readonly string[]): boolean {
+    const flags = tokens[0] ? UNSAFE_READ_ONLY_FLAGS.get(tokens[0]) : undefined;
+    if (!flags) return false;
+    return tokens.slice(1).some((token) =>
+        flags.has(token) || [...flags].some((flag) => token.startsWith(`${flag}=`))
+    );
+}
+
 function isGitReadOnly(tokens: string[]): boolean {
     const subcommand = tokens[1];
-    if (tokens.some((token) => token === "--output" || token.startsWith("--output="))) {
+    if (tokens.some((token) =>
+        token === "--output" || token.startsWith("--output=") ||
+        UNSAFE_READ_ONLY_GIT_FLAGS.has(token) ||
+        [...UNSAFE_READ_ONLY_GIT_FLAGS].some(
+            (flag) => token.startsWith(`${flag}=`)
+        )
+    )) {
         return false;
     }
     return !!subcommand && READ_ONLY_GIT_SUBCOMMANDS.has(subcommand);
@@ -100,7 +154,7 @@ function isGitReadOnly(tokens: string[]): boolean {
 
 export function isShellCommandReadOnly(command: string): boolean {
     if (hasShellBackgroundOperator(command)) return false;
-    if (REDIRECTION_OR_SUBSTITUTION_RE.test(command)) return false;
+    if (hasUnsafeShellSyntax(command)) return false;
 
     const subCommands = splitShellSubCommands(command);
     if (subCommands.length === 0) return false;
@@ -110,7 +164,7 @@ export function isShellCommandReadOnly(command: string): boolean {
         const commandName = tokens[0];
         if (!commandName) return false;
         if (commandName === "git") return isGitReadOnly(tokens);
-        return READ_ONLY_COMMANDS.has(commandName);
+        return READ_ONLY_COMMANDS.has(commandName) && !hasUnsafeReadOnlyFlags(tokens);
     });
 }
 

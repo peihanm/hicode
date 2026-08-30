@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {buildForkContextSnapshot} from "../../src/subagents/index.js";
+import {buildForkContextSnapshot} from "../../src/subagents/fork.js";
 import type {Message} from "../../src/llm/types.js";
 
 describe("fork context snapshot", () => {

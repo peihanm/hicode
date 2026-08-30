@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   parseVerificationSummary,
-  parseVerificationVerdict,
 } from "../../src/subagents/builtins/verification/index.js";
+import {parseVerificationVerdict} from "../../src/subagents/builtins/verification/report.js";
 
 describe("verification agent protocol", () => {
   test("只接受独立 verdict 行并取最后一次结论", () => {

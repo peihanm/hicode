@@ -5,7 +5,23 @@ import {getPermissionModeShortLabel} from "../../permissions/index.js";
 import {COLORS} from "../theme.js";
 import type {UITokenInfo} from "../turn/eventStore.js";
 import type {SandboxStatus} from "../../sandbox/index.js";
+import type {RunningTaskSummary} from "../../tasks/index.js";
 import {useTerminalWidth} from "../terminalSize.js";
+
+function getBackgroundTaskLabel(
+    summary: RunningTaskSummary | undefined
+): string | undefined {
+    if (!summary || summary.total === 0) return undefined;
+    if (summary.shell === summary.total) {
+        return summary.shell === 1 ? "Service 1" : `Services ${summary.shell}`;
+    }
+    if (summary.agent === summary.total) {
+        return summary.agent === 1
+            ? "Background agent 1"
+            : `Background agents ${summary.agent}`;
+    }
+    return `Background ${summary.total}`;
+}
 
 // 两行底部 chrome：第一行保留完整运行上下文，第二行保留常用快捷键说明。
 export function StatusBar({
@@ -19,7 +35,7 @@ export function StatusBar({
                               mcpConnected = 0,
                               mcpTotal = 0,
                               sandboxStatus,
-                              taskRunning = false,
+                              backgroundTasks,
                           }: {
     cwd: string;
     model: string;
@@ -31,7 +47,7 @@ export function StatusBar({
     mcpConnected?: number;
     mcpTotal?: number;
     sandboxStatus?: SandboxStatus;
-    taskRunning?: boolean;
+    backgroundTasks?: RunningTaskSummary;
 }) {
     const width = Math.max(1, useTerminalWidth() - 1);
     // token 颜色：warning 红色，>60% 黄色，其他灰色
@@ -55,12 +71,13 @@ export function StatusBar({
             : `${tokenStatus === "estimated" ? "~" : ""}${tokenCount} tokens (${tokenStatus === "estimated" ? "~" : ""}${pct}%)`;
     const modeLabel = getPermissionModeShortLabel(permissionMode);
     const showPermissionMode = permissionMode !== "default";
+    const backgroundTaskLabel = getBackgroundTaskLabel(backgroundTasks);
     const runtimeDetails = [
         ...(mcpTotal > 0 ? [`MCP ${mcpConnected}/${mcpTotal}`] : []),
         ...(sandboxStatus && sandboxStatus.kind !== "disabled"
             ? [sandboxStatus.kind === "ready" ? "Sandbox" : "Sandbox unavailable"]
             : []),
-        ...(taskRunning ? ["Tasks running"] : []),
+        ...(backgroundTaskLabel ? [backgroundTaskLabel] : []),
     ];
     const firstPlain = [
         model,
@@ -102,7 +119,9 @@ export function StatusBar({
                         {sandboxStatus.kind === "ready" ? " | Sandbox" : " | Sandbox unavailable"}
                     </Text>
                 )}
-                {taskRunning && <Text color={COLORS.surfaceText}> | Tasks running</Text>}
+                {backgroundTaskLabel && (
+                    <Text color={COLORS.surfaceText}>{` | ${backgroundTaskLabel}`}</Text>
+                )}
                 {firstPadding}
             </Text>
             <Text

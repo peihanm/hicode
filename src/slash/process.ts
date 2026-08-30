@@ -3,6 +3,23 @@ import type {CompactHistoryRunner, ToolSchemaProvider,} from "../agent/invokePre
 import type {SlashCommandHostContext, SlashCommandProcessor,} from "./types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {MemoryRuntimeLike} from "../memory/index.js";
+import type {AgentEvent} from "../agent/types.js";
+
+const MAX_SLASH_INPUT_CHARS = 1024 * 1024;
+const MAX_SLASH_TEXT_CHARS = 100_000;
+
+function limitSlashEvent(event: AgentEvent): AgentEvent {
+    if (
+        event.type !== "assistant_text" ||
+        event.content.length <= MAX_SLASH_TEXT_CHARS
+    ) return event;
+    return {
+        ...event,
+        content:
+            `${event.content.slice(0, MAX_SLASH_TEXT_CHARS)}\n\n` +
+            "[Slash output truncated at 100,000 characters]",
+    };
+}
 
 function parseSlashInput(input: string): { name: string; args: string } | null {
     const trimmed = input.trim();
@@ -47,6 +64,14 @@ export function createSlashCommandProcessor({
         input: string,
         context: SlashCommandHostContext
     ): Promise<boolean> {
+        if (input.length > MAX_SLASH_INPUT_CHARS) {
+            if (!input.trimStart().startsWith("/")) return false;
+            await context.onEvent({
+                type: "assistant_text",
+                content: "Slash 命令超过 1,048,576 字符上限。",
+            });
+            return true;
+        }
         const parsed = parseSlashInput(input);
         if (!parsed) {
             if (input.trim() !== "/") {
@@ -62,7 +87,7 @@ export function createSlashCommandProcessor({
         if (parsed.name === "help" || parsed.name === "?") {
             await context.onEvent({
                 type: "assistant_text",
-                content: formatHelp(),
+                content: parsed.args ? "用法: /help" : formatHelp(),
             });
             return true;
         }
@@ -78,6 +103,7 @@ export function createSlashCommandProcessor({
 
         await command.execute(parsed.args, {
             ...context,
+            onEvent: (event) => context.onEvent(limitSlashEvent(event)),
             compactHistory: compactHistoryImpl,
             getToolSchemas: getToolSchemasImpl,
             subagents,

@@ -3,18 +3,12 @@ import stringWidth from "string-width";
 // 只由交互式 CLI 启用。零宽 marker 会在写入真实终端前移除。
 export const TERMINAL_CURSOR_ANCHOR_MARKER = "\u200C\u200D\u2060\u200B\u200D\u200C";
 
+export interface TerminalCursorOutput extends NodeJS.WriteStream {
+    disposeCursorOutput(): void;
+}
+
 const SAVE_CURSOR = "\u001B7";
 const RESTORE_CURSOR = "\u001B8";
-
-let cursorAnchorEnabled = false;
-
-export function enableTerminalCursorAnchor(): void {
-    cursorAnchorEnabled = true;
-}
-
-export function getTerminalCursorAnchorMarker(): string {
-    return cursorAnchorEnabled ? TERMINAL_CURSOR_ANCHOR_MARKER : "";
-}
 
 export function formatTerminalCursorWrite(
     data: string,
@@ -67,7 +61,7 @@ function physicalLineCount(frame: string, columns: number): number {
 
 export function createTerminalCursorOutput(
     target: NodeJS.WriteStream
-): NodeJS.WriteStream {
+): TerminalCursorOutput {
     let anchored = false;
     let anchorLayout: {
         beforeCursorLine: string;
@@ -81,7 +75,7 @@ export function createTerminalCursorOutput(
     // Ink 5 的 log-update 只记逻辑行数。终端缩窄并 reflow 后，旧 live frame
     // 可能占据更多物理行；必须在 Ink resize handler 前清掉它，并吞掉下一次
     // 仍按旧逻辑行数生成的 erase prefix，避免重复上移破坏 Static 历史。
-    target.on("resize", () => {
+    const handleTargetResize = () => {
         const columns = target.columns || 80;
         const shrinking = columns < lastColumns;
         lastColumns = columns;
@@ -109,7 +103,8 @@ export function createTerminalCursorOutput(
         target.write(moveToFrameEnd + eraseLines(physicalLines));
         anchored = false;
         anchorLayout = undefined;
-    });
+    };
+    target.on("resize", handleTargetResize);
 
     const write = (
         chunk: string | Uint8Array,
@@ -152,6 +147,16 @@ export function createTerminalCursorOutput(
     return new Proxy(target, {
         get(object, property) {
             if (property === "write") return write;
+            if (property === "disposeCursorOutput") {
+                return () => {
+                    target.off("resize", handleTargetResize);
+                    inkResizeListener = undefined;
+                    anchored = false;
+                    anchorLayout = undefined;
+                    lastFrame = "";
+                    suppressedErasePrefix = "";
+                };
+            }
             if (property === "on" || property === "addListener") {
                 return (event: string, listener: (...args: unknown[]) => void) => {
                     // createTerminalCursorOutput 只作为 Ink 的 stdout。Ink constructor
@@ -178,5 +183,5 @@ export function createTerminalCursorOutput(
             const value = Reflect.get(object, property, object);
             return typeof value === "function" ? value.bind(object) : value;
         },
-    });
+    }) as TerminalCursorOutput;
 }

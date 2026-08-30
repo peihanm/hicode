@@ -48,6 +48,8 @@ export interface UITurnControllerDependencies {
 
     slashCommands: SlashCommandProcessor;
 
+    initialize(): Promise<void>;
+
     openRewind?(): void;
     openAgents?(): void;
 
@@ -83,7 +85,10 @@ export class UITurnController {
     private readonly guard = new QueryGuard();
     private readonly listeners = new Set<Listener>();
     private active: { generation: number; controller: AbortController } | null = null;
+    private activeTurnSettled: Promise<void> | null = null;
+    private resolveActiveTurn: (() => void) | null = null;
     private immediateSlashController: AbortController | null = null;
+    private immediateSlashSettled: Promise<void> | null = null;
     private snapshot: UITurnStatus = IDLE_STATUS;
     private disposed = false;
 
@@ -106,11 +111,15 @@ export class UITurnController {
             return false;
         }
         this.active = {generation, controller};
+        this.activeTurnSettled = new Promise<void>((resolve) => {
+            this.resolveActiveTurn = resolve;
+        });
 
         try {
+            this.dependencies.onUserInput(input);
+            await this.dependencies.initialize();
             const history = this.dependencies.getHistory();
             const ctx = this.dependencies.createContext(controller.signal);
-            this.dependencies.onUserInput(input);
 
             if (input.trim().startsWith("/")) {
                 const handled = await this.dependencies.slashCommands.process(input, {
@@ -181,9 +190,21 @@ export class UITurnController {
             return true;
         } finally {
             try {
-                this.dependencies.onTurnSettled();
-                await this.dependencies.settleCheckpoint();
-                await this.dependencies.persistSnapshot();
+                try {
+                    this.dependencies.onTurnSettled();
+                } catch (error) {
+                    this.dependencies.onUnexpectedError(error);
+                }
+                try {
+                    await this.dependencies.settleCheckpoint();
+                } catch (error) {
+                    this.dependencies.onUnexpectedError(error);
+                }
+                try {
+                    await this.dependencies.persistSnapshot();
+                } catch (error) {
+                    this.dependencies.onUnexpectedError(error);
+                }
             } finally {
                 if (this.guard.end(generation)) {
                     this.active = null;
@@ -203,6 +224,9 @@ export class UITurnController {
                         });
                     }
                 }
+                this.resolveActiveTurn?.();
+                this.resolveActiveTurn = null;
+                this.activeTurnSettled = null;
             }
         }
     }
@@ -267,6 +291,16 @@ export class UITurnController {
         this.listeners.clear();
     }
 
+    async waitForSettled(): Promise<void> {
+        while (this.activeTurnSettled || this.immediateSlashSettled) {
+            const pending = [
+                this.activeTurnSettled,
+                this.immediateSlashSettled,
+            ].filter((item): item is Promise<void> => item !== null);
+            await Promise.all(pending);
+        }
+    }
+
     subscribe = (listener: Listener): (() => void) => {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
@@ -280,7 +314,7 @@ export class UITurnController {
         this.dependencies.onUserInput(input);
         const history = this.dependencies.getHistory();
         const ctx = this.dependencies.createContext(controller.signal);
-        void this.dependencies.slashCommands.process(input, {
+        const operation = this.dependencies.slashCommands.process(input, {
             history,
             ctx,
             onEvent: this.dependencies.onEvent,
@@ -300,7 +334,12 @@ export class UITurnController {
             if (this.immediateSlashController === controller) {
                 this.immediateSlashController = null;
             }
+            if (this.immediateSlashSettled === operation) {
+                this.immediateSlashSettled = null;
+            }
         });
+        this.immediateSlashSettled = operation;
+        void operation;
     }
 
     private publish(snapshot: UITurnStatus): void {
@@ -313,6 +352,12 @@ export class UITurnController {
             return;
         }
         this.snapshot = snapshot;
-        for (const listener of this.listeners) listener();
+        for (const listener of this.listeners) {
+            try {
+                listener();
+            } catch {
+                // UI subscriber 不能破坏 Turn 生命周期。
+            }
+        }
     }
 }

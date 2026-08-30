@@ -8,21 +8,29 @@
 // 3. 确保 server 启动（lazy start）
 // 4. 文件同步（didOpen/didChange/didSave/didClose）
 
-import {extname, isAbsolute, resolve} from "path";
-import {pathToFileURL} from "url";
-import {readFileSync} from "fs";
-import {loadLspConfig} from "./config.js";
+import {extname, isAbsolute, relative, resolve, sep} from "path";
+import {fileURLToPath, pathToFileURL} from "url";
+import {readFile, stat} from "node:fs/promises";
+import {loadLspConfig, type LspConfig} from "./config.js";
 import {createLSPServerInstance, type LSPServerInstance} from "./serverInstance.js";
 import type {Diagnostic, PublishDiagnosticsParams} from "vscode-languageserver-protocol";
 import {normalizeTurnAbortReason, throwIfTurnAborted, TurnInterruptedError,} from "../runtime/abort.js";
 import type {LspManagerLike} from "./types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 interface DiagnosticEntry {
     diagnostics: Diagnostic[];
     updatedAt: number;
 }
 
-export class LSPManager implements LspManagerLike {
+const MAX_OPEN_FILES = 1024;
+const MAX_DIAGNOSTIC_FILES = 256;
+const MAX_DIAGNOSTICS_PER_FILE = 200;
+const MAX_DIAGNOSTIC_MESSAGE_CHARS = 4096;
+const MAX_OPEN_FILE_BYTES = 10 * 1024 * 1024;
+
+class LSPManager implements LspManagerLike {
     private servers = new Map<string, LSPServerInstance>();
     // 后缀 → server name 列表（一个后缀可能多个 server，取第一个）
     private extensionMap = new Map<string, string>();
@@ -32,17 +40,23 @@ export class LSPManager implements LspManagerLike {
     private diagnosticCache = new Map<string, DiagnosticEntry>();
     private diagnosticWaiters = new Map<
         string,
-        Array<(entry: DiagnosticEntry) => void>
+        Array<(entry?: DiagnosticEntry) => void>
     >();
     private cwd: string;
 
-    constructor(cwd: string) {
+    constructor(
+        cwd: string,
+        config: LspConfig,
+        childEnvironment: ChildProcessEnvironment
+    ) {
         this.cwd = cwd;
-        this.loadConfig();
+        this.loadConfig(config, childEnvironment);
     }
 
-    private loadConfig() {
-        const config = loadLspConfig(this.cwd);
+    private loadConfig(
+        config: LspConfig,
+        childEnvironment: ChildProcessEnvironment
+    ) {
         for (const [name, serverConfig] of Object.entries(config)) {
             // 注册后缀映射
             for (const ext of serverConfig.extensions) {
@@ -58,7 +72,7 @@ export class LSPManager implements LspManagerLike {
             };
             this.servers.set(
                 name,
-                createLSPServerInstance(name, resolvedConfig, (params) =>
+                createLSPServerInstance(name, resolvedConfig, childEnvironment, (params) =>
                     this.handleDiagnostics(params)
                 )
             );
@@ -95,10 +109,17 @@ export class LSPManager implements LspManagerLike {
         const absPath = this.toAbsolute(filePath);
         const uri = this.uriForFile(filePath);
         if (this.openedFiles.get(uri) === server.name) return; // 已打开
+        if (this.openedFiles.size >= MAX_OPEN_FILES) {
+            throw new Error(`LSP 已打开文件达到 ${MAX_OPEN_FILES} 个上限`);
+        }
 
         const ext = extname(filePath).toLowerCase();
         const languageId = languageIdForExtension(ext);
-        const content = readFileSync(absPath, "utf-8");
+        const metadata = await stat(absPath);
+        if (!metadata.isFile() || metadata.size > MAX_OPEN_FILE_BYTES) {
+            throw new Error("LSP 只能打开不超过 10 MiB 的普通文件");
+        }
+        const content = await readFile(absPath, "utf-8");
 
         await server.sendNotification("textDocument/didOpen", {
             textDocument: {uri, languageId, version: 1, text: content},
@@ -200,11 +221,11 @@ export class LSPManager implements LspManagerLike {
                 signal?.removeEventListener("abort", onAbort);
                 removeWaiter();
             };
-            const waiter = (entry: DiagnosticEntry) => {
+            const waiter = (entry?: DiagnosticEntry) => {
                 if (settled) return;
                 settled = true;
                 cleanup();
-                resolve(entry.diagnostics);
+                resolve(entry?.diagnostics);
             };
             const onAbort = () => {
                 if (settled) return;
@@ -228,6 +249,10 @@ export class LSPManager implements LspManagerLike {
 
     // 关闭所有 server（退出时调用）
     async shutdown(): Promise<void> {
+        for (const waiters of this.diagnosticWaiters.values()) {
+            for (const waiter of waiters) waiter(undefined);
+        }
+        this.diagnosticWaiters.clear();
         await Promise.all(
             [...this.servers.values()].map((s) => s.stop().catch(() => {
             }))
@@ -237,7 +262,6 @@ export class LSPManager implements LspManagerLike {
         this.openedFiles.clear();
         this.fileVersions.clear();
         this.diagnosticCache.clear();
-        this.diagnosticWaiters.clear();
     }
 
     // 列出所有配置的 server（调试用）
@@ -258,10 +282,60 @@ export class LSPManager implements LspManagerLike {
     }
 
     private handleDiagnostics(params: PublishDiagnosticsParams): void {
+        if (
+            !params ||
+            typeof params.uri !== "string" ||
+            params.uri.length > 32_768 ||
+            !Array.isArray(params.diagnostics)
+        ) return;
+        let filePath: string;
+        try {
+            filePath = fileURLToPath(params.uri);
+        } catch {
+            return;
+        }
+        const rel = relative(resolve(this.cwd), resolve(filePath));
+        if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return;
+        const diagnostics = params.diagnostics
+            .filter((item) =>
+                item &&
+                typeof item === "object" &&
+                typeof item.message === "string" &&
+                item.range &&
+                Number.isSafeInteger(item.range.start?.line) &&
+                Number.isSafeInteger(item.range.start?.character) &&
+                Number.isSafeInteger(item.range.end?.line) &&
+                Number.isSafeInteger(item.range.end?.character) &&
+                item.range.start.line >= 0 &&
+                item.range.start.character >= 0 &&
+                item.range.end.line >= 0 &&
+                item.range.end.character >= 0
+            )
+            .slice(0, MAX_DIAGNOSTICS_PER_FILE)
+            .map((item) => {
+                const {source, ...rest} = item;
+                return {
+                    ...rest,
+                    message: (typeof item.message === "string"
+                        ? item.message
+                        : item.message.value
+                    ).slice(0, MAX_DIAGNOSTIC_MESSAGE_CHARS),
+                    ...(typeof source === "string"
+                        ? {source: source.slice(0, 256)}
+                        : {}),
+                };
+            });
         const entry = {
-            diagnostics: params.diagnostics,
+            diagnostics,
             updatedAt: Date.now(),
         };
+        if (
+            !this.diagnosticCache.has(params.uri) &&
+            this.diagnosticCache.size >= MAX_DIAGNOSTIC_FILES
+        ) {
+            const oldest = this.diagnosticCache.keys().next().value;
+            if (typeof oldest === "string") this.diagnosticCache.delete(oldest);
+        }
         this.diagnosticCache.set(params.uri, entry);
 
         const waiters = this.diagnosticWaiters.get(params.uri) ?? [];
@@ -291,9 +365,17 @@ function languageIdForExtension(ext: string): string {
 
 // 创建失败时 LSP 按可选能力降级，不能阻止主 Agent 启动。
 // 实例由调用方持有并负责 shutdown，不注册任何进程级全局状态。
-export function createLspManager(cwd: string): LSPManager | undefined {
+export async function createLspManager(
+    storage: PillarStorageLayout,
+    cwd: string,
+    childEnvironment: ChildProcessEnvironment
+): Promise<LspManagerLike | undefined> {
     try {
-        return new LSPManager(cwd);
+        return new LSPManager(
+            cwd,
+            await loadLspConfig(storage, cwd),
+            childEnvironment
+        );
     } catch {
         return undefined;
     }

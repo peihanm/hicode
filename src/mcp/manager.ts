@@ -1,4 +1,5 @@
-import {createMcpApprovalIdentity, defaultMcpApprovalPath, getMcpApproval, saveMcpApproval} from "./approval.js";
+import {join} from "node:path";
+import {createMcpApprovalIdentity, getMcpApproval, saveMcpApproval} from "./approval.js";
 import {connectMcpServer} from "./client.js";
 import {loadMcpConfig} from "./config.js";
 import {adaptMcpTools} from "./toolAdapter.js";
@@ -15,14 +16,14 @@ interface MutableConnection {
     server: LoadedMcpServerConfig;
     snapshot: McpServerSnapshot;
     connected?: McpConnectedServer;
-    tools: Tool<any>[];
+    tools: Tool[];
 }
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-export class McpManager implements McpManagerLike {
+class McpManager implements McpManagerLike {
     private connections: MutableConnection[] = [];
     private listeners = new Set<() => void>();
     private initialized = false;
@@ -37,21 +38,30 @@ export class McpManager implements McpManagerLike {
     }
 
     private emit(): void {
-        for (const listener of this.listeners) listener();
+        for (const listener of this.listeners) {
+            try {
+                listener();
+            } catch {
+                // 状态观察者不能破坏 Server 生命周期。
+            }
+        }
     }
 
     getSnapshots(): readonly McpServerSnapshot[] {
         return this.connections.map((item) => ({...item.snapshot}));
     }
 
-    getTools(): readonly Tool<any>[] {
+    getTools(): readonly Tool[] {
         return this.connections.flatMap((item) => item.tools);
     }
 
     private async isApproved(server: LoadedMcpServerConfig): Promise<boolean> {
         if (server.source === "user") return true;
         const identity = await createMcpApprovalIdentity(this.options.cwd, server);
-        const approvalPath = this.options.approvalPath ?? defaultMcpApprovalPath();
+        const approvalPath = join(
+            this.options.storage.pillarHome,
+            "mcp-approvals.json"
+        );
         const stored = await getMcpApproval(approvalPath, identity, server.name);
         if (stored === "allow") return true;
         if (stored === "deny" || this.options.headless || !this.options.requestApproval) return false;
@@ -71,7 +81,10 @@ export class McpManager implements McpManagerLike {
     async initialize(): Promise<void> {
         if (this.initialized) return;
         this.initialized = true;
-        const loaded = await loadMcpConfig(this.options);
+        const loaded = await loadMcpConfig(
+            this.options.storage,
+            this.options.cwd
+        );
         this.connections = loaded.servers.map((server) => ({
             server,
             snapshot: {
@@ -130,6 +143,7 @@ export class McpManager implements McpManagerLike {
                     const connected = await connectMcpServer(
                         connection.server,
                         this.options.cwd,
+                        this.options.childEnvironment,
                         this.options.signal,
                         () => {
                             if (connection.snapshot.status === "connected") {
@@ -172,9 +186,10 @@ export class McpManager implements McpManagerLike {
             }
         }
         this.emit();
+        this.listeners.clear();
     }
 }
 
-export function createMcpManager(options: McpManagerOptions): McpManager {
+export function createMcpManager(options: McpManagerOptions): McpManagerLike {
     return new McpManager(options);
 }

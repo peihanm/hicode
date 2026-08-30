@@ -41,7 +41,7 @@ export interface HookPromptExecutor {
     }): Promise<HookJSONOutput>;
 }
 
-export class HookPromptTimeoutError extends Error {
+class HookPromptTimeoutError extends Error {
     constructor(timeoutMs: number) {
         super(`Prompt Hook 超时 (${timeoutMs}ms)`);
         this.name = "HookPromptTimeoutError";

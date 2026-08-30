@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import {ResumePicker} from "./bootstrap/ResumePicker.js";
 import {
@@ -16,6 +16,7 @@ import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 
 type RootState =
+    | { view: "loading" }
     | { view: "app"; session?: LoadedSession }
     | { view: "picker"; sessions: SessionIndexEntry[] }
     | { view: "error"; message: string };
@@ -65,9 +66,26 @@ export function Root({
 }) {
     const {exit} = useApp();
     const model = settings.models.primary.model;
-    const [state, setState] = useState<RootState>(() =>
-        createRootState(storage, cwd, model, resumeMode)
-    );
+    const [state, setState] = useState<RootState>({view: "loading"});
+
+    useEffect(() => {
+        let active = true;
+        Promise.resolve().then(() =>
+            createRootState(storage, cwd, model, resumeMode)
+        ).then((next) => {
+            if (active) setState(next);
+        }).catch((error) => {
+            if (active) {
+                setState({
+                    view: "error",
+                    message: `读取会话失败: ${error instanceof Error ? error.message : String(error)}`,
+                });
+            }
+        });
+        return () => {
+            active = false;
+        };
+    }, [cwd, model, resumeMode, storage]);
 
     useInput(
         (input, key) => {
@@ -81,12 +99,24 @@ export function Root({
             <ResumePicker
                 sessions={state.sessions}
                 onSelect={(sessionId) => {
-                    const session = loadSession(storage, cwd, sessionId, model);
-                    setState(
-                        session
-                            ? {view: "app", session}
-                            : {view: "error", message: `没有找到会话: ${sessionId}`}
-                    );
+                    try {
+                        const session = loadSession(
+                            storage,
+                            cwd,
+                            sessionId,
+                            model
+                        );
+                        setState(
+                            session
+                                ? {view: "app", session}
+                                : {view: "error", message: `没有找到会话: ${sessionId}`}
+                        );
+                    } catch (error) {
+                        setState({
+                            view: "error",
+                            message: `读取会话失败: ${error instanceof Error ? error.message : String(error)}`,
+                        });
+                    }
                 }}
                 onCancel={exit}
             />
@@ -100,6 +130,10 @@ export function Root({
                 <Text color={COLORS.dim}>请直接运行 pillar 开始新会话。</Text>
             </Box>
         );
+    }
+
+    if (state.view === "loading") {
+        return <Text color={COLORS.dim}>正在读取会话…</Text>;
     }
 
     return (

@@ -5,7 +5,14 @@ export const rewindCommand: SlashCommand = {
     name: "rewind",
     aliases: ["checkpoint"],
     description: "恢复到历史问题之前的代码和/或对话",
-    async execute(_args, context) {
+    async execute(args, context) {
+        if (args) {
+            await context.onEvent({
+                type: "assistant_text",
+                content: "用法: /rewind",
+            });
+            return;
+        }
         if (!context.openRewind) {
             await context.onEvent({
                 type: "assistant_text",

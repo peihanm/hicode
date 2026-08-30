@@ -5,6 +5,7 @@ import {
     createGitSessionRuntime,
     createGitWorkspaceRuntime,
 } from "../../src/git/index.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {loadSession, saveSessionSnapshot} from "../../src/session/index.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {executeToolResult} from "../helpers/executeTool.js";
@@ -51,7 +52,7 @@ describe("Git Session baseline", () => {
 
             const runtime = createGitSessionRuntime({
                 cwd,
-                workspace: createGitWorkspaceRuntime(cwd),
+                workspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
                 resumed: false,
             });
             await runtime.initialize();
@@ -111,7 +112,7 @@ describe("Git Session baseline", () => {
             await initializeRepository(cwd);
             const runtime = createGitSessionRuntime({
                 cwd,
-                workspace: createGitWorkspaceRuntime(cwd),
+                workspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
                 resumed: false,
             });
             await runtime.initialize();
@@ -135,7 +136,7 @@ describe("Git Session baseline", () => {
 
             const resumed = createGitSessionRuntime({
                 cwd,
-                workspace: createGitWorkspaceRuntime(cwd),
+                workspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
                 persistedState: loaded?.gitSession,
                 resumed: true,
             });
@@ -166,7 +167,7 @@ describe("Git Session baseline", () => {
             await writeFile(join(cwd, "existing.txt"), "existing\n");
             const runtime = createGitSessionRuntime({
                 cwd,
-                workspace: createGitWorkspaceRuntime(cwd),
+                workspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
                 resumed: true,
             });
             await runtime.initialize();
@@ -187,14 +188,14 @@ describe("Git Session baseline", () => {
             await initializeRepository(cwd);
             const original = createGitSessionRuntime({
                 cwd,
-                workspace: createGitWorkspaceRuntime(cwd),
+                workspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
                 resumed: false,
             });
             await original.initialize();
             const persisted = original.getState()!;
             const resumed = createGitSessionRuntime({
                 cwd,
-                workspace: createGitWorkspaceRuntime(cwd),
+                workspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
                 persistedState: {
                     ...persisted,
                     repositoryIdentity: "/different/repository",
@@ -203,7 +204,10 @@ describe("Git Session baseline", () => {
                 resumed: true,
             });
             await resumed.initialize();
-            const current = await createGitWorkspaceRuntime(cwd).status(
+            const current = await createGitWorkspaceRuntime(
+                cwd,
+                testChildEnvironment
+            ).status(
                 new AbortController().signal
             );
             if (current.status === "unavailable") throw new Error(current.message);

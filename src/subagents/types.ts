@@ -13,7 +13,7 @@ export interface AgentDefinition {
     whenToUse: string;
     systemPrompt: string;
     allowedTools: readonly string[];
-    model: "inherit" | string;
+    model: SubagentModelOverride;
     // 未设置时继承主运行时的安全上限；内置 Explore 不声明专属上限。
     maxIterations?: number;
     source: AgentSource;

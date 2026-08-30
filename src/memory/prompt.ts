@@ -1,4 +1,4 @@
-export const MEMORY_GUIDANCE = [
+const MEMORY_GUIDANCE = [
     "# Persistent memory",
     "你拥有一个按项目隔离的文件式 Memory。Memory 目录会在下方给出，并且已经存在；不要运行 mkdir 或探测目录是否存在。",
     "Memory 只保存跨会话仍有价值、且无法从当前仓库直接推导的信息。",

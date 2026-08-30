@@ -9,7 +9,11 @@ type SigintListener = () => void;
 export interface HeadlessProcessAdapter {
     onceSigint(listener: SigintListener): void;
 
+    onceSigterm(listener: SigintListener): void;
+
     removeSigint(listener: SigintListener): void;
+
+    removeSigterm(listener: SigintListener): void;
 
     setExitCode(code: number): void;
 
@@ -32,8 +36,14 @@ const processAdapter: HeadlessProcessAdapter = {
     onceSigint(listener) {
         process.once("SIGINT", listener);
     },
+    onceSigterm(listener) {
+        process.once("SIGTERM", listener);
+    },
     removeSigint(listener) {
         process.removeListener("SIGINT", listener);
+    },
+    removeSigterm(listener) {
+        process.removeListener("SIGTERM", listener);
     },
     setExitCode(code) {
         process.exitCode = code;
@@ -55,7 +65,11 @@ export function createHeadlessCli({
         const onSigint = () => {
             if (!controller.signal.aborted) controller.abort("sigint");
         };
+        const onSigterm = () => {
+            if (!controller.signal.aborted) controller.abort("shutdown");
+        };
         adapter.onceSigint(onSigint);
+        adapter.onceSigterm(onSigterm);
         try {
             const summary = await runner(options, controller.signal);
             adapter.setExitCode(summary.exitCode);
@@ -69,6 +83,7 @@ export function createHeadlessCli({
             adapter.setExitCode(1);
         } finally {
             adapter.removeSigint(onSigint);
+            adapter.removeSigterm(onSigterm);
         }
     };
 }

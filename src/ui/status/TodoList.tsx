@@ -1,5 +1,5 @@
 import {Box, Text} from "ink";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useState} from "react";
 import type {Todo} from "../../todos.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 
@@ -51,11 +51,11 @@ export function TodoList({
     todos: Todo[];
     paused?: boolean;
 }) {
-    if (todos.length === 0) return null;
-
-    // 记录每个 todo 变成 completed 的时间戳
-    // key = content（我们没有 id，用 content 当唯一标识）
-    const completionTimesRef = useRef<Map<string, number>>(new Map());
+    // key = content（当前 Todo 协议没有 id）。只在 effect 中更新 UI 状态，
+    // 避免 Ink render 本身产生 mutation。
+    const [completionTimes, setCompletionTimes] = useState<Map<string, number>>(
+        () => new Map()
+    );
     const [, forceUpdate] = useState(0);
 
     const now = Date.now();
@@ -63,32 +63,39 @@ export function TodoList({
         todos.filter((t) => t.status === "completed").map((t) => t.content)
     );
 
-    // 新完成的（之前没记录的）记时间戳
-    for (const content of currentCompleted) {
-        if (!completionTimesRef.current.has(content)) {
-            completionTimesRef.current.set(content, now);
-        }
-    }
-    // 不再 completed 的（变成 pending/in_progress 或被删除）清掉时间戳
-    for (const content of completionTimesRef.current.keys()) {
-        if (!currentCompleted.has(content)) {
-            completionTimesRef.current.delete(content);
-        }
-    }
+    useEffect(() => {
+        setCompletionTimes((previous) => {
+            const next = new Map(previous);
+            let changed = false;
+            for (const content of currentCompleted) {
+                if (!next.has(content)) {
+                    next.set(content, Date.now());
+                    changed = true;
+                }
+            }
+            for (const content of next.keys()) {
+                if (!currentCompleted.has(content)) {
+                    next.delete(content);
+                    changed = true;
+                }
+            }
+            return changed ? next : previous;
+        });
+    }, [todos]);
 
     // 过滤掉 30 秒前完成的
     const visibleTodos = todos.filter((t) => {
         if (t.status !== "completed") return true;
-        const ts = completionTimesRef.current.get(t.content);
+        const ts = completionTimes.get(t.content);
         if (!ts) return true; // 没记录的先显示（防御）
         return now - ts < COMPLETED_TTL_MS;
     });
 
     // 如果有即将过期的 completed，设定时器触发重渲染
     useEffect(() => {
-        if (completionTimesRef.current.size === 0) return;
+        if (completionTimes.size === 0) return;
         let earliestExpiry = Infinity;
-        for (const ts of completionTimesRef.current.values()) {
+        for (const ts of completionTimes.values()) {
             const expiry = ts + COMPLETED_TTL_MS;
             if (expiry > Date.now() && expiry < earliestExpiry) {
                 earliestExpiry = expiry;
@@ -98,7 +105,7 @@ export function TodoList({
         const delay = earliestExpiry - Date.now();
         const timer = setTimeout(() => forceUpdate((n) => n + 1), delay);
         return () => clearTimeout(timer);
-    }, [todos]);
+    }, [completionTimes]);
 
     if (visibleTodos.length === 0) return null;
 

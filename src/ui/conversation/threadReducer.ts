@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import {mergeFileChange} from "../../fileChanges/index.js";
 import type {PersistedUIEvent} from "../../session/index.js";
 import type {AgentEvent} from "../../agent/types.js";
@@ -5,29 +6,34 @@ import type {Message} from "../../llm/types.js";
 import type {TaskNotification} from "../../tasks/index.js";
 import type {SubagentProgressItem, UIThread} from "./types.js";
 
-// UI 线程 ID 生成（模块级，简单递增）
-let threadIdCounter = 0;
+export type ThreadIdFactory = () => string;
 
-function nextId(): string {
-    threadIdCounter += 1;
-    return `t${threadIdCounter}`;
+function randomThreadId(): string {
+    return `thread-${randomUUID()}`;
 }
 
 // 构造单条 UI 线程（user 输入 / assistant 文本 / 错误信息）
 // ID 生成封装在内部，调用方不直接接触 nextId
-export function createUserThread(text: string): UIThread {
-    return {id: nextId(), role: "user", text};
+export function createUserThread(
+    text: string,
+    createId: ThreadIdFactory = randomThreadId
+): UIThread {
+    return {id: createId(), role: "user", text};
 }
 
-export function createAssistantThread(text: string): UIThread {
-    return {id: nextId(), role: "assistant", text};
+export function createAssistantThread(
+    text: string,
+    createId: ThreadIdFactory = randomThreadId
+): UIThread {
+    return {id: createId(), role: "assistant", text};
 }
 
 export function createTaskNotificationThread(
-    notification: TaskNotification
+    notification: TaskNotification,
+    createId: ThreadIdFactory = randomThreadId
 ): UIThread {
     return {
-        id: nextId(),
+        id: createId(),
         role: "task_notification",
         taskId: notification.taskId,
         ownerToolCallId: notification.ownerToolCallId,
@@ -54,7 +60,8 @@ function shouldShowUserText(text: string): boolean {
 
 export function threadsFromHistory(
     history: Message[],
-    uiEvents: PersistedUIEvent[] = []
+    uiEvents: PersistedUIEvent[] = [],
+    createId: ThreadIdFactory = randomThreadId
 ): UIThread[] {
     let threads: UIThread[] = [];
 
@@ -62,18 +69,18 @@ export function threadsFromHistory(
         if (message.role === "user") {
             const text = textFromUserMessage(message);
             if (shouldShowUserText(text)) {
-                threads.push(createUserThread(text));
+                threads.push(createUserThread(text, createId));
             }
             continue;
         }
 
         if (message.role === "assistant") {
             if (typeof message.content === "string" && message.content.trim()) {
-                threads.push(createAssistantThread(message.content));
+                threads.push(createAssistantThread(message.content, createId));
             }
             for (const toolCall of message.tool_calls ?? []) {
                 threads.push({
-                    id: nextId(),
+                    id: createId(),
                     role: "tool_call",
                     toolCallId: toolCall.id,
                     name: toolCall.function.name,
@@ -119,7 +126,7 @@ export function threadsFromHistory(
             result: target.result ?? "文件已修改",
             outcome: "ok",
             uiData: {type: "file_change", change: event.change},
-        });
+        }, createId);
     }
     return threads;
 }
@@ -181,7 +188,8 @@ function updateSubagentProgress(
 //   形态是 (threads, event) → threads，reducer 天然对齐
 export function reduceThreads(
     threads: UIThread[],
-    event: AgentEvent
+    event: AgentEvent,
+    createId: ThreadIdFactory = randomThreadId
 ): UIThread[] {
     switch (event.type) {
         case "iteration":
@@ -201,7 +209,7 @@ export function reduceThreads(
             return [
                 ...threads,
                 {
-                    id: nextId(),
+                    id: createId(),
                     role: "assistant",
                     text: `任务已取消（${event.reason}）`,
                 },
@@ -266,14 +274,14 @@ export function reduceThreads(
         case "assistant_text":
             return [
                 ...threads,
-                {id: nextId(), role: "assistant", text: event.content},
+                {id: createId(), role: "assistant", text: event.content},
             ];
         case "compact_start": {
             const label = event.trigger === "manual" ? "Compact" : "Auto-compact";
             return [
                 ...threads,
                 {
-                    id: nextId(),
+                    id: createId(),
                     role: "assistant",
                     text: `${label}: ${formatTokens(event.tokenCount)} / ${formatTokens(event.threshold)} tokens，正在压缩上下文...`,
                 },
@@ -284,7 +292,7 @@ export function reduceThreads(
             return [
                 ...threads,
                 {
-                    id: nextId(),
+                    id: createId(),
                     role: "assistant",
                     text: `${label} 完成: ${formatTokens(event.preTokenCount)} -> ${formatTokens(event.postTokenCount)} tokens`,
                 },
@@ -295,7 +303,7 @@ export function reduceThreads(
             return [
                 ...threads,
                 {
-                    id: nextId(),
+                    id: createId(),
                     role: "assistant",
                     text: `${label} 失败: ${event.message}`,
                 },
@@ -305,7 +313,7 @@ export function reduceThreads(
             return [
                 ...threads,
                 {
-                    id: nextId(),
+                    id: createId(),
                     role: "tool_call",
                     turnId: event.turnId,
                     toolCallId: event.toolCallId,
@@ -364,7 +372,7 @@ export function reduceThreads(
                     thread.role === "tool_call" && thread.toolCallId === event.toolCallId
             );
             const group: UIThread = {
-                id: nextId(),
+                id: createId(),
                 role: "file_change_group",
                 turnId,
                 changes: [event.uiData.change],

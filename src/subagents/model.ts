@@ -6,27 +6,23 @@ export function resolveSubagentModel({
     fastModel,
     override,
 }: {
-    definitionModel: string;
+    definitionModel: SubagentModelOverride;
     parentModel: string;
     fastModel: string;
     override?: SubagentModelOverride;
 }): string {
     const selection = override ?? definitionModel;
     if (selection === "inherit") return parentModel;
-    if (selection === "fast") return fastModel;
-    return selection;
+    return fastModel;
 }
 
 export function formatSubagentModel(
-    selection: string,
+    selection: SubagentModelOverride,
     inheritLabel = "继承父模型",
     fastModel?: string
 ): string {
     if (selection === "inherit") return inheritLabel;
-    if (selection === "fast") {
-        return fastModel
-            ? `fast (${fastModel})`
-            : "fast（使用配置的快速模型）";
-    }
-    return selection;
+    return fastModel
+        ? `fast (${fastModel})`
+        : "fast（使用配置的快速模型）";
 }

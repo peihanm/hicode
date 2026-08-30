@@ -28,22 +28,19 @@ export interface ToolRuntime {
 
 export interface CreateToolRuntimeOptions {
     allowedToolNames?: readonly string[];
-    additionalTools?: readonly Tool<any>[];
+    additionalTools?: readonly Tool[];
     /**
      * 用于受限 Runtime 对内置工具收窄权限或能力。只能覆盖已经存在的工具名，
      * 避免子 Runtime 通过同名 additional tool 意外扩大能力。
      */
-    toolOverrides?: readonly Tool<any>[];
+    toolOverrides?: readonly Tool[];
     /** Root Runtime 的可信 Command Hook；受限子 Runtime 不传入。 */
     hooks?: HookRuntime;
 }
 
 export function createToolRuntime(
-    input?: readonly string[] | CreateToolRuntimeOptions
+    options: CreateToolRuntimeOptions = {}
 ): ToolRuntime {
-    const options: CreateToolRuntimeOptions = Array.isArray(input)
-        ? {allowedToolNames: input}
-        : ((input ?? {}) as CreateToolRuntimeOptions);
     const catalog = createToolCatalog(options);
     const discovery = createToolDiscovery(catalog.registrations);
     const runtimeTools = discovery.searchTool

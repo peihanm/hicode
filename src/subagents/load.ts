@@ -1,15 +1,18 @@
-import {homedir} from "node:os";
 import {basename, join} from "node:path";
-import {readdir, readFile, stat} from "node:fs/promises";
+import {readdir} from "node:fs/promises";
 import {parse as parseYaml} from "yaml";
 import {z} from "zod";
 import type {AgentDefinition, AgentLoadIssue, AgentSource, LoadedCustomAgents,} from "./types.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./custom.js";
+import {
+    ensureAgentDefinitionDirectory,
+    readAgentDefinitionFile,
+} from "./fileAccess.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 export const MAX_AGENT_FILES_PER_SOURCE = 64;
 const MAX_ACTIVE_CUSTOM_AGENTS = 64;
 const MAX_AGENT_PROMPT_CHARS = 40_000;
-const MAX_AGENT_FILE_BYTES = 64_000;
 const MAX_AGENT_ISSUES = 50;
 const MAX_AGENT_ISSUE_MESSAGE_CHARS = 240;
 const MAX_AGENT_ISSUE_FIELD_CHARS = 80;
@@ -36,13 +39,7 @@ const customAgentFrontmatterSchema = z
             ),
         description: z.string().trim().min(1).max(500),
         tools: z.array(z.string().trim().min(1).max(128)).min(1).max(32),
-        model: z
-            .string()
-            .trim()
-            .min(1)
-            .max(120)
-            .regex(/^\S+$/, "模型 ID 不能包含空白字符")
-            .optional(),
+        model: z.enum(["inherit", "fast"]).optional(),
         max_iterations: z.number().int().min(2).max(30).optional(),
     })
     .passthrough();
@@ -178,16 +175,13 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
     }
 
     const allowedTools = [...new Set(parsed.data.tools)];
-    const model = parsed.data.model?.toLowerCase() === "inherit"
-        ? "inherit"
-        : (parsed.data.model ?? "inherit");
     return {
         definition: {
             agentType: parsed.data.name,
             whenToUse: parsed.data.description,
             systemPrompt: body,
             allowedTools,
-            model,
+            model: parsed.data.model ?? "inherit",
             maxIterations:
                 parsed.data.max_iterations ?? DEFAULT_CUSTOM_AGENT_ITERATIONS,
             source: input.source,
@@ -201,6 +195,21 @@ export async function loadAgentSourceDirectory(
     directory: string,
     source: Exclude<AgentSource, "builtin">
 ): Promise<{definitions: AgentDefinition[]; issues: AgentLoadIssue[]}> {
+    try {
+        if (!await ensureAgentDefinitionDirectory(directory)) {
+            return {definitions: [], issues: []};
+        }
+    } catch (error) {
+        return {
+            definitions: [],
+            issues: [{
+                source,
+                path: directory,
+                severity: "error",
+                message: error instanceof Error ? error.message : String(error),
+            }],
+        };
+    }
     let entries;
     try {
         entries = await readdir(directory, {withFileTypes: true});
@@ -239,17 +248,7 @@ export async function loadAgentSourceDirectory(
         const path = join(directory, entry.name);
         let raw: string;
         try {
-            const metadata = await stat(path);
-            if (metadata.size > MAX_AGENT_FILE_BYTES) {
-                issues.push({
-                    source,
-                    path,
-                    severity: "error",
-                    message: `文件超过 ${MAX_AGENT_FILE_BYTES} bytes 上限`,
-                });
-                continue;
-            }
-            raw = await readFile(path, "utf8");
+            raw = await readAgentDefinitionFile(path);
         } catch (error) {
             issues.push({
                 source,
@@ -280,7 +279,7 @@ export async function loadAgentSourceDirectory(
     return {definitions, issues};
 }
 
-export function mergeCustomAgentSources(
+function mergeCustomAgentSources(
     userDefinitions: readonly AgentDefinition[],
     projectDefinitions: readonly AgentDefinition[],
     existingIssues: readonly AgentLoadIssue[] = []
@@ -388,10 +387,11 @@ export function validateCustomAgentTools(
 }
 
 export async function loadCustomAgentDefinitions(
+    storage: PillarStorageLayout,
     cwd: string
 ): Promise<LoadedCustomAgents> {
     const [user, project] = await Promise.all([
-        loadAgentSourceDirectory(join(homedir(), ".pillar", "agents"), "user"),
+        loadAgentSourceDirectory(join(storage.pillarHome, "agents"), "user"),
         loadAgentSourceDirectory(join(cwd, ".pillar", "agents"), "project"),
     ]);
     return mergeCustomAgentSources(

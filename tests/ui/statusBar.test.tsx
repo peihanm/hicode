@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import { StatusBar } from "../../src/ui/status/StatusBar.js";
+import type {RunningTaskSummary} from "../../src/tasks/index.js";
 
 afterEach(() => cleanup());
 
 function renderStatusBar(
-  tokenStatus: "unavailable" | "estimated" | "actual"
+  tokenStatus: "unavailable" | "estimated" | "actual",
+  backgroundTasks?: RunningTaskSummary
 ): string {
   return (
     render(
@@ -17,6 +19,7 @@ function renderStatusBar(
         percentUsed={0.12}
         warning={false}
         tokenStatus={tokenStatus}
+        backgroundTasks={backgroundTasks}
       />
     ).lastFrame() ?? ""
   );
@@ -41,5 +44,28 @@ describe("StatusBar token state", () => {
     expect(frame).toContain("shift+tab switch mode");
     expect(frame).toContain("ctrl+o transcript");
     expect(frame).not.toContain("esc to cancel");
+  });
+});
+
+describe("StatusBar background tasks", () => {
+  test("用后台服务数量代替容易误解的运行中提示", () => {
+    const frame = renderStatusBar("actual", {total: 1, shell: 1, agent: 0});
+    expect(frame).toContain("Service 1");
+    expect(frame).not.toContain("Tasks running");
+  });
+
+  test("区分后台 Agent 与混合任务", () => {
+    expect(
+      renderStatusBar("actual", {total: 2, shell: 0, agent: 2})
+    ).toContain("Background agents 2");
+    expect(
+      renderStatusBar("actual", {total: 3, shell: 1, agent: 2})
+    ).toContain("Background 3");
+  });
+
+  test("没有后台任务时不显示摘要", () => {
+    const frame = renderStatusBar("actual", {total: 0, shell: 0, agent: 0});
+    expect(frame).not.toContain("Service");
+    expect(frame).not.toContain("Background");
   });
 });

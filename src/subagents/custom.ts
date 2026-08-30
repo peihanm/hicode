@@ -9,11 +9,12 @@ export const CUSTOM_AGENT_FORBIDDEN_TOOLS = new Set([
     "exit_plan_mode",
     "todo_write",
     "skill",
+    "memory",
     "bash_task",
     "task",
 ]);
 
-export function customAgentPermissionMode(
+function customAgentPermissionMode(
     parentMode: PermissionMode
 ): PermissionMode {
     return parentMode === "default" ? "dontAsk" : parentMode;
@@ -43,7 +44,6 @@ export function createCustomSubagentRegistration(
                     skills: [],
                     instructions: parentContext.instructions,
                     lspManager: parentContext.lspManager,
-                    fileState: parentContext.fileState,
                     gitSession: parentContext.gitSession,
                     shellRunner: parentContext.shellRunner,
                 },

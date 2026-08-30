@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
 import {lstat, realpath} from "node:fs/promises";
 import {isAbsolute, relative, resolve} from "node:path";
-import {formatGitProcessError, runGitCommand} from "../git/process.js";
+import {formatGitProcessError, type GitCommandRunner} from "../git/process.js";
 import {parseGitStatusPorcelainV2} from "../git/status.js";
 import type {GitFileStatus} from "../git/types.js";
 import {isPathInside} from "./pathGuard.js";
@@ -47,8 +47,11 @@ function parseWorktreeList(output: Buffer | string): RegisteredWorktree[] {
     });
 }
 
-async function listRegisteredWorktrees(cwd: string): Promise<RegisteredWorktree[]> {
-    const result = await runGitCommand(cwd, [
+async function listRegisteredWorktrees(
+    runGit: GitCommandRunner,
+    cwd: string
+): Promise<RegisteredWorktree[]> {
+    const result = await runGit(cwd, [
         "--no-optional-locks",
         "worktree",
         "list",
@@ -61,15 +64,21 @@ async function listRegisteredWorktrees(cwd: string): Promise<RegisteredWorktree[
     return parseWorktreeList(result.stdout);
 }
 
-export async function resolveMainWorktreeRoot(sourceGitRoot: string): Promise<string> {
-    const entries = await listRegisteredWorktrees(sourceGitRoot);
+export async function resolveMainWorktreeRoot(
+    runGit: GitCommandRunner,
+    sourceGitRoot: string
+): Promise<string> {
+    const entries = await listRegisteredWorktrees(runGit, sourceGitRoot);
     const main = entries[0];
     if (!main) throw new Error("Git 没有返回主 Worktree");
     return realpath(main.path);
 }
 
-export async function assertWorktreesIgnored(mainGitRoot: string): Promise<void> {
-    const result = await runGitCommand(mainGitRoot, [
+export async function assertWorktreesIgnored(
+    runGit: GitCommandRunner,
+    mainGitRoot: string
+): Promise<void> {
+    const result = await runGit(mainGitRoot, [
         "check-ignore",
         "-q",
         "--",
@@ -158,13 +167,14 @@ function unavailable(issue: string, registered: boolean): WorktreeInspection {
 }
 
 async function findRegisteredWorktree(
+    runGit: GitCommandRunner,
     record: AgentWorktreeRecord
 ): Promise<RegisteredWorktree | undefined> {
     assertRecordedWorktreePath(record);
     await assertWorktreeParentSafety(record.mainGitRoot);
     const target = await lstat(record.path).catch(() => undefined);
     if (!target || !target.isDirectory() || target.isSymbolicLink()) return undefined;
-    const entries = await listRegisteredWorktrees(record.sourceGitRoot);
+    const entries = await listRegisteredWorktrees(runGit, record.sourceGitRoot);
     const expected = await realpath(record.path).catch(() => undefined);
     if (!expected) return undefined;
     const canonicalRoot = await realpath(worktreesRoot(record.mainGitRoot));
@@ -177,11 +187,12 @@ async function findRegisteredWorktree(
 }
 
 export async function inspectWorktree(
+    runGit: GitCommandRunner,
     record: AgentWorktreeRecord
 ): Promise<WorktreeInspection> {
     let registered: RegisteredWorktree | undefined;
     try {
-        registered = await findRegisteredWorktree(record);
+        registered = await findRegisteredWorktree(runGit, record);
     } catch (error) {
         return unavailable(
             `无法核对 Git Worktree 注册状态：${error instanceof Error ? error.message : String(error)}`,
@@ -193,13 +204,13 @@ export async function inspectWorktree(
         return unavailable("Worktree 当前分支与 Manifest 不匹配", true);
     }
     const [status, head, ahead, names] = await Promise.all([
-        runGitCommand(record.path, [
+        runGit(record.path, [
             "--no-optional-locks", "status", "--porcelain=v2", "-z",
             "--find-renames=50%", "--untracked-files=all",
         ]),
-        runGitCommand(record.path, ["rev-parse", "HEAD"]),
-        runGitCommand(record.path, ["rev-list", "--count", `${record.baseCommit}..HEAD`]),
-        runGitCommand(record.path, [
+        runGit(record.path, ["rev-parse", "HEAD"]),
+        runGit(record.path, ["rev-list", "--count", `${record.baseCommit}..HEAD`]),
+        runGit(record.path, [
             "diff", "--name-status", "-z", "--find-renames=50%",
             record.baseCommit, "--", ".",
         ]),
@@ -257,17 +268,18 @@ function safeRelativePath(path: string): boolean {
 }
 
 export async function readWorktreeDiff(
+    runGit: GitCommandRunner,
     record: AgentWorktreeRecord,
     inspection: AvailableWorktreeInspection
 ): Promise<WorktreeDiff> {
-    const tracked = await runGitCommand(record.path, [
+    const tracked = await runGit(record.path, [
         "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--binary",
         record.baseCommit, "--", ".",
     ], undefined, {maxOutputBytes: MAX_WORKTREE_DIFF_BYTES});
     if (tracked.code !== 0) {
         throw new Error(`无法生成 Worktree diff：${formatGitProcessError(tracked)}`);
     }
-    const statResult = await runGitCommand(record.path, [
+    const statResult = await runGit(record.path, [
         "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--stat",
         record.baseCommit, "--", ".",
     ]);
@@ -284,7 +296,7 @@ export async function readWorktreeDiff(
         const info = await lstat(path);
         if (!info.isFile() || info.isSymbolicLink()) continue;
         untrackedStats.push(` ${relativePath} | ${info.size} bytes (new)`);
-        const diff = await runGitCommand(record.path, [
+        const diff = await runGit(record.path, [
             "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color",
             "--binary", "--", "/dev/null", path,
         ], undefined, {maxOutputBytes: MAX_WORKTREE_DIFF_BYTES - bytes});
@@ -305,6 +317,9 @@ export async function readWorktreeDiff(
     };
 }
 
-export async function isRegisteredWorktree(record: AgentWorktreeRecord): Promise<boolean> {
-    return Boolean(await findRegisteredWorktree(record));
+export async function isRegisteredWorktree(
+    runGit: GitCommandRunner,
+    record: AgentWorktreeRecord
+): Promise<boolean> {
+    return Boolean(await findRegisteredWorktree(runGit, record));
 }

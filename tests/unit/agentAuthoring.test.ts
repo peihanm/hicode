@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {createAgentDefinitionGenerator} from "../../src/subagents/index.js";
+import {createAgentDefinitionGenerator} from "../../src/subagents/authoring/generator.js";
 import {EMPTY_PROJECT_INSTRUCTIONS} from "../../src/prompt/instructions.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";

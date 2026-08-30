@@ -63,12 +63,10 @@ export interface ToolExecutionResult {
     uiData?: ToolUIData;
 }
 
-export interface ToolResultStoreOptions {
-    /** Host-owned projects root; tests and embedded hosts use an isolated root. */
-    rootDir?: string;
-    maxArtifactBytes?: number;
-    maxSessionBytes?: number;
-    previewChars?: number;
+export interface ToolResultStoreLimits {
+    maxArtifactBytes: number;
+    maxSessionBytes: number;
+    previewChars: number;
 }
 
 export class ToolResultStoreError extends Error {

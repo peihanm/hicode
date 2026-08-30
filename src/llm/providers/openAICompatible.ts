@@ -7,6 +7,7 @@ import {
 import {beginPromptLog} from "../promptLog.js";
 import type {LLMCallOptions, LLMCallResult, LLMStreamProgress, Message, PromptLogResponse,} from "../types.js";
 import {consumeOpenAICompatibleSSE} from "./openAICompatibleStream.js";
+import {Buffer} from "node:buffer";
 
 const LLM_MAX_ATTEMPTS = 3;
 const LLM_RETRY_BASE_DELAY_MS = 800;
@@ -14,6 +15,7 @@ const LLM_STREAM_IDLE_TIMEOUT_MS = 300_000;
 const LLM_STREAM_IDLE_WARNING_MS = 60_000;
 const LLM_OUTPUT_STALL_TIMEOUT_MS = 120_000;
 const LLM_MAX_OUTPUT_STALL_RETRIES = 2;
+const MAX_ERROR_RESPONSE_BYTES = 64 * 1024;
 
 interface OpenAICompatibleCallerConfig {
     retryBaseDelayMs: number;
@@ -93,6 +95,43 @@ function formatError(error: unknown): string {
     } catch {
         return String(error);
     }
+}
+
+function redactSecret(value: string, secret: string): string {
+    return secret ? value.replaceAll(secret, "[REDACTED]") : value;
+}
+
+async function readErrorResponse(response: Response): Promise<string> {
+    if (!response.body) return "";
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    let truncated = false;
+    try {
+        while (bytes < MAX_ERROR_RESPONSE_BYTES) {
+            const part = await reader.read();
+            if (part.done) break;
+            const remaining = MAX_ERROR_RESPONSE_BYTES - bytes;
+            if (part.value.length > remaining) {
+                chunks.push(part.value.subarray(0, remaining));
+                bytes += remaining;
+                truncated = true;
+                break;
+            }
+            chunks.push(part.value);
+            bytes += part.value.length;
+        }
+        if (bytes >= MAX_ERROR_RESPONSE_BYTES) truncated = true;
+    } finally {
+        if (truncated) {
+            await reader.cancel("LLM error body size limit reached")
+                .catch(() => undefined);
+        }
+        reader.releaseLock();
+    }
+    const text = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
+        .toString("utf8");
+    return truncated ? `${text}\n[响应已截断]` : text;
 }
 
 function retryDelayMs(
@@ -228,7 +267,8 @@ async function callOpenAICompatibleCore(
             options.cwd,
             options.kind,
             options.model,
-            requestBody
+            requestBody,
+            [endpoint.apiKey]
         );
         let lastStreamProgress: LLMStreamProgress | undefined;
         const finishPromptLog = (response: PromptLogResponse) =>
@@ -293,7 +333,10 @@ async function callOpenAICompatibleCore(
         let failureLogged = false;
         try {
             if (!response.ok) {
-                const text = await response.text();
+                const text = redactSecret(
+                    await readErrorResponse(response),
+                    endpoint.apiKey
+                );
                 const retryable = isRetryableStatus(response.status);
                 finishPromptLog({
                     error: `API ${response.status} (attempt ${attempt}/${LLM_MAX_ATTEMPTS}): ${text.slice(0, 500)}`,
@@ -317,6 +360,9 @@ async function callOpenAICompatibleCore(
                 throw new Error(`${endpoint.displayName} stream 响应缺少 body`);
             }
             requestSignal.reset();
+            // Heartbeat/empty SSE events reset transport idle, but must not keep a
+            // generation alive forever without any model output.
+            requestSignal.recordProgress();
             const streamed = await consumeOpenAICompatibleSSE({
                 body: response.body,
                 signal: requestSignal.signal,

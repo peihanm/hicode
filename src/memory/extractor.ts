@@ -27,7 +27,7 @@ const MEMORY_AGENT_TOOLS = [
     "delete_file",
 ] as const;
 
-export interface MemoryExtractionInput {
+interface MemoryExtractionInput {
     turns: readonly {user: string; assistant: string}[];
     signal: AbortSignal;
 }

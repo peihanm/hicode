@@ -9,7 +9,6 @@ export interface PillarStorageLayout {
 
 export interface CreatePillarStorageLayoutOptions {
     pillarHome?: string;
-    projectsRoot?: string;
 }
 
 /**
@@ -19,20 +18,14 @@ export interface CreatePillarStorageLayoutOptions {
 export function createPillarStorageLayout(
     options: CreatePillarStorageLayoutOptions = {}
 ): PillarStorageLayout {
-    if (options.pillarHome && options.projectsRoot) {
-        throw new Error("Pillar storage accepts pillarHome or projectsRoot, not both");
-    }
     const requestedHome = options.pillarHome ?? join(homedir(), ".pillar");
-    const requestedProjectsRoot =
-        options.projectsRoot ?? join(requestedHome, "projects");
-    if (!isAbsolute(requestedHome) || !isAbsolute(requestedProjectsRoot)) {
+    if (!isAbsolute(requestedHome)) {
         throw new Error("Pillar storage paths must be absolute");
     }
     const pillarHome = resolve(requestedHome);
-    const projectsRoot = resolve(requestedProjectsRoot);
     return Object.freeze({
         pillarHome,
-        projectsRoot,
+        projectsRoot: join(pillarHome, "projects"),
     });
 }
 

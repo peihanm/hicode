@@ -1,6 +1,8 @@
 import {homedir} from "node:os";
+import {Buffer} from "node:buffer";
 import {dirname, isAbsolute, join, parse, relative, resolve} from "node:path";
-import {readFile} from "node:fs/promises";
+import {constants} from "node:fs";
+import {open} from "node:fs/promises";
 
 const MAX_INSTRUCTION_FILE_CHARS = 40_000;
 const MAX_INSTRUCTION_TOTAL_CHARS = 120_000;
@@ -33,6 +35,30 @@ interface ProjectInstructionLoaderConfig {
     homeDir?: string;
     maxFileChars?: number;
     maxTotalChars?: number;
+}
+
+async function readInstructionFile(
+    path: string,
+    maxChars: number
+): Promise<{content: string; byteTruncated: boolean}> {
+    const maxBytes = Math.max(1, maxChars * 4);
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+        const info = await handle.stat();
+        if (!info.isFile()) {
+            throw new Error("CODE.md 必须是普通文件，不能是目录或符号链接");
+        }
+        const buffer = Buffer.allocUnsafe(Math.min(info.size, maxBytes));
+        const {bytesRead} = buffer.length > 0
+            ? await handle.read(buffer, 0, buffer.length, 0)
+            : {bytesRead: 0};
+        return {
+            content: new TextDecoder().decode(buffer.subarray(0, bytesRead)),
+            byteTruncated: info.size > maxBytes,
+        };
+    } finally {
+        await handle.close();
+    }
 }
 
 function discoveryDirectories(cwd: string, boundary?: string): string[] {
@@ -110,17 +136,20 @@ export function createProjectInstructionLoader(
             if (seen.has(path)) continue;
             seen.add(path);
             try {
-                const raw = await readFile(path, "utf8");
+                const {content: raw, byteTruncated} = await readInstructionFile(
+                    path,
+                    maxFileChars
+                );
                 if (!raw.trim()) continue;
                 const bounded = boundedFileContent(raw, maxFileChars);
-                if (bounded.truncated) {
+                if (bounded.truncated || byteTruncated) {
                     issues.push(`${path} 超过 ${maxFileChars} 字符，已截断`);
                 }
                 discovered.push({
                     path,
                     scope: candidate.scope,
                     content: bounded.content,
-                    truncated: bounded.truncated,
+                    truncated: bounded.truncated || byteTruncated,
                 });
             } catch (error) {
                 const code = (error as NodeJS.ErrnoException | undefined)?.code;

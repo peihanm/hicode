@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { prepareAgentInvoke } from "../../src/agent/invokePreparation.js";
 import { tokenCountWithEstimation } from "../../src/context/tokens.js";
 import { getUserContextBlocks } from "../../src/prompt/attachments.js";
@@ -11,23 +11,16 @@ import type { AgentEvent } from "../../src/agent/types.js";
 import type { Message, OpenAITool } from "../../src/llm/types.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
+import { getAutoCompactThreshold } from "../../src/context/window.js";
 
-const originalThreshold = process.env.AUTO_COMPACT_THRESHOLD;
-const originalDisableCompact = process.env.DISABLE_COMPACT;
-const originalDisableAutoCompact = process.env.DISABLE_AUTO_COMPACT;
-
-afterEach(() => {
-  if (originalThreshold === undefined) delete process.env.AUTO_COMPACT_THRESHOLD;
-  else process.env.AUTO_COMPACT_THRESHOLD = originalThreshold;
-  if (originalDisableCompact === undefined) delete process.env.DISABLE_COMPACT;
-  else process.env.DISABLE_COMPACT = originalDisableCompact;
-  if (originalDisableAutoCompact === undefined) delete process.env.DISABLE_AUTO_COMPACT;
-  else process.env.DISABLE_AUTO_COMPACT = originalDisableAutoCompact;
-});
-
-function history(): Message[] {
+function history(overThreshold = false): Message[] {
   return [
     { role: "system", content: "system" },
+    ...(overThreshold
+      ? [{role: "user" as const, content: "x".repeat(
+          getAutoCompactThreshold("glm-test") * 2 + 100
+        )}]
+      : []),
     { role: "user", content: "real user message" },
   ];
 }
@@ -47,7 +40,7 @@ function noCompactResult(preTokenCount: number, message?: string) {
   return {
     compacted: false,
     preTokenCount,
-    threshold: Number(process.env.AUTO_COMPACT_THRESHOLD ?? 1),
+    threshold: getAutoCompactThreshold("glm-test"),
     ...(message ? { message } : {}),
   };
 }
@@ -55,9 +48,6 @@ function noCompactResult(preTokenCount: number, message?: string) {
 describe("Agent invoke preparation", () => {
   test("无 Compact 时构造临时 userContext、复用 schemas 且不修改 History", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1000000";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const messages = history();
       const before = structuredClone(messages);
       const tools = [tool()];
@@ -113,8 +103,6 @@ describe("Agent invoke preparation", () => {
 
   test("Tool schemas 计入估算并可以单独触发 Auto-Compact", async () => {
     await withTempProject(async (cwd) => {
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const messages = history();
       const ctx = createTestContext(cwd);
       const invokeMessages = buildInvokeMessages(
@@ -122,14 +110,15 @@ describe("Agent invoke preparation", () => {
         getUserContextBlocks(ctx.skills)
       );
       const messagesOnly = tokenCountWithEstimation(invokeMessages);
-      process.env.AUTO_COMPACT_THRESHOLD = String(messagesOnly + 1);
       let compactCalls = 0;
 
       await prepareAgentInvoke({
         history: messages,
         ctx,
         onEvent: () => {},
-        getToolSchemas: () => [tool("x".repeat(2_000))],
+        getToolSchemas: () => [tool("x".repeat(
+          getAutoCompactThreshold("glm-test") * 2
+        ))],
         compactHistory: async ({ preTokenCount }) => {
           compactCalls += 1;
           expect(preTokenCount).toBeGreaterThan(messagesOnly);
@@ -141,44 +130,15 @@ describe("Agent invoke preparation", () => {
     });
   });
 
-  test("两个禁用环境变量都阻止 Auto-Compact", async () => {
-    await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      let compactCalls = 0;
-      const runWith = async (name: "DISABLE_COMPACT" | "DISABLE_AUTO_COMPACT") => {
-        delete process.env.DISABLE_COMPACT;
-        delete process.env.DISABLE_AUTO_COMPACT;
-        process.env[name] = "1";
-        await prepareAgentInvoke({
-          history: history(),
-          ctx: createTestContext(cwd),
-          onEvent: () => {},
-          getToolSchemas: () => [],
-          compactHistory: async ({ preTokenCount }) => {
-            compactCalls += 1;
-            return noCompactResult(preTokenCount);
-          },
-        });
-      };
-
-      await runWith("DISABLE_COMPACT");
-      await runWith("DISABLE_AUTO_COMPACT");
-      expect(compactCalls).toBe(0);
-    });
-  });
-
   test("连续失败达到熔断上限时跳过 Auto-Compact", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const ctx = createTestContext(cwd);
       ctx.compactState.consecutiveFailures = 3;
       const events: AgentEvent[] = [];
       let compactCalls = 0;
 
       await prepareAgentInvoke({
-        history: history(),
+        history: history(true),
         ctx,
         onEvent: (event) => {
           events.push(event);
@@ -197,10 +157,7 @@ describe("Agent invoke preparation", () => {
 
   test("Compact 成功后用同一 schemas 重新构造并估算 invoke messages", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
-      const messages = history();
+      const messages = history(true);
       const ctx = createTestContext(cwd);
       const tools = [tool("schema")];
       const events: AgentEvent[] = [];
@@ -253,10 +210,7 @@ describe("Agent invoke preparation", () => {
 
   test("Compact 普通失败发送 error 并返回原 invoke messages", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
-      const messages = history();
+      const messages = history(true);
       const before = structuredClone(messages);
       const events: AgentEvent[] = [];
 
@@ -282,13 +236,10 @@ describe("Agent invoke preparation", () => {
 
   test("Compact false 且没有 message 时保持只有 start 事件", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const events: AgentEvent[] = [];
 
       await prepareAgentInvoke({
-        history: history(),
+        history: history(true),
         ctx: createTestContext(cwd),
         onEvent: (event) => {
           events.push(event);
@@ -303,12 +254,9 @@ describe("Agent invoke preparation", () => {
 
   test("Compact 取消向顶层传播且 preparation 不发送 turn event", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const controller = createTurnAbortController();
       const ctx = createTestContext(cwd, { signal: controller.signal });
-      const messages = history();
+      const messages = history(true);
       const before = structuredClone(messages);
       const events: AgentEvent[] = [];
 

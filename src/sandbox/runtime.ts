@@ -1,4 +1,7 @@
-import {SandboxManager} from "@anthropic-ai/sandbox-runtime";
+import {
+    SandboxManager,
+    type SandboxRuntimeConfig,
+} from "@anthropic-ai/sandbox-runtime";
 import {createSandboxRuntimeConfig} from "./config.js";
 import type {
     ResolvedSandboxSettings,
@@ -7,6 +10,23 @@ import type {
     SandboxRuntimeLike,
     SandboxStatus,
 } from "./types.js";
+
+interface SandboxBackend {
+    isSupportedPlatform(): boolean;
+    isSandboxingEnabled(): boolean;
+    checkDependencies(): {errors: string[]; warnings: string[]};
+    initialize(config: SandboxRuntimeConfig): Promise<void>;
+    wrapWithSandboxArgv(
+        command: string,
+        shell: string | undefined,
+        customConfig: undefined,
+        signal: AbortSignal,
+        cwd: string
+    ): Promise<SandboxedCommand>;
+    annotateStderrWithSandboxFailures(command: string, stderr: string): string;
+    cleanupAfterCommand(): void;
+    reset(): Promise<void>;
+}
 
 function platformName(): SandboxPlatform | undefined {
     if (process.platform === "darwin") return "macos";
@@ -20,8 +40,7 @@ function errorMessage(error: unknown): string {
 }
 
 class InactiveSandboxRuntime implements SandboxRuntimeLike {
-    constructor(readonly status: SandboxStatus) {
-    }
+    constructor(readonly status: SandboxStatus) {}
 
     async wrapCommand(): Promise<SandboxedCommand> {
         const reason = this.status.kind === "unavailable"
@@ -34,18 +53,19 @@ class InactiveSandboxRuntime implements SandboxRuntimeLike {
         return stderr;
     }
 
-    cleanupAfterCommand(): void {
-    }
+    cleanupAfterCommand(): void {}
 
-    async close(): Promise<void> {
-    }
+    async close(): Promise<void> {}
 }
 
 class ActiveSandboxRuntime implements SandboxRuntimeLike {
     private closed = false;
 
-    constructor(readonly status: Extract<SandboxStatus, {kind: "ready"}>) {
-    }
+    constructor(
+        readonly status: Extract<SandboxStatus, {kind: "ready"}>,
+        private readonly backend: SandboxBackend,
+        private readonly release: () => Promise<void>
+    ) {}
 
     async wrapCommand(
         command: string,
@@ -54,7 +74,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
     ): Promise<SandboxedCommand> {
         if (this.closed) throw new Error("Sandbox Runtime 已关闭");
         const shell = process.platform === "win32" ? undefined : "/bin/sh";
-        return SandboxManager.wrapWithSandboxArgv(
+        return this.backend.wrapWithSandboxArgv(
             command,
             shell,
             undefined,
@@ -64,17 +84,17 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
     }
 
     annotateStderr(command: string, stderr: string): string {
-        return SandboxManager.annotateStderrWithSandboxFailures(command, stderr);
+        return this.backend.annotateStderrWithSandboxFailures(command, stderr);
     }
 
     cleanupAfterCommand(): void {
-        SandboxManager.cleanupAfterCommand();
+        this.backend.cleanupAfterCommand();
     }
 
     async close(): Promise<void> {
         if (this.closed) return;
         this.closed = true;
-        await SandboxManager.reset();
+        await this.release();
     }
 }
 
@@ -82,65 +102,89 @@ export function createDisabledSandboxRuntime(): SandboxRuntimeLike {
     return new InactiveSandboxRuntime({kind: "disabled"});
 }
 
-export async function createSandboxRuntime({
-    cwd,
-    settings,
-}: {
-    cwd: string;
-    settings: ResolvedSandboxSettings;
-}): Promise<SandboxRuntimeLike> {
-    if (!settings.enabled) return createDisabledSandboxRuntime();
+export function createSandboxRuntimeFactory(backend: SandboxBackend) {
+    let activeLease: symbol | undefined;
 
-    const platform = platformName();
-    if (!platform || !SandboxManager.isSupportedPlatform()) {
-        return new InactiveSandboxRuntime({
-            kind: "unavailable",
-            reason: `当前平台 ${process.platform} 不支持 OS Sandbox`,
-            warnings: [],
-        });
-    }
+    return async function createSandboxRuntime({
+        cwd,
+        settings,
+    }: {
+        cwd: string;
+        settings: ResolvedSandboxSettings;
+    }): Promise<SandboxRuntimeLike> {
+        if (!settings.enabled) return createDisabledSandboxRuntime();
 
-    let dependencies;
-    try {
-        dependencies = SandboxManager.checkDependencies();
-    } catch (error) {
-        return new InactiveSandboxRuntime({
-            kind: "unavailable",
-            reason: `Sandbox 依赖检查失败: ${errorMessage(error)}`,
-            warnings: [],
-        });
-    }
-    if (dependencies.errors.length > 0) {
-        return new InactiveSandboxRuntime({
-            kind: "unavailable",
-            reason: dependencies.errors.join("；"),
-            warnings: dependencies.warnings,
-        });
-    }
-
-    try {
-        await SandboxManager.initialize(
-            createSandboxRuntimeConfig(cwd, settings)
-        );
-        if (!SandboxManager.isSandboxingEnabled()) {
-            await SandboxManager.reset();
+        const platform = platformName();
+        if (!platform || !backend.isSupportedPlatform()) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
-                reason: "Sandbox Runtime 初始化后未进入启用状态",
+                reason: `当前平台 ${process.platform} 不支持 OS Sandbox`,
+                warnings: [],
+            });
+        }
+
+        let dependencies;
+        try {
+            dependencies = backend.checkDependencies();
+        } catch (error) {
+            return new InactiveSandboxRuntime({
+                kind: "unavailable",
+                reason: `Sandbox 依赖检查失败: ${errorMessage(error)}`,
+                warnings: [],
+            });
+        }
+        if (dependencies.errors.length > 0) {
+            return new InactiveSandboxRuntime({
+                kind: "unavailable",
+                reason: dependencies.errors.join("；"),
                 warnings: dependencies.warnings,
             });
         }
-        return new ActiveSandboxRuntime({
-            kind: "ready",
-            platform,
-            warnings: dependencies.warnings,
-        });
-    } catch (error) {
-        await SandboxManager.reset().catch(() => undefined);
-        return new InactiveSandboxRuntime({
-            kind: "unavailable",
-            reason: errorMessage(error),
-            warnings: dependencies.warnings,
-        });
-    }
+        if (activeLease || backend.isSandboxingEnabled()) {
+            return new InactiveSandboxRuntime({
+                kind: "unavailable",
+                reason: "当前进程已有另一个 Root Runtime 持有 OS Sandbox",
+                warnings: dependencies.warnings,
+            });
+        }
+
+        const lease = Symbol("pillar-sandbox-lease");
+        activeLease = lease;
+        let released = false;
+        const release = async () => {
+            if (released || activeLease !== lease) return;
+            released = true;
+            try {
+                await backend.reset();
+            } finally {
+                if (activeLease === lease) activeLease = undefined;
+            }
+        };
+
+        try {
+            await backend.initialize(createSandboxRuntimeConfig(cwd, settings));
+            if (!backend.isSandboxingEnabled()) {
+                await release();
+                return new InactiveSandboxRuntime({
+                    kind: "unavailable",
+                    reason: "Sandbox Runtime 初始化后未进入启用状态",
+                    warnings: dependencies.warnings,
+                });
+            }
+            return new ActiveSandboxRuntime({
+                kind: "ready",
+                platform,
+                warnings: dependencies.warnings,
+            }, backend, release);
+        } catch (error) {
+            await release().catch(() => undefined);
+            return new InactiveSandboxRuntime({
+                kind: "unavailable",
+                reason: errorMessage(error),
+                warnings: dependencies.warnings,
+            });
+        }
+    };
 }
+
+export const createSandboxRuntime = createSandboxRuntimeFactory(SandboxManager);

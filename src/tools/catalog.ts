@@ -24,23 +24,23 @@ import {webFetchTool} from "./webFetch/webFetch.js";
 import {writeFileTool} from "./writeFile/writeFile.js";
 
 export interface ToolRegistration {
-    tool: Tool<any>;
+    tool: Tool;
     exposure: ToolExposure;
     schema: () => OpenAITool;
 }
 
 export interface ToolCatalog {
-    tools: Tool<any>[];
+    tools: Tool[];
     registrations: ToolRegistration[];
 }
 
 export interface CreateToolCatalogOptions {
     allowedToolNames?: readonly string[];
-    additionalTools?: readonly Tool<any>[];
-    toolOverrides?: readonly Tool<any>[];
+    additionalTools?: readonly Tool[];
+    toolOverrides?: readonly Tool[];
 }
 
-function createBuiltinTools(): Tool<any>[] {
+function createBuiltinTools(): Tool[] {
     // Agent 的默认实现只用于基础 Catalog 和能力校验。Root Runtime 会用当前
     // Subagent Catalog 生成同名 override，因此这里不导出一份隐式全局 Tool。
     return [
@@ -66,7 +66,7 @@ function createBuiltinTools(): Tool<any>[] {
     ];
 }
 
-export function schemaForTool(tool: Tool<any>): OpenAITool {
+export function schemaForTool(tool: Tool): OpenAITool {
     return {
         type: "function",
         function: {
@@ -82,7 +82,7 @@ export function schemaForTool(tool: Tool<any>): OpenAITool {
     };
 }
 
-function schemaSourceForTool(tool: Tool<any>): () => OpenAITool {
+function schemaSourceForTool(tool: Tool): () => OpenAITool {
     const base = schemaForTool(tool);
     if (!tool.getDescription) return () => base;
     return () => {

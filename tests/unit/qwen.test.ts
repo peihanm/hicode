@@ -46,6 +46,7 @@ describe("Qwen provider", () => {
                 requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
                 const events = [
                     {
+                        usage: null,
                         choices: [{
                             delta: {
                                 reasoning_content: "准备调用工具",
@@ -62,6 +63,7 @@ describe("Qwen provider", () => {
                         }],
                     },
                     {
+                        usage: null,
                         choices: [{
                             delta: {
                                 tool_calls: [{

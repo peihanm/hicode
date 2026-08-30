@@ -1,15 +1,16 @@
 import {Buffer} from "node:buffer";
-import {chmod, lstat, mkdir, readdir, readFile, unlink,} from "node:fs/promises";
+import {constants} from "node:fs";
+import {chmod, lstat, mkdir, open, readdir, unlink,} from "node:fs/promises";
 import {basename} from "node:path";
 import {withFileLock, writeFileAtomically,} from "../persistence/index.js";
 import {classifyMemoryPath, getMemoryEntryPath, getMemoryIndexPath, getMemoryLockPath,} from "./paths.js";
-import {parseMemoryFile, serializeMemoryFile} from "./parser.js";
+import {MAX_MEMORY_FILE_BYTES, parseMemoryFile, serializeMemoryFile} from "./parser.js";
 import {memoryKeySchema, memoryUpsertSchema} from "./schema.js";
 import type {MemoryChange, MemoryEntry, MemoryIssue, MemoryScanResult, MemoryUpsertInput,} from "./types.js";
 
 const MAX_MEMORY_FILES = 200;
-export const MAX_MEMORY_INDEX_LINES = 200;
-export const MAX_MEMORY_INDEX_BYTES = 25_000;
+const MAX_MEMORY_INDEX_LINES = 200;
+const MAX_MEMORY_INDEX_BYTES = 25_000;
 
 function isCode(error: unknown, code: string): boolean {
     return Boolean(
@@ -18,6 +19,30 @@ function isCode(error: unknown, code: string): boolean {
         "code" in error &&
         (error as NodeJS.ErrnoException).code === code
     );
+}
+
+async function readRegularText(
+    path: string,
+    maxBytes: number,
+    label: string
+): Promise<string> {
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+        const info = await handle.stat();
+        if (!info.isFile()) {
+            throw new Error(`${label} 必须是普通文件，不能是符号链接`);
+        }
+        if (info.size > maxBytes) {
+            throw new Error(`${label} 超过 ${maxBytes} bytes`);
+        }
+        const raw = await handle.readFile("utf8");
+        if (Buffer.byteLength(raw, "utf8") > maxBytes) {
+            throw new Error(`${label} 超过 ${maxBytes} bytes`);
+        }
+        return raw;
+    } finally {
+        await handle.close();
+    }
 }
 
 function oneLine(value: string): string {
@@ -36,7 +61,7 @@ function compareEntries(a: MemoryEntry, b: MemoryEntry): number {
     );
 }
 
-export function formatMemoryIndex(entries: readonly MemoryEntry[]): string {
+function formatMemoryIndex(entries: readonly MemoryEntry[]): string {
     const lines = ["# Pillar Memory", ""];
     for (const entry of [...entries].sort(compareEntries)) {
         if (lines.length >= MAX_MEMORY_INDEX_LINES) break;
@@ -139,11 +164,10 @@ export class MemoryStore implements MemoryStoreLike {
         path: string,
         expectedKey: string
     ): Promise<MemoryEntry> {
-        const info = await lstat(path);
-        if (info.isSymbolicLink() || !info.isFile()) {
-            throw new Error("Memory 主题必须是普通文件，不能是符号链接");
-        }
-        const entry = parseMemoryFile(path, await readFile(path, "utf8"));
+        const entry = parseMemoryFile(
+            path,
+            await readRegularText(path, MAX_MEMORY_FILE_BYTES, "Memory 主题")
+        );
         if (entry.key !== expectedKey) {
             throw new Error(
                 `frontmatter key ${entry.key} 与文件名 ${expectedKey}.md 不一致`
@@ -215,7 +239,11 @@ export class MemoryStore implements MemoryStoreLike {
 
     async readIndex(): Promise<string> {
         try {
-            return await readFile(getMemoryIndexPath(this.directory), "utf8");
+            return await readRegularText(
+                getMemoryIndexPath(this.directory),
+                MAX_MEMORY_INDEX_BYTES,
+                "MEMORY.md"
+            );
         } catch (error) {
             if (isCode(error, "ENOENT")) return "# Pillar Memory\n";
             throw error;
@@ -237,11 +265,11 @@ export class MemoryStore implements MemoryStoreLike {
 
     private async currentRaw(path: string): Promise<string | null> {
         try {
-            const info = await lstat(path);
-            if (info.isSymbolicLink() || !info.isFile()) {
-                throw new Error("Memory 文件必须是普通文件，不能是符号链接");
-            }
-            return await readFile(path, "utf8");
+            const managed = classifyMemoryPath(this.directory, path);
+            const maxBytes = managed?.kind === "index"
+                ? MAX_MEMORY_INDEX_BYTES
+                : MAX_MEMORY_FILE_BYTES;
+            return await readRegularText(path, maxBytes, "Memory 文件");
         } catch (error) {
             if (isCode(error, "ENOENT")) return null;
             throw error;

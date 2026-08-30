@@ -1,6 +1,7 @@
 export {createTaskRuntime} from "./runtime.js";
 export type {
     AgentTaskSnapshot,
+    RunningTaskSummary,
     ShellTaskSnapshot,
     TaskEventEnvelope,
     TaskNotification,

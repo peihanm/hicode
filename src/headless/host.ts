@@ -3,7 +3,6 @@ import type {PermissionDecision} from "../permissions/index.js";
 import {createRootRuntimeResources} from "../runtime/resources.js";
 import {createTurnAbortController} from "../runtime/abort.js";
 import {saveSessionSnapshot} from "../session/index.js";
-import {createToolResultStore} from "../toolResults/index.js";
 import type {AgentEvent} from "../agent/types.js";
 import {HeadlessEventCollector} from "./collector.js";
 import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
@@ -15,11 +14,8 @@ import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createRootSessionRuntime} from "../runtime/sessionRuntime.js";
 
-type CreateToolResultStore = typeof createToolResultStore;
-
 interface HeadlessRunnerDependencies {
     createResources: typeof createRootRuntimeResources;
-    createToolResultStore: CreateToolResultStore;
     saveSession: typeof saveSessionSnapshot;
     writeOutput: (
         summary: HeadlessRunSummary,
@@ -34,9 +30,6 @@ export function createHeadlessRunner(
     const dependencies: HeadlessRunnerDependencies = {
         createResources:
             overrides.createResources ?? createRootRuntimeResources,
-        createToolResultStore:
-            overrides.createToolResultStore ??
-            createToolResultStore,
         saveSession: overrides.saveSession ?? saveSessionSnapshot,
         writeOutput: overrides.writeOutput ?? writeHeadlessOutput,
         writeDiagnostic: overrides.writeDiagnostic ?? writeHeadlessDiagnostic,
@@ -58,6 +51,7 @@ export function createHeadlessRunner(
             signal: activeSignal,
             headless: true,
         });
+        try {
         const rootSession = createRootSessionRuntime({
             resources,
             seed: {
@@ -68,11 +62,6 @@ export function createHeadlessRunner(
                 toolDiscovery: state.toolDiscovery,
                 gitSession: state.gitSession,
             },
-            toolResultStore: dependencies.createToolResultStore(
-                options.storage,
-                options.cwd,
-                state.sessionId
-            ),
             resumed: options.resumeMode.kind !== "none",
             allowBackgroundTasks: false,
         });
@@ -149,18 +138,12 @@ export function createHeadlessRunner(
                 activeSignal
             );
             await writeHookIssues(sessionStart);
-            try {
-                await rootSession.beginCheckpoint(options.prompt, {
-                    todos: state.todos,
-                    permissionMode: state.permissionMode,
-                    prePlanMode: state.prePlanMode,
-                    uiEvents: state.uiEvents,
-                });
-            } catch (error) {
-                await dependencies.writeDiagnostic(
-                    `Checkpoint: 创建失败，本轮修改可能无法恢复：${error instanceof Error ? error.message : String(error)}`
-                );
-            }
+            await rootSession.beginCheckpoint(options.prompt, {
+                todos: state.todos,
+                permissionMode: state.permissionMode,
+                prePlanMode: state.prePlanMode,
+                uiEvents: state.uiEvents,
+            });
 
             const promptHooks = await rootSession.runUserPromptHooks(
                 options.prompt,
@@ -197,16 +180,10 @@ export function createHeadlessRunner(
                         additionalUserContextBlocks: hookContexts,
                     }
                 );
-            try {
-                await rootSession.settleCheckpoint(
-                    promptHooks.blocked ? "no_agent_run" : "settled"
-                );
-                checkpointSettled = true;
-            } catch (error) {
-                await dependencies.writeDiagnostic(
-                    `Checkpoint: 收尾失败：${error instanceof Error ? error.message : String(error)}`
-                );
-            }
+            await rootSession.settleCheckpoint(
+                promptHooks.blocked ? "no_agent_run" : "settled"
+            );
+            checkpointSettled = true;
             sessionEndReason = result.reason;
             const collectorSnapshot = collector.getSnapshot();
             await dependencies.saveSession(
@@ -295,8 +272,10 @@ export function createHeadlessRunner(
                 }
             } finally {
                 clearTimeout(timer);
-                await resources.close();
             }
+        }
+        } finally {
+            await resources.close();
         }
     };
 }

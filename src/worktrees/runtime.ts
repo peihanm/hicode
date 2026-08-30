@@ -1,10 +1,15 @@
 import {realpath} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
-import {formatGitProcessError, runGitCommand} from "../git/process.js";
+import {
+    createGitCommandRunner,
+    formatGitProcessError,
+    type GitCommandRunner,
+} from "../git/process.js";
 import {readGitRepositorySnapshot} from "../git/status.js";
 import {getProjectStorageDirectory, type PillarStorageLayout} from "../persistence/index.js";
 import {loadProjectInstructions} from "../prompt/instructions.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {ToolContext} from "../tools/types.js";
 import {
@@ -35,10 +40,11 @@ interface RemoveResult {
     issue?: string;
 }
 
-export class WorktreeRuntime implements WorktreeRuntimeLike {
+class WorktreeRuntime implements WorktreeRuntimeLike {
     constructor(
         private readonly sourceCwd: string,
-        private readonly manifests: WorktreeManifestStore
+        private readonly manifests: WorktreeManifestStore,
+        private readonly runGit: GitCommandRunner
     ) {}
 
     async create(input: {
@@ -46,7 +52,11 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
         sessionId: string;
         signal: AbortSignal;
     }): Promise<AgentWorktreeRecord> {
-        const repository = await readGitRepositorySnapshot(this.sourceCwd, input.signal);
+        const repository = await readGitRepositorySnapshot(
+            this.runGit,
+            this.sourceCwd,
+            input.signal
+        );
         if (repository.status === "unavailable") {
             const prefix = repository.reason === "not-git-repository"
                 ? "当前目录不是 Git repository"
@@ -61,11 +71,11 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
 
         const sourceCwd = await realpath(this.sourceCwd);
         const sourceGitRoot = await realpath(snapshot.repositoryRoot);
-        const mainGitRoot = await resolveMainWorktreeRoot(sourceGitRoot);
+        const mainGitRoot = await resolveMainWorktreeRoot(this.runGit, sourceGitRoot);
         await assertWorktreeParentSafety(mainGitRoot);
-        await assertWorktreesIgnored(mainGitRoot);
+        await assertWorktreesIgnored(this.runGit, mainGitRoot);
         const branch = worktreeBranch(input.taskId);
-        const branchStatus = await runGitCommand(sourceGitRoot, [
+        const branchStatus = await this.runGit(sourceGitRoot, [
             "show-ref", "--verify", "--quiet", `refs/heads/${branch}`,
         ], input.signal);
         if (branchStatus.code === 0) {
@@ -75,7 +85,7 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
             throw new Error(`无法检查 Worktree 临时分支：${formatGitProcessError(branchStatus)}`);
         }
         const prepared = await prepareWorktreeDirectory(mainGitRoot, input.taskId);
-        const created = await runGitCommand(sourceGitRoot, [
+        const created = await this.runGit(sourceGitRoot, [
             "worktree", "add", "-b", branch, prepared.path, snapshot.headOid,
         ], input.signal);
         if (created.code !== 0 || input.signal.aborted) {
@@ -118,13 +128,13 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
         assertRecordedWorktreePath(record);
         const [currentCwd, currentRepository] = await Promise.all([
             realpath(this.sourceCwd),
-            readGitRepositorySnapshot(this.sourceCwd),
+            readGitRepositorySnapshot(this.runGit, this.sourceCwd),
         ]);
         if (currentRepository.status !== "available") {
             throw new Error("无法核对 Worktree Manifest 的来源 repository");
         }
         const currentRoot = await realpath(currentRepository.snapshot.repositoryRoot);
-        const currentMainRoot = await resolveMainWorktreeRoot(currentRoot);
+        const currentMainRoot = await resolveMainWorktreeRoot(this.runGit, currentRoot);
         if (
             currentCwd !== record.sourceCwd ||
             currentRoot !== record.sourceGitRoot ||
@@ -176,7 +186,7 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
     }
 
     inspect(record: AgentWorktreeRecord) {
-        return inspectWorktree(record);
+        return inspectWorktree(this.runGit, record);
     }
 
     async finish(record: AgentWorktreeRecord): Promise<WorktreeLifecycleResult> {
@@ -221,7 +231,7 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
         record: AgentWorktreeRecord,
         inspection: AvailableWorktreeInspection
     ) {
-        return readWorktreeDiff(record, inspection);
+        return readWorktreeDiff(this.runGit, record, inspection);
     }
 
     async discard(record: AgentWorktreeRecord): Promise<WorktreeLifecycleResult> {
@@ -261,14 +271,14 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
 
     private async remove(record: AgentWorktreeRecord): Promise<RemoveResult> {
         assertRecordedWorktreePath(record);
-        if (!await isRegisteredWorktree(record)) {
+        if (!await isRegisteredWorktree(this.runGit, record)) {
             return {
                 worktreeRemoved: false,
                 branchRemoved: false,
                 issue: "Worktree 不在当前 Git repository 的注册列表中",
             };
         }
-        const removed = await runGitCommand(record.sourceGitRoot, [
+        const removed = await this.runGit(record.sourceGitRoot, [
             "worktree", "remove", "--force", record.path,
         ]);
         if (removed.code !== 0) {
@@ -278,7 +288,7 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
                 issue: `Git Worktree 删除失败：${formatGitProcessError(removed)}`,
             };
         }
-        const branch = await runGitCommand(record.sourceGitRoot, [
+        const branch = await this.runGit(record.sourceGitRoot, [
             "branch", "-D", record.branch,
         ]);
         return {
@@ -295,17 +305,22 @@ export class WorktreeRuntime implements WorktreeRuntimeLike {
         path: string,
         branch: string
     ): Promise<void> {
-        await runGitCommand(gitRoot, ["worktree", "remove", "--force", path]);
-        await runGitCommand(gitRoot, ["branch", "-D", branch]);
+        await this.runGit(gitRoot, ["worktree", "remove", "--force", path]);
+        await this.runGit(gitRoot, ["branch", "-D", branch]);
     }
 }
 
 export function createWorktreeRuntime(
     storage: PillarStorageLayout,
-    cwd: string
+    cwd: string,
+    environment: ChildProcessEnvironment
 ): WorktreeRuntimeLike {
     const manifests = new WorktreeManifestStore(
         join(getProjectStorageDirectory(storage, cwd), "worktrees", "manifests")
     );
-    return new WorktreeRuntime(resolve(cwd), manifests);
+    return new WorktreeRuntime(
+        resolve(cwd),
+        manifests,
+        createGitCommandRunner(environment)
+    );
 }

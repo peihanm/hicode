@@ -45,7 +45,7 @@ if (mode === "session") {
   }
 } else if (mode === "tool-result-quota") {
   const store = createTestToolResultStore(cwd, "shared-tool-result", {
-    rootDir: join(cwd, "tool-result-artifacts"),
+    pillarHome: join(cwd, "tool-result-artifacts"),
     maxArtifactBytes: 100,
     maxSessionBytes: 100,
   });
@@ -57,7 +57,7 @@ if (mode === "session") {
   await writeFile(`${readyPath}.result.json`, JSON.stringify(result), "utf8");
 } else if (mode === "tool-result-binary") {
   const store = createTestToolResultStore(cwd, "shared-binary", {
-    rootDir: join(cwd, "tool-result-artifacts"),
+    pillarHome: join(cwd, "tool-result-artifacts"),
   });
   const size = prefix === "a" ? 10 : 20;
   const result = await store.persistBinary({

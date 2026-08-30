@@ -115,8 +115,7 @@ export type AgentEvent =
         tokenCount: number;
         percentUsed: number;
         warning: boolean;
-        /** 兼容 Provider 缺失流式 usage；省略按旧事件的 actual 处理。 */
-        status?: "estimated" | "actual";
+        status: "estimated" | "actual";
     }
     | {
         type: "memory_update";

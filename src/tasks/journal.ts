@@ -1,17 +1,24 @@
-import {appendFile, mkdir, readFile} from "node:fs/promises";
+import {existsSync} from "node:fs";
+import {appendFile, chmod, lstat, mkdir, readFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
-import {getSessionStorageDirectory, type PillarStorageLayout, withFileLock,} from "../persistence/index.js";
+import {
+    getSessionStorageDirectory,
+    type PillarStorageLayout,
+    withFileLock,
+    writeFileAtomically,
+} from "../persistence/index.js";
+import {
+    decodeTaskJournalEntry,
+    serializeTaskJournalEntry,
+    type TaskJournalEntry,
+} from "./codec.js";
 import type {TaskEventEnvelope, TaskSnapshot} from "./types.js";
 
-type TaskJournalEntry =
-    | TaskEventEnvelope
-    | {
-    version: 2;
-    type: "task_notification_claimed";
-    sequence: number;
-    sessionId: string;
-    taskId: string;
-};
+const MAX_TASK_JOURNAL_BYTES = 16 * 1024 * 1024;
+const MAX_TASK_JOURNAL_LINE_BYTES = 2 * 1024 * 1024;
+const MAX_TASK_JOURNAL_ENTRIES = 4_096;
+const MAX_PERSISTED_TASKS = 32;
+const COMPACT_TASK_JOURNAL_ENTRIES = 1_024;
 
 export interface LoadedTaskJournal {
     sequence: number;
@@ -41,112 +48,120 @@ function journalPath(
     );
 }
 
-function isWorktreeSnapshot(value: unknown): boolean {
-    if (!value || typeof value !== "object") return false;
-    const worktree = value as Record<string, unknown>;
-    if (
-        typeof worktree.path !== "string" ||
-        typeof worktree.branch !== "string" ||
-        typeof worktree.baseCommit !== "string" ||
-        !/^[0-9a-f]{40,64}$/i.test(worktree.baseCommit) ||
-        typeof worktree.sourceHadChanges !== "boolean" ||
-        (
-            worktree.state !== "active" &&
-            worktree.state !== "changed" &&
-            worktree.state !== "cleaned"
-        ) ||
-        !Array.isArray(worktree.changedFiles) ||
-        worktree.changedFiles.length > 500
-    ) return false;
-    if (
-        worktree.omittedChangedFiles !== undefined &&
-        (
-            typeof worktree.omittedChangedFiles !== "number" ||
-            !Number.isSafeInteger(worktree.omittedChangedFiles) ||
-            worktree.omittedChangedFiles < 0
-        )
-    ) return false;
-    if (
-        (worktree.state === "cleaned" &&
-            worktree.cleanupReason !== "no_changes" &&
-            worktree.cleanupReason !== "explicit_discard") ||
-        (worktree.state !== "cleaned" && worktree.cleanupReason !== undefined) ||
-        (worktree.dirty !== undefined && typeof worktree.dirty !== "boolean") ||
-        (worktree.commitsAhead !== undefined &&
-            (typeof worktree.commitsAhead !== "number" ||
-                !Number.isSafeInteger(worktree.commitsAhead) ||
-                worktree.commitsAhead < 0)) ||
-        (worktree.issue !== undefined &&
-            (typeof worktree.issue !== "string" || worktree.issue.length > 8_000))
-    ) return false;
-    return worktree.changedFiles.every((file: unknown) => {
-        if (!file || typeof file !== "object") return false;
-        const change = file as Record<string, unknown>;
-        return typeof change.path === "string" &&
-            change.path.length <= 4_096 &&
-            (
-                change.originalPath === undefined ||
-                (typeof change.originalPath === "string" && change.originalPath.length <= 4_096)
-            ) &&
-            (
-                change.kind === "create" ||
-                change.kind === "update" ||
-                change.kind === "delete" ||
-                change.kind === "rename" ||
-                change.kind === "copy" ||
-                change.kind === "conflict" ||
-                change.kind === "type-change"
-            );
-    });
+function isErrorCode(error: unknown, code: string): boolean {
+    return Boolean(
+        error && typeof error === "object" && "code" in error &&
+        (error as {code?: string}).code === code
+    );
 }
 
-function isTaskSnapshot(value: unknown): value is TaskSnapshot {
-    if (!value || typeof value !== "object") return false;
-    const task = value as Partial<TaskSnapshot>;
-    const kindFieldsValid = task.kind === "shell"
-        ? typeof task.command === "string" && typeof task.cwd === "string"
-        : task.kind === "agent" &&
-            (task.worktree === undefined || isWorktreeSnapshot(task.worktree));
-    return typeof task.id === "string" &&
-        (task.kind === "shell" || task.kind === "agent") &&
-        kindFieldsValid &&
-        (task.status === "running" ||
-            task.status === "completed" ||
-            task.status === "failed" ||
-            task.status === "cancelled") &&
-        typeof task.startedAt === "string" &&
-        Boolean(task.owner) &&
-        typeof task.owner?.sessionId === "string" &&
-        typeof task.owner?.toolCallId === "string";
+interface ParsedJournal {
+    entries: TaskJournalEntry[];
+    requiresRewrite: boolean;
 }
 
-function parseEntry(line: string): TaskJournalEntry | undefined {
+interface CachedJournal extends ParsedJournal {
+    size: number;
+    mtimeMs: number;
+    ino: number;
+}
+
+async function readJournal(
+    path: string,
+    sessionId: string
+): Promise<ParsedJournal> {
+    let info;
     try {
-        const entry = JSON.parse(line) as Partial<TaskJournalEntry>;
-        if (
-            entry.version !== 2 ||
-            typeof entry.sequence !== "number" ||
-            typeof entry.sessionId !== "string"
-        ) return undefined;
-        if (entry.type === "task_notification_claimed") {
-            return typeof entry.taskId === "string"
-                ? entry as TaskJournalEntry
-                : undefined;
+        info = await lstat(path);
+    } catch (error) {
+        if (isErrorCode(error, "ENOENT")) {
+            return {entries: [], requiresRewrite: false};
         }
-        if (
-            (entry.type === "task_started" ||
-                entry.type === "task_progress" ||
-                entry.type === "task_finished") &&
-            isTaskSnapshot(entry.task)
-        ) return entry as TaskJournalEntry;
-    } catch {
-        return undefined;
+        throw error;
     }
-    return undefined;
+    if (!info.isFile() || info.isSymbolicLink()) {
+        throw new Error(`Task Journal 不是安全的 regular file: ${path}`);
+    }
+    if (info.size > MAX_TASK_JOURNAL_BYTES) {
+        throw new Error(`Task Journal 超过大小上限: ${path}`);
+    }
+    const content = await readFile(path, "utf8");
+    const lines = content.split("\n");
+    const hasTrailingNewline = content.endsWith("\n");
+    const entries: TaskJournalEntry[] = [];
+    let nonEmptyLines = 0;
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index]!;
+        if (!line.trim()) continue;
+        nonEmptyLines += 1;
+        if (
+            nonEmptyLines > MAX_TASK_JOURNAL_ENTRIES ||
+            Buffer.byteLength(line, "utf8") > MAX_TASK_JOURNAL_LINE_BYTES
+        ) throw new Error(`Task Journal 超过条目或单行上限: ${path}`);
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(line);
+        } catch (error) {
+            const partialTail = index === lines.length - 1 && !hasTrailingNewline;
+            if (partialTail) {
+                return {entries, requiresRewrite: true};
+            }
+            throw new Error(`Task Journal 包含损坏记录: ${path}`, {cause: error});
+        }
+        const entry = decodeTaskJournalEntry(parsed, sessionId);
+        if (!entry) throw new Error(`Task Journal 包含非法记录: ${path}`);
+        entries.push(entry);
+    }
+    return {
+        entries,
+        requiresRewrite: content.length > 0 && !hasTrailingNewline,
+    };
 }
 
-export class TaskJournal implements TaskJournalLike {
+function compactEntries(entries: readonly TaskJournalEntry[]): TaskJournalEntry[] {
+    const latestTasks = new Map<string, TaskEventEnvelope>();
+    const claims = new Map<string, TaskJournalEntry>();
+    for (const entry of entries) {
+        if (entry.type === "task_notification_claimed") {
+            claims.set(entry.taskId, entry);
+        } else {
+            latestTasks.set(entry.task.id, entry);
+        }
+    }
+    const retainedTasks = [...latestTasks.values()]
+        .sort((left, right) => left.sequence - right.sequence)
+        .slice(-MAX_PERSISTED_TASKS);
+    const retainedIds = new Set(retainedTasks.map((entry) => entry.task.id));
+    return [
+        ...retainedTasks,
+        ...[...claims.values()].filter((entry) =>
+            entry.type === "task_notification_claimed" && retainedIds.has(entry.taskId)
+        ),
+    ].sort((left, right) => left.sequence - right.sequence);
+}
+
+function renderEntries(entries: readonly TaskJournalEntry[]): string {
+    return `${entries.map(serializeTaskJournalEntry).join("\n")}\n`;
+}
+
+function loadedJournal(entries: readonly TaskJournalEntry[]): LoadedTaskJournal {
+    const tasks = new Map<string, TaskSnapshot>();
+    const claimedTaskIds = new Set<string>();
+    let sequence = 0;
+    for (const entry of entries) {
+        sequence = Math.max(sequence, entry.sequence);
+        if (entry.type === "task_notification_claimed") {
+            claimedTaskIds.add(entry.taskId);
+        } else {
+            tasks.set(entry.task.id, entry.task);
+        }
+    }
+    return {sequence, tasks: [...tasks.values()], claimedTaskIds};
+}
+
+class TaskJournal implements TaskJournalLike {
     private appendTail: Promise<void> = Promise.resolve();
+    private readonly cache = new Map<string, CachedJournal>();
 
     constructor(
         private readonly storage: PillarStorageLayout,
@@ -170,57 +185,104 @@ export class TaskJournal implements TaskJournalLike {
     }
 
     async load(sessionId: string): Promise<LoadedTaskJournal> {
-        let content: string;
+        const path = journalPath(this.storage, this.cwd, sessionId);
+        await mkdir(dirname(path), {recursive: true, mode: 0o700});
+        return withFileLock(`${path}.lock`, async () => {
+            const current = await this.readCurrent(path, sessionId);
+            return loadedJournal(current.entries);
+        });
+    }
+
+    private async readCurrent(
+        path: string,
+        sessionId: string
+    ): Promise<ParsedJournal> {
+        const cached = this.cache.get(path);
         try {
-            content = await readFile(
-                journalPath(this.storage, this.cwd, sessionId),
-                "utf8"
-            );
-        } catch (error) {
+            const info = await lstat(path);
+            if (!info.isFile() || info.isSymbolicLink()) {
+                throw new Error(`Task Journal 不是安全的 regular file: ${path}`);
+            }
             if (
-                error && typeof error === "object" && "code" in error &&
-                (error as {code?: string}).code === "ENOENT"
-            ) {
-                return {sequence: 0, tasks: [], claimedTaskIds: new Set()};
-            }
-            throw error;
+                cached &&
+                cached.size === info.size &&
+                cached.mtimeMs === info.mtimeMs &&
+                cached.ino === info.ino
+            ) return cached;
+        } catch (error) {
+            if (!isErrorCode(error, "ENOENT")) throw error;
+            if (cached?.size === 0) return cached;
         }
-        const tasks = new Map<string, TaskSnapshot>();
-        const claimedTaskIds = new Set<string>();
-        let sequence = 0;
-        for (const line of content.split("\n")) {
-            if (!line.trim()) continue;
-            const entry = parseEntry(line);
-            if (!entry) break;
-            sequence = Math.max(sequence, entry.sequence);
-            if (entry.sessionId !== sessionId) continue;
-            if (entry.type === "task_notification_claimed") {
-                claimedTaskIds.add(entry.taskId);
-            } else {
-                tasks.set(entry.task.id, entry.task);
-            }
+        const parsed = await readJournal(path, sessionId);
+        await this.remember(path, parsed);
+        return parsed;
+    }
+
+    private async remember(path: string, parsed: ParsedJournal): Promise<void> {
+        try {
+            const info = await lstat(path);
+            this.cache.set(path, {
+                ...parsed,
+                size: info.size,
+                mtimeMs: info.mtimeMs,
+                ino: info.ino,
+            });
+        } catch (error) {
+            if (!isErrorCode(error, "ENOENT")) throw error;
+            this.cache.set(path, {...parsed, size: 0, mtimeMs: 0, ino: 0});
         }
-        return {
-            sequence,
-            tasks: [...tasks.values()],
-            claimedTaskIds,
-        };
     }
 
     private async appendEntry(entry: TaskJournalEntry): Promise<void> {
         const append = this.appendTail
             .catch(() => undefined)
             .then(async () => {
-                const path = journalPath(
-                    this.storage,
-                    this.cwd,
-                    entry.sessionId
-                );
+                const path = journalPath(this.storage, this.cwd, entry.sessionId);
+                const line = `${serializeTaskJournalEntry(entry)}\n`;
+                if (Buffer.byteLength(line, "utf8") > MAX_TASK_JOURNAL_LINE_BYTES) {
+                    throw new Error(`Task Journal 单行超过大小上限: ${path}`);
+                }
                 await withFileLock(`${path}.lock`, async () => {
                     await mkdir(dirname(path), {recursive: true, mode: 0o700});
-                    await appendFile(path, `${JSON.stringify(entry)}\n`, {
-                        encoding: "utf8",
-                        mode: 0o600,
+                    await chmod(dirname(path), 0o700);
+                    const current = await this.readCurrent(path, entry.sessionId);
+                    const shouldCompact = current.requiresRewrite ||
+                        current.entries.length + 1 >= COMPACT_TASK_JOURNAL_ENTRIES;
+                    if (shouldCompact) {
+                        const content = renderEntries(compactEntries([
+                            ...current.entries,
+                            entry,
+                        ]));
+                        if (Buffer.byteLength(content, "utf8") > MAX_TASK_JOURNAL_BYTES) {
+                            throw new Error(`Task Journal 压缩后仍超过大小上限: ${path}`);
+                        }
+                        await writeFileAtomically(path, content, 0o600);
+                        await this.remember(path, {
+                            entries: compactEntries([...current.entries, entry]),
+                            requiresRewrite: false,
+                        });
+                        return;
+                    }
+                    const currentBytes = existsSync(path) ? (await lstat(path)).size : 0;
+                    if (currentBytes + Buffer.byteLength(line, "utf8") > MAX_TASK_JOURNAL_BYTES) {
+                        const content = renderEntries(compactEntries([
+                            ...current.entries,
+                            entry,
+                        ]));
+                        if (Buffer.byteLength(content, "utf8") > MAX_TASK_JOURNAL_BYTES) {
+                            throw new Error(`Task Journal 压缩后仍超过大小上限: ${path}`);
+                        }
+                        await writeFileAtomically(path, content, 0o600);
+                        await this.remember(path, {
+                            entries: compactEntries([...current.entries, entry]),
+                            requiresRewrite: false,
+                        });
+                        return;
+                    }
+                    await appendFile(path, line, {encoding: "utf8", mode: 0o600});
+                    await this.remember(path, {
+                        entries: [...current.entries, entry],
+                        requiresRewrite: false,
                     });
                 });
             });

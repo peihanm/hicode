@@ -27,7 +27,7 @@ function failureWarning(
     };
 }
 
-export class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
+class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
     readonly enabled = true;
     private activeCheckpointId: string | undefined;
     private head: CheckpointHead;

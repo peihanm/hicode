@@ -71,5 +71,8 @@ export function toolPathInput(
     ) {
         return typeof value.path === "string" ? value.path : undefined;
     }
+    if (toolName === "lsp") {
+        return typeof value.filePath === "string" ? value.filePath : undefined;
+    }
     return undefined;
 }

@@ -1,16 +1,14 @@
-import {join} from "node:path";
 import type {TaskRuntimeLike} from "../../src/tasks/index.js";
-import {TaskJournal} from "../../src/tasks/journal.js";
-import {TaskRuntime} from "../../src/tasks/runtime.js";
+import {createTaskRuntime} from "../../src/tasks/runtime.js";
 import {
     BUILTIN_SUBAGENT_REGISTRY,
     type CreateSubagentRunner,
     type SubagentRegistry,
 } from "../../src/subagents/index.js";
 import type {ShellRunnerLike} from "../../src/tools/bash/shellRunner.js";
-import {WorktreeRuntime} from "../../src/worktrees/runtime.js";
-import {WorktreeManifestStore} from "../../src/worktrees/manifest.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {testChildEnvironment} from "./childEnvironment.js";
+import {join} from "node:path";
 
 export function createTaskRuntimeForTest(
     cwd: string,
@@ -18,18 +16,16 @@ export function createTaskRuntimeForTest(
     createSubagentRunner: CreateSubagentRunner = () => async () => {
         throw new Error("本用例没有配置 Agent Task runner");
     },
-    projectsRoot = join(cwd, ".test-task-projects"),
+    pillarHome = join(cwd, ".test-task-storage"),
     subagents: SubagentRegistry = BUILTIN_SUBAGENT_REGISTRY
 ): TaskRuntimeLike {
-    const storage = createPillarStorageLayout({projectsRoot});
-    return new TaskRuntime(
+    const storage = createPillarStorageLayout({pillarHome});
+    return createTaskRuntime(
+        storage,
+        cwd,
+        testChildEnvironment,
         shellRunner,
         createSubagentRunner,
-        new TaskJournal(storage, cwd),
-        new WorktreeRuntime(
-            cwd,
-            new WorktreeManifestStore(join(projectsRoot, "worktree-manifests"))
-        ),
         subagents
     );
 }

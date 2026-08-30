@@ -3,7 +3,7 @@ import {parse as parseYaml, stringify as stringifyYaml} from "yaml";
 import {memoryFrontmatterSchema, memoryUpsertSchema} from "./schema.js";
 import {MAX_MEMORY_CONTENT_BYTES, type MemoryEntry, type MemoryUpsertInput,} from "./types.js";
 
-const MAX_MEMORY_FILE_BYTES = 40 * 1024;
+export const MAX_MEMORY_FILE_BYTES = 40 * 1024;
 
 function ensureContentSize(content: string): void {
     if (Buffer.byteLength(content, "utf8") > MAX_MEMORY_CONTENT_BYTES) {

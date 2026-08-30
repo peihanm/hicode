@@ -53,7 +53,7 @@ export function formatHeadlessProgress(event: AgentEvent): string | null {
     }
 }
 
-export function getHeadlessExitCode({
+function getHeadlessExitCode({
                                         result,
                                         permissionDenials,
                                         toolFailures,

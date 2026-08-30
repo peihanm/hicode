@@ -50,14 +50,11 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
                                                                      progressRef,
                                                                      stopping,
                                                                      activityLabel,
-                                                                     animationIntervalMs = DEFAULT_ANIMATION_INTERVAL_MS,
                                                                  }: {
     modelStream: UIModelStreamInfo | null;
     progressRef: UIModelStreamProgressRef;
     stopping: boolean;
     activityLabel?: string;
-    /** 生产环境固定使用默认值；开放参数只用于确定性 UI 测试。 */
-    animationIntervalMs?: number;
 }) {
     const [animation, setAnimation] = useState({
         displayedCharacters: 0,
@@ -81,11 +78,10 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
             });
         };
         update();
-        const timer = setInterval(update, animationIntervalMs);
+        const timer = setInterval(update, DEFAULT_ANIMATION_INTERVAL_MS);
         timer.unref?.();
         return () => clearInterval(timer);
     }, [
-        animationIntervalMs,
         modelStream?.outputCharacters,
         modelStream?.phase,
         modelStream?.toolName,

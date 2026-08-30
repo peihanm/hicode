@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {link, mkdir, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
+import {chmod, link, lstat, mkdir, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, join, resolve} from "node:path";
 import {withFileLock} from "../persistence/index.js";
 import {getArtifactKey, getResultId, getToolResultSessionDir,} from "./paths.js";
@@ -18,9 +18,24 @@ import {
     type PersistedToolResult,
     type ToolResultChunk,
     ToolResultStoreError,
-    type ToolResultStoreOptions,
+    type ToolResultStoreLimits,
 } from "./types.js";
-import {createPillarStorageLayout, type PillarStorageLayout} from "../persistence/index.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
+
+const MAX_TOOL_RESULT_METADATA_BYTES = 64 * 1024;
+const MAX_TOOL_RESULT_DIRECTORY_ENTRIES = 20_000;
+
+function assertNonNegativeLimit(value: number, label: string): void {
+    if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`${label} must be a non-negative safe integer`);
+    }
+}
+
+function assertPositiveLimit(value: number, label: string): void {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(`${label} must be a positive safe integer`);
+    }
+}
 
 function isAlreadyExists(error: unknown): boolean {
     return Boolean(
@@ -48,17 +63,20 @@ export class ToolResultStore {
     readonly sessionId: string;
     private temporaryFilesCleaned = false;
 
-    private constructor(
+    constructor(
         storage: PillarStorageLayout,
         readonly cwd: string,
         sessionId: string,
-        options: ToolResultStoreOptions = {}
+        limits: ToolResultStoreLimits
     ) {
         this.sessionId = sessionId;
         this.sessionDir = getToolResultSessionDir(storage, cwd, sessionId);
-        this.maxArtifactBytes = options.maxArtifactBytes ?? DEFAULT_MAX_ARTIFACT_BYTES;
-        this.maxSessionBytes = options.maxSessionBytes ?? DEFAULT_MAX_SESSION_ARTIFACT_BYTES;
-        this.previewChars = options.previewChars ?? DEFAULT_PREVIEW_CHARS;
+        this.maxArtifactBytes = limits.maxArtifactBytes;
+        this.maxSessionBytes = limits.maxSessionBytes;
+        this.previewChars = limits.previewChars;
+        assertNonNegativeLimit(this.maxArtifactBytes, "maxArtifactBytes");
+        assertNonNegativeLimit(this.maxSessionBytes, "maxSessionBytes");
+        assertPositiveLimit(this.previewChars, "previewChars");
     }
 
     static create(
@@ -66,15 +84,11 @@ export class ToolResultStore {
         cwd: string,
         sessionId: string
     ): ToolResultStore {
-        return new ToolResultStore(storage, cwd, sessionId);
-    }
-
-    static createFactory(options: ToolResultStoreOptions = {}) {
-        const storage = createPillarStorageLayout({
-            ...(options.rootDir ? {projectsRoot: options.rootDir} : {}),
+        return new ToolResultStore(storage, cwd, sessionId, {
+            maxArtifactBytes: DEFAULT_MAX_ARTIFACT_BYTES,
+            maxSessionBytes: DEFAULT_MAX_SESSION_ARTIFACT_BYTES,
+            previewChars: DEFAULT_PREVIEW_CHARS,
         });
-        return (cwd: string, sessionId: string): ToolResultStore =>
-            new ToolResultStore(storage, cwd, sessionId, options);
     }
 
     resultIdFor(toolCallId: string): string {
@@ -91,11 +105,19 @@ export class ToolResultStore {
 
     private async ensureDir(): Promise<void> {
         await mkdir(this.sessionDir, {recursive: true, mode: 0o700});
+        const directory = await lstat(this.sessionDir);
+        if (!directory.isDirectory() || directory.isSymbolicLink()) {
+            throw new ToolResultStoreError("tool result session directory is not safe");
+        }
+        await chmod(this.sessionDir, 0o700);
         if (this.temporaryFilesCleaned) return;
         this.temporaryFilesCleaned = true;
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         try {
             const entries = await readdir(this.sessionDir, {withFileTypes: true});
+            if (entries.length > MAX_TOOL_RESULT_DIRECTORY_ENTRIES) {
+                throw new ToolResultStoreError("tool result directory entry limit exceeded");
+            }
             await Promise.all(
                 entries
                     .filter((entry) => entry.isFile() && entry.name.startsWith(".tmp-"))
@@ -106,7 +128,8 @@ export class ToolResultStore {
                         }
                     })
             );
-        } catch {
+        } catch (error) {
+            if (error instanceof ToolResultStoreError) throw error;
             // Cleanup is best-effort; a stale temp must not block a new tool result.
         }
     }
@@ -114,13 +137,30 @@ export class ToolResultStore {
     private async currentUsage(): Promise<number> {
         try {
             const entries = await readdir(this.sessionDir, {withFileTypes: true});
+            if (entries.length > MAX_TOOL_RESULT_DIRECTORY_ENTRIES) {
+                throw new ToolResultStoreError("tool result directory entry limit exceeded");
+            }
             let total = 0;
             for (const entry of entries) {
                 if (
                     !entry.isFile() ||
                     (!entry.name.endsWith(".txt") && !entry.name.endsWith(".bin"))
                 ) continue;
-                total += (await stat(join(this.sessionDir, entry.name))).size;
+                const metadataName = entry.name.endsWith(".txt")
+                    ? `${entry.name.slice(0, -4)}.meta.json`
+                    : `${entry.name.slice(0, -4)}.binary.json`;
+                try {
+                    const [content, metadata] = await Promise.all([
+                        lstat(join(this.sessionDir, entry.name)),
+                        lstat(join(this.sessionDir, metadataName)),
+                    ]);
+                    if (
+                        content.isFile() && !content.isSymbolicLink() &&
+                        metadata.isFile() && !metadata.isSymbolicLink()
+                    ) total += content.size;
+                } catch (error) {
+                    if (!isCode(error, "ENOENT")) throw error;
+                }
             }
             return total;
         } catch (error) {
@@ -131,8 +171,15 @@ export class ToolResultStore {
 
     private async readMetadata(resultId: string): Promise<TextArtifactMetadata | null> {
         try {
+            const path = this.paths(resultId).metadata;
+            const metadata = await lstat(path);
+            if (
+                !metadata.isFile() ||
+                metadata.isSymbolicLink() ||
+                metadata.size > MAX_TOOL_RESULT_METADATA_BYTES
+            ) return null;
             return parseTextArtifactMetadata(
-                await readFile(this.paths(resultId).metadata, "utf8"),
+                await readFile(path, "utf8"),
                 resultId
             );
         } catch {
@@ -146,7 +193,12 @@ export class ToolResultStore {
         const metadata = await this.readMetadata(resultId);
         if (!metadata) return null;
         try {
-            if ((await stat(this.paths(resultId).content)).size !== metadata.byteLength) {
+            const content = await lstat(this.paths(resultId).content);
+            if (
+                !content.isFile() ||
+                content.isSymbolicLink() ||
+                content.size !== metadata.byteLength
+            ) {
                 return null;
             }
             return await this.toPersistedResult(metadata, this.paths(resultId).content);
@@ -179,11 +231,20 @@ export class ToolResultStore {
         metadataPath: string
     ): Promise<PersistedBinaryArtifact | null> {
         try {
+            const [content, metadataFile] = await Promise.all([
+                lstat(contentPath),
+                lstat(metadataPath),
+            ]);
+            if (
+                !content.isFile() || content.isSymbolicLink() ||
+                !metadataFile.isFile() || metadataFile.isSymbolicLink() ||
+                metadataFile.size > MAX_TOOL_RESULT_METADATA_BYTES
+            ) return null;
             const metadata = parseBinaryArtifactMetadata(
                 await readFile(metadataPath, "utf8"),
                 artifactId
             );
-            if (!metadata || (await stat(contentPath)).size !== metadata.byteLength) {
+            if (!metadata || content.size !== metadata.byteLength) {
                 return null;
             }
             return {...metadata, path: contentPath};
@@ -200,6 +261,7 @@ export class ToolResultStore {
     }
 
     private async withMutation<T>(action: () => Promise<T>): Promise<T> {
+        await this.ensureDir();
         return withFileLock(join(this.sessionDir, ".store.lock"), async () => {
             await this.ensureDir();
             return action();
@@ -382,7 +444,10 @@ export class ToolResultStore {
             if (existing) return existing;
             await this.removePair(paths.content, paths.metadata);
 
-            const sourceStat = await stat(input.sourcePath);
+            const sourceStat = await lstat(input.sourcePath);
+            if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) {
+                throw new ToolResultStoreError("capture path is not a regular file");
+            }
             const originalByteLength = Math.max(
                 input.originalByteLength ?? sourceStat.size,
                 sourceStat.size
@@ -446,6 +511,12 @@ export class ToolResultStore {
         offset: number;
         limit: number;
     }): Promise<ToolResultChunk> {
+        if (
+            !Number.isSafeInteger(input.offset) || input.offset < 0 ||
+            !Number.isSafeInteger(input.limit) || input.limit <= 0
+        ) {
+            throw new ToolResultStoreError("offset and limit must be positive byte ranges");
+        }
         const paths = this.paths(input.resultId);
         const metadata = await this.readMetadata(input.resultId);
         if (!metadata) {
@@ -454,6 +525,24 @@ export class ToolResultStore {
         if (input.offset > metadata.byteLength) {
             throw new ToolResultStoreError(
                 `offset ${input.offset} exceeds result size ${metadata.byteLength}`
+            );
+        }
+        try {
+            const content = await lstat(paths.content);
+            if (
+                !content.isFile() ||
+                content.isSymbolicLink() ||
+                content.size !== metadata.byteLength
+            ) {
+                throw new ToolResultStoreError(
+                    `tool result content is invalid: ${input.resultId}`
+                );
+            }
+        } catch (error) {
+            if (error instanceof ToolResultStoreError) throw error;
+            throw new ToolResultStoreError(
+                `tool result content is missing: ${input.resultId}`,
+                {cause: error}
             );
         }
         let handle;

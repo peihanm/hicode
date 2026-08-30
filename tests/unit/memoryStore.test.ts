@@ -90,6 +90,19 @@ describe("MemoryStore", () => {
         });
     });
 
+    test("超大主题文件只形成 issue，不会整文件读入", async () => {
+        await withTempProject(async (cwd) => {
+            const directory = join(cwd, "memory");
+            await mkdir(directory);
+            await writeFile(join(directory, "oversized.md"), "x".repeat(41 * 1024));
+
+            const scan = await new MemoryStore(directory).list();
+
+            expect(scan.entries).toEqual([]);
+            expect(scan.issues[0]?.message).toContain("超过 40960 bytes");
+        });
+    });
+
     test("扫描主题数量有硬上限并报告其余文件", async () => {
         await withTempProject(async (cwd) => {
             const directory = join(cwd, "memory");

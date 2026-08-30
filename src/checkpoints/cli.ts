@@ -1,6 +1,7 @@
 import {rewindSessionCheckpoint} from "./rewind.js";
 import type {CheckpointRestoreResult} from "./types.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 function formatTextResult(result: CheckpointRestoreResult): string {
     const lines = [
@@ -28,6 +29,7 @@ export async function runCheckpointRewindFromCli(input: {
     sessionId: string;
     checkpointId: string;
     outputFormat: "text" | "json";
+    childEnvironment: ChildProcessEnvironment;
 }): Promise<void> {
     try {
         const result = await rewindSessionCheckpoint(input);

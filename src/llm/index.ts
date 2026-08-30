@@ -1,4 +1,3 @@
-import {DEFAULT_MODEL} from "../settings/index.js";
 import {deepseekProvider} from "./providers/deepseek.js";
 import {glmProvider} from "./providers/glm.js";
 import {qwenProvider} from "./providers/qwen.js";
@@ -41,9 +40,9 @@ export function createLLMCaller(
         messages: Message[],
         tools: OpenAITool[],
         storage: PillarStorageLayout,
-        cwd: string = process.cwd(),
-        model: string = DEFAULT_MODEL,
-        kind: LLMCallKind = "main",
+        cwd: string,
+        model: string,
+        kind: LLMCallKind,
         signal?: AbortSignal,
         onStreamProgress?: (progress: LLMStreamProgress) => void
     ): Promise<{message: Message; toolCalls: ToolCall[]; usage: TokenUsage}> {

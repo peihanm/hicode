@@ -17,7 +17,7 @@ describe("OpenAI-compatible stream consumption", () => {
             `data: ${JSON.stringify({choices: [{delta: {role: "assistant"}}]})}\n\n`,
             `data: ${JSON.stringify({choices: [{delta: {reasoning_content: "secret reasoning"}}]})}\n\n`,
             `data: ${JSON.stringify({choices: [{delta: {content: "secret content"}}]})}\n\n`,
-            `data: ${JSON.stringify({choices: [{delta: {tool_calls: [{index: 0, id: "call-1", type: "function", function: {name: "write_file", arguments: "{\\\"path\\\":\\\"x\\\"}"}}]}}]})}\n\n`,
+            `data: ${JSON.stringify({choices: [{delta: {tool_calls: [{index: 0, id: "call-1", type: "function", function: {name: "write_file", arguments: "{\\\"path\\\":\\\"x\\\"}"}}]}, finish_reason: "tool_calls"}]})}\n\n`,
             "data: [DONE]\n\n",
         ].join("");
         const first = Math.floor(payload.length / 3);
@@ -41,7 +41,7 @@ describe("OpenAI-compatible stream consumption", () => {
         let completionSignals = 0;
         const result = await consumeOpenAICompatibleSSE({
             body: streamFromChunks([
-                `data: ${JSON.stringify({choices: [{delta: {content: "done"}, finish_reason: "stop"}]})}\n\n`,
+                `data: ${JSON.stringify({choices: [{delta: {content: "done"}, finish_reason: "stop"}], usage: null})}\n\n`,
                 `data: ${JSON.stringify({choices: [], usage: {prompt_tokens: 9, completion_tokens: 3, total_tokens: 12}})}\n\n`,
                 "data: [DONE]\n\n",
             ]),
@@ -78,5 +78,36 @@ describe("OpenAI-compatible stream consumption", () => {
             signal: controller.signal,
             onActivity() {},
         })).rejects.toThrow("diagnostic stop");
+    });
+
+    test("连接在 finish_reason 前结束时拒绝可能截断的工具调用", async () => {
+        await expect(consumeOpenAICompatibleSSE({
+            body: streamFromChunks([
+                `data: ${JSON.stringify({choices: [{delta: {tool_calls: [{index: 0, id: "call-1", type: "function", function: {name: "write_file", arguments: "{\\\"path\\\":\\\"x\\\"}"}}]}}]})}\n\n`,
+            ]),
+            signal: new AbortController().signal,
+            onActivity() {},
+        })).rejects.toThrow("在明确完成前已结束");
+    });
+
+    test("工具调用必须由 tool_calls 完成原因确认", async () => {
+        await expect(consumeOpenAICompatibleSSE({
+            body: streamFromChunks([
+                `data: ${JSON.stringify({choices: [{delta: {tool_calls: [{index: 0, id: "call-1", type: "function", function: {name: "read_file", arguments: "{\\\"path\\\":\\\"x\\\"}"}}]}, finish_reason: "stop"}]})}\n\n`,
+                "data: [DONE]\n\n",
+            ]),
+            signal: new AbortController().signal,
+            onActivity() {},
+        })).rejects.toThrow("与工具调用不一致");
+    });
+
+    test("拒绝非法 usage，避免污染 token 状态", async () => {
+        await expect(consumeOpenAICompatibleSSE({
+            body: streamFromChunks([
+                `data: ${JSON.stringify({choices: [{delta: {content: "done"}, finish_reason: "stop"}], usage: {prompt_tokens: "9", completion_tokens: 3, total_tokens: 12}})}\n\n`,
+            ]),
+            signal: new AbortController().signal,
+            onActivity() {},
+        })).rejects.toThrow("usage.prompt_tokens");
     });
 });

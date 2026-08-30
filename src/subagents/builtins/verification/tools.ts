@@ -177,6 +177,8 @@ function isCurlReachabilityProbe(args: string[]): boolean {
     }
 
     const forbiddenFlags = new Set([
+        "-K",
+        "--config",
         "-d",
         "--data",
         "--data-ascii",
@@ -270,7 +272,7 @@ function isVerificationSegment(tokens: string[], cwd: string): boolean {
     return isPackageVerification(tokens);
 }
 
-export function checkVerificationShellCommand(
+function checkVerificationShellCommand(
     command: string,
     cwd: string
 ): PermissionResult {
@@ -294,7 +296,7 @@ export function checkVerificationShellCommand(
     };
 }
 
-export function createVerificationBashTool(): Tool<any> {
+export function createVerificationBashTool(): Tool {
     let curlProbesUsed = 0;
     return {
         ...bashTool,
@@ -334,7 +336,7 @@ export function createVerificationBashTool(): Tool<any> {
     };
 }
 
-export const verificationBashTaskTool: Tool<any> = {
+export const verificationBashTaskTool: Tool = {
     ...bashTaskTool,
     async checkPermissions({action}: { action: "status" | "stop" }) {
         return action === "status"

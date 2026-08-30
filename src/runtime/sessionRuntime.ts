@@ -1,14 +1,14 @@
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";
-import {createHookSessionRuntime, type HookBatchResult,} from "../hooks/index.js";
+import {createHookSessionRuntime, didRunCommandHook, type HookBatchResult,} from "../hooks/index.js";
 import type {Message} from "../llm/types.js";
 import type {PermissionMode} from "../permissions/index.js";
 import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint,} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
 import type {Todo} from "../todos.js";
-import type {ToolResultStore} from "../toolResults/index.js";
+import {createToolResultStore, type ToolResultStore} from "../toolResults/index.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
 import {
@@ -87,18 +87,21 @@ export interface RootSessionRuntime {
 export function createRootSessionRuntime({
     resources,
     seed,
-    toolResultStore,
     resumed,
     allowBackgroundTasks = true,
 }: {
     resources: RootRuntimeResources;
     seed: RootSessionSeed;
-    toolResultStore: ToolResultStore;
     resumed: boolean;
     allowBackgroundTasks?: boolean;
 }): RootSessionRuntime {
     let history = seed.history;
     let compactState = seed.compactState;
+    const toolResultStore = createToolResultStore(
+        resources.storage,
+        resources.cwd,
+        seed.sessionId
+    );
     resources.toolRuntime.restoreToolDiscovery(seed.toolDiscovery);
     const gitSession = createGitSessionRuntime({
         cwd: resources.cwd,
@@ -159,7 +162,10 @@ export function createRootSessionRuntime({
         taskSession,
         messageQueue,
         initialize() {
-            initializePromise ??= gitSession.initialize();
+            initializePromise ??= Promise.all([
+                gitSession.initialize(),
+                taskSession.initialize(),
+            ]).then(() => undefined);
             return initializePromise;
         },
         replaceConversation(nextHistory, nextCompactState) {
@@ -231,7 +237,7 @@ export function createRootSessionRuntime({
                 permission_mode: permissionMode,
                 prompt,
             }, signal, {session: hookSession});
-            if (resources.hooks.mayRunCommands) {
+            if (didRunCommandHook(result)) {
                 await fileCheckpoints.markCoverageWarning({
                     code: "hook_side_effects",
                     message: "UserPromptSubmit Hook 可能产生未被 File Checkpoint 捕获的文件副作用",

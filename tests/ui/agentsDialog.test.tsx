@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
-import {App} from "../../src/ui/App.js";
+import {AppForTest as App} from "../helpers/AppForTest.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createSubagentRegistry} from "../../src/subagents/index.js";

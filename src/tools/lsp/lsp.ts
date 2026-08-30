@@ -15,7 +15,7 @@ import {
 } from "./formatters.js";
 
 // LSP 工具（多语言，配置驱动）：语义级代码理解
-// 根据文件后缀自动选 server（从 ~/.pillar/lsp.json + .pillar/lsp.json + 内置默认配置加载）
+// 根据文件后缀自动选 server（从 Host storage 的 lsp.json + 内置默认配置加载）
 //
 // 支持 6 个操作：goToDefinition / findReferences / hover / documentSymbol / workspaceSymbol / diagnostics
 // 加新语言只需在配置文件加 server 配置，零代码
@@ -28,12 +28,14 @@ const inputSchema = z.object({
         .describe("LSP 操作类型"),
     filePath: z
         .string()
+        .min(1)
+        .max(16_384)
         .describe("文件路径（绝对或相对）。workspaceSymbol 操作时此项被忽略"),
     // line/character 只在 goToDefinition / findReferences / hover 需要
     // documentSymbol 只需 filePath；workspaceSymbol 只需 query
     line: z.number().int().min(1).optional().describe("行号（1-based）。goToDefinition/findReferences/hover 必填"),
     character: z.number().int().min(1).optional().describe("列号（1-based）。goToDefinition/findReferences/hover 必填"),
-    query: z.string().optional().describe("workspaceSymbol 的搜索查询"),
+    query: z.string().max(4096).optional().describe("workspaceSymbol 的搜索查询"),
 });
 
 type Input = z.infer<typeof inputSchema>;
@@ -53,7 +55,7 @@ export const lspTool: Tool<typeof inputSchema> = {
         "根据文件后缀自动选 server（配置驱动）：",
         "- .ts/.tsx/.js/.jsx → typescript-language-server",
         "- .py → pyright",
-        "- 加新语言只需在 ~/.pillar/lsp.json 或 .pillar/lsp.json 配置 server",
+        "- 加新语言只需在 Pillar Host storage 的 lsp.json 配置 server",
         "",
         "比 grep 文本匹配更准确：能理解代码结构，区分定义和引用，按符号语义查找。",
     ].join("\n"),
@@ -116,6 +118,9 @@ export const lspTool: Tool<typeof inputSchema> = {
             return `文件不存在: ${input.filePath}`;
         }
         const stat = statSync(absPath);
+        if (!stat.isFile()) {
+            return `路径不是普通文件: ${input.filePath}`;
+        }
         if (stat.size > MAX_FILE_SIZE) {
             return `文件太大（${Math.ceil(stat.size / 1_000_000)}MB 超过 10MB 限制）`;
         }

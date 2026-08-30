@@ -17,6 +17,7 @@ import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective} from "./fork.js";
 import type {SubagentRegistration} from "./registration.js";
 import {resolveSubagentModel} from "./model.js";
+import {createFileStateTracker} from "../tools/shared/fileState.js";
 
 interface SubagentRunnerDependencies {
     primaryRunAgent: AgentRunner;
@@ -84,7 +85,6 @@ function createForkRegistration(
                     lspManager: request.isolation === "worktree"
                         ? undefined
                         : parentContext.lspManager,
-                    fileState: parentContext.fileState,
                     gitSession: parentContext.gitSession,
                     shellRunner: parentContext.shellRunner,
                 },
@@ -171,6 +171,8 @@ export function createSubagentRunnerFactory(
                 // 逐字段构造，禁止未来 capability 被 Root resources 自动扩散到 Child。
                 resources: {
                     ...runtimeConfig.contextResources,
+                    // Child 只能凭自己实际读取过的内容获得编辑授权。
+                    fileState: createFileStateTracker(),
                     model: childModel,
                     provider: childProvider,
                     fastModel: dependencies.fastModel,

@@ -11,7 +11,7 @@ export interface ToolDiscoverySnapshot {
 }
 
 export interface ToolDiscovery {
-    readonly searchTool?: Tool<any>;
+    readonly searchTool?: Tool;
 
     isDeferred(name: string): boolean;
 

@@ -177,10 +177,8 @@ export function createFileChange(input: CreateFileChangeInput): FileChange {
     }
 }
 
-export function limitFileChangeUIData(
-    change: FileChange,
-    maxBytes = MAX_FILE_CHANGE_UI_BYTES
-): FileChange {
+function limitFileChangeUIData(change: FileChange): FileChange {
+    const maxBytes = MAX_FILE_CHANGE_UI_BYTES;
     if (Buffer.byteLength(JSON.stringify(change), "utf8") <= maxBytes) {
         return change;
     }

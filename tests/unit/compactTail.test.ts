@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Message, ToolCall } from "../../src/llm/types.js";
 import {
-  adjustTailStartForToolPairs,
-  createCompactTailFinder,
   findCompactTailStart,
 } from "../../src/context/compactTail.js";
 
@@ -14,9 +12,6 @@ function toolCall(id: string): ToolCall {
   };
 }
 
-const estimateTen = () => 10;
-const findTestTailStart = createCompactTailFinder(estimateTen);
-
 describe("Compact recent tail", () => {
   test("同时满足 min tokens/text 后停止，max tokens 可以提前截断", () => {
     const history: Message[] = [
@@ -26,17 +21,17 @@ describe("Compact recent tail", () => {
       { role: "assistant", content: "recent" },
     ];
     expect(
-      findTestTailStart(history, {
-        minTokens: 20,
+      findCompactTailStart(history, {
+        minTokens: 5,
         minTextMessages: 2,
         maxTokens: 100,
       })
     ).toBe(1);
     expect(
-      findTestTailStart(history, {
+      findCompactTailStart(history, {
         minTokens: 100,
         minTextMessages: 10,
-        maxTokens: 15,
+        maxTokens: 4,
       })
     ).toBe(2);
   });
@@ -53,9 +48,8 @@ describe("Compact recent tail", () => {
       { role: "tool", content: "a-result", tool_call_id: "a" },
       { role: "tool", content: "b-result", tool_call_id: "b" },
     ];
-    expect(adjustTailStartForToolPairs(history, 4)).toBe(2);
     expect(
-      findTestTailStart(history, {
+      findCompactTailStart(history, {
         minTokens: 0,
         minTextMessages: 0,
         maxTokens: 1,
@@ -68,7 +62,6 @@ describe("Compact recent tail", () => {
       { role: "system", content: "system" },
       { role: "tool", content: "orphan", tool_call_id: "missing" },
     ];
-    expect(adjustTailStartForToolPairs(history, 1)).toBe(1);
     expect(
       findCompactTailStart(history, {
         minTokens: 0,

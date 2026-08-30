@@ -8,9 +8,9 @@
 // - # Using your tools（工具规范）
 // - # Executing actions with care（危险操作）
 // - # Tone and style + Output efficiency（输出风格）
-// - # Environment（gitStatus snapshot + 环境信息）
+// - # Environment（稳定宿主信息）
 //
-// 全段尽量静态（gitStatus 是 snapshot，会话内不更新），利于 GLM 自动缓存稳定命中。
+// 全段保持静态，利于模型前缀缓存。
 // CODE.md/currentDate/skills 走 attachment 注入，每次 runAgent 重新注入。
 
 import type {Message} from "../llm/types.js";
@@ -26,7 +26,7 @@ import {
 } from "./sections.js";
 
 // 构造初始 history：只有一条 system message
-// cwd, model 用于探测 env（gitStatus snapshot + 平台信息）
+// cwd、model 只用于构造稳定宿主信息；这里不执行 I/O。
 export function createInitialHistory(cwd: string, model: string): Message[] {
     const env = detectEnv(cwd, model);
     const systemContent = [

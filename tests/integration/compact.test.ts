@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { compactHistoryForTest as compactHistory } from "../helpers/compact.js";
 import { runAgentForTest as runAgent } from "../helpers/agent.js";
 import type { AgentEvent } from "../../src/agent/types.js";
@@ -7,19 +7,11 @@ import { assistantText, createFakeLLM } from "../helpers/fakeLLM.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTurnAbortController, throwIfTurnAborted } from "../../src/runtime/abort.js";
+import { getAutoCompactThreshold } from "../../src/context/window.js";
 
-const originalThreshold = process.env.AUTO_COMPACT_THRESHOLD;
-const originalDisableCompact = process.env.DISABLE_COMPACT;
-const originalDisableAutoCompact = process.env.DISABLE_AUTO_COMPACT;
-
-afterEach(() => {
-  if (originalThreshold === undefined) delete process.env.AUTO_COMPACT_THRESHOLD;
-  else process.env.AUTO_COMPACT_THRESHOLD = originalThreshold;
-  if (originalDisableCompact === undefined) delete process.env.DISABLE_COMPACT;
-  else process.env.DISABLE_COMPACT = originalDisableCompact;
-  if (originalDisableAutoCompact === undefined) delete process.env.DISABLE_AUTO_COMPACT;
-  else process.env.DISABLE_AUTO_COMPACT = originalDisableAutoCompact;
-});
+function overThresholdInput(model = "glm-test"): string {
+  return "x".repeat(getAutoCompactThreshold(model) * 2 + 100);
+}
 function historyWithToolPair(): Message[] {
   const toolCall: ToolCall = {
     id: "pair-1",
@@ -53,9 +45,6 @@ describe("compact integration", () => {
         tools: [],
         preTokenCount: 100_000,
         force: true,
-        keepTailMinTokens: 0,
-        keepTailMinTextMessages: 0,
-        keepTailMaxTokens: 1,
         callLLM: fake.callLLM,
       });
 
@@ -200,15 +189,12 @@ describe("compact integration", () => {
 
   test("Agent 达到阈值时发出 compact start/end 事件", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const events: AgentEvent[] = [];
       let compactCalls = 0;
       const fake = createFakeLLM([assistantText("压缩后完成")]);
 
       const result = await runAgent(
-        "触发压缩",
+        overThresholdInput(),
         [{ role: "system", content: "system" }],
         (event) => events.push(event),
         createTestContext(cwd),
@@ -235,14 +221,11 @@ describe("compact integration", () => {
 
   test("Auto-Compact 普通失败后仍调用主模型", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const events: AgentEvent[] = [];
       const fake = createFakeLLM([assistantText("继续完成")]);
 
       const result = await runAgent(
-        "触发失败压缩",
+        overThresholdInput(),
         [{ role: "system", content: "system" }],
         (event) => events.push(event),
         createTestContext(cwd),
@@ -267,15 +250,12 @@ describe("compact integration", () => {
 
   test("Auto-Compact 取消由 Agent 返回 interrupted 且不调用主模型", async () => {
     await withTempProject(async (cwd) => {
-      process.env.AUTO_COMPACT_THRESHOLD = "1";
-      delete process.env.DISABLE_COMPACT;
-      delete process.env.DISABLE_AUTO_COMPACT;
       const controller = createTurnAbortController();
       const events: AgentEvent[] = [];
       const fake = createFakeLLM([]);
 
       const result = await runAgent(
-        "取消压缩",
+        overThresholdInput(),
         [{ role: "system", content: "system" }],
         (event) => events.push(event),
         createTestContext(cwd, { signal: controller.signal }),

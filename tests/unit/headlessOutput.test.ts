@@ -4,7 +4,6 @@ import {
   formatHeadlessCliError,
   formatHeadlessOutput,
   formatHeadlessProgress,
-  getHeadlessExitCode,
 } from "../../src/headless/output.js";
 import type { AgentResult } from "../../src/agent/index.js";
 import type { HeadlessToolCall } from "../../src/headless/types.js";
@@ -28,47 +27,54 @@ const failed: HeadlessToolCall = {
 };
 
 describe("headless output", () => {
+  const exitCode = ({
+    result,
+    toolCalls = [],
+    subagents = [],
+  }: {
+    result: AgentResult;
+    toolCalls?: HeadlessToolCall[];
+    subagents?: Parameters<typeof buildHeadlessRunSummary>[0]["collector"]["subagents"];
+  }) => buildHeadlessRunSummary({
+    result,
+    sessionId: "session-exit-code",
+    permissionMode: "default",
+    collector: {toolCalls, subagents, currentUIEvents: []},
+    mcpServers: [],
+  }).exitCode;
+
   test("exit code 遵守 interrupted > max turns > tool issue > success", () => {
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: { ...completed, reason: "interrupted" },
-        permissionDenials: [denied],
-        toolFailures: [failed],
+        toolCalls: [denied, failed],
       })
     ).toBe(130);
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: { ...completed, reason: "max_turns" },
-        permissionDenials: [denied],
-        toolFailures: [],
+        toolCalls: [denied],
       })
     ).toBe(3);
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: { ...completed, reason: "permission_denied" },
-        permissionDenials: [],
-        toolFailures: [],
       })
     ).toBe(2);
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: completed,
-        permissionDenials: [denied],
-        toolFailures: [],
+        toolCalls: [denied],
       })
     ).toBe(2);
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: completed,
-        permissionDenials: [],
-        toolFailures: [],
       })
     ).toBe(0);
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: completed,
-        permissionDenials: [],
-        toolFailures: [],
         subagents: [
           {
             agentId: "verification-1",
@@ -81,10 +87,8 @@ describe("headless output", () => {
       })
     ).toBe(2);
     expect(
-      getHeadlessExitCode({
+      exitCode({
         result: completed,
-        permissionDenials: [],
-        toolFailures: [],
         subagents: [
           {
             agentId: "verification-fail",
@@ -190,6 +194,7 @@ describe("headless output", () => {
         tokenCount: 10,
         percentUsed: 0.1,
         warning: false,
+        status: "actual",
       })
     ).toBeNull();
   });

@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {readFile, readdir, symlink} from "node:fs/promises";
+import {mkdir, readFile, readdir, symlink} from "node:fs/promises";
 import {
     createAgentDefinitionStore,
     type AgentDefinitionDraft,
@@ -20,8 +20,8 @@ function draft(description = "检查项目实现"): AgentDefinitionDraft {
 
 describe("agent definition store", () => {
     test("在受管 project 目录创建、更新和删除 Markdown", async () => {
-        await withTempProject(async (cwd) => {
-            const store = createAgentDefinitionStore(cwd);
+        await withTempProject(async (cwd, storage) => {
+            const store = createAgentDefinitionStore(storage, cwd);
             const created = await store.create("project", draft());
             expect(created.path).toBe(
                 `${cwd}/.pillar/agents/project-reviewer.md`
@@ -47,8 +47,8 @@ describe("agent definition store", () => {
     });
 
     test("expectedHash 阻止旧编辑覆盖外部修改", async () => {
-        await withTempProject(async (cwd) => {
-            const store = createAgentDefinitionStore(cwd);
+        await withTempProject(async (cwd, storage) => {
+            const store = createAgentDefinitionStore(storage, cwd);
             const created = await store.create("project", draft());
             await Bun.write(created.path, serializeAgentDefinition(
                 draft("外部编辑后的说明")
@@ -63,8 +63,8 @@ describe("agent definition store", () => {
     });
 
     test("同一作用域按规范化名称拒绝重复创建", async () => {
-        await withTempProject(async (cwd) => {
-            const store = createAgentDefinitionStore(cwd);
+        await withTempProject(async (cwd, storage) => {
+            const store = createAgentDefinitionStore(storage, cwd);
             await store.create("project", draft());
             await expect(store.create("project", {
                 ...draft(),
@@ -77,8 +77,8 @@ describe("agent definition store", () => {
     });
 
     test("达到单个作用域文件上限后拒绝继续创建", async () => {
-        await withTempProject(async (cwd) => {
-            const store = createAgentDefinitionStore(cwd);
+        await withTempProject(async (cwd, storage) => {
+            const store = createAgentDefinitionStore(storage, cwd);
             await store.create("project", draft());
             await Promise.all(Array.from({length: 63}, (_, index) =>
                 Bun.write(
@@ -94,8 +94,8 @@ describe("agent definition store", () => {
     });
 
     test("拒绝把 symlink 当成受管 Agent 文件", async () => {
-        await withTempProject(async (cwd) => {
-            const store = createAgentDefinitionStore(cwd);
+        await withTempProject(async (cwd, storage) => {
+            const store = createAgentDefinitionStore(storage, cwd);
             await Bun.write(`${cwd}/outside.md`, serializeAgentDefinition(draft()));
             await Bun.$`mkdir -p ${cwd}/.pillar/agents`.quiet();
             await symlink(
@@ -104,6 +104,21 @@ describe("agent definition store", () => {
             );
             await expect(store.read("project", "project-reviewer"))
                 .rejects.toThrow();
+        });
+    });
+
+    test("拒绝通过 symlink .pillar 目录写出项目", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const outside = `${cwd}/outside`;
+            await mkdir(outside, {recursive: true});
+            await symlink(outside, `${cwd}/.pillar`);
+            const store = createAgentDefinitionStore(storage, cwd);
+
+            await expect(store.create("project", draft())).rejects.toThrow(
+                "Agent 配置目录不安全"
+            );
+            expect(await Bun.file(`${outside}/agents/project-reviewer.md`).exists())
+                .toBe(false);
         });
     });
 });

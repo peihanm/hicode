@@ -13,6 +13,7 @@ import {join} from "node:path";
 import {createSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 const ENABLED = process.env.PILLAR_RUN_SANDBOX_INTEGRATION === "1";
 
@@ -69,7 +70,7 @@ describe("OS Sandbox integration", () => {
             });
             try {
                 expect(runtime.status).toMatchObject({kind: "ready"});
-                const runner = createShellRunner(runtime);
+                const runner = createShellRunner(runtime, testChildEnvironment);
                 const signal = new AbortController().signal;
 
                 const allowed = await runner.run({

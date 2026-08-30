@@ -1,8 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {
-    HookPromptTimeoutError,
-    createHookPromptExecutorFactory,
-} from "../../src/hooks/prompt.js";
+import {createHookPromptExecutorFactory} from "../../src/hooks/prompt.js";
 import type {LLMCaller} from "../../src/llm/types.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
@@ -142,7 +139,7 @@ describe("Prompt Hook executor", () => {
             },
             signal: new AbortController().signal,
             timeoutMs: 5,
-        })).rejects.toBeInstanceOf(HookPromptTimeoutError);
+        })).rejects.toThrow("Prompt Hook 超时 (5ms)");
 
         const parent = new AbortController();
         const pending = executor.execute({

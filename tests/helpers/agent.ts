@@ -17,7 +17,6 @@ export interface AgentTestOptions
     Partial<AgentToolBindings> {
   callLLM?: LLMCaller;
   compactHistory?: CompactHistoryRunner;
-  turnId?: string;
   inputChannel?: AgentInputChannel;
 }
 
@@ -31,7 +30,6 @@ export function runAgentForTest(
   const {
     callLLM: callLLMOverride,
     compactHistory: compactHistoryOverride,
-    turnId,
     inputChannel = EMPTY_AGENT_INPUT_CHANNEL,
     ...options
   } = test;
@@ -51,7 +49,6 @@ export function runAgentForTest(
   return createAgentRunner({
     callLLM,
     compactHistory,
-    ...(turnId ? { createTurnId: () => turnId } : {}),
   })(userInput, history, onEvent, ctx, inputChannel, {
     ...options,
     getToolSchemas: test.getToolSchemas ?? toolRuntime.getToolSchemas,

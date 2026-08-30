@@ -63,6 +63,12 @@ export interface AgentTaskSnapshot {
 
 export type TaskSnapshot = ShellTaskSnapshot | AgentTaskSnapshot;
 
+export interface RunningTaskSummary {
+    total: number;
+    shell: number;
+    agent: number;
+}
+
 export interface StartShellTaskInput {
     command: string;
     cwd: string;
@@ -101,6 +107,8 @@ export interface TaskEventEnvelope {
 export interface TaskSessionLike {
     readonly sessionId: string;
 
+    initialize(): Promise<void>;
+
     startShell(input: StartShellTaskInput): Promise<ShellTaskSnapshot>;
 
     startAgent(input: StartAgentTaskInput): Promise<AgentTaskSnapshot>;
@@ -114,6 +122,8 @@ export interface TaskSessionLike {
     discardWorktree(id: string): Promise<AgentTaskSnapshot>;
 
     hasRunning(): boolean;
+
+    getRunningSummary(): RunningTaskSummary;
 
     claimNotifications(): Promise<readonly TaskNotification[]>;
 
@@ -130,6 +140,8 @@ export interface TaskRuntimeLike {
     forSession(binding: TaskSessionBinding): TaskSessionLike;
 
     hasRunning(): boolean;
+
+    getRunningSummary(): RunningTaskSummary;
 
     hasRunningThatBlocksRewind(): boolean;
 

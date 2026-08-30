@@ -3,6 +3,7 @@ import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {assistantText, createFakeLLM} from "../helpers/fakeLLM.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {createSubagentRunnerForTest} from "../helpers/subagent.js";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestContext} from "../helpers/testContext.js";
@@ -23,18 +24,21 @@ describe("background Explore", () => {
                     return assistantText("后台调查报告");
                 },
             ]);
-            const shellRunner = createShellRunner(createDisabledSandboxRuntime());
+            const shellRunner = createShellRunner(
+                createDisabledSandboxRuntime(),
+                testChildEnvironment
+            );
             const taskRuntime = createTaskRuntimeForTest(
                 cwd,
                 shellRunner,
                 (options) => createSubagentRunnerForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {rootDir: `${cwd}/child-results`},
+                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
                 })
             );
             const store = createTestToolResultStore(cwd, "root-session", {
-                rootDir: `${cwd}/root-results`,
+                pillarHome: `${cwd}/root-results`,
             });
             const tasks = taskRuntime.forSession({
                 sessionId: "root-session",
@@ -104,18 +108,21 @@ describe("background Explore", () => {
                     throw new Error("unreachable");
                 },
             ]);
-            const shellRunner = createShellRunner(createDisabledSandboxRuntime());
+            const shellRunner = createShellRunner(
+                createDisabledSandboxRuntime(),
+                testChildEnvironment
+            );
             const taskRuntime = createTaskRuntimeForTest(
                 cwd,
                 shellRunner,
                 (options) => createSubagentRunnerForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {rootDir: `${cwd}/child-results`},
+                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
                 })
             );
             const store = createTestToolResultStore(cwd, "root-session", {
-                rootDir: `${cwd}/root-results`,
+                pillarHome: `${cwd}/root-results`,
             });
             const tasks = taskRuntime.forSession({
                 sessionId: "root-session",

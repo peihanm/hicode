@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {mkdtemp, readdir, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, readdir, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {WorktreeManifestStore} from "../../src/worktrees/manifest.js";
@@ -60,6 +60,50 @@ describe("WorktreeManifestStore", () => {
                 .rejects.toThrow("格式无效");
             await expect(store.load(initial.taskId, "other-session"))
                 .rejects.toThrow("格式无效");
+        } finally {
+            await rm(directory, {recursive: true, force: true});
+        }
+    });
+
+    test("创建和更新都拒绝写入非法 record", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "pillar-worktree-manifest-"));
+        try {
+            const store = new WorktreeManifestStore(directory);
+            await expect(store.create({...record(), branch: ""}))
+                .rejects.toThrow("拒绝写入无效");
+            const initial = record();
+            await store.create(initial);
+            await expect(store.update(
+                initial.taskId,
+                initial.sessionId,
+                async (current) => ({
+                    ...current,
+                    state: "changed",
+                    cleanupReason: "no_changes",
+                })
+            )).rejects.toThrow("拒绝写入无效");
+        } finally {
+            await rm(directory, {recursive: true, force: true});
+        }
+    });
+
+    test("拒绝读取 symlink manifest", async () => {
+        if (process.platform === "win32") return;
+        const directory = await mkdtemp(join(tmpdir(), "pillar-worktree-manifest-"));
+        try {
+            const store = new WorktreeManifestStore(directory);
+            const initial = record();
+            await store.create(initial);
+            const file = (await readdir(directory)).find((name) => name.endsWith(".json"));
+            if (!file) throw new Error("缺少 Manifest fixture");
+            const path = join(directory, file);
+            const outside = join(directory, "outside.json");
+            await writeFile(outside, JSON.stringify(initial));
+            await rm(path);
+            await symlink(outside, path);
+
+            await expect(store.load(initial.taskId, initial.sessionId))
+                .rejects.toThrow("不是安全的 regular file");
         } finally {
             await rm(directory, {recursive: true, force: true});
         }

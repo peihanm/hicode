@@ -22,9 +22,6 @@ interface CompactHistoryInput {
     ctx: ToolContext;
     tools: OpenAITool[];
     preTokenCount: number;
-    keepTailMinTokens?: number;
-    keepTailMinTextMessages?: number;
-    keepTailMaxTokens?: number;
     force?: boolean;
     trigger?: "auto" | "manual";
     customInstructions?: string;
@@ -52,21 +49,11 @@ interface CompactResult {
     message?: string;
 }
 
-function envTruthy(value: string | undefined): boolean {
-    return value === "1" || value === "true" || value === "yes";
-}
-
-function isAutoCompactEnabled(): boolean {
-    return !envTruthy(process.env.DISABLE_COMPACT) &&
-        !envTruthy(process.env.DISABLE_AUTO_COMPACT);
-}
-
 export function shouldAutoCompact(
     tokenCount: number,
     model: string,
     state: CompactState
 ): boolean {
-    if (!isAutoCompactEnabled()) return false;
     if (state.consecutiveFailures >= MAX_CONSECUTIVE_COMPACT_FAILURES) return false;
     return tokenCount >= getAutoCompactThreshold(model);
 }
@@ -82,9 +69,6 @@ async function compactHistoryCore({
                                       ctx,
                                       tools,
                                       preTokenCount,
-                                      keepTailMinTokens = DEFAULT_TAIL_MIN_TOKENS,
-                                      keepTailMinTextMessages = DEFAULT_TAIL_MIN_TEXT_MESSAGES,
-                                      keepTailMaxTokens = DEFAULT_TAIL_MAX_TOKENS,
                                       force = false,
                                       trigger = "auto",
                                       customInstructions,
@@ -131,9 +115,9 @@ async function compactHistoryCore({
         throwIfTurnAborted(ctx.signal);
         const summaryMessage = buildCompactSummaryMessage(summary);
         const tailStart = findCompactTailStart(history, {
-            minTokens: keepTailMinTokens,
-            minTextMessages: keepTailMinTextMessages,
-            maxTokens: keepTailMaxTokens,
+            minTokens: DEFAULT_TAIL_MIN_TOKENS,
+            minTextMessages: DEFAULT_TAIL_MIN_TEXT_MESSAGES,
+            maxTokens: DEFAULT_TAIL_MAX_TOKENS,
         });
         const compactedHistory = [system, summaryMessage, ...history.slice(tailStart)];
         const postTokenCount = tokenCountWithEstimation(compactedHistory, tools);

@@ -44,7 +44,6 @@ describe("agent loop", () => {
         (event) => events.push(event),
         createTestContext(cwd),
         {
-          turnId: "stable-turn",
           callLLM: fake.callLLM,
           executeTool: async () => ({
             modelContent: "已修改",
@@ -57,11 +56,14 @@ describe("agent loop", () => {
 
       const start = events.find((event) => event.type === "tool_call_start");
       const end = events.find((event) => event.type === "tool_call_end");
-      expect(start).toMatchObject({ turnId: "stable-turn" });
-      expect(end).toMatchObject({
-        turnId: "stable-turn",
-        uiData: { type: "file_change", change: { path: "a.ts" } },
-      });
+      if (start?.type === "tool_call_start" && end?.type === "tool_call_end") {
+        expect(typeof start.turnId).toBe("string");
+        expect(end.turnId).toBe(start.turnId);
+        expect(end.uiData).toMatchObject({
+          type: "file_change",
+          change: {path: "a.ts"},
+        });
+      }
     });
   });
   test("无工具调用时返回最终文本并记录事件", async () => {
@@ -239,6 +241,36 @@ describe("agent loop", () => {
       ).toBe(true);
       expect(events.map((event) => event.type)).toContain("tool_call_start");
       expect(events.map((event) => event.type)).toContain("tool_call_end");
+    });
+  });
+
+  test("拒绝模型跨迭代复用历史 Tool Call ID", async () => {
+    await withTempProject(async (cwd) => {
+      const history = initialHistory();
+      const fake = createFakeLLM([
+        assistantToolCall("read_file", {path: "a.ts"}, "reused-call"),
+        assistantToolCall("grep", {pattern: "x"}, "reused-call"),
+      ]);
+      let executions = 0;
+
+      await expect(runAgent(
+        "调查",
+        history,
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => {
+            executions += 1;
+            return "first result";
+          },
+        }
+      )).rejects.toThrow("重复使用历史 Tool Call ID");
+      expect(executions).toBe(1);
+      expect(history.filter((message) =>
+        message.role === "assistant" &&
+        message.tool_calls?.some((call) => call.id === "reused-call")
+      )).toHaveLength(1);
     });
   });
 

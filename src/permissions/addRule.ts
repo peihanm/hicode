@@ -18,13 +18,19 @@ export function generateRuleForTool(
     input: unknown
 ): string | null {
     if (toolName === "bash") {
-        const {command} = input as { command: string };
+        if (!input || typeof input !== "object" || !("command" in input)) {
+            return null;
+        }
+        const command = input.command;
+        if (typeof command !== "string") return null;
         const pattern = generateShellAllowPattern(command);
         if (!pattern) return null;
         return `bash(${pattern})`;
     }
     if (toolName === "web_fetch") {
-        const url = (input as {url?: unknown})?.url;
+        const url = input && typeof input === "object" && "url" in input
+            ? input.url
+            : undefined;
         if (typeof url !== "string") return null;
         try {
             const parsed = new URL(url);
@@ -44,7 +50,7 @@ export function generateRuleForTool(
 export async function addToAllowList(
     ruleStr: string,
     rules: PermissionRules,
-    cwd: string = process.cwd()
+    cwd: string
 ): Promise<PermissionRules> {
     await appendLocalPermissionAllowRule(cwd, ruleStr);
 

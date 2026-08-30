@@ -12,7 +12,7 @@ const OPTIONS: Array<{ label: string; value: McpApprovalDecision }> = [
 
 function formatArgs(args: string[]): string {
     let redactNext = false;
-    return args.map((arg) => {
+    const formatted = args.slice(0, 32).map((arg) => {
         if (redactNext) {
             redactNext = false;
             return "[REDACTED]";
@@ -20,11 +20,14 @@ function formatArgs(args: string[]): string {
         const separator = arg.indexOf("=");
         const key = separator >= 0 ? arg.slice(0, separator) : arg;
         const sensitive = /(?:token|secret|password|api[-_]?key|authorization)/i.test(key);
-        if (!sensitive) return arg;
+        if (!sensitive) return arg.slice(0, 256);
         if (separator >= 0) return `${key}=[REDACTED]`;
         redactNext = true;
         return arg;
-    }).join(" ");
+    });
+    if (args.length > 32) formatted.push(`… ${args.length - 32} args omitted`);
+    const line = formatted.join(" ");
+    return line.length <= 2000 ? line : `${line.slice(0, 1999)}…`;
 }
 
 export function McpApprovalDialog({
@@ -41,9 +44,11 @@ export function McpApprovalDialog({
             footer="↑↓ 选择 · Enter 确认"
         >
             <Box marginTop={1} flexDirection="column">
-                <Text>Command: {request.command}</Text>
+                <Text>Command: {request.command.slice(0, 512)}</Text>
                 <Text>Args: {formatArgs(request.args) || "(none)"}</Text>
-                <Text color={COLORS.dim}>Project: {request.projectPath}</Text>
+                <Text color={COLORS.dim}>
+                    Project: {request.projectPath.slice(0, 1000)}
+                </Text>
             </Box>
             <Box marginTop={1}>
                 <SelectInput

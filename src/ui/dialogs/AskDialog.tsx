@@ -36,6 +36,8 @@ type Question = {
     options: Option[];
 };
 
+const MAX_CUSTOM_ANSWER_CHARS = 16_384;
+
 export function AskDialog({
                               req,
                               onDone,
@@ -269,7 +271,11 @@ export function AskDialog({
                                 {focus === "input" ? (
                                     <TextInput
                                         value={typedValue}
-                                        onChange={setTypedValue}
+                                        onChange={(value) =>
+                                            setTypedValue(
+                                                value.slice(0, MAX_CUSTOM_ANSWER_CHARS)
+                                            )
+                                        }
                                         onSubmit={() => setFocus("submit")}
                                         placeholder="Type something..."
                                     />

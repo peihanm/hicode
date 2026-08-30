@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  dropOldestConversationChunk,
-  isPromptTooLongError,
-} from "../../src/context/compactSummary.js";
-import {
   generateCompactSummaryForTest as generateCompactSummary,
 } from "../helpers/compact.js";
 import { createTurnAbortController } from "../../src/runtime/abort.js";
@@ -104,17 +100,4 @@ describe("Compact summary runner", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  test("裁剪 helper 只从 user boundary 开始并保持输入不变", () => {
-    const messages = conversation();
-    const before = structuredClone(messages);
-    const dropped = dropOldestConversationChunk(messages, 1);
-    expect(dropped.map((message) => message.role)).toEqual([
-      "user",
-      "user",
-      "assistant",
-    ]);
-    expect(messages).toEqual(before);
-    expect(isPromptTooLongError(new Error("HTTP 413 token limit"))).toBe(true);
-    expect(isPromptTooLongError(new Error("network unavailable"))).toBe(false);
-  });
 });

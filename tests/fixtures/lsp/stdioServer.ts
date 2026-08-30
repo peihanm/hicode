@@ -12,6 +12,9 @@ interface JsonRpcMessage {
 
 const logIndex = process.argv.indexOf("--log");
 const logPath = logIndex >= 0 ? process.argv[logIndex + 1] : undefined;
+const envNameIndex = process.argv.indexOf("--env-name");
+const envName = envNameIndex >= 0 ? process.argv[envNameIndex + 1] : undefined;
+const oversizedFrame = process.argv.includes("--oversized-frame");
 let input = Buffer.alloc(0);
 
 function log(event: string): void {
@@ -57,6 +60,10 @@ function handle(message: JsonRpcMessage): void {
   log(method);
 
   if (method === "initialize" && message.id !== undefined) {
+    if (oversizedFrame) {
+      process.stdout.write("Content-Length: 20000000\r\n\r\n");
+      return;
+    }
     respond(message.id, {
       capabilities: {
         textDocumentSync: 1,
@@ -139,3 +146,4 @@ process.stdin.on("data", (chunk: Buffer) => {
 });
 process.stdin.resume();
 log("process/start");
+if (envName) log(`env:${envName}=${process.env[envName] ?? "<missing>"}`);

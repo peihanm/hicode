@@ -34,7 +34,9 @@ export function createFakeLspManager(
     name: label,
     config: {
       command: "fake",
+      args: [],
       extensions: [".ts"],
+      workspaceFolder: cwd,
     },
     state: "running",
     async start() {},

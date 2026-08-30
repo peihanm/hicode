@@ -23,12 +23,75 @@ export interface RuntimeMessageQueueSnapshot {
 const MAX_MESSAGES = 32;
 const MAX_MESSAGE_BYTES = 32 * 1024;
 const MAX_TOTAL_BYTES = 256 * 1024;
+const MAX_ID_CHARS = 256;
 const EMPTY_SNAPSHOT: RuntimeMessageQueueSnapshot = {
     messages: [],
 };
 
 function byteLength(value: string): number {
     return Buffer.byteLength(value, "utf8");
+}
+
+function isTimestamp(value: string): boolean {
+    return value.length <= 64 && Number.isFinite(Date.parse(value));
+}
+
+/** Validate persisted queue state with the same limits used for live enqueue. */
+export function normalizeRuntimeQueuedMessages(
+    value: unknown
+): RuntimeQueuedMessage[] | undefined {
+    if (!Array.isArray(value) || value.length > MAX_MESSAGES) return undefined;
+    const messages: RuntimeQueuedMessage[] = [];
+    const ids = new Set<string>();
+    let totalBytes = 0;
+    for (const item of value) {
+        if (!item || typeof item !== "object") return undefined;
+        const message = item as Record<string, unknown>;
+        if (
+            typeof message.id !== "string" ||
+            message.id.length === 0 ||
+            message.id.length > MAX_ID_CHARS ||
+            ids.has(message.id) ||
+            (message.type !== "user_input" &&
+                message.type !== "task_notification") ||
+            (message.priority !== "next" && message.priority !== "later") ||
+            typeof message.content !== "string" ||
+            message.content.trim().length === 0 ||
+            typeof message.createdAt !== "string" ||
+            !isTimestamp(message.createdAt)
+        ) return undefined;
+        const contentBytes = byteLength(message.content);
+        totalBytes += contentBytes;
+        if (contentBytes > MAX_MESSAGE_BYTES || totalBytes > MAX_TOTAL_BYTES) {
+            return undefined;
+        }
+        ids.add(message.id);
+        if (message.type === "task_notification") {
+            if (
+                typeof message.taskId !== "string" ||
+                message.taskId.length === 0 ||
+                message.taskId.length > MAX_ID_CHARS
+            ) return undefined;
+            messages.push({
+                id: message.id,
+                type: message.type,
+                priority: message.priority,
+                content: message.content,
+                createdAt: message.createdAt,
+                taskId: message.taskId,
+            });
+        } else {
+            if (message.taskId !== undefined) return undefined;
+            messages.push({
+                id: message.id,
+                type: message.type,
+                priority: message.priority,
+                content: message.content,
+                createdAt: message.createdAt,
+            });
+        }
+    }
+    return messages;
 }
 
 function asAgentInput(message: RuntimeQueuedMessage): QueuedAgentInput {
@@ -52,7 +115,11 @@ export class RuntimeMessageQueue {
     constructor(input: {
         messages?: readonly RuntimeQueuedMessage[];
     } = {}) {
-        this.messages = (input.messages ?? []).map((message) => ({...message}));
+        const restored = input.messages === undefined
+            ? []
+            : normalizeRuntimeQueuedMessages(input.messages);
+        if (!restored) throw new Error("无效的运行中消息队列快照");
+        this.messages = restored;
         this.publish();
     }
 
@@ -192,6 +259,12 @@ export class RuntimeMessageQueue {
         this.snapshot = {
             messages: this.messages.map((message) => ({...message})),
         };
-        for (const listener of this.listeners) listener();
+        for (const listener of this.listeners) {
+            try {
+                listener();
+            } catch {
+                // 状态订阅者不能反向破坏消息队列 mutation。
+            }
+        }
     }
 }

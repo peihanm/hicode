@@ -8,6 +8,7 @@ import {createAgentTool} from "../../src/tools/agent/agent.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {createSubagentRunnerForTest} from "../helpers/subagent.js";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestContext} from "../helpers/testContext.js";
@@ -79,7 +80,10 @@ describe("Worktree background Agent", () => {
                     },
                     () => assistantText("已在 Worktree 中完成 feature.txt。"),
                 ]);
-                const shellRunner = createShellRunner(createDisabledSandboxRuntime());
+                const shellRunner = createShellRunner(
+                    createDisabledSandboxRuntime(),
+                    testChildEnvironment
+                );
                 runtime = createTaskRuntimeForTest(
                     cwd,
                     shellRunner,
@@ -87,13 +91,13 @@ describe("Worktree background Agent", () => {
                         ...options,
                         registry,
                         agentOptions: {callLLM: child.callLLM},
-                        toolResultStoreOptions: {rootDir: join(projectsRoot, "child-results")},
+                        toolResultStoreOptions: {pillarHome: join(projectsRoot, "child-results")},
                     }),
                     projectsRoot,
                     registry
                 );
                 const rootStore = createTestToolResultStore(cwd, "root-session", {
-                    rootDir: join(projectsRoot, "root-results"),
+                    pillarHome: join(projectsRoot, "root-results"),
                 });
                 const tasks = runtime.forSession({
                     sessionId: "root-session",

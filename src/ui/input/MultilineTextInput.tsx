@@ -2,7 +2,7 @@ import {useEffect, useMemo, useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import stringWidth from "string-width";
 import {COLORS, SYMBOLS} from "../theme.js";
-import {getTerminalCursorAnchorMarker} from "./terminalCursor.js";
+import {useTerminalCursorAnchor} from "./terminalCursorContext.js";
 
 export interface InputRow {
     start: number;
@@ -170,7 +170,7 @@ export function MultilineTextInput({
         Math.min(cursorRow - maxRows + 1, rows.length - maxRows)
     );
     const visibleRows = rows.slice(firstVisible, firstVisible + maxRows);
-    const terminalCursorAnchor = getTerminalCursorAnchorMarker();
+    const terminalCursorAnchor = useTerminalCursorAnchor();
 
     useEffect(() => {
         if (value !== expectedValueRef.current) {

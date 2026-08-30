@@ -1,18 +1,31 @@
-import {readFile} from "node:fs/promises";
-import {homedir} from "node:os";
-import {join, resolve} from "node:path";
+import {constants} from "node:fs";
+import {lstat, open, realpath} from "node:fs/promises";
+import {dirname, join, resolve} from "node:path";
 import {z} from "zod";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {normalizeMcpName, validateMcpServerName} from "./names.js";
-import type {LoadedMcpConfig, LoadedMcpServerConfig, McpConfigIssue, McpConfigSource,} from "./types.js";
+import type {
+    LoadedMcpConfig,
+    LoadedMcpServerConfig,
+    McpConfigIssue,
+    McpConfigSource,
+} from "./types.js";
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
+const MAX_CONFIG_BYTES = 1024 * 1024;
+const MAX_SERVERS_PER_SOURCE = 64;
+const MAX_ARGS = 128;
+const MAX_ENV_ENTRIES = 128;
 
 const serverSchema = z.object({
     type: z.literal("stdio").optional().default("stdio"),
-    command: z.string().trim().min(1),
-    args: z.array(z.string()).optional().default([]),
-    env: z.record(z.string(), z.string()).optional(),
+    command: z.string().trim().min(1).max(4096),
+    args: z.array(z.string().max(16_384)).max(MAX_ARGS).optional().default([]),
+    env: z.record(
+        z.string().min(1).max(256).regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+        z.string().max(64 * 1024)
+    ).optional(),
     disabled: z.boolean().optional().default(false),
     timeoutMs: z.number().int().min(1_000).max(60_000).optional()
         .default(DEFAULT_CONNECTION_TIMEOUT_MS),
@@ -20,86 +33,185 @@ const serverSchema = z.object({
         .default(DEFAULT_TOOL_TIMEOUT_MS),
 }).strict();
 
+function isMissing(error: unknown): boolean {
+    return Boolean(
+        error && typeof error === "object" && "code" in error &&
+        ((error as {code?: string}).code === "ENOENT" ||
+            (error as {code?: string}).code === "ENOTDIR")
+    );
+}
+
+async function readBoundedRegularFile(path: string): Promise<string | undefined> {
+    let handle;
+    try {
+        handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+        if (isMissing(error)) return undefined;
+        throw error;
+    }
+    try {
+        const metadata = await handle.stat();
+        if (!metadata.isFile()) throw new Error("配置必须是普通文件");
+        if (metadata.size > MAX_CONFIG_BYTES) {
+            throw new Error(`配置超过 ${MAX_CONFIG_BYTES} bytes 上限`);
+        }
+        const buffer = Buffer.alloc(metadata.size + 1);
+        let offset = 0;
+        while (offset < buffer.length) {
+            const {bytesRead} = await handle.read(
+                buffer,
+                offset,
+                buffer.length - offset,
+                offset
+            );
+            if (bytesRead === 0) break;
+            offset += bytesRead;
+        }
+        if (offset > MAX_CONFIG_BYTES) {
+            throw new Error(`配置超过 ${MAX_CONFIG_BYTES} bytes 上限`);
+        }
+        return new TextDecoder("utf-8", {fatal: true}).decode(
+            buffer.subarray(0, offset)
+        );
+    } finally {
+        await handle.close();
+    }
+}
+
+async function validateNativeProjectDirectory(
+    cwd: string,
+    path: string
+): Promise<void> {
+    const directory = dirname(path);
+    try {
+        const [cwdPath, directoryPath, metadata] = await Promise.all([
+            realpath(cwd),
+            realpath(directory),
+            lstat(directory),
+        ]);
+        if (
+            metadata.isSymbolicLink() ||
+            !metadata.isDirectory() ||
+            directoryPath !== join(cwdPath, ".pillar")
+        ) {
+            throw new Error("项目 MCP 配置目录不安全");
+        }
+    } catch (error) {
+        if (!isMissing(error)) throw error;
+    }
+}
+
 async function readConfigSource(
     path: string,
-    source: McpConfigSource
-): Promise<{ servers: LoadedMcpServerConfig[]; issues: McpConfigIssue[] }> {
-    let text: string;
+    source: McpConfigSource,
+    cwd?: string
+): Promise<{servers: LoadedMcpServerConfig[]; issues: McpConfigIssue[]}> {
     try {
-        text = await readFile(path, "utf8");
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-            return {servers: [], issues: []};
-        }
-        return {
-            servers: [],
-            issues: [{source, path, message: `无法读取 MCP 配置: ${String(error)}`}],
-        };
-    }
+        if (cwd) await validateNativeProjectDirectory(cwd, path);
+        const text = await readBoundedRegularFile(path);
+        if (text === undefined) return {servers: [], issues: []};
 
-    let raw: unknown;
-    try {
-        raw = JSON.parse(text);
-    } catch (error) {
-        return {
-            servers: [],
-            issues: [{source, path, message: `MCP 配置不是合法 JSON: ${String(error)}`}],
-        };
-    }
-
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {
-            servers: [],
-            issues: [{source, path, message: "MCP 配置顶层必须是对象"}],
-        };
-    }
-    const top = raw as Record<string, unknown>;
-    if (!top.mcpServers || typeof top.mcpServers !== "object" || Array.isArray(top.mcpServers)) {
-        return {
-            servers: [],
-            issues: [{source, path, message: "MCP 配置缺少对象字段 mcpServers"}],
-        };
-    }
-    const extraKeys = Object.keys(top).filter((key) => key !== "mcpServers");
-    const issues: McpConfigIssue[] = extraKeys.map((key) => ({
-        source,
-        path,
-        message: `MCP 配置包含未知顶层字段: ${key}`,
-    }));
-    const servers: LoadedMcpServerConfig[] = [];
-    for (const [name, value] of Object.entries(top.mcpServers as Record<string, unknown>)) {
-        if (!validateMcpServerName(name)) {
-            issues.push({source, path, serverName: name, message: "Server 名只能包含字母、数字、_、-、."});
-            continue;
+        let raw: unknown;
+        try {
+            raw = JSON.parse(text);
+        } catch (error) {
+            return {
+                servers: [],
+                issues: [{source, path, message: `MCP 配置不是合法 JSON: ${String(error)}`}],
+            };
         }
-        const parsed = serverSchema.safeParse(value);
-        if (!parsed.success) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+            return {
+                servers: [],
+                issues: [{source, path, message: "MCP 配置顶层必须是对象"}],
+            };
+        }
+        const top = raw as Record<string, unknown>;
+        if (
+            !top.mcpServers ||
+            typeof top.mcpServers !== "object" ||
+            Array.isArray(top.mcpServers)
+        ) {
+            return {
+                servers: [],
+                issues: [{source, path, message: "MCP 配置缺少对象字段 mcpServers"}],
+            };
+        }
+        const issues: McpConfigIssue[] = Object.keys(top)
+            .filter((key) => key !== "mcpServers")
+            .map((key) => ({
+                source,
+                path,
+                message: `MCP 配置包含未知顶层字段: ${key.slice(0, 128)}`,
+            }));
+        const entries = Object.entries(
+            top.mcpServers as Record<string, unknown>
+        ).sort(([left], [right]) => left.localeCompare(right));
+        if (entries.length > MAX_SERVERS_PER_SOURCE) {
             issues.push({
                 source,
                 path,
-                serverName: name,
-                message: `Server 配置无效: ${parsed.error.issues.map((item) => item.message).join("; ")}`,
+                message: `MCP Server 超过每个来源 ${MAX_SERVERS_PER_SOURCE} 个的上限`,
             });
-            continue;
         }
-        servers.push({name, source, path, config: parsed.data});
+        const servers: LoadedMcpServerConfig[] = [];
+        for (const [name, value] of entries.slice(0, MAX_SERVERS_PER_SOURCE)) {
+            if (!validateMcpServerName(name)) {
+                issues.push({
+                    source,
+                    path,
+                    serverName: name.slice(0, 128),
+                    message: "Server 名只能包含字母、数字、_、-、.，且长度为 1–64",
+                });
+                continue;
+            }
+            const parsed = serverSchema.safeParse(value);
+            if (!parsed.success) {
+                issues.push({
+                    source,
+                    path,
+                    serverName: name,
+                    message: `Server 配置无效: ${parsed.error.issues
+                        .map((item) => item.message)
+                        .join("; ")}`.slice(0, 2000),
+                });
+                continue;
+            }
+            if (Object.keys(parsed.data.env ?? {}).length > MAX_ENV_ENTRIES) {
+                issues.push({
+                    source,
+                    path,
+                    serverName: name,
+                    message: `Server env 超过 ${MAX_ENV_ENTRIES} 项上限`,
+                });
+                continue;
+            }
+            servers.push({name, source, path, config: parsed.data});
+        }
+        return {servers, issues};
+    } catch (error) {
+        return {
+            servers: [],
+            issues: [{
+                source,
+                path,
+                message: `无法安全读取 MCP 配置: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000),
+            }],
+        };
     }
-    return {servers, issues};
 }
 
-export async function loadMcpConfig(input: {
-    cwd: string;
-    userConfigPath?: string;
-    compatProjectConfigPath?: string;
-    projectConfigPath?: string;
-}): Promise<LoadedMcpConfig> {
-    const userPath = input.userConfigPath ?? join(homedir(), ".pillar", "mcp.json");
-    const compatProjectPath = input.compatProjectConfigPath ?? resolve(input.cwd, ".mcp.json");
-    const projectPath = input.projectConfigPath ?? resolve(input.cwd, ".pillar", "mcp.json");
+export async function loadMcpConfig(
+    storage: PillarStorageLayout,
+    cwd: string
+): Promise<LoadedMcpConfig> {
+    const userPath = join(storage.pillarHome, "mcp.json");
+    const compatProjectPath = resolve(cwd, ".mcp.json");
+    const projectPath = resolve(cwd, ".pillar", "mcp.json");
     const [user, compatProject, project] = await Promise.all([
         readConfigSource(userPath, "user"),
         readConfigSource(compatProjectPath, "project"),
-        readConfigSource(projectPath, "project"),
+        readConfigSource(projectPath, "project", cwd),
     ]);
     const byName = new Map<string, LoadedMcpServerConfig>();
     for (const server of [

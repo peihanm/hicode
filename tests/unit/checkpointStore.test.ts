@@ -1,8 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {readFile, stat, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {FileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
-import {FileCheckpointStore} from "../../src/checkpoints/store.js";
+import {createFileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
 import {
     getCheckpointBlobPath,
     getCheckpointManifestPath,
@@ -11,12 +10,19 @@ import {
 import {hashCheckpointContent} from "../../src/checkpoints/fingerprint.js";
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {createTestFileCheckpointStore} from "../helpers/checkpointStore.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 function createRuntime(cwd: string) {
-    const store = FileCheckpointStore.createFactory({
-        projectsRoot: join(cwd, ".checkpoint-projects"),
-    })(cwd, "checkpoint-session");
-    return new FileCheckpointRuntime(store, createFileStateTracker());
+    return createFileCheckpointRuntime({
+        storage: createPillarStorageLayout({
+            pillarHome: join(cwd, ".pillar-test-checkpoints"),
+        }),
+        cwd,
+        sessionId: "checkpoint-session",
+        enabled: true,
+        fileState: createFileStateTracker(),
+    });
 }
 
 describe("File Checkpoint Store", () => {
@@ -140,9 +146,10 @@ describe("File Checkpoint Store", () => {
             await runtime.settleTurn();
             const record = (await runtime.listCheckpoints())[0]!;
             const blobId = record.mutations[0]!.beforeBlobId!;
-            const store = FileCheckpointStore.createFactory({
-                projectsRoot: join(cwd, ".checkpoint-projects"),
-            })(cwd, "checkpoint-session");
+            const store = createTestFileCheckpointStore(
+                cwd,
+                "checkpoint-session"
+            );
             await writeFile(getCheckpointBlobPath(store.directory, blobId), "corrupt");
 
             const preview = await runtime.previewRestore(checkpoint!.checkpointId);
@@ -150,6 +157,56 @@ describe("File Checkpoint Store", () => {
             const restored = await runtime.restoreCode(checkpoint!.checkpointId);
             expect(restored.status).toBe("conflict");
             expect(await readFile(path, "utf8")).toBe("after\n");
+        });
+    });
+
+    test("再次捕获相同内容时修复同名损坏 Blob", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "repair.txt");
+            await writeFile(path, "before\n");
+            const runtime = createRuntime(cwd);
+            await runtime.beginTurn({prompt: "第一次修改"});
+            await runtime.beforeWrite({
+                path,
+                content: "before\n",
+                toolCallId: "first",
+            });
+            await runtime.settleTurn();
+
+            const store = createTestFileCheckpointStore(cwd, "checkpoint-session");
+            const blobPath = getCheckpointBlobPath(
+                store.directory,
+                hashCheckpointContent("before\n")
+            );
+            await writeFile(blobPath, "corrupt");
+
+            await runtime.beginTurn({prompt: "第二次修改"});
+            await runtime.beforeWrite({
+                path,
+                content: "before\n",
+                toolCallId: "second",
+            });
+
+            expect(await readFile(blobPath, "utf8")).toBe("before\n");
+        });
+    });
+
+    test("manifest head 指向不存在的 Checkpoint 时拒绝恢复", async () => {
+        await withTempProject(async (cwd) => {
+            const runtime = createRuntime(cwd);
+            await runtime.beginTurn({prompt: "建立 checkpoint"});
+            const store = createTestFileCheckpointStore(cwd, "checkpoint-session");
+            const manifestPath = getCheckpointManifestPath(store.directory);
+            const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+            manifest.head.checkpointId = "missing-checkpoint";
+            await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+
+            await expect(runtime.listCheckpoints()).rejects.toMatchObject({
+                message: expect.stringContaining("无法读取 Checkpoint manifest"),
+                cause: {
+                    message: "Checkpoint manifest head 不在当前索引中",
+                },
+            });
         });
     });
 
@@ -199,9 +256,10 @@ describe("File Checkpoint Store", () => {
             expect(listed[0]?.mutations).toHaveLength(600);
             expect(listed[0]?.fileCoverage).toBe("complete");
 
-            const store = FileCheckpointStore.createFactory({
-                projectsRoot: join(cwd, ".checkpoint-projects"),
-            })(cwd, "checkpoint-session");
+            const store = createTestFileCheckpointStore(
+                cwd,
+                "checkpoint-session"
+            );
             const manifest = await readFile(
                 getCheckpointManifestPath(store.directory),
                 "utf8"
@@ -279,9 +337,10 @@ describe("File Checkpoint Store", () => {
             }
 
             expect(await runtime.listCheckpoints()).toHaveLength(100);
-            const store = FileCheckpointStore.createFactory({
-                projectsRoot: join(cwd, ".checkpoint-projects"),
-            })(cwd, "checkpoint-session");
+            const store = createTestFileCheckpointStore(
+                cwd,
+                "checkpoint-session"
+            );
             await expect(stat(getCheckpointBlobPath(
                 store.directory,
                 hashCheckpointContent("v0\n")

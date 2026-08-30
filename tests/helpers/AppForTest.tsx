@@ -4,6 +4,7 @@ import type { PermissionMode } from "../../src/permissions/index.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { App } from "../../src/ui/App.js";
 import type { AgentRunner } from "../../src/agent/index.js";
+import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
 
 export function AppForTest({
   resources,
@@ -14,7 +15,7 @@ export function AppForTest({
   resources: RootRuntimeResources;
   initialPermissionMode?: PermissionMode;
   initialSession?: LoadedSession;
-  runAgentImpl: AgentRunner;
+  runAgentImpl?: AgentRunner;
 }) {
   const testResources = useMemo<RootRuntimeResources>(
     () => {
@@ -22,7 +23,7 @@ export function AppForTest({
         ...resources,
         agentRuntime: {
           ...resources.agentRuntime,
-          runAgent: runAgentImpl,
+          runAgent: runAgentImpl ?? resources.agentRuntime.runAgent,
         },
       };
       Object.defineProperties(configured, {
@@ -33,9 +34,15 @@ export function AppForTest({
     },
     [resources, runAgentImpl]
   );
+  const turnSession = useMemo(
+    () => createUITurnSessionRuntime(testResources, initialSession),
+    [initialSession, testResources]
+  );
   return (
     <App
       resources={testResources}
+      rootSession={turnSession.rootSession}
+      resumedDraft={turnSession.resumedDraft}
       initialPermissionMode={initialPermissionMode}
       initialSession={initialSession}
     />

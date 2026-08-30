@@ -5,8 +5,6 @@ export {
 } from "./registry.js";
 export {
     loadCustomAgentDefinitions,
-    mergeCustomAgentSources,
-    parseCustomAgentDocument,
     validateCustomAgentTools,
 } from "./load.js";
 export type {
@@ -14,15 +12,7 @@ export type {
     CreateSubagentRunner,
     LoadedCustomAgents,
 } from "./types.js";
-export {
-    formatSubagentModel,
-    resolveSubagentModel,
-} from "./model.js";
-export {buildForkContextSnapshot} from "./fork.js";
-export {
-    getSubagentTranscriptPath,
-    SubagentTranscriptWriter,
-} from "./transcript.js";
+export {formatSubagentModel} from "./model.js";
 export {
     createSubagentCatalog,
     type SubagentCatalog,
@@ -39,6 +29,5 @@ export {
 } from "./manager.js";
 export {
     createAgentAuthoringRuntime,
-    createAgentDefinitionGenerator,
     type AgentAuthoringRuntime,
 } from "./authoring/index.js";

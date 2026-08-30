@@ -46,7 +46,6 @@ export const GENERAL_PURPOSE_SUBAGENT: SubagentRegistration = {
                 skills: [],
                 instructions: parentContext.instructions,
                 lspManager: parentContext.lspManager,
-                fileState: parentContext.fileState,
                 gitSession: parentContext.gitSession,
                 shellRunner: parentContext.shellRunner,
             },

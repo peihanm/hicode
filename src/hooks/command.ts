@@ -24,6 +24,7 @@ interface ExecuteHookCommandInput {
     stdin: string;
     signal: AbortSignal;
     timeoutMs: number;
+    environment: NodeJS.ProcessEnv;
 }
 
 export type ExecuteHookCommand = (
@@ -39,10 +40,7 @@ export async function defaultExecuteHookCommand(
         timeoutMs: input.timeoutMs,
         maxBuffer: MAX_HOOK_OUTPUT_BYTES,
         stdin: input.stdin,
-        env: {
-            ...process.env,
-            PILLAR_PROJECT_DIR: input.cwd,
-        },
+        env: input.environment,
     };
     const result = input.shell === "bash"
         ? await runShellArgv({
@@ -100,6 +98,7 @@ export async function executeCommandHook({
     input,
     signal,
     executeCommand,
+    environment,
 }: {
     event: HookInput["hook_event_name"];
     source: HookExecution["source"];
@@ -108,6 +107,7 @@ export async function executeCommandHook({
     input: HookInput;
     signal: AbortSignal;
     executeCommand: ExecuteHookCommand;
+    environment: NodeJS.ProcessEnv;
 }): Promise<HookHandlerResult> {
     const startedAt = Date.now();
     const identity = {
@@ -115,6 +115,7 @@ export async function executeCommandHook({
         source,
         type: "command" as const,
         handler: hook.command,
+        commandInvoked: true as const,
     };
     let run: HookCommandRunResult;
     try {
@@ -125,6 +126,7 @@ export async function executeCommandHook({
             stdin: `${JSON.stringify({version: 1, cwd, ...input})}\n`,
             signal,
             timeoutMs: hook.timeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS,
+            environment,
         });
     } catch (error) {
         return {

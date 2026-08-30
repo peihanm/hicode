@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   createProjectInstructionLoader,
@@ -92,6 +92,22 @@ describe("CODE.md project instructions", () => {
       );
 
       expect(loaded.files.map((file) => file.content)).toEqual(["isolated-rule"]);
+    });
+  });
+
+  test("拒绝通过符号链接加载 CODE.md", async () => {
+    await withTempProject(async (root) => {
+      const home = join(root, "home");
+      const cwd = join(root, "repo");
+      const outside = join(root, "outside.md");
+      await mkdir(cwd, {recursive: true});
+      await writeFile(outside, "untrusted linked instructions");
+      await symlink(outside, join(cwd, "CODE.md"));
+
+      const loaded = await createProjectInstructionLoader({homeDir: home})(cwd);
+
+      expect(loaded.files).toEqual([]);
+      expect(loaded.issues.some((issue) => issue.includes("CODE.md"))).toBe(true);
     });
   });
 });

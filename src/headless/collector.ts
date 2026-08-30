@@ -28,18 +28,17 @@ export class HeadlessEventCollector {
                 const toolCall = this.toolCalls.find(
                     (call) => call.toolCallId === event.toolCallId
                 );
-                if (toolCall) {
-                    toolCall.result = event.result;
-                    toolCall.outcome = event.outcome === "interrupted"
-                        ? "interrupted"
-                        : event.outcome === "denied"
-                            ? "permission_denied"
-                            : event.outcome === "failed"
-                                ? "failed"
-                                : "ok";
-                    if (event.persisted) toolCall.persisted = event.persisted;
-                    if (event.uiData) toolCall.uiData = event.uiData;
-                }
+                if (!toolCall) break;
+                toolCall.result = event.result;
+                toolCall.outcome = event.outcome === "interrupted"
+                    ? "interrupted"
+                    : event.outcome === "denied"
+                        ? "permission_denied"
+                        : event.outcome === "failed"
+                            ? "failed"
+                            : "ok";
+                if (event.persisted) toolCall.persisted = event.persisted;
+                if (event.uiData) toolCall.uiData = event.uiData;
                 if (
                     event.outcome === "ok" &&
                     event.turnId &&

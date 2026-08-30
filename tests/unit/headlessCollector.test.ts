@@ -37,6 +37,9 @@ describe("HeadlessEventCollector", () => {
     expect(
       collector.getSnapshot().toolCalls.map((call) => call.outcome)
     ).toEqual(outcomes.map(([, expected]) => expected));
+    expect(collector.getSnapshot().currentUIEvents.some((event) =>
+      event.type === "tool_call" && event.toolCallId === "unknown"
+    )).toBe(false);
   });
 
   test("undefined outcome 保持历史 ok 映射，persisted 可在 end 后更新", () => {

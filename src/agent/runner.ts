@@ -32,18 +32,11 @@ export interface AgentRunOptions extends AgentToolBindings {
 interface AgentRunnerDependencies {
     callLLM: LLMCaller;
     compactHistory: CompactHistoryRunner;
-    createTurnId: () => string;
 }
 
 export function createAgentRunner(
-    dependencies: Omit<AgentRunnerDependencies, "createTurnId"> & {
-        createTurnId?: () => string;
-    }
+    dependencies: AgentRunnerDependencies
 ): AgentRunner {
-    const resolvedDependencies: AgentRunnerDependencies = {
-        ...dependencies,
-        createTurnId: dependencies.createTurnId ?? randomUUID,
-    };
     return (
         userInput: string,
         history: Message[],
@@ -58,7 +51,7 @@ export function createAgentRunner(
         ctx,
         inputChannel,
         options,
-        resolvedDependencies
+        dependencies
     );
 }
 
@@ -70,6 +63,24 @@ export type AgentRunner = (
     inputChannel: AgentInputChannel,
     options: AgentRunOptions
 ) => Promise<AgentResult>;
+
+function assertFreshToolCallIds(
+    history: readonly Message[],
+    toolCalls: readonly {id: string}[]
+): void {
+    if (toolCalls.length === 0) return;
+    const existing = new Set<string>();
+    for (const message of history) {
+        if (message.role === "tool") existing.add(message.tool_call_id);
+        if (message.role === "assistant") {
+            for (const call of message.tool_calls ?? []) existing.add(call.id);
+        }
+    }
+    const duplicate = toolCalls.find((call) => existing.has(call.id));
+    if (duplicate) {
+        throw new Error(`模型重复使用历史 Tool Call ID: ${duplicate.id}`);
+    }
+}
 
 // Agent 主循环：调 LLM → 执行工具 → 回喂结果 → 循环，直到 LLM 给出最终回答
 // needsFollowUp 模式：LLM 调了工具就继续，没调就停（参考 claude-code query.ts）
@@ -95,7 +106,7 @@ async function runAgentCore(
     const executeToolImpl = options.executeTool;
     const isToolConcurrencySafeImpl = options.isToolConcurrencySafe;
     const compactHistoryImpl = dependencies.compactHistory;
-    const turnId = dependencies.createTurnId();
+    const turnId = randomUUID();
     const maxConsecutiveDeniedToolCalls =
         options.maxConsecutiveDeniedToolCalls === undefined
             ? undefined
@@ -174,6 +185,7 @@ async function runAgentCore(
             }
             const {message, toolCalls, usage} = llmResult;
             throwIfTurnAborted(ctx.signal);
+            assertFreshToolCallIds(history, toolCalls);
             // assistant message 和 tool result 入 history（真实对话内容）
             history.push(message);
 

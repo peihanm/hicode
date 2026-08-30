@@ -5,7 +5,7 @@ import {
     type ToolOutcome,
 } from "../toolResults/index.js";
 import {isTurnInterruptedError} from "../runtime/abort.js";
-import {getMaxToolConcurrency, mapWithConcurrencyLimit, partitionToolCalls,} from "../tools/orchestration.js";
+import {mapWithConcurrencyLimit, MAX_TOOL_CONCURRENCY, partitionToolCalls,} from "../tools/orchestration.js";
 import {formatInterruptedToolResult} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "./types.js";
@@ -141,7 +141,7 @@ export async function executeToolCallBatch({
             const executions = group.concurrencySafe
                 ? await mapWithConcurrencyLimit(
                     group.calls,
-                    getMaxToolConcurrency(),
+                    MAX_TOOL_CONCURRENCY,
                     executeOne
                 )
                 : [await executeOne(group.calls[0]!)];

@@ -20,6 +20,7 @@ describe("UITurnEventStore", () => {
       tokenCount: 120,
       percentUsed: 0.12,
       warning: false,
+      status: "actual",
     });
     expect(store.getSnapshot().threads).toHaveLength(2);
     expect(store.getSnapshot().staticThreads).toHaveLength(2);

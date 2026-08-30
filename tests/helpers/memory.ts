@@ -9,6 +9,7 @@ import {
 import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createTestStorage} from "./tempProject.js";
+import {testChildEnvironment} from "./childEnvironment.js";
 
 const noChanges: MemoryExtractor = {
     async extract() {
@@ -45,7 +46,10 @@ export function createTestMemoryRuntime(
             apiKeyEnv: "GLM_API_KEY",
             models: [{id: "glm-test", label: "GLM Test"}],
         }),
-        shellRunner: createShellRunner(createDisabledSandboxRuntime()),
+        shellRunner: createShellRunner(
+            createDisabledSandboxRuntime(),
+            testChildEnvironment
+        ),
         settings: {
             enabled: options.enabled ?? true,
             autoExtract: options.autoExtract ?? false,

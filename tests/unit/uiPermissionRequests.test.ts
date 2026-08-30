@@ -72,4 +72,14 @@ describe("UIPermissionRequests", () => {
     });
     expect(requests.getSnapshot()).toBeNull();
   });
+
+  test("subscriber 异常不会卡住权限请求", async () => {
+    const requests = new UIPermissionRequests();
+    requests.subscribe(() => {
+      throw new Error("render failed");
+    });
+    const decision = requests.request("bash", "pending", {});
+    expect(requests.denyPending("stop")).toBe(true);
+    expect(await decision).toEqual({behavior: "deny", message: "stop"});
+  });
 });

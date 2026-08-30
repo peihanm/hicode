@@ -16,7 +16,6 @@
 import type {PermissionMatcher, PermissionRuleBehavior, Tool, ToolContext} from "../tools/types.js";
 import type {PermissionResult} from "./types.js";
 import {matchPattern} from "./matchPattern.js";
-import {isAbsolute, relative, resolve} from "node:path";
 import {toolPathInput, validateWorkspacePath} from "../worktrees/pathGuard.js";
 import {parsePermissionRule} from "./rules.js";
 
@@ -25,17 +24,19 @@ import {parsePermissionRule} from "./rules.js";
  * 语义，但匹配结果只负责过滤 Hook，不会改变权限裁决。
  */
 export async function matchesToolPermissionRule(
-    tool: Tool<any>,
+    tool: Tool,
     input: unknown,
     ruleText: string
 ): Promise<boolean> {
+    const parsedInput = tool.parameters.safeParse(input);
+    if (!parsedInput.success) return false;
     const rule = parsePermissionRule(ruleText);
-    const matcher = await getMatcher(tool, input);
+    const matcher = await getMatcher(tool, parsedInput.data);
     return ruleMatches(rule, tool.name, matcher, "allow");
 }
 
 export async function resolvePermission(
-    tool: Tool<any>,
+    tool: Tool,
     input: unknown,
     ctx: ToolContext
 ): Promise<PermissionResult> {
@@ -50,7 +51,7 @@ export async function resolvePermission(
 }
 
 async function resolvePermissionInner(
-    tool: Tool<any>,
+    tool: Tool,
     input: unknown,
     ctx: ToolContext
 ): Promise<PermissionResult> {
@@ -121,8 +122,12 @@ async function resolvePermissionInner(
     }
 
     // 7. acceptEdits：仅 cwd 内文件编辑自动放行，且不绕过上面的 deny/ask。
-    if (mode === "acceptEdits" && isFileEditTool(tool) && isPathInsideCwd(input, ctx.cwd)) {
-        return {behavior: "allow"};
+    if (mode === "acceptEdits" && isFileEditTool(tool)) {
+        const path = toolPathInput(tool.name, input);
+        if (path !== undefined) {
+            const scoped = await validateWorkspacePath(ctx.cwd, ctx.cwd, path);
+            if (scoped.ok) return {behavior: "allow"};
+        }
     }
 
     // 8. allow 规则
@@ -158,7 +163,7 @@ function ruleMatches(
 
 // 获取 matcher：工具自定义优先，否则用默认（JSON.stringify + matchPattern）
 async function getMatcher(
-    tool: Tool<any>,
+    tool: Tool,
     input: unknown
 ): Promise<PermissionMatcher> {
     if (tool.preparePermissionMatcher) {
@@ -171,17 +176,8 @@ async function getMatcher(
 }
 
 // 判断是否文件编辑工具（用于 acceptEdits 模式）
-function isFileEditTool(tool: Tool<any>): boolean {
+function isFileEditTool(tool: Tool): boolean {
     return tool.name === "write_file" ||
         tool.name === "edit_file" ||
         tool.name === "delete_file";
-}
-
-function isPathInsideCwd(input: unknown, cwd: string): boolean {
-    const path = (input as { path?: unknown })?.path;
-    if (typeof path !== "string") return false;
-
-    const absPath = isAbsolute(path) ? path : resolve(cwd, path);
-    const rel = relative(cwd, absPath);
-    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }

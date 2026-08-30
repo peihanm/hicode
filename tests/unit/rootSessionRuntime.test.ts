@@ -1,7 +1,6 @@
 import {describe, expect, test} from "bun:test";
 import {createCompactState} from "../../src/context/index.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
-import {createToolResultStore} from "../../src/toolResults/index.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
 import type {PermissionMode} from "../../src/permissions/index.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -14,7 +13,6 @@ describe("RootSessionRuntime", () => {
       const hookSessions: unknown[] = [];
       const hooks: HookRuntime = {
         enabled: true,
-        mayRunCommands: false,
         issues: [],
         async execute(input, _signal, context) {
           hookEvents.push(input.hook_event_name);
@@ -46,11 +44,6 @@ describe("RootSessionRuntime", () => {
             createdAt: "2026-07-22T00:00:00.000Z",
           }],
         },
-        toolResultStore: createToolResultStore(
-          resources.storage,
-          cwd,
-          "session-runtime-test"
-        ),
         resumed: true,
       });
 

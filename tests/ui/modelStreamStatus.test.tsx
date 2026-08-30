@@ -35,41 +35,40 @@ describe("ModelStreamStatus", () => {
         modelStream={modelStream}
         progressRef={progressRef}
         stopping={false}
-        animationIntervalMs={10}
       />
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 280));
     expect(instance.lastFrame()).toContain("正在生成推理");
     expect(instance.lastFrame()).toContain("~1 tokens");
 
     progressRef.current = {
       ...modelStream,
-      outputCharacters: 400,
-      estimatedOutputTokens: 100,
+      outputCharacters: 28,
+      estimatedOutputTokens: 7,
     };
-    await new Promise((resolve) => setTimeout(resolve, 35));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const progressingTokens = Number(
       instance.lastFrame()?.match(/~(\d+) tokens/)?.[1]
     );
     expect(progressingTokens).toBeGreaterThan(1);
-    expect(progressingTokens).toBeLessThan(100);
+    expect(progressingTokens).toBeLessThan(7);
 
-    const deadline = Date.now() + 1_000;
+    const deadline = Date.now() + 2_500;
     while (
-      !instance.lastFrame()?.includes("~100 tokens") &&
+      !instance.lastFrame()?.includes("~7 tokens") &&
       Date.now() < deadline
     ) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    expect(instance.lastFrame()).toContain("~100 tokens");
+    expect(instance.lastFrame()).toContain("~7 tokens");
 
     // token 追平后保持真实值，但独立 spinner 行仍继续产生有界动画帧。
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     const settledFrameCount = instance.frames.length;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     expect(instance.frames.length).toBeGreaterThan(settledFrameCount);
-    expect(instance.lastFrame()).toContain("~100 tokens");
+    expect(instance.lastFrame()).toContain("~7 tokens");
     instance.unmount();
   });
 

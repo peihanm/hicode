@@ -7,7 +7,7 @@ import type {
 import { assistantText, assistantToolCall, createFakeLLM } from "../helpers/fakeLLM.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import {
   abortableDelay,
   createTurnAbortController,
@@ -21,6 +21,7 @@ import type { AgentRunner } from "../../src/agent/index.js";
 import { runHeadlessForTest as runHeadless } from "../helpers/headless.js";
 import { createSubagentRegistry } from "../../src/subagents/index.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 function options(cwd: string): Omit<HeadlessOptions, "storage"> {
   return {
@@ -36,6 +37,55 @@ function options(cwd: string): Omit<HeadlessOptions, "storage"> {
 const ignoreOutput = async () => {};
 
 describe("headless integration", () => {
+  test("Session 构造失败仍关闭已经创建的 Root resources", async () => {
+    await withTempProject(async (cwd) => {
+      let closeCount = 0;
+      const resources = createTestRuntimeResources(cwd, {
+        async close() {
+          closeCount += 1;
+        },
+      });
+      resources.toolRuntime.restoreToolDiscovery = () => {
+        throw new Error("session construction failed");
+      };
+
+      await expect(runHeadless(options(cwd), {
+        createResources: async () => resources,
+        writeOutput: ignoreOutput,
+      })).rejects.toThrow("session construction failed");
+      expect(closeCount).toBe(1);
+    });
+  });
+
+  test("Checkpoint 无法创建时不运行 Agent", async () => {
+    await withTempProject(async (cwd) => {
+      const pillarHome = join(cwd, "blocked-storage");
+      await writeFile(pillarHome, "not a directory");
+      const storage = createPillarStorageLayout({pillarHome});
+      const settings = createTestSettings({
+        checkpointing: {enabled: true},
+      });
+      const resources = createTestRuntimeResources(cwd, {settings});
+      (resources as {storage: typeof storage}).storage = storage;
+      let agentCalls = 0;
+
+      await expect(runHeadless({
+        ...options(cwd),
+        settings,
+        storage,
+      }, {
+        createResources: async () => resources,
+        runAgent: (async () => {
+          agentCalls += 1;
+          return {reply: "unexpected", reason: "completed", iterations: 1};
+        }) as AgentRunner,
+        writeOutput: ignoreOutput,
+        writeDiagnostic: async () => {},
+      })).rejects.toThrow();
+      expect(agentCalls).toBe(0);
+    });
+  });
+
   test("输出写入失败仍关闭本轮 Root resources", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([assistantText("完成")]);
@@ -88,7 +138,7 @@ describe("headless integration", () => {
       const [summaryA, summaryB] = await Promise.all([
         runHeadless(options(cwdA), {
           mcpManager: false,
-          createLspManager: (cwd) => {
+          createLspManager: (_storage, cwd) => {
             expect(cwd).toBe(cwdA);
             return lspA.manager;
           },
@@ -97,7 +147,7 @@ describe("headless integration", () => {
         }),
         runHeadless(options(cwdB), {
           mcpManager: false,
-          createLspManager: (cwd) => {
+          createLspManager: (_storage, cwd) => {
             expect(cwd).toBe(cwdB);
             return lspB.manager;
           },
@@ -142,7 +192,6 @@ describe("headless integration", () => {
       const events: string[] = [];
       const hooks: HookRuntime = {
         enabled: true,
-        mayRunCommands: false,
         issues: [],
         async execute(input) {
           events.push(input.hook_event_name);
@@ -212,7 +261,7 @@ describe("headless integration", () => {
       const summary = await runHeadless(options(cwd), {
         mcpManager: false,
         agent: { callLLM: fake.callLLM },
-        toolResultStoreOptions: { rootDir: join(cwd, "tool-results") },
+        toolResultStoreOptions: { pillarHome: join(cwd, "tool-results") },
         writeOutput: ignoreOutput,
       });
 
@@ -349,7 +398,7 @@ describe("headless integration", () => {
 
   test("大结果引用进入 JSON，continue 后仍可分页读取", async () => {
     await withTempProject(async (cwd) => {
-      const rootDir = join(cwd, "tool-result-root");
+      const pillarHome = join(cwd, "tool-result-root");
       const firstFake = createFakeLLM([
         assistantToolCall(
           "bash",
@@ -361,7 +410,7 @@ describe("headless integration", () => {
       const first = await runHeadless(options(cwd), {
         mcpManager: false,
         agent: { callLLM: firstFake.callLLM },
-        toolResultStoreOptions: { rootDir },
+        toolResultStoreOptions: { pillarHome },
         writeOutput: ignoreOutput,
       });
       expect(first.toolCalls[0]?.persisted).toMatchObject({
@@ -393,7 +442,7 @@ describe("headless integration", () => {
         {
           mcpManager: false,
           agent: { callLLM: secondFake.callLLM },
-          toolResultStoreOptions: { rootDir },
+          toolResultStoreOptions: { pillarHome },
           writeOutput: ignoreOutput,
         }
       );
@@ -512,7 +561,6 @@ describe("headless integration", () => {
       let closeCount = 0;
       const hooks: HookRuntime = {
         enabled: true,
-        mayRunCommands: false,
         issues: [],
         async execute(input) {
           if (input.hook_event_name === "SessionEnd") {

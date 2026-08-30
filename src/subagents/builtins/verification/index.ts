@@ -24,5 +24,4 @@ export const VERIFICATION_SUBAGENT: SubagentRegistration = {
 
 export {
     parseVerificationSummary,
-    parseVerificationVerdict,
 };

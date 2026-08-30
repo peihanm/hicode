@@ -11,12 +11,21 @@ describe("shell command permissions", () => {
     expect(isShellCommandReadOnly("pwd && git status --short")).toBe(true);
     expect(isShellCommandReadOnly("rg TODO src | head -20")).toBe(true);
     expect(isShellCommandReadOnly("git add src/a.ts")).toBe(false);
+    expect(isShellCommandReadOnly("pwd\nrm result.txt")).toBe(false);
   });
 
   test("重定向和命令替换不会被当作只读", () => {
     expect(isShellCommandReadOnly("echo ok > result.txt")).toBe(false);
+    expect(isShellCommandReadOnly("echo ok>result.txt")).toBe(false);
     expect(isShellCommandReadOnly("echo $(whoami)")).toBe(false);
     expect(isShellCommandReadOnly("cat `which node`")).toBe(false);
+    expect(isShellCommandReadOnly("sort -o result.txt input.txt")).toBe(false);
+    expect(isShellCommandReadOnly("rg --pre ./transform TODO")).toBe(false);
+    expect(isShellCommandReadOnly("tree -o result.txt")).toBe(false);
+    expect(isShellCommandReadOnly("sort --compress-program=./run input")).toBe(false);
+    expect(isShellCommandReadOnly("git diff --ext-diff")).toBe(false);
+    expect(isShellCommandReadOnly("git grep --open-files-in-pager=./run term")).toBe(false);
+    expect(isShellCommandReadOnly("echo 'literal > text'")).toBe(true);
   });
 
   test("只识别未转义且未引用的后台操作符", () => {
@@ -36,7 +45,7 @@ describe("shell command permissions", () => {
       "head",
     ]);
     expect(generateShellAllowPattern("npm test && git status")).toBe(
-      "npm:* | git:*"
+      "npm test:* | git status:*"
     );
   });
 

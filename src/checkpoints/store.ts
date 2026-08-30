@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {realpathSync} from "node:fs";
-import {chmod, mkdir, open, readdir, readFile, stat, unlink,} from "node:fs/promises";
+import {chmod, lstat, mkdir, open, readdir, readFile, stat, unlink,} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
 import {createFileChange} from "../fileChanges/index.js";
 import {withFileLock, writeFileAtomically} from "../persistence/index.js";
@@ -37,7 +37,7 @@ import {
     type FileCheckpointRecord,
     type FileFingerprint,
 } from "./types.js";
-import {createPillarStorageLayout, type PillarStorageLayout} from "../persistence/index.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 
 const MAX_CHECKPOINTS_PER_SESSION = 100;
 const MAX_CHECKPOINT_MUTATIONS = 100_000;
@@ -45,6 +45,12 @@ const MAX_CHECKPOINT_MUTATION_LOG_BYTES = 64 * 1024 * 1024;
 const MAX_PROMPT_BYTES = 1024 * 1024;
 const MAX_PROMPT_PREVIEW_CHARACTERS = 200;
 const MAX_SESSION_BLOB_BYTES = 256 * 1024 * 1024;
+const MAX_CHECKPOINT_MANIFEST_BYTES = 1024 * 1024;
+const MAX_CHECKPOINT_RECORD_BYTES = 8 * 1024 * 1024;
+const MAX_CHECKPOINT_WARNINGS = 10_000;
+const MAX_CHECKPOINT_ID_CHARACTERS = 512;
+const MAX_CHECKPOINT_PATH_CHARACTERS = 16_384;
+const MAX_CHECKPOINT_WARNING_CHARACTERS = 8_000;
 
 type StoredCheckpointRecord = Omit<FileCheckpointRecord, "mutations">;
 
@@ -104,11 +110,19 @@ function promptPreview(prompt: string): string {
 function isFingerprint(value: unknown): value is FileFingerprint {
     if (!value || typeof value !== "object") return false;
     const fingerprint = value as Partial<FileFingerprint>;
-    if (fingerprint.kind === "missing") return true;
+    if (fingerprint.kind === "missing") {
+        return fingerprint.sha256 === undefined &&
+            fingerprint.byteLength === undefined &&
+            fingerprint.mode === undefined;
+    }
     return fingerprint.kind === "regular" &&
         typeof fingerprint.sha256 === "string" &&
-        typeof fingerprint.byteLength === "number" &&
-        (fingerprint.mode === undefined || typeof fingerprint.mode === "number");
+        /^[0-9a-f]{64}$/i.test(fingerprint.sha256) &&
+        Number.isSafeInteger(fingerprint.byteLength) &&
+        (fingerprint.byteLength ?? -1) >= 0 &&
+        (fingerprint.byteLength ?? 0) <= MAX_CHECKPOINT_FILE_BYTES &&
+        (fingerprint.mode === undefined ||
+            (Number.isSafeInteger(fingerprint.mode) && fingerprint.mode >= 0));
 }
 
 function isCoverageWarning(value: unknown): value is CheckpointCoverageWarning {
@@ -117,7 +131,10 @@ function isCoverageWarning(value: unknown): value is CheckpointCoverageWarning {
     return typeof warning.code === "string" &&
         WARNING_CODES.has(warning.code as CheckpointCoverageWarning["code"]) &&
         typeof warning.message === "string" &&
-        (warning.path === undefined || typeof warning.path === "string");
+        warning.message.length <= MAX_CHECKPOINT_WARNING_CHARACTERS &&
+        (warning.path === undefined ||
+            (typeof warning.path === "string" &&
+                warning.path.length <= MAX_CHECKPOINT_PATH_CHARACTERS));
 }
 
 function isIndexEntry(value: unknown): value is FileCheckpointIndexEntry {
@@ -125,8 +142,11 @@ function isIndexEntry(value: unknown): value is FileCheckpointIndexEntry {
     const entry = value as Partial<FileCheckpointIndexEntry>;
     return typeof entry.checkpointId === "string" &&
         entry.checkpointId.length > 0 &&
+        entry.checkpointId.length <= MAX_CHECKPOINT_ID_CHARACTERS &&
         (entry.parentCheckpointId === undefined ||
-            typeof entry.parentCheckpointId === "string") &&
+            (typeof entry.parentCheckpointId === "string" &&
+                entry.parentCheckpointId.length > 0 &&
+                entry.parentCheckpointId.length <= MAX_CHECKPOINT_ID_CHARACTERS)) &&
         Number.isSafeInteger(entry.sequence) &&
         (entry.sequence ?? 0) >= 0;
 }
@@ -157,14 +177,35 @@ function parseManifest(
         manifest.cwd !== cwd ||
         manifest.sessionId !== sessionId ||
         !Number.isSafeInteger(manifest.sequence) ||
+        (manifest.sequence ?? -1) < 0 ||
         !manifest.head ||
         typeof manifest.head.branchId !== "string" ||
+        manifest.head.branchId.length === 0 ||
+        manifest.head.branchId.length > MAX_CHECKPOINT_ID_CHARACTERS ||
         (manifest.head.checkpointId !== undefined &&
-            typeof manifest.head.checkpointId !== "string") ||
+            (typeof manifest.head.checkpointId !== "string" ||
+                manifest.head.checkpointId.length === 0 ||
+                manifest.head.checkpointId.length > MAX_CHECKPOINT_ID_CHARACTERS)) ||
         !Array.isArray(manifest.checkpoints) ||
+        manifest.checkpoints.length > MAX_CHECKPOINTS_PER_SESSION ||
         !manifest.checkpoints.every(isIndexEntry)
     ) {
         throw new Error("Checkpoint manifest 格式无效或不属于当前 Session");
+    }
+    const checkpoints = manifest.checkpoints as FileCheckpointIndexEntry[];
+    const ids = new Set<string>();
+    let previousSequence = -1;
+    for (const checkpoint of checkpoints) {
+        if (
+            ids.has(checkpoint.checkpointId) ||
+            checkpoint.sequence <= previousSequence ||
+            checkpoint.sequence > manifest.sequence!
+        ) throw new Error("Checkpoint manifest 索引顺序或身份重复");
+        ids.add(checkpoint.checkpointId);
+        previousSequence = checkpoint.sequence;
+    }
+    if (manifest.head.checkpointId && !ids.has(manifest.head.checkpointId)) {
+        throw new Error("Checkpoint manifest head 不在当前索引中");
     }
     return manifest as FileCheckpointManifest;
 }
@@ -184,15 +225,24 @@ function parseStoredRecord(
         record.checkpointId !== checkpointId ||
         record.sessionId !== sessionId ||
         typeof record.branchId !== "string" ||
+        record.branchId.length === 0 ||
+        record.branchId.length > MAX_CHECKPOINT_ID_CHARACTERS ||
         (record.parentCheckpointId !== undefined &&
-            typeof record.parentCheckpointId !== "string") ||
+            (typeof record.parentCheckpointId !== "string" ||
+                record.parentCheckpointId.length === 0 ||
+                record.parentCheckpointId.length > MAX_CHECKPOINT_ID_CHARACTERS)) ||
         !Number.isSafeInteger(record.sequence) ||
+        (record.sequence ?? -1) < 0 ||
         typeof record.createdAt !== "string" ||
+        !Number.isFinite(Date.parse(record.createdAt)) ||
         typeof record.prompt !== "string" ||
+        Buffer.byteLength(record.prompt, "utf8") > MAX_PROMPT_BYTES ||
         typeof record.promptPreview !== "string" ||
+        record.promptPreview.length > MAX_PROMPT_PREVIEW_CHARACTERS ||
         !["active", "settled", "no_agent_run"].includes(record.status ?? "") ||
         !["complete", "incomplete"].includes(record.fileCoverage ?? "") ||
         !Array.isArray(record.coverageWarnings) ||
+        record.coverageWarnings.length > MAX_CHECKPOINT_WARNINGS ||
         !record.coverageWarnings.every(isCoverageWarning)
     ) {
         throw new Error(`Checkpoint record 格式无效: ${checkpointId}`);
@@ -209,15 +259,18 @@ function parseMutationEvent(value: unknown): MutationEvent {
         event.version !== 1 ||
         typeof event.path !== "string" ||
         event.path.length === 0 ||
-        typeof event.toolCallId !== "string"
+        event.path.length > MAX_CHECKPOINT_PATH_CHARACTERS ||
+        typeof event.toolCallId !== "string" ||
+        event.toolCallId.length === 0 ||
+        event.toolCallId.length > MAX_CHECKPOINT_ID_CHARACTERS
     ) {
         throw new Error("Checkpoint mutation event 字段无效");
     }
     if (event.type === "before" && isFingerprint(event.before)) {
-        if (
-            event.beforeBlobId !== undefined &&
-            typeof event.beforeBlobId !== "string"
-        ) {
+        const validBlob = event.before.kind === "regular"
+            ? event.beforeBlobId === event.before.sha256
+            : event.beforeBlobId === undefined;
+        if (!validBlob) {
             throw new Error("Checkpoint mutation Blob 引用无效");
         }
         return event as BeforeMutationEvent;
@@ -327,18 +380,12 @@ export class FileCheckpointStore {
         return new FileCheckpointStore(storage, cwd, sessionId);
     }
 
-    static createFactory(options: FileCheckpointStoreOptions = {}) {
-        const storage = createPillarStorageLayout({
-            ...(options.projectsRoot
-                ? {projectsRoot: options.projectsRoot}
-                : {}),
-        });
-        return (cwd: string, sessionId: string): FileCheckpointStore =>
-            new FileCheckpointStore(storage, cwd, sessionId);
-    }
-
     private async readManifest(): Promise<FileCheckpointManifest> {
         try {
+            const info = await stat(this.manifestPath);
+            if (info.size > MAX_CHECKPOINT_MANIFEST_BYTES) {
+                throw new Error("Checkpoint manifest 超过大小上限");
+            }
             return parseManifest(
                 await readFile(this.manifestPath, "utf8"),
                 this.cwd,
@@ -357,11 +404,11 @@ export class FileCheckpointStore {
     private async writeManifest(manifest: FileCheckpointManifest): Promise<void> {
         await mkdir(this.directory, {recursive: true, mode: 0o700});
         await chmod(this.directory, 0o700).catch(() => undefined);
-        await writeFileAtomically(
-            this.manifestPath,
-            `${JSON.stringify(manifest, null, 2)}\n`,
-            0o600
-        );
+        const content = `${JSON.stringify(manifest, null, 2)}\n`;
+        if (Buffer.byteLength(content, "utf8") > MAX_CHECKPOINT_MANIFEST_BYTES) {
+            throw new Error("Checkpoint manifest 超过大小上限");
+        }
+        await writeFileAtomically(this.manifestPath, content, 0o600);
         await chmod(this.manifestPath, 0o600).catch(() => undefined);
     }
 
@@ -370,6 +417,10 @@ export class FileCheckpointStore {
     ): Promise<StoredCheckpointRecord> {
         const path = getCheckpointRecordPath(this.directory, checkpointId);
         try {
+            const info = await stat(path);
+            if (info.size > MAX_CHECKPOINT_RECORD_BYTES) {
+                throw new Error(`Checkpoint record 超过大小上限: ${checkpointId}`);
+            }
             return parseStoredRecord(
                 await readFile(path, "utf8"),
                 checkpointId,
@@ -391,11 +442,11 @@ export class FileCheckpointStore {
             checkpoint.checkpointId
         );
         await mkdir(dirname(path), {recursive: true, mode: 0o700});
-        await writeFileAtomically(
-            path,
-            `${JSON.stringify(checkpoint, null, 2)}\n`,
-            0o600
-        );
+        const content = `${JSON.stringify(checkpoint, null, 2)}\n`;
+        if (Buffer.byteLength(content, "utf8") > MAX_CHECKPOINT_RECORD_BYTES) {
+            throw new Error(`Checkpoint record 超过大小上限: ${checkpoint.checkpointId}`);
+        }
+        await writeFileAtomically(path, content, 0o600);
         await chmod(path, 0o600).catch(() => undefined);
     }
 
@@ -557,9 +608,14 @@ export class FileCheckpointStore {
     private async ensureBlob(content: string | Buffer): Promise<string> {
         const blobId = hashCheckpointContent(content);
         const path = getCheckpointBlobPath(this.directory, blobId);
+        let replacedBytes = 0;
         try {
-            await stat(path);
-            return blobId;
+            const info = await lstat(path);
+            if (!info.isFile() || info.isSymbolicLink()) {
+                throw new Error(`Checkpoint Blob 不是 regular file: ${blobId}`);
+            }
+            replacedBytes = info.size;
+            if (hashCheckpointContent(await readFile(path)) === blobId) return blobId;
         } catch (error) {
             if (!isErrorCode(error, "ENOENT")) throw error;
         }
@@ -571,12 +627,15 @@ export class FileCheckpointStore {
             if (!entry.isFile()) continue;
             totalBytes += (await stat(resolve(dirname(path), entry.name))).size;
         }
-        if (totalBytes + Buffer.byteLength(content) > MAX_SESSION_BLOB_BYTES) {
+        if (
+            totalBytes - replacedBytes + Buffer.byteLength(content) >
+            MAX_SESSION_BLOB_BYTES
+        ) {
             throw new Error(`Session Checkpoint Blob 超过 ${MAX_SESSION_BLOB_BYTES} 字节上限`);
         }
         await writeFileAtomically(
             path,
-            Buffer.isBuffer(content) ? content.toString("utf8") : content,
+            Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8"),
             0o600
         );
         await chmod(path, 0o600).catch(() => undefined);
@@ -587,6 +646,12 @@ export class FileCheckpointStore {
         const path = getCheckpointBlobPath(this.directory, blobId);
         let content: Buffer;
         try {
+            const info = await lstat(path);
+            if (
+                !info.isFile() ||
+                info.isSymbolicLink() ||
+                info.size > MAX_CHECKPOINT_FILE_BYTES
+            ) throw new Error(`Checkpoint Blob 类型或大小无效: ${blobId}`);
             content = await readFile(path);
         } catch (error) {
             if (isErrorCode(error, "ENOENT")) {
@@ -1006,10 +1071,6 @@ export class FileCheckpointStore {
             };
         });
     }
-}
-
-export interface FileCheckpointStoreOptions {
-    projectsRoot?: string;
 }
 
 export const createFileCheckpointStore = FileCheckpointStore.create;

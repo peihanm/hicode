@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
-import {MessageList, projectDefaultThreads,} from "../../src/ui/conversation/MessageList.js";
+import {MessageList} from "../../src/ui/conversation/MessageList.js";
+import {projectDefaultThreads} from "../../src/ui/conversation/projection.js";
 import {reduceThreads, threadsFromHistory,} from "../../src/ui/conversation/threadReducer.js";
 import type {UIThread} from "../../src/ui/conversation/types.js";
 

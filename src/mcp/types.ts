@@ -1,6 +1,8 @@
 import type {Client} from "@modelcontextprotocol/sdk/client/index.js";
 import type {Tool as McpSdkTool} from "@modelcontextprotocol/sdk/types.js";
 import type {Tool} from "../tools/types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 export type McpConfigSource = "user" | "project";
 export type McpApprovalDecision = "once" | "always" | "deny";
@@ -74,16 +76,14 @@ export interface McpConnectedServer {
 }
 
 export interface McpManagerOptions {
+    storage: PillarStorageLayout;
     cwd: string;
+    childEnvironment: ChildProcessEnvironment;
     signal?: AbortSignal;
     headless?: boolean;
     requestApproval?: (
         request: McpApprovalRequest
     ) => Promise<McpApprovalDecision>;
-    userConfigPath?: string;
-    compatProjectConfigPath?: string;
-    projectConfigPath?: string;
-    approvalPath?: string;
 }
 
 export interface McpManagerLike {
@@ -91,7 +91,7 @@ export interface McpManagerLike {
 
     getSnapshots(): readonly McpServerSnapshot[];
 
-    getTools(): readonly Tool<any>[];
+    getTools(): readonly Tool[];
 
     subscribe(listener: () => void): () => void;
 

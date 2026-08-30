@@ -34,7 +34,7 @@ describe("ToolResultStore", () => {
   test("持久化文本、限制大小并按 UTF-8 byte 安全分页", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "session-a", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
         maxArtifactBytes: 64,
         maxSessionBytes: 128,
         previewChars: 8,
@@ -71,7 +71,7 @@ describe("ToolResultStore", () => {
   test("promoteFile 只接受当前 Session capture", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "session-b", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
       });
       const outside = join(cwd, "outside.txt");
       await writeFile(outside, "nope");
@@ -88,7 +88,7 @@ describe("ToolResultStore", () => {
   test("二进制 Artifact 受 Session 配额约束且不会经过 UTF-8 解码", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "session-binary", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
         maxArtifactBytes: 8,
         maxSessionBytes: 8,
       });
@@ -111,9 +111,9 @@ describe("ToolResultStore", () => {
 
   test("不同 Session 不能通过相同 result id 互相读取", async () => {
     await withTempProject(async (cwd) => {
-      const rootDir = join(cwd, "store");
-      const first = createTestToolResultStore(cwd, "session-one", { rootDir });
-      const second = createTestToolResultStore(cwd, "session-two", { rootDir });
+      const pillarHome = join(cwd, "store");
+      const first = createTestToolResultStore(cwd, "session-one", {pillarHome});
+      const second = createTestToolResultStore(cwd, "session-two", {pillarHome});
       const persisted = await first.persistText({
         toolCallId: "same-call",
         toolName: "test",
@@ -132,7 +132,7 @@ describe("ToolResultStore", () => {
   test("并发持久化仍严格遵守 Session committed bytes 配额", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "concurrent-quota", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
         maxArtifactBytes: 100,
         maxSessionBytes: 100,
       });
@@ -165,7 +165,7 @@ describe("ToolResultStore", () => {
   test("并发写相同 binary artifact 时所有返回值匹配唯一 committed pair", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "binary-race", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
       });
       const results = await Promise.all([
         store.persistBinary({
@@ -208,7 +208,7 @@ describe("ToolResultStore", () => {
   test("安全修复 content-only 和损坏 metadata artifact pair", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "repair-text", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
       });
       await mkdir(store.sessionDir, { recursive: true });
       const resultId = store.resultIdFor("repair-call");
@@ -240,10 +240,53 @@ describe("ToolResultStore", () => {
     });
   });
 
+  test("崩溃留下的 content-only 文件不占用 committed quota", async () => {
+    await withTempProject(async (cwd) => {
+      const store = createTestToolResultStore(cwd, "orphan-quota", {
+        pillarHome: join(cwd, "store"),
+        maxArtifactBytes: 5,
+        maxSessionBytes: 5,
+      });
+      await mkdir(store.sessionDir, { recursive: true });
+      await writeFile(join(store.sessionDir, "orphan.txt"), "x".repeat(100));
+
+      const persisted = await store.persistText({
+        toolCallId: "fresh-call",
+        toolName: "test",
+        content: "hello",
+      });
+
+      expect(persisted.complete).toBe(true);
+      expect(persisted.byteLength).toBe(5);
+    });
+  });
+
+  test("读取时拒绝被替换为 symlink 的 content", async () => {
+    if (process.platform === "win32") return;
+    await withTempProject(async (cwd) => {
+      const store = createTestToolResultStore(cwd, "symlink-content", {
+        pillarHome: join(cwd, "store"),
+      });
+      const persisted = await store.persistText({
+        toolCallId: "safe-call",
+        toolName: "test",
+        content: "saved",
+      });
+      const outside = join(cwd, "outside.txt");
+      await writeFile(outside, "saved");
+      await rm(persisted.path);
+      await symlink(outside, persisted.path);
+
+      await expect(
+        store.readRange({ resultId: persisted.resultId, offset: 0, limit: 5 })
+      ).rejects.toThrow("content is invalid");
+    });
+  });
+
   test("安全修复 metadata-only binary pair 并忽略 metadata 中的旧 path", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "repair-binary", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
       });
       await mkdir(store.sessionDir, { recursive: true });
       const artifactId = "repair-artifact";
@@ -285,7 +328,7 @@ describe("ToolResultStore", () => {
   test("metadata 存在但 content 丢失时 readRange 返回领域错误", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "missing-content", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
       });
       const persisted = await store.persistText({
         toolCallId: "missing-call",
@@ -306,7 +349,7 @@ describe("ToolResultStore", () => {
   test("remove 与同 ID persist 并发后不会留下半个 artifact pair", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "remove-race", {
-        rootDir: join(cwd, "store"),
+        pillarHome: join(cwd, "store"),
       });
       const first = await store.persistText({
         toolCallId: "same-call",

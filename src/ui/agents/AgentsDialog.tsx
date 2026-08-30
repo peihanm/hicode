@@ -76,7 +76,7 @@ function fieldLabel(field: EditField): string {
         name: "名称",
         description: "使用说明",
         tools: "工具（逗号分隔）",
-        model: "模型（inherit、fast 或模型 ID）",
+        model: "模型（inherit 或 fast）",
         maxIterations: "最大轮次（2–30）",
         systemPrompt: "System Prompt（Shift+Enter 换行）",
     }[field];

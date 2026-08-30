@@ -2,9 +2,11 @@ import {describe, expect, test} from "bun:test";
 import {access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {WorktreeManifestStore} from "../../src/worktrees/manifest.js";
-import {WorktreeRuntime} from "../../src/worktrees/runtime.js";
+import {createWorktreeRuntime} from "../../src/worktrees/runtime.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import type {WorktreeRuntimeLike} from "../../src/worktrees/types.js";
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
     const child = Bun.spawn(["git", "-C", cwd, ...args], {
@@ -30,10 +32,11 @@ async function initializeRepository(cwd: string, ignored = true): Promise<void> 
     await git(cwd, "commit", "-q", "-m", "initial");
 }
 
-function runtime(cwd: string, storage: string): WorktreeRuntime {
-    return new WorktreeRuntime(
+function runtime(cwd: string, storage: string): WorktreeRuntimeLike {
+    return createWorktreeRuntime(
+        createPillarStorageLayout({pillarHome: storage}),
         cwd,
-        new WorktreeManifestStore(join(storage, "manifests"))
+        testChildEnvironment
     );
 }
 

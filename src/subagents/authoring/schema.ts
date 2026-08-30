@@ -9,7 +9,7 @@ export const generatedAgentDefinitionSchema = z.object({
     description: z.string().trim().min(1).max(500),
     system_prompt: z.string().trim().min(1).max(40_000),
     suggested_tools: z.array(z.string().trim().min(1).max(128)).min(1).max(32),
-    model: z.string().trim().min(1).max(120).regex(/^\S+$/).default("inherit"),
+    model: z.enum(["inherit", "fast"]).default("inherit"),
     max_iterations: z.number().int().min(2).max(30).default(12),
 }).strict();
 
@@ -39,7 +39,7 @@ export const submitAgentDefinitionTool: OpenAITool = {
                     maxItems: 32,
                     items: {type: "string"},
                 },
-                model: {type: "string"},
+                model: {type: "string", enum: ["inherit", "fast"]},
                 max_iterations: {type: "integer", minimum: 2, maximum: 30},
             },
         },

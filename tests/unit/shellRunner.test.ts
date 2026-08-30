@@ -5,6 +5,8 @@ import type {
 } from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
+import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 
 function sandboxRuntime(
     status: SandboxStatus,
@@ -37,7 +39,8 @@ describe("ShellRunner", () => {
         await withTempProject(async (cwd) => {
             const events: string[] = [];
             const runner = createShellRunner(
-                sandboxRuntime({kind: "disabled"}, events)
+                sandboxRuntime({kind: "disabled"}, events),
+                testChildEnvironment
             );
             const result = await runner.run({
                 command: "printf disabled",
@@ -50,6 +53,33 @@ describe("ShellRunner", () => {
         });
     });
 
+    test("项目命令无法继承或重新注入模型凭证", async () => {
+        await withTempProject(async (cwd) => {
+            const childEnvironment = createChildProcessEnvironment({
+                ...process.env,
+                VISIBLE_VALUE: "visible",
+                CUSTOM_MODEL_CREDENTIAL: "configured-secret",
+                SESSION_TOKEN: "token-secret",
+            }, ["CUSTOM_MODEL_CREDENTIAL"]);
+            const runner = createShellRunner(
+                sandboxRuntime({kind: "disabled"}),
+                childEnvironment
+            );
+            const result = await runner.run({
+                command: "printf '%s|%s|%s' \"$VISIBLE_VALUE\" \"$CUSTOM_MODEL_CREDENTIAL\" \"$SESSION_TOKEN\"",
+                cwd,
+                signal: new AbortController().signal,
+                env: {
+                    CUSTOM_MODEL_CREDENTIAL: "reinjected",
+                    SESSION_TOKEN: "reinjected",
+                },
+            });
+
+            expect(result.stdout).toBe("visible||");
+            expect(result.termination).toMatchObject({kind: "exit", code: 0});
+        });
+    });
+
     test("ready 状态包装 argv 并在结束后执行诊断和清理", async () => {
         await withTempProject(async (cwd) => {
             const events: string[] = [];
@@ -58,7 +88,8 @@ describe("ShellRunner", () => {
                     kind: "ready",
                     platform: "macos",
                     warnings: [],
-                }, events)
+                }, events),
+                testChildEnvironment
             );
             const result = await runner.run({
                 command: "printf sandboxed",
@@ -81,7 +112,8 @@ describe("ShellRunner", () => {
                     kind: "unavailable",
                     reason: "socket denied",
                     warnings: [],
-                })
+                }),
+                testChildEnvironment
             );
             const blocked = await runner.run({
                 command: "printf blocked",

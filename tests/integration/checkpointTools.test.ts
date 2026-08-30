@@ -1,26 +1,26 @@
 import {describe, expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {FileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
-import {FileCheckpointStore} from "../../src/checkpoints/store.js";
+import {createFileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 describe("Checkpoint tool integration", () => {
     test("write、edit 和 delete 共享 Turn Checkpoint，恢复后强制重新读取", async () => {
         await withTempProject(async (cwd) => {
             const fileState = createFileStateTracker();
-            const runtime = new FileCheckpointRuntime(
-                FileCheckpointStore.createFactory({
-                    projectsRoot: join(cwd, ".checkpoint-projects"),
-                })(
-                    cwd,
-                    "tool-session"
-                ),
-                fileState
-            );
+            const runtime = createFileCheckpointRuntime({
+                storage: createPillarStorageLayout({
+                    pillarHome: join(cwd, ".pillar-test-checkpoints"),
+                }),
+                cwd,
+                sessionId: "tool-session",
+                enabled: true,
+                fileState,
+            });
             const ctx = createTestContext(cwd, {
                 permissionMode: "bypassPermissions",
                 fileState,

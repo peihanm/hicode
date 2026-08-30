@@ -15,7 +15,7 @@ describe("/agents slash command", () => {
                 whenToUse: "审查实现风险",
                 systemPrompt: "review",
                 allowedTools: ["read_file", "grep"],
-                model: "glm-reviewer",
+                model: "fast",
                 maxIterations: 7,
                 source: "project",
                 path: `${cwd}/.pillar/agents/reviewer.md`,
@@ -55,7 +55,7 @@ describe("/agents slash command", () => {
             expect(messages).toHaveLength(1);
             expect(messages[0]).toContain("Agents · 4 个可用");
             expect(messages[0]).toContain("reviewer · project");
-            expect(messages[0]).toContain("模型 glm-reviewer · 最大轮次 7");
+            expect(messages[0]).toContain("模型 fast (glm-fast-test) · 最大轮次 7");
             expect(messages[0]).toContain("工具 (2) read_file · grep");
             expect(messages[0]).toContain("加载问题 · 1");
             expect(messages[0]).toContain("ERROR · user · broken.md · tools");

@@ -6,7 +6,7 @@ import {createVerificationBashTool, verificationBashTaskTool,} from "./tools.js"
 const VERIFICATION_BROWSER_MCP_PATTERN =
     /^mcp__(?:playwright|browser|browser_use|chrome|chrome_devtools|claude_in_chrome)__/i;
 
-function canUseMcpTool(tool: Tool<any>): boolean {
+function canUseMcpTool(tool: Tool): boolean {
     if (VERIFICATION_BROWSER_MCP_PATTERN.test(tool.name)) return true;
     try {
         // MCP adapter 的 isReadOnly 只反映 Server annotations；未显式标注时

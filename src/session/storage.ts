@@ -2,9 +2,10 @@ import {randomUUID} from "node:crypto";
 import {createInitialHistory} from "../prompt/index.js";
 import {normalizeGitSessionState} from "../git/index.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import {getProjectKey} from "../persistence/index.js";
 import {
     countSessionConversationMessages,
-    isRuntimeQueuedMessage,
+    hasCompleteToolPairs,
     limitSessionUIEvents,
     normalizeSessionSummaryHint,
     normalizeToolDiscoverySnapshot,
@@ -38,6 +39,9 @@ export async function saveSessionSnapshot(
     input: SaveSessionSnapshotInput
 ): Promise<void> {
     const conversation = stripSystemMessage(input.history);
+    // Todo/permission callbacks may request a snapshot while a tool batch is
+    // still running. Keep the previous restorable state until results exist.
+    if (!hasCompleteToolPairs(conversation)) return;
     const summarized = summarizeSessionHistory(conversation);
     const hint = input.summaryHint
         ? normalizeSessionSummaryHint(input.summaryHint)
@@ -159,8 +163,11 @@ export function listSessionIndex(
     storage: PillarStorageLayout,
     cwd: string
 ): SessionIndexEntry[] {
+    const projectKey = getProjectKey(cwd);
     return readSessionIndex(storage, cwd).sessions
-        .filter((entry) => entry.cwd === cwd && !entry.archived)
+        .filter(
+            (entry) => getProjectKey(entry.cwd) === projectKey && !entry.archived
+        )
         .flatMap((entry) => {
             const snapshot = readLatestSessionSnapshot(storage, cwd, entry.sessionId);
             return snapshot
@@ -192,7 +199,7 @@ export function loadSession(
     );
     return {
         sessionId,
-        cwd: snapshot.cwd,
+        cwd,
         model: snapshot.model,
         history: [...createInitialHistory(cwd, model), ...snapshot.conversation],
         todos: snapshot.todos,
@@ -203,9 +210,7 @@ export function loadSession(
         checkpointHead: snapshot.checkpointHead
             ? {...snapshot.checkpointHead}
             : undefined,
-        queuedInputs: Array.isArray(snapshot.queuedInputs)
-            ? snapshot.queuedInputs.filter(isRuntimeQueuedMessage)
-            : [],
+        queuedInputs: snapshot.queuedInputs ?? [],
         toolDiscovery: normalizeToolDiscoverySnapshot(snapshot.toolDiscovery),
         gitSession: normalizeGitSessionState(snapshot.gitSession),
         index,

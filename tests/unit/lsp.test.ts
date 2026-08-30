@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Diagnostic } from "vscode-languageserver-protocol";
 import { loadLspConfig } from "../../src/lsp/config.js";
 import { formatDiagnosticsSummary } from "../../src/lsp/diagnostics.js";
-import { LSPManager } from "../../src/lsp/manager.js";
+import {createLspManager} from "../../src/lsp/manager.js";
 import {
   abortableDelay,
   createTurnAbortController,
@@ -18,6 +18,7 @@ import { createFakeLspManager } from "../helpers/fakeLsp.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { executeTool } from "../helpers/executeTool.js";
 import { getPostWriteDiagnostics } from "../../src/tools/shared/lspDiagnostics.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 function diagnostic(index: number, severity: Diagnostic["severity"] = 1): Diagnostic {
   return {
@@ -33,11 +34,11 @@ function diagnostic(index: number, severity: Diagnostic["severity"] = 1): Diagno
 }
 
 describe("LSP config and diagnostics", () => {
-  test("项目配置被加载并按扩展名路由", async () => {
-    await withTempProject(async (cwd) => {
-      await mkdir(join(cwd, ".pillar"));
+  test("用户配置被加载并按扩展名路由", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await mkdir(storage.pillarHome, {recursive: true});
       await writeFile(
-        join(cwd, ".pillar", "lsp.json"),
+        join(storage.pillarHome, "lsp.json"),
         JSON.stringify({
           "test-language-server": {
             command: "never-started-in-test",
@@ -47,37 +48,56 @@ describe("LSP config and diagnostics", () => {
         })
       );
 
-      const config = loadLspConfig(cwd);
+      const config = await loadLspConfig(storage, cwd);
       expect(config["test-language-server"]).toMatchObject({
         command: "never-started-in-test",
         extensions: [".foo"],
       });
 
-      const manager = new LSPManager(cwd);
+      const manager = await createLspManager(
+        storage,
+        cwd,
+        testChildEnvironment
+      );
+      expect(manager).toBeDefined();
       try {
-        expect(manager.getServerForFile("src/example.foo")?.name).toBe(
+        expect(manager!.getServerForFile("src/example.foo")?.name).toBe(
           "test-language-server"
         );
-        expect(manager.getServerForFile("src/example.FOO")?.name).toBe(
+        expect(manager!.getServerForFile("src/example.FOO")?.name).toBe(
           "test-language-server"
         );
-        expect(manager.getServerForFile("src/example.unknown")).toBeUndefined();
-        expect(manager.listServers()).toContainEqual({
+        expect(manager!.getServerForFile("src/example.unknown")).toBeUndefined();
+        expect(manager!.listServers()).toContainEqual({
           name: "test-language-server",
           state: "stopped",
           extensions: [".foo"],
         });
       } finally {
-        await manager.shutdown();
+        await manager!.shutdown();
       }
     });
   });
 
-  test("损坏的项目配置不会阻止启动", async () => {
-    await withTempProject(async (cwd) => {
-      await mkdir(join(cwd, ".pillar"));
-      await writeFile(join(cwd, ".pillar", "lsp.json"), "{invalid");
-      expect(() => loadLspConfig(cwd)).not.toThrow();
+  test("损坏的用户配置不会阻止启动", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await mkdir(storage.pillarHome, {recursive: true});
+      await writeFile(join(storage.pillarHome, "lsp.json"), "{invalid");
+      await expect(loadLspConfig(storage, cwd)).resolves.toBeDefined();
+    });
+  });
+
+  test("项目 LSP 命令配置不会进入 Runtime", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await mkdir(join(cwd, ".pillar"), {recursive: true});
+      await writeFile(join(cwd, ".pillar", "lsp.json"), JSON.stringify({
+        untrusted: {
+          command: "project-command-must-not-run",
+          extensions: [".untrusted"],
+        },
+      }));
+      const config = await loadLspConfig(storage, cwd);
+      expect(config.untrusted).toBeUndefined();
     });
   });
 
@@ -104,10 +124,15 @@ describe("LSP config and diagnostics", () => {
 
 describe("LSP cancellation", () => {
   test("diagnostics waiter 响应 turn signal", async () => {
-    await withTempProject(async (cwd) => {
-      const manager = new LSPManager(cwd);
+    await withTempProject(async (cwd, storage) => {
+      const manager = await createLspManager(
+        storage,
+        cwd,
+        testChildEnvironment
+      );
+      expect(manager).toBeDefined();
       const controller = createTurnAbortController();
-      const pending = manager.waitForDiagnostics(
+      const pending = manager!.waitForDiagnostics(
         "missing.ts",
         10_000,
         0,
@@ -118,7 +143,7 @@ describe("LSP cancellation", () => {
         name: "TurnInterruptedError",
         reason: "user-cancel",
       });
-      await manager.shutdown();
+      await manager!.shutdown();
     });
   });
 
@@ -147,8 +172,11 @@ describe("LSP cancellation", () => {
       "test",
       {
         command: "unused",
+        args: [],
         extensions: [".ts"],
+        workspaceFolder: "/project",
       },
+      testChildEnvironment,
       undefined
     );
 
@@ -166,6 +194,57 @@ describe("LSP cancellation", () => {
     cancelInitialize = false;
     await server.start(createTurnAbortController().signal);
     expect(server.state).toBe("running");
+    await server.stop();
+  });
+
+  test("并发 start 共享同一次进程启动与 initialize", async () => {
+    let createCount = 0;
+    let startCount = 0;
+    let initializeCount = 0;
+    let initialized = false;
+    const createClient = (): LSPClient => {
+      createCount++;
+      return {
+        get isInitialized() {
+          return initialized;
+        },
+        async start() {
+          startCount++;
+        },
+        async initialize() {
+          initializeCount++;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          initialized = true;
+          return {capabilities: {}};
+        },
+        async sendRequest<T>() {
+          return undefined as T;
+        },
+        async sendNotification() {},
+        onNotification() {},
+        async stop() {
+          initialized = false;
+        },
+      };
+    };
+    const server = createLSPServerInstanceFactory({createClient})(
+      "test",
+      {
+        command: "unused",
+        args: [],
+        extensions: [".ts"],
+        workspaceFolder: "/project",
+      },
+      testChildEnvironment
+    );
+
+    await Promise.all([server.start(), server.start(), server.start()]);
+    expect({createCount, startCount, initializeCount}).toEqual({
+      createCount: 1,
+      startCount: 1,
+      initializeCount: 1,
+    });
+    expect(server.isHealthy()).toBe(true);
     await server.stop();
   });
 });
@@ -244,6 +323,25 @@ describe("LSP context isolation", () => {
           createTestContext(cwd)
         )
       ).toBe("");
+    });
+  });
+
+  test("受限 child 的 lsp 路径不能越过 workspace boundary", async () => {
+    await withTempProject(async (cwd) => {
+      const fake = createFakeLspManager(cwd, "bounded");
+      const result = await executeTool(
+        "lsp",
+        JSON.stringify({
+          operation: "documentSymbol",
+          filePath: join(cwd, "..", "outside.ts"),
+        }),
+        createTestContext(cwd, {
+          lspManager: fake.manager,
+          workspaceBoundary: cwd,
+        })
+      );
+      expect(result).toContain("路径越界");
+      expect(fake.state.requests).toEqual([]);
     });
   });
 });

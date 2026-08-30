@@ -40,19 +40,27 @@ function summary(exitCode = 0): HeadlessRunSummary {
 }
 
 function createAdapter() {
-  let listener: (() => void) | undefined;
+  let sigintListener: (() => void) | undefined;
+  let sigtermListener: (() => void) | undefined;
   const state = {
-    removed: false,
+    sigintRemoved: false,
+    sigtermRemoved: false,
     exitCode: undefined as number | undefined,
     stdout: [] as string[],
     stderr: [] as string[],
   };
   const adapter: HeadlessProcessAdapter = {
     onceSigint(next) {
-      listener = next;
+      sigintListener = next;
+    },
+    onceSigterm(next) {
+      sigtermListener = next;
     },
     removeSigint(removed) {
-      state.removed = removed === listener;
+      state.sigintRemoved = removed === sigintListener;
+    },
+    removeSigterm(removed) {
+      state.sigtermRemoved = removed === sigtermListener;
     },
     setExitCode(code) {
       state.exitCode = code;
@@ -64,7 +72,12 @@ function createAdapter() {
       state.stderr.push(text);
     },
   };
-  return { adapter, state, sigint: () => listener?.() };
+  return {
+    adapter,
+    state,
+    sigint: () => sigintListener?.(),
+    sigterm: () => sigtermListener?.(),
+  };
 }
 
 describe("headless CLI adapter", () => {
@@ -76,7 +89,8 @@ describe("headless CLI adapter", () => {
     });
     await runCli(options());
     expect(fixture.state.exitCode).toBe(3);
-    expect(fixture.state.removed).toBe(true);
+    expect(fixture.state.sigintRemoved).toBe(true);
+    expect(fixture.state.sigtermRemoved).toBe(true);
   });
 
   test("JSON error 只写 stdout，text error 只写 stderr", async () => {
@@ -120,7 +134,25 @@ describe("headless CLI adapter", () => {
     });
     await runCli(options());
     expect(fixture.state.exitCode).toBe(130);
-    expect(fixture.state.removed).toBe(true);
+    expect(fixture.state.sigintRemoved).toBe(true);
+    expect(fixture.state.sigtermRemoved).toBe(true);
+  });
+
+  test("SIGTERM abort signal 使用 shutdown reason", async () => {
+    const fixture = createAdapter();
+    const runCli = createHeadlessCli({
+      adapter: fixture.adapter,
+      runner: async (_options, signal) => {
+        fixture.sigterm();
+        expect(signal.aborted).toBe(true);
+        expect(signal.reason).toBe("shutdown");
+        return summary(130);
+      },
+    });
+    await runCli(options());
+    expect(fixture.state.exitCode).toBe(130);
+    expect(fixture.state.sigintRemoved).toBe(true);
+    expect(fixture.state.sigtermRemoved).toBe(true);
   });
 
   test("error writer 自身失败仍移除 listener", async () => {
@@ -137,6 +169,7 @@ describe("headless CLI adapter", () => {
     await expect(
       runCli(options())
     ).rejects.toThrow("stdout failed");
-    expect(fixture.state.removed).toBe(true);
+    expect(fixture.state.sigintRemoved).toBe(true);
+    expect(fixture.state.sigtermRemoved).toBe(true);
   });
 });

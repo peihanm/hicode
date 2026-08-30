@@ -72,6 +72,12 @@ export class UIPermissionRequests {
     getSnapshot = (): ConfirmReq | null => this.current;
 
     private notify(): void {
-        for (const listener of this.listeners) listener();
+        for (const listener of this.listeners) {
+            try {
+                listener();
+            } catch {
+                // UI subscriber 不能卡住权限 Promise。
+            }
+        }
     }
 }

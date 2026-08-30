@@ -1,31 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import {
-  checkVerificationShellCommand,
   createVerificationBashTool,
 } from "../../src/subagents/builtins/verification/tools.js";
 
 const cwd = "/tmp/project";
 
+async function check(command: string) {
+  return createVerificationBashTool().checkPermissions?.(
+    {command},
+    {cwd} as any
+  );
+}
+
 describe("Verification Agent shell policy", () => {
-  test("自动放行单 URL localhost 可达性探测和常见项目检查", () => {
+  test("自动放行单 URL localhost 可达性探测和常见项目检查", async () => {
     expect(
-      checkVerificationShellCommand(
-        "curl -I http://127.0.0.1:3000/",
-        cwd
-      )
+      await check("curl -I http://127.0.0.1:3000/")
     ).toEqual({ behavior: "allow" });
-    expect(checkVerificationShellCommand("npm test", cwd)).toEqual({
+    expect(await check("npm test")).toEqual({
       behavior: "allow",
     });
-    expect(checkVerificationShellCommand("bun run typecheck", cwd)).toEqual({
+    expect(await check("bun run typecheck")).toEqual({
       behavior: "allow",
     });
     expect(
-      checkVerificationShellCommand("cd /tmp/project && cargo test", cwd)
+      await check("cd /tmp/project && cargo test")
     ).toEqual({ behavior: "allow" });
   });
 
-  test("拒绝外网、安装、进程接管、任意脚本和 shell 写入", () => {
+  test("拒绝外网、安装、进程接管、任意脚本和 shell 写入", async () => {
     for (const command of [
       "curl https://example.com",
       "curl http://localhost:3000/a http://localhost:3000/b",
@@ -41,9 +44,11 @@ describe("Verification Agent shell policy", () => {
       "curl http://localhost:3000 > /tmp/page.html",
       "curl http://localhost:3000 --output /tmp/page.html",
       "curl http://localhost:3000 -c /tmp/cookies.txt",
+      "curl --config .curlrc http://localhost:3000",
+      "curl -K .curlrc http://localhost:3000",
       "curl http://localhost:3000 &",
     ]) {
-      expect(checkVerificationShellCommand(command, cwd).behavior).toBe(
+      expect((await check(command))?.behavior).toBe(
         "deny"
       );
     }

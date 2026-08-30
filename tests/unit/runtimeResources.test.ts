@@ -30,6 +30,9 @@ function createFakeTaskRuntime(): {
       hasRunning() {
         return false;
       },
+      getRunningSummary() {
+        return {total: 0, shell: 0, agent: 0};
+      },
       hasRunningThatBlocksRewind() {
         return false;
       },

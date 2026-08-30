@@ -1,20 +1,10 @@
 import type {ToolCall} from "../llm/types.js";
 
-const DEFAULT_MAX_TOOL_CONCURRENCY = 10;
+export const MAX_TOOL_CONCURRENCY = 10;
 
 export interface ToolCallBatch {
     concurrencySafe: boolean;
     calls: ToolCall[];
-}
-
-export function getMaxToolConcurrency(): number {
-    const configured = Number.parseInt(
-        process.env.PILLAR_MAX_TOOL_USE_CONCURRENCY ?? "",
-        10
-    );
-    return Number.isFinite(configured) && configured > 0
-        ? configured
-        : DEFAULT_MAX_TOOL_CONCURRENCY;
 }
 
 // 与 Claude Code 一致：连续安全工具合并为并发批次，非安全工具各自独占一个批次。

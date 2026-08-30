@@ -14,8 +14,8 @@ describe("Memory paths", () => {
             const alias = join(dirname(cwd), `${getProjectKey(cwd)}-alias`);
             await symlink(cwd, alias);
             try {
-                const projectsRoot = join(cwd, "memory-projects");
-                const storage = createPillarStorageLayout({projectsRoot});
+                const pillarHome = join(cwd, "memory-storage");
+                const storage = createPillarStorageLayout({pillarHome});
                 expect(getProjectKey(alias)).toBe(getProjectKey(cwd));
                 expect(getMemoryDirectory(storage, alias)).toBe(
                     getMemoryDirectory(storage, cwd)

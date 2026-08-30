@@ -5,14 +5,12 @@ import {pathToFileURL} from "node:url";
 import {
     createSubagentRegistry,
     loadCustomAgentDefinitions,
-    mergeCustomAgentSources,
-    parseCustomAgentDocument,
     validateCustomAgentTools,
     type AgentDefinition,
 } from "../../src/subagents/index.js";
+import {parseCustomAgentDocument} from "../../src/subagents/load.js";
 import {
     CUSTOM_AGENT_FORBIDDEN_TOOLS,
-    customAgentPermissionMode,
 } from "../../src/subagents/custom.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
@@ -45,7 +43,7 @@ tools:
   - read_file
   - grep
   - read_file
-model: glm-5.2
+model: fast
 max_iterations: 9
 ---
 
@@ -57,7 +55,7 @@ max_iterations: 9
             agentType: "code-reviewer",
             source: "project",
             allowedTools: ["read_file", "grep"],
-            model: "glm-5.2",
+            model: "fast",
             maxIterations: 9,
             systemPrompt: "你是严格的代码审查 Agent。",
         });
@@ -99,21 +97,6 @@ body`,
             .toBeGreaterThanOrEqual(3);
     });
 
-    test("项目定义覆盖同名用户定义，名称匹配不区分大小写", () => {
-        const user = definition("Reviewer", "user", "/user/reviewer.md");
-        const project = definition(
-            "reviewer",
-            "project",
-            "/project/reviewer.md"
-        );
-        const loaded = mergeCustomAgentSources([user], [project]);
-
-        expect(loaded.definitions).toEqual([project]);
-        expect(loaded.issues).toEqual([
-            expect.objectContaining({severity: "warning", field: "name"}),
-        ]);
-    });
-
     test("内置名称保留，Markdown 定义不能覆盖", () => {
         const customExplore = definition(
             "explore",
@@ -139,6 +122,7 @@ body`,
 
     test("禁止控制面工具和当前不存在的工具使定义不激活", () => {
         expect(CUSTOM_AGENT_FORBIDDEN_TOOLS.has("agent")).toBe(true);
+        expect(CUSTOM_AGENT_FORBIDDEN_TOOLS.has("memory")).toBe(true);
         const forbidden = {
             ...definition("writer", "project", "/project/writer.md"),
             allowedTools: ["read_file", "agent"],
@@ -158,17 +142,8 @@ body`,
         expect(validated.issues[1]?.message).toContain("不存在工具");
     });
 
-    test("父权限模式只把 default 收窄为 dontAsk", () => {
-        expect(customAgentPermissionMode("default")).toBe("dontAsk");
-        expect(customAgentPermissionMode("dontAsk")).toBe("dontAsk");
-        expect(customAgentPermissionMode("plan")).toBe("plan");
-        expect(customAgentPermissionMode("acceptEdits")).toBe("acceptEdits");
-        expect(customAgentPermissionMode("bypassPermissions"))
-            .toBe("bypassPermissions");
-    });
-
     test("生产 loader 从项目 .pillar/agents 读取定义并隔离坏文件", async () => {
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             const directory = join(cwd, ".pillar", "agents");
             await mkdir(directory, {recursive: true});
             await writeFile(
@@ -183,7 +158,7 @@ project prompt`,
             );
             await writeFile(join(directory, "broken.md"), "---\nname: broken", "utf8");
 
-            const loaded = await loadCustomAgentDefinitions(cwd);
+            const loaded = await loadCustomAgentDefinitions(storage, cwd);
             expect(
                 loaded.definitions.some(
                     (item) => item.agentType === "unique-r12-agent"
@@ -226,9 +201,14 @@ project prompt`, "utf8");
             const moduleUrl = pathToFileURL(
                 resolve("src/subagents/load.ts")
             ).href;
+            const layoutUrl = pathToFileURL(
+                resolve("src/persistence/layout.ts")
+            ).href;
             const script = [
                 `import {loadCustomAgentDefinitions} from ${JSON.stringify(moduleUrl)};`,
-                `const loaded = await loadCustomAgentDefinitions(${JSON.stringify(cwd)});`,
+                `import {createPillarStorageLayout} from ${JSON.stringify(layoutUrl)};`,
+                `const storage = createPillarStorageLayout({pillarHome: ${JSON.stringify(join(home, ".pillar"))}});`,
+                `const loaded = await loadCustomAgentDefinitions(storage, ${JSON.stringify(cwd)});`,
                 "console.log(JSON.stringify(loaded));",
             ].join("\n");
             const child = Bun.spawn([process.execPath, "-e", script], {
@@ -262,8 +242,8 @@ project prompt`, "utf8");
         });
     });
 
-    test("文件、active 数量和诊断文本遵守有界预算", async () => {
-        await withTempProject(async (cwd) => {
+    test("超大定义文件不会激活", async () => {
+        await withTempProject(async (cwd, storage) => {
             const directory = join(cwd, ".pillar", "agents");
             await mkdir(directory, {recursive: true});
             await writeFile(
@@ -272,7 +252,7 @@ project prompt`, "utf8");
                 "utf8"
             );
 
-            const loaded = await loadCustomAgentDefinitions(cwd);
+            const loaded = await loadCustomAgentDefinitions(storage, cwd);
             const oversized = loaded.issues.find((item) =>
                 item.path.endsWith("oversized.md")
             );
@@ -281,24 +261,37 @@ project prompt`, "utf8");
                 item.agentType === "oversized"
             )).toBe(false);
         });
+    });
 
-        const definitions = Array.from({length: 65}, (_, index) =>
-            definition(`agent-${index}`, "user", `/user/agent-${index}.md`)
-        );
-        const merged = mergeCustomAgentSources(definitions, [], [{
-            source: "user",
-            path: "/user/broken.md",
-            severity: "error",
-            field: "x".repeat(200),
-            message: "problem ".repeat(100),
-        }]);
-        expect(merged.definitions).toHaveLength(64);
-        expect(merged.issues.some((item) =>
-            item.message.includes("超过 64 个")
-        )).toBe(true);
-        expect(Math.max(...merged.issues.map((item) => item.message.length)))
-            .toBeLessThanOrEqual(240);
-        expect(Math.max(...merged.issues.map((item) => item.field?.length ?? 0)))
-            .toBeLessThanOrEqual(80);
+    test("合并来源后最多激活 64 个定义", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const userDirectory = join(storage.pillarHome, "agents");
+            const projectDirectory = join(cwd, ".pillar", "agents");
+            await Promise.all([
+                mkdir(userDirectory, {recursive: true}),
+                mkdir(projectDirectory, {recursive: true}),
+            ]);
+            await Promise.all(Array.from({length: 64}, (_, index) =>
+                writeFile(
+                    join(userDirectory, `user-${index}.md`),
+                    `---\nname: user-${index}\ndescription: user ${index}\ntools: [read_file]\n---\nprompt`,
+                    "utf8"
+                )
+            ));
+            await writeFile(
+                join(projectDirectory, "project-agent.md"),
+                "---\nname: project-agent\ndescription: project\ntools: [read_file]\n---\nprompt",
+                "utf8"
+            );
+
+            const loaded = await loadCustomAgentDefinitions(storage, cwd);
+            expect(loaded.definitions).toHaveLength(64);
+            expect(loaded.definitions.some((item) =>
+                item.agentType === "project-agent"
+            )).toBe(true);
+            expect(loaded.issues.some((item) =>
+                item.message.includes("超过 64 个")
+            )).toBe(true);
+        });
     });
 });

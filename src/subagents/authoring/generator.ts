@@ -105,9 +105,7 @@ export function createAgentDefinitionGenerator(
                     description: parsed.data.description,
                     systemPrompt: parsed.data.system_prompt,
                     tools: suggestedTools,
-                    model: parsed.data.model.toLowerCase() === "inherit"
-                        ? "inherit"
-                        : parsed.data.model,
+                    model: parsed.data.model,
                     maxIterations: parsed.data.max_iterations,
                 };
             },

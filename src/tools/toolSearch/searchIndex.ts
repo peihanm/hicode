@@ -92,7 +92,7 @@ function collectSchemaSearchText(
 }
 
 export function buildToolSearchDocument(
-    tool: Tool<any>,
+    tool: Tool,
     schema: OpenAITool
 ): ToolSearchDocument {
     const schemaParts: string[] = [];

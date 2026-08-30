@@ -223,6 +223,118 @@ describe("session persistence", () => {
 
       const loaded = loadSession(storage, cwd, "session-2", "glm-test");
       expect(loaded?.history.at(-1)).toEqual({ role: "user", content: "保留我" });
+
+      await saveSessionTurnCheckpoint(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "session-2",
+        checkpointId: "after-partial-tail",
+        branchId: "branch-1",
+        prompt: "继续",
+        history: loaded?.history ?? [],
+        todos: [],
+        permissionMode: "default",
+      });
+      const repairedLines = (await readFile(
+        getSessionLogPath(storage, cwd, "session-2"),
+        "utf8"
+      )).trim().split("\n");
+      expect(repairedLines.every((line) => Boolean(JSON.parse(line)))).toBe(true);
+      expect(repairedLines).toHaveLength(2);
+    });
+  });
+
+  test("不恢复身份不匹配或工具调用未配对的 snapshot", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "untrusted-session",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "原始任务"},
+        ],
+        todos: [],
+        permissionMode: "default",
+      });
+      const path = getSessionLogPath(storage, cwd, "untrusted-session");
+      const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
+        string,
+        unknown
+      >;
+
+      snapshot.cwd = `${cwd}-other`;
+      await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
+      expect(loadSession(storage, cwd, "untrusted-session", "glm-test")).toBeNull();
+      expect(listSessionIndex(storage, cwd)).toEqual([]);
+
+      snapshot.cwd = cwd;
+      snapshot.conversation = [{
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "dangling-call",
+          type: "function",
+          function: {name: "read_file", arguments: "{}"},
+        }],
+      }];
+      await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
+      expect(loadSession(storage, cwd, "untrusted-session", "glm-test")).toBeNull();
+    });
+  });
+
+  test("保存时拒绝完整坏行并跳过执行中的不完整消息链", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "strict-mutation",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "保留"},
+        ],
+        todos: [],
+        permissionMode: "default",
+      });
+      const path = getSessionLogPath(storage, cwd, "strict-mutation");
+      await appendFile(path, "{}\n");
+      const before = await readFile(path, "utf8");
+
+      await expect(saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "strict-mutation",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "下一次"},
+        ],
+        todos: [],
+        permissionMode: "default",
+      })).rejects.toThrow("Cannot update invalid session log");
+      expect(await readFile(path, "utf8")).toBe(before);
+
+      await saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "invalid-outgoing",
+        history: [{
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: "dangling-call",
+            type: "function",
+            function: {name: "read_file", arguments: "{}"},
+          }],
+        }],
+        todos: [],
+        permissionMode: "default",
+        allowEmpty: true,
+        summaryHint: "invalid",
+      });
+      expect(loadSession(storage, cwd, "invalid-outgoing", "glm-test")).toBeNull();
+      expect(listSessionIndex(storage, cwd).some(
+        (entry) => entry.sessionId === "invalid-outgoing"
+      )).toBe(false);
     });
   });
 
@@ -391,6 +503,33 @@ describe("session persistence", () => {
       ]);
       expect(loadSession(storage, cwd, "compact-log", "glm-test")?.history.at(-1))
         .toEqual({role: "user", content: "latest"});
+    });
+  });
+
+  test("Session turn checkpoint 与文件 Checkpoint 一样最多保留 100 个", async () => {
+    await withTempProject(async (cwd, storage) => {
+      for (let index = 0; index < 101; index++) {
+        await saveSessionTurnCheckpoint(storage, {
+          cwd,
+          model: "glm-test",
+          sessionId: "bounded-checkpoints",
+          checkpointId: `checkpoint-${index}`,
+          branchId: "branch-1",
+          prompt: `turn-${index}`,
+          history: [{role: "system", content: "system"}],
+          todos: [],
+          permissionMode: "default",
+        });
+      }
+
+      const checkpoints = listSessionTurnCheckpoints(
+        storage,
+        cwd,
+        "bounded-checkpoints"
+      );
+      expect(checkpoints).toHaveLength(100);
+      expect(checkpoints[0]?.checkpointId).toBe("checkpoint-1");
+      expect(checkpoints.at(-1)?.checkpointId).toBe("checkpoint-100");
     });
   });
 

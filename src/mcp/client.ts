@@ -2,20 +2,19 @@ import {Client} from "@modelcontextprotocol/sdk/client/index.js";
 import {StdioClientTransport} from "@modelcontextprotocol/sdk/client/stdio.js";
 import type {Tool as McpSdkTool} from "@modelcontextprotocol/sdk/types.js";
 import type {LoadedMcpServerConfig, McpConnectedServer} from "./types.js";
+import {
+    mergeChildProcessEnvironment,
+    type ChildProcessEnvironment,
+} from "../runtime/childEnvironment.js";
 
 const MAX_STDERR_CHARS = 64 * 1024;
-
-function childEnvironment(extra: Record<string, string> | undefined): Record<string, string> {
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(process.env)) {
-        if (value !== undefined) env[key] = value;
-    }
-    return {...env, ...extra};
-}
+const MAX_DISCOVERED_TOOLS = 100;
+const MAX_TOOL_LIST_PAGES = 32;
 
 export async function connectMcpServer(
     server: LoadedMcpServerConfig,
     cwd: string,
+    childEnvironment: ChildProcessEnvironment,
     signal?: AbortSignal,
     onClosed?: () => void,
     onError?: (error: Error) => void
@@ -23,7 +22,10 @@ export async function connectMcpServer(
     const transport = new StdioClientTransport({
         command: server.config.command,
         args: server.config.args,
-        env: childEnvironment(server.config.env),
+        env: mergeChildProcessEnvironment(
+            childEnvironment,
+            server.config.env
+        ) as Record<string, string>,
         cwd,
         stderr: "pipe",
     });
@@ -42,12 +44,24 @@ export async function connectMcpServer(
         });
         const tools: McpSdkTool[] = [];
         let cursor: string | undefined;
+        const cursors = new Set<string>();
+        let pages = 0;
         do {
+            if (pages >= MAX_TOOL_LIST_PAGES) {
+                throw new Error("MCP Tools/List 分页超过安全上限");
+            }
+            pages += 1;
             const result = await client.listTools(cursor ? {cursor} : undefined, {
                 timeout: server.config.timeoutMs,
+                signal,
             });
-            tools.push(...result.tools);
+            tools.push(...result.tools.slice(0, MAX_DISCOVERED_TOOLS - tools.length));
+            if (tools.length >= MAX_DISCOVERED_TOOLS) break;
             cursor = result.nextCursor;
+            if (cursor && cursors.has(cursor)) {
+                throw new Error("MCP Tools/List 返回重复 cursor");
+            }
+            if (cursor) cursors.add(cursor);
         } while (cursor);
 
         let closed = false;

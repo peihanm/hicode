@@ -49,4 +49,47 @@ describe("/memory slash command", () => {
             await memory.close();
         });
     });
+
+    test("超长 Slash 文本结果在进入 UI 前被截断", async () => {
+        await withTempProject(async (cwd) => {
+            const memory = createTestMemoryRuntime(cwd, {
+                directory: join(cwd, "memory"),
+            });
+            await memory.upsert({
+                key: "project-large-note",
+                name: "大笔记",
+                description: "输出边界",
+                type: "project",
+                source: "explicit",
+                content: "短正文",
+            });
+            const entry = await memory.read("project-large-note");
+            if (!entry) throw new Error("fixture memory missing");
+            memory.read = async () => ({
+                ...entry,
+                content: "x".repeat(120_000),
+            });
+            const processor = createSlashCommandProcessor({
+                compactHistory: async ({preTokenCount}) => ({
+                    compacted: false,
+                    preTokenCount,
+                    threshold: 1_000,
+                }),
+                getToolSchemas: () => [],
+                subagents: BUILTIN_SUBAGENT_REGISTRY,
+                memory,
+            });
+            const output: string[] = [];
+            await processor.process("/memory show project-large-note", {
+                history: [],
+                ctx: createTestContext(cwd),
+                onEvent(event) {
+                    if (event.type === "assistant_text") output.push(event.content);
+                },
+            });
+            expect(output[0]?.length).toBeLessThan(101_000);
+            expect(output[0]).toContain("Slash output truncated");
+            await memory.close();
+        });
+    });
 });

@@ -1,5 +1,5 @@
-import {useCallback, useState} from "react";
-import {Box, useApp, useInput} from "ink";
+import {useCallback, useEffect, useState} from "react";
+import {Box, Text, useApp, useInput} from "ink";
 import type {LoadedSession} from "../session/index.js";
 import {getNextPermissionMode, type PermissionMode,} from "../permissions/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
@@ -19,6 +19,8 @@ import {GitDiffDialog} from "./git/GitDiffDialog.js";
 import {AgentsDialog} from "./agents/AgentsDialog.js";
 import {QueuedInputPreview} from "./input/QueuedInputPreview.js";
 import {ModelDialog} from "./model/ModelDialog.js";
+import {COLORS} from "./theme.js";
+import type {RootSessionRuntime} from "../runtime/sessionRuntime.js";
 
 function runningActivityLabel(
     threads: UIThread[],
@@ -61,10 +63,16 @@ export function App({
                             resources,
                             initialPermissionMode,
                             initialSession,
+                            rootSession,
+                            resumedDraft,
+                            registerSessionShutdown,
                         }: {
         resources: RootRuntimeResources;
         initialPermissionMode?: PermissionMode;
         initialSession?: LoadedSession;
+        rootSession: RootSessionRuntime;
+        resumedDraft?: string;
+        registerSessionShutdown?: (shutdown: () => Promise<void>) => void;
     }) {
         const {exit} = useApp();
         const [showRewind, setShowRewind] = useState(false);
@@ -99,6 +107,8 @@ export function App({
             resources,
             initialPermissionMode,
             initialSession,
+            rootSession,
+            resumedDraft,
             openRewind,
             openAgents,
             openGitDiff,
@@ -108,11 +118,19 @@ export function App({
         const [showTranscript, setShowTranscript] = useState(false);
         const [hasInputDraft, setHasInputDraft] = useState(false);
         const [inputClearRevision, setInputClearRevision] = useState(0);
+        useEffect(() => {
+            registerSessionShutdown?.(turn.shutdown);
+        }, [registerSessionShutdown, turn.shutdown]);
+        const requestExit = useCallback(async () => {
+            await turn.shutdown();
+            await resources.close();
+            exit();
+        }, [exit, resources, turn.shutdown]);
 
         const handleSubmit = useCallback(
             async (input: string) => {
                 if (input === "exit" || input === "quit") {
-                    exit();
+                    await requestExit();
                     return;
                 }
                 if (turn.busy) {
@@ -121,7 +139,7 @@ export function App({
                 }
                 await turn.submit(input);
             },
-            [exit, turn]
+            [requestExit, turn]
         );
 
         useInput((input, key) => {
@@ -145,7 +163,7 @@ export function App({
                     setInputClearRevision((revision) => revision + 1);
                     return;
                 }
-                exit();
+                void requestExit();
                 return;
             }
             if (!turn.confirmRequest && key.shift && key.tab) {
@@ -252,6 +270,11 @@ export function App({
                     )
                 ) : (
                     <Box marginTop={1} flexDirection="column">
+                        {turn.sessionInitializationError && (
+                            <Text color={COLORS.error}>
+                                Session 初始化失败：{turn.sessionInitializationError}
+                            </Text>
+                        )}
                         <QueuedInputPreview messages={turn.queuedMessages}/>
                         <InputBox
                             persistentHistory={resources.inputHistory}
@@ -288,7 +311,7 @@ export function App({
                         mcpSnapshots.filter((item) => item.status !== "disabled").length
                     }
                     sandboxStatus={resources.sandbox.status}
-                    taskRunning={turn.taskRunning}
+                    backgroundTasks={turn.backgroundTasks}
                 />
             </Box>
         );

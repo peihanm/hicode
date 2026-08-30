@@ -1,17 +1,13 @@
-import {useCallback, useEffect, useRef, useState, useSyncExternalStore,} from "react";
-import {createCompactState} from "../../context/index.js";
-import {createInitialHistory, updateInitialHistoryModel} from "../../prompt/index.js";
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,} from "react";
+import {updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
 import {
-    createSessionId,
     type LoadedSession,
-    loadSessionTurnCheckpoint,
     saveSessionSnapshot,
     type SaveSessionSnapshotInput,
 } from "../../session/index.js";
 import type {PermissionDecision} from "../../permissions/index.js";
 import {addToAllowList, type PermissionMode, type PermissionRules,} from "../../permissions/index.js";
-import {createToolResultStore,} from "../../toolResults/index.js";
 import type {RootRuntimeResources} from "../../runtime/resources.js";
 import type {Todo} from "../../todos.js";
 import type {UIThread} from "../conversation/types.js";
@@ -23,14 +19,17 @@ import {SessionSnapshotQueue} from "./sessionQueue.js";
 import {estimateRestoredTokenInfo} from "./tokenInfo.js";
 import {formatAgentLoadWarning} from "../../subagents/diagnostics.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../../hooks/index.js";
-import {createRootSessionRuntime, type RootSessionRuntime,} from "../../runtime/sessionRuntime.js";
+import type {RootSessionRuntime} from "../../runtime/sessionRuntime.js";
 import type {ModelTargetSettings} from "../../settings/types.js";
 import {formatModelTarget} from "../../llm/modelCatalog.js";
+import {createUICheckpointActions} from "./checkpointActions.js";
 
 export interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
     initialPermissionMode?: PermissionMode;
     initialSession?: LoadedSession;
+    rootSession: RootSessionRuntime;
+    resumedDraft?: string;
     openRewind?: () => void;
     openAgents?: () => void;
     openGitDiff?: () => void;
@@ -59,6 +58,8 @@ export function useTurnController({
                                           resources,
                                           initialPermissionMode,
                                           initialSession,
+                                          rootSession,
+                                          resumedDraft,
                                           openRewind,
                                           openAgents,
                                           openGitDiff,
@@ -66,49 +67,15 @@ export function useTurnController({
                                       }: UseTurnControllerOptions) {
         const {cwd, model, toolRuntime} = resources;
         const runAgentImpl = resources.agentRuntime.runAgent;
-        const sessionIdRef = useRef(initialSession?.sessionId ?? createSessionId());
-        const resumedQueueRef = useRef((() => {
-            const queuedInputs = initialSession?.queuedInputs ?? [];
-            const userInputs = queuedInputs.filter(
-                (message) => message.type === "user_input"
-            );
-            return {
-                draft: userInputs.length > 0
-                    ? userInputs.map((message) => message.content).join("\n")
-                    : undefined,
-                remaining: queuedInputs.filter(
-                    (message) => message.type !== "user_input"
-                ),
-            };
-        })());
-        const rootSessionRef = useRef<RootSessionRuntime | null>(null);
-        if (rootSessionRef.current === null) {
-            rootSessionRef.current = createRootSessionRuntime({
-                resources,
-                seed: {
-                    sessionId: sessionIdRef.current,
-                    history:
-                        initialSession?.history ?? createInitialHistory(cwd, model),
-                    compactState:
-                        initialSession?.compactState ?? createCompactState(),
-                    checkpointHead: initialSession?.checkpointHead,
-                    toolDiscovery: initialSession?.toolDiscovery,
-                    gitSession: initialSession?.gitSession,
-                    queuedInputs: resumedQueueRef.current.remaining,
-                },
-                toolResultStore: createToolResultStore(
-                    resources.storage,
-                    cwd,
-                    sessionIdRef.current
-                ),
-                resumed: Boolean(initialSession),
-            });
-        }
-        const rootSession = rootSessionRef.current;
-        const gitSession = rootSession.gitSession;
         const messageQueue = rootSession.messageQueue;
         const taskSession = rootSession.taskSession;
-        const fileCheckpoints = rootSession.fileCheckpoints;
+        const sessionInitializationRef = useRef<Promise<void> | null>(null);
+        const [sessionInitializationError, setSessionInitializationError] =
+            useState<string>();
+        const initializeSession = useCallback(() => {
+            sessionInitializationRef.current ??= rootSession.initialize();
+            return sessionInitializationRef.current;
+        }, [rootSession]);
 
         const permissionRulesRef = useRef<PermissionRules | null>(null);
         if (permissionRulesRef.current === null) {
@@ -136,8 +103,8 @@ export function useTurnController({
             value: string;
             revision: number;
             appendCurrent?: boolean;
-        } | undefined>(() => resumedQueueRef.current.draft
-            ? {value: resumedQueueRef.current.draft, revision: 1}
+        } | undefined>(() => resumedDraft
+            ? {value: resumedDraft, revision: 1}
             : undefined);
 
         const eventStoreRef = useRef<UITurnEventStore | null>(null);
@@ -170,6 +137,7 @@ export function useTurnController({
         }
         const sessionStartPromiseRef = useRef<Promise<HookBatchResult> | null>(null);
         const sessionStartContextsRef = useRef<string[]>([]);
+        const shutdownPromiseRef = useRef<Promise<void> | null>(null);
 
         const recordHookIssues = (result: HookBatchResult) => {
             for (const issue of getHookExecutionIssues(result)) {
@@ -254,14 +222,26 @@ export function useTurnController({
             [createSnapshot, sessionQueue]
         );
         useEffect(() => {
-            void rootSession.initialize()
-                .then(() => persistSnapshot())
+            let active = true;
+            void initializeSession()
+                .then(() => {
+                    return persistSnapshot();
+                })
                 .catch((error) => {
-                    eventStore.appendWarning(
-                        `Git Session Baseline 初始化失败：${error instanceof Error ? error.message : String(error)}`
+                    const message = error instanceof Error
+                        ? error.message
+                        : String(error);
+                    if (active) {
+                        setSessionInitializationError(message.slice(0, 500));
+                    }
+                    eventStore.appendError(
+                        new Error(`Session Runtime 初始化失败：${message}`)
                     );
                 });
-        }, [eventStore, persistSnapshot, rootSession]);
+            return () => {
+                active = false;
+            };
+        }, [eventStore, initializeSession, persistSnapshot]);
 
         const setPermissionMode = useCallback(
             (mode: PermissionMode) => {
@@ -324,6 +304,7 @@ export function useTurnController({
                 denyPendingPermission: (message) => {
                     permissionRequests.denyPending(message);
                 },
+                initialize: initializeSession,
                 slashCommands: createSlashCommandProcessor({
                     compactHistory: resources.agentRuntime.compactHistory,
                     getToolSchemas: toolRuntime.getToolSchemas,
@@ -373,8 +354,9 @@ export function useTurnController({
                         });
                     } catch (error) {
                         eventStore.appendWarning(
-                            `File Checkpoint 创建失败，本轮修改可能无法恢复：${error instanceof Error ? error.message : String(error)}`
+                            `File Checkpoint 创建失败，本轮已阻止执行：${error instanceof Error ? error.message : String(error)}`
                         );
+                        throw error;
                     }
                 },
                 settleCheckpoint: async () => {
@@ -384,6 +366,7 @@ export function useTurnController({
                         eventStore.appendWarning(
                             `File Checkpoint 收尾失败：${error instanceof Error ? error.message : String(error)}`
                         );
+                        throw error;
                     }
                 },
                 runAgent: runAgentImpl,
@@ -418,23 +401,35 @@ export function useTurnController({
             messageQueue.getSnapshot
         );
 
-        useEffect(() => {
-            void startSessionHooks();
-            return () => {
+        const shutdown = useCallback((): Promise<void> => {
+            if (shutdownPromiseRef.current) return shutdownPromiseRef.current;
+            shutdownPromiseRef.current = (async () => {
                 turnController.dispose();
                 permissionRequests.dispose();
+                await turnController.waitForSettled();
                 sessionHookControllerRef.current?.abort("shutdown");
+                await sessionStartPromiseRef.current?.catch(() => undefined);
                 const endController = new AbortController();
                 const timer = setTimeout(
                     () => endController.abort("session-end-timeout"),
                     1_500
                 );
                 timer.unref?.();
-                void rootSession.runSessionEnd("shutdown", endController.signal)
+                await rootSession.runSessionEnd("shutdown", endController.signal)
                     .catch(() => undefined)
                     .finally(() => clearTimeout(timer));
+                await persistSnapshot();
+                await sessionQueue.drain();
+            })();
+            return shutdownPromiseRef.current;
+        }, [permissionRequests, persistSnapshot, rootSession, sessionQueue, turnController]);
+
+        useEffect(() => {
+            void startSessionHooks();
+            return () => {
+                void shutdown();
             };
-        }, [permissionRequests, turnController]);
+        }, [shutdown]);
 
         useEffect(() => {
             const drainNotifications = async () => {
@@ -500,147 +495,52 @@ export function useTurnController({
             [eventStore, persistSnapshot, resources, rootSession, toolRuntime]
         );
 
-        const listCheckpoints = useCallback(
-            () => fileCheckpoints.listCheckpoints(),
-            [fileCheckpoints]
-        );
-
-        const listFileChangeEvents = useCallback(
-            () => eventStore.getPersistedUIEvents(),
-            [eventStore]
-        );
-
-        const previewCheckpoint = useCallback(
-            (checkpointId: string) =>
-                fileCheckpoints.previewRestore(checkpointId),
-            [fileCheckpoints]
-        );
-
-        const restoreConversation = useCallback(
-            async (checkpointId: string) => {
-                const checkpoint = loadSessionTurnCheckpoint(
-                    resources.storage,
-                    cwd,
-                    sessionIdRef.current,
-                    checkpointId
-                );
-                if (!checkpoint) {
-                    throw new Error(`找不到对话 Checkpoint: ${checkpointId}`);
-                }
-                const currentModel = resources.model;
-                const history = [
-                    ...createInitialHistory(cwd, currentModel),
-                    ...checkpoint.conversation,
-                ];
-                const compactState = checkpoint.compactState
-                    ? {...checkpoint.compactState}
-                    : createCompactState();
-                const previousToolDiscovery =
-                    toolRuntime.getToolDiscoverySnapshot();
-                toolRuntime.restoreToolDiscovery(checkpoint.toolDiscovery);
-                try {
-                    await sessionQueue.enqueueCritical({
-                        cwd,
-                        model: currentModel,
-                        sessionId: sessionIdRef.current,
-                        history,
-                        todos: checkpoint.todos,
-                        permissionMode: checkpoint.permissionMode,
-                        prePlanMode: checkpoint.prePlanMode,
-                        compactState,
-                        uiEvents: checkpoint.uiEvents,
-                        toolDiscovery:
-                            toolRuntime.getToolDiscoverySnapshot(),
-                        gitSession: gitSession.getState(),
-                        checkpointHead: fileCheckpoints.getHead(),
-                        allowEmpty: true,
-                        summaryHint: checkpoint.prompt,
-                    });
-                } catch (error) {
-                    toolRuntime.restoreToolDiscovery(previousToolDiscovery);
-                    throw error;
-                }
-                rootSession.replaceConversation(history, compactState);
-                todosRef.current = [...checkpoint.todos];
-                setTodosState([...checkpoint.todos]);
-                permissionModeRef.current = checkpoint.permissionMode;
-                prePlanModeRef.current = checkpoint.prePlanMode;
-                setPermissionModeState(checkpoint.permissionMode);
-                eventStore.restore({
-                    history,
-                    uiEvents: checkpoint.uiEvents,
-                    tokenInfo: estimateRestoredTokenInfo(
-                        history,
-                        resources.skills,
-                        resources.instructions,
-                        toolRuntime.getToolSchemas(),
-                        currentModel
-                    ),
-                });
-                setInputReplacement((current) => ({
-                    value: checkpoint.prompt,
-                    revision: (current?.revision ?? 0) + 1,
-                }));
-                return checkpoint;
-            },
-            [
-                cwd,
-                eventStore,
-                fileCheckpoints,
-                gitSession,
-                resources,
-                resources.instructions,
-                resources.skills,
-                sessionQueue,
-                toolRuntime,
-            ]
-        );
-
-        const restoreCheckpoint = useCallback(
-            async (checkpointId: string) => {
-                if (resources.taskRuntime.hasRunningThatBlocksRewind()) {
-                    throw new Error("仍有会读取当前工作区的后台 Task 运行，请先停止后再恢复代码");
-                }
-
-                const result = await fileCheckpoints.restoreCode(checkpointId);
-                if (result.restoredFiles.length > 0) {
-                    gitSession.observePaths(result.restoredFiles, cwd);
-                }
-                if (result.status !== "complete") {
-                    return result;
-                }
-                try {
-                    await restoreConversation(checkpointId);
-                    return result;
-                } catch (error) {
-                    return {
-                        ...result,
-                        status: "partial" as const,
-                        failures: [{
-                            path: "<conversation>",
-                            message: error instanceof Error
-                                ? error.message
-                                : String(error),
-                        }],
-                    };
-                }
-            },
-            [
-                cwd,
-                fileCheckpoints,
-                gitSession,
-                resources.taskRuntime,
-                restoreConversation,
-            ]
-        );
-
-        const loadGitDiff = useCallback(
-            (signal: AbortSignal) => gitSession.diff(signal),
-            [gitSession]
-        );
+        const applyRestoredState = useCallback((restored: {
+            history: Parameters<typeof eventStore.restore>[0]["history"];
+            todos: Todo[];
+            permissionMode: PermissionMode;
+            prePlanMode?: PermissionMode;
+            uiEvents: Parameters<typeof eventStore.restore>[0]["uiEvents"];
+            prompt: string;
+        }) => {
+            todosRef.current = [...restored.todos];
+            setTodosState([...restored.todos]);
+            permissionModeRef.current = restored.permissionMode;
+            prePlanModeRef.current = restored.prePlanMode;
+            setPermissionModeState(restored.permissionMode);
+            eventStore.restore({
+                history: restored.history,
+                uiEvents: restored.uiEvents,
+                tokenInfo: estimateRestoredTokenInfo(
+                    restored.history,
+                    resources.skills,
+                    resources.instructions,
+                    toolRuntime.getToolSchemas(),
+                    resources.model
+                ),
+            });
+            setInputReplacement((current) => ({
+                value: restored.prompt,
+                revision: (current?.revision ?? 0) + 1,
+            }));
+        }, [eventStore, resources, toolRuntime]);
+        const checkpointActions = useMemo(() => createUICheckpointActions({
+            resources,
+            rootSession,
+            eventStore,
+            sessionQueue,
+            applyRestoredState,
+        }), [
+            applyRestoredState,
+            eventStore,
+            resources,
+            rootSession,
+            sessionQueue,
+        ]);
 
         return {
-            sessionId: sessionIdRef.current,
+            sessionId: rootSession.sessionId,
+            sessionInitializationError,
             busy: turnStatus.busy,
             stopping: turnStatus.stopping,
             startedAt: turnStatus.startedAt,
@@ -672,11 +572,8 @@ export function useTurnController({
             handleAddToAllowList,
             inputReplacement,
             queuedMessages: messageQueueSnapshot.messages,
-            taskRunning: taskSession.hasRunning(),
-            listCheckpoints,
-            previewCheckpoint,
-            restoreCheckpoint,
-            listFileChangeEvents,
-            loadGitDiff,
+            backgroundTasks: taskSession.getRunningSummary(),
+            ...checkpointActions,
+            shutdown,
         };
 }

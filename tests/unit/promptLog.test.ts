@@ -13,7 +13,8 @@ describe("prompt log lifecycle", () => {
                 cwd,
                 "main",
                 "glm-5.2",
-                {messages: [{role: "user", content: "private prompt"}]}
+                {messages: [{role: "user", content: "private prompt"}]},
+                []
             );
             const directory = join(
                 getProjectDebugDirectory(storage, cwd),
@@ -73,7 +74,8 @@ describe("prompt log lifecycle", () => {
                 cwd,
                 "main",
                 "glm-5.2",
-                request
+                request,
+                []
             );
             handle.finish({
                 usage: {
@@ -137,6 +139,57 @@ describe("prompt log lifecycle", () => {
                     function: {arguments: "{\"path\":\"/private/source.ts\"}"},
                 }],
             });
+        });
+    });
+
+    test("日志保留调试参数但遮蔽 Provider API key", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const apiKey = "provider-key-must-not-leak";
+            const handle = beginPromptLog(
+                storage,
+                cwd,
+                "main",
+                "glm-5.2",
+                {
+                    messages: [{
+                        role: "user",
+                        content: `debug payload key=${apiKey}`,
+                    }],
+                },
+                [apiKey]
+            );
+            handle.finish({error: `upstream echoed ${apiKey}`});
+
+            const directory = join(
+                getProjectDebugDirectory(storage, cwd),
+                "prompt-logs"
+            );
+            const [filename] = await readdir(directory);
+            const content = await readFile(join(directory, filename!), "utf8");
+            expect(content).not.toContain(apiKey);
+            expect(content).toContain("[REDACTED]");
+            expect(content).toContain("debug payload key=");
+        });
+    });
+
+    test("项目 Prompt Log 最多保留最近 200 个文件", async () => {
+        await withTempProject(async (cwd, storage) => {
+            for (let index = 0; index < 205; index += 1) {
+                beginPromptLog(
+                    storage,
+                    cwd,
+                    "main",
+                    "glm-5.2",
+                    {messages: [{role: "user", content: String(index)}]},
+                    []
+                );
+            }
+
+            const directory = join(
+                getProjectDebugDirectory(storage, cwd),
+                "prompt-logs"
+            );
+            expect(await readdir(directory)).toHaveLength(200);
         });
     });
 });

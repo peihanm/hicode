@@ -9,7 +9,7 @@ interface CompactSummaryDependencies {
     callLLM: LLMCaller;
 }
 
-export function dropOldestConversationChunk(
+function dropOldestConversationChunk(
     messages: Message[],
     attempt: number
 ): Message[] {
@@ -30,7 +30,7 @@ export function dropOldestConversationChunk(
     ];
 }
 
-export function isPromptTooLongError(error: unknown): boolean {
+function isPromptTooLongError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
     return /prompt|context|token/i.test(message) &&
         /too long|length|limit|413/i.test(message);

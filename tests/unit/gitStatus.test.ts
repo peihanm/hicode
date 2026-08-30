@@ -1,15 +1,19 @@
 import {describe, expect, test} from "bun:test";
 import {mkdir, rm, symlink, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {runGitCommand} from "../../src/git/process.js";
+import {createGitCommandRunner} from "../../src/git/process.js";
+import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 import {
     parseGitNumstatZ,
     parseGitStatusPorcelainV2,
     readGitRepositorySnapshot,
 } from "../../src/git/status.js";
 import type {GitRepositorySnapshot} from "../../src/git/types.js";
-import {GitWorkspaceRuntime} from "../../src/git/runtime.js";
+import {createGitWorkspaceRuntime} from "../../src/git/runtime.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
+
+const runGitCommand = createGitCommandRunner(testChildEnvironment);
 
 interface TestGitResult {
     code: number;
@@ -51,7 +55,7 @@ async function initializeRepository(cwd: string): Promise<string> {
 }
 
 async function snapshot(cwd: string): Promise<GitRepositorySnapshot> {
-    const result = await readGitRepositorySnapshot(cwd);
+    const result = await readGitRepositorySnapshot(runGitCommand, cwd);
     if (result.status === "unavailable") throw new Error(result.message);
     return result.snapshot;
 }
@@ -70,7 +74,7 @@ async function commitFile(
 describe("Git repository snapshot", () => {
     test("非 Git 目录返回 unavailable，空仓库准确标记 unborn", async () => {
         await withTempProject(async (cwd) => {
-            const missing = await readGitRepositorySnapshot(cwd);
+            const missing = await readGitRepositorySnapshot(runGitCommand, cwd);
             expect(missing).toMatchObject({
                 status: "unavailable",
                 reason: "not-git-repository",
@@ -325,6 +329,27 @@ describe("Git NUL parser", () => {
 });
 
 describe("Git process", () => {
+    test("Git 与其外部 helper 不继承 Provider Secret", async () => {
+        await withTempProject(async (cwd) => {
+            await initializeRepository(cwd);
+            const runRestrictedGit = createGitCommandRunner(
+                createChildProcessEnvironment({
+                    ...process.env,
+                    JENIYA_AUTH: "sensitive",
+                    PILLAR_VISIBLE_TEST_VALUE: "visible",
+                }, ["JENIYA_AUTH"])
+            );
+            const result = await runRestrictedGit(cwd, [
+                "-c",
+                "alias.pillar-env=!printf '%s:%s' \"${JENIYA_AUTH-unset}\" \"${PILLAR_VISIBLE_TEST_VALUE-unset}\"",
+                "pillar-env",
+            ]);
+
+            expect(result.code).toBe(0);
+            expect(result.stdout.toString("utf8")).toBe("unset:visible");
+        });
+    });
+
     test("AbortSignal 会终止真实 Git 子进程", async () => {
         await withTempProject(async (cwd) => {
             await initializeRepository(cwd);
@@ -354,7 +379,7 @@ describe("Git diff snapshot", () => {
             await writeFile(join(cwd, "mixed.txt"), "working\n");
             await writeFile(join(cwd, "new file.txt"), "new\n");
 
-            const runtime = new GitWorkspaceRuntime(cwd);
+            const runtime = createGitWorkspaceRuntime(cwd, testChildEnvironment);
             const signal = new AbortController().signal;
             const current = await runtime.diff(signal);
 
@@ -373,7 +398,7 @@ describe("Git diff snapshot", () => {
         await withTempProject(async (cwd) => {
             await initializeRepository(cwd);
             await writeFile(join(cwd, "image.bin"), new Uint8Array([0, 1, 2, 3]));
-            const result = await new GitWorkspaceRuntime(cwd).diff(
+            const result = await createGitWorkspaceRuntime(cwd, testChildEnvironment).diff(
                 new AbortController().signal
             );
             expect(result.status).toBe("available");
@@ -409,7 +434,7 @@ describe("Git diff snapshot", () => {
             await git(cwd, "mv", "--", "rename-old.txt", "rename new.txt");
             await rm(join(cwd, "delete.txt"));
 
-            const result = await new GitWorkspaceRuntime(cwd).diff(
+            const result = await createGitWorkspaceRuntime(cwd, testChildEnvironment).diff(
                 new AbortController().signal
             );
             expect(result.status).toBe("available");
@@ -438,7 +463,7 @@ describe("Git diff snapshot", () => {
         await withTempProject(async (cwd) => {
             await initializeRepository(cwd);
             await symlink("/etc/passwd", join(cwd, "outside-link"));
-            const result = await new GitWorkspaceRuntime(cwd).diff(
+            const result = await createGitWorkspaceRuntime(cwd, testChildEnvironment).diff(
                 new AbortController().signal
             );
             expect(result.status).toBe("available");

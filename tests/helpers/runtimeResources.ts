@@ -38,6 +38,7 @@ import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 import { createGitWorkspaceRuntime } from "../../src/git/index.js";
 import { createPrimaryModelRuntime } from "../../src/runtime/primaryModel.js";
+import {testChildEnvironment} from "./childEnvironment.js";
 import {createTestStorage} from "./tempProject.js";
 import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
 
@@ -101,7 +102,7 @@ export function createTestRuntimeResources(
   overrides: TestRuntimeResourceOverrides = {}
 ): RootRuntimeResources {
   const sandbox = createDisabledSandboxRuntime();
-  const shellRunner = createShellRunner(sandbox);
+  const shellRunner = createShellRunner(sandbox, testChildEnvironment);
   const settings = overrides.settings ?? createTestSettings();
   const storage = overrides.storage ?? createTestStorage(cwd);
   const primaryModel = overrides.primaryModel ?? createPrimaryModelRuntime(
@@ -144,7 +145,7 @@ export function createTestRuntimeResources(
   const toolRuntime = overrides.toolRuntime ?? createToolRuntime({hooks});
   const agentDefinitions = overrides.agentDefinitions ??
     createAgentDefinitionManager({
-      store: createAgentDefinitionStore(cwd),
+      store: createAgentDefinitionStore(storage, cwd),
       catalog: subagents,
       availableToolNames: toolRuntime.toolNames,
     });
@@ -180,7 +181,7 @@ export function createTestRuntimeResources(
     sandbox,
     fileState: createFileStateTracker(),
     memory,
-    gitWorkspace: createGitWorkspaceRuntime(cwd),
+    gitWorkspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
     async close() {
       await taskRuntime.close();
       await sandbox.close();
@@ -224,7 +225,6 @@ function createStaticTestCatalog(registry: SubagentRegistry): SubagentCatalog {
 function createDisabledTestHookRuntime(): HookRuntime {
   return {
     enabled: false,
-    mayRunCommands: false,
     issues: [],
     async execute() {
       return {blocked: false, additionalContexts: [], executions: []};

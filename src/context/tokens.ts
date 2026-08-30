@@ -9,26 +9,14 @@
 
 import type {Message, OpenAITool} from "../llm/types.js";
 
-// 默认用 chars/2，比 claude-code 的 chars/4 更保守。
+// 使用 chars/2，比英文为主的 chars/4 更保守。
 // 原因：本项目主要中文交互，CJK 文本按 chars/4 会明显低估，导致 Auto-Compact 触发偏晚。
-// 如果项目主要是英文/代码，可以用 TOKEN_ESTIMATION_CHARS_PER_TOKEN=4 调回更宽松估算。
 const DEFAULT_ESTIMATION_CHARS_PER_TOKEN = 2;
-
-function getDefaultCharsPerToken(): number {
-    const raw =
-        process.env.TOKEN_ESTIMATION_CHARS_PER_TOKEN ||
-        process.env.TOKEN_ESTIMATION_BYTES_PER_TOKEN;
-    if (!raw) return DEFAULT_ESTIMATION_CHARS_PER_TOKEN;
-    const value = Number(raw);
-    return Number.isFinite(value) && value > 0
-        ? value
-        : DEFAULT_ESTIMATION_CHARS_PER_TOKEN;
-}
 
 // chars/N 粗估。参数名保留 bytesPerToken，是为了兼容 claude-code 的命名。
 function roughTokenCountEstimation(
     content: string,
-    bytesPerToken: number = getDefaultCharsPerToken()
+    bytesPerToken: number = DEFAULT_ESTIMATION_CHARS_PER_TOKEN
 ): number {
     return Math.round(content.length / bytesPerToken);
 }

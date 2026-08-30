@@ -3,6 +3,7 @@ import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {CreateSubagentRunner} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {
     type AgentWorktreeRecord,
     createWorktreeRuntime,
@@ -30,6 +31,7 @@ import type {
     StartShellTaskInput,
     TaskEventEnvelope,
     TaskNotification,
+    RunningTaskSummary,
     TaskRuntimeLike,
     TaskSessionBinding,
     TaskSessionLike,
@@ -49,6 +51,10 @@ class TaskSession implements TaskSessionLike {
     ) {
         this.sessionId = binding.sessionId;
         this.ready = runtime.ensureSession(binding.sessionId);
+    }
+
+    initialize(): Promise<void> {
+        return this.ready;
     }
 
     async startShell(input: StartShellTaskInput): Promise<ShellTaskSnapshot> {
@@ -91,6 +97,10 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.hasRunning(this.sessionId);
     }
 
+    getRunningSummary(): RunningTaskSummary {
+        return this.runtime.getRunningSummary(this.sessionId);
+    }
+
     async claimNotifications(): Promise<readonly TaskNotification[]> {
         await this.ready;
         return this.runtime.claimNotifications(this.sessionId);
@@ -101,7 +111,7 @@ class TaskSession implements TaskSessionLike {
     }
 }
 
-export class TaskRuntime implements TaskRuntimeLike {
+class TaskRuntime implements TaskRuntimeLike {
     private readonly tasks = new Map<string, ManagedTask>();
     private readonly archived = new Map<string, TaskSnapshot>();
     private readonly sessionLoads = new Map<string, Promise<void>>();
@@ -264,10 +274,10 @@ export class TaskRuntime implements TaskRuntimeLike {
             task.controller.abort("user-cancel");
             await task.completion;
         }
-        task.notificationPending = false;
         if (shouldAcknowledge) {
             await this.markNotificationClaimed(sessionId, id);
         }
+        task.notificationPending = false;
         return snapshotTask(task);
     }
 
@@ -286,11 +296,23 @@ export class TaskRuntime implements TaskRuntimeLike {
     }
 
     hasRunning(sessionId?: string): boolean {
-        return [...this.tasks.values()].some(
-            (task) =>
-                task.status === "running" &&
-                (sessionId === undefined || task.owner.sessionId === sessionId)
-        );
+        return this.getRunningSummary(sessionId).total > 0;
+    }
+
+    getRunningSummary(sessionId?: string): RunningTaskSummary {
+        let shell = 0;
+        let agent = 0;
+        for (const task of this.tasks.values()) {
+            if (
+                task.status !== "running" ||
+                (sessionId !== undefined && task.owner.sessionId !== sessionId)
+            ) {
+                continue;
+            }
+            if (isShellTask(task)) shell += 1;
+            else agent += 1;
+        }
+        return {total: shell + agent, shell, agent};
     }
 
     hasRunningThatBlocksRewind(): boolean {
@@ -590,6 +612,7 @@ export class TaskRuntime implements TaskRuntimeLike {
 export function createTaskRuntime(
     storage: PillarStorageLayout,
     cwd: string,
+    childEnvironment: ChildProcessEnvironment,
     shellRunner: ShellRunnerLike,
     createSubagentRunner: CreateSubagentRunner,
     subagents: SubagentRegistry
@@ -598,7 +621,7 @@ export function createTaskRuntime(
         shellRunner,
         createSubagentRunner,
         createTaskJournal(storage, cwd),
-        createWorktreeRuntime(storage, cwd),
+        createWorktreeRuntime(storage, cwd, childEnvironment),
         subagents
     );
 }

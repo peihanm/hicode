@@ -119,4 +119,24 @@ describe("SessionSnapshotQueue", () => {
     await expect(queue.enqueue(snapshot("after"))).resolves.toBeUndefined();
     expect(calls).toBe(2);
   });
+
+  test("drain 等待已经入队的最终快照完成", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let completed = false;
+    const queue = new SessionSnapshotQueue(async () => {
+      await gate;
+      completed = true;
+    });
+
+    void queue.enqueue(snapshot("final"));
+    const drained = queue.drain();
+    await Promise.resolve();
+    expect(completed).toBeFalse();
+    release();
+    await drained;
+    expect(completed).toBeTrue();
+  });
 });

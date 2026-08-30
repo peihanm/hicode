@@ -33,6 +33,10 @@ import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/i
 import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import {createInputHistoryStore, type InputHistoryStore,} from "../session/inputHistory/index.js";
+import {
+    createChildProcessEnvironment,
+    type ChildProcessEnvironment,
+} from "./childEnvironment.js";
 
 export interface RootRuntimeResources {
     readonly storage: PillarStorageLayout;
@@ -91,6 +95,7 @@ interface RootRuntimeDependencies {
     createTaskRuntime(
         storage: PillarStorageLayout,
         cwd: string,
+        childEnvironment: ChildProcessEnvironment,
         shellRunner: ShellRunnerLike,
         createSubagentRunner: CreateSubagentRunner,
         subagents: SubagentCatalog
@@ -102,7 +107,10 @@ interface RootRuntimeDependencies {
 
     createMemoryRuntime: typeof createMemoryRuntime;
 
-    loadCustomAgentDefinitions(cwd: string): Promise<LoadedCustomAgents>;
+    loadCustomAgentDefinitions(
+        storage: PillarStorageLayout,
+        cwd: string
+    ): Promise<LoadedCustomAgents>;
 }
 
 function createResourceCloser(
@@ -154,7 +162,7 @@ export function createRootRuntimeResourcesFactory(
         const [skills, instructions, loadedCustomAgents] = await Promise.all([
             Promise.resolve(dependencies.loadSkills(options.cwd)),
             dependencies.loadProjectInstructions(options.cwd),
-            dependencies.loadCustomAgentDefinitions(options.cwd),
+            dependencies.loadCustomAgentDefinitions(options.storage, options.cwd),
         ]);
         let lspManager: LspManagerLike | undefined;
         let mcpManager: McpManagerLike | undefined;
@@ -165,7 +173,13 @@ export function createRootRuntimeResourcesFactory(
             cwd: options.cwd,
             settings: options.settings.sandbox,
         });
-        const shellRunner = createShellRunner(sandbox);
+        const childEnvironment = createChildProcessEnvironment(
+            process.env,
+            Object.values(options.settings.sources).map(
+                (source) => source.apiKeyEnv
+            )
+        );
+        const shellRunner = createShellRunner(sandbox, childEnvironment);
         const primaryModel = createPrimaryModelRuntime(
             options.settings.models.primary,
             options.settings.sources
@@ -173,7 +187,10 @@ export function createRootRuntimeResourcesFactory(
 
         try {
             const fileState = dependencies.createFileStateTracker();
-            const gitWorkspace = createGitWorkspaceRuntime(options.cwd);
+            const gitWorkspace = createGitWorkspaceRuntime(
+                options.cwd,
+                childEnvironment
+            );
             const createdMemory = dependencies.createMemoryRuntime({
                 storage: options.storage,
                 cwd: options.cwd,
@@ -183,17 +200,25 @@ export function createRootRuntimeResourcesFactory(
                 settings: options.settings.memory,
             });
             memory = createdMemory;
-            lspManager = dependencies.createLspManager(options.cwd);
+            lspManager = await dependencies.createLspManager(
+                options.storage,
+                options.cwd,
+                childEnvironment
+            );
             mcpManager = dependencies.createMcpManager({
+                storage: options.storage,
                 cwd: options.cwd,
+                childEnvironment,
                 signal: options.signal,
                 headless: options.headless,
                 requestApproval: options.requestMcpApproval,
             });
             await mcpManager?.initialize();
             const hooks = await dependencies.createHookRuntime({
+                storage: options.storage,
                 cwd: options.cwd,
                 hooks: options.settings.hooks,
+                childEnvironment,
                 headless: options.headless,
                 signal: options.signal,
                 promptExecutor: createHookPromptExecutor({
@@ -213,11 +238,14 @@ export function createRootRuntimeResourcesFactory(
             const subagents = createSubagentCatalog({
                 initial: validateLoadedAgents(loadedCustomAgents),
                 load: async () => validateLoadedAgents(
-                    await dependencies.loadCustomAgentDefinitions(options.cwd)
+                    await dependencies.loadCustomAgentDefinitions(
+                        options.storage,
+                        options.cwd
+                    )
                 ),
             });
             const agentDefinitions = createAgentDefinitionManager({
-                store: createAgentDefinitionStore(options.cwd),
+                store: createAgentDefinitionStore(options.storage, options.cwd),
                 catalog: subagents,
                 availableToolNames: toolCatalog.toolNames,
             });
@@ -254,6 +282,7 @@ export function createRootRuntimeResourcesFactory(
             const createdTaskRuntime = dependencies.createTaskRuntime(
                 options.storage,
                 options.cwd,
+                childEnvironment,
                 shellRunner,
                 agentRuntime.createSubagentRunner,
                 subagents

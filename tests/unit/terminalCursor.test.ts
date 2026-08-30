@@ -88,5 +88,7 @@ describe("terminal IME cursor anchor", () => {
 
     expect(inkCalls).toBe(0);
     expect(pillarCalls).toBe(1);
+    output.disposeCursorOutput();
+    expect(target.listenerCount("resize")).toBe(1);
   });
 });

@@ -77,4 +77,8 @@ export class SessionSnapshotQueue {
         });
         return operation;
     }
+
+    drain(): Promise<void> {
+        return this.pending;
+    }
 }

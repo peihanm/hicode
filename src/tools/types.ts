@@ -185,9 +185,9 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     maxResultSizeChars?: number;
 
     // 执行：只在权限通过后调用，不再需要自己调 confirm
-    execute: (
+    execute(
         args: z.infer<T>,
         ctx: ToolContext,
         invocation: ToolInvocation
-    ) => Promise<ToolOutput>;
+    ): Promise<ToolOutput>;
 }

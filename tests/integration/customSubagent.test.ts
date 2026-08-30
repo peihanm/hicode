@@ -84,7 +84,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {rootDir: `${cwd}/child-results`},
+                toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
             }));
             const toolRuntime = createToolRuntime({
                 toolOverrides: [createAgentTool(registry)],
@@ -109,19 +109,19 @@ describe("custom subagent runtime", () => {
         });
     });
 
-    test("使用定义中的模型和精确工具集，并在 default 模式拒绝嵌套写入确认", async () => {
+    test("使用定义中的 fast 模型和精确工具集，并在 default 模式拒绝嵌套写入确认", async () => {
         await withTempProject(async (cwd) => {
             let confirmations = 0;
             const registry = createSubagentRegistry({
                 definitions: [customDefinition({
                     allowedTools: ["read_file", "write_file"],
-                    model: "glm-custom-reviewer",
+                    model: "fast",
                 })],
                 issues: [],
             });
             const child = createFakeLLM([
                 (options) => {
-                    expect(options.model).toBe("glm-custom-reviewer");
+                    expect(options.model).toBe("glm-fast-test");
                     expect(options.tools.map((tool) => tool.function.name)).toEqual([
                         "read_file",
                         "write_file",
@@ -166,7 +166,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {rootDir: `${cwd}/tool-results`},
+                toolResultStoreOptions: {pillarHome: `${cwd}/tool-results`},
             });
 
             const result = await runner({
@@ -214,7 +214,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: allowedLLM.callLLM},
-                toolResultStoreOptions: {rootDir: `${cwd}/accepted-results`},
+                toolResultStoreOptions: {pillarHome: `${cwd}/accepted-results`},
             });
             await accepted({
                 agentType: "writer",
@@ -253,7 +253,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: planLLM.callLLM},
-                toolResultStoreOptions: {rootDir: `${cwd}/plan-results`},
+                toolResultStoreOptions: {pillarHome: `${cwd}/plan-results`},
             });
             await planned({
                 agentType: "writer",
@@ -301,7 +301,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {rootDir: `${cwd}/deny-results`},
+                toolResultStoreOptions: {pillarHome: `${cwd}/deny-results`},
             });
             await runner({
                 agentType: "writer",
@@ -388,7 +388,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {rootDir: `${cwd}/mcp-results`},
+                toolResultStoreOptions: {pillarHome: `${cwd}/mcp-results`},
             });
 
             const result = await runner({

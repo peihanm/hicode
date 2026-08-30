@@ -1,4 +1,4 @@
-import {formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
+import {didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
 import {
@@ -26,7 +26,7 @@ export function inlineToolResult(
 }
 
 export function isToolConcurrencySafe(
-    toolMap: ReadonlyMap<string, Tool<any>>,
+    toolMap: ReadonlyMap<string, Tool>,
     name: string,
     argsJson: string
 ): boolean {
@@ -41,7 +41,7 @@ export function isToolConcurrencySafe(
 }
 
 export async function executeRegisteredTool(
-    toolMap: ReadonlyMap<string, Tool<any>>,
+    toolMap: ReadonlyMap<string, Tool>,
     name: string,
     argsJson: string,
     ctx: ToolContext,
@@ -88,7 +88,7 @@ export async function executeRegisteredTool(
                 session: ctx.hookSession,
             }
         );
-        if (hooks.mayRunCommands) {
+        if (didRunCommandHook(preHookResult)) {
             await ctx.fileCheckpoints.markCoverageWarning({
                 code: "hook_side_effects",
                 message: "Command Hook 可能产生未被 File Checkpoint 捕获的文件副作用",
@@ -348,11 +348,18 @@ async function executePostToolHooks({
                 ...(persisted ? {persisted} : {}),
             },
         };
-    return hooks.execute(hookInput, ctx.signal, {
+    const hookResult = await hooks.execute(hookInput, ctx.signal, {
         matchesToolCondition: (condition, toolInput) =>
             matchesToolPermissionRule(tool, toolInput, condition),
         session: ctx.hookSession,
     });
+    if (didRunCommandHook(hookResult)) {
+        await ctx.fileCheckpoints.markCoverageWarning({
+            code: "hook_side_effects",
+            message: `${event} Command Hook 可能产生未被 File Checkpoint 捕获的文件副作用`,
+        });
+    }
+    return hookResult;
 }
 
 function hookDecoratedResult(

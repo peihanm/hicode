@@ -6,6 +6,12 @@ import {relative} from "path";
 import type {DocumentSymbol, Hover, Location, LocationLink, SymbolInformation,} from "vscode-languageserver-protocol";
 import type {LspPathResolver} from "../../lsp/types.js";
 
+const MAX_LOCATIONS = 500;
+const MAX_SYMBOLS = 500;
+const MAX_SYMBOL_DEPTH = 16;
+const MAX_TEXT_CHARS = 32 * 1024;
+const MAX_LABEL_CHARS = 512;
+
 // LSP SymbolKind 枚举 → 可读字符串
 // 参考 https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
 function symbolKindToString(kind: number): string {
@@ -22,7 +28,7 @@ function symbolKindToString(kind: number): string {
 
 // 把 URI 转相对路径
 function formatUri(uri: string, manager: LspPathResolver): string {
-    let p = uri.replace(/^file:\/\//, "");
+    let p = uri.slice(0, 32_768).replace(/^file:\/\//, "");
     if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);
     try {
         p = decodeURIComponent(p);
@@ -62,7 +68,7 @@ export function formatDefinition(
     // 统一成 Location[]
     let locs: Location[];
     if (Array.isArray(result)) {
-        locs = result.map((r) =>
+        locs = result.slice(0, MAX_LOCATIONS).map((r) =>
             "targetUri" in r ? locationLinkToLocation(r) : r
         );
     } else if ("targetUri" in result) {
@@ -92,7 +98,7 @@ export function formatReferences(
 
     // 按文件分组
     const byFile = new Map<string, { line: number; col: number }[]>();
-    for (const loc of result) {
+    for (const loc of result.slice(0, MAX_LOCATIONS)) {
         const path = formatUri(loc.uri, manager);
         const arr = byFile.get(path) ?? [];
         arr.push({line: loc.range.start.line + 1, col: loc.range.start.character + 1});
@@ -115,11 +121,15 @@ export function formatHover(result: Hover | null): string {
     let content = "";
     const c = result.contents;
     if (typeof c === "string") {
-        content = c;
+        content = c.slice(0, MAX_TEXT_CHARS);
     } else if (Array.isArray(c)) {
-        content = c.map((item) => (typeof item === "string" ? item : item.value)).join("\n\n");
+        content = c
+            .slice(0, 64)
+            .map((item) => typeof item === "string" ? item : item.value)
+            .join("\n\n")
+            .slice(0, MAX_TEXT_CHARS);
     } else if ("value" in c) {
-        content = c.value;
+        content = c.value.slice(0, MAX_TEXT_CHARS);
     }
 
     if (result.range) {
@@ -144,21 +154,29 @@ export function formatDocumentSymbol(
     const isHierarchical = result.length > 0 && "range" in result[0]! && !("location" in result[0]!);
 
     if (isHierarchical) {
+        let count = 0;
         const walk = (sym: DocumentSymbol, indent: number) => {
+            if (count >= MAX_SYMBOLS || indent > MAX_SYMBOL_DEPTH) return;
+            count += 1;
             const prefix = "  ".repeat(indent);
             const kind = symbolKindToString(sym.kind);
             const line = sym.range.start.line + 1;
-            lines.push(`${prefix}${sym.name} (${kind}) - Line ${line}`);
+            lines.push(
+                `${prefix}${sym.name.slice(0, MAX_LABEL_CHARS)} (${kind}) - Line ${line}`
+            );
             sym.children?.forEach((c) => walk(c, indent + 1));
         };
-        (result as DocumentSymbol[]).forEach((s) => walk(s, 0));
+        (result as DocumentSymbol[]).slice(0, MAX_SYMBOLS)
+            .forEach((s) => walk(s, 0));
     } else {
         // SymbolInformation（扁平）
-        for (const sym of result as SymbolInformation[]) {
+        for (const sym of (result as SymbolInformation[]).slice(0, MAX_SYMBOLS)) {
             const kind = symbolKindToString(sym.kind);
             const loc = formatLocation(sym.location, manager);
-            const container = sym.containerName ? ` in ${sym.containerName}` : "";
-            lines.push(`  ${sym.name} (${kind}) - ${loc}${container}`);
+            const container = sym.containerName
+                ? ` in ${sym.containerName.slice(0, MAX_LABEL_CHARS)}`
+                : "";
+            lines.push(`  ${sym.name.slice(0, MAX_LABEL_CHARS)} (${kind}) - ${loc}${container}`);
         }
     }
 
@@ -177,14 +195,14 @@ export function formatWorkspaceSymbols(
     }
 
     const byFile = new Map<string, { name: string; kind: string; line: number; container: string }[]>();
-    for (const sym of result) {
+    for (const sym of result.slice(0, MAX_SYMBOLS)) {
         const path = formatUri(sym.location.uri, manager);
         const arr = byFile.get(path) ?? [];
         arr.push({
-            name: sym.name,
+            name: sym.name.slice(0, MAX_LABEL_CHARS),
             kind: symbolKindToString(sym.kind),
             line: sym.location.range.start.line + 1,
-            container: sym.containerName || "",
+            container: sym.containerName?.slice(0, MAX_LABEL_CHARS) || "",
         });
         byFile.set(path, arr);
     }

@@ -109,6 +109,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
     private readonly journal: JournalEntry[] = [];
     private readonly runtimeIssues: MemoryIssue[] = [];
     private buffer: BufferedTurn[] = [];
+    private bufferOnEvent: ExtractionBatch["onEvent"] | undefined;
     private running: Promise<void> | undefined;
     private trailing: ExtractionBatch | undefined;
     private closed = false;
@@ -312,12 +313,14 @@ class MemoryRuntime implements MemoryRuntimeLike {
     }): void {
         if (!this.enabled || !this.autoExtract || this.closed) return;
         this.addBufferedTurn({user: userInput, assistant: assistantText});
+        this.bufferOnEvent = onEvent;
         const immediate = HIGH_VALUE_MEMORY_SIGNAL.some((pattern) =>
             pattern.test(userInput)
         );
         if (!immediate && this.buffer.length < BUFFER_TURN_LIMIT) return;
         const turns = this.buffer;
         this.buffer = [];
+        this.bufferOnEvent = undefined;
         this.enqueue({turns, onEvent});
     }
 
@@ -342,7 +345,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
 
     private async runQueue(initial: ExtractionBatch): Promise<void> {
         let current: ExtractionBatch | undefined = initial;
-        while (current && !this.closed && !this.controller.signal.aborted) {
+        while (current && !this.controller.signal.aborted) {
             await this.extractBatch(current);
             current = this.trailing;
             this.trailing = undefined;
@@ -384,7 +387,28 @@ class MemoryRuntime implements MemoryRuntimeLike {
     async close(): Promise<void> {
         if (this.closed) return;
         this.closed = true;
-        this.trailing = undefined;
+        if (this.buffer.length > 0) {
+            const buffered: ExtractionBatch = {
+                turns: this.buffer,
+                onEvent: this.bufferOnEvent ?? (() => {}),
+            };
+            this.buffer = [];
+            this.bufferOnEvent = undefined;
+            if (this.running) {
+                this.trailing = this.trailing
+                    ? {
+                        turns: [...this.trailing.turns, ...buffered.turns]
+                            .slice(-BUFFER_TURN_LIMIT),
+                        onEvent: buffered.onEvent,
+                    }
+                    : buffered;
+            } else {
+                this.running = this.runQueue(buffered).finally(() => {
+                    this.running = undefined;
+                    this.trailing = undefined;
+                });
+            }
+        }
         const running = this.running;
         if (!running) return;
         let timer: ReturnType<typeof setTimeout> | undefined;

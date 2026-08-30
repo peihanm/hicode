@@ -2,8 +2,13 @@ import {lstat} from "node:fs/promises";
 import {resolve} from "node:path";
 import {parsePatch} from "diff";
 import {convertUnifiedDiffHunk} from "../fileChanges/index.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {mapWithConcurrencyLimit} from "../tools/orchestration.js";
-import {formatGitProcessError, runGitCommand} from "./process.js";
+import {
+    createGitCommandRunner,
+    formatGitProcessError,
+    type GitCommandRunner,
+} from "./process.js";
 import {parseGitNumstatZ, readGitRepositorySnapshot,} from "./status.js";
 import type {
     GitDiffFile,
@@ -152,6 +157,7 @@ function fileFromTrackedDiff(
 }
 
 async function diffStandaloneFile(input: {
+    runGit: GitCommandRunner;
     repositoryRoot: string;
     status: GitFileStatus;
     signal: AbortSignal;
@@ -195,7 +201,7 @@ async function diffStandaloneFile(input: {
             },
         };
     }
-    const result = await runGitCommand(input.repositoryRoot, [
+    const result = await input.runGit(input.repositoryRoot, [
         "--no-optional-locks",
         "diff",
         "--no-index",
@@ -250,11 +256,14 @@ async function diffStandaloneFile(input: {
     };
 }
 
-export class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
-    constructor(private readonly cwd: string) {}
+class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
+    constructor(
+        private readonly cwd: string,
+        private readonly runGit: GitCommandRunner
+    ) {}
 
     status(signal: AbortSignal): Promise<GitRepositorySnapshotResult> {
-        return readGitRepositorySnapshot(this.cwd, signal);
+        return readGitRepositorySnapshot(this.runGit, this.cwd, signal);
     }
 
     async diff(signal: AbortSignal): Promise<GitDiffSnapshotResult> {
@@ -279,12 +288,12 @@ export class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
                 ...(file.originalPath ? [file.originalPath] : []),
             ]))];
             const [patchResult, numstatResult] = await Promise.all([
-                runGitCommand(
+                this.runGit(
                     snapshot.repositoryRoot,
                     diffCommandArgs(snapshot.headOid, "patch", paths),
                     signal
                 ),
-                runGitCommand(
+                this.runGit(
                     snapshot.repositoryRoot,
                     diffCommandArgs(snapshot.headOid, "numstat", paths),
                     signal
@@ -330,6 +339,7 @@ export class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
                 standaloneStatuses,
                 4,
                 (status) => diffStandaloneFile({
+                    runGit: this.runGit,
                     repositoryRoot: snapshot.repositoryRoot,
                     status,
                     signal,
@@ -373,6 +383,9 @@ export class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
     }
 }
 
-export function createGitWorkspaceRuntime(cwd: string): GitWorkspaceRuntimeLike {
-    return new GitWorkspaceRuntime(cwd);
+export function createGitWorkspaceRuntime(
+    cwd: string,
+    environment: ChildProcessEnvironment
+): GitWorkspaceRuntimeLike {
+    return new GitWorkspaceRuntime(cwd, createGitCommandRunner(environment));
 }

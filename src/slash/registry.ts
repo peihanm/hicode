@@ -10,7 +10,7 @@ import {diffCommand} from "./commands/diff.js";
 import {modelCommand} from "./commands/model.js";
 import type {SlashCommand} from "./types.js";
 
-const COMMANDS: SlashCommand[] = [
+const COMMANDS: readonly SlashCommand[] = [
     compactCommand,
     modelCommand,
     modeCommand,
@@ -29,14 +29,14 @@ export interface SlashCommandSuggestion {
     argumentHint?: string;
 }
 
-const BUILTIN_SUGGESTIONS: SlashCommandSuggestion[] = [
+const BUILTIN_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
     {
         name: "help",
         description: "显示可用命令",
     },
 ];
 
-export function getSlashCommands(): SlashCommand[] {
+export function getSlashCommands(): readonly SlashCommand[] {
     return COMMANDS;
 }
 

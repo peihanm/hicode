@@ -61,13 +61,18 @@ export class UITurnEventStore {
     };
     private readonly archivedThreadIds = new Set<string>();
     private activeIteration = 0;
+    private threadSequence = 0;
     private persistedUIEvents: PersistedUIEvent[];
     private snapshot: UITurnEventSnapshot;
 
     constructor(options: UITurnEventStoreOptions = {}) {
         const history = options.history ?? [];
         this.persistedUIEvents = [...(options.uiEvents ?? [])];
-        const restoredThreads = threadsFromHistory(history, this.persistedUIEvents);
+        const restoredThreads = threadsFromHistory(
+            history,
+            this.persistedUIEvents,
+            this.createThreadId
+        );
         for (const thread of restoredThreads) this.archivedThreadIds.add(thread.id);
         this.snapshot = {
             threads: restoredThreads,
@@ -137,7 +142,7 @@ export class UITurnEventStore {
                     count: event.tokenCount,
                     percentUsed: event.percentUsed,
                     warning: event.warning,
-                    status: event.status ?? "actual",
+                    status: event.status,
                 },
             });
             return;
@@ -202,7 +207,11 @@ export class UITurnEventStore {
                     turnId: `${event.turnId}:iteration:${this.activeIteration}`,
                 }
                 : event;
-        const threads = reduceThreads(this.snapshot.threads, displayEvent);
+        const threads = reduceThreads(
+            this.snapshot.threads,
+            displayEvent,
+            this.createThreadId
+        );
         if (threads !== this.snapshot.threads) {
             const nextSnapshot = {...this.snapshot, threads};
             // 非探索工具在同批 sibling 全部完成后原子转入 Static。尾部成功
@@ -273,7 +282,10 @@ export class UITurnEventStore {
         this.archiveSettledThreads();
         this.update({
             ...this.snapshot,
-            threads: [...this.snapshot.threads, createUserThread(input)],
+            threads: [
+                ...this.snapshot.threads,
+                createUserThread(input, this.createThreadId),
+            ],
         });
     }
 
@@ -283,7 +295,7 @@ export class UITurnEventStore {
             ...this.snapshot,
             threads: [
                 ...this.snapshot.threads,
-                createAssistantThread(`出错: ${message}`),
+                createAssistantThread(`出错: ${message}`, this.createThreadId),
             ],
         });
     }
@@ -293,7 +305,7 @@ export class UITurnEventStore {
             ...this.snapshot,
             threads: [
                 ...this.snapshot.threads,
-                createAssistantThread(`警告: ${message}`),
+                createAssistantThread(`警告: ${message}`, this.createThreadId),
             ],
         });
     }
@@ -303,13 +315,16 @@ export class UITurnEventStore {
             ...this.snapshot,
             threads: [
                 ...this.snapshot.threads,
-                createAssistantThread(message),
+                createAssistantThread(message, this.createThreadId),
             ],
         });
     }
 
     appendTaskNotification(notification: TaskNotification): void {
-        const thread = createTaskNotificationThread(notification);
+        const thread = createTaskNotificationThread(
+            notification,
+            this.createThreadId
+        );
         const nextSnapshot = {
             ...this.snapshot,
             threads: [...this.snapshot.threads, thread],
@@ -334,7 +349,11 @@ export class UITurnEventStore {
         uiEvents: PersistedUIEvent[];
         tokenInfo?: UITokenInfo;
     }): void {
-        const threads = threadsFromHistory(input.history, input.uiEvents);
+        const threads = threadsFromHistory(
+            input.history,
+            input.uiEvents,
+            this.createThreadId
+        );
         this.persistedUIEvents = [...input.uiEvents];
         this.archivedThreadIds.clear();
         for (const thread of threads) this.archivedThreadIds.add(thread.id);
@@ -438,6 +457,17 @@ export class UITurnEventStore {
 
     private update(snapshot: UITurnEventSnapshot): void {
         this.snapshot = snapshot;
-        for (const listener of this.listeners) listener();
+        for (const listener of this.listeners) {
+            try {
+                listener();
+            } catch {
+                // UI subscriber 不能破坏 Agent event 链。
+            }
+        }
     }
+
+    private createThreadId = (): string => {
+        this.threadSequence += 1;
+        return `thread-${this.threadSequence}`;
+    };
 }

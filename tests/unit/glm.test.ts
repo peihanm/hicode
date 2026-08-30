@@ -47,6 +47,32 @@ afterEach(() => {
 });
 
 describe("GLM cancellation", () => {
+  test("API 错误不会向用户或 Prompt Log 回显 Provider Key", async () => {
+    await withTempProject(async (cwd) => {
+      process.env.GLM_API_KEY = "provider-secret-token";
+      globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(
+        "authorization=provider-secret-token",
+        {status: 401}
+      )) as typeof fetch;
+
+      await expect(callGlm(glmProvider, {
+        messages: [{role: "user", content: "hello"}],
+        tools: [],
+        cwd,
+        model: "glm-test",
+        kind: "main",
+      })).rejects.toThrow("authorization=[REDACTED]");
+
+      const files = await readdir(promptLogDirectory(cwd));
+      const logged = await readFile(
+        join(promptLogDirectory(cwd), files[0]!),
+        "utf8"
+      );
+      expect(logged).not.toContain("provider-secret-token");
+      expect(logged).toContain("[REDACTED]");
+    });
+  });
+
   test("用户取消 fetch 后不会进入 retry", async () => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
@@ -316,7 +342,7 @@ describe("GLM cancellation", () => {
         fetchCalls += 1;
         const event = fetchCalls === 1
           ? {
-              choices: [{ delta: {} }],
+              choices: [{ delta: {}, finish_reason: "stop" }],
               usage: {
                 prompt_tokens: 8,
                 completion_tokens: 0,
@@ -377,7 +403,10 @@ describe("GLM cancellation", () => {
         fetchCalls += 1;
         const event = fetchCalls === 1
           ? {
-              choices: [{ delta: { content: "  \n", reasoning_content: " \t" } }],
+              choices: [{
+                delta: { content: "  \n", reasoning_content: " \t" },
+                finish_reason: "stop",
+              }],
             }
           : {
               choices: [{ delta: { content: "恢复成功" }, finish_reason: "stop" }],
@@ -425,7 +454,7 @@ describe("GLM cancellation", () => {
               start(controller) {
                 controller.enqueue(
                   encoder.encode(
-                    `data: ${JSON.stringify({ choices: [{ delta: {} }] })}\n\n`
+                    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`
                   )
                 );
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));

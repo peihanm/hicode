@@ -16,7 +16,7 @@ type OpenAICompatibleCaller = (
 ) => Promise<LLMCallResult>;
 
 export function createGlmProvider(
-    callEndpoint: OpenAICompatibleCaller = callOpenAICompatible
+    callEndpoint: OpenAICompatibleCaller
 ): LLMProvider {
     return {
         name: "glm",
@@ -42,4 +42,4 @@ export function createGlmProvider(
     };
 }
 
-export const glmProvider = createGlmProvider();
+export const glmProvider = createGlmProvider(callOpenAICompatible);

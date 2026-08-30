@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {lstat, mkdir, open, readdir, readFile, unlink,} from "node:fs/promises";
+import {open, readdir, unlink,} from "node:fs/promises";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
 import {withFileLock, writeFileAtomically} from "../persistence/index.js";
 import {
@@ -11,6 +11,11 @@ import {
 import {type AgentDefinitionScope, getAgentDefinitionDirectory,} from "./paths.js";
 import {serializeAgentDefinition} from "./serialize.js";
 import type {AgentDefinition} from "./types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
+import {
+    ensureAgentDefinitionDirectory,
+    readAgentDefinitionFile,
+} from "./fileAccess.js";
 
 const AGENT_FILE_MODE = 0o600;
 
@@ -18,7 +23,7 @@ export interface AgentDefinitionDraft {
     name: string;
     description: string;
     tools: readonly string[];
-    model: "inherit" | string;
+    model: string;
     maxIterations: number;
     systemPrompt: string;
 }
@@ -65,21 +70,6 @@ function isInside(directory: string, path: string): boolean {
     );
 }
 
-async function ensureSafeDirectory(directory: string): Promise<void> {
-    await mkdir(directory, {recursive: true, mode: 0o700});
-    const metadata = await lstat(directory);
-    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
-        throw new Error("Agent 目录必须是真实目录，不能是 symlink");
-    }
-}
-
-async function ensureSafeFile(path: string): Promise<void> {
-    const metadata = await lstat(path);
-    if (metadata.isSymbolicLink() || !metadata.isFile()) {
-        throw new Error("Agent 定义必须是普通文件，不能是 symlink");
-    }
-}
-
 function parseStoredDefinition(
     scope: AgentDefinitionScope,
     path: string,
@@ -115,9 +105,12 @@ async function writeExclusive(path: string, content: string): Promise<void> {
     }
 }
 
-export function createAgentDefinitionStore(cwd: string): AgentDefinitionStore {
+export function createAgentDefinitionStore(
+    storage: PillarStorageLayout,
+    cwd: string
+): AgentDefinitionStore {
     const directory = (scope: AgentDefinitionScope) =>
-        getAgentDefinitionDirectory(cwd, scope);
+        getAgentDefinitionDirectory(storage, cwd, scope);
 
     const findDefinition = async (
         scope: AgentDefinitionScope,
@@ -143,8 +136,7 @@ export function createAgentDefinitionStore(cwd: string): AgentDefinitionStore {
     ): Promise<StoredAgentFile> => {
         const definition = await findDefinition(scope, name);
         const path = definition.path!;
-        await ensureSafeFile(path);
-        const raw = await readFile(path, "utf8");
+        const raw = await readAgentDefinitionFile(path);
         return {
             scope,
             path,
@@ -157,7 +149,7 @@ export function createAgentDefinitionStore(cwd: string): AgentDefinitionStore {
         read: readStored,
         async create(scope, draft) {
             const root = directory(scope);
-            await ensureSafeDirectory(root);
+            await ensureAgentDefinitionDirectory(root, true);
             const safeName = draft.name.trim();
             // parseCustomAgentDocument 负责完整协议校验；这里先阻断文件名注入。
             if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(safeName)) {
@@ -194,8 +186,7 @@ export function createAgentDefinitionStore(cwd: string): AgentDefinitionStore {
             }
             const {content} = validateDraft(scope, current.path, draft);
             await withFileLock(join(dirname(current.path), ".agents.lock"), async () => {
-                await ensureSafeFile(current.path);
-                const latest = await readFile(current.path, "utf8");
+                const latest = await readAgentDefinitionFile(current.path);
                 if (contentHash(latest) !== expectedHash) {
                     throw new Error(
                         `Agent ${name} 已被外部修改；请 Reload 后重新编辑`
@@ -208,8 +199,7 @@ export function createAgentDefinitionStore(cwd: string): AgentDefinitionStore {
         async remove(scope, name, expectedHash) {
             const current = await readStored(scope, name);
             await withFileLock(join(dirname(current.path), ".agents.lock"), async () => {
-                await ensureSafeFile(current.path);
-                const latest = await readFile(current.path, "utf8");
+                const latest = await readAgentDefinitionFile(current.path);
                 if (contentHash(latest) !== expectedHash) {
                     throw new Error(
                         `Agent ${name} 已被外部修改；请 Reload 后重试删除`

@@ -5,7 +5,7 @@ import {isPathInside} from "./pathGuard.js";
 
 const WORKTREE_DIRECTORY = join(".pillar", "worktrees");
 
-export function safeWorktreeTaskId(taskId: string): string {
+function safeWorktreeTaskId(taskId: string): string {
     const safe = taskId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12);
     if (!safe) throw new Error("Task ID 无法生成安全 Worktree 名称");
     return safe;
@@ -15,7 +15,7 @@ export function worktreesRoot(mainGitRoot: string): string {
     return resolve(mainGitRoot, WORKTREE_DIRECTORY);
 }
 
-export function worktreePath(mainGitRoot: string, taskId: string): string {
+function worktreePath(mainGitRoot: string, taskId: string): string {
     return resolve(worktreesRoot(mainGitRoot), `agent-${safeWorktreeTaskId(taskId)}`);
 }
 

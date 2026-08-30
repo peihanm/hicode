@@ -47,7 +47,7 @@ export async function prepareAgentInvoke({
     const preState = getTokenWarningState(estimatedTokens, ctx.model);
 
     if (
-        preState.autoCompact &&
+        preState.critical &&
         shouldAutoCompact(estimatedTokens, ctx.model, ctx.compactState)
     ) {
         await onEvent({

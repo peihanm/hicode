@@ -1,4 +1,5 @@
 import {normalizeTurnAbortReason} from "../../runtime/abort.js";
+import {mergeChildProcessEnvironment, type ChildProcessEnvironment,} from "../../runtime/childEnvironment.js";
 import type {SandboxExecutionPreference, SandboxRuntimeLike, SandboxStatus,} from "../../sandbox/index.js";
 import {runShellArgv, runShellCommand, type ShellCommandOptions, type ShellExecutionResult,} from "./process.js";
 
@@ -39,7 +40,8 @@ function sandboxFailure(
 }
 
 export function createShellRunner(
-    sandbox: SandboxRuntimeLike
+    sandbox: SandboxRuntimeLike,
+    childEnvironment: ChildProcessEnvironment
 ): ShellRunnerLike {
     return {
         get sandboxStatus() {
@@ -58,7 +60,7 @@ export function createShellRunner(
             ) {
                 return runShellCommand({
                     command,
-                    env,
+                    env: mergeChildProcessEnvironment(childEnvironment, env),
                     ...processOptions,
                 });
             }
@@ -83,7 +85,11 @@ export function createShellRunner(
             try {
                 const result = await runShellArgv({
                     argv: wrapped.argv,
-                    env: env ? {...wrapped.env, ...env} : wrapped.env,
+                    env: mergeChildProcessEnvironment(
+                        childEnvironment,
+                        wrapped.env,
+                        env
+                    ),
                     ...processOptions,
                 });
                 let stderr = result.stderr;

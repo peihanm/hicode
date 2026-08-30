@@ -10,6 +10,7 @@ import {DialogFrame, DialogIndicator, DialogItem} from "./DialogFrame.js";
 import {useTerminalWidth} from "../terminalSize.js";
 
 const MAX_PLAN_PREVIEW_CHARS = 4000;
+const MAX_PLAN_FEEDBACK_CHARS = 16_384;
 
 type ExitPermissionMode = Exclude<PermissionMode, "plan">;
 
@@ -148,7 +149,11 @@ export function PlanApprovalDialog({
                         <Text color={COLORS.accent}>❯ </Text>
                         <TextInput
                             value={feedback}
-                            onChange={setFeedback}
+                            onChange={(value) =>
+                                setFeedback(
+                                    value.slice(0, MAX_PLAN_FEEDBACK_CHARS)
+                                )
+                            }
                             onSubmit={submitFeedback}
                             focus
                         />

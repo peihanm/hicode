@@ -6,10 +6,6 @@ export {
     hashProjectValue,
 } from "./project.js";
 export {
-    getPillarHome,
-    getProjectsRoot,
-} from "./paths.js";
-export {
     createPillarStorageLayout,
     getProjectDebugDirectory,
     getProjectSessionsDirectory,

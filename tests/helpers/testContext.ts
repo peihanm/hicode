@@ -4,7 +4,6 @@ import type { ToolContext } from "../../src/tools/types.js";
 import type { MemoryFileAccess } from "../../src/memory/index.js";
 import { createTestToolResultStore } from "./toolResultStore.js";
 import type { ToolResultStore } from "../../src/toolResults/index.js";
-import { join } from "node:path";
 import type { LspManagerLike } from "../../src/lsp/types.js";
 import { createToolContext } from "../../src/runtime/toolContext.js";
 import type { TaskSessionLike } from "../../src/tasks/index.js";
@@ -23,6 +22,7 @@ import {
   createShellRunner,
   type ShellRunnerLike,
 } from "../../src/tools/bash/shellRunner.js";
+import {testChildEnvironment} from "./childEnvironment.js";
 import {
   createGitSessionRuntime,
   createGitWorkspaceRuntime,
@@ -49,6 +49,7 @@ export function createTestContext(
     fastModel?: string;
     fastProvider?: LLMProviderName;
     memoryFiles?: MemoryFileAccess;
+    workspaceBoundary?: string;
   } = {}
 ): ToolContext {
   let permissionMode = options.permissionMode ?? "bypassPermissions";
@@ -57,7 +58,7 @@ export function createTestContext(
 
   const permissionRules = { allow: [], ask: [], deny: [] };
   const sessionId = options.sessionId ?? "test-session";
-  const gitWorkspace = createGitWorkspaceRuntime(cwd);
+  const gitWorkspace = createGitWorkspaceRuntime(cwd, testChildEnvironment);
   const gitSession = createGitSessionRuntime({
     cwd,
     workspace: gitWorkspace,
@@ -68,6 +69,7 @@ export function createTestContext(
     resources: {
       storage: createTestStorage(cwd),
       cwd,
+      workspaceBoundary: options.workspaceBoundary,
       model: options.model ?? "glm-test",
       provider: options.provider ?? "glm",
       fastModel: options.fastModel ?? "glm-fast-test",
@@ -82,16 +84,14 @@ export function createTestContext(
       memoryFiles: options.memoryFiles,
       shellRunner:
         options.shellRunner ??
-        createShellRunner(createDisabledSandboxRuntime()),
+        createShellRunner(createDisabledSandboxRuntime(), testChildEnvironment),
     },
     session: {
       sessionId,
       compactState: createCompactState(),
       toolResultStore:
         options.toolResultStore ??
-        createTestToolResultStore(cwd, sessionId, {
-          rootDir: join(cwd, ".pillar-test-results"),
-        }),
+        createTestToolResultStore(cwd, sessionId),
       fileCheckpoints: createDisabledFileCheckpointRuntime(),
     },
     host: {

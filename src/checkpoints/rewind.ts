@@ -10,6 +10,7 @@ import {createFileCheckpointRuntime} from "./runtime.js";
 import type {CheckpointRestoreResult, FileCheckpointRuntimeLike,} from "./types.js";
 import {createGitSessionRuntime, createGitWorkspaceRuntime, type GitSessionState,} from "../git/index.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 function requireTurnCheckpoint(
     storage: PillarStorageLayout,
@@ -73,6 +74,7 @@ export async function rewindSessionCheckpoint(input: {
     model: string;
     sessionId: string;
     checkpointId: string;
+    childEnvironment: ChildProcessEnvironment;
 }): Promise<CheckpointRestoreResult> {
     const loaded = loadSession(
         input.storage,
@@ -90,7 +92,7 @@ export async function rewindSessionCheckpoint(input: {
     });
     const gitSession = createGitSessionRuntime({
         cwd: input.cwd,
-        workspace: createGitWorkspaceRuntime(input.cwd),
+        workspace: createGitWorkspaceRuntime(input.cwd, input.childEnvironment),
         persistedState: loaded.gitSession,
         resumed: true,
     });

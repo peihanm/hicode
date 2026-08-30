@@ -10,6 +10,14 @@ server.registerTool("echo", {
   annotations: { readOnlyHint: true, destructiveHint: false },
 }, async ({ message }) => ({ content: [{ type: "text", text: `echo:${message}` }] }));
 
+server.registerTool("environment", {
+  description: "Read one environment variable for isolation tests",
+  inputSchema: { name: z.string() },
+  annotations: { readOnlyHint: true, destructiveHint: false },
+}, async ({ name }) => ({
+  content: [{type: "text", text: process.env[name] ?? "<missing>"}],
+}));
+
 server.registerTool("large_text", {
   description: "Return a large deterministic text result",
   inputSchema: { size: z.number().int().min(1).max(100_000).default(60_000) },

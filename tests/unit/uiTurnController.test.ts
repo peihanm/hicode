@@ -22,6 +22,7 @@ function createHarness(overrides: {
   isToolConcurrencySafe?: ConstructorParameters<
     typeof UITurnController
   >[0]["isToolConcurrencySafe"];
+  initialize?: () => Promise<void>;
 } = {}) {
   const events: AgentEvent[] = [];
   const users: string[] = [];
@@ -41,6 +42,7 @@ function createHarness(overrides: {
     onQueuedInputConsumed: () => {},
     onTurnSettled: () => {},
     denyPendingPermission: () => {},
+    initialize: overrides.initialize ?? (async () => {}),
     slashCommands: {
       process: overrides.processSlashCommand ?? (async () => false),
       getBusyBehavior:
@@ -249,6 +251,60 @@ describe("UITurnController", () => {
     expect(calls).toEqual(["begin", "hook", "agent", "settle", "persist"]);
   });
 
+  test("Session 初始化失败时保留用户问题但不运行 Agent", async () => {
+    const harness = createHarness({
+      initialize: async () => {
+        throw new Error("journal unavailable");
+      },
+    });
+
+    await harness.controller.submit("不能开始");
+
+    expect(harness.users).toEqual(["不能开始"]);
+    expect(harness.agentCalls).toBe(0);
+    expect(harness.errors).toHaveLength(1);
+  });
+
+  test("Checkpoint 创建失败时 fail closed，仍尝试收尾和保存", async () => {
+    const calls: string[] = [];
+    const harness = createHarness({
+      beginCheckpoint: async () => {
+        calls.push("begin");
+        throw new Error("checkpoint unavailable");
+      },
+      settleCheckpoint: async () => {
+        calls.push("settle");
+      },
+      persistSnapshot: async () => {
+        calls.push("persist");
+      },
+    });
+
+    await harness.controller.submit("修改文件");
+
+    expect(calls).toEqual(["begin", "settle", "persist"]);
+    expect(harness.agentCalls).toBe(0);
+    expect(harness.errors).toHaveLength(1);
+  });
+
+  test("Checkpoint 收尾失败不跳过 Session 保存", async () => {
+    const calls: string[] = [];
+    const harness = createHarness({
+      settleCheckpoint: async () => {
+        calls.push("settle");
+        throw new Error("settle failed");
+      },
+      persistSnapshot: async () => {
+        calls.push("persist");
+      },
+    });
+
+    await harness.controller.submit("完成任务");
+
+    expect(calls).toEqual(["settle", "persist"]);
+    expect(harness.errors).toHaveLength(1);
+  });
+
   test("UserPromptSubmit Hook 可以阻止请求且不调用主 Agent", async () => {
     const harness = createHarness({
       runUserPromptHooks: async () => ({
@@ -376,5 +432,47 @@ describe("UITurnController", () => {
     expect(harness.events).toEqual([
       { type: "turn_interrupted", reason: "user-cancel" },
     ]);
+  });
+
+  test("关闭时等待当前 Turn 的 checkpoint 与保存全部收尾", async () => {
+    let releasePersist!: () => void;
+    const persistGate = new Promise<void>((resolve) => {
+      releasePersist = resolve;
+    });
+    const calls: string[] = [];
+    const harness = createHarness({
+      runAgent: (async (_input, _history, _onEvent, ctx) =>
+        new Promise((resolve) => {
+          ctx.signal.addEventListener("abort", () => resolve({
+            reply: "cancelled",
+            reason: "interrupted",
+            iterations: 1,
+            abortReason: "shutdown",
+          }), {once: true});
+        })) as AgentRunner,
+      settleCheckpoint: async () => {
+        calls.push("settle");
+      },
+      persistSnapshot: async () => {
+        calls.push("persist-start");
+        await persistGate;
+        calls.push("persist-end");
+      },
+    });
+
+    void harness.controller.submit("long");
+    await Promise.resolve();
+    harness.controller.dispose();
+    let shutdownSettled = false;
+    const shutdown = harness.controller.waitForSettled().then(() => {
+      shutdownSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(calls).toEqual(["settle", "persist-start"]);
+    expect(shutdownSettled).toBeFalse();
+    releasePersist();
+    await shutdown;
+    expect(calls).toEqual(["settle", "persist-start", "persist-end"]);
   });
 });

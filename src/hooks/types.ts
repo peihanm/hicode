@@ -149,6 +149,8 @@ export interface HookExecution {
     durationMs: number;
     exitCode?: number;
     message?: string;
+    /** Handler 已经越过匹配/once 边界并尝试启动 Command。 */
+    commandInvoked?: true;
 }
 
 export interface HookBatchResult {
@@ -166,8 +168,6 @@ export interface HookRuntimeIssue {
 
 export interface HookRuntime {
     readonly enabled: boolean;
-    /** 是否存在可能产生宿主副作用的 Command Hook。 */
-    readonly mayRunCommands: boolean;
     readonly issues: readonly HookRuntimeIssue[];
 
     execute(

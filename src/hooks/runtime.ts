@@ -3,7 +3,9 @@ import {executePromptHook, type HookPromptExecutor,} from "./prompt.js";
 import {defaultExecuteHookCommand, executeCommandHook, type ExecuteHookCommand,} from "./command.js";
 import {boundedHookMessage} from "./handler.js";
 import {matchesHookMatcher} from "./matcher.js";
-import {canonicalHookProjectPath, defaultHookTrustPath, getHookTrust, saveHookTrust,} from "./approval.js";
+import {canonicalHookProjectPath, getHookTrust, getHookTrustPath, saveHookTrust,} from "./approval.js";
+import {mergeChildProcessEnvironment, type ChildProcessEnvironment,} from "../runtime/childEnvironment.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
 import {
     countResolvedHooks,
     type HookBatchResult,
@@ -23,23 +25,25 @@ const MAX_TOTAL_CONTEXT_CHARS = 20_000;
 interface HookRuntimeDependencies {
     executeCommand: ExecuteHookCommand;
     canonicalProjectPath(cwd: string): Promise<string>;
-    getTrust(projectPath: string): Promise<"allow" | "deny" | "pending">;
-    saveTrust(
+    getTrust?(projectPath: string): Promise<"allow" | "deny" | "pending">;
+    saveTrust?(
         projectPath: string,
         decision: "always" | "deny"
     ): Promise<void>;
 }
 
 export interface CreateHookRuntimeOptions {
+    storage: PillarStorageLayout;
     cwd: string;
     hooks: ResolvedHookSettings;
+    childEnvironment: ChildProcessEnvironment;
     headless?: boolean;
     signal?: AbortSignal;
     promptExecutor?: HookPromptExecutor;
     requestTrust?: (request: HookTrustRequest) => Promise<"once" | "always" | "deny">;
 }
 
-export class HookWorkspaceNotTrustedError extends Error {
+class HookWorkspaceNotTrustedError extends Error {
     constructor(projectPath: string) {
         super(
             `工作区尚未信任，不能在 Headless 模式执行 Hooks: ${projectPath}。请先在该目录交互启动 pillar 并确认信任。`
@@ -115,7 +119,6 @@ function hookTrustSummaries(hooks: ResolvedHookSettings) {
 function disabledRuntime(issues: HookRuntimeIssue[]): HookRuntime {
     return {
         enabled: false,
-        mayRunCommands: false,
         issues,
         async execute() {
             return {
@@ -133,21 +136,15 @@ function hookHandler(hook: HookSettings): string {
 
 class ConfiguredHookRuntime implements HookRuntime {
     readonly enabled = true;
-    readonly mayRunCommands: boolean;
     readonly issues: readonly HookRuntimeIssue[] = [];
 
     constructor(
         private readonly cwd: string,
         private readonly hooks: ResolvedHookSettings,
         private readonly executeCommand: ExecuteHookCommand,
+        private readonly childEnvironment: ChildProcessEnvironment,
         private readonly promptExecutor?: HookPromptExecutor
-    ) {
-        this.mayRunCommands = Object.values(hooks).some((matchers) =>
-            matchers.some((matcher) =>
-                matcher.hooks.some((hook) => hook.type === "command")
-            )
-        );
-    }
+    ) {}
 
     async execute(
         input: HookInput,
@@ -270,6 +267,10 @@ class ConfiguredHookRuntime implements HookRuntime {
                         input: effectiveInput,
                         signal,
                         executeCommand: this.executeCommand,
+                        environment: mergeChildProcessEnvironment(
+                            this.childEnvironment,
+                            {PILLAR_PROJECT_DIR: this.cwd}
+                        ),
                     })
                     : await executePromptHook({
                         event: input.hook_event_name,
@@ -330,18 +331,12 @@ class ConfiguredHookRuntime implements HookRuntime {
 export function createHookRuntimeFactory(
     overrides: Partial<HookRuntimeDependencies> = {}
 ) {
-    const trustPath = defaultHookTrustPath();
     const dependencies: HookRuntimeDependencies = {
         executeCommand: overrides.executeCommand ?? defaultExecuteHookCommand,
         canonicalProjectPath:
             overrides.canonicalProjectPath ?? canonicalHookProjectPath,
-        getTrust:
-            overrides.getTrust ??
-            ((projectPath) => getHookTrust(trustPath, projectPath)),
-        saveTrust:
-            overrides.saveTrust ??
-            ((projectPath, decision) =>
-                saveHookTrust(trustPath, projectPath, decision)),
+        getTrust: overrides.getTrust,
+        saveTrust: overrides.saveTrust,
     };
 
     return async function createHookRuntime(
@@ -352,16 +347,24 @@ export function createHookRuntimeFactory(
                 options.cwd,
                 options.hooks,
                 dependencies.executeCommand,
+                options.childEnvironment,
                 options.promptExecutor
             );
         }
+        const trustPath = getHookTrustPath(options.storage);
+        const readTrust = dependencies.getTrust ??
+            ((projectPath: string) => getHookTrust(trustPath, projectPath));
+        const writeTrust = dependencies.saveTrust ??
+            ((projectPath: string, decision: "always" | "deny") =>
+                saveHookTrust(trustPath, projectPath, decision));
         const projectPath = await dependencies.canonicalProjectPath(options.cwd);
-        const stored = await dependencies.getTrust(projectPath);
+        const stored = await readTrust(projectPath);
         if (stored === "allow") {
             return new ConfiguredHookRuntime(
                 options.cwd,
                 options.hooks,
                 dependencies.executeCommand,
+                options.childEnvironment,
                 options.promptExecutor
             );
         }
@@ -391,7 +394,7 @@ export function createHookRuntimeFactory(
             hooks: hookTrustSummaries(options.hooks),
         });
         if (decision === "always" || decision === "deny") {
-            await dependencies.saveTrust(projectPath, decision);
+            await writeTrust(projectPath, decision);
         }
         if (decision === "deny") {
             return disabledRuntime([{
@@ -403,6 +406,7 @@ export function createHookRuntimeFactory(
             options.cwd,
             options.hooks,
             dependencies.executeCommand,
+            options.childEnvironment,
             options.promptExecutor
         );
     };
@@ -423,6 +427,12 @@ export function getHookExecutionIssues(
     return result.executions
         .filter((execution) => execution.outcome === "error")
         .map(formatHookExecutionIssue);
+}
+
+export function didRunCommandHook(result: HookBatchResult): boolean {
+    return result.executions.some(
+        (execution) => execution.type === "command" && execution.commandInvoked === true
+    );
 }
 
 export function formatHookContext(

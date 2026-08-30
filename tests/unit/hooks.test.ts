@@ -1,16 +1,17 @@
 import {describe, expect, test} from "bun:test";
+import {readFile, symlink, writeFile} from "node:fs/promises";
 import {z} from "zod";
 import {join} from "node:path";
 import {
-    HookWorkspaceNotTrustedError,
     createHookSessionRuntime,
-    createHookRuntimeFactory,
+    createHookRuntimeFactory as createProductionHookRuntimeFactory,
     getHookTrust,
     hooksSettingsFileSchema,
     matchesHookMatcher,
     saveHookTrust,
     type HookInput,
     type HookRuntime,
+    type CreateHookRuntimeOptions,
     type ResolvedHookSettings,
 } from "../../src/hooks/index.js";
 import {createEmptyResolvedHookSettings} from "../helpers/hooks.js";
@@ -20,6 +21,21 @@ import {createToolRuntime} from "../../src/tools/registry.js";
 import type {Tool} from "../../src/tools/types.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {createTestStorage} from "../helpers/tempProject.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
+import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
+
+function createHookRuntimeFactory(
+    overrides: Parameters<typeof createProductionHookRuntimeFactory>[0] = {}
+) {
+    const createRuntime = createProductionHookRuntimeFactory(overrides);
+    return (
+        options: Omit<CreateHookRuntimeOptions, "storage">
+    ) => createRuntime({
+        ...options,
+        storage: createTestStorage(options.cwd),
+    });
+}
 
 function settingsWith(
     event: keyof ResolvedHookSettings,
@@ -139,6 +155,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: settingsWith("PreToolUse", [
                 {command: "rewrite"},
                 {command: "matched", if: "bash(git status:*)"},
@@ -171,6 +188,51 @@ describe("Hooks", () => {
         expect(result.updatedInput).toEqual({command: "git status --short"});
     });
 
+    test("if 对前序 Hook 产生的非法参数 fail closed", async () => {
+        const commands: string[] = [];
+        const createRuntime = createHookRuntimeFactory({
+            canonicalProjectPath: async () => "/project",
+            getTrust: async () => "allow",
+            saveTrust: async () => {},
+            executeCommand: async ({command}) => {
+                commands.push(command);
+                return command === "rewrite"
+                    ? {
+                        stdout: JSON.stringify({updatedInput: {command: 42}}),
+                        stderr: "",
+                        termination: {kind: "exit" as const, code: 0},
+                    }
+                    : {
+                        stdout: "",
+                        stderr: "",
+                        termination: {kind: "exit" as const, code: 0},
+                    };
+            },
+        });
+        const runtime = await createRuntime({
+            cwd: "/project",
+            childEnvironment: testChildEnvironment,
+            hooks: settingsWith("PreToolUse", [
+                {command: "rewrite"},
+                {command: "must-not-run", if: "bash(*)"},
+            ], "bash"),
+        });
+        const result = await runtime.execute({
+            hook_event_name: "PreToolUse",
+            session_id: "session",
+            permission_mode: "default",
+            tool_name: "bash",
+            tool_input: {command: "pwd"},
+            tool_call_id: "call",
+        }, new AbortController().signal, {
+            matchesToolCondition: (condition, input) =>
+                matchesToolPermissionRule(bashTool, input, condition),
+        });
+
+        expect(commands).toEqual(["rewrite"]);
+        expect(result.updatedInput).toEqual({command: 42});
+    });
+
     test("once 只在条件命中后消耗，并按 Session 隔离", async () => {
         const commands: string[] = [];
         let matches = false;
@@ -189,6 +251,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: settingsWith("PreToolUse", [{
                 command: "once-hook",
                 if: "bash(git status:*)",
@@ -241,6 +304,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: settingsWith("SessionStart", [{
                 command: "echo start",
                 shell: "bash",
@@ -251,8 +315,7 @@ describe("Hooks", () => {
                 return "once";
             },
         });
-        expect(runtime.mayRunCommands).toBe(true);
-        await runtime.execute({
+        const result = await runtime.execute({
             hook_event_name: "SessionStart",
             session_id: "session",
             source: "startup",
@@ -262,6 +325,7 @@ describe("Hooks", () => {
         });
 
         expect(shells).toEqual(["bash"]);
+        expect(result.executions[0]?.commandInvoked).toBe(true);
     });
 
     test("PreToolUse 顺序传递 updatedInput，并收集有界上下文和阻止原因", async () => {
@@ -296,6 +360,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: settingsWith(
                 "PreToolUse",
                 [{command: "first"}, {command: "second"}],
@@ -335,6 +400,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: promptSettingsWith("PreToolUse", [{
                 prompt: "Reject generated files",
             }], "edit_file"),
@@ -349,7 +415,6 @@ describe("Hooks", () => {
                 },
             },
         });
-        expect(runtime.mayRunCommands).toBe(false);
         const result = await runtime.execute({
             hook_event_name: "PreToolUse",
             session_id: "session",
@@ -358,6 +423,8 @@ describe("Hooks", () => {
             tool_input: {path: "generated.ts"},
             tool_call_id: "call",
         }, new AbortController().signal);
+        expect(result.executions.some((execution) => execution.commandInvoked))
+            .toBe(false);
 
         expect(seenInputs).toEqual([{
             hook_event_name: "PreToolUse",
@@ -387,6 +454,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: promptSettingsWith("UserPromptSubmit", [{
                 prompt: "Review the prompt",
             }]),
@@ -425,6 +493,7 @@ describe("Hooks", () => {
         });
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks: settingsWith("PostToolUse", [
                 {command: "bad-json"},
                 {command: "exit-two"},
@@ -463,10 +532,16 @@ describe("Hooks", () => {
         });
         const hooks = settingsWith("SessionStart", [{command: "echo start"}]);
 
-        await expect(createRuntime({cwd: "/project", hooks, headless: true}))
-            .rejects.toBeInstanceOf(HookWorkspaceNotTrustedError);
+        await expect(createRuntime({
+            cwd: "/project",
+            hooks,
+            childEnvironment: testChildEnvironment,
+            headless: true,
+        }))
+            .rejects.toThrow("工作区尚未信任");
         const runtime = await createRuntime({
             cwd: "/project",
+            childEnvironment: testChildEnvironment,
             hooks,
             requestTrust: async (request) => {
                 expect(request.projectPath).toBe("/canonical/project");
@@ -493,6 +568,7 @@ describe("Hooks", () => {
             ].join(" ");
             const runtime = await createRuntime({
                 cwd,
+                childEnvironment: testChildEnvironment,
                 hooks: settingsWith("UserPromptSubmit", [{
                     command,
                     shell: "bash",
@@ -510,9 +586,39 @@ describe("Hooks", () => {
         });
     });
 
+    test("真实 command Hook 不继承模型凭证", async () => {
+        await withTempProject(async (cwd) => {
+            const createRuntime = createHookRuntimeFactory({
+                canonicalProjectPath: async () => cwd,
+                getTrust: async () => "allow",
+                saveTrust: async () => {},
+            });
+            const childEnvironment = createChildProcessEnvironment({
+                ...process.env,
+                VISIBLE_VALUE: "visible",
+                CUSTOM_MODEL_CREDENTIAL: "configured-secret",
+                SESSION_TOKEN: "token-secret",
+            }, ["CUSTOM_MODEL_CREDENTIAL"]);
+            const command = "printf '{\"additionalContext\":\"%s|%s|%s\"}' \"$VISIBLE_VALUE\" \"$CUSTOM_MODEL_CREDENTIAL\" \"$SESSION_TOKEN\"";
+            const runtime = await createRuntime({
+                cwd,
+                childEnvironment,
+                hooks: settingsWith("SessionStart", [{command, shell: "bash"}]),
+            });
+            const result = await runtime.execute({
+                hook_event_name: "SessionStart",
+                session_id: "session",
+                source: "startup",
+                model: "model",
+            }, new AbortController().signal);
+
+            expect(result.additionalContexts).toEqual(["visible||"]);
+        });
+    });
+
     test("workspace trust 使用锁内原子更新并可覆盖旧决定", async () => {
         await withTempProject(async (cwd) => {
-            const path = join(cwd, "state", "trusted-projects.json");
+            const path = join(cwd, "trusted-projects.json");
             await Promise.all([
                 saveHookTrust(path, "/project-a", "always"),
                 saveHookTrust(path, "/project-b", "always"),
@@ -524,6 +630,70 @@ describe("Hooks", () => {
             expect(await getHookTrust(path, "/missing")).toBe("pending");
         });
     });
+
+    test("workspace trust 从 Host Storage Layout 派生", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const createRuntime = createProductionHookRuntimeFactory({
+                canonicalProjectPath: async () => cwd,
+                executeCommand: async () => ({
+                    stdout: "",
+                    stderr: "",
+                    termination: {kind: "exit" as const, code: 0},
+                }),
+            });
+            await createRuntime({
+                storage,
+                cwd,
+                childEnvironment: testChildEnvironment,
+                hooks: settingsWith("SessionStart", [{command: "echo start"}]),
+                requestTrust: async () => "always",
+            });
+
+            const document = JSON.parse(await readFile(
+                join(storage.pillarHome, "trusted-projects.json"),
+                "utf8"
+            )) as {projects: Array<{
+                projectPath: string;
+                decision: string;
+                decidedAt: string;
+            }>};
+            expect(document.projects).toEqual([{
+                projectPath: cwd,
+                decision: "allow",
+                decidedAt: expect.any(String),
+            }]);
+        });
+    });
+
+    test("workspace trust 拒绝损坏文档且不会在保存时覆盖原内容", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "trusted-projects.json");
+            await writeFile(path, "{broken", "utf8");
+
+            await expect(getHookTrust(path, "/project")).rejects.toThrow();
+            await expect(saveHookTrust(path, "/project", "always"))
+                .rejects.toThrow();
+            expect(await readFile(path, "utf8")).toBe("{broken");
+        });
+    });
+
+    test.skipIf(process.platform === "win32")(
+        "workspace trust 拒绝 symlink 文件",
+        async () => {
+            await withTempProject(async (cwd) => {
+                const target = join(cwd, "target.json");
+                const path = join(cwd, "trusted-projects.json");
+                await writeFile(target, '{"version":1,"projects":[]}\n', "utf8");
+                await symlink(target, path);
+
+                await expect(getHookTrust(path, "/project")).rejects.toThrow(
+                    "regular file"
+                );
+                await expect(saveHookTrust(path, "/project", "always"))
+                    .rejects.toThrow("regular file");
+            });
+        }
+    );
 });
 
 describe("Hook tool boundary", () => {
@@ -551,7 +721,6 @@ describe("Hook tool boundary", () => {
             let askedInput: unknown;
             const hooks: HookRuntime = {
                 enabled: true,
-                mayRunCommands: false,
                 issues: [],
                 async execute(input) {
                     return input.hook_event_name === "PreToolUse"
@@ -596,7 +765,6 @@ describe("Hook tool boundary", () => {
             let permissionCalls = 0;
             const invalidHooks: HookRuntime = {
                 enabled: true,
-                mayRunCommands: false,
                 issues: [],
                 async execute() {
                     return {
@@ -628,7 +796,6 @@ describe("Hook tool boundary", () => {
             const failures: Array<{outcome: string; content: string}> = [];
             const lifecycleHooks: HookRuntime = {
                 enabled: true,
-                mayRunCommands: false,
                 issues: [],
                 async execute(input) {
                     events.push(input.hook_event_name);

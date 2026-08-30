@@ -18,7 +18,7 @@ describe("TaskRuntime", () => {
             };
             const runtime = createTaskRuntimeForTest(cwd, shellRunner);
             const store = createTestToolResultStore(cwd, "policy-session", {
-                rootDir: `${cwd}/tool-results`,
+                pillarHome: `${cwd}/tool-results`,
             });
             const session = runtime.forSession({
                 sessionId: "policy-session",
@@ -34,6 +34,80 @@ describe("TaskRuntime", () => {
                 },
                 parentContext: context,
             })).rejects.toThrow("只支持内置 Explore");
+            await runtime.close();
+        });
+    });
+
+    test("按 Root 与 Session 汇总仍在运行的后台 Shell", async () => {
+        await withTempProject(async (cwd) => {
+            let release!: () => void;
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const shellRunner: ShellRunnerLike = {
+                sandboxStatus: {kind: "disabled"},
+                async run(request) {
+                    await gate;
+                    return {
+                        stdout: "",
+                        stderr: "",
+                        termination: {kind: "exit", code: 0, signal: null},
+                        outputFilePath: request.outputFilePath,
+                        outputBytes: 0,
+                        outputComplete: true,
+                    };
+                },
+            };
+            const runtime = createTaskRuntimeForTest(cwd, shellRunner);
+            const first = runtime.forSession({
+                sessionId: "summary-a",
+                toolResultStore: createTestToolResultStore(cwd, "summary-a", {
+                    pillarHome: `${cwd}/tool-results`,
+                }),
+            });
+            const second = runtime.forSession({
+                sessionId: "summary-b",
+                toolResultStore: createTestToolResultStore(cwd, "summary-b", {
+                    pillarHome: `${cwd}/tool-results`,
+                }),
+            });
+            let finish!: () => void;
+            const finished = new Promise<void>((resolve) => {
+                finish = resolve;
+            });
+            first.subscribe((event) => {
+                if (event.type === "task_finished") finish();
+            });
+
+            await first.startShell({
+                command: "node server.js",
+                cwd,
+                toolCallId: "summary-call",
+            });
+
+            expect(first.getRunningSummary()).toEqual({
+                total: 1,
+                shell: 1,
+                agent: 0,
+            });
+            expect(second.getRunningSummary()).toEqual({
+                total: 0,
+                shell: 0,
+                agent: 0,
+            });
+            expect(runtime.getRunningSummary()).toEqual({
+                total: 1,
+                shell: 1,
+                agent: 0,
+            });
+
+            release();
+            await finished;
+            expect(first.getRunningSummary()).toEqual({
+                total: 0,
+                shell: 0,
+                agent: 0,
+            });
             await runtime.close();
         });
     });
@@ -56,10 +130,10 @@ describe("TaskRuntime", () => {
             };
             const runtime = createTaskRuntimeForTest(cwd, shellRunner);
             const firstStore = createTestToolResultStore(cwd, "session-a", {
-                rootDir: `${cwd}/tool-results`,
+                pillarHome: `${cwd}/tool-results`,
             });
             const secondStore = createTestToolResultStore(cwd, "session-b", {
-                rootDir: `${cwd}/tool-results`,
+                pillarHome: `${cwd}/tool-results`,
             });
             const first = runtime.forSession({
                 sessionId: "session-a",
@@ -135,7 +209,7 @@ describe("TaskRuntime", () => {
             };
             const runtime = createTaskRuntimeForTest(cwd, shellRunner);
             const store = createTestToolResultStore(cwd, "failed-session", {
-                rootDir: `${cwd}/tool-results`,
+                pillarHome: `${cwd}/tool-results`,
             });
             const session = runtime.forSession({
                 sessionId: "failed-session",
@@ -190,7 +264,7 @@ describe("TaskRuntime", () => {
                 },
             };
             const store = createTestToolResultStore(cwd, "resume-session", {
-                rootDir: `${cwd}/tool-results`,
+                pillarHome: `${cwd}/tool-results`,
             });
             const firstRuntime = createTaskRuntimeForTest(cwd, shellRunner);
             const first = firstRuntime.forSession({

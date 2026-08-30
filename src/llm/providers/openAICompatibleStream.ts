@@ -1,28 +1,13 @@
 import type {LLMStreamProgress, TokenUsage, ToolCall,} from "../types.js";
+import {
+    decodeOpenAICompatibleStreamChunk,
+    type OpenAICompatibleStreamChunk,
+} from "./openAICompatibleStreamCodec.js";
 
 const COMPLETION_TAIL_GRACE_MS = 500;
-
-interface OpenAICompatibleStreamDeltaToolCall {
-    index?: number;
-    id?: string;
-    type?: string;
-    function?: {
-        name?: string;
-        arguments?: string;
-    };
-}
-
-interface OpenAICompatibleStreamChunk {
-    choices?: Array<{
-        delta?: {
-            content?: string | null;
-            reasoning_content?: string | null;
-            tool_calls?: OpenAICompatibleStreamDeltaToolCall[];
-        };
-        finish_reason?: string | null;
-    }>;
-    usage?: TokenUsage;
-}
+const MAX_SSE_EVENT_CHARACTERS = 8 * 1024 * 1024;
+const MAX_STREAM_OUTPUT_CHARACTERS = 64 * 1024 * 1024;
+const MAX_DATA_EVENTS = 200_000;
 
 export interface OpenAICompatibleStreamResult {
     content: string;
@@ -77,6 +62,7 @@ export async function consumeOpenAICompatibleSSE({
     let content = "";
     let reasoningContent = "";
     let outputCharacters = 0;
+    let retainedCharacters = 0;
     let usage: TokenUsage = {
         prompt_tokens: 0,
         completion_tokens: 0,
@@ -113,7 +99,21 @@ export async function consumeOpenAICompatibleSSE({
         });
     };
 
+    const retain = (fragment: string, field: string) => {
+        retainedCharacters += fragment.length;
+        if (retainedCharacters > MAX_STREAM_OUTPUT_CHARACTERS) {
+            throw new Error(
+                `OpenAI-compatible stream 累计输出超过 ${MAX_STREAM_OUTPUT_CHARACTERS} 字符（${field}）`
+            );
+        }
+    };
+
     const processEvent = (event: string) => {
+        if (event.length > MAX_SSE_EVENT_CHARACTERS) {
+            throw new Error(
+                `OpenAI-compatible stream 单个 SSE 事件超过 ${MAX_SSE_EVENT_CHARACTERS} 字符`
+            );
+        }
         const data = getEventData(event);
         if (!data) return;
         onActivity();
@@ -123,13 +123,20 @@ export async function consumeOpenAICompatibleSSE({
             return;
         }
         dataEventCount += 1;
+        if (dataEventCount > MAX_DATA_EVENTS) {
+            throw new Error(
+                `OpenAI-compatible stream 数据事件超过 ${MAX_DATA_EVENTS} 个`
+            );
+        }
 
         let chunk: OpenAICompatibleStreamChunk;
         try {
-            chunk = JSON.parse(data) as OpenAICompatibleStreamChunk;
+            chunk = decodeOpenAICompatibleStreamChunk(
+                JSON.parse(data) as unknown
+            );
         } catch (error) {
             throw new Error(
-                `OpenAI-compatible stream 返回无效 JSON: ${error instanceof Error ? error.message : String(error)}`
+                `OpenAI-compatible stream 返回无效数据: ${error instanceof Error ? error.message : String(error)}`
             );
         }
 
@@ -142,11 +149,13 @@ export async function consumeOpenAICompatibleSSE({
 
         if (delta) {
             if (delta.reasoning_content) {
+                retain(delta.reasoning_content, "reasoning_content");
                 reasoningContent += delta.reasoning_content;
                 outputCharacters += delta.reasoning_content.length;
                 report("reasoning");
             }
             if (delta.content) {
+                retain(delta.content, "content");
                 content += delta.content;
                 outputCharacters += delta.content.length;
                 report("content");
@@ -154,18 +163,23 @@ export async function consumeOpenAICompatibleSSE({
             for (const streamed of delta.tool_calls ?? []) {
                 const index = streamed.index ?? 0;
                 const existing = tools.get(index) ?? {
-                    id: streamed.id ?? `stream-tool-${index}`,
+                    id: "",
                     type: "function" as const,
                     function: {name: "", arguments: ""},
                 };
-                if (streamed.id) existing.id = streamed.id;
+                if (streamed.id) {
+                    retain(streamed.id, "tool_call.id");
+                    existing.id = streamed.id;
+                }
                 if (streamed.function?.name) {
+                    retain(streamed.function.name, "tool_call.function.name");
                     existing.function.name = appendToolName(
                         existing.function.name,
                         streamed.function.name
                     );
                 }
                 const argumentDelta = streamed.function?.arguments ?? "";
+                retain(argumentDelta, "tool_call.function.arguments");
                 existing.function.arguments += argumentDelta;
                 outputCharacters += argumentDelta.length;
                 tools.set(index, existing);
@@ -195,6 +209,11 @@ export async function consumeOpenAICompatibleSSE({
                 if (done) break;
                 boundary = buffer.search(/\r?\n\r?\n/);
             }
+            if (buffer.length > MAX_SSE_EVENT_CHARACTERS) {
+                throw new Error(
+                    `OpenAI-compatible stream 未终止事件超过 ${MAX_SSE_EVENT_CHARACTERS} 字符`
+                );
+            }
         }
         buffer += decoder.decode();
         if (!done && buffer.trim()) processEvent(buffer);
@@ -219,10 +238,28 @@ export async function consumeOpenAICompatibleSSE({
     const toolCalls = [...tools.entries()]
         .sort(([left], [right]) => left - right)
         .map(([, toolCall]) => toolCall);
+    if (!finishReason) {
+        throw new Error(
+            "OpenAI-compatible stream 在明确完成前已结束，拒绝使用可能截断的响应"
+        );
+    }
+    if (
+        (toolCalls.length > 0 && finishReason !== "tool_calls") ||
+        (toolCalls.length === 0 && finishReason !== "stop")
+    ) {
+        throw new Error(
+            `OpenAI-compatible stream 以 ${finishReason} 结束，响应不完整或与工具调用不一致`
+        );
+    }
+    const toolCallIds = new Set<string>();
     for (const toolCall of toolCalls) {
-        if (!toolCall.function.name) {
-            throw new Error("OpenAI-compatible stream 返回了缺少函数名的 tool call");
+        if (!toolCall.id || !toolCall.function.name) {
+            throw new Error("OpenAI-compatible stream 返回了缺少 id 或函数名的 tool call");
         }
+        if (toolCallIds.has(toolCall.id)) {
+            throw new Error("OpenAI-compatible stream 返回了重复 id 的 tool call");
+        }
+        toolCallIds.add(toolCall.id);
     }
 
     return {

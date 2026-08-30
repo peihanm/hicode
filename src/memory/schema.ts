@@ -24,7 +24,7 @@ export const memoryKeySchema = z
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "只能包含小写字母、数字和单个连字符分隔");
 
-export const memoryTypeSchema = z.enum(MEMORY_TYPES);
+const memoryTypeSchema = z.enum(MEMORY_TYPES);
 const memorySourceSchema = z.enum(["explicit", "automatic"]);
 
 export const memoryFrontmatterSchema = z.object({

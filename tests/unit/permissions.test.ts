@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
+import {tmpdir} from "node:os";
 import {
   addToAllowList,
 } from "../../src/permissions/index.js";
@@ -75,20 +76,24 @@ describe("resolvePermission", () => {
   });
 
   test("acceptEdits 只自动放行 cwd 内的文件编辑", async () => {
-    const ctx = createTestContext("/tmp/project", {
-      permissionMode: "acceptEdits",
-    });
-    const tool = createTool({
-      name: "write_file",
-      checkPermissions: async () => ({ behavior: "ask", message: "write" }),
-    });
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd, {permissionMode: "acceptEdits"});
+      const tool = createTool({
+        name: "write_file",
+        checkPermissions: async () => ({behavior: "ask", message: "write"}),
+      });
 
-    await expect(
-      resolvePermission(tool, { path: "src/a.ts" }, ctx)
-    ).resolves.toEqual({ behavior: "allow" });
-    await expect(
-      resolvePermission(tool, { path: "../outside.ts" }, ctx)
-    ).resolves.toMatchObject({ behavior: "ask" });
+      await expect(resolvePermission(tool, {path: "src/a.ts"}, ctx))
+        .resolves.toEqual({behavior: "allow"});
+      await expect(resolvePermission(tool, {path: "../outside.ts"}, ctx))
+        .resolves.toMatchObject({behavior: "ask"});
+
+      if (process.platform !== "win32") {
+        await symlink(tmpdir(), join(cwd, "linked"));
+        await expect(resolvePermission(tool, {path: "linked/file.ts"}, ctx))
+          .resolves.toMatchObject({behavior: "ask"});
+      }
+    });
   });
 });
 
@@ -193,4 +198,21 @@ describe("permission rule persistence", () => {
       expect(emptyRules.allow).toEqual([]);
     });
   });
+
+  test.skipIf(process.platform === "win32")(
+    "权限规则拒绝通过 symlink .pillar 目录写出项目边界",
+    async () => {
+      await withTempProject(async (cwd) => {
+        const outside = join(cwd, "outside");
+        await mkdir(outside);
+        await symlink(outside, join(cwd, ".pillar"));
+        const emptyRules: PermissionRules = { allow: [], ask: [], deny: [] };
+
+        await expect(addToAllowList("write_file", emptyRules, cwd))
+          .rejects.toThrow("unsafe .pillar directory");
+        await expect(readFile(join(outside, "settings.local.json"), "utf8"))
+          .rejects.toThrow();
+      });
+    }
+  );
 });

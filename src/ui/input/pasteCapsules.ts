@@ -1,7 +1,7 @@
 import {stripVTControlCharacters} from "node:util";
 
-export const PASTE_CAPSULE_CHARACTER_THRESHOLD = 800;
-export const PASTE_CAPSULE_NEWLINE_THRESHOLD = 2;
+const PASTE_CAPSULE_CHARACTER_THRESHOLD = 800;
+const PASTE_CAPSULE_NEWLINE_THRESHOLD = 2;
 
 export interface PasteCapsule {
     id: number;

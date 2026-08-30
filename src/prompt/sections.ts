@@ -9,9 +9,9 @@
 // - # Using your tools（工具使用规范）
 // - # Executing actions with care（危险操作风险意识）
 // - # Tone and style + Output efficiency（输出风格）
-// - # Environment（gitStatus snapshot + 环境信息，对齐 claude-code 的 block[3]）
+// - # Environment（稳定的宿主环境信息）
 //
-// 全段跨请求尽量不变（gitStatus 是 snapshot，会话内不更新），利于 GLM 自动缓存稳定命中。
+// 全段跨请求保持不变，利于模型前缀缓存。
 // CODE.md/currentDate 走 attachment 注入（attachments.ts），每次 runAgent 重新注入。
 // skill 调用提示不放在 system prompt 里，走 attachment 注入 + tool description。
 
@@ -140,22 +140,14 @@ export function getToneAndStyleSection(): string {
     ].join("\n");
 }
 
-// # Environment — 环境信息 + gitStatus snapshot
-// 对齐 claude-code 的 block[3]（# Environment + gitStatus）
-// gitStatus 是 snapshot（会话内不更新），LLM 需要最新状态自己跑 BashTool
+// # Environment — 只放无需 I/O 的稳定宿主事实。
+// Git 状态变化频繁，需要时由 Agent 通过统一工具链读取实时值。
 export function getEnvSection(env: EnvInfo): string {
-    const lines: string[] = [
+    return [
         "# Environment",
         `工作目录：${env.cwd}`,
         `平台：${env.platform}`,
         `Shell：${env.shell}`,
-        `Git 仓库：${env.isGit ? "是" : "否"}`,
         `模型：${env.model}`,
-    ];
-
-    if (env.gitStatus) {
-        lines.push("", env.gitStatus);
-    }
-
-    return lines.join("\n");
+    ].join("\n");
 }

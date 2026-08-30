@@ -8,13 +8,14 @@ const MAX_DESCRIPTION_CHARS = 2048;
 const MAX_TOOLS_PER_SERVER = 100;
 const MAX_SCHEMA_CHARS = 64 * 1024;
 const MAX_TOTAL_SCHEMA_CHARS = 512 * 1024;
+const MAX_REMOTE_TOOL_NAME_CHARS = 512;
 const passthroughObject = z.object({}).passthrough();
 
 export function adaptMcpTools(server: McpConnectedServer): {
-    tools: Tool<any>[];
+    tools: Tool[];
     issues: string[];
 } {
-    const tools: Tool<any>[] = [];
+    const tools: Tool[] = [];
     const issues: string[] = [];
     const names = new Map<string, string>();
     let totalSchemaChars = 0;
@@ -22,7 +23,19 @@ export function adaptMcpTools(server: McpConnectedServer): {
         issues.push(`Server 返回 ${server.tools.length} 个工具，只加载前 ${MAX_TOOLS_PER_SERVER} 个`);
     }
     for (const remote of server.tools.slice(0, MAX_TOOLS_PER_SERVER)) {
-        const qualifiedName = buildMcpToolName(server.config.name, remote.name);
+        if (
+            typeof remote.name !== "string" ||
+            remote.name.length === 0 ||
+            remote.name.length > MAX_REMOTE_TOOL_NAME_CHARS
+        ) {
+            issues.push("Server 返回了无效或过长的工具名");
+            continue;
+        }
+        const originalName = remote.name;
+        const qualifiedName = buildMcpToolName(
+            server.config.name,
+            originalName
+        );
         const existing = names.get(qualifiedName);
         if (existing) {
             issues.push(`工具 ${remote.name} 与 ${existing} 规范化后名称冲突`);
@@ -47,11 +60,10 @@ export function adaptMcpTools(server: McpConnectedServer): {
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, MAX_DESCRIPTION_CHARS);
-        const originalName = remote.name;
         const annotationReadOnly =
             remote.annotations?.readOnlyHint === true &&
             remote.annotations?.destructiveHint !== true;
-        const tool: Tool<any> = {
+        const tool: Tool = {
             name: qualifiedName,
             description: `[MCP: ${server.config.name}] ${description || originalName}`,
             exposure: "deferred",

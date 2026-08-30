@@ -4,9 +4,9 @@ import stringWidth from "string-width";
 import { reduceThreads } from "../../src/ui/conversation/threadReducer.js";
 import type { UIThread } from "../../src/ui/conversation/types.js";
 import {
-  layoutUserMessageRows,
   MessageList,
 } from "../../src/ui/conversation/MessageList.js";
+import {layoutUserMessageRows} from "../../src/ui/conversation/projection.js";
 import { AppForTest as App } from "../helpers/AppForTest.js";
 import type { AgentRunner } from "../../src/agent/index.js";
 import { withTempProject } from "../helpers/tempProject.js";

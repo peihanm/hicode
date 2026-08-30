@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   createFileChange,
   mergeFileChange,
-  limitFileChangeUIData,
 } from "../../src/fileChanges/index.js";
 import {limitPersistedUIEvents} from "../../src/session/index.js";
 
@@ -177,12 +176,14 @@ describe("file change diff", () => {
       path: "large.txt",
       kind: "create",
       oldContent: "",
-      newContent: Array.from({ length: 100 }, (_, index) => `line-${index}`).join("\n"),
+      newContent: Array.from(
+        { length: 30_000 },
+        (_, index) => `line-${index}-${"x".repeat(80)}`,
+      ).join("\n"),
     });
-    const limited = limitFileChangeUIData(change, 900);
-    expect(limited.diffStatus).toBe("truncated");
-    expect(limited.linesAdded).toBe(100);
-    expect(limited.omittedDiffLines).toBeGreaterThan(0);
+    expect(change.diffStatus).toBe("truncated");
+    expect(change.linesAdded).toBe(30_000);
+    expect(change.omittedDiffLines).toBeGreaterThan(0);
   });
 
   test("持久化 UI 事件同时遵守条数和字节配额", () => {

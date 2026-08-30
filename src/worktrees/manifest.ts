@@ -1,4 +1,4 @@
-import {mkdir, readFile, stat} from "node:fs/promises";
+import {chmod, lstat, mkdir, readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {
     hasFileSystemErrorCode,
@@ -115,8 +115,21 @@ export class WorktreeManifestStore {
         return join(this.directory, `${manifestKey(taskId)}.lock`);
     }
 
-    private withRecordLock<T>(taskId: string, action: () => Promise<T>): Promise<T> {
+    private async withRecordLock<T>(
+        taskId: string,
+        action: () => Promise<T>
+    ): Promise<T> {
+        await this.ensureDirectory();
         return withFileLock(this.lockPath(taskId), action);
+    }
+
+    private async ensureDirectory(): Promise<void> {
+        await mkdir(this.directory, {recursive: true, mode: 0o700});
+        const info = await lstat(this.directory);
+        if (!info.isDirectory() || info.isSymbolicLink()) {
+            throw new Error("Worktree manifest 目录不是安全的 directory");
+        }
+        await chmod(this.directory, 0o700);
     }
 
     private async readUnlocked(
@@ -126,7 +139,11 @@ export class WorktreeManifestStore {
         const path = this.manifestPath(taskId);
         let size: number;
         try {
-            size = (await stat(path)).size;
+            const info = await lstat(path);
+            if (!info.isFile() || info.isSymbolicLink()) {
+                throw new Error("Worktree manifest 不是安全的 regular file");
+            }
+            size = info.size;
         } catch (error) {
             if (hasFileSystemErrorCode(error, "ENOENT")) return undefined;
             throw error;
@@ -151,11 +168,14 @@ export class WorktreeManifestStore {
     }
 
     private async writeUnlocked(record: AgentWorktreeRecord): Promise<void> {
+        if (!isRecord(record, record.taskId, record.sessionId)) {
+            throw new Error("拒绝写入无效的 Worktree manifest");
+        }
         const content = `${JSON.stringify(record, null, 2)}\n`;
         if (Buffer.byteLength(content) > MAX_MANIFEST_BYTES) {
             throw new Error(`Worktree manifest 超过 ${MAX_MANIFEST_BYTES} 字节限制`);
         }
-        await mkdir(this.directory, {recursive: true, mode: 0o700});
+        await this.ensureDirectory();
         await writeFileAtomically(this.manifestPath(record.taskId), content, 0o600);
     }
 }
