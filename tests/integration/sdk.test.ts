@@ -1,0 +1,593 @@
+import {describe, expect, test} from "bun:test";
+import {readFile, writeFile} from "node:fs/promises";
+import {join, resolve} from "node:path";
+import {createCompactState} from "../../src/context/index.js";
+import {createInitialHistory} from "../../src/prompt/index.js";
+import type {AgentRuntime} from "../../src/runtime/agentRuntime.js";
+import {createSessionId, loadSession} from "../../src/session/index.js";
+import {Pillar} from "../../src/sdk/index.js";
+import {collectTurnResult} from "../../src/sdk/resultCollector.js";
+import {createSDKThread} from "../../src/sdk/thread.js";
+import type {ThreadEvent} from "../../src/sdk/protocol.js";
+import type {SubagentRunner} from "../../src/subagents/types.js";
+import {runAgentForTest} from "../helpers/agent.js";
+import {
+    assistantText,
+    assistantToolCall,
+    createFakeLLM,
+} from "../helpers/fakeLLM.js";
+import {
+    createTestRuntimeResources,
+    createTestSettings,
+} from "../helpers/runtimeResources.js";
+import {withTempProject} from "../helpers/tempProject.js";
+
+function createFakeAgentRuntime(
+    fake: ReturnType<typeof createFakeLLM>
+): AgentRuntime {
+    return {
+        runAgent: (
+            prompt,
+            history,
+            onEvent,
+            ctx,
+            inputChannel,
+            options
+        ) => runAgentForTest(prompt, history, onEvent, ctx, {
+            ...options,
+            callLLM: fake.callLLM,
+            inputChannel,
+        }),
+        createSubagentRunner: () => {
+            const runner: SubagentRunner = async () => {
+                throw new Error("SDK 测试未配置子 Agent");
+            };
+            return runner;
+        },
+        compactHistory: async () => ({
+            compacted: false,
+            preTokenCount: 0,
+            threshold: Number.MAX_SAFE_INTEGER,
+        }),
+    };
+}
+
+describe("TypeScript SDK", () => {
+    test("公开 Pillar 生命周期可以创建 Thread 并幂等关闭", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const pillar = await Pillar.create({
+                cwd,
+                storage,
+                settings: createTestSettings(),
+            });
+            const thread = await pillar.startThread({
+                permissionMode: "acceptEdits",
+            });
+
+            expect(thread.getInfo()).toMatchObject({
+                id: thread.id,
+                cwd,
+                permissionMode: "acceptEdits",
+                resumed: false,
+            });
+            await expect(pillar.startThread()).rejects.toMatchObject({
+                code: "thread_already_open",
+            });
+
+            await thread.close();
+            const next = await pillar.startThread();
+            await next.close();
+            await pillar.close();
+            await pillar.close();
+        });
+    });
+
+    test("Root 初始化期的 MCP 与 Hook 审批复用 Host callback", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const fixture = resolve(
+                import.meta.dir,
+                "../fixtures/mcp/stdioServer.ts"
+            );
+            await writeFile(join(cwd, ".mcp.json"), JSON.stringify({
+                mcpServers: {
+                    sdk_fixture: {
+                        command: process.execPath,
+                        args: [fixture],
+                    },
+                },
+            }));
+            const defaults = createTestSettings();
+            const settings = createTestSettings({
+                hooks: {
+                    ...defaults.hooks,
+                    SessionStart: [{
+                        source: "project",
+                        path: join(cwd, ".pillar", "settings.json"),
+                        hooks: [{type: "command", command: "true"}],
+                    }],
+                },
+            });
+            const interactionKinds: string[] = [];
+
+            const pillar = await Pillar.create({
+                cwd,
+                storage,
+                settings,
+                host: {
+                    async onInteraction(request) {
+                        interactionKinds.push(request.kind);
+                        return {behavior: "allow", persistence: "once"};
+                    },
+                },
+            });
+            try {
+                const thread = await pillar.startThread();
+                expect(interactionKinds).toEqual([
+                    "mcp_approval",
+                    "hook_trust",
+                ]);
+                expect(thread.getInfo().mcpServers).toEqual([
+                    expect.objectContaining({
+                        name: "sdk_fixture",
+                        status: "connected",
+                    }),
+                ]);
+                await thread.close();
+            } finally {
+                await pillar.close();
+            }
+        });
+    });
+
+    test("同一 Thread 连续 run 复用 History 和单调事件序号", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const fake = createFakeLLM([
+                assistantText("第一轮完成"),
+                (call) => {
+                    expect(call.messages).toEqual(expect.arrayContaining([
+                        {role: "user", content: "第一轮"},
+                        {role: "assistant", content: "第一轮完成"},
+                        {role: "user", content: "第二轮"},
+                    ]));
+                    return assistantText("第二轮完成");
+                },
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const thread = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId: createSessionId(),
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                onClose() {},
+            });
+
+            try {
+                const first = await thread.run("第一轮");
+                const second = await thread.run("第二轮");
+
+                expect(first.finalResponse).toBe("第一轮完成");
+                expect(first.usage).toEqual({
+                    inputTokens: 12,
+                    outputTokens: 4,
+                    totalTokens: 16,
+                    estimated: false,
+                });
+                expect(second.finalResponse).toBe("第二轮完成");
+                expect(first.threadId).toBe(second.threadId);
+                expect(fake.calls).toHaveLength(2);
+            } finally {
+                await thread.close();
+                await resources.close();
+            }
+        });
+    });
+
+    test("runStreamed 输出统一 Item 生命周期并通过 Host 完成写权限", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const fake = createFakeLLM([
+                assistantToolCall(
+                    "write_file",
+                    {path: "sdk-output.txt", content: "hello sdk"},
+                    "sdk-write"
+                ),
+                (call) => {
+                    const result = call.messages.find(
+                        (message) =>
+                            message.role === "tool" &&
+                            message.tool_call_id === "sdk-write"
+                    );
+                    expect(result?.content).toContain("sdk-output.txt");
+                    return assistantText("写入完成");
+                },
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const interactions: string[] = [];
+            const thread = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId: createSessionId(),
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                host: {
+                    async onInteraction(request) {
+                        interactions.push(request.kind);
+                        return {behavior: "allow"};
+                    },
+                },
+                onClose() {},
+            });
+
+            try {
+                const {events} = await thread.runStreamed("写入测试文件");
+                const captured: ThreadEvent[] = [];
+                for await (const event of events) captured.push(event);
+                const result = await collectTurnResult(replay(captured));
+
+                expect(result.finalResponse).toBe("写入完成");
+                expect(interactions).toEqual(["permission"]);
+                expect(captured.map((event) => event.sequence)).toEqual(
+                    captured.map((_, index) => index + 1)
+                );
+                expect(captured.some(
+                    (event) =>
+                        event.type === "item.completed" &&
+                        event.item.type === "interaction" &&
+                        event.item.status === "completed"
+                )).toBe(true);
+                expect(captured.some(
+                    (event) =>
+                        event.type === "item.completed" &&
+                        event.item.type === "tool_call" &&
+                        event.item.outcome === "ok"
+                )).toBe(true);
+                expect(captured.some(
+                    (event) =>
+                        event.type === "item.completed" &&
+                        event.item.type === "file_change"
+                )).toBe(true);
+                expect(await readFile(`${cwd}/sdk-output.txt`, "utf8"))
+                    .toBe("hello sdk");
+            } finally {
+                await thread.close();
+                await resources.close();
+            }
+        });
+    });
+
+    test("Session 保存后可以恢复为同一 Thread 并继续对话", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const fake = createFakeLLM([
+                assistantText("已记录上下文"),
+                (call) => {
+                    expect(call.messages).toEqual(expect.arrayContaining([
+                        {role: "assistant", content: "已记录上下文"},
+                        {role: "user", content: "继续"},
+                    ]));
+                    return assistantText("恢复成功");
+                },
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const sessionId = createSessionId();
+            const first = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId,
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                onClose() {},
+            });
+            await first.run("记住这轮");
+            await first.close();
+
+            const loaded = loadSession(storage, cwd, sessionId, resources.model);
+            expect(loaded).not.toBeNull();
+            const resumed = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId,
+                    history: loaded!.history,
+                    compactState:
+                        loaded!.compactState ?? createCompactState(),
+                    checkpointHead: loaded!.checkpointHead,
+                    queuedInputs: loaded!.queuedInputs,
+                    toolDiscovery: loaded!.toolDiscovery,
+                    gitSession: loaded!.gitSession,
+                },
+                state: {
+                    todos: loaded!.todos,
+                    permissionMode: loaded!.permissionMode,
+                    prePlanMode: loaded!.prePlanMode,
+                    uiEvents: loaded!.uiEvents,
+                },
+                resumed: true,
+                onClose() {},
+            });
+
+            try {
+                const result = await resumed.run("继续");
+                expect(resumed.id).toBe(sessionId);
+                expect(result.finalResponse).toBe("恢复成功");
+            } finally {
+                await resumed.close();
+                await resources.close();
+            }
+        });
+    });
+
+    test("同一 Thread 拒绝并发 Turn，前一轮完成后可以继续", async () => {
+        await withTempProject(async (cwd, storage) => {
+            let markStarted!: () => void;
+            let release!: () => void;
+            const started = new Promise<void>((resolve) => {
+                markStarted = resolve;
+            });
+            const gate = new Promise<void>((resolve) => {
+                release = resolve;
+            });
+            const fake = createFakeLLM([
+                async () => {
+                    markStarted();
+                    await gate;
+                    return assistantText("慢任务完成");
+                },
+                assistantText("后续完成"),
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const thread = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId: createSessionId(),
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                onClose() {},
+            });
+
+            try {
+                const first = thread.run("慢任务");
+                await started;
+                await expect(thread.run("并发任务")).rejects.toMatchObject({
+                    code: "thread_busy",
+                });
+                release();
+                expect((await first).finalResponse).toBe("慢任务完成");
+                expect((await thread.run("后续任务")).finalResponse)
+                    .toBe("后续完成");
+            } finally {
+                release();
+                await thread.close();
+                await resources.close();
+            }
+        });
+    });
+
+    test("已取消 signal 返回 interrupted，并且不会污染下一轮", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const fake = createFakeLLM([assistantText("下一轮正常")]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const thread = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId: createSessionId(),
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                onClose() {},
+            });
+            const controller = new AbortController();
+            controller.abort("user-cancel");
+
+            try {
+                const interrupted = await thread.run("取消本轮", {
+                    signal: controller.signal,
+                });
+                expect(interrupted).toMatchObject({
+                    stopReason: "interrupted",
+                    abortReason: "user-cancel",
+                    usage: null,
+                });
+                const next = await thread.run("继续执行");
+                expect(next.finalResponse).toBe("下一轮正常");
+            } finally {
+                await thread.close();
+                await resources.close();
+            }
+        });
+    });
+
+    test("关闭 Thread 会取消等待中的 Host interaction 并闭合 Turn", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const fake = createFakeLLM([
+                assistantToolCall(
+                    "ask_user",
+                    {
+                        questions: [{
+                            question: "是否继续",
+                            options: [
+                                {label: "是", description: "继续"},
+                                {label: "否", description: "停止"},
+                            ],
+                        }],
+                    },
+                    "pending-question"
+                ),
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            let markInteractionStarted!: () => void;
+            const interactionStarted = new Promise<void>((resolve) => {
+                markInteractionStarted = resolve;
+            });
+            const never = new Promise<never>(() => {});
+            const thread = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId: createSessionId(),
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                host: {
+                    onInteraction() {
+                        markInteractionStarted();
+                        return never;
+                    },
+                },
+                onClose() {},
+            });
+
+            const run = thread.run("先询问我");
+            await interactionStarted;
+            await thread.close();
+            const result = await run;
+
+            expect(result).toMatchObject({
+                stopReason: "interrupted",
+                abortReason: "shutdown",
+            });
+            expect(result.items).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    type: "interaction",
+                    status: "interrupted",
+                }),
+            ]));
+            await resources.close();
+        });
+    });
+
+    test("ask_user 通过同一 interaction Item 和 Host callback 回答", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const questionInput = {
+                questions: [{
+                    question: "选择方案",
+                    options: [
+                        {label: "A", description: "方案 A"},
+                        {label: "B", description: "方案 B"},
+                    ],
+                }],
+            };
+            const fake = createFakeLLM([
+                assistantToolCall("ask_user", questionInput, "sdk-question"),
+                (call) => {
+                    const result = call.messages.find(
+                        (message) =>
+                            message.role === "tool" &&
+                            message.tool_call_id === "sdk-question"
+                    );
+                    expect(result?.content).toContain('"选择方案"="A"');
+                    return assistantText("选择了 A");
+                },
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage,
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const seenKinds: string[] = [];
+            const thread = await createSDKThread({
+                resources,
+                seed: {
+                    sessionId: createSessionId(),
+                    history: createInitialHistory(cwd, resources.model),
+                    compactState: createCompactState(),
+                },
+                state: {
+                    todos: [],
+                    permissionMode: "default",
+                    uiEvents: [],
+                },
+                resumed: false,
+                host: {
+                    async onInteraction(request) {
+                        seenKinds.push(request.kind);
+                        expect(request.kind).toBe("question");
+                        return {
+                            behavior: "allow",
+                            updatedInput: {
+                                ...questionInput,
+                                answers: {"选择方案": "A"},
+                            },
+                        };
+                    },
+                },
+                onClose() {},
+            });
+
+            try {
+                const result = await thread.run("需要选择时询问我");
+                expect(result.finalResponse).toBe("选择了 A");
+                expect(seenKinds).toEqual(["question"]);
+                expect(result.items.some(
+                    (item) =>
+                        item.type === "interaction" &&
+                        item.request.kind === "question" &&
+                        item.status === "completed"
+                )).toBe(true);
+            } finally {
+                await thread.close();
+                await resources.close();
+            }
+        });
+    });
+});
+
+async function* replay(
+    events: readonly ThreadEvent[]
+): AsyncGenerator<ThreadEvent> {
+    yield* events;
+}

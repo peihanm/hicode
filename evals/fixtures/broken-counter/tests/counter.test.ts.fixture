@@ -1,0 +1,19 @@
+import {describe, expect, test} from "bun:test";
+import {createCounter} from "../src/counter.js";
+
+describe("counter", () => {
+    test("increments and decrements", () => {
+        const counter = createCounter(3);
+        expect(counter.value()).toBe(3);
+        expect(counter.increment()).toBe(4);
+        expect(counter.increment()).toBe(5);
+        expect(counter.decrement()).toBe(4);
+    });
+
+    test("reset returns to the initial value", () => {
+        const counter = createCounter(8);
+        counter.increment();
+        expect(counter.reset()).toBe(8);
+        expect(counter.value()).toBe(8);
+    });
+});

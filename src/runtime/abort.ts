@@ -60,7 +60,6 @@ export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
             cleanup();
             resolve();
         }, ms);
-        timer.unref?.();
 
         const onAbort = () => {
             cleanup();

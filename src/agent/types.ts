@@ -18,6 +18,14 @@ export interface AgentResult {
     reason: StopReason;
     iterations: number;
     abortReason?: TurnAbortReason;
+    usage?: AgentUsage;
+}
+
+export interface AgentUsage {
+    inputTokens: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    estimated: boolean;
 }
 
 /** Agent 主循环向宿主发布的运行事件。 */

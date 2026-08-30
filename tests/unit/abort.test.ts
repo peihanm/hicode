@@ -40,6 +40,31 @@ describe("abort runtime", () => {
     );
   });
 
+  test("abortable delay 在短命 CLI 中维持等待生命周期", async () => {
+    const modulePath = new URL("../../src/runtime/abort.ts", import.meta.url);
+    const child = Bun.spawn([
+      "bun",
+      "-e",
+      [
+        `import {abortableDelay} from ${JSON.stringify(modulePath.href)};`,
+        "const controller = new AbortController();",
+        "abortableDelay(30, controller.signal).then(() => console.log('DELAY_DONE'));",
+      ].join(" "),
+    ], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("DELAY_DONE");
+  });
+
   test("未知 reason 安全回退", () => {
     expect(normalizeTurnAbortReason(new DOMException("aborted"))).toBe("shutdown");
     expect(new TurnInterruptedError("shutdown").reason).toBe("shutdown");

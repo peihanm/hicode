@@ -84,6 +84,12 @@ describe("agent loop", () => {
         reply: "任务完成",
         reason: "completed",
         iterations: 1,
+        usage: {
+          inputTokens: 12,
+          outputTokens: 4,
+          totalTokens: 16,
+          estimated: false,
+        },
       });
       expect(history.map((message) => message.role)).toEqual([
         "system",
@@ -672,6 +678,12 @@ describe("agent loop", () => {
         reply: "(达到最大迭代次数 2，已停止)",
         reason: "max_turns",
         iterations: 2,
+        usage: {
+          inputTokens: 24,
+          outputTokens: 8,
+          totalTokens: 32,
+          estimated: false,
+        },
       });
       expect(fake.calls).toHaveLength(2);
     });

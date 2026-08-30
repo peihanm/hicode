@@ -20,6 +20,8 @@ export {
     limitPersistedUIEvents,
 } from "./uiEvents.js";
 
+export {SessionUIEventCollector} from "./uiEventCollector.js";
+
 export type {
     PersistedFileChangeUIEvent,
     PersistedToolCallUIEvent,

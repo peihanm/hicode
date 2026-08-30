@@ -58,10 +58,11 @@ function bounded(value: string): string {
 
 export function getSettingsPath(
     cwd: string,
-    source: SettingsFileSource
+    source: SettingsFileSource,
+    userSettingsPath?: string
 ): string {
     if (source === "user") {
-        return resolve(homedir(), ".pillar", "settings.json");
+        return userSettingsPath ?? resolve(homedir(), ".pillar", "settings.json");
     }
     return resolve(
         cwd,
@@ -70,10 +71,13 @@ export function getSettingsPath(
     );
 }
 
-function getSettingsSources(cwd: string): SettingsSourceLocation[] {
+function getSettingsSources(
+    cwd: string,
+    userSettingsPath?: string
+): SettingsSourceLocation[] {
     return (["user", "project", "local"] as const).map((source) => ({
         source,
-        path: getSettingsPath(cwd, source),
+        path: getSettingsPath(cwd, source, userSettingsPath),
     }));
 }
 
@@ -293,10 +297,13 @@ function loadSettingsDocument(
     };
 }
 
-export function loadSettingsDocuments(cwd: string): LoadedSettingsDocuments {
+export function loadSettingsDocuments(
+    cwd: string,
+    options: {userSettingsPath?: string} = {}
+): LoadedSettingsDocuments {
     const documents: LoadedSettingsDocument[] = [];
     const issues: SettingsIssue[] = [];
-    for (const location of getSettingsSources(cwd)) {
+    for (const location of getSettingsSources(cwd, options.userSettingsPath)) {
         const loaded = loadSettingsDocument(location);
         if (loaded.document) documents.push(loaded.document);
         issues.push(...loaded.issues);

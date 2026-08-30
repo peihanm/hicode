@@ -6,9 +6,14 @@
   "bin": {
     "pillar": "src/index.tsx"
   },
+  "exports": {
+    "./sdk": "./src/sdk/index.ts"
+  },
   "scripts": {
     "start": "bun src/index.tsx",
     "dev": "bun src/index.tsx",
+    "sdk:run": "bun examples/sdk/run.ts",
+    "eval": "bun evals/cli.ts",
     "test": "bun test",
     "test:unit": "bun test tests/unit",
     "test:contract": "bun test tests/contract",

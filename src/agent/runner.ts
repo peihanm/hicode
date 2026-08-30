@@ -116,8 +116,27 @@ async function runAgentCore(
     let completionNudge: string | undefined;
     let emptyResponseRetryUsed = false;
     let consecutiveDeniedToolCalls = 0;
+    let usageInputTokens = 0;
+    let usageOutputTokens = 0;
+    let usageTotalTokens = 0;
+    let usageCalls = 0;
+    let usageEstimated = false;
 
     let iterations = 0;
+    const resultUsage = () => usageCalls === 0
+        ? {}
+        : {
+            usage: {
+                inputTokens: usageInputTokens,
+                ...(!usageEstimated
+                    ? {
+                        outputTokens: usageOutputTokens,
+                        totalTokens: usageTotalTokens,
+                    }
+                    : {}),
+                estimated: usageEstimated,
+            },
+        };
     const interruptedResult = async (): Promise<AgentResult> => {
         const abortReason = normalizeTurnAbortReason(ctx.signal.reason);
         await onEvent({type: "turn_interrupted", reason: abortReason});
@@ -126,6 +145,7 @@ async function runAgentCore(
             reason: "interrupted",
             iterations,
             abortReason,
+            ...resultUsage(),
         };
     };
 
@@ -197,6 +217,14 @@ async function runAgentCore(
             const tokenCount = hasActualUsage
                 ? usage.prompt_tokens
                 : estimatedTokens;
+            usageCalls += 1;
+            usageInputTokens += tokenCount;
+            if (hasActualUsage) {
+                usageOutputTokens += usage.completion_tokens;
+                usageTotalTokens += usage.total_tokens;
+            } else {
+                usageEstimated = true;
+            }
             const postState = getTokenWarningState(tokenCount, ctx.model);
             await onEvent({
                 type: "token_update",
@@ -259,6 +287,7 @@ async function runAgentCore(
                     reply,
                     reason: textContent ? "completed" : "no_tool_calls",
                     iterations: i + 1,
+                    ...resultUsage(),
                 };
             }
 
@@ -294,6 +323,7 @@ async function runAgentCore(
                     reply: `(连续 ${maxConsecutiveDeniedToolCalls} 次工具调用被权限策略拒绝，已停止工具阶段)`,
                     reason: "permission_denied",
                     iterations: i + 1,
+                    ...resultUsage(),
                 };
             }
             if (i + 1 < maxIterations) {
@@ -305,6 +335,7 @@ async function runAgentCore(
             reply: `(达到最大迭代次数 ${maxIterations}，已停止)`,
             reason: "max_turns",
             iterations: maxIterations,
+            ...resultUsage(),
         };
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
