@@ -13,6 +13,7 @@ interface SlashCommandContext {
     getToolSchemas: ToolSchemaProvider;
     subagents: SubagentRegistry;
     memory?: MemoryRuntimeLike;
+    openResume?: () => void;
     openRewind?: () => void;
     openAgents?: () => void;
     openGitDiff?: () => void;

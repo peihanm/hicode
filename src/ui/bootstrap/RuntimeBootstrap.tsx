@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import type {PermissionMode} from "../../permissions/index.js";
-import type {LoadedSession} from "../../session/index.js";
+import {loadSession, type LoadedSession} from "../../session/index.js";
 import {
     createRootRuntimeResources,
     type RootRuntimeResources,
@@ -36,6 +36,7 @@ interface RuntimeBootstrapProps {
     settings: ResolvedPillarSettings;
     initialPermissionMode?: PermissionMode;
     session?: LoadedSession;
+    onSessionSwitch?: (session: LoadedSession) => void;
 }
 
 interface RuntimeBootstrapDependencies {
@@ -54,6 +55,7 @@ export function createRuntimeBootstrap(
         settings,
         initialPermissionMode,
         session,
+        onSessionSwitch,
     }: RuntimeBootstrapProps) {
         const {exit} = useApp();
         const pendingRef = useRef<PendingMcpApproval | null>(null);
@@ -63,6 +65,7 @@ export function createRuntimeBootstrap(
         const [ready, setReady] = useState<{
             resources: RootRuntimeResources;
             session: UITurnSessionRuntime;
+            sessionKey: string;
         } | null>(null);
         const [error, setError] = useState<string | null>(null);
         const sessionShutdownRef = useRef<(() => Promise<void>) | null>(null);
@@ -123,7 +126,11 @@ export function createRuntimeBootstrap(
                     await closeResources(resources);
                     return;
                 }
-                setReady({resources, session: turnSession});
+                setReady({
+                    resources,
+                    session: turnSession,
+                    sessionKey: session?.sessionId ?? "new",
+                });
             })().catch(async (reason) => {
                 const failedResources = ownedResources;
                 ownedResources = undefined;
@@ -143,8 +150,9 @@ export function createRuntimeBootstrap(
                 pendingHookRef.current?.resolve("deny");
                 pendingHookRef.current = null;
                 const resourcesToClose = ownedResources;
+                const shutdownSession = sessionShutdownRef.current;
                 void (async () => {
-                    await sessionShutdownRef.current?.();
+                    await shutdownSession?.();
                     await closeResources(resourcesToClose);
                 })();
             };
@@ -182,7 +190,8 @@ export function createRuntimeBootstrap(
                 </Box>
             );
         }
-        if (!ready) {
+        const sessionKey = session?.sessionId ?? "new";
+        if (!ready || ready.sessionKey !== sessionKey) {
             return (
                 <Box flexDirection="column">
                     <Welcome/>
@@ -192,7 +201,7 @@ export function createRuntimeBootstrap(
         }
         return (
             <App
-                key={session?.sessionId ?? "new"}
+                key={sessionKey}
                 resources={ready.resources}
                 rootSession={ready.session.rootSession}
                 resumedDraft={ready.session.resumedDraft}
@@ -201,6 +210,26 @@ export function createRuntimeBootstrap(
                 registerSessionShutdown={(shutdown) => {
                     sessionShutdownRef.current = shutdown;
                 }}
+                requestSessionSwitch={onSessionSwitch
+                    ? async (sessionId) => {
+                        const target = loadSession(
+                            storage,
+                            cwd,
+                            sessionId,
+                            settings.models.primary.model
+                        );
+                        if (!target) {
+                            throw new Error(`没有找到会话: ${sessionId}`);
+                        }
+                        const shutdownSession = sessionShutdownRef.current;
+                        if (!shutdownSession) {
+                            throw new Error("当前 Session Runtime 尚未准备好");
+                        }
+                        await shutdownSession();
+                        await closeResources(ready.resources);
+                        onSessionSwitch(target);
+                    }
+                    : undefined}
             />
         );
     };

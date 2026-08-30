@@ -11,11 +11,13 @@ export function AppForTest({
   initialPermissionMode,
   initialSession,
   runAgentImpl,
+  requestSessionSwitch,
 }: {
   resources: RootRuntimeResources;
   initialPermissionMode?: PermissionMode;
   initialSession?: LoadedSession;
   runAgentImpl?: AgentRunner;
+  requestSessionSwitch?: (sessionId: string) => Promise<void>;
 }) {
   const testResources = useMemo<RootRuntimeResources>(
     () => {
@@ -45,6 +47,7 @@ export function AppForTest({
       resumedDraft={turnSession.resumedDraft}
       initialPermissionMode={initialPermissionMode}
       initialSession={initialSession}
+      requestSessionSwitch={requestSessionSwitch}
     />
   );
 }

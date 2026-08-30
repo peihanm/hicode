@@ -8,11 +8,13 @@ import {sandboxCommand} from "./commands/sandbox.js";
 import {tasksCommand} from "./commands/tasks.js";
 import {diffCommand} from "./commands/diff.js";
 import {modelCommand} from "./commands/model.js";
+import {resumeCommand} from "./commands/resume.js";
 import type {SlashCommand} from "./types.js";
 
 const COMMANDS: readonly SlashCommand[] = [
     compactCommand,
     modelCommand,
+    resumeCommand,
     modeCommand,
     mcpCommand,
     agentsCommand,

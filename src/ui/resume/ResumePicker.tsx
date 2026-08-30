@@ -48,10 +48,12 @@ export function ResumePicker({
                                  sessions,
                                  onSelect,
                                  onCancel,
+                                 cancelLabel = "退出",
                              }: {
     sessions: SessionIndexEntry[];
     onSelect: (sessionId: string) => void;
     onCancel: () => void;
+    cancelLabel?: string;
 }) {
     const items = useMemo<ResumeItem[]>(
         () =>
@@ -63,9 +65,7 @@ export function ResumePicker({
     );
 
     useInput((_input, key) => {
-        if (key.escape) {
-            onCancel();
-        }
+        if (key.escape) onCancel();
     });
 
     return (
@@ -80,7 +80,7 @@ export function ResumePicker({
                 itemComponent={DialogItem}
             />
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ 选择 · enter 恢复 · esc 退出</Text>
+                <Text color={COLORS.dim}>↑↓ 选择 · enter 恢复 · esc {cancelLabel}</Text>
             </Box>
         </Box>
     );

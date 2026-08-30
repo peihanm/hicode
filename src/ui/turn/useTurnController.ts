@@ -30,6 +30,7 @@ export interface UseTurnControllerOptions {
     initialSession?: LoadedSession;
     rootSession: RootSessionRuntime;
     resumedDraft?: string;
+    openResume?: () => void;
     openRewind?: () => void;
     openAgents?: () => void;
     openGitDiff?: () => void;
@@ -60,6 +61,7 @@ export function useTurnController({
                                           initialSession,
                                           rootSession,
                                           resumedDraft,
+                                          openResume,
                                           openRewind,
                                           openAgents,
                                           openGitDiff,
@@ -311,6 +313,7 @@ export function useTurnController({
                     subagents: resources.subagents,
                     memory: resources.memory,
                 }),
+                openResume,
                 openRewind,
                 openAgents,
                 openGitDiff,

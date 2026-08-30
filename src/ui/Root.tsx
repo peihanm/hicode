@@ -1,6 +1,6 @@
 import {useEffect, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
-import {ResumePicker} from "./bootstrap/ResumePicker.js";
+import {ResumePicker} from "./resume/ResumePicker.js";
 import {
     listSessionIndex,
     type LoadedSession,
@@ -143,6 +143,7 @@ export function Root({
             settings={settings}
             initialPermissionMode={initialPermissionMode}
             session={state.session}
+            onSessionSwitch={(session) => setState({view: "app", session})}
         />
     );
 }

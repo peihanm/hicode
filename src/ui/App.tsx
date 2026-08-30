@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
-import type {LoadedSession} from "../session/index.js";
+import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import {getNextPermissionMode, type PermissionMode,} from "../permissions/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {MessageList, StaticMessageList, TranscriptDetails,} from "./conversation/MessageList.js";
@@ -21,6 +21,7 @@ import {QueuedInputPreview} from "./input/QueuedInputPreview.js";
 import {ModelDialog} from "./model/ModelDialog.js";
 import {COLORS} from "./theme.js";
 import type {RootSessionRuntime} from "../runtime/sessionRuntime.js";
+import {ResumeDialog} from "./resume/ResumeDialog.js";
 
 function runningActivityLabel(
     threads: UIThread[],
@@ -66,6 +67,7 @@ export function App({
                             rootSession,
                             resumedDraft,
                             registerSessionShutdown,
+                            requestSessionSwitch,
                         }: {
         resources: RootRuntimeResources;
         initialPermissionMode?: PermissionMode;
@@ -73,31 +75,46 @@ export function App({
         rootSession: RootSessionRuntime;
         resumedDraft?: string;
         registerSessionShutdown?: (shutdown: () => Promise<void>) => void;
+        requestSessionSwitch?: (sessionId: string) => Promise<void>;
     }) {
         const {exit} = useApp();
+        const [showResume, setShowResume] = useState(false);
+        const [resumeSessions, setResumeSessions] = useState<SessionIndexEntry[]>([]);
         const [showRewind, setShowRewind] = useState(false);
         const [showAgents, setShowAgents] = useState(false);
         const [showGitDiff, setShowGitDiff] = useState(false);
         const [showModel, setShowModel] = useState(false);
+        const openResume = useCallback(() => {
+            setShowRewind(false);
+            setShowAgents(false);
+            setShowGitDiff(false);
+            setShowModel(false);
+            setResumeSessions(listSessionIndex(resources.storage, resources.cwd));
+            setShowResume(true);
+        }, [resources.cwd, resources.storage]);
         const openRewind = useCallback(() => {
+            setShowResume(false);
             setShowAgents(false);
             setShowGitDiff(false);
             setShowModel(false);
             setShowRewind(true);
         }, []);
         const openAgents = useCallback(() => {
+            setShowResume(false);
             setShowRewind(false);
             setShowGitDiff(false);
             setShowModel(false);
             setShowAgents(true);
         }, []);
         const openGitDiff = useCallback(() => {
+            setShowResume(false);
             setShowRewind(false);
             setShowAgents(false);
             setShowModel(false);
             setShowGitDiff(true);
         }, []);
         const openModel = useCallback(() => {
+            setShowResume(false);
             setShowRewind(false);
             setShowAgents(false);
             setShowGitDiff(false);
@@ -109,6 +126,7 @@ export function App({
             initialSession,
             rootSession,
             resumedDraft,
+            openResume: requestSessionSwitch ? openResume : undefined,
             openRewind,
             openAgents,
             openGitDiff,
@@ -144,7 +162,7 @@ export function App({
 
         useInput((input, key) => {
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showRewind || showAgents || showGitDiff || showModel) return;
+            if (showResume || showRewind || showAgents || showGitDiff || showModel) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             const planDialogHandlesEscape =
                 turn.confirmRequest?.toolName === "exit_plan_mode" &&
@@ -199,14 +217,14 @@ export function App({
                     <TranscriptDetails threads={turn.staticThreads}/>
                 )}
 
-                {showTodos && !showRewind && !showAgents && !showGitDiff && !showModel && (
+                {showTodos && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showRewind && !showAgents && !showGitDiff && !showModel && (
+                {turn.busy && !turn.confirmRequest && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && (
                     <ModelStreamStatus
                         modelStream={turn.modelStream}
                         progressRef={turn.modelStreamProgressRef}
@@ -215,7 +233,14 @@ export function App({
                     />
                 )}
 
-                {showModel ? (
+                {showResume && requestSessionSwitch ? (
+                    <ResumeDialog
+                        sessions={resumeSessions}
+                        currentSessionId={turn.sessionId}
+                        onSelect={requestSessionSwitch}
+                        onClose={() => setShowResume(false)}
+                    />
+                ) : showModel ? (
                     <ModelDialog
                         models={turn.availableModels}
                         current={turn.primaryModel}

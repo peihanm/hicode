@@ -50,6 +50,7 @@ export interface UITurnControllerDependencies {
 
     initialize(): Promise<void>;
 
+    openResume?(): void;
     openRewind?(): void;
     openAgents?(): void;
 
@@ -126,6 +127,7 @@ export class UITurnController {
                     history,
                     ctx,
                     onEvent: this.dependencies.onEvent,
+                    openResume: this.dependencies.openResume,
                     openRewind: this.dependencies.openRewind,
                     openAgents: this.dependencies.openAgents,
                     openGitDiff: this.dependencies.openGitDiff,
@@ -318,6 +320,7 @@ export class UITurnController {
             history,
             ctx,
             onEvent: this.dependencies.onEvent,
+            openResume: this.dependencies.openResume,
             openRewind: this.dependencies.openRewind,
             openAgents: this.dependencies.openAgents,
             openGitDiff: this.dependencies.openGitDiff,

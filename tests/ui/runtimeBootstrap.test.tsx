@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
+import {useState} from "react";
 import { createRuntimeBootstrap } from "../../src/ui/bootstrap/RuntimeBootstrap.js";
 import {
   createTestRuntimeResources,
   createTestSettings,
 } from "../helpers/runtimeResources.js";
 import { withTempProject } from "../helpers/tempProject.js";
+import {saveSessionSnapshot, type LoadedSession} from "../../src/session/index.js";
 
 afterEach(() => cleanup());
 
@@ -142,6 +144,101 @@ describe("RuntimeBootstrap lifecycle", () => {
       instance.unmount();
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(closeCount).toBe(1);
+    });
+  });
+
+  test("/resume 没有其他历史会话时显示空状态并可返回当前输入", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const resources = createTestRuntimeResources(cwd, {storage});
+      const RuntimeBootstrap = createRuntimeBootstrap({
+        createResources: async () => resources,
+      });
+      const instance = render(
+        <RuntimeBootstrap
+          storage={storage}
+          cwd={cwd}
+          settings={createTestSettings()}
+          onSessionSwitch={() => {}}
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      instance.stdin.write("/resume");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      instance.stdin.write("\r");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).toContain("没有其他可恢复的历史会话");
+
+      instance.stdin.write("\u001b");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(instance.lastFrame()).toContain("new session");
+    });
+  });
+
+  test("/resume 先关闭当前 Root resources，再交给 Root 切换已验证的 Session", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "older-session",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "恢复这段历史"},
+          {role: "assistant", content: "历史回答"},
+        ],
+        todos: [],
+        permissionMode: "default",
+      });
+      const order: string[] = [];
+      let switched: LoadedSession | undefined;
+      let resourceGeneration = 0;
+      const settings = createTestSettings();
+      const RuntimeBootstrap = createRuntimeBootstrap({
+        createResources: async () => {
+          resourceGeneration += 1;
+          const generation = resourceGeneration;
+          return createTestRuntimeResources(cwd, {
+            storage,
+            async close() {
+              order.push(`close-${generation}`);
+            },
+          });
+        },
+      });
+      function SwitchHarness() {
+        const [session, setSession] = useState<LoadedSession>();
+        return (
+          <RuntimeBootstrap
+            storage={storage}
+            cwd={cwd}
+            settings={settings}
+            session={session}
+            onSessionSwitch={(nextSession) => {
+              order.push("switch");
+              switched = nextSession;
+              setSession(nextSession);
+            }}
+          />
+        );
+      }
+      const instance = render(
+        <SwitchHarness/>
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      instance.stdin.write("/resume");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      instance.stdin.write("\r");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).toContain("Resume  恢复历史会话");
+      expect(instance.lastFrame()).toContain("恢复这段历史");
+
+      instance.stdin.write("\r");
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(switched?.sessionId).toBe("older-session");
+      expect(order).toEqual(["close-1", "switch"]);
+      expect(resourceGeneration).toBe(2);
+      expect(instance.lastFrame()).toContain("历史回答");
     });
   });
 
