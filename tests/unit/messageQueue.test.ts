@@ -15,6 +15,17 @@ describe("RuntimeMessageQueue", () => {
         expect(queue.dequeueDeferredTurnInput()?.content).toBe("最后总结");
     });
 
+    test("终态 Agent 可以按顺序取出下一条消息作为新 Run 输入", () => {
+        const queue = new RuntimeMessageQueue();
+        queue.enqueueUser("第一条继续消息", "next");
+        queue.enqueueUser("第二条继续消息", "next");
+
+        expect(queue.dequeueNextUserInput()?.content).toBe("第一条继续消息");
+        expect(queue.list()).toHaveLength(1);
+        expect(queue.dequeueNextUserInput()?.content).toBe("第二条继续消息");
+        expect(queue.dequeueNextUserInput()).toBeUndefined();
+    });
+
     test("取回可编辑输入但保留任务通知", () => {
         const queue = new RuntimeMessageQueue();
         queue.enqueueTask({

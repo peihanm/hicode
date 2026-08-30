@@ -4,6 +4,8 @@ import {selectUtf8Range} from "../toolResults/utf8.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {ShellTermination} from "../tools/bash/process.js";
 import type {AgentWorktreeRecord, WorktreeInspection} from "../worktrees/index.js";
+import type {SubagentThread} from "../subagents/types.js";
+import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot, TaskStatus,} from "./types.js";
 
 const OUTPUT_PREVIEW_BYTES = 20_000;
@@ -32,9 +34,12 @@ export interface ManagedShellTask extends ManagedTaskBase {
 }
 
 export interface ManagedAgentTask extends ManagedTaskBase {
+    thread: SubagentThread;
+    messageQueue: RuntimeMessageQueue;
     agentType: string;
     agentName?: string;
     description: string;
+    runCount: number;
     iterations: number;
     toolUseCount: number;
     tokenCount?: number;
@@ -141,8 +146,10 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
         status: task.status,
         startedAt: task.startedAt,
         progress: {
+            runCount: task.runCount,
             iterations: task.iterations,
             toolUseCount: task.toolUseCount,
+            pendingMessages: task.messageQueue.list().length,
             ...(task.tokenCount !== undefined
                 ? {tokenCount: task.tokenCount}
                 : {}),

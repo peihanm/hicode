@@ -12,7 +12,7 @@ import {
     assistantToolCall,
     createFakeLLM,
 } from "../helpers/fakeLLM.js";
-import {createSubagentRunnerForTest} from "../helpers/subagent.js";
+import {createSubagentThreadForTest} from "../helpers/subagent.js";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
@@ -89,11 +89,11 @@ describe("fork subagent", () => {
             const runtime = createTaskRuntimeForTest(
                 cwd,
                 shellRunner,
-                (options) => createSubagentRunnerForTest({
+                (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
                     toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
-                })
+                }, request)
             );
             const store = createTestToolResultStore(cwd, "fork-session", {
                 pillarHome: `${cwd}/root-results`,
@@ -196,13 +196,13 @@ describe("fork subagent", () => {
                 runtime = createTaskRuntimeForTest(
                     cwd,
                     shellRunner,
-                    (options) => createSubagentRunnerForTest({
+                    (options, request) => createSubagentThreadForTest({
                         ...options,
                         agentOptions: {callLLM: child.callLLM},
                         toolResultStoreOptions: {
                             pillarHome: join(projectsRoot, "child-results"),
                         },
-                    }),
+                    }, request),
                     projectsRoot
                 );
                 const store = createTestToolResultStore(cwd, "fork-worktree", {

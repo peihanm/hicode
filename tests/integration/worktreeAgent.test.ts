@@ -9,7 +9,7 @@ import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
-import {createSubagentRunnerForTest} from "../helpers/subagent.js";
+import {createSubagentThreadForTest} from "../helpers/subagent.js";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
@@ -87,12 +87,12 @@ describe("Worktree background Agent", () => {
                 runtime = createTaskRuntimeForTest(
                     cwd,
                     shellRunner,
-                    (options) => createSubagentRunnerForTest({
+                    (options, request) => createSubagentThreadForTest({
                         ...options,
                         registry,
                         agentOptions: {callLLM: child.callLLM},
                         toolResultStoreOptions: {pillarHome: join(projectsRoot, "child-results")},
-                    }),
+                    }, request),
                     projectsRoot,
                     registry
                 );
@@ -152,6 +152,8 @@ describe("Worktree background Agent", () => {
                 if (completed?.kind !== "agent" || !completed.worktree) {
                     throw new Error("缺少 Worktree snapshot");
                 }
+                await expect(tasks.send(completed.id, "继续修改"))
+                    .rejects.toThrow("Worktree Agent 暂不支持");
                 expect(completed.worktree.path).toStartWith(
                     join(await realpath(cwd), ".pillar", "worktrees")
                 );

@@ -16,9 +16,12 @@ function createTaskSession(cwd: string) {
   const runtime = createTaskRuntimeForTest(
     cwd,
     createShellRunner(createDisabledSandboxRuntime(), testChildEnvironment),
-    () => async () => {
-      throw new Error("Bash contract 不启动 Agent Task");
-    }
+    () => ({
+      agentId: "unused",
+      async run() {
+        throw new Error("Bash contract 不启动 Agent Task");
+      },
+    })
   );
   const store = createTestToolResultStore(cwd, "bash-task-session", {
     pillarHome: join(cwd, ".pillar-test-results"),

@@ -1,6 +1,10 @@
-import { createSubagentRunnerFactory } from "../../src/subagents/runSubagent.js";
+import { createSubagentFactories } from "../../src/subagents/runSubagent.js";
 import type {AgentRunner} from "../../src/agent/index.js";
-import type { CreateSubagentRunnerOptions } from "../../src/subagents/types.js";
+import type {
+  CreateSubagentRunnerOptions,
+  CreateSubagentThread,
+  SubagentRequest,
+} from "../../src/subagents/types.js";
 import {
   runAgentForTest,
   type AgentTestOptions,
@@ -38,12 +42,49 @@ export function createSubagentRunnerForTest({
     ...agentOptions,
     inputChannel,
   });
-  return createSubagentRunnerFactory({
+  return createSubagentFactories({
     primaryRunAgent: runAgent,
     fastRunAgent: runAgent,
     fastModel: "glm-fast-test",
     createToolResultStore: (cwd, sessionId) =>
       createTestToolResultStore(cwd, sessionId, toolResultStoreOptions),
     registry,
-  })(options);
+  }).createSubagentRunner(options);
+}
+
+type SubagentThreadTestOptions = Parameters<CreateSubagentThread>[0] & {
+  agentOptions?: Pick<AgentTestOptions, "callLLM" | "compactHistory">;
+  toolResultStoreOptions?: TestToolResultStoreOptions;
+  registry?: SubagentRegistry;
+};
+
+export function createSubagentThreadForTest(
+  {
+    agentOptions,
+    toolResultStoreOptions,
+    registry = BUILTIN_SUBAGENT_REGISTRY,
+    ...options
+  }: SubagentThreadTestOptions,
+  request: SubagentRequest
+) {
+  const runAgent: AgentRunner = (
+    input,
+    history,
+    onEvent,
+    ctx,
+    inputChannel,
+    runOptions
+  ) => runAgentForTest(input, history, onEvent, ctx, {
+    ...runOptions,
+    ...agentOptions,
+    inputChannel,
+  });
+  return createSubagentFactories({
+    primaryRunAgent: runAgent,
+    fastRunAgent: runAgent,
+    fastModel: "glm-fast-test",
+    createToolResultStore: (cwd, sessionId) =>
+      createTestToolResultStore(cwd, sessionId, toolResultStoreOptions),
+    registry,
+  }).createSubagentThread(options, request);
 }

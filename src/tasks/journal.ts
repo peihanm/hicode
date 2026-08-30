@@ -178,7 +178,7 @@ class TaskJournal implements TaskJournalLike {
         taskId: string;
     }): Promise<void> {
         await this.appendEntry({
-            version: 2,
+            version: 3,
             type: "task_notification_claimed",
             ...input,
         });

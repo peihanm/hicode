@@ -1,3 +1,4 @@
+import type {AgentInputChannel} from "../agent/inputChannel.js";
 import type {AgentEvent, StopReason} from "../agent/types.js";
 import type {ToolContext} from "../tools/types.js";
 import type {ForkContextSnapshot} from "./fork.js";
@@ -73,6 +74,18 @@ export type SubagentRunner = (
     request: SubagentRequest
 ) => Promise<SubagentResult>;
 
+export interface SubagentThreadRunInput {
+    prompt: string;
+    signal: AbortSignal;
+    inputChannel: AgentInputChannel;
+}
+
+export interface SubagentThread {
+    readonly agentId: string;
+
+    run(input: SubagentThreadRunInput): Promise<SubagentResult>;
+}
+
 export interface CreateSubagentRunnerOptions {
     parentContext: ToolContext;
     onEvent: (event: AgentEvent) => void | Promise<void>;
@@ -89,3 +102,10 @@ export interface CreateSubagentRunnerOptions {
 export type CreateSubagentRunner = (
     options: CreateSubagentRunnerOptions
 ) => SubagentRunner;
+
+export type CreateSubagentThread = (
+    options: Omit<CreateSubagentRunnerOptions, "signal" | "agentId"> & {
+        agentId: string;
+    },
+    request: SubagentRequest
+) => SubagentThread;

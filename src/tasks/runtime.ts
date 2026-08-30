@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
+import {createTurnAbortController} from "../runtime/abort.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
-import type {CreateSubagentRunner} from "../subagents/types.js";
+import type {CreateSubagentThread} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
@@ -22,7 +23,12 @@ import {
 } from "./managed.js";
 import {TaskNotificationCenter} from "./notifications.js";
 import {createShellTask, runShellTask} from "./shellTask.js";
-import {createAgentTask, runAgentTask, validateAgentTaskInput,} from "./agentTask.js";
+import {
+    createAgentTask,
+    resetAgentRun,
+    runAgentTask,
+    validateAgentTaskInput,
+} from "./agentTask.js";
 import {TaskWorktreeManager} from "./worktreeTask.js";
 import type {
     AgentTaskSnapshot,
@@ -88,6 +94,11 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.stop(this.sessionId, id);
     }
 
+    async send(id: string, message: string): Promise<AgentTaskSnapshot> {
+        await this.ready;
+        return this.runtime.sendAgent(this.binding, id, message);
+    }
+
     async discardWorktree(id: string): Promise<AgentTaskSnapshot> {
         await this.ready;
         return this.runtime.discardWorktree(this.sessionId, id);
@@ -127,7 +138,7 @@ class TaskRuntime implements TaskRuntimeLike {
 
     constructor(
         private readonly shellRunner: ShellRunnerLike,
-        private readonly createSubagentRunner: CreateSubagentRunner,
+        private readonly createSubagentThread: CreateSubagentThread,
         private readonly journal: TaskJournalLike,
         worktrees: WorktreeRuntimeLike,
         private readonly subagents: SubagentRegistry
@@ -204,12 +215,14 @@ class TaskRuntime implements TaskRuntimeLike {
             await this.worktreeTasks.release(prepared.worktree);
             throw new Error("Task Runtime 已关闭");
         }
-        const {task, context} = createAgentTask(
+        const task = createAgentTask(
             id,
             binding,
             prepared.input,
             prepared.context,
-            prepared.worktree
+            this.createSubagentThread,
+            (progress) => this.publish("task_progress", progress),
+            prepared.worktree,
         );
         this.tasks.set(id, task);
         try {
@@ -221,11 +234,115 @@ class TaskRuntime implements TaskRuntimeLike {
         }
         task.completion = runAgentTask(
             task,
-            prepared.input,
-            context,
-            this.createSubagentRunner,
+            prepared.input.request.prompt,
             this.worktreeTasks,
-            (progress) => this.publish("task_progress", progress),
+            (finished) => this.publish("task_finished", finished)
+        );
+        return snapshotAgent(task);
+    }
+
+    async sendAgent(
+        binding: TaskSessionBinding,
+        id: string,
+        message: string
+    ): Promise<AgentTaskSnapshot> {
+        this.assertOpen();
+        let task = this.ownedTask(binding.sessionId, id);
+        if (!task) {
+            const archived = this.archived.get(id);
+            if (archived?.owner.sessionId === binding.sessionId) {
+                throw new Error(
+                    archived.kind === "agent"
+                        ? "该 Agent 仅有持久化状态，当前进程不能继续；请重新启动 Agent"
+                        : `Task ${id} 不是 Agent`
+                );
+            }
+            throw new Error(`Agent Task 不存在: ${id}`);
+        }
+        if (isShellTask(task)) throw new Error(`Task ${id} 不是 Agent`);
+        if (task.worktree) {
+            throw new Error("Worktree Agent 暂不支持发送消息或继续");
+        }
+        if (task.status === "cancelled") {
+            throw new Error("已取消的 Agent 不能继续，请重新启动 Agent");
+        }
+        if (task.status === "running") {
+            task.messageQueue.enqueueUser(message);
+            await this.publish("task_progress", task);
+            return snapshotAgent(task);
+        }
+
+        await task.completion;
+        task = this.ownedTask(binding.sessionId, id);
+        if (!task || isShellTask(task)) {
+            throw new Error(`Agent Task 不存在: ${id}`);
+        }
+        if (task.status === "running") {
+            task.messageQueue.enqueueUser(message);
+            await this.publish("task_progress", task);
+            return snapshotAgent(task);
+        }
+        if (task.status === "cancelled") {
+            throw new Error("已取消的 Agent 不能继续，请重新启动 Agent");
+        }
+        if (this.runningAgentCount(binding.sessionId) >=
+            MAX_RUNNING_AGENT_TASKS_PER_SESSION) {
+            throw new Error(
+                `当前 Session 同时运行的后台 Agent 已达到上限 ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
+            );
+        }
+
+        const previous = {
+            status: task.status,
+            completedAt: task.completedAt,
+            runCount: task.runCount,
+            iterations: task.iterations,
+            toolUseCount: task.toolUseCount,
+            tokenCount: task.tokenCount,
+            lastPublishedTokenCount: task.lastPublishedTokenCount,
+            lastActivity: task.lastActivity,
+            reason: task.reason,
+            resultPreview: task.resultPreview,
+            outputResult: task.outputResult,
+            transcriptPath: task.transcriptPath,
+            outputIssue: task.outputIssue,
+            notificationPending: task.notificationPending,
+            suppressTerminalNotification: task.suppressTerminalNotification,
+        };
+        task.messageQueue.enqueueUser(message);
+        task.controller = createTurnAbortController();
+        resetAgentRun(task, task.runCount + 1);
+        task.status = "running";
+        task.completedAt = undefined;
+        task.notificationPending = false;
+        task.suppressTerminalNotification = false;
+        try {
+            await this.publish("task_started", task, true);
+        } catch (error) {
+            task.status = previous.status;
+            task.completedAt = previous.completedAt;
+            task.runCount = previous.runCount;
+            task.iterations = previous.iterations;
+            task.toolUseCount = previous.toolUseCount;
+            task.tokenCount = previous.tokenCount;
+            task.lastPublishedTokenCount = previous.lastPublishedTokenCount;
+            task.lastActivity = previous.lastActivity;
+            task.reason = previous.reason;
+            task.resultPreview = previous.resultPreview;
+            task.outputResult = previous.outputResult;
+            task.transcriptPath = previous.transcriptPath;
+            task.outputIssue = previous.outputIssue;
+            task.notificationPending = previous.notificationPending;
+            task.suppressTerminalNotification =
+                previous.suppressTerminalNotification;
+            throw error;
+        }
+        const queued = task.messageQueue.dequeueNextUserInput();
+        if (!queued) throw new Error("Agent continuation 消息意外丢失");
+        task.completion = runAgentTask(
+            task,
+            queued.content,
+            this.worktreeTasks,
             (finished) => this.publish("task_finished", finished)
         );
         return snapshotAgent(task);
@@ -387,6 +504,15 @@ class TaskRuntime implements TaskRuntimeLike {
                 task.status === "running" &&
                 task.worktree?.state === "active"
         );
+    }
+
+    private runningAgentCount(sessionId: string): number {
+        return [...this.tasks.values()].filter(
+            (task) =>
+                !isShellTask(task) &&
+                task.owner.sessionId === sessionId &&
+                task.status === "running"
+        ).length;
     }
 
     private reserveTaskSlot(): void {
@@ -553,7 +679,7 @@ class TaskRuntime implements TaskRuntimeLike {
         task: TaskSnapshot
     ): TaskEventEnvelope {
         return {
-            version: 2,
+            version: 3,
             sequence: ++this.sequence,
             sessionId: task.owner.sessionId,
             task,
@@ -579,16 +705,32 @@ class TaskRuntime implements TaskRuntimeLike {
                 continue;
             }
             let restored = snapshot;
+            if (
+                restored.kind === "agent" &&
+                restored.progress.pendingMessages > 0
+            ) {
+                restored = {
+                    ...restored,
+                    progress: {
+                        ...restored.progress,
+                        pendingMessages: 0,
+                    },
+                    outputIssue: [
+                        restored.outputIssue,
+                        "上次进程中的 Agent 消息正文未持久化，待处理消息已丢弃",
+                    ].filter(Boolean).join("；"),
+                };
+            }
             if (snapshot.status === "running") {
                 const reconciliation = snapshot.kind === "agent"
                     ? await this.worktreeTasks.reconcileInterrupted(snapshot)
                     : {};
                 restored = {
-                    ...snapshot,
+                    ...restored,
                     status: "cancelled",
                     completedAt: new Date().toISOString(),
                     outputIssue: [
-                        snapshot.outputIssue,
+                        restored.outputIssue,
                         "上次 Pillar 进程结束或崩溃，任务不会自动重跑",
                         reconciliation.issue,
                     ].filter(Boolean).join("；"),
@@ -614,12 +756,12 @@ export function createTaskRuntime(
     cwd: string,
     childEnvironment: ChildProcessEnvironment,
     shellRunner: ShellRunnerLike,
-    createSubagentRunner: CreateSubagentRunner,
+    createSubagentThread: CreateSubagentThread,
     subagents: SubagentRegistry
 ): TaskRuntimeLike {
     return new TaskRuntime(
         shellRunner,
-        createSubagentRunner,
+        createSubagentThread,
         createTaskJournal(storage, cwd),
         createWorktreeRuntime(storage, cwd, childEnvironment),
         subagents

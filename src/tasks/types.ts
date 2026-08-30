@@ -33,8 +33,10 @@ export interface ShellTaskSnapshot {
 }
 
 interface AgentTaskProgress {
+    runCount: number;
     iterations: number;
     toolUseCount: number;
+    pendingMessages: number;
     tokenCount?: number;
     lastActivity?: string;
 }
@@ -97,7 +99,7 @@ export interface TaskNotification {
 }
 
 export interface TaskEventEnvelope {
-    version: 2;
+    version: 3;
     sequence: number;
     sessionId: string;
     task: TaskSnapshot;
@@ -118,6 +120,8 @@ export interface TaskSessionLike {
     list(): Promise<readonly TaskSnapshot[]>;
 
     stop(id: string): Promise<TaskSnapshot | undefined>;
+
+    send(id: string, message: string): Promise<AgentTaskSnapshot>;
 
     discardWorktree(id: string): Promise<AgentTaskSnapshot>;
 

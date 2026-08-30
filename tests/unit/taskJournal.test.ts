@@ -18,7 +18,7 @@ function shellEvent(input: {
     const sessionId = input.sessionId ?? "session-a";
     const status = input.status ?? "running";
     return {
-        version: 2,
+        version: 3,
         type: input.type ?? "task_progress",
         sequence: input.sequence,
         sessionId,

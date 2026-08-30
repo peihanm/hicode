@@ -171,6 +171,17 @@ export class RuntimeMessageQueue {
         return message;
     }
 
+    dequeueNextUserInput(): RuntimeQueuedMessage | undefined {
+        const index = this.messages.findIndex(
+            (message) =>
+                message.type === "user_input" && message.priority === "next"
+        );
+        if (index < 0) return undefined;
+        const [message] = this.messages.splice(index, 1);
+        this.publish();
+        return message;
+    }
+
     demoteNextUserInputs(): void {
         let changed = false;
         this.messages = this.messages.map((message) => {

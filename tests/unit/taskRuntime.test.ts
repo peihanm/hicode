@@ -166,6 +166,8 @@ describe("TaskRuntime", () => {
                 output: "task output\n",
                 outputResult: {resultId: `task_${started.id}`},
             });
+            await expect(first.send(started.id, "继续"))
+                .rejects.toThrow(`Task ${started.id} 不是 Agent`);
             expect(await second.get(started.id)).toBeUndefined();
             expect(events.map((event) => event.sequence)).toEqual([1, 2]);
             const concurrentClaims = await Promise.all([

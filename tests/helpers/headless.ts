@@ -18,7 +18,10 @@ import {
   runAgentForTest,
   type AgentTestOptions,
 } from "./agent.js";
-import { createSubagentRunnerForTest } from "./subagent.js";
+import {
+  createSubagentRunnerForTest,
+  createSubagentThreadForTest,
+} from "./subagent.js";
 import type { AgentRuntime } from "../../src/runtime/agentRuntime.js";
 import {createTestStorage} from "./tempProject.js";
 import {
@@ -60,6 +63,12 @@ export function runHeadlessForTest(
         agentOptions: test.agent,
         toolResultStoreOptions: test.toolResultStoreOptions,
       }),
+    createSubagentThread: (subagentOptions, request) =>
+      createSubagentThreadForTest({
+        ...subagentOptions,
+        agentOptions: test.agent,
+        toolResultStoreOptions: test.toolResultStoreOptions,
+      }, request),
     compactHistory: async () => ({
       compacted: false,
       preTokenCount: 0,

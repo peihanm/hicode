@@ -25,7 +25,7 @@ import {
     validateCustomAgentTools,
 } from "../subagents/index.js";
 import {createAgentTool} from "../tools/agent/agent.js";
-import type {CreateSubagentRunner} from "../subagents/types.js";
+import type {CreateSubagentThread} from "../subagents/types.js";
 import {createHookPromptExecutor, createHookRuntime, type HookRuntime, type HookTrustRequest,} from "../hooks/index.js";
 import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
@@ -97,7 +97,7 @@ interface RootRuntimeDependencies {
         cwd: string,
         childEnvironment: ChildProcessEnvironment,
         shellRunner: ShellRunnerLike,
-        createSubagentRunner: CreateSubagentRunner,
+        createSubagentThread: CreateSubagentThread,
         subagents: SubagentCatalog
     ): TaskRuntimeLike;
 
@@ -284,7 +284,7 @@ export function createRootRuntimeResourcesFactory(
                 options.cwd,
                 childEnvironment,
                 shellRunner,
-                agentRuntime.createSubagentRunner,
+                agentRuntime.createSubagentThread,
                 subagents
             );
             taskRuntime = createdTaskRuntime;

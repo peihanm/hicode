@@ -44,6 +44,12 @@ function createFakeAgentRuntime(
             };
             return runner;
         },
+        createSubagentThread: (options) => ({
+            agentId: options.agentId,
+            async run() {
+                throw new Error("SDK 测试未配置子 Agent");
+            },
+        }),
         compactHistory: async () => ({
             compacted: false,
             preTokenCount: 0,

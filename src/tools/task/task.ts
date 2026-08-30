@@ -4,13 +4,19 @@ import type {Tool} from "../types.js";
 
 const inputSchema = z.object({
     action: z
-        .enum(["list", "status", "stop", "discard"])
+        .enum(["list", "status", "send", "stop", "discard"])
         .default("list")
-        .describe("list/status/stop 管理任务；discard 永久删除已结束的 Worktree"),
+        .describe("list/status/send/stop 管理任务；send 向 Agent 发送消息或继续；discard 永久删除已结束的 Worktree"),
     task_id: z
         .string()
         .optional()
         .describe("除 list 外必填；由后台 bash 或 Agent Tool 返回"),
+    message: z
+        .string()
+        .min(1)
+        .max(32 * 1024)
+        .optional()
+        .describe("action=send 时必填；运行中在安全边界注入，已结束时继续同一 Agent Thread"),
 });
 
 function formatTask(task: TaskSnapshot): string {
@@ -28,8 +34,12 @@ function formatTask(task: TaskSnapshot): string {
         ].join("\n") + result + issue;
     }
     const progress = [
+        `run ${task.progress.runCount}`,
         `${task.progress.iterations} iterations`,
         `${task.progress.toolUseCount} tools`,
+        task.progress.pendingMessages > 0
+            ? `${task.progress.pendingMessages} queued messages`
+            : undefined,
         task.progress.tokenCount !== undefined
             ? `${task.progress.tokenCount} tokens`
             : undefined,
@@ -104,7 +114,7 @@ export const taskTool: Tool<typeof inputSchema> = {
         return {behavior: "passthrough"};
     },
     requiresUserInteraction: ({action}) => action === "discard",
-    async execute({action, task_id}, ctx) {
+    async execute({action, task_id, message}, ctx) {
         if (!ctx.tasks) {
             return {content: "当前 Runtime 不支持后台任务", outcome: "failed"};
         }
@@ -119,6 +129,28 @@ export const taskTool: Tool<typeof inputSchema> = {
                 content: `${action} 需要 task_id`,
                 outcome: "failed",
             };
+        }
+        if (action === "send") {
+            if (!message?.trim()) {
+                return {
+                    content: "send 需要非空 message",
+                    outcome: "failed",
+                };
+            }
+            try {
+                const task = await ctx.tasks.send(task_id, message);
+                return {
+                    content: formatTask(task),
+                    outcome: "ok",
+                };
+            } catch (error) {
+                return {
+                    content: error instanceof Error
+                        ? error.message
+                        : String(error),
+                    outcome: "failed",
+                };
+            }
         }
         const task = action === "stop"
             ? await ctx.tasks.stop(task_id)

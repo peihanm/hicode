@@ -11,7 +11,15 @@ import {createToolContext} from "../runtime/toolContext.js";
 import {createAgentSystemPrompt} from "./prompt.js";
 import type {SubagentRegistry} from "./registry.js";
 import {SubagentTranscriptWriter} from "./transcript.js";
-import type {CreateSubagentRunnerOptions, ForkSubagentRequest, SubagentRequest, SubagentResult,} from "./types.js";
+import type {
+    CreateSubagentRunner,
+    CreateSubagentRunnerOptions,
+    CreateSubagentThread,
+    ForkSubagentRequest,
+    SubagentRequest,
+    SubagentResult,
+    SubagentThread,
+} from "./types.js";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective} from "./fork.js";
@@ -108,315 +116,360 @@ async function emit(
     await callback(event);
 }
 
-export function createSubagentRunnerFactory(
+export function createSubagentFactories(
     dependencies: SubagentRunnerDependencies
-) {
-    return function createSubagentRunner(options: CreateSubagentRunnerOptions) {
-        const {
-            parentContext,
-            onEvent,
-            onChildEvent,
-        } = options;
-        const activeSignal = options.signal ?? parentContext.signal;
-        return async (request: SubagentRequest): Promise<SubagentResult> => {
-            const registration = request.kind === "fork"
-                ? createForkRegistration(request, parentContext)
-                : dependencies.registry.get(request.agentType);
-            if (!registration) {
-                const available = dependencies.registry
-                    .listDefinitions()
-                    .map((definition) => definition.agentType)
-                    .join(", ");
-                throw new Error(
-                    `未知 Agent 类型: ${request.agentType}。当前可用: ${available}`
-                );
-            }
-            const {definition} = registration;
-            const runtimeConfig = registration.createRuntimeConfig(parentContext);
-            const runtime = createToolRuntime(runtimeConfig.toolRuntimeOptions);
-            const initialToolNames = runtime.getToolSchemas()
-                .map((tool) => tool.function.name);
-            const modelSelection = request.kind !== "fork"
-                ? request.model ?? definition.model
-                : "inherit";
-            const childModel = resolveSubagentModel({
-                definitionModel: definition.model,
-                parentModel: parentContext.model,
-                fastModel: dependencies.fastModel,
-                override: request.kind !== "fork"
-                    ? request.model
-                    : undefined,
-            });
-            const runChildAgent = modelSelection === "fast"
-                ? dependencies.fastRunAgent
-                : dependencies.primaryRunAgent;
-            const childProvider = modelSelection === "fast"
-                ? parentContext.fastProvider
-                : parentContext.provider;
-            const agentId = options.agentId ?? randomUUID();
-            const childSessionId = `subagent-${agentId}`;
-            const childHistory: Message[] = request.kind === "fork"
-                ? structuredClone(request.contextSnapshot.history)
-                : [{
-                    role: "system",
-                    content: createAgentSystemPrompt(
-                        definition,
-                        parentContext.cwd,
-                        childModel,
-                        initialToolNames
-                    ),
-                }];
-            const childContext: ToolContext = createToolContext({
-                signal: activeSignal,
-                // 逐字段构造，禁止未来 capability 被 Root resources 自动扩散到 Child。
-                resources: {
-                    ...runtimeConfig.contextResources,
-                    // Child 只能凭自己实际读取过的内容获得编辑授权。
-                    fileState: createFileStateTracker(),
-                    model: childModel,
-                    provider: childProvider,
-                    fastModel: dependencies.fastModel,
-                    fastProvider: parentContext.fastProvider,
-                },
-                session: {
-                    sessionId: childSessionId,
-                    compactState: createCompactState(),
-                    toolResultStore: dependencies.createToolResultStore(
-                        options.storageCwd ?? parentContext.cwd,
-                        childSessionId
-                    ),
-                    fileCheckpoints:
-                        runtimeConfig.toolRuntimeOptions.allowedToolNames?.some(
-                            (name) => name === "edit_file" ||
-                                name === "write_file" ||
-                                name === "delete_file"
-                        )
-                            ? parentContext.fileCheckpoints
-                            : createDisabledFileCheckpointRuntime(),
-                },
-                host: {
-                    canUseTool: async () => ({
-                        behavior: "deny",
-                        message: "子 Agent 不允许交互式权限确认",
-                    }),
-                    getPermissionRules: () => runtimeConfig.permissionRules,
-                    getPermissionMode: () => runtimeConfig.permissionMode,
-                    getPrePlanMode: () => runtimeConfig.prePlanMode,
-                    setPermissionMode() {
-                    },
-                    setTodos() {
-                    },
-                },
-            });
-            // subagentLauncher 故意缺失，形成不可递归的运行时边界。
-            const transcript = new SubagentTranscriptWriter(
-                parentContext.storage,
-                options.storageCwd ?? parentContext.cwd,
-                parentContext.sessionId,
-                agentId
+): {
+    createSubagentRunner: CreateSubagentRunner;
+    createSubagentThread: CreateSubagentThread;
+} {
+    const createSubagentThread: CreateSubagentThread = (options, request) => {
+        const {parentContext, onEvent, onChildEvent, agentId} = options;
+        const registration = request.kind === "fork"
+            ? createForkRegistration(request, parentContext)
+            : dependencies.registry.get(request.agentType);
+        if (!registration) {
+            const available = dependencies.registry
+                .listDefinitions()
+                .map((definition) => definition.agentType)
+                .join(", ");
+            throw new Error(
+                `未知 Agent 类型: ${request.agentType}。当前可用: ${available}`
             );
-            let transcriptPath: string | undefined;
-            try {
-                await transcript.append({
-                    type: "start",
-                    version: 1,
-                    timestamp: new Date().toISOString(),
-                    parentSessionId: parentContext.sessionId,
-                    parentToolCallId: request.parentToolCallId,
-                    agentId,
-                    agentType: definition.agentType,
-                    ...(request.kind === "fork" ? {agentName: request.name} : {}),
-                    description: request.description,
-                    model: childModel,
-                    cwd: parentContext.cwd,
-                    allowedTools: runtime.toolNames,
-                });
-                transcriptPath = transcript.path;
-            } catch {
-                // Transcript 是 best-effort；观测写入失败不能吞掉子 Agent 的结果。
-            }
+        }
+        const {definition} = registration;
+        const runtimeConfig = registration.createRuntimeConfig(parentContext);
+        const runtime = createToolRuntime(runtimeConfig.toolRuntimeOptions);
+        const initialToolNames = runtime.getToolSchemas()
+            .map((tool) => tool.function.name);
+        const modelSelection = request.kind !== "fork"
+            ? request.model ?? definition.model
+            : "inherit";
+        const childModel = resolveSubagentModel({
+            definitionModel: definition.model,
+            parentModel: parentContext.model,
+            fastModel: dependencies.fastModel,
+            override: request.kind !== "fork"
+                ? request.model
+                : undefined,
+        });
+        const runChildAgent = modelSelection === "fast"
+            ? dependencies.fastRunAgent
+            : dependencies.primaryRunAgent;
+        const childProvider = modelSelection === "fast"
+            ? parentContext.fastProvider
+            : parentContext.provider;
+        const childSessionId = `subagent-${agentId}`;
+        const childHistory: Message[] = request.kind === "fork"
+            ? structuredClone(request.contextSnapshot.history)
+            : [{
+                role: "system",
+                content: createAgentSystemPrompt(
+                    definition,
+                    parentContext.cwd,
+                    childModel,
+                    initialToolNames
+                ),
+            }];
+        const childCompactState = createCompactState();
+        const childFileState = createFileStateTracker();
+        const childToolResultStore = dependencies.createToolResultStore(
+            options.storageCwd ?? parentContext.cwd,
+            childSessionId
+        );
+        const childFileCheckpoints =
+            runtimeConfig.toolRuntimeOptions.allowedToolNames?.some(
+                (name) => name === "edit_file" ||
+                    name === "write_file" ||
+                    name === "delete_file"
+            )
+                ? parentContext.fileCheckpoints
+                : createDisabledFileCheckpointRuntime();
+        const transcript = new SubagentTranscriptWriter(
+            parentContext.storage,
+            options.storageCwd ?? parentContext.cwd,
+            parentContext.sessionId,
+            agentId
+        );
+        let transcriptPath: string | undefined;
+        let transcriptStarted = false;
+        let transcriptDisabled = false;
+        let running = false;
+        let runCount = 0;
 
-            await emit(onEvent, {
-                type: "subagent_start",
-                agentId,
-                agentType: definition.agentType,
-                ...(request.kind === "fork" ? {agentName: request.name} : {}),
-                description: request.description,
-                parentToolCallId: request.parentToolCallId,
-            });
-            const startedAt = Date.now();
-            let toolUseCount = 0;
+        const thread: SubagentThread = {
+            agentId,
+            async run(input) {
+                if (running) {
+                    throw new Error(`Agent Thread 正在运行: ${agentId}`);
+                }
+                running = true;
+                try {
+                    const firstRun = runCount === 0;
+                    runCount += 1;
+                    const childContext: ToolContext = createToolContext({
+                        signal: input.signal,
+                        // 逐字段构造，禁止未来 capability 被 Root resources 自动扩散到 Child。
+                        resources: {
+                            ...runtimeConfig.contextResources,
+                            // Child 只能凭自己实际读取过的内容获得编辑授权。
+                            fileState: childFileState,
+                            model: childModel,
+                            provider: childProvider,
+                            fastModel: dependencies.fastModel,
+                            fastProvider: parentContext.fastProvider,
+                        },
+                        session: {
+                            sessionId: childSessionId,
+                            compactState: childCompactState,
+                            toolResultStore: childToolResultStore,
+                            fileCheckpoints: childFileCheckpoints,
+                        },
+                        host: {
+                            canUseTool: async () => ({
+                                behavior: "deny",
+                                message: "子 Agent 不允许交互式权限确认",
+                            }),
+                            getPermissionRules: () => runtimeConfig.permissionRules,
+                            getPermissionMode: () => runtimeConfig.permissionMode,
+                            getPrePlanMode: () => runtimeConfig.prePlanMode,
+                            setPermissionMode() {
+                            },
+                            setTodos() {
+                            },
+                        },
+                    });
+                    // subagentLauncher 故意缺失，形成不可递归的运行时边界。
+                    if (!transcriptStarted && !transcriptDisabled) {
+                        try {
+                            await transcript.append({
+                                type: "start",
+                                version: 1,
+                                timestamp: new Date().toISOString(),
+                                parentSessionId: parentContext.sessionId,
+                                parentToolCallId: request.parentToolCallId,
+                                agentId,
+                                agentType: definition.agentType,
+                                ...(request.kind === "fork"
+                                    ? {agentName: request.name}
+                                    : {}),
+                                description: request.description,
+                                model: childModel,
+                                cwd: parentContext.cwd,
+                                allowedTools: runtime.toolNames,
+                            });
+                            transcriptPath = transcript.path;
+                            transcriptStarted = true;
+                        } catch {
+                            transcriptDisabled = true;
+                        }
+                    }
 
-            try {
-                const recordChildEvent = async (event: AgentEvent): Promise<void> => {
-                    if (event.type === "tool_call_start") toolUseCount += 1;
+                    await emit(onEvent, {
+                        type: "subagent_start",
+                        agentId,
+                        agentType: definition.agentType,
+                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        description: request.description,
+                        parentToolCallId: request.parentToolCallId,
+                    });
+                    const startedAt = Date.now();
+                    let toolUseCount = 0;
+                    const recordChildEvent = async (event: AgentEvent): Promise<void> => {
+                        if (event.type === "tool_call_start") toolUseCount += 1;
+                        if (transcriptPath) {
+                            try {
+                                await transcript.append({
+                                    type: "event",
+                                    timestamp: new Date().toISOString(),
+                                    event,
+                                });
+                            } catch {
+                                transcriptPath = undefined;
+                                transcriptDisabled = true;
+                            }
+                        }
+                        if (event.type === "tool_call_start") {
+                            await emit(onEvent, {
+                                type: "subagent_progress",
+                                agentId,
+                                event: {
+                                    type: "tool_start",
+                                    toolCallId: event.toolCallId,
+                                    name: event.name,
+                                    args: event.args,
+                                },
+                            });
+                        } else if (event.type === "tool_call_end") {
+                            await emit(onEvent, {
+                                type: "subagent_progress",
+                                agentId,
+                                event: {
+                                    type: "tool_end",
+                                    toolCallId: event.toolCallId,
+                                },
+                            });
+                        } else if (event.type === "token_update") {
+                            await emit(onEvent, {
+                                type: "subagent_progress",
+                                agentId,
+                                event: {
+                                    type: "token_update",
+                                    tokenCount: event.tokenCount,
+                                },
+                            });
+                        }
+                        await onChildEvent?.(event);
+                    };
+                    const totalBudget = definition.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+                    const explorationBudget = Math.max(1, totalBudget - 1);
+                    const childPrompt = firstRun && request.kind === "fork"
+                        ? createForkDirective({
+                            name: request.name,
+                            description: request.description,
+                            prompt: input.prompt,
+                            writable: request.isolation === "worktree",
+                        })
+                        : input.prompt;
+                    let result = await runChildAgent(
+                        childPrompt,
+                        childHistory,
+                        recordChildEvent,
+                        childContext,
+                        input.inputChannel,
+                        {
+                            maxIterations: explorationBudget,
+                            getToolSchemas: runtime.getToolSchemas,
+                            isToolConcurrencySafe: runtime.isConcurrencySafe,
+                            executeTool: runtime.executeTool,
+                            ...(runtimeConfig.maxConsecutiveDeniedToolCalls !== undefined
+                                ? {
+                                    maxConsecutiveDeniedToolCalls:
+                                        runtimeConfig.maxConsecutiveDeniedToolCalls,
+                                }
+                                : {}),
+                        }
+                    );
+                    let totalIterations = result.iterations;
+                    if (
+                        (result.reason === "max_turns" ||
+                            result.reason === "permission_denied") &&
+                        !input.signal.aborted &&
+                        totalBudget > 1
+                    ) {
+                        const finalized = await runChildAgent(
+                            registration.finalizePrompt ?? DEFAULT_FINALIZE_PROMPT,
+                            childHistory,
+                            recordChildEvent,
+                            childContext,
+                            input.inputChannel,
+                            {
+                                maxIterations: 1,
+                                getToolSchemas: () => [],
+                                isToolConcurrencySafe: runtime.isConcurrencySafe,
+                                executeTool: runtime.executeTool,
+                            }
+                        );
+                        result = finalized;
+                        totalIterations += finalized.iterations;
+                    }
+                    const subagentResult: SubagentResult = {
+                        agentId,
+                        agentType: definition.agentType,
+                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        description: request.description,
+                        reply: result.reply,
+                        reason: result.reason,
+                        iterations: totalIterations,
+                        toolUseCount,
+                        durationMs: Date.now() - startedAt,
+                        ...(transcriptPath ? {transcriptPath} : {}),
+                        ...(registration.parseResult?.(result.reply) ?? {}),
+                    };
+
+                    if (transcriptPath) {
+                        try {
+                            await transcript.append({
+                                type: "snapshot",
+                                timestamp: new Date().toISOString(),
+                                history: childHistory,
+                                result: subagentResult,
+                            });
+                        } catch {
+                            transcriptPath = undefined;
+                            transcriptDisabled = true;
+                            delete subagentResult.transcriptPath;
+                        }
+                    }
+
+                    await emit(onEvent, {
+                        type: "subagent_end",
+                        agentId,
+                        agentType: definition.agentType,
+                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        reason: subagentResult.reason,
+                        iterations: subagentResult.iterations,
+                        toolUseCount: subagentResult.toolUseCount,
+                        durationMs: subagentResult.durationMs,
+                        report: subagentResult.reply,
+                        ...(subagentResult.verificationVerdict
+                            ? {verificationVerdict: subagentResult.verificationVerdict}
+                            : {}),
+                        ...(subagentResult.transcriptPath
+                            ? {transcriptPath: subagentResult.transcriptPath}
+                            : {}),
+                    });
+                    return subagentResult;
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
                     if (transcriptPath) {
                         try {
                             await transcript.append({
                                 type: "event",
                                 timestamp: new Date().toISOString(),
-                                event,
+                                event: {
+                                    type: "subagent_error",
+                                    agentId,
+                                    agentType: definition.agentType,
+                                    message,
+                                },
                             });
                         } catch {
-                            transcriptPath = undefined;
+                            // 保留原始运行错误。
                         }
                     }
-                    if (event.type === "tool_call_start") {
-                        await emit(onEvent, {
-                            type: "subagent_progress",
-                            agentId,
-                            event: {
-                                type: "tool_start",
-                                toolCallId: event.toolCallId,
-                                name: event.name,
-                                args: event.args,
-                            },
-                        });
-                    } else if (event.type === "tool_call_end") {
-                        await emit(onEvent, {
-                            type: "subagent_progress",
-                            agentId,
-                            event: {
-                                type: "tool_end",
-                                toolCallId: event.toolCallId,
-                            },
-                        });
-                    } else if (event.type === "token_update") {
-                        await emit(onEvent, {
-                            type: "subagent_progress",
-                            agentId,
-                            event: {
-                                type: "token_update",
-                                tokenCount: event.tokenCount,
-                            },
-                        });
-                    }
-                    await onChildEvent?.(event);
-                };
-                const totalBudget = definition.maxIterations ?? DEFAULT_MAX_ITERATIONS;
-                const explorationBudget = Math.max(1, totalBudget - 1);
-                const childPrompt = request.kind === "fork"
-                    ? createForkDirective({
-                        name: request.name,
-                        description: request.description,
-                        prompt: request.prompt,
-                        writable: request.isolation === "worktree",
-                    })
-                    : request.prompt;
-                let result = await runChildAgent(
-                    childPrompt,
-                    childHistory,
-                    recordChildEvent,
-                    childContext,
-                    EMPTY_AGENT_INPUT_CHANNEL,
-                    {
-                        maxIterations: explorationBudget,
-                        getToolSchemas: runtime.getToolSchemas,
-                        isToolConcurrencySafe: runtime.isConcurrencySafe,
-                        executeTool: runtime.executeTool,
-                        ...(runtimeConfig.maxConsecutiveDeniedToolCalls !== undefined
-                            ? {
-                                maxConsecutiveDeniedToolCalls:
-                                    runtimeConfig.maxConsecutiveDeniedToolCalls,
-                            }
-                            : {}),
-                    }
-                );
-                let totalIterations = result.iterations;
-                if (
-                    (result.reason === "max_turns" ||
-                        result.reason === "permission_denied") &&
-                    !activeSignal.aborted &&
-                    totalBudget > 1
-                ) {
-                    const finalized = await runChildAgent(
-                        registration.finalizePrompt ?? DEFAULT_FINALIZE_PROMPT,
-                        childHistory,
-                        recordChildEvent,
-                        childContext,
-                        EMPTY_AGENT_INPUT_CHANNEL,
-                        {
-                            maxIterations: 1,
-                            getToolSchemas: () => [],
-                            isToolConcurrencySafe: runtime.isConcurrencySafe,
-                            executeTool: runtime.executeTool,
-                        }
-                    );
-                    result = finalized;
-                    totalIterations += finalized.iterations;
+                    await emit(onEvent, {
+                        type: "subagent_error",
+                        agentId,
+                        agentType: definition.agentType,
+                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        message,
+                    });
+                    throw error;
+                } finally {
+                    running = false;
                 }
-                const subagentResult: SubagentResult = {
-                    agentId,
-                    agentType: definition.agentType,
-                    ...(request.kind === "fork" ? {agentName: request.name} : {}),
-                    description: request.description,
-                    reply: result.reply,
-                    reason: result.reason,
-                    iterations: totalIterations,
-                    toolUseCount,
-                    durationMs: Date.now() - startedAt,
-                    ...(transcriptPath ? {transcriptPath} : {}),
-                    ...(registration.parseResult?.(result.reply) ?? {}),
-                };
-
-                if (transcriptPath) {
-                    try {
-                        await transcript.append({
-                            type: "snapshot",
-                            timestamp: new Date().toISOString(),
-                            history: childHistory,
-                            result: subagentResult,
-                        });
-                    } catch {
-                        delete subagentResult.transcriptPath;
-                    }
-                }
-
-                await emit(onEvent, {
-                    type: "subagent_end",
-                    agentId,
-                    agentType: definition.agentType,
-                    ...(request.kind === "fork" ? {agentName: request.name} : {}),
-                    reason: subagentResult.reason,
-                    iterations: subagentResult.iterations,
-                    toolUseCount: subagentResult.toolUseCount,
-                    durationMs: subagentResult.durationMs,
-                    report: subagentResult.reply,
-                    ...(subagentResult.verificationVerdict
-                        ? {verificationVerdict: subagentResult.verificationVerdict}
-                        : {}),
-                    ...(subagentResult.transcriptPath
-                        ? {transcriptPath: subagentResult.transcriptPath}
-                        : {}),
-                });
-                return subagentResult;
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                if (transcriptPath) {
-                    try {
-                        await transcript.append({
-                            type: "event",
-                            timestamp: new Date().toISOString(),
-                            event: {
-                                type: "subagent_error",
-                                agentId,
-                                agentType: definition.agentType,
-                                message,
-                            },
-                        });
-                    } catch {
-                        // 保留原始运行错误。
-                    }
-                }
-                await emit(onEvent, {
-                    type: "subagent_error",
-                    agentId,
-                    agentType: definition.agentType,
-                    ...(request.kind === "fork" ? {agentName: request.name} : {}),
-                    message,
-                });
-                throw error;
-            }
+            },
         };
-    }
+        return thread;
+    };
+
+    const createSubagentRunner: CreateSubagentRunner = (
+        options: CreateSubagentRunnerOptions
+    ) => async (request: SubagentRequest): Promise<SubagentResult> => {
+        const agentId = options.agentId ?? randomUUID();
+        const thread = createSubagentThread({
+            parentContext: options.parentContext,
+            onEvent: options.onEvent,
+            ...(options.onChildEvent ? {onChildEvent: options.onChildEvent} : {}),
+            ...(options.storageCwd ? {storageCwd: options.storageCwd} : {}),
+            agentId,
+        }, request);
+        return thread.run({
+            prompt: request.prompt,
+            signal: options.signal ?? options.parentContext.signal,
+            inputChannel: EMPTY_AGENT_INPUT_CHANNEL,
+        });
+    };
+
+    return {createSubagentRunner, createSubagentThread};
 }

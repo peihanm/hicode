@@ -105,7 +105,7 @@ function formatAgentToolDescription(
     });
     return [
         "启动子 Agent。调用开放式搜索前先判断是否委派：『这个项目做什么』『深入理解 src』『某功能完整链路』，或预计涉及 3 个以上文件、2 个以上目录、3 次以上查询时，必须优先使用 Explore；不要先由 Root 遍历多个目录。具体文件、符号或最多 2–3 个文件的定向问题直接处理。",
-        "需要 Agent 结果才能继续时使用前台默认模式；只有其他工作不依赖该结果时才使用 run_in_background=true。持久 Agent 使用 fresh context，prompt 必须提供完整背景；model=fast 使用独立配置的快速 Provider 与模型，适合边界明确、低风险、以读取和搜索为主的任务，复杂实现和独立验证应使用主力模型。subagent_type=fork 会继承当前父对话，name 必填且必须后台运行，不接受 model。只读 Fork 可并行调查，写 Fork 必须 isolation=worktree。仅使用安全结构化文件工具的写型自定义 Agent 可使用 Worktree。后台完成后 Pillar 会主动通知，禁止轮询等待。Worktree 是协作隔离，不是 OS 沙盒。不要在主上下文重复执行已经委派的调查；工具结果对用户不可见，完成后必须由你总结。",
+        "需要 Agent 结果才能继续时使用前台默认模式；只有其他工作不依赖该结果时才使用 run_in_background=true。持久 Agent 使用 fresh context，prompt 必须提供完整背景；model=fast 使用独立配置的快速 Provider 与模型，适合边界明确、低风险、以读取和搜索为主的任务，复杂实现和独立验证应使用主力模型。subagent_type=fork 会继承当前父对话，name 必填且必须后台运行，不接受 model。只读 Fork 可并行调查，写 Fork 必须 isolation=worktree。仅使用安全结构化文件工具的写型自定义 Agent 可使用 Worktree。后台普通 Agent 可通过 task action=send 接收中途修正或在完成后沿用同一 History 继续；cancelled、Worktree 和旧进程恢复出的 Agent 不支持。后台完成后 Pillar 会主动通知，禁止轮询等待。Worktree 是协作隔离，不是 OS 沙盒。不要在主上下文重复执行已经委派的调查；工具结果对用户不可见，完成后必须由你总结。",
         "",
         "当前可用 Agent：",
         ...agents,

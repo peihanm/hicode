@@ -1,6 +1,7 @@
 import {createTurnAbortController} from "../runtime/abort.js";
+import {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {AgentEvent} from "../agent/types.js";
-import type {CreateSubagentRunner} from "../subagents/types.js";
+import type {CreateSubagentThread} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import {validateBackgroundAgent} from "../subagents/registration.js";
 import type {ToolContext} from "../tools/types.js";
@@ -37,49 +38,15 @@ export function createAgentTask(
     binding: TaskSessionBinding,
     input: StartAgentTaskInput,
     context: ToolContext,
-    worktree?: ManagedAgentTask["worktree"]
-): {task: ManagedAgentTask; context: ToolContext} {
-    return {
-        context,
-        task: {
-            id,
-            owner: {
-                sessionId: binding.sessionId,
-                toolCallId: input.request.parentToolCallId,
-            },
-            agentType: input.request.agentType,
-            ...(input.request.kind === "fork"
-                ? {agentName: input.request.name}
-                : {}),
-            description: input.request.description,
-            status: "running",
-            startedAt: new Date().toISOString(),
-            store: binding.toolResultStore,
-            controller: createTurnAbortController(),
-            iterations: 0,
-            toolUseCount: 0,
-            lastPublishedTokenCount: 0,
-            ...(worktree ? {worktree} : {}),
-            notificationPending: false,
-            suppressTerminalNotification: false,
-            completion: Promise.resolve(),
-        },
-    };
-}
-
-export async function runAgentTask(
-    task: ManagedAgentTask,
-    input: StartAgentTaskInput,
-    executionContext: ToolContext,
-    createSubagentRunner: CreateSubagentRunner,
-    worktrees: TaskWorktreeManager,
+    createSubagentThread: CreateSubagentThread,
     publishProgress: (task: ManagedAgentTask) => Promise<void>,
-    publishFinished: (task: ManagedAgentTask) => Promise<void>
-): Promise<void> {
-    const runner = createSubagentRunner({
-        parentContext: executionContext,
-        signal: task.controller.signal,
-        agentId: task.id,
+    worktree?: ManagedAgentTask["worktree"]
+): ManagedAgentTask {
+    const messageQueue = new RuntimeMessageQueue();
+    let task: ManagedAgentTask;
+    const thread = createSubagentThread({
+        parentContext: context,
+        agentId: id,
         storageCwd: input.parentContext.cwd,
         onEvent: () => {},
         onChildEvent: (event) => recordAgentProgress(
@@ -87,32 +54,79 @@ export async function runAgentTask(
             event,
             publishProgress
         ),
-    });
+    }, input.request);
+    task = {
+        id,
+        owner: {
+            sessionId: binding.sessionId,
+            toolCallId: input.request.parentToolCallId,
+        },
+        thread,
+        messageQueue,
+        agentType: input.request.agentType,
+        ...(input.request.kind === "fork"
+            ? {agentName: input.request.name}
+            : {}),
+        description: input.request.description,
+        status: "running",
+        startedAt: new Date().toISOString(),
+        store: binding.toolResultStore,
+        controller: createTurnAbortController(),
+        runCount: 1,
+        iterations: 0,
+        toolUseCount: 0,
+        lastPublishedTokenCount: 0,
+        ...(worktree ? {worktree} : {}),
+        notificationPending: false,
+        suppressTerminalNotification: false,
+        completion: Promise.resolve(),
+    };
+    return task;
+}
+
+export async function runAgentTask(
+    task: ManagedAgentTask,
+    prompt: string,
+    worktrees: TaskWorktreeManager,
+    publishFinished: (task: ManagedAgentTask) => Promise<void>
+): Promise<void> {
     let finalStatus: TaskStatus = "failed";
     try {
-        const result = await runner(input.request);
-        task.reason = result.reason;
-        task.iterations = result.iterations;
-        task.toolUseCount = result.toolUseCount;
-        task.transcriptPath = result.transcriptPath;
-        task.resultPreview = result.reply;
-        finalStatus = result.reason === "interrupted"
-            ? "cancelled"
-            : result.reason === "completed" || result.reason === "no_tool_calls"
-                ? "completed"
-                : "failed";
-        try {
-            task.outputResult = await task.store.persistText({
-                toolCallId: task.owner.toolCallId,
-                toolName: "task",
-                content: result.reply,
-                resultId: `task_${task.id}`,
+        let nextPrompt = prompt;
+        while (true) {
+            const result = await task.thread.run({
+                prompt: nextPrompt,
+                signal: task.controller.signal,
+                inputChannel: task.messageQueue.createAgentInputChannel(() => {}),
             });
-            task.resultPreview = task.outputResult.preview;
-        } catch (error) {
-            task.outputIssue = error instanceof Error
-                ? error.message
-                : String(error);
+            task.reason = result.reason;
+            task.iterations = result.iterations;
+            task.toolUseCount = result.toolUseCount;
+            task.transcriptPath = result.transcriptPath;
+            task.resultPreview = result.reply;
+            finalStatus = result.reason === "interrupted"
+                ? "cancelled"
+                : result.reason === "completed" || result.reason === "no_tool_calls"
+                    ? "completed"
+                    : "failed";
+            try {
+                task.outputResult = await task.store.persistText({
+                    toolCallId: task.owner.toolCallId,
+                    toolName: "task",
+                    content: result.reply,
+                    resultId: `task_${task.id}_run_${task.runCount}`,
+                });
+                task.resultPreview = task.outputResult.preview;
+            } catch (error) {
+                task.outputIssue = error instanceof Error
+                    ? error.message
+                    : String(error);
+            }
+            if (finalStatus === "cancelled") break;
+            const queued = task.messageQueue.dequeueNextUserInput();
+            if (!queued) break;
+            nextPrompt = queued.content;
+            resetAgentRun(task, task.runCount + 1);
         }
     } catch (error) {
         finalStatus = task.controller.signal.aborted ? "cancelled" : "failed";
@@ -124,6 +138,20 @@ export async function runAgentTask(
         task.notificationPending = !task.suppressTerminalNotification;
         await publishFinished(task);
     }
+}
+
+export function resetAgentRun(task: ManagedAgentTask, runCount: number): void {
+    task.runCount = runCount;
+    task.iterations = 0;
+    task.toolUseCount = 0;
+    task.tokenCount = undefined;
+    task.lastPublishedTokenCount = 0;
+    task.lastActivity = undefined;
+    task.reason = undefined;
+    task.resultPreview = undefined;
+    task.outputResult = undefined;
+    task.transcriptPath = undefined;
+    task.outputIssue = undefined;
 }
 
 async function recordAgentProgress(

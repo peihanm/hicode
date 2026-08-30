@@ -370,6 +370,9 @@ describe("synchronous subagent", () => {
         async stop() {
           throw new Error("不应停止任务");
         },
+        async send() {
+          throw new Error("不应发送 Agent 消息");
+        },
         async discardWorktree() {
           throw new Error("不应丢弃 Worktree");
         },
