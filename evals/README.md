@@ -14,6 +14,12 @@ bun run eval -- \
 
 bun run eval -- --trend
 
+bun run eval:suite -- \
+  --cases fix-failing-test,create-and-run-code,leetcode-web \
+  --env-file /absolute/provider.env
+
+bun run eval -- --inspect <run-id>
+
 # 较重的端到端 Web Case
 bun run eval -- --case leetcode-web --env-file /absolute/provider.env
 ```
@@ -22,6 +28,14 @@ bun run eval -- --case leetcode-web --env-file /absolute/provider.env
 等待 Interaction，以及最后一次 SDK 信号距今多久。`active`、`quiet` 和 `stalled` 只表示可观测活性，
 不会自动终止任务；Case 的 hard timeout 才会取消 Turn。可用 `--heartbeat-ms 5000` 调整频率，或用
 `--quiet` 关闭。`leetcode-web` 默认允许最多 15 分钟，软耗时预算为 12 分钟。
+
+Suite 会在 Provider 调用前校验全部 Case，然后顺序复用单 Case Runner；每个 Case 保留自己的 Run 现场，
+额外在 `~/.pillar-evals/suites/<suite-id>/suite-report.json` 写入一次汇总。单项基础设施失败不会跳过后续
+Case，任一失败会让 Suite 命令非零退出。使用 `--cases all` 必须显式承担所有 Case 的模型费用。
+
+`--inspect` 不调用 Provider，也不执行被测代码。它可直接给出失败断言与 verifier stderr、最后模型信号、
+失败 Tool、修改文件、Token/迭代、权限等待时间和最终回答 preview；对被中断、尚未生成 report 的 running
+现场同样有效。Inspect 把全部持久化输入视为不可信数据，限制大小/数量并拒绝 Symlink。
 
 每个运行目录包含：
 

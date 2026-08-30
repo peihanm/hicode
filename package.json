@@ -14,6 +14,7 @@
     "dev": "bun src/index.tsx",
     "sdk:run": "bun examples/sdk/run.ts",
     "eval": "bun evals/cli.ts",
+    "eval:suite": "bun evals/cli.ts --suite",
     "test": "bun test",
     "test:unit": "bun test tests/unit",
     "test:contract": "bun test tests/contract",

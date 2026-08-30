@@ -4,21 +4,26 @@ import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 import {parseArgs} from "node:util";
 import {listEvalCases} from "./src/cases.js";
+import {inspectEvalRun} from "./src/inspect.js";
 import {
     createEvalLiveStatus,
     formatEvalHeartbeat,
     reduceEvalLiveStatus,
 } from "./src/liveStatus.js";
 import {runEvalCase} from "./src/runner.js";
+import {runEvalSuite} from "./src/suite.js";
 import {
     getEvalTrendReportPath,
     refreshEvalTrendReport,
 } from "./src/trends.js";
 import type {
     EvalBudget,
+    EvalInspection,
     EvalKeepPolicy,
     EvalModelSource,
     EvalRunOptions,
+    EvalSuiteOptions,
+    EvalSuiteReport,
     EvalTrendReport,
 } from "./src/types.js";
 
@@ -35,7 +40,25 @@ interface EvalTrendCLIOptions {
     json: boolean;
 }
 
-type EvalCLICommand = EvalCLIOptions | EvalTrendCLIOptions;
+interface EvalSuiteCLIOptions extends EvalSuiteOptions {
+    kind: "suite";
+    json: boolean;
+    heartbeatMs: number;
+    quiet: boolean;
+}
+
+interface EvalInspectCLIOptions {
+    kind: "inspect";
+    evalRoot: string;
+    runId: string;
+    json: boolean;
+}
+
+type EvalCLICommand =
+    | EvalCLIOptions
+    | EvalTrendCLIOptions
+    | EvalSuiteCLIOptions
+    | EvalInspectCLIOptions;
 
 async function main(): Promise<void> {
     const options = parseCLIOptions(process.argv.slice(2));
@@ -45,6 +68,19 @@ async function main(): Promise<void> {
         printTrendReport(trend, options.json);
         return;
     }
+    if (options.kind === "inspect") {
+        const inspection = await inspectEvalRun(options.evalRoot, options.runId);
+        printInspection(inspection, options.json);
+        return;
+    }
+    if (options.kind === "suite") {
+        await runSuiteCommand(options);
+        return;
+    }
+    await runCaseCommand(options);
+}
+
+async function runCaseCommand(options: EvalCLIOptions): Promise<void> {
     let liveStatus = createEvalLiveStatus(Date.now());
     if (!options.quiet) {
         process.stderr.write(`${formatEvalHeartbeat(liveStatus, Date.now())}\n`);
@@ -85,6 +121,46 @@ async function main(): Promise<void> {
     if (!report.passed) process.exitCode = 1;
 }
 
+async function runSuiteCommand(options: EvalSuiteCLIOptions): Promise<void> {
+    let liveStatus = createEvalLiveStatus(Date.now());
+    let label = "[suite]";
+    const heartbeat = options.quiet ? undefined : setInterval(() => {
+        process.stderr.write(
+            `${label} ${formatEvalHeartbeat(liveStatus, Date.now())}\n`
+        );
+    }, options.heartbeatMs);
+    heartbeat?.unref?.();
+    let report: EvalSuiteReport;
+    try {
+        report = await runEvalSuite(options, {
+            onCaseStarted: (context) => {
+                label = `[suite ${context.index}/${context.total} ${context.caseId}]`;
+                liveStatus = createEvalLiveStatus(Date.now());
+                if (!options.quiet) {
+                    process.stderr.write(
+                        `${label} ${formatEvalHeartbeat(liveStatus, Date.now())}\n`
+                    );
+                }
+            },
+            onEvent: (context) => {
+                liveStatus = reduceEvalLiveStatus(liveStatus, context.event);
+            },
+            onCaseCompleted: (entry) => {
+                if (!options.quiet) {
+                    process.stderr.write(
+                        `${label} ${entry.passed ? "PASS" : "FAIL"}` +
+                        `${entry.runId ? ` | run ${entry.runId}` : ""}\n`
+                    );
+                }
+            },
+        });
+    } finally {
+        if (heartbeat !== undefined) clearInterval(heartbeat);
+    }
+    printSuiteReport(report, options.json);
+    if (!report.passed) process.exitCode = 1;
+}
+
 function parseCLIOptions(args: string[]): EvalCLICommand | undefined {
     const parsed = parseArgs({
         args,
@@ -94,7 +170,10 @@ function parseCLIOptions(args: string[]): EvalCLICommand | undefined {
             help: {type: "boolean", short: "h"},
             list: {type: "boolean"},
             trend: {type: "boolean"},
+            suite: {type: "boolean"},
+            inspect: {type: "string"},
             case: {type: "string"},
+            cases: {type: "string"},
             "eval-root": {type: "string"},
             "settings-file": {type: "string"},
             "env-file": {type: "string"},
@@ -118,8 +197,11 @@ function parseCLIOptions(args: string[]): EvalCLICommand | undefined {
         return undefined;
     }
     if (parsed.values.list) {
-        if (parsed.values.trend || parsed.values.case) {
-            throw new Error("--list 不能与 --trend 或 --case 同时使用");
+        if (
+            parsed.values.trend || parsed.values.suite ||
+            parsed.values.inspect || parsed.values.case || parsed.values.cases
+        ) {
+            throw new Error("--list 不能与其他命令同时使用");
         }
         for (const evalCase of listEvalCases()) {
             process.stdout.write(`${evalCase.id}\t${evalCase.description}\n`);
@@ -130,52 +212,82 @@ function parseCLIOptions(args: string[]): EvalCLICommand | undefined {
         parsed.values["eval-root"] ?? join(homedir(), ".pillar-evals")
     );
     if (parsed.values.trend) {
-        if (parsed.values.case) {
-            throw new Error("--trend 不能与 --case 同时使用");
-        }
+        assertNoOtherCommand(parsed.values, "--trend");
         return {
             kind: "trend",
             evalRoot,
             json: parsed.values.json ?? false,
         };
     }
-    const defaultSettings = join(homedir(), ".pillar", "settings.json");
+    if (parsed.values.inspect) {
+        assertNoOtherCommand(parsed.values, "--inspect");
+        return {
+            kind: "inspect",
+            evalRoot,
+            runId: requireText(parsed.values.inspect, "--inspect"),
+            json: parsed.values.json ?? false,
+        };
+    }
+    const common = parseCommonRunOptions(parsed.values, evalRoot);
+    if (parsed.values.suite) {
+        if (parsed.values.case) {
+            throw new Error("--suite 使用 --cases，不能同时提供 --case");
+        }
+        return {
+            kind: "suite",
+            ...common,
+            caseIds: parseCaseIds(parsed.values.cases),
+        };
+    }
+    if (parsed.values.cases) {
+        throw new Error("--cases 只能与 --suite 一起使用");
+    }
     return {
         kind: "run",
+        ...common,
         caseId: requireText(parsed.values.case, "--case"),
+    };
+}
+
+function parseCommonRunOptions(
+    values: Readonly<Record<string, string | boolean | undefined>>,
+    evalRoot: string
+): Omit<EvalCLIOptions, "kind" | "caseId"> {
+    const defaultSettings = join(homedir(), ".pillar", "settings.json");
+    return {
         evalRoot,
-        settingsFile: parsed.values["settings-file"]
-            ? resolve(parsed.values["settings-file"])
+        settingsFile: textOption(values["settings-file"])
+            ? resolve(String(values["settings-file"]))
             : existsSync(defaultSettings)
                 ? defaultSettings
                 : undefined,
-        envFile: parsed.values["env-file"]
-            ? resolve(parsed.values["env-file"])
+        envFile: textOption(values["env-file"])
+            ? resolve(String(values["env-file"]))
             : undefined,
-        source: parseSource(parsed.values.source),
-        model: optionalText(parsed.values.model, "--model"),
-        keep: parseKeepPolicy(parsed.values.keep),
+        source: parseSource(textOption(values.source)),
+        model: optionalText(textOption(values.model), "--model"),
+        keep: parseKeepPolicy(textOption(values.keep)),
         maxIterations: optionalInteger(
-            parsed.values["max-iterations"],
+            textOption(values["max-iterations"]),
             "--max-iterations",
             1,
             100
         ),
         timeoutMs: optionalInteger(
-            parsed.values["timeout-ms"],
+            textOption(values["timeout-ms"]),
             "--timeout-ms",
             1_000,
             3_600_000
         ),
-        budget: parseBudget(parsed.values),
+        budget: parseBudget(values),
         heartbeatMs: optionalInteger(
-            parsed.values["heartbeat-ms"],
+            textOption(values["heartbeat-ms"]),
             "--heartbeat-ms",
             1_000,
             60_000
         ) ?? 15_000,
-        quiet: parsed.values.quiet ?? false,
-        json: parsed.values.json ?? false,
+        quiet: values.quiet === true,
+        json: values.json === true,
     };
 }
 
@@ -184,11 +296,16 @@ function printHelp(): void {
 
 Usage:
   bun run eval -- --case <id> [options]
+  bun run eval:suite -- --cases <id,id,...> [options]
+  bun run eval -- --inspect <run-id> [--json]
   bun run eval -- --list
   bun run eval -- --trend [--eval-root <path>] [--json]
 
 Options:
       --case <id>             Eval Case id
+      --suite                 Run multiple Cases sequentially
+      --cases <ids>           Comma-separated Case ids, or all
+      --inspect <run-id>      Diagnose an existing Run without calling Provider
       --eval-root <path>      Run artifacts root (default: ~/.pillar-evals)
       --settings-file <path>  User Settings catalog (default: ~/.pillar/settings.json when present)
       --env-file <path>       Explicit Provider env file; never copied into artifacts
@@ -205,13 +322,129 @@ Options:
       --heartbeat-ms <n>      Live status interval, 1000..60000 (default: 15000)
       --quiet                 Disable live status; reports and SDK events remain
       --trend                 Rebuild historical trend-report.json from Run reports
-      --json                  Print the full report JSON
+      --json                  Print the full Run, Suite, Trend, or Inspection JSON
       --list                  List available Cases
   -h, --help                  Show help
 
 The verifier gets a secret-filtered environment. Full workspaces and Pillar
 sessions are retained by default so another development agent can inspect them.
 `);
+}
+
+function printSuiteReport(report: EvalSuiteReport, json: boolean): void {
+    if (json) {
+        process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+        return;
+    }
+    process.stdout.write(
+        `${report.passed ? "PASS" : "FAIL"} suite ${report.suiteId}\n` +
+        `Cases: ${report.totals.passedCount}/${report.totals.caseCount} passed\n` +
+        `Duration: ${report.durationMs}ms\n` +
+        `Report: ${report.paths.report}\n`
+    );
+    for (const entry of report.cases) {
+        process.stdout.write(
+            `  ${entry.passed ? "✓" : "✗"} ${entry.caseId}` +
+            `${entry.failureKind ? ` [${entry.failureKind}]` : ""}` +
+            `${entry.runId ? ` — ${entry.runId}` : ""}` +
+            `${entry.error ? ` (${entry.error.message})` : ""}\n`
+        );
+    }
+    const usage = report.totals.usage;
+    if (usage) {
+        process.stdout.write(
+            `Usage: ${usage.inputTokens} input / ` +
+            `${usage.outputTokens ?? "unknown"} output / ` +
+            `${usage.totalTokens ?? "unknown"} total` +
+            `${usage.estimated ? " (partial/estimated)" : ""}\n`
+        );
+    }
+}
+
+function printInspection(inspection: EvalInspection, json: boolean): void {
+    if (json) {
+        process.stdout.write(`${JSON.stringify(inspection, null, 2)}\n`);
+        return;
+    }
+    process.stdout.write(
+        `${inspection.status.toUpperCase()} ${inspection.runId}` +
+        `${inspection.caseId ? ` | ${inspection.caseId}` : ""}` +
+        `${inspection.failureKind ? ` | ${inspection.failureKind}` : ""}\n` +
+        `Summary: ${inspection.summary}\n`
+    );
+    if (inspection.turn) {
+        process.stdout.write(
+            `Turn: ${inspection.turn.stopReason ?? "unknown"}` +
+            `${inspection.turn.abortReason ? ` (${inspection.turn.abortReason})` : ""}` +
+            ` | ${formatMetric(inspection.turn.iterations)} iterations` +
+            ` | ${formatMetric(inspection.turn.durationMs)}ms\n`
+        );
+    }
+    if (inspection.usage) {
+        process.stdout.write(
+            `Usage: ${inspection.usage.inputTokens} input / ` +
+            `${inspection.usage.outputTokens ?? "unknown"} output / ` +
+            `${inspection.usage.totalTokens ?? "unknown"} total\n`
+        );
+    }
+    if (inspection.lastProgress) {
+        process.stdout.write(
+            `Last model signal: ${inspection.lastProgress.phase}` +
+            `${inspection.lastProgress.toolName ? ` (${inspection.lastProgress.toolName})` : ""}` +
+            `${inspection.lastProgress.estimatedOutputTokens === undefined
+                ? ""
+                : ` | ~${inspection.lastProgress.estimatedOutputTokens} output tokens`}\n`
+        );
+    }
+    if (inspection.lastEvent) {
+        process.stdout.write(
+            `Last event: #${inspection.lastEvent.sequence} ${inspection.lastEvent.type}` +
+            ` | ${inspection.lastEvent.ageMs}ms ago\n`
+        );
+    }
+    process.stdout.write(
+        `Interactions: ${inspection.interactions.completed}/${inspection.interactions.started} completed` +
+        ` | pending ${inspection.interactions.pending}` +
+        ` | total wait ${inspection.interactions.totalWaitMs}ms` +
+        ` | max wait ${inspection.interactions.maxWaitMs}ms\n`
+    );
+    if (inspection.changedPaths.length > 0) {
+        process.stdout.write(`Changed: ${inspection.changedPaths.join(", ")}\n`);
+    }
+    if (inspection.failedAssertions.length > 0) {
+        process.stdout.write("Failed assertions:\n");
+        for (const assertion of inspection.failedAssertions) {
+            process.stdout.write(
+                `  - ${assertion.label}: ` +
+                `${assertion.actual ?? assertion.detail ?? "failed"}` +
+                `${assertion.exitCode === undefined ? "" : ` (exit ${assertion.exitCode})`}\n`
+            );
+            if (assertion.stderrPreview) {
+                process.stdout.write(`    ${indent(assertion.stderrPreview)}\n`);
+            }
+        }
+    }
+    if (inspection.failedTools.length > 0) {
+        process.stdout.write("Failed tools:\n");
+        for (const tool of inspection.failedTools) {
+            process.stdout.write(
+                `  - ${tool.name}: ${tool.outcome ?? tool.status}` +
+                `${tool.resultPreview ? ` — ${tool.resultPreview}` : ""}\n`
+            );
+        }
+    }
+    if (inspection.finalResponsePreview) {
+        process.stdout.write(
+            `Final response:\n  ${indent(inspection.finalResponsePreview)}\n`
+        );
+    }
+    if (inspection.issues.length > 0) {
+        process.stdout.write(`Issues: ${inspection.issues.join("; ")}\n`);
+    }
+    process.stdout.write(
+        `Report: ${inspection.paths.report}\n` +
+        `Workspace: ${inspection.paths.workspace}\n`
+    );
 }
 
 function parseBudget(
@@ -256,6 +489,28 @@ function parseBudget(
 
 function textOption(value: string | boolean | undefined): string | undefined {
     return typeof value === "string" ? value : undefined;
+}
+
+function parseCaseIds(value: string | undefined): string[] {
+    const text = requireText(value, "--cases");
+    if (text === "all") return listEvalCases().map((evalCase) => evalCase.id);
+    return text.split(",").map((caseId) => caseId.trim());
+}
+
+function assertNoOtherCommand(
+    values: Readonly<Record<string, string | boolean | undefined>>,
+    current: "--trend" | "--inspect"
+): void {
+    const conflicts = current === "--trend"
+        ? [values.inspect, values.suite, values.case, values.cases]
+        : [values.trend, values.suite, values.case, values.cases];
+    if (conflicts.some(Boolean)) {
+        throw new Error(`${current} 不能与其他命令同时使用`);
+    }
+}
+
+function indent(value: string): string {
+    return value.replace(/\n/g, "\n    ");
 }
 
 function printTrendReport(report: EvalTrendReport, json: boolean): void {

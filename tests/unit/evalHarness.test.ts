@@ -13,6 +13,7 @@ import {
 } from "../../evals/src/budget.js";
 import {runEvalCase} from "../../evals/src/runner.js";
 import {classifyEvalFailure} from "../../evals/src/failure.js";
+import {inspectEvalRun} from "../../evals/src/inspect.js";
 import {
     createEvalLiveStatus,
     formatEvalHeartbeat,
@@ -24,6 +25,7 @@ import {
     runProcess,
 } from "../../evals/src/process.js";
 import {runEvalVerification} from "../../evals/src/verifier.js";
+import {runEvalSuite, validateCaseIds} from "../../evals/src/suite.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("SDK Eval Harness", () => {
@@ -416,4 +418,274 @@ describe("SDK Eval Harness", () => {
             expect(await Bun.file(report.trend.reportPath).exists()).toBe(true);
         });
     });
+
+    test("Suite 顺序运行多个 Case 并写入独立汇总报告", async () => {
+        await withTempProject(async (root) => {
+            const userSettings = join(root, "suite-settings.json");
+            await writeFile(
+                userSettings,
+                JSON.stringify({
+                    sources: {
+                        qwen: {
+                            apiKeyEnv:
+                                "PILLAR_EVAL_SUITE_DELIBERATELY_MISSING_KEY",
+                            models: [
+                                {id: "qwen-suite-model", label: "Suite Model"},
+                            ],
+                        },
+                    },
+                    models: {
+                        primary: {source: "qwen", model: "qwen-suite-model"},
+                        fast: {source: "qwen", model: "qwen-suite-model"},
+                    },
+                })
+            );
+            const report = await runEvalSuite({
+                caseIds: ["fix-failing-test", "create-and-run-code"],
+                evalRoot: root,
+                settingsFile: userSettings,
+                source: "qwen",
+                model: "qwen-suite-model",
+                keep: "none",
+                timeoutMs: 5_000,
+            });
+            expect(report.passed).toBe(false);
+            expect(report.requestedCaseIds).toEqual([
+                "fix-failing-test",
+                "create-and-run-code",
+            ]);
+            expect(report.totals).toMatchObject({
+                caseCount: 2,
+                passedCount: 0,
+                failedCount: 2,
+                completedRunCount: 2,
+                failures: {provider: 2},
+            });
+            expect(report.cases.map((entry) => entry.failureKind)).toEqual([
+                "provider",
+                "provider",
+            ]);
+            expect(await Bun.file(report.paths.report).exists()).toBe(true);
+            const persisted = JSON.parse(
+                await readFile(report.paths.report, "utf8")
+            ) as {suiteId?: string};
+            expect(persisted.suiteId).toBe(report.suiteId);
+            expect(() => validateCaseIds([
+                "fix-failing-test",
+                "fix-failing-test",
+            ])).toThrow("不能重复");
+            expect(() => validateCaseIds(["missing"])).toThrow("未知 Eval Case");
+
+            const cliRoot = join(root, "cli-suite");
+            const cli = Bun.spawn([
+                process.execPath,
+                "run",
+                "eval:suite",
+                "--",
+                "--cases",
+                "fix-failing-test",
+                "--eval-root",
+                cliRoot,
+                "--settings-file",
+                userSettings,
+                "--source",
+                "qwen",
+                "--model",
+                "qwen-suite-model",
+                "--keep",
+                "none",
+                "--quiet",
+                "--json",
+            ], {
+                cwd: fileURLToPath(new URL("../../", import.meta.url)),
+                stdin: "ignore",
+                stdout: "pipe",
+                stderr: "pipe",
+            });
+            const [exitCode, stdout] = await Promise.all([
+                cli.exited,
+                new Response(cli.stdout).text(),
+            ]);
+            expect(exitCode).toBe(1);
+            const cliReport = JSON.parse(stdout) as {
+                requestedCaseIds?: string[];
+                totals?: {caseCount?: number};
+            };
+            expect(cliReport.requestedCaseIds).toEqual(["fix-failing-test"]);
+            expect(cliReport.totals?.caseCount).toBe(1);
+        });
+    });
+
+    test("Inspect 从不可信 Run 产物提取失败、活性与交互等待", async () => {
+        await withTempProject(async (root) => {
+            const runId = "run-inspect";
+            const runDirectory = join(root, "runs", runId);
+            await mkdir(runDirectory, {recursive: true});
+            await Promise.all([
+                writeFile(join(runDirectory, "manifest.json"), JSON.stringify({
+                    schemaVersion: 1,
+                    runId,
+                    caseId: "leetcode-web",
+                    status: "failed",
+                })),
+                writeFile(join(runDirectory, "report.json"), JSON.stringify({
+                    schemaVersion: 1,
+                    runId,
+                    caseId: "leetcode-web",
+                    passed: false,
+                    failureKind: "agent",
+                    result: {
+                        stopReason: "completed",
+                        iterations: 4,
+                        durationMs: 4_000,
+                        usage: {
+                            inputTokens: 100,
+                            outputTokens: 20,
+                            totalTokens: 120,
+                            estimated: false,
+                        },
+                    },
+                    assertions: [{
+                        id: "command:hidden",
+                        label: "隐藏契约通过",
+                        passed: false,
+                        actual: "exit 1",
+                        process: {exitCode: 1, stderr: "contract failed"},
+                    }],
+                    changedPaths: ["server.ts", "public/app.js"],
+                })),
+                writeFile(join(runDirectory, "transcript.json"), JSON.stringify({
+                    schemaVersion: 1,
+                    finalResponse: "实现完成，但隐藏契约没有通过。",
+                })),
+                writeFile(join(runDirectory, "sdk-events.jsonl"), [
+                    eventLine(1, "turn.progress", 1_000, {
+                        phase: "reasoning",
+                        estimatedOutputTokens: 256,
+                    }),
+                    eventLine(2, "item.started", 2_000, {
+                        item: interactionItem("interaction-1", "in_progress"),
+                    }),
+                    eventLine(3, "item.completed", 2_007, {
+                        item: interactionItem("interaction-1", "completed"),
+                    }),
+                    eventLine(4, "item.completed", 3_000, {
+                        item: {
+                            id: "tool-1",
+                            type: "tool_call",
+                            status: "failed",
+                            name: "bash",
+                            outcome: "failed",
+                            resultPreview: "exit 1",
+                        },
+                    }),
+                    eventLine(5, "turn.completed", 4_000),
+                    "",
+                ].join("\n")),
+            ]);
+
+            const inspection = await inspectEvalRun(root, runId, 5_000);
+            expect(inspection).toMatchObject({
+                runId,
+                caseId: "leetcode-web",
+                status: "failed",
+                passed: false,
+                failureKind: "agent",
+                interactions: {
+                    started: 1,
+                    completed: 1,
+                    pending: 0,
+                    totalWaitMs: 7,
+                    maxWaitMs: 7,
+                },
+                lastEvent: {
+                    type: "turn.completed",
+                    sequence: 5,
+                    ageMs: 1_000,
+                },
+                lastProgress: {
+                    phase: "reasoning",
+                    estimatedOutputTokens: 256,
+                },
+                changedPaths: ["server.ts", "public/app.js"],
+            });
+            expect(inspection.summary).toContain("隐藏契约通过");
+            expect(inspection.failedAssertions[0]?.stderrPreview)
+                .toBe("contract failed");
+            expect(inspection.failedTools).toEqual([{
+                name: "bash",
+                status: "failed",
+                outcome: "failed",
+                resultPreview: "exit 1",
+            }]);
+            expect(inspection.finalResponsePreview).toContain("实现完成");
+            await expect(inspectEvalRun(root, "../escape")).rejects
+                .toThrow("Run id 非法");
+        });
+    });
+
+    test("Inspect 能识别没有最终 report 的中断 Run", async () => {
+        await withTempProject(async (root) => {
+            const runId = "run-partial";
+            const runDirectory = join(root, "runs", runId);
+            await mkdir(runDirectory, {recursive: true});
+            await writeFile(join(runDirectory, "manifest.json"), JSON.stringify({
+                schemaVersion: 1,
+                runId,
+                caseId: "leetcode-web",
+                status: "running",
+            }));
+            await writeFile(
+                join(runDirectory, "sdk-events.jsonl"),
+                `${eventLine(9, "turn.progress", 1_000, {
+                    phase: "tool_input",
+                    toolName: "write_file",
+                    estimatedOutputTokens: 512,
+                })}\n`
+            );
+            const inspection = await inspectEvalRun(root, runId, 10_000);
+            expect(inspection.status).toBe("running");
+            expect(inspection.summary).toContain("可能仍在运行或被外部中断");
+            expect(inspection.lastProgress).toMatchObject({
+                phase: "tool_input",
+                toolName: "write_file",
+            });
+            expect(inspection.issues).toContain("缺少最终 report.json");
+        });
+    });
 });
+
+function eventLine(
+    sequence: number,
+    type: string,
+    emittedMs: number,
+    extra: Record<string, unknown> = {}
+): string {
+    return JSON.stringify({
+        protocolVersion: 1,
+        sequence,
+        threadId: "thread",
+        turnId: "turn",
+        emittedAt: new Date(emittedMs).toISOString(),
+        type,
+        ...extra,
+    });
+}
+
+function interactionItem(
+    requestId: string,
+    status: "in_progress" | "completed"
+): Record<string, unknown> {
+    return {
+        id: `interaction:${requestId}`,
+        type: "interaction",
+        status,
+        request: {
+            requestId,
+            kind: "permission",
+            toolName: "bash",
+            message: "run",
+            input: {command: "true"},
+        },
+    };
+}
