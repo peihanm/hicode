@@ -5,6 +5,7 @@ import { reduceThreads } from "../../src/ui/conversation/threadReducer.js";
 import type { UIThread } from "../../src/ui/conversation/types.js";
 import {
   MessageList,
+  StaticMessageList,
 } from "../../src/ui/conversation/MessageList.js";
 import {layoutUserMessageRows} from "../../src/ui/conversation/projection.js";
 import { AppForTest as App } from "../helpers/AppForTest.js";
@@ -217,6 +218,113 @@ describe("subagent UI", () => {
     });
   });
 
+  test("运行中 Ctrl+O 使用单一 Transcript，并按根工具到子 Agent 排序", async () => {
+    await withTempProject(async (cwd) => {
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started!: () => void;
+      const didStart = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const runAgentImpl: AgentRunner = async (_input, _history, onEvent) => {
+        onEvent({
+          type: "tool_call_start",
+          turnId: "turn-1",
+          toolCallId: "root-list",
+          name: "list_files",
+          args: JSON.stringify({ dir: "." }),
+        });
+        onEvent({
+          type: "tool_call_end",
+          turnId: "turn-1",
+          toolCallId: "root-list",
+          result: "data/\npublic/\nserver.js",
+          outcome: "ok",
+        });
+        onEvent({
+          type: "tool_call_start",
+          turnId: "turn-1",
+          toolCallId: "agent-call",
+          name: "agent",
+          args: JSON.stringify({
+            description: "调查刷题网站项目现状",
+            subagent_type: "Explore",
+          }),
+        });
+        onEvent({
+          type: "subagent_start",
+          agentId: "child-running",
+          agentType: "Explore",
+          description: "调查刷题网站项目现状",
+          parentToolCallId: "agent-call",
+        });
+        onEvent({
+          type: "subagent_progress",
+          agentId: "child-running",
+          event: {
+            type: "tool_start",
+            toolCallId: "child-list",
+            name: "list_files",
+            args: JSON.stringify({ dir: "." }),
+          },
+        });
+        started();
+        await released;
+        onEvent({
+          type: "subagent_end",
+          agentId: "child-running",
+          agentType: "Explore",
+          reason: "completed",
+          iterations: 1,
+          toolUseCount: 1,
+          durationMs: 10,
+          report: "调查完成",
+        });
+        onEvent({
+          type: "tool_call_end",
+          turnId: "turn-1",
+          toolCallId: "agent-call",
+          result: "调查完成",
+          outcome: "ok",
+        });
+        return { reply: "完成", reason: "completed", iterations: 1 };
+      };
+      const instance = render(
+        <App
+          resources={createTestRuntimeResources(cwd)}
+          runAgentImpl={runAgentImpl}
+        />
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      instance.stdin.write("调查");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      instance.stdin.write("\r");
+      await didStart;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      try {
+        instance.stdin.write("\x0f");
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        const frame = instance.lastFrame() ?? "";
+        expect(frame.match(/● Explore Agent/g) ?? []).toHaveLength(1);
+        const transcriptIndex = frame.indexOf("Transcript · Ctrl+O to close");
+        const rootListIndex = frame.indexOf("● List .", transcriptIndex);
+        const agentIndex = frame.indexOf(
+          "● Explore Agent · 调查刷题网站项目现状",
+          transcriptIndex
+        );
+        expect(transcriptIndex).toBeGreaterThanOrEqual(0);
+        expect(rootListIndex).toBeGreaterThan(transcriptIndex);
+        expect(agentIndex).toBeGreaterThan(rootListIndex);
+      } finally {
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+    });
+  });
+
   test("Verification 区分运行失败和验证结论，并展示折叠摘要", () => {
     let threads: UIThread[] = reduceThreads([], {
       type: "tool_call_start",
@@ -290,7 +398,7 @@ describe("subagent UI", () => {
     expect(issueFrame).not.toContain("Failed (");
   });
 
-  test("长 Bash 命令用可见符号保留换行边界并截断摘要", () => {
+  test("已知长 Bash 默认使用阶段摘要，Transcript 保留可见换行和截断", () => {
     const command = [
       'echo "=== first ==="',
       "curl -s http://localhost:3000/api/first",
@@ -306,10 +414,17 @@ describe("subagent UI", () => {
     });
 
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
-    expect(frame).toContain("● Bash");
-    expect(frame).toContain('Bash echo "=== first ===" ⏎ curl -s');
-    expect(frame).toContain("…");
+    expect(frame).toContain("● Verifying");
+    expect(frame).toContain("… Checking local endpoints");
+    expect(frame).not.toContain("curl -s");
     expect(frame).not.toContain("x".repeat(200));
+
+    const transcript = render(
+      <MessageList threads={threads} transcript />
+    ).lastFrame() ?? "";
+    expect(transcript).toContain('Bash echo "=== first ===" ⏎ curl -s');
+    expect(transcript).toContain("…");
+    expect(transcript).not.toContain("x".repeat(200));
   });
 
   test("read_file 结果只展示读取范围，不泄露模型协议头", () => {
@@ -335,8 +450,8 @@ describe("subagent UI", () => {
     });
 
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
-    expect(frame).toContain("● Read /project/README.md");
-    expect(frame).toContain("⎿ Read 60 lines");
+    expect(frame).toContain("● Inspecting project");
+    expect(frame).toContain("✓ Read /project/README.md · 60 lines");
     expect(frame).not.toContain("左侧行号不是文件内容");
 
     const transcript = render(
@@ -368,7 +483,7 @@ describe("subagent UI", () => {
     const frame = render(
       <MessageList threads={threads} terminalWidth={90} />
     ).lastFrame() ?? "";
-    expect(frame).toContain("● │ 完成");
+    expect(frame).toContain("● 完成");
     expect(frame).toContain("服务地址：http://localhost:3000");
     expect(frame).toContain("题目");
     expect(frame).toContain("两数之和");
@@ -376,5 +491,43 @@ describe("subagent UI", () => {
     expect(frame).not.toContain("##");
     expect(frame).not.toContain("**");
     expect(frame).not.toContain("|---|");
+  });
+
+  test("Assistant 正文不绘制会被终端二次折行穿透的竖轨，并折叠多余空行", () => {
+    const text = [
+      "框架之前已经搭好了。",
+      "",
+      "",
+      "",
+      "使用方式：打开浏览器访问 http://127.0.0.1:8400，在编辑器里写 Solution.twoSum，点击运行。",
+      "",
+      "",
+    ].join("\n");
+    const frame = render(
+      <MessageList
+        threads={[{id: "assistant-reflow", role: "assistant", text}]}
+        terminalWidth={48}
+      />
+    ).lastFrame() ?? "";
+
+    expect(frame).toContain("● 框架之前已经搭好了。");
+    expect(frame).not.toContain("│");
+    expect(frame).not.toContain("\n\n\n");
+    expect(frame.trimEnd()).toEndWith("点击运行。");
+    expect(frame.split("\n").every((line) => stringWidth(line) <= 48)).toBe(true);
+  });
+
+  test("Static fallback 按当前终端宽度排版 Assistant", () => {
+    const paragraph = "使用方式：打开浏览器访问 http://127.0.0.1:8400，在编辑器里写 Solution.twoSum，点「运行」（或 ⌘+Enter）即在本地子进程执行并展示每个用例的输入/输出/预期。";
+    const frame = render(
+      <StaticMessageList
+        threads={[{id: "assistant-static-reflow", role: "assistant", text: paragraph}]}
+        terminalWidth={40}
+      />
+    ).lastFrame() ?? "";
+
+    expect(frame).toContain("● 使用方式：打开浏览器访问");
+    expect(frame.trim().split("\n").length).toBeGreaterThan(1);
+    expect(frame.split("\n").every((line) => stringWidth(line) <= 40)).toBe(true);
   });
 });

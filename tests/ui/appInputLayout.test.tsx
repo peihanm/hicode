@@ -89,4 +89,24 @@ describe("App input cursor layout", () => {
       expect(instance.lastFrame()).not.toContain("[Pasted text #1");
     });
   });
+
+  test("空闲且无草稿时 Ctrl+C 不等待资源关闭就立即退出 TUI", async () => {
+    await withTempProject(async (cwd) => {
+      const resources = createTestRuntimeResources(cwd, {
+        close: () => new Promise<void>(() => {}),
+      });
+      const instance = render(<App resources={resources} />);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      instance.stdin.write("\x03");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const framesAfterExit = instance.frames.length;
+
+      instance.stdin.write("退出后不应继续接收输入");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(instance.frames).toHaveLength(framesAfterExit);
+      expect(instance.lastFrame()).not.toContain("退出后不应继续接收输入");
+    });
+  });
 });

@@ -72,11 +72,17 @@ function parseMarkdown(value: string): MarkdownBlock[] {
             continue;
         }
         if (!line.trim()) {
-            blocks.push({type: "blank"});
+            if (
+                blocks.length > 0 &&
+                blocks.at(-1)?.type !== "blank"
+            ) {
+                blocks.push({type: "blank"});
+            }
             continue;
         }
         blocks.push({type: "paragraph", text: line});
     }
+    if (blocks.at(-1)?.type === "blank") blocks.pop();
     return blocks;
 }
 

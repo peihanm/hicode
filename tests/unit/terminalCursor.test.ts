@@ -32,7 +32,7 @@ describe("terminal IME cursor anchor", () => {
     });
   });
 
-  test("缩窄发生物理折行时先清除旧帧，并吞掉 Ink 的旧 erase prefix", () => {
+  test("resize 不在 stdout 代理中抢先写屏幕，由 transcript owner 统一重放", () => {
     let columns = 20;
     const writes: string[] = [];
     const target = new EventEmitter() as NodeJS.WriteStream;
@@ -48,13 +48,11 @@ describe("terminal IME cursor anchor", () => {
     target.emit("resize");
     columns = 8;
     target.emit("resize");
-    const oldErasePrefix = "\u001B[2K\u001B[1A\u001B[2K\u001B[1A\u001B[2K\u001B[G";
-    output.write(`${oldErasePrefix}next frame`);
+    output.write("next frame");
 
-    expect(writes).toHaveLength(3);
-    expect(writes[1]).toContain("\u001B[2K");
-    expect(writes[2]).toBe("next frame");
-    expect(writes[2]).not.toContain(oldErasePrefix);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toBe("\u001B8next frame");
+    expect(writes.every((value) => !value.includes("\u001B[3J"))).toBe(true);
   });
 
   test("宽度变化但旧帧无需 reflow 时不主动清屏", () => {
@@ -90,5 +88,25 @@ describe("terminal IME cursor anchor", () => {
     expect(pillarCalls).toBe(1);
     output.disposeCursorOutput();
     expect(target.listenerCount("resize")).toBe(1);
+  });
+
+  test("真实 TTY 保留主屏幕 scrollback，不切换 alternate screen", () => {
+    const writes: string[] = [];
+    const target = new EventEmitter() as NodeJS.WriteStream;
+    Object.defineProperty(target, "isTTY", {value: true});
+    target.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as NodeJS.WriteStream["write"];
+
+    const output = createTerminalCursorOutput(target);
+    expect(writes).toEqual([]);
+    output.write(`保留当前可见内容\n\n${TERMINAL_CURSOR_ANCHOR_MARKER}\n\n`);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).not.toContain("\u001B[?1049h");
+    expect(writes[0]).not.toContain("\u001B[?1007h");
+    output.disposeCursorOutput();
+    output.disposeCursorOutput();
+    expect(writes).toHaveLength(1);
   });
 });

@@ -1,13 +1,14 @@
 import stringWidth from "string-width";
-import {describeToolCall, isSuccessfulToolActivity} from "../../tools/presentation.js";
+import {describeToolPhase, isSuccessfulToolActivity} from "../../tools/presentation.js";
 import {type InputRow, layoutInputRows} from "../input/MultilineTextInput.js";
 import type {UIThread} from "./types.js";
 
 export type ToolCallThread = Extract<UIThread, {role: "tool_call"}>;
 
-export interface ActivityGroup {
-    kind: "activity_group";
+export interface PhaseGroup {
+    kind: "phase_group";
     id: string;
+    label: string;
     calls: ToolCallThread[];
 }
 
@@ -17,13 +18,13 @@ export interface AgentBatch {
     calls: ToolCallThread[];
 }
 
-export type ConversationItem = UIThread | ActivityGroup | AgentBatch;
+export type ConversationItem = UIThread | PhaseGroup | AgentBatch;
 
 export function isToolCall(item: UIThread): item is ToolCallThread {
     return item.role === "tool_call";
 }
 
-/** 默认投影只折叠成功的只读探索；失败、拒绝和取消始终保留原始行。 */
+/** 默认投影按确定性 Tool 语义折叠成功阶段；失败、拒绝和取消保留原始行。 */
 export function projectDefaultThreads(threads: UIThread[]): ConversationItem[] {
     const items: ConversationItem[] = [];
     for (let index = 0; index < threads.length;) {
@@ -33,24 +34,31 @@ export function projectDefaultThreads(threads: UIThread[]): ConversationItem[] {
             continue;
         }
         if (isToolCall(thread) && isSuccessfulToolActivity(thread)) {
+            const phase = describeToolPhase(thread.name, thread.args)!;
             const calls: ToolCallThread[] = [];
             while (index < threads.length) {
                 const candidate = threads[index]!;
-                if (!isToolCall(candidate) || !isSuccessfulToolActivity(candidate)) break;
+                const candidatePhase = isToolCall(candidate)
+                    ? describeToolPhase(candidate.name, candidate.args)
+                    : undefined;
+                if (
+                    !isToolCall(candidate) ||
+                    !isSuccessfulToolActivity(candidate) ||
+                    candidatePhase?.kind !== phase.kind
+                ) break;
                 calls.push(candidate);
                 index += 1;
             }
-            const visibleCalls = calls.filter(
-                (call) => describeToolCall(call.name, call.args).activity?.kind !== "silent"
+            const visibleCalls = calls.filter((call) =>
+                describeToolPhase(call.name, call.args)?.hidden !== true
             );
-            if (visibleCalls.length >= 2) {
+            if (visibleCalls.length > 0) {
                 items.push({
-                    kind: "activity_group",
-                    id: `activity:${calls[0]!.id}:${calls.at(-1)!.id}`,
+                    kind: "phase_group",
+                    id: `phase:${phase.kind}:${calls[0]!.id}:${calls.at(-1)!.id}`,
+                    label: phase.label,
                     calls,
                 });
-            } else if (visibleCalls.length === 1) {
-                items.push(visibleCalls[0]!);
             }
             continue;
         }
@@ -91,7 +99,7 @@ export function layoutUserMessageRows(
     text: string,
     terminalWidth: number
 ): InputRow[] {
-    const contentWidth = Math.max(8, terminalWidth - 2);
+    const contentWidth = Math.max(1, terminalWidth - 2);
     const rows = layoutInputRows(text, contentWidth);
     if (rows.length < 2 || /[\r\n]/.test(text)) return rows;
     const last = rows.at(-1)!;

@@ -1,22 +1,23 @@
 import {Box, Static, Text} from "ink";
 import type {UIThread} from "./types.js";
 import {COLORS, SYMBOLS} from "../theme.js";
-import {FileChangeGroup} from "../fileChanges/FileChangeGroup.js";
 import {Welcome} from "../bootstrap/Welcome.js";
+import {FileChangeGroup} from "../fileChanges/FileChangeGroup.js";
 import {parseVerificationSummary} from "../../subagents/builtins/verification/index.js";
 import {TerminalMarkdown} from "./TerminalMarkdown.js";
 import {useTerminalWidth} from "../terminalSize.js";
 import {
     describeToolCall,
+    summarizePhaseToolCall,
     summarizeToolResult,
 } from "../../tools/presentation.js";
 import {limitTerminalText} from "./presentationLimits.js";
 import {
-    type ActivityGroup,
     type AgentBatch,
     type ConversationItem,
     isToolCall,
     layoutUserMessageRows,
+    type PhaseGroup,
     projectDefaultThreads,
     type ToolCallThread,
 } from "./projection.js";
@@ -24,7 +25,6 @@ import {
 const MAX_USER_DISPLAY_CHARS = 100_000;
 const MAX_ASSISTANT_DISPLAY_CHARS = 200_000;
 const MAX_SUBAGENT_REPORT_DISPLAY_CHARS = 20_000;
-
 function agentIdentity(
     thread: Extract<UIThread, { role: "tool_call" }>
 ): { type: string; description?: string } | undefined {
@@ -268,57 +268,32 @@ function ToolCallView({
     );
 }
 
-function formatCount(count: number, singular: string, plural: string): string {
-    return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function ActivityGroupView({group}: {group: ActivityGroup}) {
-    const presentations = group.calls.map((call) =>
-        describeToolCall(call.name, call.args)
-    );
-    const reads = new Set(
-        presentations
-            .filter((item) => item.activity?.kind === "read")
-            .map((item) => item.activity?.target ?? "file")
-    ).size;
-    const searches = presentations.filter(
-        (item) => item.activity?.kind === "search"
-    ).length;
-    const lists = new Set(
-        presentations
-            .filter((item) => item.activity?.kind === "list")
-            .map((item) => item.activity?.target ?? "directory")
-    ).size;
-    const running = group.calls.some((call) => call.status === "running");
-    const parts = [
-        searches > 0
-            ? `${running ? "searching" : "searched"} ${formatCount(searches, "pattern", "patterns")}`
-            : undefined,
-        reads > 0
-            ? `${running ? "reading" : "read"} ${formatCount(reads, "file", "files")}`
-            : undefined,
-        lists > 0
-            ? `${running ? "listing" : "listed"} ${formatCount(lists, "directory", "directories")}`
-            : undefined,
-    ].filter((part): part is string => Boolean(part));
-    const latest = [...presentations].reverse().find(
-        (item) => item.activity?.kind !== "silent" && item.activity?.target
-    )?.activity?.target;
+function PhaseGroupView({group}: {group: PhaseGroup}) {
+    const calls = group.calls.flatMap((call) => {
+        const summary = summarizePhaseToolCall(call);
+        return summary ? [{call, summary}] : [];
+    });
+    const running = calls.some(({call}) => call.status === "running");
     return (
         <Box marginTop={1} flexDirection="column">
             <Box>
-                <Text color={running ? COLORS.accent : COLORS.dim}>
-                    {running ? `${SYMBOLS.assistantMark} ` : "  "}
+                <Text color={running ? COLORS.accent : COLORS.assistant}>
+                    {SYMBOLS.assistantMark}
                 </Text>
-                <Text color={COLORS.dim}>
-                    {parts.join(", ")}{running ? "…" : ""}
+                <Text color={COLORS.toolName} bold>
+                    {` ${group.label}`}
                 </Text>
             </Box>
-            {running && latest && (
-                <Box marginLeft={2}>
-                    <Text color={COLORS.dim}>⎿ {latest}</Text>
-                </Box>
-            )}
+            <Box marginLeft={2} flexDirection="column">
+                {calls.map(({call, summary}) => (
+                    <Box key={call.id}>
+                        <Text color={call.status === "running" ? COLORS.accent : COLORS.diffAdded}>
+                            {call.status === "running" ? "… " : "✓ "}
+                        </Text>
+                        <Text color={COLORS.toolResult}>{summary}</Text>
+                    </Box>
+                ))}
+            </Box>
         </Box>
     );
 }
@@ -366,8 +341,8 @@ function ThreadView({
     transcript: boolean;
     terminalWidth: number;
 }) {
-    if ("kind" in item && item.kind === "activity_group") {
-        return <ActivityGroupView group={item}/>;
+    if ("kind" in item && item.kind === "phase_group") {
+        return <PhaseGroupView group={item}/>;
     }
     if ("kind" in item && item.kind === "agent_batch") {
         return <AgentBatchView batch={item} transcript={transcript}/>;
@@ -396,27 +371,26 @@ function ThreadView({
         );
     }
     if (thread.role === "assistant") {
+        const text = limitTerminalText(
+            thread.text,
+            MAX_ASSISTANT_DISPLAY_CHARS,
+            "Assistant response"
+        );
+        const visibleWidth = Math.max(1, terminalWidth - 3);
         return (
-            <Box marginTop={1} alignItems="flex-start">
+            <Box
+                marginTop={1}
+                alignItems="flex-start"
+                width={Math.max(1, terminalWidth - 1)}
+            >
                 <Text color={COLORS.assistant}>{SYMBOLS.assistantMark} </Text>
                 <Box
                     flexDirection="column"
                     flexGrow={1}
-                    borderStyle="single"
-                    borderTop={false}
-                    borderRight={false}
-                    borderBottom={false}
-                    borderLeftColor={COLORS.border}
-                    borderLeftDimColor
-                    paddingLeft={1}
                 >
                     <TerminalMarkdown
-                        value={limitTerminalText(
-                            thread.text,
-                            MAX_ASSISTANT_DISPLAY_CHARS,
-                            "Assistant response"
-                        )}
-                        width={Math.max(20, terminalWidth - 5)}
+                        value={text}
+                        width={visibleWidth}
                     />
                 </Box>
             </Box>
@@ -430,6 +404,7 @@ function ThreadView({
             <FileChangeGroup
                 changes={thread.changes}
                 expanded={transcript}
+                terminalWidth={terminalWidth}
             />
         );
     }
@@ -472,14 +447,14 @@ export function MessageList({
     );
 }
 
-/**
- * 已完成输出交给 Ink Static。这样长 diff 会真正追加到终端滚动区，
- * 而不是让 Ink 对整段历史反复原地重绘（后者会造成光标停在中部和日志重复）。
- */
 type StaticListItem =
-    | { kind: "welcome"; id: "welcome" }
-    | { kind: "thread"; id: string; item: ConversationItem };
+    | {kind: "welcome"; id: "welcome"}
+    | {kind: "thread"; id: string; item: ConversationItem};
 
+/**
+ * 已完成输出只追加到主屏幕 scrollback；进行中的内容留在 live 区更新。
+ * 这样 resume 后使用终端原生滚轮、滚动条和文本选择，不接管鼠标协议。
+ */
 export function StaticMessageList({
                                       threads,
                                       showWelcome = false,
@@ -490,8 +465,6 @@ export function StaticMessageList({
     terminalWidth?: number;
 }) {
     const terminalWidth = useTerminalWidth(widthOverride);
-    // Ink 的 reconciler 每个 root 只保存一个 staticNode。Welcome 和完成消息
-    // 必须共享同一个 Static，否则后挂载的消息 Static 会覆盖欢迎框。
     const items: StaticListItem[] = [
         ...(showWelcome
             ? [{kind: "welcome" as const, id: "welcome" as const}]
@@ -521,32 +494,41 @@ export function StaticMessageList({
     );
 }
 
-export function TranscriptDetails({threads}: {threads: UIThread[]}) {
-    const toolCalls = threads.filter(isToolCall);
-    const fileChanges = threads.filter(
-        (thread): thread is Extract<UIThread, { role: "file_change_group" }> =>
-            thread.role === "file_change_group"
+export function TranscriptDetails({
+                                      threads,
+                                      terminalWidth,
+                                  }: {
+    threads: UIThread[];
+    terminalWidth?: number;
+}) {
+    const details = threads.filter(
+        (thread): thread is
+            | ToolCallThread
+            | Extract<UIThread, {role: "file_change_group"}> =>
+            isToolCall(thread) || thread.role === "file_change_group"
     );
-    if (toolCalls.length === 0 && fileChanges.length === 0) return null;
+    if (details.length === 0) return null;
     return (
         <Box flexDirection="column" marginTop={1}>
             <Text color={COLORS.dim}>Transcript · Ctrl+O to close</Text>
-            {toolCalls.map((thread) => (
-                <ToolCallView
-                    key={`transcript:${thread.id}`}
-                    thread={thread}
-                    paused
-                    transcript
-                    includeHidden
-                />
-            ))}
-            {fileChanges.map((thread) => (
-                <FileChangeGroup
-                    key={`details:${thread.id}`}
-                    changes={thread.changes}
-                    expanded
-                />
-            ))}
+            {details.map((thread) =>
+                thread.role === "tool_call" ? (
+                    <ToolCallView
+                        key={`transcript:${thread.id}`}
+                        thread={thread}
+                        paused
+                        transcript
+                        includeHidden
+                    />
+                ) : (
+                    <FileChangeGroup
+                        key={`details:${thread.id}`}
+                        changes={thread.changes}
+                        expanded
+                        terminalWidth={terminalWidth}
+                    />
+                )
+            )}
         </Box>
     );
 }

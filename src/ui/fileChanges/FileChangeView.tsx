@@ -50,7 +50,7 @@ export const FileChangeView = memo(function FileChangeView({
                         ) : (
                             <StructuredDiff
                                 hunks={change.hunks}
-                                width={Math.max(20, width - 2)}
+                                width={Math.max(1, width - 2)}
                                 expanded={expanded}
                                 omittedDiffLines={change.omittedDiffLines}
                                 defaultMaxLines={isNew ? 40 : 120}

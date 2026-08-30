@@ -5,6 +5,7 @@ import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { App } from "../../src/ui/App.js";
 import type { AgentRunner } from "../../src/agent/index.js";
 import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
+import {TerminalSizeProvider} from "../../src/ui/terminalSize.js";
 
 export function AppForTest({
   resources,
@@ -41,13 +42,15 @@ export function AppForTest({
     [initialSession, testResources]
   );
   return (
-    <App
-      resources={testResources}
-      rootSession={turnSession.rootSession}
-      resumedDraft={turnSession.resumedDraft}
-      initialPermissionMode={initialPermissionMode}
-      initialSession={initialSession}
-      requestSessionSwitch={requestSessionSwitch}
-    />
+    <TerminalSizeProvider>
+      <App
+        resources={testResources}
+        rootSession={turnSession.rootSession}
+        resumedDraft={turnSession.resumedDraft}
+        initialPermissionMode={initialPermissionMode}
+        initialSession={initialSession}
+        requestSessionSwitch={requestSessionSwitch}
+      />
+    </TerminalSizeProvider>
   );
 }

@@ -1,14 +1,18 @@
 import type {ToolOutcome} from "../toolResults/index.js";
 
-export type ToolActivityKind = "read" | "search" | "list" | "silent";
+export type ToolPhaseKind = "inspect" | "build" | "verify" | "service";
+
+export interface ToolPhasePresentation {
+    kind: ToolPhaseKind;
+    label: string;
+    activity: string;
+    success: string;
+    hidden?: boolean;
+}
 
 export interface ToolCallPresentation {
     label: string;
     detail: string;
-    activity?: {
-        kind: ToolActivityKind;
-        target?: string;
-    };
 }
 
 interface ParsedArgs {
@@ -29,6 +33,10 @@ function parseArgs(argsJson: string): ParsedArgs {
 function stringArg(args: ParsedArgs, key: string): string | undefined {
     const value = args[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function booleanArg(args: ParsedArgs, key: string): boolean {
+    return args[key] === true;
 }
 
 function truncate(value: string, max: number): string {
@@ -68,9 +76,206 @@ function taskDetail(args: ParsedArgs): string {
     return taskId ? `${action} ${taskId}` : action;
 }
 
+function quotedTarget(value: string): string {
+    return truncate(JSON.stringify(value), 80);
+}
+
+function describeBashPhase(args: ParsedArgs): ToolPhasePresentation | undefined {
+    const command = stringArg(args, "command") ?? "";
+    const normalized = command.replace(/\r\n?/g, "\n").toLowerCase();
+    if (booleanArg(args, "run_in_background")) {
+        const looksLikeService =
+            /\b(?:serve|server|vite|next\s+dev|http\.server)\b/.test(normalized) ||
+            /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start)\b/.test(normalized) ||
+            /\bnode\s+[^\n;&|]*(?:server|app|index)\.(?:js|mjs|cjs|ts)\b/.test(normalized);
+        return looksLikeService
+            ? {
+                kind: "service",
+                label: "Starting service",
+                activity: "Starting local service",
+                success: "Service running",
+            }
+            : undefined;
+    }
+    if (
+        /\bcurl\b[\s\S]*(?:127\.0\.0\.1|localhost|\[::1\])/.test(normalized)
+    ) {
+        const failsOnHttpError =
+            /\bcurl\b[^\n;&|]*(?:--fail(?:-with-body)?\b|-[a-z]*f[a-z]*\b)/.test(normalized);
+        return {
+            kind: "verify",
+            label: "Verifying",
+            activity: "Checking local endpoints",
+            success: failsOnHttpError
+                ? "Local endpoint checks passed"
+                : "Local endpoint checks completed",
+        };
+    }
+    if (
+        /\b(?:node|bun)\s+--check\b/.test(normalized) ||
+        /\b(?:ast\.parse|py_compile|compileall)\b/.test(normalized)
+    ) {
+        return {
+            kind: "verify",
+            label: "Verifying",
+            activity: "Checking syntax",
+            success: "Syntax checks passed",
+        };
+    }
+    if (
+        /\b(?:bun|npm|pnpm|yarn)\s+(?:(?:run|exec)\s+)?(?:test|check|lint|typecheck|verify)\b/.test(normalized) ||
+        /\b(?:pytest|vitest|jest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)\b/.test(normalized)
+    ) {
+        return {
+            kind: "verify",
+            label: "Verifying",
+            activity: "Running project checks",
+            success: "Project checks passed",
+        };
+    }
+    if (
+        /\b(?:bun|npm|pnpm|yarn)\s+(?:(?:run|exec)\s+)?build\b/.test(normalized)
+    ) {
+        return {
+            kind: "build",
+            label: "Building",
+            activity: "Building project",
+            success: "Build completed",
+        };
+    }
+    if (
+        /(^|[;&|\n]\s*)(?:which|command\s+-v)\s+/.test(normalized) ||
+        /\b(?:node|bun|python\d*|git|java|go|rustc)\s+(?:-v|--version|version)\b/.test(normalized)
+    ) {
+        return {
+            kind: "inspect",
+            label: "Inspecting project",
+            activity: "Checking development environment",
+            success: "Development environment checked",
+        };
+    }
+    return undefined;
+}
+
+/**
+ * Default TUI phase semantics. Only deterministic, well-known operations are
+ * grouped; unknown Bash/MCP calls keep their ordinary Tool row.
+ */
+export function describeToolPhase(
+    name: string,
+    argsJson: string
+): ToolPhasePresentation | undefined {
+    const args = parseArgs(argsJson);
+    switch (name) {
+        case "tool_search":
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: "Loading tools",
+                success: "Tools loaded",
+                hidden: true,
+            };
+        case "list_files":
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: `Listing ${stringArg(args, "dir") ?? "."}`,
+                success: `Listed ${stringArg(args, "dir") ?? "."}`,
+            };
+        case "read_file":
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: `Reading ${stringArg(args, "path") ?? "file"}`,
+                success: `Read ${stringArg(args, "path") ?? "file"}`,
+            };
+        case "read_tool_result":
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: "Reading saved tool output",
+                success: "Read saved tool output",
+            };
+        case "grep": {
+            const target = stringArg(args, "pattern") ?? "pattern";
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: `Searching for ${quotedTarget(target)}`,
+                success: `Searched for ${quotedTarget(target)}`,
+            };
+        }
+        case "glob": {
+            const target = stringArg(args, "pattern") ?? "pattern";
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: `Finding ${quotedTarget(target)}`,
+                success: `Found paths for ${quotedTarget(target)}`,
+            };
+        }
+        case "lsp":
+            return {
+                kind: "inspect",
+                label: "Inspecting project",
+                activity: "Querying code intelligence",
+                success: "Code intelligence queried",
+            };
+        case "bash":
+            return describeBashPhase(args);
+        default:
+            return undefined;
+    }
+}
+
+export function summarizePhaseToolCall(input: {
+    name: string;
+    args: string;
+    status: "running" | "done";
+    outcome?: ToolOutcome;
+    result?: string;
+}): string | undefined {
+    const phase = describeToolPhase(input.name, input.args);
+    if (!phase || phase.hidden) return undefined;
+    if (input.status === "running") return phase.activity;
+
+    if (input.name === "bash") {
+        if (phase.kind === "service") {
+            const taskId = input.result?.match(/^Task:\s*(\S+)$/m)?.[1];
+            return taskId ? `${phase.success} · task ${taskId}` : phase.success;
+        }
+        return phase.success;
+    }
+
+    if (input.name === "read_file" && input.result) {
+        const detail = summarizeToolResult(
+            input.name,
+            input.result,
+            input.outcome
+        )[0];
+        return detail?.startsWith("Read ")
+            ? `${phase.success} · ${detail.slice(5)}`
+            : phase.success;
+    }
+    if (
+        input.result &&
+        (input.name === "grep" ||
+            input.name === "glob" ||
+            input.name === "list_files")
+    ) {
+        const noResults = /^\s*(?:未找到|目录\s+.+\s+为空)/.test(input.result);
+        if (noResults) return `${phase.success} · No results`;
+        const count = normalizeDisplayLines(input.result).filter(
+            (line) => line.trim().length > 0
+        ).length;
+        return `${phase.success} · Found ${count} result${count === 1 ? "" : "s"}`;
+    }
+    return phase.success;
+}
+
 /**
  * 把稳定的 Tool Schema 转成与终端无关的用户语义。这里不决定颜色、缩进或
- * 折叠方式；UI 只消费 label/detail/activity，不再猜任意 JSON 字段。
+ * 折叠方式；UI 只消费 label/detail，不再猜任意 JSON 字段。
  */
 export function describeToolCall(
     name: string,
@@ -80,11 +285,11 @@ export function describeToolCall(
     switch (name) {
         case "read_file": {
             const target = stringArg(args, "path") ?? "file";
-            return {label: "Read", detail: target, activity: {kind: "read", target}};
+            return {label: "Read", detail: target};
         }
         case "read_tool_result": {
             const target = stringArg(args, "result_id") ?? "tool result";
-            return {label: "Read", detail: target, activity: {kind: "read", target}};
+            return {label: "Read", detail: target};
         }
         case "grep": {
             const query = stringArg(args, "pattern") ?? "pattern";
@@ -92,7 +297,6 @@ export function describeToolCall(
             return {
                 label: "Search",
                 detail: `pattern: ${JSON.stringify(query)}${scope ? `, path: ${scope}` : ""}`,
-                activity: {kind: "search", target: query},
             };
         }
         case "glob": {
@@ -101,12 +305,11 @@ export function describeToolCall(
             return {
                 label: "Search",
                 detail: `glob: ${JSON.stringify(query)}${scope ? `, path: ${scope}` : ""}`,
-                activity: {kind: "search", target: query},
             };
         }
         case "list_files": {
             const target = stringArg(args, "dir") ?? ".";
-            return {label: "List", detail: target, activity: {kind: "list", target}};
+            return {label: "List", detail: target};
         }
         case "lsp": {
             const operation = stringArg(args, "operation") ?? "query";
@@ -114,14 +317,12 @@ export function describeToolCall(
             return {
                 label: "LSP",
                 detail: [operation, target].filter(Boolean).join(" "),
-                activity: {kind: "search", target: target ?? operation},
             };
         }
         case "tool_search":
             return {
                 label: "Tool search",
                 detail: stringArg(args, "query") ?? "",
-                activity: {kind: "silent"},
             };
         case "bash":
             return {
@@ -206,7 +407,7 @@ export function isSuccessfulToolActivity(input: {
     status: "running" | "done";
     outcome?: ToolOutcome;
 }): boolean {
-    const activity = describeToolCall(input.name, input.args).activity;
+    const activity = describeToolPhase(input.name, input.args);
     if (!activity) return false;
     return input.status === "running" || input.outcome === "ok";
 }

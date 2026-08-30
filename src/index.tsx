@@ -99,4 +99,7 @@ if (
     } finally {
         stdout.disposeCursorOutput();
     }
+    // 正常卸载会异步收尾；残留 Provider/Hook 句柄不得无限阻塞 Shell。
+    const forceExit = setTimeout(() => process.exit(0), 1_000);
+    forceExit.unref();
 }

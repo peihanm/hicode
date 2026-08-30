@@ -1,7 +1,21 @@
-import {createContext, createElement, useCallback, useContext, useSyncExternalStore, type ReactNode,} from "react";
+import {
+    createContext,
+    createElement,
+    useCallback,
+    useContext,
+    useMemo,
+    useSyncExternalStore,
+    type ReactNode,
+} from "react";
 import {useStdout} from "ink";
 
 const DEFAULT_TERMINAL_WIDTH = 80;
+const DEFAULT_TERMINAL_HEIGHT = 24;
+
+export interface TerminalSize {
+    width: number;
+    height: number;
+}
 
 export function normalizeTerminalWidth(columns: number | undefined): number {
     return columns && Number.isFinite(columns) && columns > 0
@@ -9,21 +23,34 @@ export function normalizeTerminalWidth(columns: number | undefined): number {
         : DEFAULT_TERMINAL_WIDTH;
 }
 
-/**
- * Ink 会在 stdout resize 时重算 Yoga，但直接读取 stdout.columns 不会触发
- * React render。所有依赖列宽生成文本或折行的组件都通过这个 Hook 订阅尺寸。
- */
-const TerminalWidthContext = createContext<number | undefined>(undefined);
+export function normalizeTerminalHeight(rows: number | undefined): number {
+    return rows && Number.isFinite(rows) && rows > 0
+        ? Math.floor(rows)
+        : DEFAULT_TERMINAL_HEIGHT;
+}
 
-function useObservedTerminalWidth(enabled: boolean, widthOverride?: number): number {
+/**
+ * Ink 会在 stdout resize 时重算 Yoga，但直接读取 stdout.columns/rows 不会触发
+ * React render。Provider 以单一订阅发布宽高，避免各组件各自监听 resize。
+ */
+const TerminalSizeContext = createContext<TerminalSize | undefined>(undefined);
+
+function useObservedTerminalSize(
+    enabled: boolean,
+    widthOverride?: number,
+    heightOverride?: number
+): TerminalSize {
     const {stdout} = useStdout();
     const subscribe = useCallback(
         (onStoreChange: () => void) => {
-            if (!enabled || widthOverride !== undefined) return () => {};
+            if (
+                !enabled ||
+                (widthOverride !== undefined && heightOverride !== undefined)
+            ) return () => {};
             let timer: ReturnType<typeof setTimeout> | undefined;
             const handleResize = () => {
                 if (timer) clearTimeout(timer);
-                timer = setTimeout(onStoreChange, 50);
+                timer = setTimeout(onStoreChange, 75);
                 timer.unref?.();
             };
             stdout.on("resize", handleResize);
@@ -32,25 +59,45 @@ function useObservedTerminalWidth(enabled: boolean, widthOverride?: number): num
                 stdout.off("resize", handleResize);
             };
         },
-        [enabled, stdout, widthOverride]
+        [enabled, heightOverride, stdout, widthOverride]
     );
     const getSnapshot = useCallback(
-        () => widthOverride ?? normalizeTerminalWidth(stdout.columns),
-        [stdout, widthOverride]
+        () => `${widthOverride ?? normalizeTerminalWidth(stdout.columns)}:${heightOverride ?? normalizeTerminalHeight(stdout.rows)}`,
+        [heightOverride, stdout, widthOverride]
     );
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    const separator = snapshot.indexOf(":");
+    return {
+        width: Number(snapshot.slice(0, separator)),
+        height: Number(snapshot.slice(separator + 1)),
+    };
 }
 
 export function TerminalSizeProvider({children}: {children: ReactNode}) {
-    const width = useObservedTerminalWidth(true);
-    return createElement(TerminalWidthContext.Provider, {value: width}, children);
+    const observed = useObservedTerminalSize(true);
+    const size = useMemo(
+        () => ({width: observed.width, height: observed.height}),
+        [observed.height, observed.width]
+    );
+    return createElement(TerminalSizeContext.Provider, {value: size}, children);
+}
+
+export function useTerminalSize(overrides: {
+    width?: number;
+    height?: number;
+} = {}): TerminalSize {
+    const inherited = useContext(TerminalSizeContext);
+    const observed = useObservedTerminalSize(
+        inherited === undefined,
+        overrides.width,
+        overrides.height
+    );
+    return {
+        width: overrides.width ?? inherited?.width ?? observed.width,
+        height: overrides.height ?? inherited?.height ?? observed.height,
+    };
 }
 
 export function useTerminalWidth(widthOverride?: number): number {
-    const inheritedWidth = useContext(TerminalWidthContext);
-    const observedWidth = useObservedTerminalWidth(
-        inheritedWidth === undefined,
-        widthOverride
-    );
-    return widthOverride ?? inheritedWidth ?? observedWidth;
+    return useTerminalSize({width: widthOverride}).width;
 }

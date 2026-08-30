@@ -1,12 +1,22 @@
 import {afterEach, describe, expect, test} from "bun:test";
 import {Text} from "ink";
 import {cleanup, render} from "ink-testing-library";
-import {normalizeTerminalWidth, useTerminalWidth} from "../../src/ui/terminalSize.js";
+import {
+    normalizeTerminalHeight,
+    normalizeTerminalWidth,
+    useTerminalSize,
+    useTerminalWidth,
+} from "../../src/ui/terminalSize.js";
 
 afterEach(() => cleanup());
 
 function WidthProbe() {
     return <Text>width:{useTerminalWidth()}</Text>;
+}
+
+function SizeProbe() {
+    const size = useTerminalSize();
+    return <Text>size:{size.width}x{size.height}</Text>;
 }
 
 describe("responsive terminal width", () => {
@@ -31,5 +41,26 @@ describe("responsive terminal width", () => {
         expect(normalizeTerminalWidth(undefined)).toBe(80);
         expect(normalizeTerminalWidth(0)).toBe(80);
         expect(normalizeTerminalWidth(47.8)).toBe(47);
+        expect(normalizeTerminalHeight(undefined)).toBe(24);
+        expect(normalizeTerminalHeight(0)).toBe(24);
+        expect(normalizeTerminalHeight(31.9)).toBe(31);
+    });
+
+    test("同一个 resize snapshot 同时更新宽度和高度", async () => {
+        const instance = render(<SizeProbe/>);
+        let columns = 90;
+        let rows = 32;
+        Object.defineProperties(instance.stdout, {
+            columns: {configurable: true, get: () => columns},
+            rows: {configurable: true, get: () => rows},
+        });
+        instance.rerender(<SizeProbe/>);
+        expect(instance.lastFrame()).toContain("size:90x32");
+
+        columns = 44;
+        rows = 18;
+        instance.stdout.emit("resize");
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        expect(instance.lastFrame()).toContain("size:44x18");
     });
 });

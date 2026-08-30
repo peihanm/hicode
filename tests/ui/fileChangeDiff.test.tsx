@@ -77,12 +77,19 @@ describe("file change diff UI", () => {
     }
 
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
+    expect(frame).toContain("● Building");
     expect(frame).toContain("Created 1 file (+3 -0)");
     expect(frame).toContain("app.py (+3 -0, new file)");
     expect(frame).toContain("+ fixed");
     expect(frame).not.toContain("- broken");
     expect(frame).not.toContain("write_file");
     expect(frame).not.toContain("edit_file");
+
+    const transcript = render(
+      <MessageList threads={threads} transcript />
+    ).lastFrame() ?? "";
+    expect(transcript).toContain("+ fixed");
+    expect(transcript).not.toContain("- broken");
   });
 
   test("同一 turn 聚合多个文件并隐藏重复工具成功行", () => {
@@ -105,11 +112,18 @@ describe("file change diff UI", () => {
     expect(threads.filter((thread) => thread.role === "file_change_group")).toHaveLength(1);
     const instance = render(<MessageList threads={threads} />);
     const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("● Building");
     expect(frame).toContain("Edited 2 files (+2 -2)");
     expect(frame).toContain("src/a.ts (+1 -1)");
     expect(frame).toContain("- const value = 1;");
     expect(frame).toContain("+ const value = 2;");
     expect(frame).not.toContain("edit_file");
+
+    const transcript = render(
+      <MessageList threads={threads} transcript />
+    ).lastFrame() ?? "";
+    expect(transcript).toContain("- const value = 1;");
+    expect(transcript).toContain("+ const value = 2;");
   });
 
   test("失败的文件工具不进入成功修改汇总", () => {

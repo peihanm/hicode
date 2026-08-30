@@ -14,11 +14,13 @@ function total(changes: FileChange[], field: "linesAdded" | "linesRemoved") {
 export const FileChangeGroup = memo(function FileChangeGroup({
                                                                  changes,
                                                                  expanded,
+                                                                 terminalWidth,
                                                              }: {
     changes: FileChange[];
     expanded: boolean;
+    terminalWidth?: number;
 }) {
-    const width = Math.max(3, useTerminalWidth());
+    const width = Math.max(1, useTerminalWidth(terminalWidth));
     const grouped = new Map<string, FileChange[]>();
     for (const change of changes) {
         grouped.set(change.path, [...(grouped.get(change.path) ?? []), change]);
@@ -42,19 +44,23 @@ export const FileChangeGroup = memo(function FileChangeGroup({
         <Box flexDirection="column" marginTop={1}>
             <Box>
                 <Text color={COLORS.assistant}>● </Text>
-                <Text bold>{verb} {files.length} file{files.length === 1 ? "" : "s"} (</Text>
-                <Text color={COLORS.diffAdded}>+{added === null ? "?" : added}</Text>
-                <Text> </Text>
-                <Text color={COLORS.diffRemoved}>-{removed === null ? "?" : removed}</Text>
-                <Text bold>)</Text>
+                <Text bold>Building</Text>
             </Box>
             <Box flexDirection="column" marginLeft={2}>
+                <Box>
+                    <Text color={COLORS.diffAdded}>✓ </Text>
+                    <Text bold>{verb} {files.length} file{files.length === 1 ? "" : "s"} (</Text>
+                    <Text color={COLORS.diffAdded}>+{added === null ? "?" : added}</Text>
+                    <Text> </Text>
+                    <Text color={COLORS.diffRemoved}>-{removed === null ? "?" : removed}</Text>
+                    <Text bold>)</Text>
+                </Box>
                 {visibleFiles.map(([path, fileChanges]) => (
                     <FileChangeView
                         key={path}
                         path={path}
                         changes={fileChanges}
-                        width={width - 2}
+                        width={Math.max(1, width - 2)}
                         expanded={expanded}
                     />
                 ))}

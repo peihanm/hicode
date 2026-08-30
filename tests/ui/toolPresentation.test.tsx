@@ -33,8 +33,8 @@ function completeTool(
     });
 }
 
-describe("Claude-style tool presentation", () => {
-    test("连续成功探索合并为一条活动摘要，tool_search 静默吸收", () => {
+describe("phase-based tool presentation", () => {
+    test("连续成功探索合并为项目检查阶段，tool_search 静默吸收", () => {
         let threads: UIThread[] = [];
         threads = completeTool(threads, {
             id: "search-tool",
@@ -63,9 +63,11 @@ describe("Claude-style tool presentation", () => {
 
         expect(projectDefaultThreads(threads)).toHaveLength(1);
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("searched 1 pattern, read 1 file, listed 1 directory");
+        expect(frame).toContain("● Inspecting project");
+        expect(frame).toContain("✓ Listed src · Found 2 results");
+        expect(frame).toContain("✓ Searched for \"createRuntime\"");
+        expect(frame).toContain("✓ Read src/runtime/resources.ts · 20 lines");
         expect(frame).not.toContain("Tool search");
-        expect(frame).not.toContain("createRuntime");
     });
 
     test("Session outcome 元数据让恢复后的成功探索保持同一投影", () => {
@@ -97,12 +99,11 @@ describe("Claude-style tool presentation", () => {
         }]);
 
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("● Read src/a.ts");
-        expect(frame).toContain("⎿ Read 1 line");
-        expect(frame).not.toContain("read 1 file");
+        expect(frame).toContain("● Inspecting project");
+        expect(frame).toContain("✓ Read src/a.ts · 1 line");
     });
 
-    test("单个探索调用保留目标，多次调用才生成活动摘要", () => {
+    test("单个和连续探索调用都保留具体目标", () => {
         const single = completeTool([], {
             id: "read-one",
             name: "read_file",
@@ -112,9 +113,8 @@ describe("Claude-style tool presentation", () => {
         const singleFrame = render(
             <MessageList threads={single}/>
         ).lastFrame() ?? "";
-        expect(singleFrame).toContain("● Read src/server.ts");
-        expect(singleFrame).toContain("⎿ Read 20 lines");
-        expect(singleFrame).not.toContain("read 1 file");
+        expect(singleFrame).toContain("● Inspecting project");
+        expect(singleFrame).toContain("✓ Read src/server.ts · 20 lines");
 
         const multiple = completeTool(single, {
             id: "read-two",
@@ -125,7 +125,9 @@ describe("Claude-style tool presentation", () => {
         const multipleFrame = render(
             <MessageList threads={multiple}/>
         ).lastFrame() ?? "";
-        expect(multipleFrame).toContain("read 2 files");
+        expect(multipleFrame).toContain("● Inspecting project");
+        expect(multipleFrame).toContain("✓ Read src/server.ts · 20 lines");
+        expect(multipleFrame).toContain("✓ Read src/client.ts · 10 lines");
         expect(multipleFrame).not.toContain("● Read src/server.ts");
     });
 
@@ -154,13 +156,14 @@ describe("Claude-style tool presentation", () => {
         const projected = projectDefaultThreads(threads);
         expect(projected).toHaveLength(3);
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("● Read before.ts");
-        expect(frame).toContain("● Read after.ts");
+        expect(frame.match(/● Inspecting project/g)).toHaveLength(2);
+        expect(frame).toContain("✓ Read before.ts · 1 line");
+        expect(frame).toContain("✓ Read after.ts · 1 line");
         expect(frame).toContain("● Search pattern: \"x\", path: missing");
         expect(frame).toContain("工具执行出错: 搜索目录不存在");
     });
 
-    test("Bash 默认保留前三行和明确的折叠边界", () => {
+    test("已知验证命令默认显示语义摘要，Transcript 保留原始命令和完整输出", () => {
         const threads = completeTool([], {
             id: "bash",
             name: "bash",
@@ -168,15 +171,56 @@ describe("Claude-style tool presentation", () => {
             result: ["one", "two", "three", "four", "five"].join("\n"),
         });
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("⎿ one");
-        expect(frame).toContain("three");
-        expect(frame).toContain("… +2 lines (ctrl+o to expand)");
+        expect(frame).toContain("● Verifying");
+        expect(frame).toContain("✓ Project checks passed");
+        expect(frame).not.toContain("bun test");
+        expect(frame).not.toContain("one");
         expect(frame).not.toContain("five");
 
         const transcript = render(
             <MessageList threads={threads} transcript/>
         ).lastFrame() ?? "";
+        expect(transcript).toContain("● Bash bun test");
         expect(transcript).toContain("five");
+    });
+
+    test("常见开发流程按检查、验证和服务阶段展示", () => {
+        let threads: UIThread[] = [];
+        threads = completeTool(threads, {
+            id: "environment",
+            name: "bash",
+            args: {command: "which node python3; node -v; python3 -V"},
+            result: "/opt/homebrew/bin/node\nv26.0.0\nPython 3.9.6",
+        });
+        threads = completeTool(threads, {
+            id: "syntax",
+            name: "bash",
+            args: {command: "node --check server.js && python3 -m py_compile runner.py"},
+            result: "runner.py OK",
+        });
+        threads = completeTool(threads, {
+            id: "service",
+            name: "bash",
+            args: {command: "node server.js", run_in_background: true},
+            result: "后台任务已启动。\nTask: task-123\nStatus: running",
+        });
+        threads = completeTool(threads, {
+            id: "endpoint",
+            name: "bash",
+            args: {command: "curl -sf http://127.0.0.1:5175/api/problems"},
+            result: "[{\"slug\":\"two-sum\"}]",
+        });
+
+        const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
+        expect(frame).toContain("● Inspecting project");
+        expect(frame).toContain("✓ Development environment checked");
+        expect(frame).toContain("● Verifying");
+        expect(frame).toContain("✓ Syntax checks passed");
+        expect(frame).toContain("● Starting service");
+        expect(frame).toContain("✓ Service running · task task-123");
+        expect(frame).toContain("✓ Local endpoint checks passed");
+        expect(frame).not.toContain("curl -sf");
+        expect(frame).not.toContain("node --check");
     });
 
     test("拒绝结果在标记后保留固定间距", () => {

@@ -3,7 +3,8 @@ import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import {getNextPermissionMode, type PermissionMode,} from "../permissions/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
-import {MessageList, StaticMessageList, TranscriptDetails,} from "./conversation/MessageList.js";
+import {MessageList, TranscriptDetails,} from "./conversation/MessageList.js";
+import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
 import {InputBox} from "./input/InputBox.js";
 import {ConfirmDialog} from "./dialogs/ConfirmDialog.js";
 import {AskDialog} from "./dialogs/AskDialog.js";
@@ -139,16 +140,16 @@ export function App({
         useEffect(() => {
             registerSessionShutdown?.(turn.shutdown);
         }, [registerSessionShutdown, turn.shutdown]);
-        const requestExit = useCallback(async () => {
-            await turn.shutdown();
-            await resources.close();
+        const requestExit = useCallback(() => {
+            // 先同步触发后台任务 abort，避免 CLI 的有界强制退出留下 detached 进程。
+            void resources.taskRuntime.close();
             exit();
-        }, [exit, resources, turn.shutdown]);
+        }, [exit, resources.taskRuntime]);
 
         const handleSubmit = useCallback(
             async (input: string) => {
                 if (input === "exit" || input === "quit") {
-                    await requestExit();
+                    requestExit();
                     return;
                 }
                 if (turn.busy) {
@@ -205,16 +206,15 @@ export function App({
         );
         return (
             <Box flexDirection="column">
-                <StaticMessageList threads={turn.staticThreads} showWelcome/>
+                <ScrollbackTranscript threads={turn.staticThreads} showWelcome/>
 
                 <MessageList
-                    threads={turn.liveThreads}
+                    threads={showTranscript ? [] : turn.liveThreads}
                     paused={!!turn.confirmRequest}
-                    transcript={showTranscript}
                 />
 
                 {showTranscript && (
-                    <TranscriptDetails threads={turn.staticThreads}/>
+                    <TranscriptDetails threads={turn.threads}/>
                 )}
 
                 {showTodos && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && (
