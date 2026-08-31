@@ -6,6 +6,7 @@ type CheckpointWarningCode =
     | "bash_side_effects"
     | "hook_side_effects"
     | "mcp_side_effects"
+    | "host_tool_side_effects"
     | "unsupported_path"
     | "unsupported_file"
     | "file_too_large"

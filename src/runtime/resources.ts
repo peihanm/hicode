@@ -44,6 +44,7 @@ import {
     type CodexAppServerRuntimeLike,
 } from "../llm/providers/codex/index.js";
 import type {PillarRootConfiguration} from "./rootConfiguration.js";
+import type {Tool} from "../tools/types.js";
 
 export interface RootRuntimeResources {
     readonly storage: PillarStorageLayout;
@@ -84,6 +85,8 @@ export interface CreateRootRuntimeResourcesOptions {
     requestHookTrust?: (
         request: HookTrustRequest
     ) => Promise<"once" | "always" | "deny">;
+    /** Root-only tools supplied by a programmatic Host. */
+    additionalTools?: readonly Tool[];
 }
 
 interface RootRuntimeDependencies {
@@ -264,9 +267,9 @@ export function createRootRuntimeResourcesFactory(
                 }),
                 requestTrust: options.requestHookTrust,
             });
-            const additionalTools = mcpManager?.getTools() ?? [];
+            const mcpTools = mcpManager?.getTools() ?? [];
             const toolCatalog = dependencies.createToolRuntime({
-                additionalTools,
+                additionalTools: mcpTools,
             });
             const validateLoadedAgents = (loaded: LoadedCustomAgents) =>
                 validateCustomAgentTools(loaded, toolCatalog.toolNames);
@@ -300,7 +303,10 @@ export function createRootRuntimeResourcesFactory(
                     .map((definition) => definition.agentType),
             });
             const toolRuntime = dependencies.createToolRuntime({
-                additionalTools,
+                additionalTools: [
+                    ...mcpTools,
+                    ...(options.additionalTools ?? []),
+                ],
                 toolOverrides: [
                     createAgentTool(
                         subagents,

@@ -10,6 +10,7 @@ import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
 import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
 import type {InteractionRequest, InteractionResponse} from "./protocol.js";
 import {createSDKThread} from "./thread.js";
+import {adaptPillarHostTools} from "./hostTools.js";
 import {
     PillarSDKError,
     type HostDiagnostic,
@@ -33,6 +34,7 @@ export class Pillar {
 
     static async create(options: PillarOptions): Promise<Pillar> {
         validatePillarOptions(options);
+        const hostTools = adaptPillarHostTools(options.tools);
         const rootController = new AbortController();
         const requestApproval = (
             request: McpApprovalRequest
@@ -62,6 +64,7 @@ export class Pillar {
             headless: false,
             requestMcpApproval: requestApproval,
             requestHookTrust: requestTrust,
+            additionalTools: hostTools,
         });
         const pillar = new Pillar(options, resources, rootController);
         await pillar.reportStartupDiagnostics();

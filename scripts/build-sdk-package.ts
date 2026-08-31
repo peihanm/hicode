@@ -120,8 +120,12 @@ async function main(): Promise<void> {
         throw new Error("SDK 构建产物仍包含 Bun-only 运行时 API");
     }
     const declaration = await readFile(declarationPath, "utf8");
-    if (/^\s*import\b/m.test(declaration) || /\bfrom\s+["']/.test(declaration)) {
-        throw new Error("SDK 声明文件仍依赖未打包的内部或第三方类型");
+    const imports = declaration.match(/^\s*import\b.*$/gm) ?? [];
+    if (
+        imports.some((line) => !/\bfrom\s+["']zod["'];?\s*$/.test(line)) ||
+        /\bfrom\s+["'](?:\.|\/)/.test(declaration)
+    ) {
+        throw new Error("SDK 声明文件包含非公开或内部类型依赖");
     }
 
     const publishedPackage = {

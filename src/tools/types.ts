@@ -25,6 +25,7 @@ export type PermissionMatcher = (
 ) => boolean;
 
 export type ToolExposure = "direct" | "deferred";
+export type ExternalSideEffectBoundary = "mcp" | "host";
 
 interface ToolSearchSource {
     name: string;
@@ -152,6 +153,10 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     // 外部工具（目前为 MCP）可以直接提供 JSON Schema。
     // 内置工具省略该字段，继续从 Zod schema 生成。
     inputJsonSchema?: Record<string, unknown>;
+
+    // 进程外或 Host callback 的副作用无法由 FileStateTracker 完整观测。
+    // 未声明只读时，Checkpoint 必须记录覆盖告警。
+    externalSideEffects?: ExternalSideEffectBoundary;
 
     // 权限意向声明：返回 allow/deny/ask/passthrough
     // 不写时默认 passthrough，由 executeTool 按 isReadOnly 决定

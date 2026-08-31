@@ -1,10 +1,25 @@
 import {
+    definePillarTool,
     loadPillarHostConfig,
     Pillar,
     type PillarFileSources,
     type ThreadEvent,
     type TurnResult,
 } from "pillar-core-sdk";
+import {z} from "zod";
+
+const hostLookup = definePillarTool({
+    name: "host_lookup",
+    description: "Look up a value owned by the SDK Host",
+    parameters: z.object({key: z.string()}),
+    readOnly: true,
+    concurrencySafe: true,
+    execute(input, context) {
+        const key: string = input.key;
+        const threadId: string = context.threadId;
+        return `${key}:${threadId}`;
+    },
+});
 
 const fileSources: PillarFileSources = {
     settings: [],
@@ -31,5 +46,6 @@ function acceptResult(result: TurnResult): string {
 
 void Pillar.create;
 void loaded.configuration;
+void hostLookup;
 void acceptEvent;
 void acceptResult;

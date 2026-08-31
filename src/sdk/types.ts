@@ -11,6 +11,7 @@ import type {
 import type {StopReason} from "../agent/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
 import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
+import type {ZodType} from "zod";
 
 export interface HostDiagnostic {
     severity: "info" | "warning" | "error";
@@ -35,9 +36,38 @@ export interface PillarHost {
     ): void | Promise<void>;
 }
 
+export interface PillarHostToolContext {
+    readonly cwd: string;
+    readonly threadId: string;
+    readonly toolCallId: string;
+    readonly signal: AbortSignal;
+}
+
+export type PillarHostToolOutput =
+    | string
+    | {
+    content: string;
+    outcome?: "ok" | "failed";
+};
+
+export interface PillarHostTool<TInput = unknown> {
+    readonly name: string;
+    readonly description: string;
+    readonly parameters: ZodType<TInput>;
+    readonly readOnly: boolean;
+    readonly concurrencySafe?: boolean;
+    readonly maxResultSizeChars?: number;
+
+    execute(
+        input: TInput,
+        context: PillarHostToolContext
+    ): PillarHostToolOutput | Promise<PillarHostToolOutput>;
+}
+
 export interface PillarOptions {
     configuration: PillarRootConfiguration;
     host?: PillarHost;
+    tools?: readonly PillarHostTool[];
 }
 
 export interface StartThreadOptions {

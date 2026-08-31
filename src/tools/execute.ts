@@ -201,13 +201,13 @@ export async function executeRegisteredTool(
             code: "bash_side_effects",
             message: "Bash 可能产生未被 File Checkpoint 捕获的文件副作用",
         });
-    } else if (
-        name.startsWith("mcp__") &&
-        tool.isReadOnly?.(input) !== true
-    ) {
+    } else if (tool.externalSideEffects && tool.isReadOnly?.(input) !== true) {
+        const source = tool.externalSideEffects === "mcp" ? "MCP" : "Host Tool";
         await ctx.fileCheckpoints.markCoverageWarning({
-            code: "mcp_side_effects",
-            message: `${name} 未声明只读，可能产生未被 File Checkpoint 捕获的文件副作用`,
+            code: tool.externalSideEffects === "mcp"
+                ? "mcp_side_effects"
+                : "host_tool_side_effects",
+            message: `${source} ${name} 未声明只读，可能产生未被 File Checkpoint 捕获的文件副作用`,
         });
     }
 

@@ -1,7 +1,8 @@
 import {createServer} from "node:http";
 import {writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
-import {loadPillarHostConfig, Pillar} from "pillar-core-sdk";
+import {definePillarTool, loadPillarHostConfig, Pillar} from "pillar-core-sdk";
+import {z} from "zod";
 
 const [workspace, pillarHome] = process.argv.slice(2);
 if (!workspace || !pillarHome) {
@@ -9,16 +10,44 @@ if (!workspace || !pillarHome) {
 }
 
 let requestCount = 0;
+let sawHostToolResult = false;
 let sawGlobResult = false;
 const server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = Buffer.concat(chunks).toString("utf8");
     requestCount += 1;
-    if (requestCount === 2) sawGlobResult = body.includes("fixture.ts");
+    if (requestCount === 2) {
+        sawHostToolResult = body.includes("HOST_TOOL_SENTINEL:package-smoke");
+    }
+    if (requestCount === 3) sawGlobResult = body.includes("fixture.ts");
 
     response.writeHead(200, {"content-type": "text/event-stream"});
     const event = requestCount === 1
+        ? {
+            choices: [{
+                delta: {
+                    tool_calls: [{
+                        index: 0,
+                        id: "sdk-package-host-lookup",
+                        type: "function",
+                        function: {
+                            name: "host_lookup",
+                            arguments: JSON.stringify({
+                                key: "package-smoke",
+                            }),
+                        },
+                    }],
+                },
+                finish_reason: "tool_calls",
+            }],
+            usage: {
+                prompt_tokens: 10,
+                completion_tokens: 2,
+                total_tokens: 12,
+            },
+        }
+        : requestCount === 2
         ? {
             choices: [{
                 delta: {
@@ -38,17 +67,17 @@ const server = createServer(async (request, response) => {
                 finish_reason: "tool_calls",
             }],
             usage: {
-                prompt_tokens: 10,
+                prompt_tokens: 12,
                 completion_tokens: 2,
-                total_tokens: 12,
+                total_tokens: 14,
             },
         }
         : {
             choices: [{
                 delta: {
-                    content: sawGlobResult
+                    content: sawHostToolResult && sawGlobResult
                         ? "SDK_PACKAGE_AGENT_OK"
-                        : "SDK_PACKAGE_GLOB_MISSING",
+                        : "SDK_PACKAGE_TOOL_RESULT_MISSING",
                 },
                 finish_reason: "stop",
             }],
@@ -74,6 +103,7 @@ if (!address || typeof address === "string") {
 process.env.PILLAR_SDK_SMOKE_KEY = "offline-fixture-key";
 await writeFile(resolve(workspace, "fixture.ts"), "export const fixture = true;\n");
 let pillar;
+let hostToolCalls = 0;
 try {
     const loaded = loadPillarHostConfig({
         cwd: resolve(workspace),
@@ -106,6 +136,25 @@ try {
     });
     pillar = await Pillar.create({
         configuration: loaded.configuration,
+        tools: [definePillarTool({
+            name: "host_lookup",
+            description: "Look up a value owned by the SDK Host",
+            parameters: z.object({key: z.string()}),
+            readOnly: true,
+            concurrencySafe: true,
+            execute({key}, context) {
+                hostToolCalls += 1;
+                if (
+                    context.cwd !== resolve(workspace) ||
+                    context.toolCallId !== "sdk-package-host-lookup" ||
+                    !context.threadId ||
+                    context.signal.aborted
+                ) {
+                    throw new Error("Host Tool context mismatch");
+                }
+                return `HOST_TOOL_SENTINEL:${key}`;
+            },
+        })],
         host: {
             onInteraction: async () => ({
                 behavior: "deny",
@@ -114,16 +163,25 @@ try {
         },
     });
     const thread = await pillar.startThread();
-    const result = await thread.run("Use glob to find TypeScript files.", {
+    const result = await thread.run("Use host_lookup, then glob TypeScript files.", {
         maxIterations: 4,
     });
+    const hostLookup = result.items.find((item) =>
+        item.type === "tool_call" && item.name === "host_lookup"
+    );
     const glob = result.items.find((item) =>
         item.type === "tool_call" && item.name === "glob"
     );
     if (
         result.finalResponse !== "SDK_PACKAGE_AGENT_OK" ||
-        requestCount !== 2 ||
+        requestCount !== 3 ||
+        hostToolCalls !== 1 ||
+        !sawHostToolResult ||
         !sawGlobResult ||
+        !hostLookup ||
+        hostLookup.status !== "completed" ||
+        hostLookup.outcome !== "ok" ||
+        !hostLookup.resultPreview?.includes("HOST_TOOL_SENTINEL:package-smoke") ||
         !glob ||
         glob.status !== "completed" ||
         glob.outcome !== "ok" ||
@@ -132,7 +190,10 @@ try {
         throw new Error(`unexpected SDK result: ${JSON.stringify({
             finalResponse: result.finalResponse,
             requestCount,
+            hostToolCalls,
+            sawHostToolResult,
             sawGlobResult,
+            hostLookup,
             glob,
         })}`);
     }
