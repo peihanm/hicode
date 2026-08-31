@@ -60,7 +60,7 @@ describe("Agent invoke preparation", () => {
         ctx: createTestContext(cwd, {
           instructions: {
             files: [{
-              path: `${cwd}/CODE.md`,
+              path: `${cwd}/PILLAR.md`,
               scope: "project",
               content: "use bun for tests",
               truncated: false,

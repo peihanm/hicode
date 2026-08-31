@@ -6,6 +6,8 @@ import type {HostInstructionContribution} from "../runtime/rootContributions.js"
 
 const MAX_INSTRUCTION_FILE_CHARS = 40_000;
 const MAX_INSTRUCTION_TOTAL_CHARS = 120_000;
+const PILLAR_INSTRUCTIONS_FILE = "PILLAR.md";
+const PILLAR_LOCAL_INSTRUCTIONS_FILE = "PILLAR.local.md";
 
 export type InstructionFileSource = "user" | "project" | "local";
 
@@ -55,7 +57,7 @@ async function readInstructionFile(
     try {
         const info = await handle.stat();
         if (!info.isFile()) {
-            throw new Error("CODE.md 必须是普通文件，不能是目录或符号链接");
+            throw new Error("PILLAR.md 必须是普通文件，不能是目录或符号链接");
         }
         const buffer = Buffer.allocUnsafe(Math.min(info.size, maxBytes));
         const {bytesRead} = buffer.length > 0
@@ -76,7 +78,7 @@ function discoveryDirectories(cwd: string, boundary?: string): string[] {
     const root = boundary === undefined ? parse(current).root : resolve(boundary);
     const relation = relative(resolve(root), current);
     if (relation.startsWith("..") || isAbsolute(relation)) {
-        throw new Error("CODE.md discovery boundary 不包含 cwd");
+        throw new Error("PILLAR.md discovery boundary 不包含 cwd");
     }
     while (true) {
         directories.push(current);
@@ -94,18 +96,31 @@ function instructionCandidates(
 ): InstructionCandidate[] {
     const candidates: InstructionCandidate[] = [];
     if (sources.includes("user") && userPillarHome) {
-        candidates.push({path: join(userPillarHome, "CODE.md"), scope: "user"});
+        candidates.push({
+            path: join(userPillarHome, PILLAR_INSTRUCTIONS_FILE),
+            scope: "user",
+        });
     }
     for (const directory of discoveryDirectories(cwd, boundary)) {
         if (sources.includes("project")) {
             candidates.push(
-                {path: join(directory, "CODE.md"), scope: "project"},
-                {path: join(directory, ".pillar", "CODE.md"), scope: "project"}
+                {
+                    path: join(directory, PILLAR_INSTRUCTIONS_FILE),
+                    scope: "project",
+                },
+                {
+                    path: join(
+                        directory,
+                        ".pillar",
+                        PILLAR_INSTRUCTIONS_FILE
+                    ),
+                    scope: "project",
+                }
             );
         }
         if (sources.includes("local")) {
             candidates.push({
-                path: join(directory, "CODE.local.md"),
+                path: join(directory, PILLAR_LOCAL_INSTRUCTIONS_FILE),
                 scope: "local",
             });
         }
@@ -118,7 +133,7 @@ function boundedFileContent(
     maxChars: number
 ): { content: string; truncated: boolean } {
     if (content.length <= maxChars) return {content, truncated: false};
-    const marker = `\n\n[CODE.md truncated to ${maxChars} characters]`;
+    const marker = `\n\n[PILLAR.md truncated to ${maxChars} characters]`;
     if (marker.length >= maxChars) {
         return {content: content.slice(0, maxChars), truncated: true};
     }
@@ -129,10 +144,10 @@ function boundedFileContent(
 }
 
 /**
- * Load durable CODE.md instructions in low-to-high priority order.
+ * Load durable PILLAR.md instructions in low-to-high priority order.
  *
  * The total budget is allocated from high priority to low priority, so a
- * broad parent rule cannot crowd out CODE.local.md near the active cwd.
+ * broad parent rule cannot crowd out PILLAR.local.md near the active cwd.
  */
 export function createProjectInstructionLoader(
     config: ProjectInstructionLoaderConfig = {}
@@ -264,7 +279,7 @@ export function formatProjectInstructions(
     const issueSection =
         instructions.issues.length > 0
             ? [
-                "CODE.md loading issues:",
+                "PILLAR.md loading issues:",
                 ...instructions.issues.map((issue) => `- ${issue}`),
             ].join("\n")
             : "";

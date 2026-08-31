@@ -7,7 +7,7 @@
 // 插在 system 后、真实用户输入前。
 //
 // 注入策略：
-// - CODE.md：Root Runtime 启动快照，每次注入同样内容
+// - PILLAR.md：Root Runtime 启动快照，每次注入同样内容
 // - currentDate：每次注入
 // - skills 列表：每次注入（内容固定，字节一致，保证前缀稳定以命中 cache）
 //

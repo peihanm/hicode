@@ -318,7 +318,7 @@ describe("synchronous subagent", () => {
           mcpManager,
           instructions: {
             files: [{
-              path: `${cwd}/CODE.md`,
+              path: `${cwd}/PILLAR.md`,
               scope: "project",
               content: "verification must use bun",
               truncated: false,
@@ -542,7 +542,7 @@ describe("synchronous subagent", () => {
         sessionId: "parent-session",
         instructions: {
           files: [{
-            path: `${cwd}/CODE.md`,
+            path: `${cwd}/PILLAR.md`,
             scope: "project",
             content: "root-only CODE instruction",
             truncated: false,

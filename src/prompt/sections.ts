@@ -12,7 +12,7 @@
 // - # Environment（稳定的宿主环境信息）
 //
 // 全段跨请求保持不变，利于模型前缀缓存。
-// CODE.md/currentDate 走 attachment 注入（attachments.ts），每次 runAgent 重新注入。
+// PILLAR.md/currentDate 走 attachment 注入（attachments.ts），每次 runAgent 重新注入。
 // skill 调用提示不放在 system prompt 里，走 attachment 注入 + tool description。
 
 import type {EnvInfo} from "./env.js";

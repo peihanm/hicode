@@ -228,7 +228,7 @@ describe("RootRuntimeResources", () => {
     });
   });
 
-  test("统一加载 Skills、CODE.md、MCP tools 和 LSP，并发 close 保持幂等", async () => {
+  test("统一加载 Skills、PILLAR.md、MCP tools 和 LSP，并发 close 保持幂等", async () => {
     await withTempProject(async (cwd) => {
       const dynamicTool: Tool<any> = {
         name: "mcp__fixture__runtime",
@@ -255,7 +255,7 @@ describe("RootRuntimeResources", () => {
           instructionLoads += 1;
           return {
             files: [{
-              path: `${cwd}/CODE.md`,
+              path: `${cwd}/PILLAR.md`,
               scope: "project",
               content: "runtime instructions",
               truncated: false,

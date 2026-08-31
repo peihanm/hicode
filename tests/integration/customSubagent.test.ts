@@ -160,7 +160,7 @@ describe("custom subagent runtime", () => {
                 },
                 instructions: {
                     files: [{
-                        path: `${cwd}/CODE.md`,
+                        path: `${cwd}/PILLAR.md`,
                         scope: "project",
                         content: "必须遵守项目规则",
                         truncated: false,

@@ -36,9 +36,9 @@ async function initializeRepository(cwd: string): Promise<void> {
     await git(cwd, "config", "user.name", "Pillar Test");
     await git(cwd, "config", "user.email", "pillar-test@example.com");
     await writeFile(join(cwd, ".gitignore"), ".pillar/worktrees/\n");
-    await writeFile(join(cwd, "CODE.md"), "只完成被委派的工作。\n");
+    await writeFile(join(cwd, "PILLAR.md"), "只完成被委派的工作。\n");
     await writeFile(join(cwd, "base.txt"), "base\n");
-    await git(cwd, "add", ".gitignore", "CODE.md", "base.txt");
+    await git(cwd, "add", ".gitignore", "PILLAR.md", "base.txt");
     await git(cwd, "commit", "-q", "-m", "initial");
 }
 

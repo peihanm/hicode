@@ -24,6 +24,6 @@ export function createAgentAuthoringPrompt({
         "System Prompt 必须明确能力边界、工作方法和最终输出要求。不要声称拥有列表之外的工具。",
         `可选工具：${availableToolNames.join(", ")}`,
         `已有 Agent 名称：${existingAgentNames.join(", ") || "无"}`,
-        projectRules ? `项目规则快照：\n${projectRules}` : "项目没有 CODE.md 规则。",
+        projectRules ? `项目规则快照：\n${projectRules}` : "项目没有 PILLAR.md 规则。",
     ].join("\n\n");
 }

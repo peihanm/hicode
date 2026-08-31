@@ -235,7 +235,7 @@ Prompt Hook 固定使用 `models.fast`，只得到一个私有结构化提交工
 
 - JSON 损坏或已知字段类型错误时，该配置来源不会生效。
 - 未知字段会保留，但会产生 warning，不能依赖未知字段影响运行行为。
-- Secret、MCP、LSP、CODE.md、Skills、Session 和自定义 Agent 定义不属于 Settings。
+- Secret、MCP、LSP、PILLAR.md、Skills、Session 和自定义 Agent 定义不属于 Settings。
 - 修改 Settings 或 `.env` 后应重启 Pillar，使 Root Runtime 获取新的配置与 `/model` 候选快照；
   进程内使用 `/model` 切换 primary 不需要重启。
 

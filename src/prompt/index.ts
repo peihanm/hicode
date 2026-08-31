@@ -11,7 +11,7 @@
 // - # Environment（稳定宿主信息）
 //
 // 全段保持静态，利于模型前缀缓存。
-// CODE.md/currentDate/skills 走 attachment 注入，每次 runAgent 重新注入。
+// PILLAR.md/currentDate/skills 走 attachment 注入，每次 runAgent 重新注入。
 
 import type {Message} from "../llm/types.js";
 import {detectEnv} from "./env.js";
