@@ -2,13 +2,14 @@ import {basename, join} from "node:path";
 import {readdir} from "node:fs/promises";
 import {parse as parseYaml} from "yaml";
 import {z} from "zod";
-import type {AgentDefinition, AgentLoadIssue, AgentSource, LoadedCustomAgents,} from "./types.js";
+import type {AgentDefinition, AgentFileSource, AgentLoadIssue, AgentSource, LoadedCustomAgents,} from "./types.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./custom.js";
 import {
     ensureAgentDefinitionDirectory,
     readAgentDefinitionFile,
 } from "./fileAccess.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HostAgentContribution} from "../runtime/rootContributions.js";
 
 export const MAX_AGENT_FILES_PER_SOURCE = 64;
 const MAX_ACTIVE_CUSTOM_AGENTS = 64;
@@ -45,7 +46,7 @@ const customAgentFrontmatterSchema = z
     .passthrough();
 
 interface AgentDocumentInput {
-    source: Exclude<AgentSource, "builtin">;
+    source: AgentFileSource;
     path: string;
     raw: string;
 }
@@ -84,6 +85,22 @@ function boundAgentLoadIssue(issue: AgentLoadIssue): AgentLoadIssue {
             ? {field: boundText(issue.field, MAX_AGENT_ISSUE_FIELD_CHARS)}
             : {}),
     };
+}
+
+function issueForDefinition(
+    definition: Exclude<AgentDefinition, {source: "builtin"}>,
+    severity: AgentLoadIssue["severity"],
+    message: string,
+    field?: string
+): AgentLoadIssue {
+    const details = {
+        severity,
+        message,
+        ...(field ? {field} : {}),
+    };
+    return definition.source === "host"
+        ? {...details, source: "host", id: definition.id}
+        : {...details, source: definition.source, path: definition.path};
 }
 
 function splitFrontmatter(raw: string):
@@ -193,7 +210,7 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
 
 export async function loadAgentSourceDirectory(
     directory: string,
-    source: Exclude<AgentSource, "builtin">
+    source: AgentFileSource
 ): Promise<{definitions: AgentDefinition[]; issues: AgentLoadIssue[]}> {
     try {
         if (!await ensureAgentDefinitionDirectory(directory)) {
@@ -279,9 +296,10 @@ export async function loadAgentSourceDirectory(
     return {definitions, issues};
 }
 
-function mergeCustomAgentSources(
+export function mergeCustomAgentSources(
     userDefinitions: readonly AgentDefinition[],
     projectDefinitions: readonly AgentDefinition[],
+    hostDefinitions: readonly AgentDefinition[] = [],
     existingIssues: readonly AgentLoadIssue[] = []
 ): LoadedCustomAgents {
     const merged = new Map<string, AgentDefinition>();
@@ -295,10 +313,26 @@ function mergeCustomAgentSources(
         if (replaced) {
             issues.push({
                 source: "project",
-                path: definition.path ?? "<project agent>",
+                path: definition.source === "project"
+                    ? definition.path
+                    : "<project agent>",
                 severity: "warning",
                 field: "name",
-                message: `项目 Agent ${definition.agentType} 覆盖用户定义 ${replaced.path ? basename(replaced.path) : replaced.agentType}`,
+                message: `项目 Agent ${definition.agentType} 覆盖用户定义 ${replaced.source === "user" || replaced.source === "project" ? basename(replaced.path) : replaced.agentType}`,
+            });
+        }
+        merged.set(key, definition);
+    }
+    for (const definition of hostDefinitions) {
+        const key = normalizeAgentName(definition.agentType);
+        const replaced = merged.get(key);
+        if (replaced && definition.source === "host") {
+            issues.push({
+                source: "host",
+                id: definition.id,
+                severity: "warning",
+                field: "name",
+                message: `Host Agent ${definition.agentType} 覆盖 ${replaced.source} 定义`,
             });
         }
         merged.set(key, definition);
@@ -308,7 +342,9 @@ function mergeCustomAgentSources(
     if (definitions.length > MAX_ACTIVE_CUSTOM_AGENTS) {
         definitions = definitions
             .sort((left, right) => {
-                const priority = Number(right.source === "project") - Number(left.source === "project");
+                const rank = (source: AgentSource) =>
+                    source === "host" ? 3 : source === "project" ? 2 : 1;
+                const priority = rank(right.source) - rank(left.source);
                 return priority || left.agentType.localeCompare(right.agentType, "en");
             })
             .slice(0, MAX_ACTIVE_CUSTOM_AGENTS);
@@ -351,6 +387,9 @@ export function validateCustomAgentTools(
     const definitions: AgentDefinition[] = [];
     const issues = [...loaded.issues];
     for (const definition of loaded.definitions) {
+        if (definition.source === "builtin") {
+            throw new Error("LoadedCustomAgents 不能包含 builtin 定义");
+        }
         const forbidden = definition.allowedTools.filter((name) =>
             CUSTOM_AGENT_FORBIDDEN_TOOLS.has(name)
         );
@@ -359,22 +398,20 @@ export function validateCustomAgentTools(
         );
         if (forbidden.length > 0 || unknown.length > 0) {
             if (forbidden.length > 0) {
-                issues.push({
-                    source: definition.source === "project" ? "project" : "user",
-                    path: definition.path ?? "<custom agent>",
-                    severity: "error",
-                    field: "tools",
-                    message: `自定义 Agent 禁止使用工具: ${forbidden.join(", ")}`,
-                });
+                issues.push(issueForDefinition(
+                    definition,
+                    "error",
+                    `自定义 Agent 禁止使用工具: ${forbidden.join(", ")}`,
+                    "tools"
+                ));
             }
             if (unknown.length > 0) {
-                issues.push({
-                    source: definition.source === "project" ? "project" : "user",
-                    path: definition.path ?? "<custom agent>",
-                    severity: "error",
-                    field: "tools",
-                    message: `当前 Runtime 不存在工具: ${unknown.join(", ")}`,
-                });
+                issues.push(issueForDefinition(
+                    definition,
+                    "error",
+                    `当前 Runtime 不存在工具: ${unknown.join(", ")}`,
+                    "tools"
+                ));
             }
             continue;
         }
@@ -388,15 +425,31 @@ export function validateCustomAgentTools(
 
 export async function loadCustomAgentDefinitions(
     storage: PillarStorageLayout,
-    cwd: string
+    cwd: string,
+    sources: readonly AgentFileSource[] = ["user", "project"],
+    hostAgents: readonly HostAgentContribution[] = []
 ): Promise<LoadedCustomAgents> {
     const [user, project] = await Promise.all([
-        loadAgentSourceDirectory(join(storage.pillarHome, "agents"), "user"),
-        loadAgentSourceDirectory(join(cwd, ".pillar", "agents"), "project"),
+        sources.includes("user")
+            ? loadAgentSourceDirectory(join(storage.pillarHome, "agents"), "user")
+            : {definitions: [], issues: []},
+        sources.includes("project")
+            ? loadAgentSourceDirectory(join(cwd, ".pillar", "agents"), "project")
+            : {definitions: [], issues: []},
     ]);
     return mergeCustomAgentSources(
         user.definitions,
         project.definitions,
+        hostAgents.map((agent) => ({
+            agentType: agent.name,
+            whenToUse: agent.description,
+            systemPrompt: agent.systemPrompt,
+            allowedTools: [...new Set(agent.tools)],
+            model: agent.model ?? "inherit",
+            maxIterations: agent.maxIterations ?? DEFAULT_CUSTOM_AGENT_ITERATIONS,
+            source: "host" as const,
+            id: agent.name,
+        })),
         [...user.issues, ...project.issues]
     );
 }

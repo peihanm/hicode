@@ -109,8 +109,12 @@ function hookTrustSummaries(hooks: ResolvedHookSettings) {
                         ...(hook.shell ? {shell: hook.shell} : {}),
                     }
                     : {prompt: hook.prompt}),
-                source: matcher.source,
-                path: matcher.path,
+                ...(matcher.source === "host"
+                    ? {source: "host" as const, id: matcher.id}
+                    : {
+                        source: matcher.source,
+                        path: matcher.path,
+                    }),
             }))
         )
     );

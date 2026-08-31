@@ -70,6 +70,54 @@ function createFakeMcpManager(
 }
 
 describe("RootRuntimeResources", () => {
+  test("Root 把 Host Instructions、Skills 和 Agents 装入同一 snapshot", async () => {
+    await withTempProject(async (cwd) => {
+      const resources = await createRootRuntimeResources(
+        {
+          cwd,
+          settings: createTestSettings(),
+          fileSources: {
+            settings: [],
+            instructions: [],
+            skills: [],
+            agents: [],
+            mcp: [],
+            lsp: [],
+          },
+          rootContributions: {
+            instructions: [{id: "policy", content: "host instruction"}],
+            skills: [{
+              name: "host-skill",
+              description: "host skill",
+              content: "host skill content",
+            }],
+            agents: [{
+              name: "host-reviewer",
+              description: "host reviewer",
+              systemPrompt: "review the project",
+              tools: ["read_file"],
+            }],
+          },
+        },
+        {mcpManager: false}
+      );
+
+      expect(resources.instructions.files).toEqual([{
+        id: "policy",
+        scope: "host",
+        content: "host instruction",
+        truncated: false,
+      }]);
+      expect(resources.skills.find((skill) => skill.name === "host-skill"))
+        .toMatchObject({source: "host", id: "host-skill"});
+      expect(resources.subagents.get("host-reviewer")?.definition)
+        .toMatchObject({source: "host", id: "host-reviewer"});
+      await resources.subagents.reload();
+      expect(resources.subagents.has("host-reviewer")).toBe(true);
+      await resources.close();
+    });
+  });
+
   test("Memory 仅装配给 Root，并明确拒绝自定义子 Agent 请求", async () => {
     await withTempProject(async (cwd) => {
       const extractor: MemoryExtractor = {

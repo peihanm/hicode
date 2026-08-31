@@ -64,6 +64,39 @@ describe("MCP config and normalization", () => {
     });
   });
 
+  test("Host stdio 配置复用 Schema 并覆盖同名文件来源", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await writeFile(join(cwd, ".mcp.json"), JSON.stringify({
+        mcpServers: {shared: {command: "project-command"}},
+      }));
+      const loaded = await loadMcpConfig(
+        storage,
+        cwd,
+        ["project"],
+        [{
+          name: "shared",
+          command: "host-command",
+          args: ["serve"],
+        }]
+      );
+
+      expect(loaded.servers).toHaveLength(1);
+      expect(loaded.servers[0]).toEqual({
+        name: "shared",
+        source: "host",
+        id: "shared",
+        config: {
+          type: "stdio",
+          command: "host-command",
+          args: ["serve"],
+          disabled: false,
+          timeoutMs: 10_000,
+          toolTimeoutMs: 120_000,
+        },
+      });
+    });
+  });
+
   test("symlink 配置只产生 issue，不会加载目标 Server", async () => {
     await withTempProject(async (cwd, storage) => {
       await mkdir(storage.pillarHome, {recursive: true});

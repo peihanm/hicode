@@ -17,6 +17,8 @@ export interface LspServerConfig {
     workspaceFolder?: string;
 }
 
+export type LspConfigSource = "user";
+
 export type LspConfig = Record<string, LspServerConfig>;
 
 const serverSchema = z.object({
@@ -141,11 +143,11 @@ async function readUserConfig(path: string, cwd: string): Promise<LspConfig> {
 
 export async function loadLspConfig(
     storage: PillarStorageLayout,
-    cwd: string
+    cwd: string,
+    sources: readonly LspConfigSource[] = ["user"]
 ): Promise<LspConfig> {
-    const userConfig = await readUserConfig(
-        join(storage.pillarHome, "lsp.json"),
-        cwd
-    );
+    const userConfig = sources.includes("user")
+        ? await readUserConfig(join(storage.pillarHome, "lsp.json"), cwd)
+        : {};
     return {...builtinConfig(), ...userConfig};
 }

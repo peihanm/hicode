@@ -70,7 +70,7 @@ function mergeUserSources(
 ): Record<LLMProviderName, ModelSourceSettings> {
     const sources = cloneSources();
     for (const document of documents) {
-        if (document.source !== "user") continue;
+        if (document.source !== "user" && document.source !== "host") continue;
         for (const name of LLM_PROVIDER_NAMES) {
             const override = document.value.sources?.[name];
             if (!override || typeof override !== "object") continue;
@@ -162,11 +162,15 @@ function mergeHooks(
     for (const document of documents) {
         for (const [event, matchers] of Object.entries(document.value.hooks ?? {})) {
             const target = event as HookEvent;
-            resolved[target].push(...(matchers ?? []).map((matcher) => ({
-                ...matcher,
-                source: document.source,
-                path: document.path,
-            })));
+            resolved[target].push(...(matchers ?? []).map((matcher) =>
+                document.source === "host"
+                    ? {...matcher, source: "host" as const, id: document.id}
+                    : {
+                        ...matcher,
+                        source: document.source,
+                        path: document.path,
+                    }
+            ));
         }
     }
     return resolved;

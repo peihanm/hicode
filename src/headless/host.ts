@@ -13,6 +13,11 @@ import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
 import {buildHeadlessRunSummary, formatHeadlessProgress,} from "./output.js";
 import {loadHeadlessSession} from "./session.js";
 import type {HeadlessOptions, HeadlessOutputFormat, HeadlessRunSummary,} from "./types.js";
+import {parse} from "node:path";
+import {
+    CLI_FILE_SOURCES,
+    createPillarRootConfiguration,
+} from "../runtime/rootConfiguration.js";
 
 interface HeadlessRunnerDependencies {
     createResources: typeof createRootRuntimeResources;
@@ -47,10 +52,15 @@ export function createHeadlessRunner(
         const collector = new HeadlessEventCollector();
         const fallbackController = createTurnAbortController();
         const activeSignal = signal ?? fallbackController.signal;
-        const resources = await dependencies.createResources({
-            storage: options.storage,
+        const configuration = createPillarRootConfiguration({
             cwd: options.cwd,
+            workspaceBoundary: parse(options.cwd).root,
+            storage: options.storage,
             settings: options.settings,
+            fileSources: CLI_FILE_SOURCES,
+        });
+        const resources = await dependencies.createResources({
+            configuration,
             signal: activeSignal,
             headless: true,
         });

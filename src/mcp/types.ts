@@ -5,9 +5,10 @@ import type {PillarStorageLayout} from "../persistence/index.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 export type McpConfigSource = "user" | "project";
+export type McpSource = McpConfigSource | "host";
 export type McpApprovalDecision = "once" | "always" | "deny";
 
-interface McpStdioServerConfig {
+export interface McpStdioServerConfig {
     type: "stdio";
     command: string;
     args: string[];
@@ -17,19 +18,36 @@ interface McpStdioServerConfig {
     toolTimeoutMs: number;
 }
 
-export interface LoadedMcpServerConfig {
+export interface HostMcpServerContribution {
     name: string;
-    source: McpConfigSource;
-    path: string;
+    type?: "stdio";
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    disabled?: boolean;
+    timeoutMs?: number;
+    toolTimeoutMs?: number;
+}
+
+interface LoadedMcpServerContent {
+    name: string;
     config: McpStdioServerConfig;
 }
 
-export interface McpConfigIssue {
-    source: McpConfigSource;
-    path: string;
+export type LoadedMcpServerConfig = LoadedMcpServerContent & (
+    | {source: McpConfigSource; path: string}
+    | {source: "host"; id: string}
+);
+
+interface McpConfigIssueDetails {
     serverName?: string;
     message: string;
 }
+
+export type McpConfigIssue = McpConfigIssueDetails & (
+    | {source: McpConfigSource; path: string}
+    | {source: "host"; id: string}
+);
 
 export interface LoadedMcpConfig {
     servers: LoadedMcpServerConfig[];
@@ -46,7 +64,7 @@ type McpServerStatus =
 
 export interface McpServerSnapshot {
     name: string;
-    source: McpConfigSource;
+    source: McpSource;
     status: McpServerStatus;
     toolCount: number;
     error?: string;
@@ -81,6 +99,8 @@ export interface McpManagerOptions {
     childEnvironment: ChildProcessEnvironment;
     signal?: AbortSignal;
     headless?: boolean;
+    sources?: readonly McpConfigSource[];
+    hostServers?: readonly HostMcpServerContribution[];
     requestApproval?: (
         request: McpApprovalRequest
     ) => Promise<McpApprovalDecision>;

@@ -77,14 +77,28 @@ export async function runEvalCase(
         const hostConfig = loadPillarHostConfig({
             cwd: prepared.paths.workspace,
             pillarHome: prepared.paths.pillarHome,
-            source: options.source,
-            model: options.model,
+            fileSources: {
+                settings: ["user", "project", "local"],
+                instructions: ["project", "local"],
+                skills: ["project"],
+                agents: ["project"],
+                mcp: [],
+                lsp: [],
+            },
+            settingsOverrides: {
+                models: {
+                    primary: {
+                        source: options.source,
+                        model: options.model,
+                    },
+                },
+            },
         });
         resolvedSource =
-            hostConfig.pillarOptions.settings.models.primary.source;
-        resolvedModel = hostConfig.pillarOptions.settings.models.primary.model;
+            hostConfig.configuration.settings.models.primary.source;
+        resolvedModel = hostConfig.configuration.settings.models.primary.model;
         pillar = await Pillar.create({
-            ...hostConfig.pillarOptions,
+            configuration: hostConfig.configuration,
             host: {
                 onInteraction: async (request) => {
                     const response = decideEvalInteraction(request);

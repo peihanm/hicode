@@ -1,8 +1,6 @@
 import type {McpServerSnapshot} from "../mcp/index.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {SandboxStatus} from "../sandbox/types.js";
-import type {ResolvedPillarSettings} from "../settings/index.js";
 import type {
     InteractionRequest,
     InteractionResponse,
@@ -12,6 +10,7 @@ import type {
 } from "./protocol.js";
 import type {StopReason} from "../agent/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
+import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
 
 export interface HostDiagnostic {
     severity: "info" | "warning" | "error";
@@ -37,9 +36,7 @@ export interface PillarHost {
 }
 
 export interface PillarOptions {
-    cwd: string;
-    storage: PillarStorageLayout;
-    settings: ResolvedPillarSettings;
+    configuration: PillarRootConfiguration;
     host?: PillarHost;
 }
 

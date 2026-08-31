@@ -83,7 +83,9 @@ class McpManager implements McpManagerLike {
         this.initialized = true;
         const loaded = await loadMcpConfig(
             this.options.storage,
-            this.options.cwd
+            this.options.cwd,
+            this.options.sources ?? ["user", "project"],
+            this.options.hostServers ?? []
         );
         this.connections = loaded.servers.map((server) => ({
             server,
@@ -98,19 +100,33 @@ class McpManager implements McpManagerLike {
         for (const issue of loaded.issues) {
             const name = issue.serverName ?? `config:${issue.source}`;
             this.connections.push({
-                server: {
-                    name,
-                    source: issue.source,
-                    path: issue.path,
-                    config: {
+                server: issue.source === "host"
+                    ? {
+                        name,
+                        source: "host",
+                        id: issue.id,
+                        config: {
+                            type: "stdio",
+                            command: "",
+                            args: [],
+                            disabled: true,
+                            timeoutMs: 10_000,
+                            toolTimeoutMs: 120_000,
+                        },
+                    }
+                    : {
+                        name,
+                        source: issue.source,
+                        path: issue.path,
+                        config: {
                         type: "stdio",
                         command: "",
                         args: [],
                         disabled: true,
                         timeoutMs: 10_000,
-                        toolTimeoutMs: 120_000
+                        toolTimeoutMs: 120_000,
+                        },
                     },
-                },
                 snapshot: {name, source: issue.source, status: "failed", toolCount: 0, error: issue.message},
                 tools: [],
             });
@@ -122,7 +138,7 @@ class McpManager implements McpManagerLike {
             if (connection.snapshot.status === "disabled" || connection.snapshot.status === "failed") continue;
             if (!(await this.isApproved(connection.server))) {
                 connection.snapshot.status = "pending-approval";
-                connection.snapshot.error = "项目 MCP Server 尚未批准";
+                connection.snapshot.error = "MCP Server 尚未批准";
                 continue;
             }
             active.push(connection);

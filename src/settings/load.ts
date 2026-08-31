@@ -1,8 +1,13 @@
 import {join} from "node:path";
 import type {PillarStorageLayout} from "../persistence/index.js";
-import {loadSettingsDocuments} from "./document.js";
+import {loadSettingsDocuments, parseHostSettingsDocument} from "./document.js";
 import {resolvePillarSettings} from "./resolve.js";
-import type {PillarSettingsOverrides, LoadedPillarSettings,} from "./types.js";
+import type {
+    PillarSettingsOverrides,
+    PillarSettingsFile,
+    LoadedPillarSettings,
+    SettingsFileSource,
+} from "./types.js";
 
 export function loadPillarSettings(
     cwd: string = process.cwd(),
@@ -16,11 +21,21 @@ export function loadPillarSettings(
 export function loadPillarSettingsFromLayout(
     storage: PillarStorageLayout,
     cwd: string,
-    overrides: PillarSettingsOverrides = {}
+    overrides: PillarSettingsOverrides = {},
+    sources: readonly SettingsFileSource[] = ["user", "project", "local"],
+    hostSettings?: PillarSettingsFile
 ): LoadedPillarSettings {
     const loaded = loadSettingsDocuments(cwd, {
         userSettingsPath: join(storage.pillarHome, "settings.json"),
+        sources,
     });
-    const resolved = resolvePillarSettings(loaded.documents, overrides);
-    return {...resolved, ...loaded};
+    const host = hostSettings === undefined
+        ? {issues: []}
+        : parseHostSettingsDocument(hostSettings);
+    const documents = host.document
+        ? [...loaded.documents, host.document]
+        : loaded.documents;
+    const issues = [...loaded.issues, ...host.issues];
+    const resolved = resolvePillarSettings(documents, overrides);
+    return {...resolved, documents, issues};
 }

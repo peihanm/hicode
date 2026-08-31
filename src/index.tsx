@@ -10,6 +10,11 @@ import {TerminalCursorAnchorProvider} from "./ui/input/terminalCursorContext.js"
 import {TerminalSizeProvider} from "./ui/terminalSize.js";
 import {createPillarStorageLayout} from "./persistence/index.js";
 import {createChildProcessEnvironment} from "./runtime/childEnvironment.js";
+import {parse} from "node:path";
+import {
+    CLI_FILE_SOURCES,
+    createPillarRootConfiguration,
+} from "./runtime/rootConfiguration.js";
 
 let cliOptions: CliOptions;
 try {
@@ -45,9 +50,17 @@ try {
 for (const issue of loadedSettings.issues) {
     const color = issue.severity === "error" ? "\x1b[31m" : "\x1b[33m";
     console.error(
-        `${color}Settings ${issue.severity}: ${issue.path}${issue.field ? ` (${issue.field})` : ""}: ${issue.message}\x1b[0m`
+        `${color}Settings ${issue.severity}: ${issue.source === "host" ? issue.id : issue.path}${issue.field ? ` (${issue.field})` : ""}: ${issue.message}\x1b[0m`
     );
 }
+
+const configuration = createPillarRootConfiguration({
+    cwd,
+    workspaceBoundary: parse(cwd).root,
+    storage,
+    settings: loadedSettings.values,
+    fileSources: CLI_FILE_SOURCES,
+});
 
 if (
     cliOptions.rewindCheckpointId &&
@@ -84,9 +97,7 @@ if (
         <TerminalSizeProvider>
             <TerminalCursorAnchorProvider enabled>
                 <Root
-                    storage={storage}
-                    cwd={cwd}
-                    settings={loadedSettings.values}
+                    configuration={configuration}
                     initialPermissionMode={cliOptions.permissionMode}
                     resumeMode={cliOptions.resumeMode}
                 />

@@ -6,12 +6,14 @@ import {
     loadPillarSettings,
     resolvePillarSettings,
     type LoadedSettingsDocument,
+    type SettingsFileSource,
+    type PillarSettingsFile,
 } from "../../src/settings/index.js";
 import {DEFAULT_LLM_PROVIDER} from "../../src/llm/providerRegistry.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 function document(
-    source: LoadedSettingsDocument["source"],
+    source: SettingsFileSource,
     value: LoadedSettingsDocument["value"]
 ): LoadedSettingsDocument {
     return {source, value, path: `/${source}/settings.json`};
@@ -317,12 +319,12 @@ describe("Unified Settings", () => {
                 document("project", {
                     mode: "plan",
                     permissions: {defaultMode: "acceptEdits"},
-                }),
+                } as PillarSettingsFile),
             ]).values.permissions.defaultMode
         ).toBe("acceptEdits");
         expect(
             resolvePillarSettings([
-                document("project", {mode: "plan"}),
+                document("project", {mode: "plan"} as PillarSettingsFile),
             ]).values.permissions.defaultMode
         ).toBe("default");
     });
@@ -357,7 +359,7 @@ describe("Unified Settings", () => {
         expect(resolved.values.hooks.PreToolUse.map((item) => ({
             matcher: item.matcher,
             source: item.source,
-            path: item.path,
+            path: item.source === "host" ? item.id : item.path,
         }))).toEqual([
             {
                 matcher: "read_file",

@@ -45,4 +45,16 @@ export type {
 } from "./protocol.js";
 
 export type {PillarStorageLayout} from "../persistence/index.js";
-export type {ResolvedPillarSettings} from "../settings/index.js";
+export type {
+    PillarSettingsFile,
+    ResolvedPillarSettings,
+} from "../settings/index.js";
+export type {
+    PillarFileSources,
+    PillarRootConfiguration,
+    PillarRootContributions,
+    HostInstructionContribution,
+    HostSkillContribution,
+    HostAgentContribution,
+    HostMcpServerContribution,
+} from "../runtime/rootConfiguration.js";

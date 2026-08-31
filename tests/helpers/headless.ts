@@ -79,7 +79,24 @@ export function runHeadlessForTest(
     createResources: async (resourceOptions) => {
       const resources = test.createResources
         ? await test.createResources(resourceOptions)
-        : await createRootRuntimeResourcesForTest(resourceOptions, {
+        : await createRootRuntimeResourcesForTest({
+            cwd: resourceOptions.configuration.cwd,
+            workspaceBoundary:
+              resourceOptions.configuration.workspaceBoundary,
+            storage: resourceOptions.configuration.storage,
+            settings: resourceOptions.configuration.settings,
+            fileSources: resourceOptions.configuration.fileSources,
+            ...(resourceOptions.signal ? {signal: resourceOptions.signal} : {}),
+            ...(resourceOptions.headless !== undefined
+              ? {headless: resourceOptions.headless}
+              : {}),
+            ...(resourceOptions.requestMcpApproval
+              ? {requestMcpApproval: resourceOptions.requestMcpApproval}
+              : {}),
+            ...(resourceOptions.requestHookTrust
+              ? {requestHookTrust: resourceOptions.requestHookTrust}
+              : {}),
+          }, {
             mcpManager: test.mcpManager,
             createLspManager: test.createLspManager,
             agentRuntime,

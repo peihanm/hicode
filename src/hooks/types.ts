@@ -8,7 +8,10 @@ export const HOOK_EVENTS = [
 ] as const;
 
 export type HookEvent = (typeof HOOK_EVENTS)[number];
-type HookConfigSource = "user" | "project" | "local";
+type HookConfigSource = "user" | "project" | "local" | "host";
+type HookConfigurationOrigin =
+    | {source: Exclude<HookConfigSource, "host">; path: string}
+    | {source: "host"; id: string};
 
 interface ConditionalHookSettings {
     /**
@@ -43,17 +46,14 @@ export type HooksSettingsFile = Partial<
     Record<HookEvent, HookMatcherSettings[]>
 >;
 
-export interface ResolvedHookMatcher extends HookMatcherSettings {
-    source: HookConfigSource;
-    path: string;
-}
+export type ResolvedHookMatcher = HookMatcherSettings & HookConfigurationOrigin;
 
 export type ResolvedHookSettings = Record<
     HookEvent,
     readonly ResolvedHookMatcher[]
 >;
 
-interface HookTrustSummary {
+type HookTrustSummary = {
     event: HookEvent;
     type: HookSettings["type"];
     matcher?: string;
@@ -62,9 +62,7 @@ interface HookTrustSummary {
     once?: boolean;
     command?: string;
     prompt?: string;
-    source: HookConfigSource;
-    path: string;
-}
+} & HookConfigurationOrigin;
 
 export type HookTrustDecision = "once" | "always" | "deny";
 

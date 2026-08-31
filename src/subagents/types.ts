@@ -6,10 +6,11 @@ import type {SubagentModelOverride} from "./model.js";
 
 type AgentName = string;
 export type AgentType = AgentName;
-export type AgentSource = "builtin" | "user" | "project";
+export type AgentSource = "builtin" | "user" | "project" | "host";
+export type AgentFileSource = Exclude<AgentSource, "builtin" | "host">;
 export type VerificationVerdict = "PASS" | "FAIL" | "PARTIAL";
 
-export interface AgentDefinition {
+interface AgentDefinitionContent {
     agentType: AgentName;
     whenToUse: string;
     systemPrompt: string;
@@ -17,17 +18,24 @@ export interface AgentDefinition {
     model: SubagentModelOverride;
     // 未设置时继承主运行时的安全上限；内置 Explore 不声明专属上限。
     maxIterations?: number;
-    source: AgentSource;
-    path?: string;
 }
 
-export interface AgentLoadIssue {
-    source: Exclude<AgentSource, "builtin">;
-    path: string;
+export type AgentDefinition = AgentDefinitionContent & (
+    | {source: "builtin"}
+    | {source: "user" | "project"; path: string}
+    | {source: "host"; id: string}
+);
+
+interface AgentLoadIssueDetails {
     severity: "warning" | "error";
     field?: string;
     message: string;
 }
+
+export type AgentLoadIssue = AgentLoadIssueDetails & (
+    | {source: "user" | "project"; path: string}
+    | {source: "host"; id: string}
+);
 
 export interface LoadedCustomAgents {
     definitions: readonly AgentDefinition[];

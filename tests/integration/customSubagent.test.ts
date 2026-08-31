@@ -18,7 +18,14 @@ import type {McpManagerLike} from "../../src/mcp/types.js";
 import {attachSubagentLauncher} from "../helpers/subagentLauncher.js";
 
 function customDefinition(
-    overrides: Partial<AgentDefinition> = {}
+    overrides: Partial<Pick<AgentDefinition,
+        | "agentType"
+        | "whenToUse"
+        | "systemPrompt"
+        | "allowedTools"
+        | "model"
+        | "maxIterations"
+    >> = {}
 ): AgentDefinition {
     return {
         agentType: "project-reviewer",

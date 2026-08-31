@@ -25,7 +25,11 @@ function definitionFingerprint(definition: AgentDefinition): string {
         model: definition.model,
         maxIterations: definition.maxIterations,
         source: definition.source,
-        path: definition.path,
+        origin: definition.source === "host"
+            ? definition.id
+            : definition.source === "builtin"
+                ? "builtin"
+                : definition.path,
     });
 }
 

@@ -57,6 +57,7 @@ type EditField = typeof EDIT_FIELDS[number];
 
 function sourceLabel(definition: AgentDefinition): string {
     if (definition.source === "builtin") return "内置 · 只读";
+    if (definition.source === "host") return "Host · 只读";
     return definition.source === "project" ? "项目" : "个人";
 }
 
@@ -207,7 +208,7 @@ export function AgentsDialog({
         setSelected(definition);
         setStored(undefined);
         setStage("busy");
-        if (definition.source === "builtin") {
+        if (definition.source === "builtin" || definition.source === "host") {
             setStage("detail");
             return;
         }
@@ -332,7 +333,7 @@ export function AgentsDialog({
                         <Text bold>Agent 加载问题</Text>
                         {catalog.issues.map((issue, index) => (
                             <Box
-                                key={`${issue.path}:${issue.field ?? ""}:${index}`}
+                                key={`${issue.source === "host" ? issue.id : issue.path}:${issue.field ?? ""}:${index}`}
                                 flexDirection="column"
                             >
                                 <Text
@@ -340,7 +341,7 @@ export function AgentsDialog({
                                         ? COLORS.error
                                         : COLORS.warning}
                                 >
-                                    {issue.severity.toUpperCase()} · {issue.source} · {issue.path}
+                                    {issue.severity.toUpperCase()} · {issue.source} · {issue.source === "host" ? issue.id : issue.path}
                                     {issue.field ? ` · ${issue.field}` : ""}
                                 </Text>
                                 <Text color={COLORS.dim}>{issue.message}</Text>
@@ -457,7 +458,7 @@ export function AgentsDialog({
                         </Text>
                         <Text color={COLORS.dim}>工具 · {selected.allowedTools.join(", ")}</Text>
                         <SelectInput
-                            items={selected.source === "builtin"
+                            items={selected.source === "builtin" || selected.source === "host"
                                 ? [{label: "返回", value: "back"}]
                                 : [
                                     {label: "编辑", value: "edit"},

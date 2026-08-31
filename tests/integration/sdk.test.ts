@@ -18,6 +18,7 @@ import {
 } from "../helpers/fakeLLM.js";
 import {
     createTestRuntimeResources,
+    createTestRootConfiguration,
     createTestSettings,
 } from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -62,9 +63,11 @@ describe("TypeScript SDK", () => {
     test("公开 Pillar 生命周期可以创建 Thread 并幂等关闭", async () => {
         await withTempProject(async (cwd, storage) => {
             const pillar = await Pillar.create({
-                cwd,
-                storage,
-                settings: createTestSettings(),
+                configuration: createTestRootConfiguration(
+                    cwd,
+                    createTestSettings(),
+                    storage
+                ),
             });
             const thread = await pillar.startThread({
                 permissionMode: "acceptEdits",
@@ -116,9 +119,11 @@ describe("TypeScript SDK", () => {
             const interactionKinds: string[] = [];
 
             const pillar = await Pillar.create({
-                cwd,
-                storage,
-                settings,
+                configuration: createTestRootConfiguration(
+                    cwd,
+                    settings,
+                    storage
+                ),
                 host: {
                     async onInteraction(request) {
                         interactionKinds.push(request.kind);

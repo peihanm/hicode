@@ -9,13 +9,13 @@ import {
     Pillar,
     PillarSDKError,
     type InteractionRequest,
-    type LoadPillarHostConfigOptions,
+    type ResolvedPillarSettings,
     type ThreadEvent,
     type TurnOptions,
     type TurnResult,
 } from "pillar/sdk";
 
-type ModelSource = NonNullable<LoadPillarHostConfigOptions["source"]>;
+type ModelSource = ResolvedPillarSettings["models"]["primary"]["source"];
 type PermissionMode = NonNullable<TurnOptions["permissionMode"]>;
 type OutputFormat = "text" | "json";
 
@@ -55,12 +55,30 @@ async function main(): Promise<void> {
     const hostConfig = loadPillarHostConfig({
         cwd: options.cwd,
         pillarHome: options.pillarHome,
-        model: options.model,
-        source: options.source,
+        fileSources: {
+            settings: ["user", "project", "local"],
+            instructions: ["project", "local"],
+            skills: ["project"],
+            agents: ["project"],
+            mcp: [],
+            lsp: [],
+        },
+        ...(options.model || options.source
+            ? {
+                settingsOverrides: {
+                    models: {
+                        primary: {
+                            ...(options.model ? {model: options.model} : {}),
+                            ...(options.source ? {source: options.source} : {}),
+                        },
+                    },
+                },
+            }
+            : {}),
     });
     for (const issue of hostConfig.issues) {
         process.stderr.write(
-            `[settings:${issue.severity}] ${issue.path}${issue.field ? ` (${issue.field})` : ""}: ${issue.message}\n`
+            `[settings:${issue.severity}] ${issue.source === "host" ? issue.id : issue.path}${issue.field ? ` (${issue.field})` : ""}: ${issue.message}\n`
         );
     }
 
@@ -78,7 +96,7 @@ async function main(): Promise<void> {
     let pillar: Pillar | undefined;
     try {
         pillar = await Pillar.create({
-            ...hostConfig.pillarOptions,
+            configuration: hostConfig.configuration,
             host: {
                 onInteraction: async (request) =>
                     decideInteraction(request, options.allowInteractions),
@@ -191,7 +209,7 @@ Options:
       --cwd <path>                Workspace (default: process cwd)
       --pillar-home <path>        Host data root (default: ~/.pillar)
       --env-file <path>           Explicit env file; values override current env
-      --source <source>           glm | qwen | deepseek
+      --source <source>           glm | qwen | deepseek | codex
       --model <model>             Primary model override
       --permission-mode <mode>    default | acceptEdits | bypassPermissions | plan | dontAsk
       --resume <sessionId>        Resume an existing SDK Thread
@@ -293,12 +311,17 @@ function optionalInteger(
 
 function optionalModelSource(value: string | undefined): ModelSource | undefined {
     if (value === undefined) return undefined;
-    if (value === "glm" || value === "qwen" || value === "deepseek") {
+    if (
+        value === "glm" ||
+        value === "qwen" ||
+        value === "deepseek" ||
+        value === "codex"
+    ) {
         return value;
     }
     throw new PillarSDKError(
         "invalid_runner_option",
-        "--source 必须是 glm | qwen | deepseek"
+        "--source 必须是 glm | qwen | deepseek | codex"
     );
 }
 

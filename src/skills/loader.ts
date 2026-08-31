@@ -13,23 +13,52 @@
 
 import {existsSync, readdirSync, readFileSync, statSync} from "node:fs";
 import {join} from "node:path";
-import {homedir} from "node:os";
-import type {LoadedSkill} from "./types.js";
+import type {PillarStorageLayout} from "../persistence/index.js";
+import type {LoadedSkill, SkillFileSource} from "./types.js";
 import {parseFrontmatter} from "./frontmatter.js";
 import {loadBundledSkills} from "./bundled.js";
+import type {HostSkillContribution} from "../runtime/rootContributions.js";
 
-export function loadSkills(cwd: string): LoadedSkill[] {
-    const userDir = join(homedir(), ".pillar", "skills");
+export function loadSkills({
+    storage,
+    cwd,
+    sources,
+    hostSkills = [],
+}: {
+    storage: PillarStorageLayout;
+    cwd: string;
+    sources: readonly SkillFileSource[];
+    hostSkills?: readonly HostSkillContribution[];
+}): LoadedSkill[] {
+    const userDir = join(storage.pillarHome, "skills");
     const projectDir = join(cwd, ".pillar", "skills");
 
     // 目录不存在时静默返回空数组（用户没装 skill 不报错）
-    const userSkills = loadSkillsFromDir(userDir, "user");
-    const projectSkills = loadSkillsFromDir(projectDir, "project");
+    const userSkills = sources.includes("user")
+        ? loadSkillsFromDir(userDir, "user")
+        : [];
+    const projectSkills = sources.includes("project")
+        ? loadSkillsFromDir(projectDir, "project")
+        : [];
     const bundledSkills = loadBundledSkills();
 
-    // 合并：bundled → user → project，后者覆盖前者同名
+    const contributedSkills: LoadedSkill[] = hostSkills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        ...(skill.whenToUse ? {whenToUse: skill.whenToUse} : {}),
+        content: skill.content,
+        source: "host",
+        id: skill.name,
+    }));
+
+    // 合并：bundled → user → project → host，后者覆盖前者同名
     const merged = new Map<string, LoadedSkill>();
-    for (const s of [...bundledSkills, ...userSkills, ...projectSkills]) {
+    for (const s of [
+        ...bundledSkills,
+        ...userSkills,
+        ...projectSkills,
+        ...contributedSkills,
+    ]) {
         merged.set(s.name, s);
     }
     return [...merged.values()];

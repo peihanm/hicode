@@ -65,16 +65,21 @@ export function createSubagentRegistry(
     }
 
     for (const definition of custom.definitions) {
+        if (definition.source === "builtin") {
+            throw new Error("LoadedCustomAgents 不能包含 builtin 定义");
+        }
         const key = normalizeAgentName(definition.agentType);
         const existing = registrationMap.get(key);
         if (existing?.definition.source === "builtin") {
-            issues.push({
-                source: definition.source === "project" ? "project" : "user",
-                path: definition.path ?? "<custom agent>",
+            const details = {
                 severity: "error",
                 field: "name",
                 message: `自定义 Agent 不能覆盖内置类型 ${existing.definition.agentType}`,
-            });
+            } as const;
+            issues.push(definition.source === "host"
+                ? {...details, source: "host", id: definition.id}
+                : {...details, source: definition.source, path: definition.path}
+            );
             continue;
         }
         const runtimeDefinition = Object.freeze({

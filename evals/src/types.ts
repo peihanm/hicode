@@ -2,7 +2,7 @@ import type {
     HostDiagnostic,
     InteractionRequest,
     InteractionResponse,
-    LoadPillarHostConfigOptions,
+    ResolvedPillarSettings,
     ThreadEvent,
     ThreadInfo,
     TurnOptions,
@@ -17,7 +17,7 @@ export type EvalFailureKind =
     | "runtime"
     | "verifier";
 export type EvalModelSource = NonNullable<
-    LoadPillarHostConfigOptions["source"]
+    ResolvedPillarSettings["models"]["primary"]["source"]
 >;
 export type EvalPermissionMode = NonNullable<TurnOptions["permissionMode"]>;
 

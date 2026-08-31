@@ -44,7 +44,9 @@ export function HookApprovalDialog({
                             {hook.condition ? `if: ${hook.condition} · ` : ""}
                             {hook.shell ? `shell: ${hook.shell} · ` : ""}
                             {hook.once ? "once · " : ""}
-                            {hook.source}: {hook.path}
+                            {hook.source}: {hook.source === "host"
+                                ? hook.id
+                                : hook.path}
                         </Text>
                     </Box>
                 ))}

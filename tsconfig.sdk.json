@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.production.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "types": ["node"]
+  },
+  "include": ["src/sdk/index.ts"]
+}

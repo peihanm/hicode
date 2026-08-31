@@ -5,4 +5,6 @@ export type {
     LoadedPillarSettings,
     LoadedSettingsDocument,
     ResolvedPillarSettings,
+    SettingsFileSource,
+    PillarSettingsFile,
 } from "./types.js";

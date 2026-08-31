@@ -121,7 +121,7 @@ export function createAgentDefinitionStore(
         const definition = loaded.definitions.find((candidate) =>
             normalizeAgentName(candidate.agentType) === normalizeAgentName(name)
         );
-        if (!definition?.path) {
+        if (!definition || (definition.source !== "user" && definition.source !== "project")) {
             throw new Error(`找不到 ${scope} Agent: ${name}`);
         }
         if (!isInside(root, definition.path)) {
@@ -135,7 +135,10 @@ export function createAgentDefinitionStore(
         name: string
     ): Promise<StoredAgentFile> => {
         const definition = await findDefinition(scope, name);
-        const path = definition.path!;
+        if (definition.source !== "user" && definition.source !== "project") {
+            throw new Error(`找不到 ${scope} Agent: ${name}`);
+        }
+        const path = definition.path;
         const raw = await readAgentDefinitionFile(path);
         return {
             scope,

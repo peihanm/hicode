@@ -154,7 +154,11 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
             sourceGitRoot: record.sourceGitRoot,
             worktreePath: record.path,
         });
-        const instructions = await loadProjectInstructions(mapped.cwd, mapped.root);
+        const instructions = await loadProjectInstructions({
+            cwd: mapped.cwd,
+            boundary: mapped.root,
+            sources: ["project", "local"],
+        });
         return {
             ...parentContext,
             cwd: mapped.cwd,

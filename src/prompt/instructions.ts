@@ -1,20 +1,27 @@
-import {homedir} from "node:os";
 import {Buffer} from "node:buffer";
 import {dirname, isAbsolute, join, parse, relative, resolve} from "node:path";
 import {constants} from "node:fs";
 import {open} from "node:fs/promises";
+import type {HostInstructionContribution} from "../runtime/rootContributions.js";
 
 const MAX_INSTRUCTION_FILE_CHARS = 40_000;
 const MAX_INSTRUCTION_TOTAL_CHARS = 120_000;
 
-type InstructionScope = "user" | "project" | "local";
+export type InstructionFileSource = "user" | "project" | "local";
 
-export interface LoadedInstructionFile {
-    path: string;
-    scope: InstructionScope;
-    content: string;
-    truncated: boolean;
-}
+export type LoadedInstructionFile =
+    | {
+        path: string;
+        scope: InstructionFileSource;
+        content: string;
+        truncated: boolean;
+    }
+    | {
+        id: string;
+        scope: "host";
+        content: string;
+        truncated: boolean;
+    };
 
 export interface ProjectInstructions {
     files: readonly LoadedInstructionFile[];
@@ -28,13 +35,15 @@ export const EMPTY_PROJECT_INSTRUCTIONS: ProjectInstructions = Object.freeze({
 
 interface InstructionCandidate {
     path: string;
-    scope: InstructionScope;
+    scope: InstructionFileSource;
 }
 
 interface ProjectInstructionLoaderConfig {
-    homeDir?: string;
+    userPillarHome?: string;
+    sources?: readonly InstructionFileSource[];
     maxFileChars?: number;
     maxTotalChars?: number;
+    hostInstructions?: readonly HostInstructionContribution[];
 }
 
 async function readInstructionFile(
@@ -79,18 +88,27 @@ function discoveryDirectories(cwd: string, boundary?: string): string[] {
 
 function instructionCandidates(
     cwd: string,
-    homeDir: string,
+    userPillarHome: string | undefined,
+    sources: readonly InstructionFileSource[],
     boundary?: string
 ): InstructionCandidate[] {
-    const candidates: InstructionCandidate[] = [
-        {path: join(homeDir, ".pillar", "CODE.md"), scope: "user"},
-    ];
+    const candidates: InstructionCandidate[] = [];
+    if (sources.includes("user") && userPillarHome) {
+        candidates.push({path: join(userPillarHome, "CODE.md"), scope: "user"});
+    }
     for (const directory of discoveryDirectories(cwd, boundary)) {
-        candidates.push(
-            {path: join(directory, "CODE.md"), scope: "project"},
-            {path: join(directory, ".pillar", "CODE.md"), scope: "project"},
-            {path: join(directory, "CODE.local.md"), scope: "local"}
-        );
+        if (sources.includes("project")) {
+            candidates.push(
+                {path: join(directory, "CODE.md"), scope: "project"},
+                {path: join(directory, ".pillar", "CODE.md"), scope: "project"}
+            );
+        }
+        if (sources.includes("local")) {
+            candidates.push({
+                path: join(directory, "CODE.local.md"),
+                scope: "local",
+            });
+        }
     }
     return candidates;
 }
@@ -119,9 +137,13 @@ function boundedFileContent(
 export function createProjectInstructionLoader(
     config: ProjectInstructionLoaderConfig = {}
 ) {
-    const homeDir = resolve(config.homeDir ?? homedir());
+    const userPillarHome = config.userPillarHome
+        ? resolve(config.userPillarHome)
+        : undefined;
+    const sources = config.sources ?? ["project", "local"];
     const maxFileChars = config.maxFileChars ?? MAX_INSTRUCTION_FILE_CHARS;
     const maxTotalChars = config.maxTotalChars ?? MAX_INSTRUCTION_TOTAL_CHARS;
+    const hostInstructions = config.hostInstructions ?? [];
 
     return async function loadProjectInstructions(
         cwd: string,
@@ -131,7 +153,12 @@ export function createProjectInstructionLoader(
         const seen = new Set<string>();
         const discovered: LoadedInstructionFile[] = [];
 
-        for (const candidate of instructionCandidates(cwd, homeDir, boundary)) {
+        for (const candidate of instructionCandidates(
+            cwd,
+            userPillarHome,
+            sources,
+            boundary
+        )) {
             const path = resolve(candidate.path);
             if (seen.has(path)) continue;
             seen.add(path);
@@ -160,6 +187,13 @@ export function createProjectInstructionLoader(
             }
         }
 
+        discovered.push(...hostInstructions.map((instruction) => ({
+            id: instruction.id,
+            scope: "host" as const,
+            content: instruction.content,
+            truncated: false,
+        })));
+
         let remaining = Math.max(0, maxTotalChars);
         const budgeted = new Map<number, LoadedInstructionFile>();
         for (let index = discovered.length - 1; index >= 0; index--) {
@@ -172,12 +206,10 @@ export function createProjectInstructionLoader(
             if (remaining > 0) {
                 const bounded = boundedFileContent(file.content, remaining);
                 budgeted.set(index, {...file, ...bounded, truncated: true});
-                issues.push(
-                    `${file.path} 因 CODE.md 总预算 ${maxTotalChars} 字符被进一步截断`
-                );
+                issues.push(`${instructionLabel(file)} 因指令总预算 ${maxTotalChars} 字符被进一步截断`);
                 remaining = 0;
             } else {
-                issues.push(`${file.path} 因 CODE.md 总预算 ${maxTotalChars} 字符未注入`);
+                issues.push(`${instructionLabel(file)} 因指令总预算 ${maxTotalChars} 字符未注入`);
             }
         }
 
@@ -191,7 +223,25 @@ export function createProjectInstructionLoader(
     };
 }
 
-export const loadProjectInstructions = createProjectInstructionLoader();
+export function loadProjectInstructions({
+    cwd,
+    boundary,
+    userPillarHome,
+    sources,
+    hostInstructions,
+}: {
+    cwd: string;
+    boundary: string;
+    userPillarHome?: string;
+    sources: readonly InstructionFileSource[];
+    hostInstructions?: readonly HostInstructionContribution[];
+}): Promise<ProjectInstructions> {
+    return createProjectInstructionLoader({
+        userPillarHome,
+        sources,
+        hostInstructions,
+    })(cwd, boundary);
+}
 
 export function formatProjectInstructions(
     instructions: ProjectInstructions
@@ -201,12 +251,15 @@ export function formatProjectInstructions(
     }
     const files = instructions.files.map((file) => {
         const label =
-            file.scope === "user"
+            file.scope === "host"
+                ? "host instructions"
+                : file.scope === "user"
                 ? "user global instructions"
                 : file.scope === "local"
                     ? "private local project instructions"
                     : "project instructions";
-        return `Contents of ${file.path} (${label}):\n\n${file.content.trim()}`;
+        const origin = file.scope === "host" ? `host:${file.id}` : file.path;
+        return `Contents of ${origin} (${label}):\n\n${file.content.trim()}`;
     });
     const issueSection =
         instructions.issues.length > 0
@@ -222,4 +275,10 @@ export function formatProjectInstructions(
         ...files,
         issueSection,
     ].filter(Boolean).join("\n\n");
+}
+
+function instructionLabel(instruction: LoadedInstructionFile): string {
+    return instruction.scope === "host"
+        ? `Host 指令 ${instruction.id}`
+        : instruction.path;
 }

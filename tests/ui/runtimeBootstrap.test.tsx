@@ -4,6 +4,7 @@ import {useState} from "react";
 import { createRuntimeBootstrap } from "../../src/ui/bootstrap/RuntimeBootstrap.js";
 import {
   createTestRuntimeResources,
+  createTestRootConfiguration,
   createTestSettings,
 } from "../helpers/runtimeResources.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -30,9 +31,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
-          storage={storage}
-          cwd={cwd}
-          settings={createTestSettings()}
+          configuration={createTestRootConfiguration(
+            cwd,
+            createTestSettings(),
+            storage
+          )}
         />
       );
 
@@ -54,9 +57,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
-          storage={storage}
-          cwd={cwd}
-          settings={createTestSettings()}
+          configuration={createTestRootConfiguration(
+            cwd,
+            createTestSettings(),
+            storage
+          )}
         />
       );
 
@@ -97,9 +102,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
-          storage={storage}
-          cwd={cwd}
-          settings={createTestSettings()}
+          configuration={createTestRootConfiguration(
+            cwd,
+            createTestSettings(),
+            storage
+          )}
         />
       );
 
@@ -126,16 +133,18 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const RuntimeBootstrap = createRuntimeBootstrap({
         createResources: async (options) => {
-          expect(options.cwd).toBe(cwd);
-          expect(options.settings.models.primary.model).toBe("glm-test");
+          expect(options.configuration.cwd).toBe(cwd);
+          expect(options.configuration.settings.models.primary.model).toBe("glm-test");
           return resources;
         },
       });
       const instance = render(
         <RuntimeBootstrap
-          storage={storage}
-          cwd={cwd}
-          settings={createTestSettings()}
+          configuration={createTestRootConfiguration(
+            cwd,
+            createTestSettings(),
+            storage
+          )}
         />
       );
 
@@ -155,9 +164,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
-          storage={storage}
-          cwd={cwd}
-          settings={createTestSettings()}
+          configuration={createTestRootConfiguration(
+            cwd,
+            createTestSettings(),
+            storage
+          )}
           onSessionSwitch={() => {}}
         />
       );
@@ -209,9 +220,11 @@ describe("RuntimeBootstrap lifecycle", () => {
         const [session, setSession] = useState<LoadedSession>();
         return (
           <RuntimeBootstrap
-            storage={storage}
-            cwd={cwd}
-            settings={settings}
+            configuration={createTestRootConfiguration(
+              cwd,
+              settings,
+              storage
+            )}
             session={session}
             onSessionSwitch={(nextSession) => {
               order.push("switch");
@@ -262,9 +275,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       });
       const instance = render(
         <RuntimeBootstrap
-          storage={storage}
-          cwd={cwd}
-          settings={createTestSettings()}
+          configuration={createTestRootConfiguration(
+            cwd,
+            createTestSettings(),
+            storage
+          )}
         />
       );
 

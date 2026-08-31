@@ -15,7 +15,7 @@ Pillar 是一个运行在终端中的 Code Agent，使用 Bun、TypeScript、Rea
 
 ## 环境要求
 
-- [Bun](https://bun.sh/) 1.1 或更高版本
+- [Bun](https://bun.sh/) 1.3 或更高版本
 - 至少一个受支持模型服务的 API Key
 
 ## 快速开始

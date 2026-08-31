@@ -4,6 +4,7 @@ import type {McpApprovalRequest} from "../mcp/index.js";
 import {isPermissionMode} from "../permissions/index.js";
 import {createInitialHistory} from "../prompt/index.js";
 import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime/resources.js";
+import {isPillarRootConfiguration} from "../runtime/rootConfiguration.js";
 import {createSessionId, loadSession} from "../session/index.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
 import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
@@ -56,9 +57,7 @@ export class Pillar {
             }
         );
         const resources = await createRootRuntimeResources({
-            storage: options.storage,
-            cwd: options.cwd,
-            settings: options.settings,
+            configuration: options.configuration,
             signal: rootController.signal,
             headless: false,
             requestMcpApproval: requestApproval,
@@ -246,13 +245,10 @@ export class Pillar {
 }
 
 function validatePillarOptions(options: PillarOptions): void {
-    if (typeof options.cwd !== "string" || !options.cwd.trim()) {
-        throw new PillarSDKError("invalid_cwd", "Pillar cwd 必须是非空字符串");
-    }
-    if (!options.storage || !options.settings) {
+    if (!isPillarRootConfiguration(options.configuration)) {
         throw new PillarSDKError(
             "invalid_options",
-            "Pillar 需要显式 storage 和 resolved settings"
+            "Pillar 需要由 loadPillarHostConfig 生成的 Root Configuration"
         );
     }
 }
@@ -271,7 +267,7 @@ async function requestRootApproval(
     try {
         response = normalizeInteractionResponse(
             await raceInteractionWithAbort(
-                callback(request, {cwd: options.cwd}),
+                callback(request, {cwd: options.configuration.cwd}),
                 signal
             )
         );

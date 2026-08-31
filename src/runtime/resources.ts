@@ -26,6 +26,8 @@ import {
 } from "../subagents/index.js";
 import {createAgentTool} from "../tools/agent/agent.js";
 import type {CreateSubagentThread} from "../subagents/types.js";
+import type {AgentFileSource} from "../subagents/types.js";
+import type {HostAgentContribution} from "./rootContributions.js";
 import {createHookPromptExecutor, createHookRuntime, type HookRuntime, type HookTrustRequest,} from "../hooks/index.js";
 import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
@@ -41,6 +43,7 @@ import {
     createCodexAppServerRuntime,
     type CodexAppServerRuntimeLike,
 } from "../llm/providers/codex/index.js";
+import type {PillarRootConfiguration} from "./rootConfiguration.js";
 
 export interface RootRuntimeResources {
     readonly storage: PillarStorageLayout;
@@ -74,9 +77,7 @@ export interface RootRuntimeResources {
 }
 
 export interface CreateRootRuntimeResourcesOptions {
-    storage: PillarStorageLayout;
-    cwd: string;
-    settings: ResolvedPillarSettings;
+    configuration: PillarRootConfiguration;
     signal?: AbortSignal;
     headless?: boolean;
     requestMcpApproval?: McpManagerOptions["requestApproval"];
@@ -113,7 +114,9 @@ interface RootRuntimeDependencies {
 
     loadCustomAgentDefinitions(
         storage: PillarStorageLayout,
-        cwd: string
+        cwd: string,
+        sources?: readonly AgentFileSource[],
+        hostAgents?: readonly HostAgentContribution[]
     ): Promise<LoadedCustomAgents>;
 }
 
@@ -164,10 +167,27 @@ export function createRootRuntimeResourcesFactory(
     return async function createRootRuntimeResources(
         options: CreateRootRuntimeResourcesOptions
     ): Promise<RootRuntimeResources> {
+        const {cwd, settings, storage} = options.configuration;
         const [skills, instructions, loadedCustomAgents] = await Promise.all([
-            Promise.resolve(dependencies.loadSkills(options.cwd)),
-            dependencies.loadProjectInstructions(options.cwd),
-            dependencies.loadCustomAgentDefinitions(options.storage, options.cwd),
+            Promise.resolve(dependencies.loadSkills({
+                storage,
+                cwd,
+                sources: options.configuration.fileSources.skills,
+                hostSkills: options.configuration.contributions.skills,
+            })),
+            dependencies.loadProjectInstructions({
+                cwd,
+                boundary: options.configuration.workspaceBoundary,
+                userPillarHome: storage.pillarHome,
+                sources: options.configuration.fileSources.instructions,
+                hostInstructions: options.configuration.contributions.instructions,
+            }),
+            dependencies.loadCustomAgentDefinitions(
+                storage,
+                cwd,
+                options.configuration.fileSources.agents,
+                options.configuration.contributions.agents
+            ),
         ]);
         let lspManager: LspManagerLike | undefined;
         let mcpManager: McpManagerLike | undefined;
@@ -175,69 +195,72 @@ export function createRootRuntimeResourcesFactory(
         let memory: MemoryRuntimeLike | undefined;
         let closeOwnedResources: (() => Promise<void>) | undefined;
         const sandbox = await createSandboxRuntime({
-            cwd: options.cwd,
-            settings: options.settings.sandbox,
+            cwd,
+            settings: settings.sandbox,
         });
         const childEnvironment = createChildProcessEnvironment(
             process.env,
-            Object.values(options.settings.sources).map(
+            Object.values(settings.sources).map(
                 (source) => source.apiKeyEnv
             )
         );
         const codex = createCodexAppServerRuntime(childEnvironment);
         const shellRunner = createShellRunner(sandbox, childEnvironment);
         const primaryModel = createPrimaryModelRuntime(
-            options.settings.models.primary,
-            options.settings.sources
+            settings.models.primary,
+            settings.sources
         );
 
         try {
             const fileState = dependencies.createFileStateTracker();
             const gitWorkspace = createGitWorkspaceRuntime(
-                options.cwd,
+                cwd,
                 childEnvironment
             );
             const auxiliaryModelTarget = () => {
                 const target = primaryModel.target;
                 return target.provider === "codex"
-                    ? options.settings.models.fast
+                    ? settings.models.fast
                     : target;
             };
             const createdMemory = dependencies.createMemoryRuntime({
-                storage: options.storage,
-                cwd: options.cwd,
+                storage,
+                cwd,
                 getModelTarget: auxiliaryModelTarget,
-                getModelSource: (source) => options.settings.sources[source],
+                getModelSource: (source) => settings.sources[source],
                 shellRunner,
-                settings: options.settings.memory,
+                settings: settings.memory,
             });
             memory = createdMemory;
             lspManager = await dependencies.createLspManager(
-                options.storage,
-                options.cwd,
-                childEnvironment
+                storage,
+                cwd,
+                childEnvironment,
+                options.configuration.fileSources.lsp
             );
             mcpManager = dependencies.createMcpManager({
-                storage: options.storage,
-                cwd: options.cwd,
+                storage,
+                cwd,
                 childEnvironment,
                 signal: options.signal,
                 headless: options.headless,
+                sources: options.configuration.fileSources.mcp,
+                hostServers: options.configuration.contributions.mcpServers,
                 requestApproval: options.requestMcpApproval,
             });
             await mcpManager?.initialize();
             const hooks = await dependencies.createHookRuntime({
-                storage: options.storage,
-                cwd: options.cwd,
-                hooks: options.settings.hooks,
+                storage,
+                cwd,
+                hooks: settings.hooks,
                 childEnvironment,
                 headless: options.headless,
                 signal: options.signal,
                 promptExecutor: createHookPromptExecutor({
-                    storage: options.storage,
-                    source: options.settings.sources[options.settings.models.fast.source],
-                    cwd: options.cwd,
-                    model: options.settings.models.fast.model,
+                    storage,
+                    source: settings.sources[settings.models.fast.source],
+                    cwd,
+                    model: settings.models.fast.model,
                 }),
                 requestTrust: options.requestHookTrust,
             });
@@ -251,21 +274,23 @@ export function createRootRuntimeResourcesFactory(
                 initial: validateLoadedAgents(loadedCustomAgents),
                 load: async () => validateLoadedAgents(
                     await dependencies.loadCustomAgentDefinitions(
-                        options.storage,
-                        options.cwd
+                        storage,
+                        cwd,
+                        options.configuration.fileSources.agents,
+                        options.configuration.contributions.agents
                     )
                 ),
             });
             const agentDefinitions = createAgentDefinitionManager({
-                store: createAgentDefinitionStore(options.storage, options.cwd),
+                store: createAgentDefinitionStore(storage, cwd),
                 catalog: subagents,
                 availableToolNames: toolCatalog.toolNames,
             });
             const agentAuthoring = createAgentAuthoringRuntime({
-                storage: options.storage,
-                cwd: options.cwd,
+                storage,
+                cwd,
                 getModelTarget: auxiliaryModelTarget,
-                getModelSource: (source) => options.settings.sources[source],
+                getModelSource: (source) => settings.sources[source],
                 instructions,
                 availableToolNames: toolCatalog.toolNames.filter(
                     (name) => !name.startsWith("mcp__")
@@ -279,22 +304,22 @@ export function createRootRuntimeResourcesFactory(
                 toolOverrides: [
                     createAgentTool(
                         subagents,
-                        options.settings.models.fast.model
+                        settings.models.fast.model
                     ),
                 ],
                 hooks,
             });
             const agentRuntime = dependencies.createAgentRuntime({
-                storage: options.storage,
-                fastModel: options.settings.models.fast,
-                sources: options.settings.sources,
+                storage,
+                fastModel: settings.models.fast,
+                sources: settings.sources,
                 subagents,
                 memory: createdMemory,
                 codex,
             });
             const createdTaskRuntime = dependencies.createTaskRuntime(
-                options.storage,
-                options.cwd,
+                storage,
+                cwd,
                 childEnvironment,
                 shellRunner,
                 agentRuntime.createSubagentThread,
@@ -311,19 +336,19 @@ export function createRootRuntimeResourcesFactory(
             );
 
             return {
-                storage: options.storage,
-                inputHistory: createInputHistoryStore(options.storage),
-                cwd: options.cwd,
+                storage,
+                inputHistory: createInputHistoryStore(storage),
+                cwd,
                 get model() {
                     return primaryModel.target.model;
                 },
                 get provider() {
                     return primaryModel.target.provider;
                 },
-                fastModel: options.settings.models.fast.model,
-                fastProvider: options.settings.models.fast.provider,
+                fastModel: settings.models.fast.model,
+                fastProvider: settings.models.fast.provider,
                 primaryModel,
-                settings: options.settings,
+                settings,
                 agentRuntime,
                 subagents,
                 agentDefinitions,

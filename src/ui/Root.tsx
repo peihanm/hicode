@@ -11,9 +11,9 @@ import {
 } from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import {COLORS} from "./theme.js";
-import type {ResolvedPillarSettings} from "../settings/index.js";
 import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
 
 type RootState =
     | { view: "loading" }
@@ -52,19 +52,16 @@ function createRootState(
 }
 
 export function Root({
-                         storage,
-                         cwd,
-                         settings,
+                         configuration,
                          initialPermissionMode,
                          resumeMode,
                      }: {
-    storage: PillarStorageLayout;
-    cwd: string;
-    settings: ResolvedPillarSettings;
+    configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
     resumeMode: ResumeMode;
 }) {
     const {exit} = useApp();
+    const {cwd, settings, storage} = configuration;
     const model = settings.models.primary.model;
     const [state, setState] = useState<RootState>({view: "loading"});
 
@@ -138,9 +135,7 @@ export function Root({
 
     return (
         <RuntimeBootstrap
-            storage={storage}
-            cwd={cwd}
-            settings={settings}
+            configuration={configuration}
             initialPermissionMode={initialPermissionMode}
             session={state.session}
             onSessionSwitch={(session) => setState({view: "app", session})}

@@ -4,6 +4,7 @@ import {join, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 import {
     createSubagentRegistry,
+    createSubagentCatalog,
     loadCustomAgentDefinitions,
     validateCustomAgentTools,
     type AgentDefinition,
@@ -165,7 +166,9 @@ project prompt`,
                 )
             ).toBe(true);
             expect(
-                loaded.issues.some((item) => item.path.endsWith("broken.md"))
+                loaded.issues.some((item) =>
+                    item.source !== "host" && item.path.endsWith("broken.md")
+                )
             ).toBe(true);
         });
     });
@@ -254,12 +257,57 @@ project prompt`, "utf8");
 
             const loaded = await loadCustomAgentDefinitions(storage, cwd);
             const oversized = loaded.issues.find((item) =>
-                item.path.endsWith("oversized.md")
+                item.source !== "host" && item.path.endsWith("oversized.md")
             );
             expect(oversized?.message).toContain("64000 bytes");
             expect(loaded.definitions.some((item) =>
                 item.agentType === "oversized"
             )).toBe(false);
+        });
+    });
+
+    test("Host Agent 覆盖文件定义且 Catalog reload 后仍保留", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const directory = join(cwd, ".pillar", "agents");
+            await mkdir(directory, {recursive: true});
+            await writeFile(join(directory, "reviewer.md"), `---
+name: reviewer
+description: project reviewer
+tools: [read_file]
+---
+project prompt`, "utf8");
+            const hostAgents = [{
+                name: "reviewer",
+                description: "host reviewer",
+                systemPrompt: "host prompt",
+                tools: ["read_file"],
+            }] as const;
+            const load = () => loadCustomAgentDefinitions(
+                storage,
+                cwd,
+                ["project"],
+                hostAgents
+            );
+            const initial = await load();
+            const catalog = createSubagentCatalog({initial, load});
+
+            expect(catalog.get("reviewer")?.definition).toMatchObject({
+                source: "host",
+                id: "reviewer",
+                systemPrompt: "host prompt",
+            });
+            await writeFile(join(directory, "reviewer.md"), `---
+name: reviewer
+description: changed project reviewer
+tools: [read_file]
+---
+changed project prompt`, "utf8");
+            await catalog.reload();
+            expect(catalog.get("reviewer")?.definition).toMatchObject({
+                source: "host",
+                id: "reviewer",
+                systemPrompt: "host prompt",
+            });
         });
     });
 

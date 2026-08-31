@@ -29,7 +29,8 @@ describe("CODE.md project instructions", () => {
       await put(join(cwd, "CLAUDE.md"), "must-not-load");
 
       const loaded = await createProjectInstructionLoader({
-        homeDir: home,
+        userPillarHome: join(home, ".pillar"),
+        sources: ["user", "project", "local"],
       })(cwd);
       expect(loaded.files.map((file) => file.content)).toEqual([
         "user-rule",
@@ -63,7 +64,7 @@ describe("CODE.md project instructions", () => {
       await put(join(cwd, "CODE.local.md"), "L".repeat(20));
 
       const loaded = await createProjectInstructionLoader({
-        homeDir: home,
+        userPillarHome: join(home, ".pillar"),
         maxFileChars: 20,
         maxTotalChars: 25,
       })(cwd);
@@ -86,7 +87,9 @@ describe("CODE.md project instructions", () => {
       await put(join(outer, "CODE.md"), "outer-uncommitted-rule");
       await put(join(boundary, "CODE.md"), "isolated-rule");
 
-      const loaded = await createProjectInstructionLoader({homeDir: home})(
+      const loaded = await createProjectInstructionLoader({
+        userPillarHome: join(home, ".pillar"),
+      })(
         cwd,
         boundary
       );
@@ -104,10 +107,30 @@ describe("CODE.md project instructions", () => {
       await writeFile(outside, "untrusted linked instructions");
       await symlink(outside, join(cwd, "CODE.md"));
 
-      const loaded = await createProjectInstructionLoader({homeDir: home})(cwd);
+      const loaded = await createProjectInstructionLoader({
+        userPillarHome: join(home, ".pillar"),
+      })(cwd);
 
       expect(loaded.files).toEqual([]);
       expect(loaded.issues.some((issue) => issue.includes("CODE.md"))).toBe(true);
+    });
+  });
+
+  test("Host 指令最后注入且不伪造文件路径", async () => {
+    await withTempProject(async (cwd) => {
+      await put(join(cwd, "CODE.md"), "project-rule");
+      const loaded = await createProjectInstructionLoader({
+        sources: ["project"],
+        hostInstructions: [{id: "sdk-policy", content: "host-rule"}],
+      })(cwd, cwd);
+
+      expect(loaded.files.map((file) => file.scope)).toEqual([
+        "project",
+        "host",
+      ]);
+      expect(formatProjectInstructions(loaded)).toContain("host:sdk-policy");
+      expect(formatProjectInstructions(loaded).indexOf("project-rule"))
+        .toBeLessThan(formatProjectInstructions(loaded).indexOf("host-rule"));
     });
   });
 });

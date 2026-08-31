@@ -42,6 +42,13 @@ import {testChildEnvironment} from "./childEnvironment.js";
 import {createTestStorage} from "./tempProject.js";
 import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
 import type {CodexAppServerRuntimeLike} from "../../src/llm/providers/codex/index.js";
+import {
+  CLI_FILE_SOURCES,
+  createPillarRootConfiguration,
+  type PillarFileSources,
+  type PillarRootConfiguration,
+  type PillarRootContributions,
+} from "../../src/runtime/rootConfiguration.js";
 
 export function createDisabledTestCodexRuntime(): CodexAppServerRuntimeLike {
   return {
@@ -99,6 +106,21 @@ export function createTestSettings(
     },
     ...overrides,
   };
+}
+
+export function createTestRootConfiguration(
+  cwd: string,
+  settings: ResolvedPillarSettings = createTestSettings(),
+  storage = createTestStorage(cwd),
+  fileSources: PillarFileSources = CLI_FILE_SOURCES
+): PillarRootConfiguration {
+  return createPillarRootConfiguration({
+    cwd,
+    workspaceBoundary: cwd,
+    storage,
+    settings,
+    fileSources,
+  });
 }
 
 type TestRuntimeResourceOverrides = Partial<
@@ -257,8 +279,13 @@ interface RootRuntimeTestDependencies {
 }
 
 export function createRootRuntimeResourcesForTest(
-  options: Omit<CreateRootRuntimeResourcesOptions, "storage"> & {
-    storage?: CreateRootRuntimeResourcesOptions["storage"];
+  options: Omit<CreateRootRuntimeResourcesOptions, "configuration"> & {
+    cwd: string;
+    settings: ResolvedPillarSettings;
+    storage?: RootRuntimeResources["storage"];
+    workspaceBoundary?: string;
+    fileSources?: PillarFileSources;
+    rootContributions?: PillarRootContributions;
   },
   test: RootRuntimeTestDependencies = {}
 ) {
@@ -272,9 +299,14 @@ export function createRootRuntimeResourcesForTest(
     ...(test.createLspManager
       ? { createLspManager: test.createLspManager }
       : {}),
-    ...(test.loadSkills ? { loadSkills: test.loadSkills } : {}),
+    ...(test.loadSkills
+      ? {loadSkills: ({cwd}: {cwd: string}) => test.loadSkills!(cwd)}
+      : {}),
     ...(test.loadProjectInstructions
-      ? { loadProjectInstructions: test.loadProjectInstructions }
+      ? {
+          loadProjectInstructions: ({cwd}: {cwd: string}) =>
+            test.loadProjectInstructions!(cwd),
+        }
       : {}),
     ...(test.createToolRuntime
       ? { createToolRuntime: test.createToolRuntime }
@@ -291,11 +323,26 @@ export function createRootRuntimeResourcesForTest(
     ...(test.memory
       ? { createMemoryRuntime: () => test.memory! }
       : {}),
-    loadCustomAgentDefinitions: async () =>
-      test.loadedCustomAgents ?? { definitions: [], issues: [] },
+    ...(test.loadedCustomAgents
+      ? {loadCustomAgentDefinitions: async () => test.loadedCustomAgents!}
+      : {}),
     createHookRuntime: async () => createDisabledTestHookRuntime(),
   })({
-    ...options,
-    storage: options.storage ?? createTestStorage(options.cwd),
+    configuration: createPillarRootConfiguration({
+      cwd: options.cwd,
+      workspaceBoundary: options.workspaceBoundary ?? options.cwd,
+      storage: options.storage ?? createTestStorage(options.cwd),
+      settings: options.settings,
+      fileSources: options.fileSources ?? CLI_FILE_SOURCES,
+      rootContributions: options.rootContributions,
+    }),
+    ...(options.signal ? {signal: options.signal} : {}),
+    ...(options.headless !== undefined ? {headless: options.headless} : {}),
+    ...(options.requestMcpApproval
+      ? {requestMcpApproval: options.requestMcpApproval}
+      : {}),
+    ...(options.requestHookTrust
+      ? {requestHookTrust: options.requestHookTrust}
+      : {}),
   });
 }

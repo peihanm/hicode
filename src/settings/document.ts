@@ -2,9 +2,9 @@ import {readFileSync} from "node:fs";
 import {homedir} from "node:os";
 import {resolve} from "node:path";
 import {hasFileSystemErrorCode} from "../persistence/index.js";
-import {pillarSettingsFileSchema} from "./schema.js";
+import {pillarHostSettingsSchema, pillarSettingsFileSchema} from "./schema.js";
 import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
-import type {LoadedSettingsDocument, SettingsFileSource, SettingsIssue,} from "./types.js";
+import type {LoadedSettingsDocument, PillarSettingsFile, SettingsFileSource, SettingsIssue,} from "./types.js";
 
 const KNOWN_TOP_LEVEL_KEYS = new Set([
     "sources",
@@ -50,6 +50,15 @@ interface LoadedSettingsDocuments {
     issues: SettingsIssue[];
 }
 
+function issueForDocument(
+    document: LoadedSettingsDocument,
+    details: Omit<SettingsIssue, "source" | "path" | "id">
+): SettingsIssue {
+    return document.source === "host"
+        ? {...details, source: "host", id: document.id}
+        : {...details, source: document.source, path: document.path};
+}
+
 function bounded(value: string): string {
     return value.length <= MAX_ISSUE_MESSAGE_LENGTH
         ? value
@@ -73,9 +82,10 @@ export function getSettingsPath(
 
 function getSettingsSources(
     cwd: string,
-    userSettingsPath?: string
+    userSettingsPath: string | undefined,
+    sources: readonly SettingsFileSource[]
 ): SettingsSourceLocation[] {
-    return (["user", "project", "local"] as const).map((source) => ({
+    return sources.map((source) => ({
         source,
         path: getSettingsPath(cwd, source, userSettingsPath),
     }));
@@ -96,13 +106,11 @@ function appendUnknownFieldIssues(
     for (const key of Object.keys(value)) {
         if (knownKeys.has(key)) continue;
         const field = prefix ? `${prefix}.${key}` : key;
-        issues.push({
-            source: document.source,
-            path: document.path,
+        issues.push(issueForDocument(document, {
             field,
             severity: "warning",
             message: bounded(`未知 Settings 字段 ${field}，已保留但不会生效`),
-        });
+        }));
     }
 }
 
@@ -146,14 +154,12 @@ function collectUnknownFieldIssues(
                 );
             }
         }
-        if (document.source !== "user") {
-            issues.push({
-                source: document.source,
-                path: document.path,
+        if (document.source !== "user" && document.source !== "host") {
+            issues.push(issueForDocument(document, {
                 field: "sources",
                 severity: "warning",
                 message: "sources 只允许在用户级 Settings 中定义；当前来源已忽略",
-            });
+            }));
         }
     }
     if (models) {
@@ -299,14 +305,48 @@ function loadSettingsDocument(
 
 export function loadSettingsDocuments(
     cwd: string,
-    options: {userSettingsPath?: string} = {}
+    options: {
+        userSettingsPath?: string;
+        sources?: readonly SettingsFileSource[];
+    } = {}
 ): LoadedSettingsDocuments {
     const documents: LoadedSettingsDocument[] = [];
     const issues: SettingsIssue[] = [];
-    for (const location of getSettingsSources(cwd, options.userSettingsPath)) {
+    const sources = options.sources ?? ["user", "project", "local"];
+    for (const location of getSettingsSources(
+        cwd,
+        options.userSettingsPath,
+        sources
+    )) {
         const loaded = loadSettingsDocument(location);
         if (loaded.document) documents.push(loaded.document);
         issues.push(...loaded.issues);
     }
     return {documents, issues};
+}
+
+export function parseHostSettingsDocument(
+    value: PillarSettingsFile,
+    id = "settingsOverrides"
+): {document?: LoadedSettingsDocument; issues: SettingsIssue[]} {
+    const parsed = pillarHostSettingsSchema.safeParse(value);
+    if (!parsed.success) {
+        return {
+            issues: parsed.error.issues.map((problem) => ({
+                source: "host" as const,
+                id,
+                field: problem.path.join(".") || undefined,
+                severity: "error" as const,
+                message: formatSchemaIssue(problem.path, problem.message),
+            })),
+        };
+    }
+    return {
+        document: {
+            source: "host",
+            id,
+            value: parsed.data,
+        },
+        issues: [],
+    };
 }

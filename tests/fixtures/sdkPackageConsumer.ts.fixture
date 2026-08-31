@@ -1,0 +1,35 @@
+import {
+    loadPillarHostConfig,
+    Pillar,
+    type PillarFileSources,
+    type ThreadEvent,
+    type TurnResult,
+} from "pillar-core-sdk";
+
+const fileSources: PillarFileSources = {
+    settings: [],
+    instructions: [],
+    skills: [],
+    agents: [],
+    mcp: [],
+    lsp: [],
+};
+
+const loaded = loadPillarHostConfig({
+    cwd: "/workspace",
+    pillarHome: "/host-data/pillar",
+    fileSources,
+});
+
+function acceptEvent(event: ThreadEvent): number {
+    return event.sequence;
+}
+
+function acceptResult(result: TurnResult): string {
+    return result.finalResponse;
+}
+
+void Pillar.create;
+void loaded.configuration;
+void acceptEvent;
+void acceptResult;

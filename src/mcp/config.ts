@@ -9,6 +9,7 @@ import type {
     LoadedMcpServerConfig,
     McpConfigIssue,
     McpConfigSource,
+    HostMcpServerContribution,
 } from "./types.js";
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
@@ -18,7 +19,7 @@ const MAX_SERVERS_PER_SOURCE = 64;
 const MAX_ARGS = 128;
 const MAX_ENV_ENTRIES = 128;
 
-const serverSchema = z.object({
+const serverShape = {
     type: z.literal("stdio").optional().default("stdio"),
     command: z.string().trim().min(1).max(4096),
     args: z.array(z.string().max(16_384)).max(MAX_ARGS).optional().default([]),
@@ -31,7 +32,18 @@ const serverSchema = z.object({
         .default(DEFAULT_CONNECTION_TIMEOUT_MS),
     toolTimeoutMs: z.number().int().min(1_000).max(30 * 60_000).optional()
         .default(DEFAULT_TOOL_TIMEOUT_MS),
-}).strict();
+};
+
+const serverSchema = z.object(serverShape).strict();
+
+export const hostMcpServerContributionSchema = z
+    .object({
+        name: z.string().trim().refine(validateMcpServerName, {
+            message: "只能包含字母、数字、_、-、.，且长度为 1–64",
+        }),
+        ...serverShape,
+    })
+    .strict();
 
 function isMissing(error: unknown): boolean {
     return Boolean(
@@ -203,21 +215,39 @@ async function readConfigSource(
 
 export async function loadMcpConfig(
     storage: PillarStorageLayout,
-    cwd: string
+    cwd: string,
+    sources: readonly McpConfigSource[] = ["user", "project"],
+    hostServers: readonly HostMcpServerContribution[] = []
 ): Promise<LoadedMcpConfig> {
     const userPath = join(storage.pillarHome, "mcp.json");
     const compatProjectPath = resolve(cwd, ".mcp.json");
     const projectPath = resolve(cwd, ".pillar", "mcp.json");
     const [user, compatProject, project] = await Promise.all([
-        readConfigSource(userPath, "user"),
-        readConfigSource(compatProjectPath, "project"),
-        readConfigSource(projectPath, "project", cwd),
+        sources.includes("user")
+            ? readConfigSource(userPath, "user")
+            : {servers: [], issues: []},
+        sources.includes("project")
+            ? readConfigSource(compatProjectPath, "project")
+            : {servers: [], issues: []},
+        sources.includes("project")
+            ? readConfigSource(projectPath, "project", cwd)
+            : {servers: [], issues: []},
     ]);
     const byName = new Map<string, LoadedMcpServerConfig>();
     for (const server of [
         ...user.servers,
         ...compatProject.servers,
         ...project.servers,
+        ...hostServers.map((server) => {
+            const parsed = hostMcpServerContributionSchema.parse(server);
+            const {name, ...config} = parsed;
+            return {
+                name,
+                source: "host" as const,
+                id: name,
+                config,
+            };
+        }),
     ]) byName.set(server.name, server);
 
     const issues = [...user.issues, ...compatProject.issues, ...project.issues];
@@ -228,8 +258,9 @@ export async function loadMcpConfig(
         const existing = normalized.get(key);
         if (existing && existing !== server.name) {
             issues.push({
-                source: server.source,
-                path: server.path,
+                ...(server.source === "host"
+                    ? {source: "host" as const, id: server.id}
+                    : {source: server.source, path: server.path}),
                 serverName: server.name,
                 message: `Server 名规范化后与 ${existing} 冲突`,
             });

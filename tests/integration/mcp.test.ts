@@ -385,4 +385,57 @@ describe("MCP stdio integration", () => {
       }
     });
   });
+
+  test("Host Server 未批准绝不启动，批准后进入同一工具链", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const hostServers = [{
+        name: "host_fixture",
+        command: process.execPath,
+        args: [fixture],
+      }];
+      const pending = createMcpManager({
+        storage,
+        cwd,
+        childEnvironment: testChildEnvironment,
+        sources: [],
+        hostServers,
+        headless: true,
+      });
+      await pending.initialize();
+      expect(pending.getSnapshots()[0]).toMatchObject({
+        source: "host",
+        status: "pending-approval",
+        toolCount: 0,
+      });
+      expect(pending.getTools()).toEqual([]);
+      await pending.closeAll();
+
+      let approvals = 0;
+      const allowed = createMcpManager({
+        storage,
+        cwd,
+        childEnvironment: testChildEnvironment,
+        sources: [],
+        hostServers,
+        requestApproval: async () => {
+          approvals += 1;
+          return "once";
+        },
+      });
+      await allowed.initialize();
+      try {
+        expect(approvals).toBe(1);
+        expect(allowed.getSnapshots()[0]).toMatchObject({
+          source: "host",
+          status: "connected",
+          toolCount: 8,
+        });
+        expect(allowed.getTools().some((tool) =>
+          tool.name === "mcp__host_fixture__echo"
+        )).toBe(true);
+      } finally {
+        await allowed.closeAll();
+      }
+    });
+  });
 });

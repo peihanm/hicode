@@ -1,6 +1,8 @@
 // 已加载的 skill 实例
 // 参考 claude-code src/skills/loadSkillsDir.ts 的 Command 类型，简化版
-export interface LoadedSkill {
+export type SkillFileSource = "user" | "project";
+
+interface LoadedSkillContent {
     // skill 名（目录名，bundled 用 registerBundledSkill 的 name）
     name: string;
 
@@ -15,9 +17,16 @@ export interface LoadedSkill {
     content: string;
 
     // skill 来源：bundled（内置）/ user（~/.pillar/skills）/ project（.pillar/skills）
-    source: "bundled" | "user" | "project";
-
-    // SKILL.md 所在目录绝对路径
-    // 简化版未使用（claude-code 用于 ${CLAUDE_SKILL_DIR} 占位符替换），保留字段方便扩展
-    baseDir: string;
 }
+
+export type LoadedSkill = LoadedSkillContent & (
+    | {
+        source: "bundled" | SkillFileSource;
+        // SKILL.md 所在目录绝对路径
+        baseDir: string;
+    }
+    | {
+        source: "host";
+        id: string;
+    }
+);

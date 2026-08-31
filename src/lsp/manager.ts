@@ -11,7 +11,7 @@
 import {extname, isAbsolute, relative, resolve, sep} from "path";
 import {fileURLToPath, pathToFileURL} from "url";
 import {readFile, stat} from "node:fs/promises";
-import {loadLspConfig, type LspConfig} from "./config.js";
+import {loadLspConfig, type LspConfig, type LspConfigSource,} from "./config.js";
 import {createLSPServerInstance, type LSPServerInstance} from "./serverInstance.js";
 import type {Diagnostic, PublishDiagnosticsParams} from "vscode-languageserver-protocol";
 import {normalizeTurnAbortReason, throwIfTurnAborted, TurnInterruptedError,} from "../runtime/abort.js";
@@ -368,12 +368,13 @@ function languageIdForExtension(ext: string): string {
 export async function createLspManager(
     storage: PillarStorageLayout,
     cwd: string,
-    childEnvironment: ChildProcessEnvironment
+    childEnvironment: ChildProcessEnvironment,
+    sources: readonly LspConfigSource[] = ["user"]
 ): Promise<LspManagerLike | undefined> {
     try {
         return new LSPManager(
             cwd,
-            await loadLspConfig(storage, cwd),
+            await loadLspConfig(storage, cwd, sources),
             childEnvironment
         );
     } catch {

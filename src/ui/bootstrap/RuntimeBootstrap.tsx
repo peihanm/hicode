@@ -6,7 +6,6 @@ import {
     createRootRuntimeResources,
     type RootRuntimeResources,
 } from "../../runtime/resources.js";
-import type {ResolvedPillarSettings} from "../../settings/index.js";
 import {
     type McpApprovalDecision,
     type McpApprovalRequest,
@@ -17,7 +16,7 @@ import {COLORS, SYMBOLS} from "../theme.js";
 import {HookApprovalDialog} from "./HookApprovalDialog.js";
 import {McpApprovalDialog} from "./McpApprovalDialog.js";
 import {Welcome} from "./Welcome.js";
-import type {PillarStorageLayout} from "../../persistence/index.js";
+import type {PillarRootConfiguration} from "../../runtime/rootConfiguration.js";
 import {createUITurnSessionRuntime, type UITurnSessionRuntime,} from "../turn/sessionRuntime.js";
 
 interface PendingMcpApproval {
@@ -31,9 +30,7 @@ interface PendingHookApproval {
 }
 
 interface RuntimeBootstrapProps {
-    storage: PillarStorageLayout;
-    cwd: string;
-    settings: ResolvedPillarSettings;
+    configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
     session?: LoadedSession;
     onSessionSwitch?: (session: LoadedSession) => void;
@@ -50,13 +47,12 @@ export function createRuntimeBootstrap(
         overrides.createResources ?? createRootRuntimeResources;
 
     return function RuntimeBootstrap({
-        storage,
-        cwd,
-        settings,
+        configuration,
         initialPermissionMode,
         session,
         onSessionSwitch,
     }: RuntimeBootstrapProps) {
+        const {cwd, settings, storage} = configuration;
         const {exit} = useApp();
         const pendingRef = useRef<PendingMcpApproval | null>(null);
         const [pending, setPending] = useState<PendingMcpApproval | null>(null);
@@ -95,9 +91,7 @@ export function createRuntimeBootstrap(
             setError(null);
             void (async () => {
                 const resources = await createResources({
-                    storage,
-                    cwd,
-                    settings,
+                    configuration,
                     signal: controller.signal,
                     requestMcpApproval: (request) => {
                         if (disposed) return Promise.resolve("deny");
@@ -156,7 +150,7 @@ export function createRuntimeBootstrap(
                     await closeResources(resourcesToClose);
                 })();
             };
-        }, [cwd, session, settings, storage]);
+        }, [configuration, cwd, session, settings, storage]);
 
         if (pending) {
             return (

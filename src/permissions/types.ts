@@ -29,7 +29,7 @@ export type PermissionMode =
     | "dontAsk"; // 不弹窗，需要确认的操作直接 deny
 
 // 权限规则来源
-type PermissionRuleSource = "user" | "project" | "local";
+type PermissionRuleSource = "user" | "project" | "local" | "host";
 
 // 单条权限规则
 // 参考 claude-code src/types/permissions.ts:67-79

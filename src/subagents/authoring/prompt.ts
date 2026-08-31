@@ -12,7 +12,9 @@ export function createAgentAuthoringPrompt({
     instructions: ProjectInstructions;
 }): string {
     const projectRules = instructions.files
-        .map((file) => `### ${file.path}\n${file.content}`)
+        .map((file) =>
+            `### ${file.scope === "host" ? `host:${file.id}` : file.path}\n${file.content}`
+        )
         .join("\n\n")
         .slice(0, MAX_INSTRUCTION_CHARS);
     return [

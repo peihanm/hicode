@@ -1,4 +1,4 @@
-import {stat} from "node:fs/promises";
+import {glob, lstat, stat} from "node:fs/promises";
 import {isAbsolute, resolve} from "node:path";
 import {z} from "zod";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
@@ -60,23 +60,22 @@ export const globTool: Tool<typeof inputSchema> = {
             return {content: `搜索路径不是目录: ${path}`, outcome: "failed"};
         }
 
-        const matcher = new Bun.Glob(normalizePattern(pattern));
         const matches: string[] = [];
         let truncated = false;
-        for await (const match of matcher.scan({
+        for await (const match of glob(normalizePattern(pattern), {
             cwd: searchRoot,
-            dot: true,
-            onlyFiles: true,
-            followSymlinks: false,
+            exclude: [".git", ".git/**"],
         })) {
             throwIfTurnAborted(ctx.signal);
             const normalized = match.replaceAll("\\", "/");
             if (isGitMetadataPath(normalized)) continue;
+            const absolute = resolve(searchRoot, match);
+            const metadata = await lstat(absolute).catch(() => undefined);
+            if (!metadata?.isFile()) continue;
             if (matches.length >= MAX_RESULTS) {
                 truncated = true;
                 break;
             }
-            const absolute = resolve(searchRoot, match);
             matches.push(displayToolPath(ctx.cwd, absolute));
         }
 

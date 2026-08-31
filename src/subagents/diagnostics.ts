@@ -50,7 +50,8 @@ function wrapDetail(value: string, prefix = "    "): string[] {
 
 export function formatAgentLoadIssue(issue: AgentLoadIssue): string {
     const field = issue.field ? ` · ${issue.field}` : "";
-    return `${issue.severity.toUpperCase()} · ${issue.source} · ${basename(issue.path)}${field} · ${bounded(issue.message)}`;
+    const origin = issue.source === "host" ? issue.id : basename(issue.path);
+    return `${issue.severity.toUpperCase()} · ${issue.source} · ${origin}${field} · ${bounded(issue.message)}`;
 }
 
 export function formatAgentLoadWarning(

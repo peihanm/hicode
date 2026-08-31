@@ -2,6 +2,7 @@ import type {Diagnostic} from "vscode-languageserver-protocol";
 import type {LSPServerInstance} from "./serverInstance.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
+import type {LspConfigSource} from "./config.js";
 
 export interface LspManagerLike {
     getServerForFile(filePath: string): LSPServerInstance | undefined;
@@ -36,7 +37,8 @@ export interface LspManagerLike {
 export type CreateLspManager = (
     storage: PillarStorageLayout,
     cwd: string,
-    childEnvironment: ChildProcessEnvironment
+    childEnvironment: ChildProcessEnvironment,
+    sources?: readonly LspConfigSource[]
 ) => LspManagerLike | undefined | Promise<LspManagerLike | undefined>;
 
 export type LspPathResolver = Pick<LspManagerLike, "toAbsolute">;
