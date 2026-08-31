@@ -170,6 +170,29 @@ describe("Unified Settings", () => {
         });
     });
 
+    test("Codex 可作为 primary 来源，但不能作为 fast 模型", () => {
+        const resolved = resolvePillarSettings([
+            document("project", {
+                models: {
+                    primary: {source: "codex", model: "gpt-5.6-sol"},
+                },
+            }),
+        ]);
+        expect(resolved.values.models.primary).toEqual({
+            provider: "codex",
+            source: "codex",
+            model: "gpt-5.6-sol",
+            label: "GPT-5.6 Sol",
+        });
+        expect(() => resolvePillarSettings([
+            document("project", {
+                models: {
+                    fast: {source: "codex", model: "gpt-5.6-luna"},
+                },
+            }),
+        ])).toThrow("fast 模型不能使用 Codex");
+    });
+
     test("source 目录只接受用户级定义，项目只能选择模型", () => {
         const resolved = resolvePillarSettings([
             document("user", {

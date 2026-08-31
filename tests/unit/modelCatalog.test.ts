@@ -36,6 +36,24 @@ describe("primary model catalog", () => {
                 model: "qwen3.6-flash",
                 label: "Qwen 3.6 Flash",
             },
+            {
+                source: "codex",
+                provider: "codex",
+                model: "gpt-5.6-sol",
+                label: "GPT-5.6 Sol",
+            },
+            {
+                source: "codex",
+                provider: "codex",
+                model: "gpt-5.6-terra",
+                label: "GPT-5.6 Terra",
+            },
+            {
+                source: "codex",
+                provider: "codex",
+                model: "gpt-5.6-luna",
+                label: "GPT-5.6 Luna",
+            },
         ]);
     });
 

@@ -491,7 +491,7 @@ export function useTurnController({
                     target.model
                 ));
                 eventStore.appendNotice(
-                    `已切换主模型：${formatModelTarget(target)}。Fast model 未改变。`
+                    `已切换主模型：${formatModelTarget(target)}。`
                 );
                 void persistSnapshot();
             },

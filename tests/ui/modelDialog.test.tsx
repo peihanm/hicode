@@ -48,10 +48,12 @@ describe("Model dialog", () => {
             await new Promise((resolve) => setTimeout(resolve, 30));
 
             const dialog = instance.lastFrame() ?? "";
-            expect(dialog).toContain("SELECT PRIMARY MODEL");
+            expect(dialog).toContain("◆ MODEL");
+            expect(dialog).toContain("ALIBABA QWEN");
+            expect(dialog).toContain("DEEPSEEK");
             expect(dialog).toContain("Qwen Primary");
             expect(dialog).toContain("DeepSeek V4 Pro");
-            expect(dialog).toContain("Fast model 保持当前配置");
+            expect(dialog).not.toContain("Fast model");
 
             instance.stdin.write("\u001b[B");
             await new Promise((resolve) => setTimeout(resolve, 10));
@@ -61,7 +63,8 @@ describe("Model dialog", () => {
             expect(primaryModel.target).toEqual(deepseek);
             expect(resources.fastModel).toBe(fastBefore);
             expect(instance.lastFrame()).toContain("DeepSeek V4 Pro");
-            expect(instance.lastFrame()).toContain("Fast model 未改变");
+            expect(instance.lastFrame()).toContain("已切换主模型：DeepSeek V4 Pro。");
+            expect(instance.lastFrame()).not.toContain("Fast model");
 
             instance.stdin.write("验证真实上下文");
             await new Promise((resolve) => setTimeout(resolve, 10));

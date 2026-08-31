@@ -14,6 +14,7 @@ import type {SubagentRegistry} from "../subagents/registry.js";
 import {createToolResultStore} from "../toolResults/index.js";
 import {createMemoryAwareAgentRunner, type MemoryRuntimeLike,} from "../memory/index.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {CodexAppServerRuntimeLike} from "../llm/providers/codex/index.js";
 
 export interface AgentRuntime {
     runAgent: AgentRunner;
@@ -23,9 +24,10 @@ export interface AgentRuntime {
 }
 
 function createProviderRunner(
-    source: ResolvedPillarSettings["sources"][LLMProviderName]
+    source: ResolvedPillarSettings["sources"][LLMProviderName],
+    codex: CodexAppServerRuntimeLike
 ) {
-    const callLLM = createLLMCaller(source);
+    const callLLM = createLLMCaller(source, {codex});
     const generateSummary = createCompactSummaryGenerator({callLLM});
     const compactHistory = createCompactHistoryRunner({generateSummary});
     return {
@@ -34,12 +36,15 @@ function createProviderRunner(
     };
 }
 
-function createPrimaryRouter(sources: ResolvedPillarSettings["sources"]) {
+function createPrimaryRouter(
+    sources: ResolvedPillarSettings["sources"],
+    codex: CodexAppServerRuntimeLike
+) {
     const runners = new Map<LLMProviderName, ReturnType<typeof createProviderRunner>>();
     const getRunner = (provider: LLMProviderName) => {
         let runner = runners.get(provider);
         if (!runner) {
-            runner = createProviderRunner(sources[provider]);
+            runner = createProviderRunner(sources[provider], codex);
             runners.set(provider, runner);
         }
         return runner;
@@ -66,15 +71,17 @@ export function createAgentRuntime({
     sources,
     subagents,
     memory,
+    codex,
 }: {
     storage: PillarStorageLayout;
     fastModel: ModelTargetSettings;
     sources: ResolvedPillarSettings["sources"];
     subagents: SubagentRegistry;
     memory: MemoryRuntimeLike;
+    codex: CodexAppServerRuntimeLike;
 }): AgentRuntime {
-    const primary = createPrimaryRouter(sources);
-    const fast = createProviderRunner(sources[fastModel.source]);
+    const primary = createPrimaryRouter(sources, codex);
+    const fast = createProviderRunner(sources[fastModel.source], codex);
     const rootRunAgent = createMemoryAwareAgentRunner(
         primary.runAgent,
         memory

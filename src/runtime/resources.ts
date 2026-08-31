@@ -37,6 +37,10 @@ import {
     createChildProcessEnvironment,
     type ChildProcessEnvironment,
 } from "./childEnvironment.js";
+import {
+    createCodexAppServerRuntime,
+    type CodexAppServerRuntimeLike,
+} from "../llm/providers/codex/index.js";
 
 export interface RootRuntimeResources {
     readonly storage: PillarStorageLayout;
@@ -118,7 +122,8 @@ function createResourceCloser(
     lspManager: LspManagerLike | undefined,
     taskRuntime: TaskRuntimeLike,
     memory: MemoryRuntimeLike,
-    sandbox: SandboxRuntimeLike
+    sandbox: SandboxRuntimeLike,
+    codex: CodexAppServerRuntimeLike
 ): () => Promise<void> {
     let closePromise: Promise<void> | undefined;
     return () => {
@@ -129,7 +134,7 @@ function createResourceCloser(
                 mcpManager?.closeAll(),
                 memory.close(),
             ]);
-            await Promise.allSettled([sandbox.close()]);
+            await Promise.allSettled([sandbox.close(), codex.close()]);
         })();
         return closePromise;
     };
@@ -179,6 +184,7 @@ export function createRootRuntimeResourcesFactory(
                 (source) => source.apiKeyEnv
             )
         );
+        const codex = createCodexAppServerRuntime(childEnvironment);
         const shellRunner = createShellRunner(sandbox, childEnvironment);
         const primaryModel = createPrimaryModelRuntime(
             options.settings.models.primary,
@@ -191,10 +197,16 @@ export function createRootRuntimeResourcesFactory(
                 options.cwd,
                 childEnvironment
             );
+            const auxiliaryModelTarget = () => {
+                const target = primaryModel.target;
+                return target.provider === "codex"
+                    ? options.settings.models.fast
+                    : target;
+            };
             const createdMemory = dependencies.createMemoryRuntime({
                 storage: options.storage,
                 cwd: options.cwd,
-                getModelTarget: () => primaryModel.target,
+                getModelTarget: auxiliaryModelTarget,
                 getModelSource: (source) => options.settings.sources[source],
                 shellRunner,
                 settings: options.settings.memory,
@@ -252,7 +264,7 @@ export function createRootRuntimeResourcesFactory(
             const agentAuthoring = createAgentAuthoringRuntime({
                 storage: options.storage,
                 cwd: options.cwd,
-                getModelTarget: () => primaryModel.target,
+                getModelTarget: auxiliaryModelTarget,
                 getModelSource: (source) => options.settings.sources[source],
                 instructions,
                 availableToolNames: toolCatalog.toolNames.filter(
@@ -278,6 +290,7 @@ export function createRootRuntimeResourcesFactory(
                 sources: options.settings.sources,
                 subagents,
                 memory: createdMemory,
+                codex,
             });
             const createdTaskRuntime = dependencies.createTaskRuntime(
                 options.storage,
@@ -293,7 +306,8 @@ export function createRootRuntimeResourcesFactory(
                 lspManager,
                 createdTaskRuntime,
                 createdMemory,
-                sandbox
+                sandbox,
+                codex
             );
 
             return {
@@ -341,6 +355,7 @@ export function createRootRuntimeResourcesFactory(
                     mcpManager?.closeAll(),
                     memory?.close(),
                     sandbox.close(),
+                    codex.close(),
                 ]);
             }
             throw error;

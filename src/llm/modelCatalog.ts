@@ -21,13 +21,22 @@ function targetsForSource(source: ModelSourceSettings): ModelTargetSettings[] {
         }));
 }
 
-/** Build one startup catalog from sources whose configured credential exists. */
+function sourceIsAvailable(
+    source: ModelSourceSettings,
+    environment: NodeJS.ProcessEnv
+): boolean {
+    // Codex authenticates through the local Codex account rather than a Pillar
+    // API key. Authentication is verified by app-server on the first call.
+    return source.id === "codex" || Boolean(nonEmpty(environment[source.apiKeyEnv]));
+}
+
+/** Build the startup catalog from API-key sources and local Codex account models. */
 export function listConfiguredPrimaryModels(
     sources: ResolvedPillarSettings["sources"],
     environment: NodeJS.ProcessEnv = process.env
 ): ModelTargetSettings[] {
     return Object.values(sources).flatMap((source) =>
-        nonEmpty(environment[source.apiKeyEnv]) ? targetsForSource(source) : []
+        sourceIsAvailable(source, environment) ? targetsForSource(source) : []
     );
 }
 

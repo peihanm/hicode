@@ -71,6 +71,10 @@ function getReplayConnection(provider: LLMProviderName): ReplayConnection {
                     process.env.DEEPSEEK_BASE_URL ||
                     "https://api.deepseek.com",
             };
+        case "codex":
+            throw new Error(
+                "Codex 使用 App Server 协议，不能通过 OpenAI-compatible SSE replay 诊断"
+            );
     }
 }
 

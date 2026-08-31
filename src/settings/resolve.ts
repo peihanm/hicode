@@ -41,6 +41,16 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
             {id: "deepseek-v4-flash", label: "DeepSeek V4 Flash"},
         ],
     },
+    codex: {
+        id: "codex",
+        label: "OpenAI Codex",
+        apiKeyEnv: "CODEX_API_KEY",
+        models: [
+            {id: "gpt-5.6-sol", label: "GPT-5.6 Sol"},
+            {id: "gpt-5.6-terra", label: "GPT-5.6 Terra"},
+            {id: "gpt-5.6-luna", label: "GPT-5.6 Luna"},
+        ],
+    },
 };
 
 function cloneSources(): Record<LLMProviderName, ModelSourceSettings> {
@@ -270,6 +280,12 @@ export function resolvePillarSettings(
     if (cli.model !== undefined) {
         primaryModel = cli.model;
         origins.primaryModel = "cli";
+    }
+
+    if (fastSource === "codex") {
+        throw new Error(
+            "fast 模型不能使用 Codex 账号来源；Codex App Server 固定 high 推理，仅用于 primary 模型"
+        );
     }
 
     return {

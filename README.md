@@ -55,6 +55,7 @@ Pillar 优先读取当前目录的 `.env`，找不到时读取 `~/.pillar/.env`�
 | GLM | `GLM_API_KEY` |
 | Qwen | `DASHSCOPE_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
+| Codex / GPT | 不需要 API Key；先用本机 Codex CLI 登录 |
 
 不要提交 `.env`、`.mcp.json` 或任何包含凭证和私人上下文的本地配置。
 
