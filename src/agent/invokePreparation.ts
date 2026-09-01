@@ -18,6 +18,7 @@ export interface PrepareAgentInvokeInput {
     onEvent: (event: AgentEvent) => void | Promise<void>;
     getToolSchemas: ToolSchemaProvider;
     compactHistory: CompactHistoryRunner;
+    contextWindow?: number;
     additionalUserContextBlocks?: readonly string[];
 }
 
@@ -33,6 +34,7 @@ export async function prepareAgentInvoke({
                                              onEvent,
                                              getToolSchemas,
                                              compactHistory,
+                                             contextWindow,
                                              additionalUserContextBlocks = [],
                                          }: PrepareAgentInvokeInput): Promise<PreparedAgentInvoke> {
     throwIfTurnAborted(ctx.signal);
@@ -44,16 +46,25 @@ export async function prepareAgentInvoke({
     let invokeMessages = buildInvokeMessages(history, userContextBlocks);
     const tools = getToolSchemas();
     let estimatedTokens = tokenCountWithEstimation(invokeMessages, tools);
-    const preState = getTokenWarningState(estimatedTokens, ctx.model);
+    const preState = getTokenWarningState(
+        estimatedTokens,
+        ctx.model,
+        contextWindow
+    );
 
     if (
         preState.critical &&
-        shouldAutoCompact(estimatedTokens, ctx.model, ctx.compactState)
+        shouldAutoCompact(
+            estimatedTokens,
+            ctx.model,
+            ctx.compactState,
+            contextWindow
+        )
     ) {
         await onEvent({
             type: "compact_start",
             tokenCount: estimatedTokens,
-            threshold: getAutoCompactThreshold(ctx.model),
+            threshold: getAutoCompactThreshold(ctx.model, contextWindow),
             trigger: "auto",
         });
         const compactResult = await compactHistory({
@@ -61,6 +72,7 @@ export async function prepareAgentInvoke({
             ctx,
             tools,
             preTokenCount: estimatedTokens,
+            contextWindow,
         });
         throwIfTurnAborted(ctx.signal);
 

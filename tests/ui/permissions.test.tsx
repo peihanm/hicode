@@ -7,6 +7,7 @@ import type { PermissionDecision, PermissionMode } from "../../src/permissions/t
 import type { Tool } from "../../src/tools/types.js";
 import { AppForTest as App } from "../helpers/AppForTest.js";
 import { ConfirmDialog } from "../../src/ui/dialogs/ConfirmDialog.js";
+import { EnterPlanDialog } from "../../src/ui/dialogs/EnterPlanDialog.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 
@@ -19,6 +20,72 @@ async function flush(ms = 20): Promise<void> {
 }
 
 describe("permission confirmation UI", () => {
+  test("enter_plan_mode 使用紧凑专用界面和整行选择", async () => {
+    const decisions: PermissionDecision[] = [];
+    const onDone = mock(() => {});
+    const instance = render(
+      <EnterPlanDialog
+        req={{
+          question: "不应直接展示的通用权限问题",
+          toolName: "enter_plan_mode",
+          input: { reason: "需要先了解项目结构，再制定实现方案。" },
+          resolve: (decision) => decisions.push(decision),
+        }}
+        onDone={onDone}
+      />
+    );
+
+    await flush();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("◆ PLAN FIRST?");
+    expect(frame).toContain("WHY");
+    expect(frame).toContain("需要先了解项目结构，再制定实现方案。");
+    expect(frame).toContain("Start planning");
+    expect(frame).toContain("Continue without a plan");
+    expect(frame).not.toContain("Permission request");
+    expect(frame).not.toContain("不应直接展示的通用权限问题");
+    expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
+
+    instance.stdin.write("\u001B[B");
+    await flush();
+    instance.stdin.write(ENTER);
+    await flush();
+
+    expect(decisions).toEqual([{
+      behavior: "deny",
+      message: "用户拒绝进入 Plan 模式",
+    }]);
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test("enter_plan_mode 按终端完整可用宽度排版并响应 resize", async () => {
+    const reason = "增强电脑对手需要调整评估策略和搜索决策逻辑，先制定最小改动方案。";
+    const createDialog = () => (
+      <EnterPlanDialog
+        req={{
+          question: "plan",
+          toolName: "enter_plan_mode",
+          input: { reason },
+          resolve: () => {},
+        }}
+        onDone={() => {}}
+      />
+    );
+    const instance = render(createDialog());
+    let columns = 120;
+    Object.defineProperty(instance.stdout, "columns", {
+      configurable: true,
+      get: () => columns,
+    });
+    instance.rerender(createDialog());
+    expect(instance.lastFrame()).toContain(reason);
+
+    columns = 52;
+    instance.stdout.emit("resize");
+    await flush(90);
+    expect(instance.lastFrame()).not.toContain(reason);
+  });
+
   test("权限问题、选项和操作提示位于同一个确认框内", async () => {
     const instance = render(
       <ConfirmDialog
@@ -39,6 +106,49 @@ describe("permission confirmation UI", () => {
     expect(frame).toContain("❯ 1. Yes");
     expect(frame).toContain("↑↓ 选择 · Enter 确认 · Esc 取消");
     expect(frame.split("\n").every((line) => line.startsWith("│"))).toBe(true);
+  });
+
+  test("App 将 enter_plan_mode 路由到专用界面", async () => {
+    await withTempProject(async (cwd) => {
+      let decision: PermissionDecision | undefined;
+      let completed!: () => void;
+      const done = new Promise<void>((resolve) => {
+        completed = resolve;
+      });
+      const runAgentImpl: AgentRunner = async (
+        _input,
+        _history,
+        _onEvent,
+        ctx
+      ) => {
+        decision = await ctx.canUseTool(
+          "enter_plan_mode",
+          "是否进入 Plan 模式？",
+          { reason: "需要先检查项目结构。" }
+        );
+        completed();
+        return { reply: "完成", reason: "completed", iterations: 1 };
+      };
+      const instance = render(
+        <App
+          resources={createTestRuntimeResources(cwd)}
+          runAgentImpl={runAgentImpl}
+        />
+      );
+      await flush(10);
+      instance.stdin.write("开始任务");
+      await flush(10);
+      instance.stdin.write(ENTER);
+      await flush();
+
+      expect(instance.lastFrame()).toContain("PLAN FIRST?");
+      expect(instance.lastFrame()).toContain("需要先检查项目结构。");
+      expect(instance.lastFrame()).not.toContain("Permission request");
+      instance.stdin.write(ENTER);
+      await done;
+
+      expect(decision).toEqual({ behavior: "allow" });
+    });
   });
 
   test("exit_plan_mode 使用专用三项审批并更新当前 Session 模式", async () => {
@@ -74,14 +184,14 @@ describe("permission confirmation UI", () => {
       instance.stdin.write(ENTER);
       await flush();
 
-      expect(instance.lastFrame()).toContain("Ready to code?");
+      expect(instance.lastFrame()).toContain("READY TO BUILD?");
       expect(instance.lastFrame()).toContain("Explore commands and workflows");
-      expect(instance.lastFrame()).toContain("3. No, keep planning");
+      expect(instance.lastFrame()).toContain("Keep planning");
       instance.stdin.write(ENTER);
       await done;
 
       expect(modeAfterApproval).toBe("acceptEdits");
-      expect(instance.lastFrame()).not.toContain("Ready to code?");
+      expect(instance.lastFrame()).not.toContain("READY TO BUILD?");
     });
   });
 
@@ -116,7 +226,7 @@ describe("permission confirmation UI", () => {
       await flush(10);
       instance.stdin.write(ENTER);
       await flush();
-      expect(instance.lastFrame()).toContain("Ready to code?");
+      expect(instance.lastFrame()).toContain("READY TO BUILD?");
 
       instance.stdin.write("\u001B");
       await done;

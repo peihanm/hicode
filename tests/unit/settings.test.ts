@@ -20,7 +20,7 @@ function document(
 }
 
 describe("Unified Settings", () => {
-    test("默认值保持现有模型和官方 GLM Provider", () => {
+    test("primary 和 fast 默认使用 GPT-5.6 Luna", () => {
         const resolved = resolvePillarSettings([]);
         expect(resolved.values).toMatchObject({
             models: {
@@ -28,13 +28,13 @@ describe("Unified Settings", () => {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
-                    label: "GLM 5.2",
+                    label: "GPT-5.6 Luna",
                 },
                 fast: {
-                    model: "glm-4.7",
+                    model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
-                    label: "GLM 4.7",
+                    label: "GPT-5.6 Luna",
                 },
             },
             permissions: {defaultMode: "default"},
@@ -172,11 +172,12 @@ describe("Unified Settings", () => {
         });
     });
 
-    test("Codex 可作为 primary 来源，但不能作为 fast 模型", () => {
+    test("Codex 可同时作为 primary 和 fast 来源", () => {
         const resolved = resolvePillarSettings([
             document("project", {
                 models: {
                     primary: {source: "codex", model: "gpt-5.6-sol"},
+                    fast: {source: "codex", model: "gpt-5.6-luna"},
                 },
             }),
         ]);
@@ -186,13 +187,12 @@ describe("Unified Settings", () => {
             model: "gpt-5.6-sol",
             label: "GPT-5.6 Sol",
         });
-        expect(() => resolvePillarSettings([
-            document("project", {
-                models: {
-                    fast: {source: "codex", model: "gpt-5.6-luna"},
-                },
-            }),
-        ])).toThrow("fast 模型不能使用 Codex");
+        expect(resolved.values.models.fast).toEqual({
+            provider: "codex",
+            source: "codex",
+            model: "gpt-5.6-luna",
+            label: "GPT-5.6 Luna",
+        });
     });
 
     test("source 目录只接受用户级定义，项目只能选择模型", () => {

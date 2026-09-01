@@ -13,7 +13,7 @@ const LLM_MAX_ATTEMPTS = 3;
 const LLM_RETRY_BASE_DELAY_MS = 800;
 const LLM_STREAM_IDLE_TIMEOUT_MS = 300_000;
 const LLM_STREAM_IDLE_WARNING_MS = 60_000;
-const LLM_OUTPUT_STALL_TIMEOUT_MS = 120_000;
+const LLM_OUTPUT_STALL_TIMEOUT_MS = 60_000;
 const LLM_MAX_OUTPUT_STALL_RETRIES = 2;
 const MAX_ERROR_RESPONSE_BYTES = 64 * 1024;
 
@@ -183,6 +183,7 @@ function createIdleRequestSignal(
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let warningTimer: ReturnType<typeof setTimeout> | undefined;
+    let outputStallWarningTimer: ReturnType<typeof setTimeout> | undefined;
     let outputStallTimer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
     let outputStalled = false;
@@ -206,19 +207,35 @@ function createIdleRequestSignal(
     const cleanup = () => {
         if (timer !== undefined) clearTimeout(timer);
         if (warningTimer !== undefined) clearTimeout(warningTimer);
+        if (outputStallWarningTimer !== undefined) {
+            clearTimeout(outputStallWarningTimer);
+        }
         if (outputStallTimer !== undefined) clearTimeout(outputStallTimer);
         parent?.removeEventListener("abort", abortFromParent);
     };
     const recordCompletion = () => {
         if (timer !== undefined) clearTimeout(timer);
         if (warningTimer !== undefined) clearTimeout(warningTimer);
+        if (outputStallWarningTimer !== undefined) {
+            clearTimeout(outputStallWarningTimer);
+        }
         if (outputStallTimer !== undefined) clearTimeout(outputStallTimer);
         timer = undefined;
         warningTimer = undefined;
+        outputStallWarningTimer = undefined;
         outputStallTimer = undefined;
     };
     const recordProgress = () => {
+        if (outputStallWarningTimer !== undefined) {
+            clearTimeout(outputStallWarningTimer);
+        }
         if (outputStallTimer !== undefined) clearTimeout(outputStallTimer);
+        const warningMs = Math.max(1, Math.floor(outputStallTimeoutMs / 2));
+        outputStallWarningTimer = setTimeout(
+            () => onWarning(warningMs),
+            warningMs
+        );
+        outputStallWarningTimer.unref?.();
         outputStallTimer = setTimeout(() => {
             outputStalled = true;
             controller.abort({
@@ -465,10 +482,6 @@ async function callOpenAICompatibleCore(
                         outputCharacters: 0,
                         estimatedOutputTokens: 0,
                     });
-                    await sleep(
-                        retryDelayMs(outputStallRetries, config.retryBaseDelayMs),
-                        options.signal
-                    );
                     continue;
                 }
                 throw new Error(

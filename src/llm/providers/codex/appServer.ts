@@ -10,7 +10,12 @@ import {lstat, mkdtemp, rm, symlink, writeFile} from "node:fs/promises";
 import type {ChildProcessEnvironment} from "../../../runtime/childEnvironment.js";
 import {mergeChildProcessEnvironment} from "../../../runtime/childEnvironment.js";
 import {createProcessTreeKiller} from "../../../tools/bash/process.js";
-import type {LLMCallOptions, LLMCallResult, TokenUsage} from "../../types.js";
+import type {
+    LLMCallOptions,
+    LLMCallResult,
+    LLMContextUsage,
+    TokenUsage,
+} from "../../types.js";
 import {
     throwIfTurnAborted,
     TurnInterruptedError,
@@ -18,8 +23,10 @@ import {
 } from "../../../runtime/abort.js";
 import {
     agentMessageDeltaSchema,
-    CODEX_BRIDGE_OUTPUT_SCHEMA,
-    codexBridgeDeveloperInstructions,
+    CodexBridgeResponseError,
+    type CodexBridgeRepairReason,
+    codexBridgeInstructions,
+    createCodexBridgeOutputSchema,
     createCodexBridgePrompt,
     itemNotificationSchema,
     jsonRpcMessageSchema,
@@ -37,6 +44,8 @@ import {
 const MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_CHARS = 64 * 1024;
 const START_TIMEOUT_MS = 30_000;
+const CODEX_OUTPUT_STALL_TIMEOUT_MS = 60_000;
+const CODEX_MAX_OUTPUT_STALL_RETRIES = 2;
 const PILLAR_PERMISSION_PROFILE = "pillar_model";
 const PILLAR_CODEX_CONFIG = `default_permissions = "${PILLAR_PERMISSION_PROFILE}"
 
@@ -72,12 +81,26 @@ interface ActiveCall {
     turnId?: string;
     finalMessages: string[];
     usage?: TokenUsage;
+    contextUsage?: LLMContextUsage;
+    receivedThreadUsage: boolean;
     outputCharacters: number;
+    outputStallWarningTimer?: ReturnType<typeof setTimeout>;
+    outputStallTimer?: ReturnType<typeof setTimeout>;
+    stallInterrupt?: Promise<void>;
+    stalled: boolean;
     onProgress?: LLMCallOptions["onStreamProgress"];
     signal?: AbortSignal;
     violation?: string;
     resolve(): void;
     reject(error: Error): void;
+}
+
+interface CompletedCodexTurn {
+    text: string;
+    usage: TokenUsage;
+    contextUsage?: LLMContextUsage;
+    violation?: string;
+    stalled?: boolean;
 }
 
 export interface CodexAppServerRuntimeLike {
@@ -96,6 +119,7 @@ interface CodexAppServerDependencies {
     linkAuthentication(source: string, target: string): Promise<void>;
     authFileExists(path: string): Promise<boolean>;
     killProcessTree(child: ChildProcessWithoutNullStreams): Promise<void>;
+    outputStallTimeoutMs: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -124,6 +148,22 @@ function parseAgentMessage(item: Record<string, unknown>): string | undefined {
         : undefined;
 }
 
+function emptyUsage(): TokenUsage {
+    return {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+    };
+}
+
+function addUsage(left: TokenUsage, right: TokenUsage): TokenUsage {
+    return {
+        prompt_tokens: left.prompt_tokens + right.prompt_tokens,
+        completion_tokens: left.completion_tokens + right.completion_tokens,
+        total_tokens: left.total_tokens + right.total_tokens,
+    };
+}
+
 class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
     private child?: ChildProcessWithoutNullStreams;
     private isolatedHome?: string;
@@ -132,6 +172,7 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
     private nextRequestId = 1;
     private readonly pending = new Map<RequestId, PendingRequest>();
     private active?: ActiveCall;
+    private callQueue: Promise<void> = Promise.resolve();
     private stderr = "";
     private closed = false;
 
@@ -142,23 +183,93 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
     ) {}
 
     async call(options: LLMCallOptions): Promise<LLMCallResult> {
-        if (this.active) throw new Error("Codex App Server 同时只允许一个模型调用");
-        if (options.signal) throwIfTurnAborted(options.signal);
-        await this.ensureStarted();
-        if (options.signal) throwIfTurnAborted(options.signal);
-        const callDirectory = await this.dependencies.createTemporaryDirectory(
-            join(tmpdir(), "pillar-codex-call-")
-        );
+        const previous = this.callQueue;
+        const gate = Promise.withResolvers<void>();
+        this.callQueue = previous.then(() => gate.promise);
         try {
-            return await this.runIsolatedCall(options, callDirectory);
+            await this.waitForCallSlot(previous, options.signal);
+            if (options.signal) throwIfTurnAborted(options.signal);
+            await this.ensureStarted();
+            if (options.signal) throwIfTurnAborted(options.signal);
+            const callDirectory = await this.dependencies.createTemporaryDirectory(
+                join(tmpdir(), "pillar-codex-call-")
+            );
+            try {
+                return await this.runIsolatedCall(options, callDirectory);
+            } finally {
+                await this.dependencies.removeDirectory(callDirectory).catch(() => undefined);
+            }
         } finally {
-            await this.dependencies.removeDirectory(callDirectory).catch(() => undefined);
+            gate.resolve();
         }
     }
 
     close(): Promise<void> {
         this.closePromise ??= this.closeImpl();
         return this.closePromise;
+    }
+
+    private waitForCallSlot(
+        previous: Promise<void>,
+        signal?: AbortSignal
+    ): Promise<void> {
+        if (!signal) return previous;
+        throwIfTurnAborted(signal);
+        return new Promise<void>((resolveWait, rejectWait) => {
+            let settled = false;
+            const finish = (callback: () => void) => {
+                if (settled) return;
+                settled = true;
+                signal.removeEventListener("abort", onAbort);
+                callback();
+            };
+            const onAbort = () => finish(() => rejectWait(
+                new TurnInterruptedError(normalizeTurnAbortReason(signal.reason))
+            ));
+            signal.addEventListener("abort", onAbort, {once: true});
+            void previous.then(
+                () => finish(resolveWait),
+                (error: unknown) => finish(() => rejectWait(error))
+            );
+        });
+    }
+
+    private clearOutputStallWatchdog(active: ActiveCall): void {
+        if (active.outputStallWarningTimer !== undefined) {
+            clearTimeout(active.outputStallWarningTimer);
+            active.outputStallWarningTimer = undefined;
+        }
+        if (active.outputStallTimer !== undefined) {
+            clearTimeout(active.outputStallTimer);
+            active.outputStallTimer = undefined;
+        }
+    }
+
+    private resetOutputStallWatchdog(active: ActiveCall): void {
+        this.clearOutputStallWatchdog(active);
+        if (!active.turnId || active.stalled) return;
+        const timeoutMs = this.dependencies.outputStallTimeoutMs;
+        const warningMs = Math.max(1, Math.floor(timeoutMs / 2));
+        active.outputStallWarningTimer = setTimeout(() => {
+            active.onProgress?.({
+                phase: "stalled",
+                outputCharacters: active.outputCharacters,
+                estimatedOutputTokens: Math.ceil(active.outputCharacters / 4),
+                idleMilliseconds: warningMs,
+            });
+        }, warningMs);
+        active.outputStallWarningTimer.unref?.();
+        active.outputStallTimer = setTimeout(() => {
+            if (!active.turnId || active.stalled) return;
+            active.stalled = true;
+            this.clearOutputStallWatchdog(active);
+            active.stallInterrupt = this.request("turn/interrupt", {
+                threadId: active.threadId,
+                turnId: active.turnId,
+            }).then(() => undefined);
+            active.resolve();
+        }, timeoutMs);
+        active.outputStallTimer.unref?.();
     }
 
     private async ensureStarted(): Promise<void> {
@@ -242,6 +353,95 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
         options: LLMCallOptions,
         callDirectory: string
     ): Promise<LLMCallResult> {
+        let usage = emptyUsage();
+        let contextUsage: LLMContextUsage | undefined;
+        let repair: CodexBridgeRepairReason | undefined;
+        let bridgeRepairUsed = false;
+        let outputStallRetries = 0;
+        const maxAttempts = CODEX_MAX_OUTPUT_STALL_RETRIES + 1;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            const completed = await this.runSingleIsolatedTurn(
+                options,
+                callDirectory,
+                repair
+            );
+            usage = addUsage(usage, completed.usage);
+            contextUsage = completed.contextUsage;
+            if (completed.stalled) {
+                if (
+                    outputStallRetries >= CODEX_MAX_OUTPUT_STALL_RETRIES ||
+                    attempt >= maxAttempts
+                ) {
+                    throw new Error(
+                        `Codex 输出连续 ${this.dependencies.outputStallTimeoutMs}ms 没有新增量，安全重试后仍无进展`
+                    );
+                }
+                outputStallRetries += 1;
+                repair = "output_stall";
+                options.onStreamProgress?.({
+                    phase: "retrying",
+                    outputCharacters: 0,
+                    estimatedOutputTokens: 0,
+                });
+                continue;
+            }
+            if (completed.violation) {
+                if (bridgeRepairUsed || attempt >= maxAttempts) {
+                    throw new Error(
+                        `Codex Bridge 修复重试失败：${completed.violation}`
+                    );
+                }
+                bridgeRepairUsed = true;
+                repair = "forbidden_builtin_tool";
+                options.onStreamProgress?.({
+                    phase: "retrying",
+                    outputCharacters: 0,
+                    estimatedOutputTokens: 0,
+                });
+                continue;
+            }
+            try {
+                const parsed = parseCodexBridgeResponse(
+                    completed.text,
+                    options.tools
+                );
+                return {
+                    message: {
+                        role: "assistant",
+                        content: parsed.content,
+                        ...(parsed.toolCalls.length > 0
+                            ? {tool_calls: parsed.toolCalls}
+                            : {}),
+                    },
+                    toolCalls: parsed.toolCalls,
+                    usage,
+                    ...(contextUsage ? {contextUsage} : {}),
+                };
+            } catch (error) {
+                if (!(error instanceof CodexBridgeResponseError)) throw error;
+                if (bridgeRepairUsed || attempt >= maxAttempts) {
+                    throw new CodexBridgeResponseError(
+                        `Codex Bridge 修复重试失败：${error.message}`
+                    );
+                }
+                bridgeRepairUsed = true;
+                options.onStreamProgress?.({
+                    phase: "retrying",
+                    outputCharacters: 0,
+                    estimatedOutputTokens: 0,
+                });
+                repair = "invalid_response";
+            }
+        }
+        throw new Error("Codex 重试状态异常");
+    }
+
+    private async runSingleIsolatedTurn(
+        options: LLMCallOptions,
+        callDirectory: string,
+        repair?: CodexBridgeRepairReason
+    ): Promise<CompletedCodexTurn> {
+        if (options.signal) throwIfTurnAborted(options.signal);
         const profiles = permissionProfileListResultSchema.parse(await this.request(
             "permissionProfile/list",
             {cwd: callDirectory, limit: 256}
@@ -264,7 +464,8 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
                 permissions: PILLAR_PERMISSION_PROFILE,
                 ephemeral: true,
                 serviceName: "pillar",
-                developerInstructions: codexBridgeDeveloperInstructions(),
+                baseInstructions: codexBridgeInstructions(),
+                developerInstructions: codexBridgeInstructions(),
                 config: {
                     mcp_servers: {},
                     plugins: {},
@@ -284,7 +485,9 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
         const active: ActiveCall = {
             threadId: threadResult.thread.id,
             finalMessages: [],
+            receivedThreadUsage: false,
             outputCharacters: 0,
+            stalled: false,
             onProgress: options.onStreamProgress,
             signal: options.signal,
             resolve: completion.resolve,
@@ -306,7 +509,11 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
                     threadId: active.threadId,
                     input: [{
                         type: "text",
-                        text: createCodexBridgePrompt(options.messages, options.tools),
+                        text: createCodexBridgePrompt(
+                            options.messages,
+                            options.tools,
+                            repair
+                        ),
                     }],
                     cwd: callDirectory,
                     approvalPolicy: "never",
@@ -314,38 +521,34 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
                     model: options.model,
                     effort: "high",
                     summary: "concise",
-                    outputSchema: CODEX_BRIDGE_OUTPUT_SCHEMA,
+                    outputSchema: createCodexBridgeOutputSchema(options.tools),
                 }
             ));
             active.turnId = turnResult.turn.id;
-            if (active.violation) abort();
-            if (options.signal?.aborted) abort();
+            if (active.violation || options.signal?.aborted) abort();
+            else this.resetOutputStallWatchdog(active);
             await completion.promise;
-            if (active.violation) throw new Error(active.violation);
+            if (active.stalled) await active.stallInterrupt;
             if (options.signal?.aborted) {
                 throw new TurnInterruptedError(
                     normalizeTurnAbortReason(options.signal.reason)
                 );
             }
             const text = active.finalMessages.at(-1);
-            if (!text) throw new Error("Codex App Server 没有返回最终 Agent Message");
-            const parsed = parseCodexBridgeResponse(text);
+            if (!text && !active.violation && !active.stalled) {
+                throw new Error("Codex App Server 没有返回最终 Agent Message");
+            }
             return {
-                message: {
-                    role: "assistant",
-                    content: parsed.content,
-                    ...(parsed.toolCalls.length > 0
-                        ? {tool_calls: parsed.toolCalls}
-                        : {}),
-                },
-                toolCalls: parsed.toolCalls,
-                usage: active.usage ?? {
-                    prompt_tokens: 0,
-                    completion_tokens: 0,
-                    total_tokens: 0,
-                },
+                text: text ?? "",
+                usage: active.usage ?? emptyUsage(),
+                ...(active.contextUsage
+                    ? {contextUsage: active.contextUsage}
+                    : {}),
+                ...(active.violation ? {violation: active.violation} : {}),
+                ...(active.stalled ? {stalled: true} : {}),
             };
         } finally {
+            this.clearOutputStallWatchdog(active);
             options.signal?.removeEventListener("abort", abort);
             if (this.active === active) this.active = undefined;
         }
@@ -415,6 +618,7 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
             if (!parsed.success || parsed.data.threadId !== active.threadId) return;
             if (active.turnId && parsed.data.turnId !== active.turnId) return;
             active.outputCharacters += parsed.data.delta.length;
+            this.resetOutputStallWatchdog(active);
             active.onProgress?.({
                 phase: "content",
                 outputCharacters: active.outputCharacters,
@@ -430,6 +634,7 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
             if (!parsed.success || parsed.data.threadId !== active.threadId) return;
             if (active.turnId && parsed.data.turnId !== active.turnId) return;
             active.outputCharacters += parsed.data.delta.length;
+            this.resetOutputStallWatchdog(active);
             active.onProgress?.({
                 phase: "reasoning",
                 outputCharacters: active.outputCharacters,
@@ -454,7 +659,10 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
             }
             if (method === "item/completed") {
                 const text = parseAgentMessage(item);
-                if (text !== undefined) active.finalMessages.push(text);
+                if (text !== undefined) {
+                    active.finalMessages.push(text);
+                    this.resetOutputStallWatchdog(active);
+                }
             }
             return;
         }
@@ -462,11 +670,14 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
             const parsed = rawResponseCompletedSchema.safeParse(params);
             if (!parsed.success || parsed.data.threadId !== active.threadId) return;
             if (active.turnId && parsed.data.turnId !== active.turnId) return;
-            if (parsed.data.usage) {
+            if (parsed.data.usage && !active.receivedThreadUsage) {
                 active.usage = {
                     prompt_tokens: parsed.data.usage.inputTokens,
                     completion_tokens: parsed.data.usage.outputTokens,
                     total_tokens: parsed.data.usage.totalTokens,
+                };
+                active.contextUsage = {
+                    tokenCount: parsed.data.usage.totalTokens,
                 };
             }
             return;
@@ -476,10 +687,19 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
             if (!parsed.success || parsed.data.threadId !== active.threadId) return;
             if (active.turnId && parsed.data.turnId !== active.turnId) return;
             const usage = parsed.data.tokenUsage.total;
+            const context = parsed.data.tokenUsage.last;
+            active.receivedThreadUsage = true;
             active.usage = {
                 prompt_tokens: usage.inputTokens,
                 completion_tokens: usage.outputTokens,
                 total_tokens: usage.totalTokens,
+            };
+            active.contextUsage = {
+                tokenCount: context.totalTokens,
+                ...(parsed.data.tokenUsage.modelContextWindow !== undefined &&
+                    parsed.data.tokenUsage.modelContextWindow !== null
+                    ? {contextWindow: parsed.data.tokenUsage.modelContextWindow}
+                    : {}),
             };
             return;
         }
@@ -496,7 +716,7 @@ class CodexAppServerRuntime implements CodexAppServerRuntimeLike {
                 active.resolve();
             } else if (
                 parsed.data.turn.status === "interrupted" &&
-                (active.violation || active.signal?.aborted)
+                (active.violation || active.stalled || active.signal?.aborted)
             ) {
                 active.resolve();
             } else {
@@ -587,6 +807,8 @@ export function createCodexAppServerRuntimeFactory(
             }
         }),
         killProcessTree: overrides.killProcessTree ?? killProcessTree,
+        outputStallTimeoutMs:
+            overrides.outputStallTimeoutMs ?? CODEX_OUTPUT_STALL_TIMEOUT_MS,
     };
     return (
         environment: ChildProcessEnvironment,

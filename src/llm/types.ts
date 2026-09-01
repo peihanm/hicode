@@ -31,6 +31,12 @@ export interface TokenUsage {
     total_tokens: number;
 }
 
+/** Latest active model context, distinct from accumulated billable usage. */
+export interface LLMContextUsage {
+    tokenCount: number;
+    contextWindow?: number;
+}
+
 export interface OpenAITool {
     type: "function";
     function: {
@@ -78,6 +84,7 @@ export interface LLMCallResult {
     message: Message;
     toolCalls: ToolCall[];
     usage: TokenUsage;
+    contextUsage?: LLMContextUsage;
 }
 
 export interface LLMSourceConnection {
@@ -116,7 +123,12 @@ export interface PromptLogRequest {
 }
 
 export type PromptLogResponse =
-    | { usage: TokenUsage; rawMessage: unknown; rawResponse: unknown }
+    | {
+        usage: TokenUsage;
+        contextUsage?: LLMContextUsage;
+        rawMessage: unknown;
+        rawResponse: unknown;
+    }
     | { error: string };
 
 export interface PromptLogPendingResponse {

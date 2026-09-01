@@ -11,7 +11,7 @@ import type {
     SettingsOrigins,
 } from "./types.js";
 
-export const DEFAULT_MODEL = "glm-5.2";
+export const DEFAULT_MODEL = "gpt-5.6-luna";
 
 const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
     glm: {
@@ -183,7 +183,7 @@ export function resolvePillarSettings(
     const sources = mergeUserSources(documents);
     let primaryModel = DEFAULT_MODEL;
     let primarySource = DEFAULT_LLM_PROVIDER;
-    let fastModel = "glm-4.7";
+    let fastModel = DEFAULT_MODEL;
     let fastSource = DEFAULT_LLM_PROVIDER;
     let permissionMode: PermissionMode = "default";
     let memoryEnabled = true;
@@ -284,12 +284,6 @@ export function resolvePillarSettings(
     if (cli.model !== undefined) {
         primaryModel = cli.model;
         origins.primaryModel = "cli";
-    }
-
-    if (fastSource === "codex") {
-        throw new Error(
-            "fast 模型不能使用 Codex 账号来源；Codex App Server 固定 high 推理，仅用于 primary 模型"
-        );
     }
 
     return {

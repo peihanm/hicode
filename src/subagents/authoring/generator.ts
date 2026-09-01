@@ -1,4 +1,5 @@
 import {createLLMCaller} from "../../llm/index.js";
+import type {CodexAppServerRuntimeLike} from "../../llm/providers/codex/index.js";
 import type {LLMCaller} from "../../llm/types.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
 import type {ModelSourceSettings, ModelTargetSettings} from "../../settings/types.js";
@@ -121,12 +122,16 @@ export function createAgentAuthoringRuntime(options: {
     instructions: ProjectInstructions;
     availableToolNames: readonly string[];
     getExistingAgentNames(): readonly string[];
+    codex?: CodexAppServerRuntimeLike;
 }): AgentAuthoringRuntime {
     return {
         generate(requirement, signal) {
             const target = options.getModelTarget();
             return createAgentDefinitionGenerator({
-                callLLM: createLLMCaller(options.getModelSource(target.source)),
+                callLLM: createLLMCaller(
+                    options.getModelSource(target.source),
+                    {codex: options.codex}
+                ),
             })({
                 storage: options.storage,
                 cwd: options.cwd,

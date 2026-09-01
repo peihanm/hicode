@@ -1,5 +1,6 @@
 import type {ToolCallOutcome} from "./toolBatch.js";
 import type {QueuedAgentInput} from "./inputChannel.js";
+import type {Todo} from "../todos.js";
 
 interface FailedToolRecord {
     toolCallId: string;
@@ -190,7 +191,8 @@ function claimsSandboxedExecution(text: string): boolean {
 
 export function formatCompletionReminder(
     state: TurnCompletionState,
-    candidateReply: string
+    candidateReply: string,
+    todos: readonly Todo[] = []
 ): string | undefined {
     const lines = [...state.failedTools.values()].map(
         (failure) =>
@@ -205,11 +207,13 @@ export function formatCompletionReminder(
         claimsBroadValidation(candidateReply);
     const unsupportedSandboxClaim =
         state.implementationWrites > 0 && claimsSandboxedExecution(candidateReply);
+    const inProgressTodos = todos.filter((todo) => todo.status === "in_progress");
     if (
         lines.length === 0 &&
         !missingLifecycleDisclosure &&
         !broadValidationWithoutBrowser &&
-        !unsupportedSandboxClaim
+        !unsupportedSandboxClaim &&
+        inProgressTodos.length === 0
     ) return undefined;
 
     return [
@@ -242,6 +246,13 @@ export function formatCompletionReminder(
         ...(unsupportedSandboxClaim
             ? [
                 "候选回答声称实现了沙箱执行，但本轮文件修改和普通命令证据不能证明生成的应用具备真实隔离。临时目录、子进程和 timeout 都不是沙箱；除非确实实现并验证了容器、虚拟机、受限 OS 用户或同等级隔离，否则必须改称本机子进程执行并披露文件、网络、凭证和资源风险。",
+            ]
+            : []),
+        ...(inProgressTodos.length > 0
+            ? [
+                "当前 Session 仍有标记为 in_progress 的 Todo：",
+                ...inProgressTodos.map((todo) => `- ${todo.content}`),
+                "本轮结束后不会再有工作实际执行，因此不能保留『正在进行』状态。若任务已经完成，先调用 todo_write 标记 completed；若尚未完成则继续执行；若决定暂缓，改为 pending 并在最终回答中准确说明。不要直接提交最终回答。",
             ]
             : []),
         "上一版候选回答如下：",

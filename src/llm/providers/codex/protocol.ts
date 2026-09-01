@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import type {Message, OpenAITool, ToolCall} from "../../types.js";
 
@@ -47,9 +48,9 @@ export const permissionProfileListResultSchema = z.object({
 }).passthrough();
 
 const usageSchema = z.object({
-    totalTokens: z.number().nonnegative(),
-    inputTokens: z.number().nonnegative(),
-    outputTokens: z.number().nonnegative(),
+    totalTokens: z.number().int().safe().nonnegative(),
+    inputTokens: z.number().int().safe().nonnegative(),
+    outputTokens: z.number().int().safe().nonnegative(),
 }).passthrough();
 
 export const threadTokenUsageUpdatedSchema = z.object({
@@ -58,7 +59,7 @@ export const threadTokenUsageUpdatedSchema = z.object({
     tokenUsage: z.object({
         total: usageSchema,
         last: usageSchema,
-        modelContextWindow: z.number().nullable().optional(),
+        modelContextWindow: z.number().int().safe().positive().nullable().optional(),
     }).passthrough(),
 }).passthrough();
 
@@ -100,7 +101,6 @@ export const turnCompletedSchema = z.object({
 }).passthrough();
 
 const toolCallSchema = z.object({
-    id: z.string().trim().min(1).max(200),
     type: z.literal("function"),
     function: z.object({
         name: z.string().trim().min(1).max(200),
@@ -113,37 +113,56 @@ const bridgeResponseSchema = z.object({
     tool_calls: z.array(toolCallSchema).max(128),
 }).strict();
 
-export const CODEX_BRIDGE_OUTPUT_SCHEMA = {
-    type: "object",
-    properties: {
-        content: {type: ["string", "null"]},
-        tool_calls: {
-            type: "array",
-            items: {
-                type: "object",
-                properties: {
-                    id: {type: "string"},
-                    type: {type: "string", enum: ["function"]},
-                    function: {
-                        type: "object",
-                        properties: {
-                            name: {type: "string"},
-                            arguments: {type: "string"},
+export class CodexBridgeResponseError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "CodexBridgeResponseError";
+    }
+}
+
+export type CodexBridgeRepairReason =
+    | "invalid_response"
+    | "forbidden_builtin_tool"
+    | "output_stall";
+
+export function createCodexBridgeOutputSchema(
+    tools: readonly OpenAITool[]
+) {
+    const names = [...new Set(tools.map((tool) => tool.function.name))];
+    return {
+        type: "object",
+        properties: {
+            content: {type: ["string", "null"]},
+            tool_calls: {
+                type: "array",
+                maxItems: names.length === 0 ? 0 : 128,
+                items: {
+                    type: "object",
+                    properties: {
+                        type: {type: "string", enum: ["function"]},
+                        function: {
+                            type: "object",
+                            properties: {
+                                name: names.length > 0
+                                    ? {type: "string", enum: names}
+                                    : {type: "string"},
+                                arguments: {type: "string"},
+                            },
+                            required: ["name", "arguments"],
+                            additionalProperties: false,
                         },
-                        required: ["name", "arguments"],
-                        additionalProperties: false,
                     },
+                    required: ["type", "function"],
+                    additionalProperties: false,
                 },
-                required: ["id", "type", "function"],
-                additionalProperties: false,
             },
         },
-    },
-    required: ["content", "tool_calls"],
-    additionalProperties: false,
-} as const;
+        required: ["content", "tool_calls"],
+        additionalProperties: false,
+    } as const;
+}
 
-const BRIDGE_DEVELOPER_INSTRUCTIONS = [
+const BRIDGE_INSTRUCTIONS = [
     "You are the stateless model boundary inside the Pillar coding agent.",
     "Never call Codex built-in tools, shell commands, MCP tools, web search, file tools, subagents, or user-input tools.",
     "Do not inspect the filesystem or environment. Everything you may use is contained in the turn input.",
@@ -152,19 +171,30 @@ const BRIDGE_DEVELOPER_INSTRUCTIONS = [
     "Pillar, not Codex, executes every requested function through its own permission and checkpoint runtime.",
 ].join("\n");
 
-export function codexBridgeDeveloperInstructions(): string {
-    return BRIDGE_DEVELOPER_INSTRUCTIONS;
+export function codexBridgeInstructions(): string {
+    return BRIDGE_INSTRUCTIONS;
 }
 
 export function createCodexBridgePrompt(
     messages: readonly Message[],
-    tools: readonly OpenAITool[]
+    tools: readonly OpenAITool[],
+    repair?: CodexBridgeRepairReason
 ): string {
     return [
         "Produce the next assistant message for this conversation.",
+        repair === "invalid_response"
+            ? "A previous response violated the bridge schema. Produce one fresh corrected response; do not repeat malformed text."
+            : undefined,
+        repair === "forbidden_builtin_tool"
+            ? "A previous attempt incorrectly used a Codex built-in tool. Do not use any built-in tool; return a Pillar function request in the structured response instead."
+            : undefined,
+        repair === "output_stall"
+            ? "A previous attempt stopped producing output and was interrupted. Start again from the supplied conversation and return one complete structured response."
+            : undefined,
         "The JSON in <conversation> preserves message roles and prior Pillar tool calls/results.",
         "The JSON in <functions> lists the only functions you may request.",
         "For each function call, put valid JSON arguments in the string field `arguments`.",
+        "Pillar assigns function-call IDs. Do not add an `id` field to a function call.",
         "If no function is needed, return an empty `tool_calls` array and put the complete answer in `content`.",
         "If functions are needed, `content` may be null. Never invent a function not present in <functions>.",
         "",
@@ -174,10 +204,19 @@ export function createCodexBridgePrompt(
         "<functions>",
         JSON.stringify(tools),
         "</functions>",
-    ].join("\n");
+        "",
+        "<bridge-contract>",
+        "Do not call Codex built-in shell, file, web, MCP, subagent, or user-input tools.",
+        "If an action is needed, request only a function listed in <functions> through the structured response.",
+        "Return only the JSON object required by the output schema.",
+        "</bridge-contract>",
+    ].filter((line): line is string => line !== undefined).join("\n");
 }
 
-export function parseCodexBridgeResponse(text: string): {
+export function parseCodexBridgeResponse(
+    text: string,
+    tools: readonly OpenAITool[]
+): {
     content: string | null;
     toolCalls: ToolCall[];
 } {
@@ -185,23 +224,42 @@ export function parseCodexBridgeResponse(text: string): {
     try {
         value = JSON.parse(text);
     } catch (error) {
-        throw new Error(
+        throw new CodexBridgeResponseError(
             `Codex 返回的结构化消息不是合法 JSON：${error instanceof Error ? error.message : String(error)}`
         );
     }
     const parsed = bridgeResponseSchema.safeParse(value);
     if (!parsed.success) {
-        throw new Error(`Codex 返回的结构化消息不符合协议：${parsed.error.message}`);
+        throw new CodexBridgeResponseError(
+            `Codex 返回的结构化消息不符合协议：${parsed.error.message}`
+        );
     }
-    const ids = new Set<string>();
+    const allowedNames = new Set(tools.map((tool) => tool.function.name));
     for (const call of parsed.data.tool_calls) {
-        if (ids.has(call.id)) {
-            throw new Error(`Codex 在同一响应中重复使用 Tool Call ID: ${call.id}`);
+        if (!allowedNames.has(call.function.name)) {
+            throw new CodexBridgeResponseError(
+                `Codex 请求了未提供的函数：${call.function.name}`
+            );
         }
-        ids.add(call.id);
+        let args: unknown;
+        try {
+            args = JSON.parse(call.function.arguments);
+        } catch {
+            throw new CodexBridgeResponseError(
+                `Codex 为函数 ${call.function.name} 返回了非法 JSON 参数`
+            );
+        }
+        if (!args || typeof args !== "object" || Array.isArray(args)) {
+            throw new CodexBridgeResponseError(
+                `Codex 为函数 ${call.function.name} 返回的参数不是对象`
+            );
+        }
     }
     return {
         content: parsed.data.content,
-        toolCalls: parsed.data.tool_calls,
+        toolCalls: parsed.data.tool_calls.map((call) => ({
+            id: `call_codex_${randomUUID()}`,
+            ...call,
+        })),
     };
 }

@@ -130,6 +130,26 @@ describe("Agent invoke preparation", () => {
     });
   });
 
+  test("Provider 实报大窗口会阻止按默认 128K 过早 Compact", async () => {
+    await withTempProject(async (cwd) => {
+      let compactCalls = 0;
+
+      await prepareAgentInvoke({
+        history: history(true),
+        ctx: createTestContext(cwd, {model: "gpt-5.6-luna"}),
+        contextWindow: 1_050_000,
+        onEvent: () => {},
+        getToolSchemas: () => [],
+        compactHistory: async ({preTokenCount}) => {
+          compactCalls += 1;
+          return noCompactResult(preTokenCount);
+        },
+      });
+
+      expect(compactCalls).toBe(0);
+    });
+  });
+
   test("连续失败达到熔断上限时跳过 Auto-Compact", async () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd);

@@ -38,8 +38,14 @@ describe("tool registry contract", () => {
     );
     expect(bash?.function.description).toContain("每次调用都是独立进程");
     expect(bash?.function.description).toContain("拒绝 shell 后台操作符 &");
+    expect(bash?.function.description).toContain(
+      "run_in_background 并省略 timeout_ms"
+    );
     expect(JSON.stringify(bash?.function.parameters)).toContain(
       "不要假设上一次 cd 会保留"
+    );
+    expect(JSON.stringify(bash?.function.parameters)).toContain(
+      "timeout_ms 不是启动等待时间"
     );
   });
 

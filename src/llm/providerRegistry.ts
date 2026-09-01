@@ -7,7 +7,7 @@ export const LLM_PROVIDER_NAMES = [
 
 export type LLMProviderName = typeof LLM_PROVIDER_NAMES[number];
 
-export const DEFAULT_LLM_PROVIDER: LLMProviderName = "glm";
+export const DEFAULT_LLM_PROVIDER: LLMProviderName = "codex";
 
 export const API_LLM_PROVIDER_NAMES = [
     "glm",

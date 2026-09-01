@@ -14,6 +14,7 @@ import {
 } from "./turnCompletion.js";
 import {DEFAULT_MAX_ITERATIONS} from "./constants.js";
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
+import type {Todo} from "../todos.js";
 
 export interface AgentToolBindings {
     getToolSchemas: ToolSchemaProvider;
@@ -23,6 +24,8 @@ export interface AgentToolBindings {
 
 export interface AgentRunOptions extends AgentToolBindings {
     maxIterations?: number;
+    /** 读取 Session-owned Todo 真相源，供最终回答前校验状态一致性。 */
+    getTodos?: () => readonly Todo[];
     /** 连续权限拒绝达到该值时停止工具阶段，供无交互子 Runtime 使用。 */
     maxConsecutiveDeniedToolCalls?: number;
     /** 当前 turn 的宿主上下文，不写入持久 history。 */
@@ -121,6 +124,7 @@ async function runAgentCore(
     let usageTotalTokens = 0;
     let usageCalls = 0;
     let usageEstimated = false;
+    let providerContextWindow: number | undefined;
 
     let iterations = 0;
     const resultUsage = () => usageCalls === 0
@@ -172,6 +176,7 @@ async function runAgentCore(
                 onEvent,
                 getToolSchemas: getToolSchemasImpl,
                 compactHistory: compactHistoryImpl,
+                contextWindow: providerContextWindow,
                 additionalUserContextBlocks: completionNudge
                     ? [
                         ...(options.additionalUserContextBlocks ?? []),
@@ -203,7 +208,7 @@ async function runAgentCore(
             } finally {
                 await onEvent({type: "model_stream_end"});
             }
-            const {message, toolCalls, usage} = llmResult;
+            const {message, toolCalls, usage, contextUsage} = llmResult;
             throwIfTurnAborted(ctx.signal);
             assertFreshToolCallIds(history, toolCalls);
             // assistant message 和 tool result 入 history（真实对话内容）
@@ -214,24 +219,45 @@ async function runAgentCore(
             // 不能把“缺失 usage”伪装成真实的 0 tokens。
             const hasActualUsage =
                 Number.isFinite(usage.prompt_tokens) && usage.prompt_tokens > 0;
-            const tokenCount = hasActualUsage
-                ? usage.prompt_tokens
-                : estimatedTokens;
+            const contextTokenCount = contextUsage?.tokenCount;
+            const hasActualContextUsage = contextTokenCount !== undefined &&
+                Number.isFinite(contextTokenCount) &&
+                contextTokenCount > 0;
+            const reportedContextWindow = contextUsage?.contextWindow;
+            if (
+                reportedContextWindow !== undefined &&
+                Number.isSafeInteger(reportedContextWindow) &&
+                reportedContextWindow > 0
+            ) {
+                providerContextWindow = reportedContextWindow;
+            }
+            const tokenCount = hasActualContextUsage
+                ? contextTokenCount
+                : hasActualUsage
+                    ? usage.prompt_tokens
+                    : estimatedTokens;
             usageCalls += 1;
-            usageInputTokens += tokenCount;
             if (hasActualUsage) {
+                usageInputTokens += usage.prompt_tokens;
                 usageOutputTokens += usage.completion_tokens;
                 usageTotalTokens += usage.total_tokens;
             } else {
+                usageInputTokens += tokenCount;
                 usageEstimated = true;
             }
-            const postState = getTokenWarningState(tokenCount, ctx.model);
+            const postState = getTokenWarningState(
+                tokenCount,
+                ctx.model,
+                providerContextWindow
+            );
             await onEvent({
                 type: "token_update",
                 tokenCount,
                 percentUsed: postState.percentUsed,
                 warning: postState.warning,
-                status: hasActualUsage ? "actual" : "estimated",
+                status: hasActualContextUsage || hasActualUsage
+                    ? "actual"
+                    : "estimated",
             });
 
             // needsFollowUp = false：LLM 没调工具，应该是给最终回答了
@@ -252,7 +278,11 @@ async function runAgentCore(
                     continue;
                 }
                 const completionReminder = textContent && !completionGateUsed
-                    ? formatCompletionReminder(completionState, textContent)
+                    ? formatCompletionReminder(
+                        completionState,
+                        textContent,
+                        options.getTodos?.() ?? []
+                    )
                     : undefined;
                 if (completionReminder) {
                     history.pop();

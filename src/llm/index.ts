@@ -9,13 +9,12 @@ import {
 import type {
     LLMCaller,
     LLMCallKind,
+    LLMCallResult,
     LLMProvider,
     LLMSourceConnection,
     LLMStreamProgress,
     Message,
     OpenAITool,
-    TokenUsage,
-    ToolCall,
 } from "./types.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {CodexAppServerRuntimeLike} from "./providers/codex/index.js";
@@ -58,7 +57,7 @@ export function createLLMCaller(
         kind: LLMCallKind,
         signal?: AbortSignal,
         onStreamProgress?: (progress: LLMStreamProgress) => void
-    ): Promise<{message: Message; toolCalls: ToolCall[]; usage: TokenUsage}> {
+    ): Promise<LLMCallResult> {
         if (!provider) {
             throw new Error("Codex Runtime 未初始化，无法使用 GPT/Codex 模型");
         }

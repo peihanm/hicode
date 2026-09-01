@@ -122,14 +122,14 @@ Pillar 按以下顺序读取配置，后面的标量值覆盖前面的值：
 | `sources.<name>.apiKeyEnv` | string | 保存该来源凭证的环境变量名 | 来源内置值 |
 | `sources.<name>.baseUrl` | URL | 可选的请求地址 | 来源默认地址 |
 | `sources.<name>.models` | array | `{id, label}` 模型目录 | 来源内置目录 |
-| `models.primary.source` | string | `glm`、`qwen`、`deepseek`、`codex` | `glm` |
-| `models.primary.model` | string | 对应 source 目录中的模型 ID | `glm-5.2` |
-| `models.fast.source` | string | `glm`、`qwen`、`deepseek` | `glm` |
-| `models.fast.model` | string | 对应 source 目录中的模型 ID | `glm-4.7` |
+| `models.primary.source` | string | `glm`、`qwen`、`deepseek`、`codex` | `codex` |
+| `models.primary.model` | string | 对应 source 目录中的模型 ID | `gpt-5.6-luna` |
+| `models.fast.source` | string | `glm`、`qwen`、`deepseek`、`codex` | `codex` |
+| `models.fast.model` | string | 对应 source 目录中的模型 ID | `gpt-5.6-luna` |
 
-`primary` 用于 Root Agent、Compact 和默认子 Agent；`fast` 用于 Explore 及显式选择 `model=fast`
-的子 Agent。两者可以使用不同 Provider，`fast` 不是请求失败后的自动降级模型。primary 选择 Codex
-时，Memory 和 Agent Authoring 使用 fast，避免让固定 high 的账号模型承担后台快速任务。
+`primary` 用于 Root Agent、Compact 和默认子 Agent；`fast` 用于 Explore、Prompt Hook，以及 primary
+选择 Codex 时的 Memory 和 Agent Authoring。两者可以使用不同 Provider，`fast` 不是请求失败后的自动
+降级模型。内置默认值让两者都使用 GPT-5.6 Luna；Codex 的 fast 调用仍固定为 `high` 推理。
 
 `sources` 只允许在用户级 `~/.pillar/settings.json` 定义；项目和本机项目 Settings 只能选择
 `source/model`，不能改变凭证变量或 Base URL。API key 的值仍只写在 `.env`，不会进入 Settings。
@@ -138,7 +138,7 @@ Pillar 按以下顺序读取配置，后面的标量值覆盖前面的值：
 该 source 中所有受支持的模型都会按 `label` 展示。
 
 `codex` source 复用本机 Codex/ChatGPT 登录，不需要 API Key，因此总会出现在 primary 候选中；首次
-调用才检查 Codex CLI 与登录状态。内置三个 GPT 模型全部固定 `high` 推理，并且不能配置为 fast。
+调用才检查 Codex CLI 与登录状态。内置三个 GPT 模型全部固定 `high` 推理，primary 与 fast 都可使用。
 
 ### `permissions`
 

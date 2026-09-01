@@ -594,8 +594,9 @@ describe("GLM cancellation", () => {
       const provider = createTestGlmProvider({
         streamIdleTimeoutMs: 100,
         outputStallTimeoutMs: 20,
-        retryBaseDelayMs: 1,
+        retryBaseDelayMs: 1_000,
       });
+      const startedAt = Date.now();
       const result = await callGlm(provider, {
         messages: [{ role: "user", content: "continue after stall" }],
         tools: [],
@@ -611,6 +612,8 @@ describe("GLM cancellation", () => {
       expect(requestBodies[0]?.reasoning_effort).toBeUndefined();
       expect(requestBodies[1]?.reasoning_effort).toBeUndefined();
       expect(result.message.content).toBe("重试成功");
+      expect(Date.now() - startedAt).toBeLessThan(500);
+      expect(progress).toContain("stalled");
       expect(progress).toContain("retrying");
       const logs = (await readdir(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);

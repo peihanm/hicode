@@ -75,7 +75,6 @@ export interface StartShellTaskInput {
     command: string;
     cwd: string;
     toolCallId: string;
-    timeoutMs?: number;
     maxOutputBytes?: number;
     sandboxPermissions?: SandboxExecutionPreference;
 }

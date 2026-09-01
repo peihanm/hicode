@@ -1,12 +1,11 @@
 import {useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
-import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
+import stringWidth from "string-width";
 import type {PermissionMode} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {TerminalMarkdown} from "../conversation/TerminalMarkdown.js";
 import {COLORS} from "../theme.js";
-import {DialogFrame, DialogIndicator, DialogItem} from "./DialogFrame.js";
 import {useTerminalWidth} from "../terminalSize.js";
 
 const MAX_PLAN_PREVIEW_CHARS = 4000;
@@ -33,14 +32,23 @@ function primaryApprovalOption(
 ): ApprovalOption {
     if (bypassPermissionsAvailable) {
         return {
-            label: "1. Yes, and bypass permissions",
+            label: "Build now · bypass permissions",
             value: "bypassPermissions",
         };
     }
     return {
-        label: "1. Yes, auto-accept edits",
+        label: "Build now · auto-accept edits",
         value: "acceptEdits",
     };
+}
+
+function fitRow(value: string, width: number): string {
+    let result = "";
+    for (const segment of Array.from(value)) {
+        if (stringWidth(result + segment) > width) break;
+        result += segment;
+    }
+    return result + " ".repeat(Math.max(0, width - stringWidth(result)));
 }
 
 function planPreview(plan: string): {value: string; truncated: boolean} {
@@ -64,12 +72,14 @@ export function PlanApprovalDialog({
     onApprove: (mode: ExitPermissionMode) => void;
     onDone: () => void;
 }) {
-    const width = Math.max(1, useTerminalWidth() - 4);
+    const contentWidth = Math.max(20, useTerminalWidth() - 6);
+    const menuWidth = contentWidth;
     const plan = readPlan(req.input);
     const preview = plan ? planPreview(plan) : undefined;
     const completedRef = useRef(false);
     const [feedbackMode, setFeedbackMode] = useState(false);
     const [feedback, setFeedback] = useState("");
+    const [selectedIndex, setSelectedIndex] = useState(0);
 
     const finishDeny = (message: string) => {
         if (completedRef.current) return;
@@ -78,35 +88,14 @@ export function PlanApprovalDialog({
         onDone();
     };
 
-    useInput((_input, key) => {
-        if (!key.escape || completedRef.current) return;
-        if (feedbackMode) {
-            setFeedback("");
-            setFeedbackMode(false);
-            return;
-        }
-        finishDeny("用户取消计划审批，继续留在 Plan 模式");
-    });
-
-    if (!plan || !preview) {
-        return (
-            <DialogFrame
-                title="无法审批计划"
-                tone="error"
-                subtitle={<Text>exit_plan_mode 输入缺少有效 plan。</Text>}
-                footer="Esc 关闭并继续留在 Plan 模式"
-            />
-        );
-    }
-
     const options: ApprovalOption[] = [
         primaryApprovalOption(bypassPermissionsAvailable),
         {
-            label: "2. Yes, manually approve edits",
+            label: "Build now · approve edits manually",
             value: "default",
         },
         {
-            label: "3. No, keep planning",
+            label: "Keep planning",
             value: "keep_planning",
         },
     ];
@@ -123,6 +112,45 @@ export function PlanApprovalDialog({
         onDone();
     };
 
+    useInput((_input, key) => {
+        if (completedRef.current) return;
+        if (feedbackMode) {
+            if (key.escape) {
+                setFeedback("");
+                setFeedbackMode(false);
+            }
+            return;
+        }
+        if (key.escape) {
+            finishDeny("用户取消计划审批，继续留在 Plan 模式");
+        } else if (!plan || !preview) {
+            return;
+        } else if (key.upArrow) {
+            setSelectedIndex((index) =>
+                (index - 1 + options.length) % options.length
+            );
+        } else if (key.downArrow) {
+            setSelectedIndex((index) => (index + 1) % options.length);
+        } else if (key.return) {
+            const selected = options[selectedIndex];
+            if (selected) handleSelect(selected);
+        }
+    });
+
+    if (!plan || !preview) {
+        return (
+            <Box flexDirection="column" paddingLeft={2}>
+                <Text color={COLORS.error} bold>◆ INVALID PLAN</Text>
+                <Box marginTop={1}>
+                    <Text>exit_plan_mode 输入缺少有效 plan。</Text>
+                </Box>
+                <Box marginTop={1}>
+                    <Text color={COLORS.dim}>esc 关闭并继续留在 Plan 模式</Text>
+                </Box>
+            </Box>
+        );
+    }
+
     const submitFeedback = (value: string) => {
         const trimmed = value.trim();
         if (!trimmed) return;
@@ -130,21 +158,19 @@ export function PlanApprovalDialog({
     };
 
     return (
-        <DialogFrame
-            title="Ready to code?"
-            footer={feedbackMode
-                ? "Enter 提交 · Esc 返回选项"
-                : "↑↓ 选择 · Enter 确认 · Esc 继续规划"}
-        >
-            <Box marginTop={1} flexDirection="column">
-                <TerminalMarkdown value={preview.value} width={width}/>
+        <Box flexDirection="column" paddingLeft={2}>
+            <Text color={COLORS.accent} bold>◆ READY TO BUILD?</Text>
+            <Box marginTop={1} flexDirection="column" width={contentWidth}>
+                <Text color={COLORS.dim} bold>PLAN</Text>
+                <TerminalMarkdown value={preview.value} width={contentWidth}/>
                 {preview.truncated && (
                     <Text color={COLORS.dim}>…计划预览已截断，批准后仍会使用完整计划。</Text>
                 )}
             </Box>
             {feedbackMode ? (
-                <Box marginTop={1} flexDirection="column">
-                    <Text>No, keep planning · Tell pillar what to change</Text>
+                <Box marginTop={1} flexDirection="column" width={contentWidth}>
+                    <Text color={COLORS.dim} bold>FEEDBACK</Text>
+                    <Text>Tell Pillar what to change before building.</Text>
                     <Box>
                         <Text color={COLORS.accent}>❯ </Text>
                         <TextInput
@@ -161,15 +187,33 @@ export function PlanApprovalDialog({
                 </Box>
             ) : (
                 <Box marginTop={1} flexDirection="column">
-                    <Text color={COLORS.dim}>Would you like to proceed?</Text>
-                    <SelectInput
-                        items={options}
-                        onSelect={handleSelect}
-                        indicatorComponent={DialogIndicator}
-                        itemComponent={DialogItem}
-                    />
+                    <Text color={COLORS.dim} bold>ACTION</Text>
+                    {options.map((option, index) => {
+                        const focused = index === selectedIndex;
+                        const row = fitRow(
+                            `${focused ? "›" : " "} ${option.label}`,
+                            menuWidth
+                        );
+                        return (
+                            <Text
+                                key={option.value}
+                                backgroundColor={focused ? COLORS.accent : undefined}
+                                color={focused ? "white" : undefined}
+                                bold={focused}
+                            >
+                                {row}
+                            </Text>
+                        );
+                    })}
                 </Box>
             )}
-        </DialogFrame>
+            <Box marginTop={1}>
+                <Text color={COLORS.dim}>
+                    {feedbackMode
+                        ? "enter 提交  ·  esc 返回选项"
+                        : "↑↓ 选择  ·  enter 确认  ·  esc 继续规划"}
+                </Text>
+            </Box>
+        </Box>
     );
 }

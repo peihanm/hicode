@@ -7,6 +7,7 @@ import {MessageList, TranscriptDetails,} from "./conversation/MessageList.js";
 import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
 import {InputBox} from "./input/InputBox.js";
 import {ConfirmDialog} from "./dialogs/ConfirmDialog.js";
+import {EnterPlanDialog} from "./dialogs/EnterPlanDialog.js";
 import {AskDialog} from "./dialogs/AskDialog.js";
 import {PlanApprovalDialog} from "./dialogs/PlanApprovalDialog.js";
 import {StatusBar} from "./status/StatusBar.js";
@@ -284,6 +285,11 @@ export function App({
                                 turn.prePlanMode === "bypassPermissions"
                             }
                             onApprove={turn.setPermissionMode}
+                            onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
+                        />
+                    ) : turn.confirmRequest.toolName === "enter_plan_mode" ? (
+                        <EnterPlanDialog
+                            req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : (

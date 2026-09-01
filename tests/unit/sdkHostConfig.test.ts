@@ -145,8 +145,12 @@ describe("SDK Host config", () => {
             });
 
             expect(loaded.configuration.settings.models.primary.model).toBe(
-                "glm-5.2"
+                "gpt-5.6-luna"
             );
+            expect(loaded.configuration.settings.models.fast).toMatchObject({
+                source: "codex",
+                model: "gpt-5.6-luna",
+            });
             expect(loaded.issues).toEqual([]);
         });
     });

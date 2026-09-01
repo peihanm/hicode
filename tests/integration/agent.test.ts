@@ -129,6 +129,48 @@ describe("agent loop", () => {
     });
   });
 
+  test("当前上下文驱动 TUI，累计 usage 仍用于 Agent 结果", async () => {
+    await withTempProject(async (cwd) => {
+      const events: AgentEvent[] = [];
+      const result = await runAgent(
+        "处理任务",
+        initialHistory(),
+        (event) => events.push(event),
+        createTestContext(cwd, {model: "gpt-5.6-luna"}),
+        {
+          callLLM: async () => ({
+            message: {role: "assistant", content: "完成"},
+            toolCalls: [],
+            usage: {
+              prompt_tokens: 300,
+              completion_tokens: 40,
+              total_tokens: 340,
+            },
+            contextUsage: {
+              tokenCount: 74,
+              contextWindow: 1_050_000,
+            },
+          }),
+        }
+      );
+
+      expect(result.usage).toEqual({
+        inputTokens: 300,
+        outputTokens: 40,
+        totalTokens: 340,
+        estimated: false,
+      });
+      const update = events.find((event) => event.type === "token_update");
+      expect(update).toMatchObject({
+        type: "token_update",
+        tokenCount: 74,
+        status: "actual",
+        warning: false,
+      });
+      expect(update?.percentUsed).toBeCloseTo(74 / 1_030_000, 8);
+    });
+  });
+
   test("把 Provider 的流式生成进度转发给宿主并在完成时收口", async () => {
     await withTempProject(async (cwd) => {
       const events: AgentEvent[] = [];
@@ -523,6 +565,71 @@ describe("agent loop", () => {
 
       expect(result.reply).toContain("退出 Pillar 后会终止");
       expect(fake.calls).toHaveLength(3);
+    });
+  });
+
+  test("最终回答前要求收口仍在进行的 Todo", async () => {
+    await withTempProject(async (cwd) => {
+      let todos: Array<{
+        content: string;
+        status: "pending" | "in_progress" | "completed";
+        activeForm: string;
+      }> = [];
+      const activeTodo = {
+        content: "补充 README 并执行构建与接口验证",
+        status: "in_progress" as const,
+        activeForm: "正在补充说明并验证",
+      };
+      const completedTodo = {...activeTodo, status: "completed" as const};
+      const fake = createFakeLLM([
+        assistantToolCall("todo_write", {todos: [activeTodo]}, "todo-start"),
+        assistantText("网站已经完成，验证全部通过。"),
+        (options) => {
+          expect(options.messages.some(
+            (message) =>
+              typeof message.content === "string" &&
+              message.content.includes("仍有标记为 in_progress 的 Todo") &&
+              message.content.includes(activeTodo.content) &&
+              message.content.includes("先调用 todo_write 标记 completed") &&
+              message.content.includes(
+                "<candidate-reply>\n网站已经完成，验证全部通过。\n</candidate-reply>"
+              )
+          )).toBe(true);
+          return assistantToolCall(
+            "todo_write",
+            {todos: [completedTodo]},
+            "todo-complete"
+          );
+        },
+        assistantText("网站已经完成，验证全部通过。"),
+      ]);
+      const ctx = createTestContext(cwd, {
+        setTodos(nextTodos) {
+          todos = nextTodos;
+        },
+      });
+      const history = initialHistory();
+
+      const result = await runAgent(
+        "完成网站并验证",
+        history,
+        () => {},
+        ctx,
+        {
+          callLLM: fake.callLLM,
+          getTodos: () => todos,
+        }
+      );
+
+      expect(result.reply).toBe("网站已经完成，验证全部通过。");
+      expect(todos).toEqual([]);
+      expect(fake.calls).toHaveLength(4);
+      expect(history.some(
+        (message) => message.content === "网站已经完成，验证全部通过。"
+      )).toBe(true);
+      expect(history.filter(
+        (message) => message.content === "网站已经完成，验证全部通过。"
+      )).toHaveLength(1);
     });
   });
 

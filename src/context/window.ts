@@ -17,6 +17,7 @@ const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
 // 按模型名推断上下文窗口大小
 function getContextWindowForModel(model: string): number {
     const normalizedModel = model.toLowerCase();
+    if (normalizedModel.startsWith("gpt-5.6")) return 1_050_000;
     if (normalizedModel.includes("glm-5.2")) return 1_000_000;
     if (normalizedModel.includes("glm")) return 128_000;
     if (normalizedModel.startsWith("deepseek-v4-")) return 1_000_000;
@@ -34,16 +35,39 @@ function getContextWindowForModel(model: string): number {
 }
 
 // 有效上下文窗口 = 总窗口 - 预留给 summary 的部分
-function getEffectiveContextWindow(model: string): number {
-    return Math.max(1, getContextWindowForModel(model) - RESERVED_FOR_SUMMARY);
+function resolveContextWindow(model: string, reportedWindow?: number): number {
+    if (
+        reportedWindow !== undefined &&
+        Number.isSafeInteger(reportedWindow) &&
+        reportedWindow > 0
+    ) {
+        return reportedWindow;
+    }
+    return getContextWindowForModel(model);
 }
 
-export function getAutoCompactThreshold(model: string): number {
-    return Math.max(1, getEffectiveContextWindow(model) - AUTOCOMPACT_BUFFER_TOKENS);
+function getEffectiveContextWindow(model: string, reportedWindow?: number): number {
+    return Math.max(
+        1,
+        resolveContextWindow(model, reportedWindow) - RESERVED_FOR_SUMMARY
+    );
 }
 
-function getTokenWarningThreshold(model: string): number {
-    return Math.max(1, getAutoCompactThreshold(model) - WARNING_THRESHOLD_BUFFER_TOKENS);
+export function getAutoCompactThreshold(
+    model: string,
+    reportedWindow?: number
+): number {
+    return Math.max(
+        1,
+        getEffectiveContextWindow(model, reportedWindow) - AUTOCOMPACT_BUFFER_TOKENS
+    );
+}
+
+function getTokenWarningThreshold(model: string, reportedWindow?: number): number {
+    return Math.max(
+        1,
+        getAutoCompactThreshold(model, reportedWindow) - WARNING_THRESHOLD_BUFFER_TOKENS
+    );
 }
 
 export interface TokenWarningState {
@@ -56,15 +80,16 @@ export interface TokenWarningState {
 // warning/critical 使用固定 token buffer，比百分比更贴近真实窗口余量。
 export function getTokenWarningState(
     tokenCount: number,
-    model: string
+    model: string,
+    reportedWindow?: number
 ): TokenWarningState {
-    const effective = getEffectiveContextWindow(model);
-    const autoCompactThreshold = getAutoCompactThreshold(model);
+    const effective = getEffectiveContextWindow(model, reportedWindow);
+    const autoCompactThreshold = getAutoCompactThreshold(model, reportedWindow);
     const percentUsed = Math.min(1, tokenCount / effective);
     const critical = tokenCount >= autoCompactThreshold;
     return {
         percentUsed,
-        warning: tokenCount >= getTokenWarningThreshold(model),
+        warning: tokenCount >= getTokenWarningThreshold(model, reportedWindow),
         critical,
     };
 }

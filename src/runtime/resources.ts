@@ -233,6 +233,7 @@ export function createRootRuntimeResourcesFactory(
                 getModelSource: (source) => settings.sources[source],
                 shellRunner,
                 settings: settings.memory,
+                codex,
             });
             memory = createdMemory;
             lspManager = await dependencies.createLspManager(
@@ -264,6 +265,7 @@ export function createRootRuntimeResourcesFactory(
                     source: settings.sources[settings.models.fast.source],
                     cwd,
                     model: settings.models.fast.model,
+                    codex,
                 }),
                 requestTrust: options.requestHookTrust,
             });
@@ -301,6 +303,7 @@ export function createRootRuntimeResourcesFactory(
                 getExistingAgentNames: () => subagents
                     .listDefinitions()
                     .map((definition) => definition.agentType),
+                codex,
             });
             const toolRuntime = dependencies.createToolRuntime({
                 additionalTools: [

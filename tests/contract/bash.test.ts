@@ -200,6 +200,35 @@ describe("bash tool contract", () => {
     });
   });
 
+  test("后台 Bash 安全忽略前台 timeout，不会终止已启动的服务", async () => {
+    await withTempProject(async (cwd) => {
+      const {runtime, tasks} = createTaskSession(cwd);
+      try {
+        const ctx = createTestContext(cwd, { tasks });
+        const started = await executeToolResult(
+          "bash",
+          JSON.stringify({
+            command: "node -e \"setInterval(() => {}, 1000)\"",
+            timeout_ms: 100,
+            run_in_background: true,
+          }),
+          ctx,
+          "background-ignores-foreground-timeout"
+        );
+        expect(started.outcome).toBe("ok");
+        expect(started.modelContent).toContain("已忽略 timeout_ms");
+        const taskId = started.modelContent.match(/Task: ([0-9a-f-]+)/)?.[1];
+        expect(taskId).toBeDefined();
+
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        expect(await tasks.get(taskId!)).toMatchObject({status: "running"});
+        await tasks.stop(taskId!);
+      } finally {
+        await runtime.close();
+      }
+    });
+  });
+
   test("bash_task 可以停止仍在运行的后台进程", async () => {
     await withTempProject(async (cwd) => {
       const {runtime, tasks} = createTaskSession(cwd);

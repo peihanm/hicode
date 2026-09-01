@@ -5,6 +5,7 @@ import {createCompactHistoryRunner,} from "../context/compact.js";
 import {createCompactSummaryGenerator} from "../context/compactSummary.js";
 import {createCompactState} from "../context/index.js";
 import {createLLMCaller} from "../llm/index.js";
+import type {CodexAppServerRuntimeLike} from "../llm/providers/codex/index.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {LLMSourceConnection} from "../llm/types.js";
 import {EMPTY_PROJECT_INSTRUCTIONS} from "../prompt/instructions.js";
@@ -44,6 +45,7 @@ export interface CreateMemoryExtractorOptions {
     source: LLMSourceConnection;
     shellRunner: ShellRunnerLike;
     memoryFiles: MemoryFileAccess;
+    codex?: CodexAppServerRuntimeLike;
 }
 
 function formatExtractionPrompt(
@@ -84,7 +86,7 @@ function formatExtractionPrompt(
 export function createMemoryExtractor(
     options: CreateMemoryExtractorOptions
 ): MemoryExtractor {
-    const callLLM = createLLMCaller(options.source);
+    const callLLM = createLLMCaller(options.source, {codex: options.codex});
     const compactHistory = createCompactHistoryRunner({
         generateSummary: createCompactSummaryGenerator({callLLM}),
     });

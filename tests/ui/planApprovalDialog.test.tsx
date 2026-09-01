@@ -43,12 +43,16 @@ describe("PlanApprovalDialog", () => {
         await flush();
 
         const frame = harness.instance.lastFrame() ?? "";
-        expect(frame).toContain("Ready to code?");
+        expect(frame).toContain("READY TO BUILD?");
+        expect(frame).toContain("PLAN");
+        expect(frame).toContain("ACTION");
         expect(frame).toContain("实施计划");
-        expect(frame).toContain("1. Yes, auto-accept edits");
-        expect(frame).toContain("2. Yes, manually approve edits");
-        expect(frame).toContain("3. No, keep planning");
+        expect(frame).toContain("Build now · auto-accept edits");
+        expect(frame).toContain("Build now · approve edits manually");
+        expect(frame).toContain("Keep planning");
         expect(frame).not.toContain("don't ask again for this project");
+        expect(frame).not.toContain("Would you like to proceed?");
+        expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
 
         harness.instance.stdin.write(ENTER);
         await flush();
@@ -74,7 +78,7 @@ describe("PlanApprovalDialog", () => {
         const harness = renderDialog({bypassPermissionsAvailable: true});
         await flush();
         expect(harness.instance.lastFrame()).toContain(
-            "1. Yes, and bypass permissions"
+            "Build now · bypass permissions"
         );
 
         harness.instance.stdin.write(ENTER);
@@ -87,7 +91,7 @@ describe("PlanApprovalDialog", () => {
         await flush();
 
         const frame = harness.instance.lastFrame() ?? "";
-        expect(frame).toContain("1. Yes, auto-accept edits");
+        expect(frame).toContain("Build now · auto-accept edits");
         expect(frame).not.toContain("don't ask for permissions");
     });
 
@@ -101,7 +105,8 @@ describe("PlanApprovalDialog", () => {
         harness.instance.stdin.write(ENTER);
         await flush();
 
-        expect(harness.instance.lastFrame()).toContain("Tell pillar what to change");
+        expect(harness.instance.lastFrame()).toContain("FEEDBACK");
+        expect(harness.instance.lastFrame()).toContain("Tell Pillar what to change");
         harness.instance.stdin.write(ENTER);
         await flush();
         expect(harness.decisions).toEqual([]);
@@ -128,7 +133,7 @@ describe("PlanApprovalDialog", () => {
         await flush();
         harness.instance.stdin.write(ESCAPE);
         await flush();
-        expect(harness.instance.lastFrame()).toContain("3. No, keep planning");
+        expect(harness.instance.lastFrame()).toContain("Keep planning");
         expect(harness.decisions).toEqual([]);
 
         harness.instance.stdin.write(ESCAPE);

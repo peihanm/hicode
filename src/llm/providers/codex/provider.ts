@@ -31,6 +31,9 @@ export function createCodexProvider(
                 const result = await runtime.call(options);
                 const response: PromptLogResponse = {
                     usage: result.usage,
+                    ...(result.contextUsage
+                        ? {contextUsage: result.contextUsage}
+                        : {}),
                     rawMessage: result.message,
                     rawResponse: {
                         transport: "codex-app-server",

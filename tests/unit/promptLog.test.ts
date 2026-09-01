@@ -83,6 +83,10 @@ describe("prompt log lifecycle", () => {
                     completion_tokens: 2,
                     total_tokens: 12,
                 },
+                contextUsage: {
+                    tokenCount: 7,
+                    contextWindow: 1_050_000,
+                },
                 rawMessage: {
                     role: "assistant",
                     content: null,
@@ -131,6 +135,10 @@ describe("prompt log lifecycle", () => {
             ]);
             expect(logged.request.toolNames).toEqual(["read_file"]);
             expect(logged.request.tools).toBeUndefined();
+            expect(logged.response.contextUsage).toEqual({
+                tokenCount: 7,
+                contextWindow: 1_050_000,
+            });
             expect(content).toContain("/private/source.ts");
             expect(content).not.toContain("重复的长描述");
             expect(content).toContain("secret");

@@ -75,6 +75,7 @@ export function createRootTurnRunnerFactory(
             getToolSchemas: resources.toolRuntime.getToolSchemas,
             executeTool: resources.toolRuntime.executeTool,
             isToolConcurrencySafe: resources.toolRuntime.isConcurrencySafe,
+            getTodos: () => getSnapshotState().todos,
             ...(maxIterations === undefined ? {} : {maxIterations}),
         };
         let checkpointSettled = false;

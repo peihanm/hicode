@@ -27,11 +27,11 @@ const inputSchema = z.object({
         .min(100)
         .max(600_000)
         .optional()
-        .describe("前台或后台命令的可选超时，单位毫秒，最大 600000"),
+        .describe("仅用于前台命令的执行超时，单位毫秒，最大 600000；run_in_background=true 时必须省略，误传会被安全忽略"),
     run_in_background: z
         .boolean()
         .optional()
-        .describe("长运行命令设为 true；立即返回 task ID，之后用 bash_task 查询或停止"),
+        .describe("长运行服务、GUI 或 watcher 设为 true；立即返回 task ID，之后用 bash_task 查询或停止。timeout_ms 不是启动等待时间，后台任务必须省略；任务会持续到自然退出、显式停止或 Pillar Runtime 关闭"),
     sandbox_permissions: z
         .enum(["use_default", "require_escalated"])
         .optional()
@@ -131,7 +131,7 @@ function formatShellStatus(result: ShellExecutionResult): string {
 
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: "在 shell 中执行系统命令、项目脚本、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，并应让 HTTP 错误返回失败。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background；工具会拒绝 shell 后台操作符 &。",
+    description: "在 shell 中执行系统命令、项目脚本、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，并应让 HTTP 错误返回失败。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
     isReadOnly: () => false,
@@ -246,7 +246,6 @@ export const bashTool: Tool<typeof inputSchema> = {
                     command,
                     cwd: commandCwd,
                     toolCallId: invocation.toolCallId,
-                    ...(timeout_ms !== undefined ? {timeoutMs: timeout_ms} : {}),
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                     sandboxPermissions: sandbox_permissions,
                 });
@@ -256,6 +255,9 @@ export const bashTool: Tool<typeof inputSchema> = {
                         `Task: ${task.id}`,
                         `Status: ${task.status}`,
                         `Cwd: ${displayToolPath(ctx.cwd, commandCwd) || "."}`,
+                        ...(timeout_ms !== undefined
+                            ? ["已忽略 timeout_ms：后台任务不会使用前台执行超时。"]
+                            : []),
                         "Lifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。",
                         "使用 bash_task 查询输出、完成状态或停止任务。",
                     ].join("\n"),

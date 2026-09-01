@@ -22,6 +22,7 @@ interface CompactHistoryInput {
     ctx: ToolContext;
     tools: OpenAITool[];
     preTokenCount: number;
+    contextWindow?: number;
     force?: boolean;
     trigger?: "auto" | "manual";
     customInstructions?: string;
@@ -52,10 +53,11 @@ interface CompactResult {
 export function shouldAutoCompact(
     tokenCount: number,
     model: string,
-    state: CompactState
+    state: CompactState,
+    contextWindow?: number
 ): boolean {
     if (state.consecutiveFailures >= MAX_CONSECUTIVE_COMPACT_FAILURES) return false;
-    return tokenCount >= getAutoCompactThreshold(model);
+    return tokenCount >= getAutoCompactThreshold(model, contextWindow);
 }
 
 export function createCompactHistoryRunner(
@@ -69,6 +71,7 @@ async function compactHistoryCore({
                                       ctx,
                                       tools,
                                       preTokenCount,
+                                      contextWindow,
                                       force = false,
                                       trigger = "auto",
                                       customInstructions,
@@ -76,10 +79,15 @@ async function compactHistoryCore({
     generateSummary: CompactSummaryGenerator
 ): Promise<CompactResult> {
     throwIfTurnAborted(ctx.signal);
-    const threshold = getAutoCompactThreshold(ctx.model);
+    const threshold = getAutoCompactThreshold(ctx.model, contextWindow);
     const state = ctx.compactState;
 
-    if (!force && !shouldAutoCompact(preTokenCount, ctx.model, state)) {
+    if (!force && !shouldAutoCompact(
+        preTokenCount,
+        ctx.model,
+        state,
+        contextWindow
+    )) {
         return {compacted: false, preTokenCount, threshold};
     }
 

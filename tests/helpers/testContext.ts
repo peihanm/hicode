@@ -50,6 +50,7 @@ export function createTestContext(
     fastProvider?: LLMProviderName;
     memoryFiles?: MemoryFileAccess;
     workspaceBoundary?: string;
+    setTodos?: ToolContext["setTodos"];
   } = {}
 ): ToolContext {
   let permissionMode = options.permissionMode ?? "bypassPermissions";
@@ -102,7 +103,7 @@ export function createTestContext(
       setPermissionMode(mode) {
         permissionMode = mode;
       },
-      setTodos() {},
+      setTodos: options.setTodos ?? (() => {}),
     },
   });
 }
