@@ -1,5 +1,4 @@
 import {readFileSync} from "node:fs";
-import {homedir} from "node:os";
 import {resolve} from "node:path";
 import {hasFileSystemErrorCode} from "../persistence/index.js";
 import {pillarHostSettingsSchema, pillarSettingsFileSchema} from "./schema.js";
@@ -71,7 +70,10 @@ export function getSettingsPath(
     userSettingsPath?: string
 ): string {
     if (source === "user") {
-        return userSettingsPath ?? resolve(homedir(), ".pillar", "settings.json");
+        if (!userSettingsPath) {
+            throw new Error("用户 Settings 路径必须由 PillarStorageLayout 提供");
+        }
+        return resolve(userSettingsPath);
     }
     return resolve(
         cwd,
@@ -82,7 +84,7 @@ export function getSettingsPath(
 
 function getSettingsSources(
     cwd: string,
-    userSettingsPath: string | undefined,
+    userSettingsPath: string,
     sources: readonly SettingsFileSource[]
 ): SettingsSourceLocation[] {
     return sources.map((source) => ({
@@ -306,17 +308,16 @@ function loadSettingsDocument(
 export function loadSettingsDocuments(
     cwd: string,
     options: {
-        userSettingsPath?: string;
-        sources?: readonly SettingsFileSource[];
-    } = {}
+        userSettingsPath: string;
+        sources: readonly SettingsFileSource[];
+    }
 ): LoadedSettingsDocuments {
     const documents: LoadedSettingsDocument[] = [];
     const issues: SettingsIssue[] = [];
-    const sources = options.sources ?? ["user", "project", "local"];
     for (const location of getSettingsSources(
         cwd,
         options.userSettingsPath,
-        sources
+        options.sources
     )) {
         const loaded = loadSettingsDocument(location);
         if (loaded.document) documents.push(loaded.document);

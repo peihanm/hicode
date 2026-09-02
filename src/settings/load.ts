@@ -9,33 +9,31 @@ import type {
     SettingsFileSource,
 } from "./types.js";
 
-export function loadPillarSettings(
-    cwd: string = process.cwd(),
-    cli: PillarSettingsOverrides = {}
-): LoadedPillarSettings {
-    const loaded = loadSettingsDocuments(cwd);
-    const resolved = resolvePillarSettings(loaded.documents, cli);
-    return {...resolved, ...loaded};
+export interface LoadPillarSettingsOptions {
+    storage: PillarStorageLayout;
+    cwd: string;
+    sources?: readonly SettingsFileSource[];
+    cliOverrides?: PillarSettingsOverrides;
+    hostSettings?: PillarSettingsFile;
 }
 
-export function loadPillarSettingsFromLayout(
-    storage: PillarStorageLayout,
-    cwd: string,
-    overrides: PillarSettingsOverrides = {},
-    sources: readonly SettingsFileSource[] = ["user", "project", "local"],
-    hostSettings?: PillarSettingsFile
+export function loadPillarSettings(
+    options: LoadPillarSettingsOptions
 ): LoadedPillarSettings {
-    const loaded = loadSettingsDocuments(cwd, {
-        userSettingsPath: join(storage.pillarHome, "settings.json"),
-        sources,
+    const loaded = loadSettingsDocuments(options.cwd, {
+        userSettingsPath: join(options.storage.pillarHome, "settings.json"),
+        sources: options.sources ?? ["user", "project", "local"],
     });
-    const host = hostSettings === undefined
+    const host = options.hostSettings === undefined
         ? {issues: []}
-        : parseHostSettingsDocument(hostSettings);
+        : parseHostSettingsDocument(options.hostSettings);
     const documents = host.document
         ? [...loaded.documents, host.document]
         : loaded.documents;
     const issues = [...loaded.issues, ...host.issues];
-    const resolved = resolvePillarSettings(documents, overrides);
+    const resolved = resolvePillarSettings(
+        documents,
+        options.cliOverrides ?? {}
+    );
     return {...resolved, documents, issues};
 }

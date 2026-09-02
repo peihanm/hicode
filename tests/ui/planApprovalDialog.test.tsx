@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, mock, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
-import type {PermissionDecision, PermissionMode} from "../../src/permissions/index.js";
+import type {PermissionDecision} from "../../src/permissions/index.js";
 import {PlanApprovalDialog} from "../../src/ui/dialogs/PlanApprovalDialog.js";
 
 afterEach(() => cleanup());
@@ -13,12 +13,8 @@ async function flush(ms = 20): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function renderDialog(options: {
-    plan?: unknown;
-    bypassPermissionsAvailable?: boolean;
-} = {}) {
+function renderDialog(options: {plan?: unknown} = {}) {
     const decisions: PermissionDecision[] = [];
-    const approvedModes: PermissionMode[] = [];
     const onDone = mock(() => {});
     const instance = render(
         <PlanApprovalDialog
@@ -29,26 +25,24 @@ function renderDialog(options: {
                 allowAddToAllowList: false,
                 resolve: (decision) => decisions.push(decision),
             }}
-            bypassPermissionsAvailable={options.bypassPermissionsAvailable}
-            onApprove={(mode) => approvedModes.push(mode)}
             onDone={onDone}
         />
     );
-    return {instance, decisions, approvedModes, onDone};
+    return {instance, decisions, onDone};
 }
 
 describe("PlanApprovalDialog", () => {
-    test("展示计划和三个专用选项，默认批准进入 acceptEdits", async () => {
+    test("展示计划和两个专用操作，默认选择立即构建", async () => {
         const harness = renderDialog();
         await flush();
 
         const frame = harness.instance.lastFrame() ?? "";
-        expect(frame).toContain("READY TO BUILD?");
+        expect(frame).not.toContain("READY TO BUILD?");
         expect(frame).toContain("PLAN");
         expect(frame).toContain("ACTION");
         expect(frame).toContain("实施计划");
-        expect(frame).toContain("Build now · auto-accept edits");
-        expect(frame).toContain("Build now · approve edits manually");
+        expect(frame).toContain("Build now");
+        expect(frame).not.toContain("current permissions");
         expect(frame).toContain("Keep planning");
         expect(frame).not.toContain("don't ask again for this project");
         expect(frame).not.toContain("Would you like to proceed?");
@@ -57,48 +51,22 @@ describe("PlanApprovalDialog", () => {
         harness.instance.stdin.write(ENTER);
         await flush();
 
-        expect(harness.approvedModes).toEqual(["acceptEdits"]);
         expect(harness.decisions).toEqual([{behavior: "allow"}]);
         expect(harness.onDone).toHaveBeenCalledTimes(1);
     });
 
-    test("第二项批准后进入 default", async () => {
-        const harness = renderDialog();
-        await flush();
-        harness.instance.stdin.write(DOWN);
-        await flush();
-        harness.instance.stdin.write(ENTER);
-        await flush();
-
-        expect(harness.approvedModes).toEqual(["default"]);
-        expect(harness.decisions).toEqual([{behavior: "allow"}]);
-    });
-
-    test("会话已允许 bypassPermissions 时明确提供对应批准选项", async () => {
-        const harness = renderDialog({bypassPermissionsAvailable: true});
-        await flush();
-        expect(harness.instance.lastFrame()).toContain(
-            "Build now · bypass permissions"
-        );
-
-        harness.instance.stdin.write(ENTER);
-        await flush();
-        expect(harness.approvedModes).toEqual(["bypassPermissions"]);
-    });
-
-    test("dontAsk 不会成为 Plan 批准后的恢复选项", async () => {
+    test("审批不展示或改变权限 Profile", async () => {
         const harness = renderDialog();
         await flush();
 
         const frame = harness.instance.lastFrame() ?? "";
-        expect(frame).toContain("Build now · auto-accept edits");
-        expect(frame).not.toContain("don't ask for permissions");
+        expect(frame).not.toContain("permissions");
+        expect(frame).not.toContain("bypass permissions");
+        expect(frame).not.toContain("auto-accept edits");
     });
 
     test("继续规划要求非空反馈，并把原文作为拒绝原因返回", async () => {
         const harness = renderDialog();
-        await flush();
-        harness.instance.stdin.write(DOWN);
         await flush();
         harness.instance.stdin.write(DOWN);
         await flush();
@@ -115,7 +83,6 @@ describe("PlanApprovalDialog", () => {
         await flush();
         harness.instance.stdin.write(ENTER);
         await flush();
-        expect(harness.approvedModes).toEqual([]);
         expect(harness.decisions).toEqual([{
             behavior: "deny",
             message: "补充回滚和测试方案",
@@ -124,8 +91,6 @@ describe("PlanApprovalDialog", () => {
 
     test("反馈态 Esc 返回选项，根菜单 Esc 取消审批", async () => {
         const harness = renderDialog();
-        await flush();
-        harness.instance.stdin.write(DOWN);
         await flush();
         harness.instance.stdin.write(DOWN);
         await flush();

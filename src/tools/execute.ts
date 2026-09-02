@@ -1,5 +1,5 @@
 import {didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
-import {matchesToolPermissionRule, resolvePermission,} from "../permissions/index.js";
+import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
 import {
     createPreview,
@@ -23,6 +23,10 @@ export function inlineToolResult(
         displayContent: createPreview(content, DEFAULT_DISPLAY_CHARS),
         outcome,
     };
+}
+
+function interruptedToolResult(signal: AbortSignal): ToolExecutionResult {
+    return inlineToolResult(formatInterruptedToolResult(signal), "interrupted");
 }
 
 export function isToolConcurrencySafe(
@@ -49,10 +53,7 @@ export async function executeRegisteredTool(
     hooks?: HookRuntime
 ): Promise<ToolExecutionResult> {
     if (ctx.signal.aborted) {
-        return inlineToolResult(
-            formatInterruptedToolResult(ctx.signal),
-            "interrupted"
-        );
+        return interruptedToolResult(ctx.signal);
     }
     const tool = toolMap.get(name);
     if (!tool) return inlineToolResult(`未知工具: ${name}`, "failed");
@@ -95,10 +96,7 @@ export async function executeRegisteredTool(
             });
         }
         if (ctx.signal.aborted) {
-            return inlineToolResult(
-                formatInterruptedToolResult(ctx.signal),
-                "interrupted"
-            );
+            return interruptedToolResult(ctx.signal);
         }
         if (preHookResult.blocked) {
             return hookDecoratedResult(
@@ -127,10 +125,7 @@ export async function executeRegisteredTool(
     }
 
     if (ctx.signal.aborted) {
-        return inlineToolResult(
-            formatInterruptedToolResult(ctx.signal),
-            "interrupted"
-        );
+        return interruptedToolResult(ctx.signal);
     }
 
     let permission;
@@ -138,10 +133,7 @@ export async function executeRegisteredTool(
         permission = await resolvePermission(tool, input, ctx);
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
-            return inlineToolResult(
-                formatInterruptedToolResult(ctx.signal),
-                "interrupted"
-            );
+            return interruptedToolResult(ctx.signal);
         }
         return hookDecoratedResult(
             inlineToolResult(
@@ -153,10 +145,7 @@ export async function executeRegisteredTool(
         );
     }
     if (ctx.signal.aborted) {
-        return inlineToolResult(
-            formatInterruptedToolResult(ctx.signal),
-            "interrupted"
-        );
+        return interruptedToolResult(ctx.signal);
     }
     if (permission.behavior === "deny") {
         return hookDecoratedResult(
@@ -166,12 +155,29 @@ export async function executeRegisteredTool(
         );
     }
     if (permission.behavior === "ask") {
-        const decision = await ctx.canUseTool(name, permission.message, input);
-        if (ctx.signal.aborted) {
-            return inlineToolResult(
-                formatInterruptedToolResult(ctx.signal),
-                "interrupted"
+        let decision: PermissionDecision;
+        try {
+            decision = await ctx.canUseTool(
+                name,
+                permission.message,
+                input,
+                {allowPersistent: permission.allowPersistent}
             );
+        } catch (error) {
+            if (isTurnInterruptedError(error, ctx.signal)) {
+                return interruptedToolResult(ctx.signal);
+            }
+            return hookDecoratedResult(
+                inlineToolResult(
+                    `工具执行出错: 权限交互失败: ${error instanceof Error ? error.message : String(error)}`,
+                    "failed"
+                ),
+                "PreToolUse",
+                preHookResult
+            );
+        }
+        if (ctx.signal.aborted) {
+            return interruptedToolResult(ctx.signal);
         }
         if (decision.behavior === "deny") {
             return hookDecoratedResult(
@@ -181,6 +187,16 @@ export async function executeRegisteredTool(
             );
         }
         if (decision.updatedInput !== undefined) {
+            if (tool.acceptsUpdatedInputFromUser !== true) {
+                return hookDecoratedResult(
+                    inlineToolResult(
+                        `权限交互不能修改工具 ${name} 的输入`,
+                        "denied"
+                    ),
+                    "PreToolUse",
+                    preHookResult
+                );
+            }
             const reparsed = tool.parameters.safeParse(decision.updatedInput);
             if (!reparsed.success) {
                 return hookDecoratedResult(
@@ -216,10 +232,7 @@ export async function executeRegisteredTool(
         result = await tool.execute(input, ctx, {toolCallId});
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
-            return inlineToolResult(
-                formatInterruptedToolResult(ctx.signal),
-                "interrupted"
-            );
+            return interruptedToolResult(ctx.signal);
         }
         const failed = inlineToolResult(
             `工具执行出错: ${error instanceof Error ? error.message : String(error)}`,
@@ -247,10 +260,7 @@ export async function executeRegisteredTool(
     }
 
     if (ctx.signal.aborted) {
-        return inlineToolResult(
-            formatInterruptedToolResult(ctx.signal),
-            "interrupted"
-        );
+        return interruptedToolResult(ctx.signal);
     }
     const processed = await processToolOutput({
         output: result,
@@ -283,10 +293,7 @@ export async function executeRegisteredTool(
         ctx,
     });
     if (ctx.signal.aborted) {
-        return inlineToolResult(
-            formatInterruptedToolResult(ctx.signal),
-            "interrupted"
-        );
+        return interruptedToolResult(ctx.signal);
     }
     return hookDecoratedResult(
         hookDecoratedResult(processed, "PreToolUse", preHookResult),

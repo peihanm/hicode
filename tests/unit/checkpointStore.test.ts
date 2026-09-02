@@ -1,6 +1,13 @@
 import {describe, expect, test} from "bun:test";
-import {readFile, stat, writeFile} from "node:fs/promises";
-import {join} from "node:path";
+import {
+    mkdir,
+    readFile,
+    stat,
+    symlink,
+    unlink,
+    writeFile,
+} from "node:fs/promises";
+import {dirname, join} from "node:path";
 import {createFileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
 import {
     getCheckpointBlobPath,
@@ -207,6 +214,52 @@ describe("File Checkpoint Store", () => {
                     message: "Checkpoint manifest head 不在当前索引中",
                 },
             });
+        });
+    });
+
+    test("Checkpoint 目录、manifest 和 mutation log 拒绝 Symlink", async () => {
+        await withTempProject(async (cwd) => {
+            const store = createTestFileCheckpointStore(cwd, "directory-symlink");
+            const redirected = join(cwd, "redirected-checkpoints");
+            await mkdir(dirname(store.directory), {recursive: true});
+            await mkdir(redirected);
+            await symlink(redirected, store.directory);
+            await expect(store.beginCheckpoint({prompt: "不得重定向"}))
+                .rejects.toThrow("Pillar storage 目录不安全");
+        });
+
+        await withTempProject(async (cwd) => {
+            const store = createTestFileCheckpointStore(cwd, "file-symlink");
+            const checkpoint = await store.beginCheckpoint({prompt: "初始"});
+            const manifestPath = getCheckpointManifestPath(store.directory);
+            const originalManifest = await readFile(manifestPath, "utf8");
+            const redirectedManifest = join(cwd, "redirected-manifest.json");
+            await writeFile(redirectedManifest, originalManifest, "utf8");
+            await unlink(manifestPath);
+            await symlink(redirectedManifest, manifestPath);
+
+            await expect(store.listCheckpoints()).rejects.toThrow(
+                "无法读取 Checkpoint manifest"
+            );
+            expect(await readFile(redirectedManifest, "utf8"))
+                .toBe(originalManifest);
+
+            await unlink(manifestPath);
+            await writeFile(manifestPath, originalManifest, "utf8");
+            const mutationPath = getCheckpointMutationLogPath(
+                store.directory,
+                checkpoint.checkpointId
+            );
+            const redirectedMutation = join(cwd, "redirected-mutation.jsonl");
+            await mkdir(dirname(mutationPath), {recursive: true});
+            await writeFile(redirectedMutation, "", "utf8");
+            await symlink(redirectedMutation, mutationPath);
+            await expect(store.captureBefore(checkpoint.checkpointId, {
+                path: join(cwd, "safe.txt"),
+                content: null,
+                toolCallId: "must-not-follow",
+            })).rejects.toThrow();
+            expect(await readFile(redirectedMutation, "utf8")).toBe("");
         });
     });
 

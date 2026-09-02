@@ -14,6 +14,8 @@ import {createSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
+import {executeToolResult} from "../helpers/executeTool.js";
+import {createTestContext} from "../helpers/testContext.js";
 
 const ENABLED = process.env.PILLAR_RUN_SANDBOX_INTEGRATION === "1";
 
@@ -35,6 +37,7 @@ describe("OS Sandbox integration", () => {
             const blockedPath = join(outside, "blocked.txt");
             const elevatedPath = join(outside, "elevated.txt");
             const allowedPath = join(cwd, "allowed.txt");
+            const defaultAllowedPath = join(cwd, "default-allowed.txt");
             const pillarPath = join(cwd, ".pillar", "blocked.txt");
             await writeFile(secretPath, "secret", "utf8");
             await mkdir(join(cwd, ".pillar"), {recursive: true});
@@ -72,6 +75,24 @@ describe("OS Sandbox integration", () => {
                 expect(runtime.status).toMatchObject({kind: "ready"});
                 const runner = createShellRunner(runtime, testChildEnvironment);
                 const signal = new AbortController().signal;
+
+                const defaultResult = await executeToolResult(
+                    "bash",
+                    JSON.stringify({
+                        command: `/usr/bin/printf default-allowed > ${JSON.stringify(defaultAllowedPath)}`,
+                    }),
+                    createTestContext(cwd, {
+                        permissionMode: "default",
+        collaborationMode: "build",
+                        shellRunner: runner,
+                        canUseTool: async () => {
+                            throw new Error("ready Sandbox 内的普通 Bash 不应请求权限");
+                        },
+                    }),
+                    "real-default-sandbox-bash"
+                );
+                expect(defaultResult.outcome).toBe("ok");
+                expect(await readFile(defaultAllowedPath, "utf8")).toBe("default-allowed");
 
                 const allowed = await runner.run({
                     command: `/usr/bin/printf allowed > ${JSON.stringify(allowedPath)}`,

@@ -10,6 +10,7 @@ import {
     type SessionIndexEntry,
 } from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import {COLORS} from "./theme.js";
 import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
@@ -54,10 +55,12 @@ function createRootState(
 export function Root({
                          configuration,
                          initialPermissionMode,
+                         initialCollaborationMode,
                          resumeMode,
                      }: {
     configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
+    initialCollaborationMode?: CollaborationMode;
     resumeMode: ResumeMode;
 }) {
     const {exit} = useApp();
@@ -137,6 +140,7 @@ export function Root({
         <RuntimeBootstrap
             configuration={configuration}
             initialPermissionMode={initialPermissionMode}
+            initialCollaborationMode={initialCollaborationMode}
             session={state.session}
             onSessionSwitch={(session) => setState({view: "app", session})}
         />

@@ -1,19 +1,10 @@
-import type {AgentRunner} from "../../agent/index.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {Message} from "../../llm/types.js";
 import type {ToolContext} from "../../tools/types.js";
 import type {SlashCommandProcessor} from "../../slash/types.js";
-import {createTurnAbortController, normalizeTurnAbortReason, type TurnAbortReason,} from "../../runtime/abort.js";
-import type {ToolExecutor} from "../../agent/toolBatch.js";
-import type {ToolSchemaProvider} from "../../agent/invokePreparation.js";
+import {createTurnAbortController, type TurnAbortReason,} from "../../runtime/abort.js";
 import {QueryGuard} from "./queryGuard.js";
 import {RuntimeMessageQueue} from "../../runtime/messageQueue.js";
-
-interface UserPromptHookResult {
-    blocked: boolean;
-    blockReason?: string;
-    additionalUserContextBlocks: readonly string[];
-}
 
 type Listener = () => void;
 
@@ -40,10 +31,6 @@ export interface UITurnControllerDependencies {
 
     onUnexpectedError(error: unknown): void;
 
-    onQueuedInputConsumed(input: string): void;
-
-    onTurnSettled(): void;
-
     denyPendingPermission(message: string): void;
 
     slashCommands: SlashCommandProcessor;
@@ -56,24 +43,9 @@ export interface UITurnControllerDependencies {
 
     openGitDiff?(): void;
     openModel?(): void;
+    openPermissions?(): void;
 
-    runUserPromptHooks(
-        input: string,
-        ctx: ToolContext
-    ): Promise<UserPromptHookResult>;
-
-    beginCheckpoint(input: string): Promise<void>;
-
-    settleCheckpoint(): Promise<void>;
-
-    runAgent: AgentRunner;
-
-    persistSnapshot(): Promise<void>;
-
-    getToolSchemas: ToolSchemaProvider;
-    executeTool: ToolExecutor;
-
-    isToolConcurrencySafe(name: string, argsJson: string): boolean;
+    runTurn(input: string, signal: AbortSignal): Promise<void>;
 
     messageQueue: RuntimeMessageQueue;
 
@@ -120,9 +92,9 @@ export class UITurnController {
             this.dependencies.onUserInput(input);
             await this.dependencies.initialize();
             const history = this.dependencies.getHistory();
-            const ctx = this.dependencies.createContext(controller.signal);
 
             if (input.trim().startsWith("/")) {
+                const ctx = this.dependencies.createContext(controller.signal);
                 const handled = await this.dependencies.slashCommands.process(input, {
                     history,
                     ctx,
@@ -132,82 +104,19 @@ export class UITurnController {
                     openAgents: this.dependencies.openAgents,
                     openGitDiff: this.dependencies.openGitDiff,
                     openModel: this.dependencies.openModel,
+                    openPermissions: this.dependencies.openPermissions,
                 });
                 if (handled) return true;
             }
-
-            await this.dependencies.beginCheckpoint(input);
-
-            const hookResult = await this.dependencies.runUserPromptHooks(
-                input,
-                ctx
-            );
-            if (controller.signal.aborted) {
-                this.dependencies.onEvent({
-                    type: "turn_interrupted",
-                    reason: normalizeTurnAbortReason(controller.signal.reason),
-                });
-                return true;
-            }
-            if (hookResult.blocked) {
-                this.dependencies.onEvent({
-                    type: "assistant_text",
-                    content: `UserPromptSubmit Hook 阻止了请求: ${hookResult.blockReason ?? "未提供原因"}`,
-                });
-                return true;
-            }
-
-            await this.dependencies.runAgent(
-                input,
-                history,
-                this.dependencies.onEvent,
-                ctx,
-                this.dependencies.messageQueue.createAgentInputChannel(
-                    (message) => {
-                        if (message.type === "user_input") {
-                            this.dependencies.onQueuedInputConsumed(
-                                message.content
-                            );
-                        }
-                    }
-                ),
-                {
-                    getToolSchemas: this.dependencies.getToolSchemas,
-                    executeTool: this.dependencies.executeTool,
-                    isToolConcurrencySafe: this.dependencies.isToolConcurrencySafe,
-                    additionalUserContextBlocks:
-                        hookResult.additionalUserContextBlocks,
-                }
-            );
+            await this.dependencies.runTurn(input, controller.signal);
             return true;
         } catch (error) {
-            if (controller.signal.aborted) {
-                this.dependencies.onEvent({
-                    type: "turn_interrupted",
-                    reason: normalizeTurnAbortReason(controller.signal.reason),
-                });
-            } else {
+            if (!controller.signal.aborted) {
                 this.dependencies.onUnexpectedError(error);
             }
             return true;
         } finally {
             try {
-                try {
-                    this.dependencies.onTurnSettled();
-                } catch (error) {
-                    this.dependencies.onUnexpectedError(error);
-                }
-                try {
-                    await this.dependencies.settleCheckpoint();
-                } catch (error) {
-                    this.dependencies.onUnexpectedError(error);
-                }
-                try {
-                    await this.dependencies.persistSnapshot();
-                } catch (error) {
-                    this.dependencies.onUnexpectedError(error);
-                }
-            } finally {
                 if (this.guard.end(generation)) {
                     this.active = null;
                     const startedAt = this.snapshot.startedAt;
@@ -226,6 +135,9 @@ export class UITurnController {
                         });
                     }
                 }
+            } catch (error) {
+                this.dependencies.onUnexpectedError(error);
+            } finally {
                 this.resolveActiveTurn?.();
                 this.resolveActiveTurn = null;
                 this.activeTurnSettled = null;
@@ -325,6 +237,7 @@ export class UITurnController {
             openAgents: this.dependencies.openAgents,
             openGitDiff: this.dependencies.openGitDiff,
             openModel: this.dependencies.openModel,
+            openPermissions: this.dependencies.openPermissions,
         }).then((result) => {
             if (result !== true) {
                 throw new Error(`运行中 Slash 未按本地命令完成: ${input}`);

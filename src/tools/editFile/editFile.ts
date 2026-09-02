@@ -124,6 +124,7 @@ export const editFileTool: Tool<
             .describe("是否替换所有匹配。默认 false（要求 old_string 唯一匹配）"),
     }),
     isReadOnly: () => false,
+    getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
     async checkPermissions({path, old_string, new_string, replace_all}, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
         const validation = await validateEdit(absPath, old_string, replace_all, ctx);

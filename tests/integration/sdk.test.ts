@@ -70,13 +70,15 @@ describe("TypeScript SDK", () => {
                 ),
             });
             const thread = await pillar.startThread({
-                permissionMode: "acceptEdits",
+                permissionMode: "default",
+        collaborationMode: "build",
             });
 
             expect(thread.getInfo()).toMatchObject({
                 id: thread.id,
                 cwd,
-                permissionMode: "acceptEdits",
+                permissionMode: "default",
+        collaborationMode: "build",
                 resumed: false,
             });
             await expect(pillar.startThread()).rejects.toMatchObject({
@@ -177,6 +179,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,
@@ -204,7 +207,7 @@ describe("TypeScript SDK", () => {
         });
     });
 
-    test("runStreamed 输出统一 Item 生命周期并通过 Host 完成写权限", async () => {
+    test("runStreamed 输出统一 Item 生命周期并通过 Host 完成显式 ask 写权限", async () => {
         await withTempProject(async (cwd, storage) => {
             const fake = createFakeLLM([
                 assistantToolCall(
@@ -222,8 +225,19 @@ describe("TypeScript SDK", () => {
                     return assistantText("写入完成");
                 },
             ]);
+            const settings = createTestSettings({
+                permissions: {
+                    defaultMode: "default",
+                    rules: {
+                        allow: [],
+                        ask: [{toolName: "write_file", source: "host"}],
+                        deny: [],
+                    },
+                },
+            });
             const resources = createTestRuntimeResources(cwd, {
                 storage,
+                settings,
                 agentRuntime: createFakeAgentRuntime(fake),
             });
             const interactions: string[] = [];
@@ -237,6 +251,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,
@@ -313,6 +328,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,
@@ -338,7 +354,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: loaded!.todos,
                     permissionMode: loaded!.permissionMode,
-                    prePlanMode: loaded!.prePlanMode,
+                    collaborationMode: loaded!.collaborationMode,
                     uiEvents: loaded!.uiEvents,
                 },
                 resumed: true,
@@ -388,6 +404,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,
@@ -429,6 +446,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,
@@ -491,6 +509,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,
@@ -560,6 +579,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "default",
+        collaborationMode: "build",
                     uiEvents: [],
                 },
                 resumed: false,

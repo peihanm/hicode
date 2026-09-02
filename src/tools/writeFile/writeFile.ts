@@ -48,6 +48,7 @@ export const writeFileTool: Tool<
             .describe("是否允许覆盖已有文件。默认 false；覆盖前必须先完整 read_file 目标文件"),
     }),
     isReadOnly: () => false,
+    getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
     async checkPermissions({path, content, overwrite_existing}, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
         const exists = await fileExists(absPath);

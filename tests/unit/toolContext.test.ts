@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createCompactState } from "../../src/context/index.js";
 import type {
   PermissionMode,
+  PermissionPromptPolicy,
   PermissionRules,
 } from "../../src/permissions/index.js";
+import type {CollaborationMode} from "../../src/collaboration/index.js";
 import { createToolContext } from "../../src/runtime/toolContext.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -17,7 +19,8 @@ describe("ToolContext builder", () => {
     await withTempProject(async (cwd, storage) => {
       let rules: PermissionRules = { allow: [], ask: [], deny: [] };
       let mode: PermissionMode = "default";
-      let prePlanMode: PermissionMode | undefined;
+      let collaborationMode: CollaborationMode = "build";
+      let promptPolicy: PermissionPromptPolicy = "onRequest";
       const context = createToolContext({
         signal: new AbortController().signal,
         resources: {
@@ -45,9 +48,13 @@ describe("ToolContext builder", () => {
           canUseTool: async () => ({ behavior: "allow" }),
           getPermissionRules: () => rules,
           getPermissionMode: () => mode,
-          getPrePlanMode: () => prePlanMode,
+          getCollaborationMode: () => collaborationMode,
+          getPermissionPromptPolicy: () => promptPolicy,
           setPermissionMode: (next) => {
             mode = next;
+          },
+          setCollaborationMode: (next) => {
+            collaborationMode = next;
           },
           setTodos() {},
         },
@@ -55,21 +62,24 @@ describe("ToolContext builder", () => {
 
       expect(context.permissionRules.allow).toEqual([]);
       expect(context.permissionMode).toBe("default");
-      expect(context.prePlanMode).toBeUndefined();
+      expect(context.collaborationMode).toBe("build");
+      expect(context.permissionPromptPolicy).toBe("onRequest");
 
       rules = {
         allow: [{ toolName: "write_file", source: "local" }],
         ask: [],
         deny: [],
       };
-      mode = "plan";
-      prePlanMode = "acceptEdits";
+      mode = "readOnly";
+      collaborationMode = "plan";
+      promptPolicy = "never";
 
       expect(context.permissionRules.allow).toEqual([
         { toolName: "write_file", source: "local" },
       ]);
-      expect(context.permissionMode).toBe("plan");
-      expect(context.prePlanMode).toBe("acceptEdits");
+      expect(context.permissionMode).toBe("readOnly");
+      expect(context.collaborationMode).toBe("plan");
+      expect(context.permissionPromptPolicy).toBe("never");
     });
   });
 
@@ -113,8 +123,10 @@ describe("ToolContext builder", () => {
         canUseTool: async () => ({ behavior: "allow" as const }),
         getPermissionRules: () => ({ allow: [], ask: [], deny: [] }),
         getPermissionMode: () => "default" as const,
-        getPrePlanMode: () => undefined,
+        getCollaborationMode: () => "build" as const,
+        getPermissionPromptPolicy: () => "onRequest" as const,
         setPermissionMode() {},
+        setCollaborationMode() {},
         setTodos() {},
       };
 

@@ -5,7 +5,7 @@ import {
     TurnInterruptedError,
 } from "../../runtime/abort.js";
 import {beginPromptLog} from "../promptLog.js";
-import type {LLMCallOptions, LLMCallResult, LLMStreamProgress, Message, PromptLogResponse,} from "../types.js";
+import type {LLMCallOptions, LLMCallResult, LLMStreamProgress, Message, PromptLogResponse, TokenUsage,} from "../types.js";
 import {consumeOpenAICompatibleSSE} from "./openAICompatibleStream.js";
 import {Buffer} from "node:buffer";
 
@@ -141,6 +141,22 @@ function retryDelayMs(
     return baseDelayMs * Math.pow(2, attempt - 1);
 }
 
+function emptyUsage(): TokenUsage {
+    return {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+    };
+}
+
+function addUsage(left: TokenUsage, right: TokenUsage): TokenUsage {
+    return {
+        prompt_tokens: left.prompt_tokens + right.prompt_tokens,
+        completion_tokens: left.completion_tokens + right.completion_tokens,
+        total_tokens: left.total_tokens + right.total_tokens,
+    };
+}
+
 function toChatCompletionsUrl(baseUrl: string): string {
     const normalized = baseUrl.replace(/\/+$/, "");
     return normalized.endsWith("/chat/completions")
@@ -267,6 +283,7 @@ async function callOpenAICompatibleCore(
     const requestTimeoutMs = config.streamIdleTimeoutMs;
     const outputStallTimeoutMs = config.outputStallTimeoutMs;
     let outputStallRetries = 0;
+    let completedRetryUsage = emptyUsage();
 
     for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
         if (options.signal) throwIfTurnAborted(options.signal);
@@ -396,6 +413,10 @@ async function callOpenAICompatibleCore(
                 streamed.reasoningContent.trim().length === 0 &&
                 streamed.toolCalls.length === 0;
             if (emptyResponse) {
+                completedRetryUsage = addUsage(
+                    completedRetryUsage,
+                    streamed.usage
+                );
                 finishPromptLog({
                     error: `API 返回空响应 (attempt ${attempt}/${LLM_MAX_ATTEMPTS}, finish_reason=${streamed.finishReason ?? "missing"})`,
                 });
@@ -445,7 +466,14 @@ async function callOpenAICompatibleCore(
             return {
                 message,
                 toolCalls: streamed.toolCalls,
-                usage: streamed.usage,
+                usage: addUsage(completedRetryUsage, streamed.usage),
+                ...(streamed.usage.total_tokens > 0
+                    ? {
+                        contextUsage: {
+                            tokenCount: streamed.usage.total_tokens,
+                        },
+                    }
+                    : {}),
             };
         } catch (error) {
             if (options.signal?.aborted) {

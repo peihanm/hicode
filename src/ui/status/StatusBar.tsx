@@ -2,6 +2,7 @@ import {Box, Text} from "ink";
 import stringWidth from "string-width";
 import type {PermissionMode} from "../../permissions/index.js";
 import {getPermissionModeShortLabel} from "../../permissions/index.js";
+import type {CollaborationMode} from "../../collaboration/index.js";
 import {COLORS} from "../theme.js";
 import type {UITokenInfo} from "../turn/eventStore.js";
 import type {SandboxStatus} from "../../sandbox/index.js";
@@ -28,6 +29,7 @@ export function StatusBar({
                               cwd,
                               model,
                               permissionMode,
+                              collaborationMode,
                               tokenCount,
                               percentUsed,
                               warning,
@@ -40,6 +42,7 @@ export function StatusBar({
     cwd: string;
     model: string;
     permissionMode: PermissionMode;
+    collaborationMode: CollaborationMode;
     tokenCount: number;
     percentUsed: number; // 0-1
     warning: boolean;
@@ -60,17 +63,16 @@ export function StatusBar({
     const modeColor =
         permissionMode === "bypassPermissions"
             ? COLORS.error
-            : permissionMode === "plan"
+            : permissionMode === "readOnly"
                 ? COLORS.warning
-                : permissionMode === "dontAsk"
-                    ? COLORS.dim
-                    : COLORS.status;
+                : COLORS.status;
     const tokenLabel =
         tokenStatus === "unavailable"
             ? "new session"
             : `${tokenStatus === "estimated" ? "~" : ""}${tokenCount} tokens (${tokenStatus === "estimated" ? "~" : ""}${pct}%)`;
     const modeLabel = getPermissionModeShortLabel(permissionMode);
     const showPermissionMode = permissionMode !== "default";
+    const collaborationLabel = collaborationMode === "plan" ? "Plan" : undefined;
     const backgroundTaskLabel = getBackgroundTaskLabel(backgroundTasks);
     const runtimeDetails = [
         ...(mcpTotal > 0 ? [`MCP ${mcpConnected}/${mcpTotal}`] : []),
@@ -83,11 +85,12 @@ export function StatusBar({
         model,
         cwd,
         ...(showPermissionMode ? [modeLabel] : []),
+        ...(collaborationLabel ? [collaborationLabel] : []),
         tokenLabel,
         ...runtimeDetails,
     ].join(" | ");
     const shortcuts =
-        "? for shortcuts · shift+tab switch mode · ctrl+o transcript · ctrl+t toggle todos";
+        "? for shortcuts · shift+tab Build/Plan · ctrl+o transcript · ctrl+t toggle todos";
     const firstPadding = " ".repeat(Math.max(0, width - stringWidth(firstPlain) - 1));
     const shortcutPadding = " ".repeat(Math.max(0, width - stringWidth(shortcuts) - 1));
 
@@ -105,6 +108,12 @@ export function StatusBar({
                     <>
                         <Text> | </Text>
                         <Text color={modeColor}>{modeLabel}</Text>
+                    </>
+                )}
+                {collaborationLabel && (
+                    <>
+                        <Text> | </Text>
+                        <Text color={COLORS.warning}>{collaborationLabel}</Text>
                     </>
                 )}
                 <Text> | </Text>

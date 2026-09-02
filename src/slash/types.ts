@@ -18,6 +18,7 @@ interface SlashCommandContext {
     openAgents?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
+    openPermissions?: () => void;
 }
 
 export type SlashCommandHostContext = Omit<

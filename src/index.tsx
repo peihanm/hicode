@@ -36,9 +36,14 @@ const cwd = process.cwd();
 const storage = createPillarStorageLayout();
 let loadedSettings: LoadedPillarSettings;
 try {
-    loadedSettings = loadPillarSettings(cwd, {
-        model: cliOptions.model,
-        source: cliOptions.source,
+    loadedSettings = loadPillarSettings({
+        storage,
+        cwd,
+        sources: CLI_FILE_SOURCES.settings,
+        cliOverrides: {
+            model: cliOptions.model,
+            source: cliOptions.source,
+        },
     });
 } catch (error) {
     console.error(
@@ -83,11 +88,10 @@ if (
     });
 } else if (cliOptions.printPrompt !== undefined) {
     await runHeadlessFromCli({
-        storage,
-        cwd,
-        settings: loadedSettings.values,
+        configuration,
         prompt: cliOptions.printPrompt,
         permissionMode: cliOptions.permissionMode,
+        collaborationMode: cliOptions.collaborationMode,
         resumeMode: cliOptions.resumeMode,
         outputFormat: cliOptions.outputFormat,
     });
@@ -99,6 +103,7 @@ if (
                 <Root
                     configuration={configuration}
                     initialPermissionMode={cliOptions.permissionMode}
+                    initialCollaborationMode={cliOptions.collaborationMode}
                     resumeMode={cliOptions.resumeMode}
                 />
             </TerminalCursorAnchorProvider>

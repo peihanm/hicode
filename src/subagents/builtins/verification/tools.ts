@@ -302,6 +302,9 @@ export function createVerificationBashTool(): Tool {
         ...bashTool,
         description:
             "运行受控的项目检查命令。curl 仅用于 localhost API 或 HTML 的 GET/HEAD 可达性探测，每次只能请求一个 URL，整个验证过程最多两次；不得发送业务数据或构造功能测试矩阵。",
+        isReadOnly: ({command, sandbox_permissions}) =>
+            sandbox_permissions !== "require_escalated" &&
+            checkVerificationShellCommand(command, ".").behavior === "allow",
         async checkPermissions(
             {
                 command,

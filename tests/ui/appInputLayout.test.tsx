@@ -92,7 +92,11 @@ describe("App input cursor layout", () => {
 
   test("空闲且无草稿时 Ctrl+C 不等待资源关闭就立即退出 TUI", async () => {
     await withTempProject(async (cwd) => {
+      let beginShutdownCalls = 0;
       const resources = createTestRuntimeResources(cwd, {
+        beginShutdown: () => {
+          beginShutdownCalls += 1;
+        },
         close: () => new Promise<void>(() => {}),
       });
       const instance = render(<App resources={resources} />);
@@ -107,6 +111,7 @@ describe("App input cursor layout", () => {
 
       expect(instance.frames).toHaveLength(framesAfterExit);
       expect(instance.lastFrame()).not.toContain("退出后不应继续接收输入");
+      expect(beginShutdownCalls).toBe(1);
     });
   });
 });

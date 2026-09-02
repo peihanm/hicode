@@ -9,12 +9,21 @@ import type {
 } from "../../src/headless/types.js";
 import { createTestSettings } from "../helpers/runtimeResources.js";
 import {createTestStorage} from "../helpers/tempProject.js";
+import {
+  CLI_FILE_SOURCES,
+  createPillarRootConfiguration,
+} from "../../src/runtime/rootConfiguration.js";
 
 function options(format: "text" | "json" = "json"): HeadlessOptions {
+  const cwd = "/tmp/project";
   return {
-    storage: createTestStorage("/tmp/project"),
-    cwd: "/tmp/project",
-    settings: createTestSettings(),
+    configuration: createPillarRootConfiguration({
+      cwd,
+      workspaceBoundary: "/",
+      storage: createTestStorage(cwd),
+      settings: createTestSettings(),
+      fileSources: CLI_FILE_SOURCES,
+    }),
     prompt: "hello",
     resumeMode: { kind: "none" },
     outputFormat: format,
@@ -30,6 +39,7 @@ function summary(exitCode = 0): HeadlessRunSummary {
     iterations: 1,
     reply: "done",
     permissionMode: "default",
+        collaborationMode: "build",
     toolCalls: [],
     permissionDenials: [],
     toolFailures: [],

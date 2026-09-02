@@ -45,7 +45,7 @@ describe("Unified Settings", () => {
             deny: [],
         });
         expect(resolved.values.sandbox).toEqual({
-            enabled: false,
+            enabled: true,
             filesystem: {
                 allowWrite: ["."],
                 denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
@@ -93,7 +93,7 @@ describe("Unified Settings", () => {
                         fast: {model: "glm-4.7", source: "glm"},
                     },
                     permissions: {
-                        defaultMode: "acceptEdits",
+                        defaultMode: "default",
                         allow: ["read_file", "bash(git status:*)"],
                     },
                 }),
@@ -109,7 +109,7 @@ describe("Unified Settings", () => {
                 }),
                 document("local", {
                     models: {primary: {model: "glm-4.7", source: "glm"}},
-                    permissions: {defaultMode: "dontAsk"},
+                    permissions: {defaultMode: "readOnly"},
                 }),
             ],
             {model: "deepseek-v4-pro", source: "deepseek"}
@@ -127,7 +127,7 @@ describe("Unified Settings", () => {
             model: "qwen3.6-flash",
             label: "Qwen 3.6 Flash",
         });
-        expect(resolved.values.permissions.defaultMode).toBe("dontAsk");
+        expect(resolved.values.permissions.defaultMode).toBe("readOnly");
         expect(resolved.origins).toEqual({
             primaryModel: "cli",
             primarySource: "cli",
@@ -268,7 +268,7 @@ describe("Unified Settings", () => {
         expect(resolved.origins.checkpointingEnabled).toBe("local");
     });
 
-    test("Sandbox 默认关闭，嵌套字段按来源覆盖且数组不做权限并集", () => {
+    test("Sandbox 默认开启，嵌套字段按来源覆盖且允许显式关闭", () => {
         const resolved = resolvePillarSettings([
             document("user", {
                 sandbox: {
@@ -318,10 +318,10 @@ describe("Unified Settings", () => {
             resolvePillarSettings([
                 document("project", {
                     mode: "plan",
-                    permissions: {defaultMode: "acceptEdits"},
+                    permissions: {defaultMode: "default"},
                 } as PillarSettingsFile),
             ]).values.permissions.defaultMode
-        ).toBe("acceptEdits");
+        ).toBe("default");
         expect(
             resolvePillarSettings([
                 document("project", {mode: "plan"} as PillarSettingsFile),
@@ -376,7 +376,7 @@ describe("Unified Settings", () => {
     });
 
     test("损坏来源被跳过，未知字段被保留并报告", async () => {
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             const directory = join(cwd, ".pillar");
             await mkdir(directory, {recursive: true});
             await writeFile(
@@ -406,9 +406,13 @@ describe("Unified Settings", () => {
                 "{broken-json"
             );
 
-            const loaded = loadPillarSettings(cwd, {
-                model: "glm-4.7",
-                source: "glm",
+            const loaded = loadPillarSettings({
+                storage,
+                cwd,
+                cliOverrides: {
+                    model: "glm-4.7",
+                    source: "glm",
+                },
             });
             expect(loaded.values.models.primary.model).toBe("glm-4.7");
             expect(loaded.values.permissions.defaultMode).toBe("default");

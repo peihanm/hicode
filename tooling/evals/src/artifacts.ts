@@ -220,7 +220,7 @@ async function writeEvalSettings(
     const generated: Record<string, unknown> = {
         memory: {enabled: false, autoExtract: false},
         checkpointing: {enabled: true},
-        permissions: {defaultMode: "acceptEdits"},
+        permissions: {defaultMode: "default"},
         sandbox: {enabled: false},
     };
     if (isRecord(userSettings.sources)) {

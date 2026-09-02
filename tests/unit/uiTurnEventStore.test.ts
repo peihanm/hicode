@@ -449,6 +449,7 @@ describe("UITurnEventStore", () => {
       role: "assistant",
       text: "出错: boom",
     });
+    expect(store.getSnapshot().staticThreads).toHaveLength(1);
   });
 
     test("warning 只追加可见 thread，不进入 persisted UI events", () => {
@@ -459,6 +460,29 @@ describe("UITurnEventStore", () => {
       text: "警告: session save failed",
     });
     expect(store.getPersistedUIEvents()).toEqual([]);
+    expect(store.getSnapshot().staticThreads).toHaveLength(1);
+    });
+
+    test("Compact 状态是完整消息，直接进入 Static", () => {
+      const store = new UITurnEventStore();
+      store.handleEvent({
+        type: "compact_start",
+        tokenCount: 20_000,
+        threshold: 120_000,
+        trigger: "manual",
+      });
+      store.handleEvent({
+        type: "compact_end",
+        preTokenCount: 20_000,
+        postTokenCount: 8_000,
+        trigger: "manual",
+      });
+
+      expect(store.getSnapshot().staticThreads).toHaveLength(2);
+      expect(selectLiveThreads(
+        store.getSnapshot().threads,
+        store.getSnapshot().staticThreads
+      )).toEqual([]);
     });
 
     test("后台任务通知进入专用 thread，不伪装成 assistant 回复", () => {

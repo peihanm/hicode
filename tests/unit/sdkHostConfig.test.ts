@@ -34,7 +34,7 @@ describe("SDK Host config", () => {
                             ],
                         },
                     },
-                    permissions: {defaultMode: "acceptEdits"},
+                    permissions: {defaultMode: "default"},
                 })
             );
             await writeFile(
@@ -66,7 +66,7 @@ describe("SDK Host config", () => {
                 label: "Host Qwen",
             });
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
-                "acceptEdits"
+                "default"
             );
             expect(loaded.configuration.settings.checkpointing.enabled).toBe(
                 false
@@ -126,6 +126,14 @@ describe("SDK Host config", () => {
                 }),
                 "invalid_pillar_home"
             );
+            expectSDKErrorCode(
+                () => loadPillarHostConfig({
+                    cwd: "relative-workspace",
+                    pillarHome: join(cwd, "host-data"),
+                    fileSources: FILE_SOURCES,
+                }),
+                "invalid_cwd"
+            );
         });
     });
 
@@ -152,6 +160,42 @@ describe("SDK Host config", () => {
                 model: "gpt-5.6-luna",
             });
             expect(loaded.issues).toEqual([]);
+        });
+    });
+
+    test("Settings 来源输入顺序不改变固定覆盖优先级", async () => {
+        await withTempProject(async (cwd) => {
+            const pillarHome = join(cwd, "host-data");
+            const projectSettings = join(cwd, ".pillar");
+            await mkdir(pillarHome, {recursive: true});
+            await mkdir(projectSettings, {recursive: true});
+            await writeFile(
+                join(pillarHome, "settings.json"),
+                JSON.stringify({permissions: {defaultMode: "readOnly"}})
+            );
+            await writeFile(
+                join(projectSettings, "settings.local.json"),
+                JSON.stringify({
+                    permissions: {defaultMode: "bypassPermissions"},
+                })
+            );
+
+            const loaded = loadPillarHostConfig({
+                cwd,
+                pillarHome,
+                fileSources: {
+                    ...FILE_SOURCES,
+                    settings: ["local", "user"],
+                },
+            });
+
+            expect(loaded.configuration.fileSources.settings).toEqual([
+                "user",
+                "local",
+            ]);
+            expect(loaded.configuration.settings.permissions.defaultMode).toBe(
+                "bypassPermissions"
+            );
         });
     });
 
@@ -190,7 +234,7 @@ describe("SDK Host config", () => {
                 models: {
                     primary: {source: "qwen", model: "host-model"},
                 },
-                permissions: {defaultMode: "plan"},
+                permissions: {defaultMode: "readOnly"},
             };
             const loaded = loadPillarHostConfig({
                 cwd,
@@ -204,7 +248,7 @@ describe("SDK Host config", () => {
                 "host-model"
             );
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
-                "plan"
+                "readOnly"
             );
             expect(loaded.origins.primaryModel).toBe("host");
             expect(loaded.origins.permissionMode).toBe("host");

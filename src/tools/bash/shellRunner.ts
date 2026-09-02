@@ -9,6 +9,7 @@ interface ShellRunnerRequest extends ShellCommandOptions {
 
 export interface ShellRunnerLike {
     readonly sandboxStatus: SandboxStatus;
+    readonly sandboxNetworkAllowedDomains?: readonly string[];
 
     run(request: ShellRunnerRequest): Promise<ShellExecutionResult>;
 }
@@ -46,6 +47,9 @@ export function createShellRunner(
     return {
         get sandboxStatus() {
             return sandbox.status;
+        },
+        get sandboxNetworkAllowedDomains() {
+            return sandbox.networkAllowedDomains;
         },
         async run(request) {
             const {

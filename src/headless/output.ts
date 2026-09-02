@@ -3,6 +3,7 @@ import type {AgentResult} from "../agent/index.js";
 import {mergeFileChanges} from "../fileChanges/index.js";
 import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {HeadlessCollectorSnapshot} from "./collector.js";
 import type {HeadlessOutputFormat, HeadlessRunSummary, HeadlessSubagent, HeadlessToolCall,} from "./types.js";
 
@@ -86,12 +87,14 @@ export function buildHeadlessRunSummary({
                                             result,
                                             sessionId,
                                             permissionMode,
+                                            collaborationMode,
                                             collector,
                                             mcpServers,
                                         }: {
     result: AgentResult;
     sessionId: string;
     permissionMode: PermissionMode;
+    collaborationMode: CollaborationMode;
     collector: HeadlessCollectorSnapshot;
     mcpServers: readonly McpServerSnapshot[];
 }): HeadlessRunSummary {
@@ -116,6 +119,7 @@ export function buildHeadlessRunSummary({
         iterations: result.iterations,
         reply: result.reply,
         permissionMode,
+        collaborationMode,
         toolCalls: collector.toolCalls,
         permissionDenials,
         toolFailures,

@@ -12,6 +12,34 @@ function streamFromChunks(chunks: readonly string[]): ReadableStream<Uint8Array>
 }
 
 describe("OpenAI-compatible stream consumption", () => {
+    test("SSE heartbeat 只报告传输活动，不伪造模型输出进度", async () => {
+        let activity = 0;
+        const progress: string[] = [];
+        const result = await consumeOpenAICompatibleSSE({
+            body: streamFromChunks([
+                ": keep-alive\n\n",
+                `data: ${JSON.stringify({
+                    choices: [{
+                        delta: {content: "done"},
+                        finish_reason: "stop",
+                    }],
+                })}\n\n`,
+                "data: [DONE]\n\n",
+            ]),
+            signal: new AbortController().signal,
+            onActivity() {
+                activity += 1;
+            },
+            onProgress(item) {
+                progress.push(item.phase);
+            },
+        });
+
+        expect(result.content).toBe("done");
+        expect(activity).toBe(3);
+        expect(progress).toEqual(["content"]);
+    });
+
     test("跨原始分块拼接推理、正文、工具参数并识别 DONE", async () => {
         const payload = [
             `data: ${JSON.stringify({choices: [{delta: {role: "assistant"}}]})}\n\n`,

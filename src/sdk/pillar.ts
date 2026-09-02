@@ -2,6 +2,7 @@ import {createCompactState} from "../context/index.js";
 import type {HookTrustRequest} from "../hooks/index.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
 import {isPermissionMode} from "../permissions/index.js";
+import {isCollaborationMode} from "../collaboration/index.js";
 import {createInitialHistory} from "../prompt/index.js";
 import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime/resources.js";
 import {isPillarRootConfiguration} from "../runtime/rootConfiguration.js";
@@ -84,6 +85,15 @@ export class Pillar {
                 `无效 permissionMode: ${String(options.permissionMode)}`
             );
         }
+        if (
+            options.collaborationMode !== undefined &&
+            !isCollaborationMode(options.collaborationMode)
+        ) {
+            throw new PillarSDKError(
+                "invalid_collaboration_mode",
+                `无效 collaborationMode: ${String(options.collaborationMode)}`
+            );
+        }
         const sessionId = createSessionId();
         return this.openThread({
             seed: {
@@ -99,6 +109,7 @@ export class Pillar {
                 permissionMode:
                     options.permissionMode ??
                     this.resources.settings.permissions.defaultMode,
+                collaborationMode: options.collaborationMode ?? "build",
                 uiEvents: [],
             },
             resumed: false,
@@ -138,7 +149,7 @@ export class Pillar {
             state: {
                 todos: loaded.todos,
                 permissionMode: loaded.permissionMode,
-                prePlanMode: loaded.prePlanMode,
+                collaborationMode: loaded.collaborationMode,
                 uiEvents: loaded.uiEvents,
             },
             resumed: true,

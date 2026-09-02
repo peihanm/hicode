@@ -102,8 +102,10 @@ function createForkRegistration(
                     deny: [...parentContext.permissionRules.deny],
                 },
                 permissionMode: request.isolation === "worktree"
-                    ? "acceptEdits"
-                    : "dontAsk",
+                    ? "default"
+                    : "readOnly",
+                collaborationMode: "build",
+                permissionPromptPolicy: "never",
             };
         },
     };
@@ -231,8 +233,12 @@ export function createSubagentFactories(
                             }),
                             getPermissionRules: () => runtimeConfig.permissionRules,
                             getPermissionMode: () => runtimeConfig.permissionMode,
-                            getPrePlanMode: () => runtimeConfig.prePlanMode,
+                            getCollaborationMode: () => runtimeConfig.collaborationMode,
+                            getPermissionPromptPolicy: () =>
+                                runtimeConfig.permissionPromptPolicy,
                             setPermissionMode() {
+                            },
+                            setCollaborationMode() {
                             },
                             setTodos() {
                             },
@@ -456,17 +462,15 @@ export function createSubagentFactories(
     const createSubagentRunner: CreateSubagentRunner = (
         options: CreateSubagentRunnerOptions
     ) => async (request: SubagentRequest): Promise<SubagentResult> => {
-        const agentId = options.agentId ?? randomUUID();
+        const agentId = randomUUID();
         const thread = createSubagentThread({
             parentContext: options.parentContext,
             onEvent: options.onEvent,
-            ...(options.onChildEvent ? {onChildEvent: options.onChildEvent} : {}),
-            ...(options.storageCwd ? {storageCwd: options.storageCwd} : {}),
             agentId,
         }, request);
         return thread.run({
             prompt: request.prompt,
-            signal: options.signal ?? options.parentContext.signal,
+            signal: options.parentContext.signal,
             inputChannel: EMPTY_AGENT_INPUT_CHANNEL,
         });
     };

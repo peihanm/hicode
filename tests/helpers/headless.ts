@@ -24,6 +24,13 @@ import {
 } from "./subagent.js";
 import type { AgentRuntime } from "../../src/runtime/agentRuntime.js";
 import {createTestStorage} from "./tempProject.js";
+import type {ResolvedPillarSettings} from "../../src/settings/index.js";
+import type {PillarStorageLayout} from "../../src/persistence/index.js";
+import {
+  CLI_FILE_SOURCES,
+  createPillarRootConfiguration,
+} from "../../src/runtime/rootConfiguration.js";
+import {parse} from "node:path";
 import {
   type TestToolResultStoreOptions,
 } from "./toolResultStore.js";
@@ -44,8 +51,14 @@ interface HeadlessTestOptions {
   saveSession?: typeof saveSessionSnapshot;
 }
 
+export type HeadlessTestInput = Omit<HeadlessOptions, "configuration"> & {
+  cwd: string;
+  settings: ResolvedPillarSettings;
+  storage?: PillarStorageLayout;
+};
+
 export function runHeadlessForTest(
-  options: Omit<HeadlessOptions, "storage"> & {storage?: HeadlessOptions["storage"]},
+  options: HeadlessTestInput,
   test: HeadlessTestOptions = {}
 ): Promise<HeadlessRunSummary> {
   const agentRuntime: AgentRuntime = {
@@ -108,8 +121,20 @@ export function runHeadlessForTest(
     writeDiagnostic: test.writeDiagnostic ?? writeHeadlessDiagnostic,
   });
 
+  const storage = options.storage ?? createTestStorage(options.cwd);
+  const configuration = createPillarRootConfiguration({
+    cwd: options.cwd,
+    workspaceBoundary: parse(options.cwd).root,
+    storage,
+    settings: options.settings,
+    fileSources: CLI_FILE_SOURCES,
+  });
   return runner({
-    ...options,
-    storage: options.storage ?? createTestStorage(options.cwd),
+    configuration,
+    prompt: options.prompt,
+    permissionMode: options.permissionMode,
+    collaborationMode: options.collaborationMode,
+    resumeMode: options.resumeMode,
+    outputFormat: options.outputFormat,
   }, test.signal);
 }

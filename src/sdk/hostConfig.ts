@@ -7,7 +7,7 @@ import {
     type PillarRootContributions,
     type PillarRootConfiguration,
 } from "../runtime/rootConfiguration.js";
-import {loadPillarSettingsFromLayout} from "../settings/load.js";
+import {loadPillarSettings} from "../settings/load.js";
 import type {
     PillarSettingsFile,
     SettingsIssue,
@@ -36,7 +36,7 @@ export interface LoadedPillarHostConfig {
 export function loadPillarHostConfig(
     options: LoadPillarHostConfigOptions
 ): LoadedPillarHostConfig {
-    const cwd = requireNonEmptyPath(options.cwd, "cwd");
+    const cwd = requireAbsolutePath(options.cwd, "cwd", "invalid_cwd");
     const pillarHome = requireNonEmptyPath(options.pillarHome, "pillarHome");
     if (!isAbsolute(pillarHome)) {
         throw new PillarSDKError(
@@ -56,15 +56,14 @@ export function loadPillarHostConfig(
             {cause: error}
         );
     }
-    let loaded: ReturnType<typeof loadPillarSettingsFromLayout>;
+    let loaded: ReturnType<typeof loadPillarSettings>;
     try {
-        loaded = loadPillarSettingsFromLayout(
+        loaded = loadPillarSettings({
             storage,
-            resolvedCwd,
-            {},
-            fileSources.settings,
-            options.settingsOverrides
-        );
+            cwd: resolvedCwd,
+            sources: fileSources.settings,
+            hostSettings: options.settingsOverrides,
+        });
     } catch (error) {
         throw new PillarSDKError(
             "invalid_settings",
@@ -111,6 +110,21 @@ function requireNonEmptyPath(value: string, name: string): string {
         );
     }
     return value.trim();
+}
+
+function requireAbsolutePath(
+    value: string,
+    name: string,
+    code: string
+): string {
+    const path = requireNonEmptyPath(value, name);
+    if (!isAbsolute(path)) {
+        throw new PillarSDKError(
+            code,
+            `loadPillarHostConfig 需要绝对 ${name}`
+        );
+    }
+    return path;
 }
 
 function formatSettingsIssue(issue: SettingsIssue): string {

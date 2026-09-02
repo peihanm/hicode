@@ -187,6 +187,12 @@ export function createTestRuntimeResources(
       throw new Error("测试 Runtime 未配置 Agent 生成响应");
     },
   };
+  let taskClosePromise: Promise<void> | undefined;
+  const beginShutdown = () => {
+    taskClosePromise ??= Promise.resolve()
+      .then(() => taskRuntime.close())
+      .catch(() => undefined);
+  };
   const base: RootRuntimeResources = {
     storage,
     inputHistory: createInputHistoryStore(storage),
@@ -215,8 +221,10 @@ export function createTestRuntimeResources(
     fileState: createFileStateTracker(),
     memory,
     gitWorkspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
+    beginShutdown,
     async close() {
-      await taskRuntime.close();
+      beginShutdown();
+      await taskClosePromise;
       await sandbox.close();
     },
   };

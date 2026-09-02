@@ -6,6 +6,7 @@ import {
 } from "../agent/index.js";
 import {formatHookContext, type HookBatchResult} from "../hooks/index.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import {
     saveSessionSnapshot,
     type PersistedUIEvent,
@@ -14,16 +15,17 @@ import type {Todo} from "../todos.js";
 import type {ToolContextHost} from "./toolContext.js";
 import type {RootRuntimeResources} from "./resources.js";
 import type {RootSessionRuntime} from "./sessionRuntime.js";
+import {normalizeTurnAbortReason} from "./abort.js";
 
 export interface RootTurnSnapshotState {
     todos: readonly Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     uiEvents: readonly PersistedUIEvent[];
 }
 
 export interface RootTurnLifecycleIssue {
-    scope: "checkpoint" | "session";
+    scope: "checkpoint" | "session" | "host";
     message: string;
     error: unknown;
 }
@@ -37,6 +39,7 @@ export interface RunRootTurnOptions {
     onEvent(event: AgentEvent): void | Promise<void>;
     onHookResult(result: HookBatchResult): void | Promise<void>;
     onLifecycleIssue(issue: RootTurnLifecycleIssue): void | Promise<void>;
+    onTurnSettled?(result: AgentResult | undefined): void;
     getSnapshotState(): RootTurnSnapshotState;
     sessionStartContextBlocks?: readonly string[];
     inputChannel?: AgentInputChannel;
@@ -66,6 +69,7 @@ export function createRootTurnRunnerFactory(
             onEvent,
             onHookResult,
             onLifecycleIssue,
+            onTurnSettled,
             getSnapshotState,
             sessionStartContextBlocks = [],
             inputChannel = EMPTY_AGENT_INPUT_CHANNEL,
@@ -80,11 +84,37 @@ export function createRootTurnRunnerFactory(
         };
         let checkpointSettled = false;
         let sessionSaved = false;
+        let hostSettled = false;
+        let result: AgentResult | undefined;
+        let interruptionEmitted = false;
+
+        const emitEvent = (event: AgentEvent): void | Promise<void> => {
+            if (event.type === "turn_interrupted") interruptionEmitted = true;
+            return onEvent(event);
+        };
+
+        const settleHost = async (): Promise<void> => {
+            if (hostSettled) return;
+            hostSettled = true;
+            try {
+                onTurnSettled?.(result);
+            } catch (error) {
+                try {
+                    await onLifecycleIssue({
+                        scope: "host",
+                        message: "Turn 投影收尾失败",
+                        error,
+                    });
+                } catch {
+                    // Host 诊断 sink 不能阻止 Checkpoint 与 Session 保存。
+                }
+            }
+        };
 
         try {
             const initialState = getSnapshotState();
             await session.beginCheckpoint(prompt, initialState);
-            const ctx = session.createContext({signal, host, onEvent});
+            const ctx = session.createContext({signal, host, onEvent: emitEvent});
             const promptHooks = await session.runUserPromptHooks(
                 prompt,
                 initialState.permissionMode,
@@ -92,7 +122,7 @@ export function createRootTurnRunnerFactory(
             );
             await onHookResult(promptHooks);
 
-            const result: AgentResult = promptHooks.blocked
+            result = promptHooks.blocked
                 ? {
                     reply: `UserPromptSubmit Hook 阻止了请求: ${promptHooks.blockReason ?? "未提供原因"}`,
                     reason: "hook_blocked",
@@ -101,7 +131,7 @@ export function createRootTurnRunnerFactory(
                 : await resources.agentRuntime.runAgent(
                     prompt,
                     session.history,
-                    onEvent,
+                    emitEvent,
                     ctx,
                     inputChannel,
                     {
@@ -116,9 +146,10 @@ export function createRootTurnRunnerFactory(
                     }
                 );
             if (promptHooks.blocked) {
-                await onEvent({type: "assistant_text", content: result.reply});
+                await emitEvent({type: "assistant_text", content: result.reply});
             }
 
+            await settleHost();
             await session.settleCheckpoint(
                 promptHooks.blocked ? "no_agent_run" : "settled"
             );
@@ -129,7 +160,16 @@ export function createRootTurnRunnerFactory(
             );
             sessionSaved = true;
             return result;
+        } catch (error) {
+            if (signal.aborted && !interruptionEmitted) {
+                await emitEvent({
+                    type: "turn_interrupted",
+                    reason: normalizeTurnAbortReason(signal.reason),
+                });
+            }
+            throw error;
         } finally {
+            await settleHost();
             if (!checkpointSettled) {
                 try {
                     await session.settleCheckpoint("settled");

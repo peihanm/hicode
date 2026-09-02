@@ -7,7 +7,6 @@ type SettingsValueSource =
     | "default"
     | SettingsFileSource
     | "host"
-    | "environment"
     | "cli";
 
 interface PermissionSettingsFile {

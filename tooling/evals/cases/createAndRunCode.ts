@@ -13,7 +13,7 @@ export const createAndRunCodeCase: EvalCase = {
         "要求 fibonacci(0)=0、fibonacci(1)=1，支持非负整数，负数或非整数必须抛出错误。",
         "运行 bun test 验证。完成后说明修改和真实验证结果。不要提交 Git commit。",
     ].join("\n"),
-    permissionMode: "acceptEdits",
+    permissionMode: "default",
     maxIterations: 12,
     timeoutMs: 180_000,
     budget: {

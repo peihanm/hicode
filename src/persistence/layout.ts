@@ -29,6 +29,35 @@ export function createPillarStorageLayout(
     });
 }
 
+/** Validate a structurally supplied SDK/Host layout at the Root boundary. */
+export function normalizePillarStorageLayout(
+    storage: PillarStorageLayout
+): PillarStorageLayout {
+    if (!storage || typeof storage !== "object") {
+        throw new Error("Pillar storage layout 必须是对象");
+    }
+    const pillarHome = requireAbsoluteStoragePath(
+        storage.pillarHome,
+        "pillarHome"
+    );
+    const projectsRoot = requireAbsoluteStoragePath(
+        storage.projectsRoot,
+        "projectsRoot"
+    );
+    const expectedProjectsRoot = join(pillarHome, "projects");
+    if (projectsRoot !== expectedProjectsRoot) {
+        throw new Error("Pillar projectsRoot 必须由 pillarHome 唯一派生");
+    }
+    return Object.freeze({pillarHome, projectsRoot});
+}
+
+function requireAbsoluteStoragePath(value: string, name: string): string {
+    if (typeof value !== "string" || !value.trim() || !isAbsolute(value.trim())) {
+        throw new Error(`Pillar storage ${name} 必须是非空绝对路径`);
+    }
+    return resolve(value.trim());
+}
+
 export function getProjectStorageDirectory(
     storage: PillarStorageLayout,
     cwd: string

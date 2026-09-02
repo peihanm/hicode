@@ -1,5 +1,6 @@
 import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {SandboxStatus} from "../sandbox/types.js";
 import type {
     InteractionRequest,
@@ -72,11 +73,13 @@ export interface PillarOptions {
 
 export interface StartThreadOptions {
     permissionMode?: PermissionMode;
+    collaborationMode?: CollaborationMode;
 }
 
 export interface TurnOptions {
     signal?: AbortSignal;
     permissionMode?: PermissionMode;
+    collaborationMode?: CollaborationMode;
     maxIterations?: number;
 }
 
@@ -86,6 +89,7 @@ export interface ThreadInfo {
     model: string;
     provider: string;
     permissionMode: PermissionMode;
+    collaborationMode: CollaborationMode;
     sandbox: SandboxStatus;
     mcpServers: readonly McpServerSnapshot[];
     resumed: boolean;

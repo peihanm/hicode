@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { appendFile, readFile, stat, writeFile } from "node:fs/promises";
-import {dirname} from "node:path";
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  stat,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import {dirname, join} from "node:path";
 import { createCompactState } from "../../src/context/index.js";
 import {
   listSessionIndex,
@@ -15,6 +23,7 @@ import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import {getSessionIndexPath, getSessionLogPath} from "../../src/session/paths.js";
+import {getProjectSessionsDirectory} from "../../src/persistence/index.js";
 
 describe("session persistence", () => {
   test("保存并恢复尚未消费的运行中消息", async () => {
@@ -29,6 +38,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
         queuedInputs: [{
           id: "queued-1",
           type: "user_input",
@@ -63,6 +73,7 @@ describe("session persistence", () => {
         history,
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
         compactState: createCompactState(),
         toolDiscovery: {
           version: 1,
@@ -93,7 +104,7 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(2);
+      expect(snapshot.version).toBe(3);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
@@ -104,7 +115,7 @@ describe("session persistence", () => {
     });
   });
 
-  test("不读取版本 1 或缺少当前格式版本的旧 snapshot", async () => {
+  test("不读取版本 1/2 或缺少当前格式版本的旧 snapshot", async () => {
     await withTempProject(async (cwd, storage) => {
       await saveSessionSnapshot(storage, {
         cwd,
@@ -116,12 +127,17 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "unversioned");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
         string,
         unknown
       >;
+      snapshot.version = 2;
+      await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
+      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
+
       snapshot.version = 1;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
       expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
@@ -153,7 +169,8 @@ describe("session persistence", () => {
           status: "pending",
           activeForm: "正在保留 todo",
         }],
-        permissionMode: "acceptEdits",
+        permissionMode: "default",
+        collaborationMode: "build",
         compactState: createCompactState(),
         toolDiscovery: {
           version: 1,
@@ -171,6 +188,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
         checkpointHead: {
           branchId: "branch-1",
           checkpointId: "checkpoint-1",
@@ -186,7 +204,8 @@ describe("session persistence", () => {
           {role: "user", content: "上一轮"},
           {role: "assistant", content: "上一轮完成"},
         ],
-        permissionMode: "acceptEdits",
+        permissionMode: "default",
+        collaborationMode: "build",
         toolDiscovery: {
           version: 1,
           discoveredNames: ["mcp__fixture__echo"],
@@ -215,6 +234,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       await appendFile(
         getSessionLogPath(storage, cwd, "session-2"),
@@ -234,6 +254,7 @@ describe("session persistence", () => {
         history: loaded?.history ?? [],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       const repairedLines = (await readFile(
         getSessionLogPath(storage, cwd, "session-2"),
@@ -256,6 +277,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "untrusted-session");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
@@ -295,6 +317,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "strict-mutation");
       await appendFile(path, "{}\n");
@@ -310,6 +333,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       })).rejects.toThrow("Cannot update invalid session log");
       expect(await readFile(path, "utf8")).toBe(before);
 
@@ -328,6 +352,7 @@ describe("session persistence", () => {
         }],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
         allowEmpty: true,
         summaryHint: "invalid",
       });
@@ -347,6 +372,7 @@ describe("session persistence", () => {
         history: [{ role: "system", content: "system only" }],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       expect(listSessionIndex(storage, cwd)).toEqual([]);
     });
@@ -381,6 +407,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
         uiEvents: [{
           version: 1,
           type: "file_change",
@@ -422,6 +449,7 @@ describe("session persistence", () => {
             ],
             todos: [],
             permissionMode: "default",
+        collaborationMode: "build",
           })
         )
       );
@@ -450,6 +478,7 @@ describe("session persistence", () => {
             ],
             todos: [],
             permissionMode: "default",
+        collaborationMode: "build",
           })
         )
       );
@@ -478,6 +507,7 @@ describe("session persistence", () => {
         history: [{role: "system", content: "system"}],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       for (const content of ["first", "latest"]) {
         await saveSessionSnapshot(storage, {
@@ -490,6 +520,7 @@ describe("session persistence", () => {
           ],
           todos: [],
           permissionMode: "default",
+        collaborationMode: "build",
         });
       }
 
@@ -519,6 +550,7 @@ describe("session persistence", () => {
           history: [{role: "system", content: "system"}],
           todos: [],
           permissionMode: "default",
+        collaborationMode: "build",
         });
       }
 
@@ -546,6 +578,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
       });
       await writeFile(indexPath, "{corrupt-index", "utf8");
 
@@ -560,6 +593,7 @@ describe("session persistence", () => {
           ],
           todos: [],
           permissionMode: "default",
+        collaborationMode: "build",
         })
       ).rejects.toThrow("Cannot update corrupt session index");
       expect(await readFile(indexPath, "utf8")).toBe("{corrupt-index");
@@ -567,6 +601,74 @@ describe("session persistence", () => {
         role: "user",
         content: "recoverable",
       });
+    });
+  });
+
+  test("Session 目录和持久化文件拒绝 Symlink", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const sessionsDirectory = getProjectSessionsDirectory(storage, cwd);
+      const redirectedDirectory = join(cwd, "redirected-sessions");
+      await mkdir(dirname(sessionsDirectory), {recursive: true});
+      await mkdir(redirectedDirectory);
+      await symlink(redirectedDirectory, sessionsDirectory);
+
+      await expect(saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "directory-symlink",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "不得重定向"},
+        ],
+        todos: [],
+        permissionMode: "default",
+        collaborationMode: "build",
+      })).rejects.toThrow("Pillar storage 目录不安全");
+    });
+
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "file-symlink",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "原始内容"},
+        ],
+        todos: [],
+        permissionMode: "default",
+        collaborationMode: "build",
+      });
+      const logPath = getSessionLogPath(storage, cwd, "file-symlink");
+      const originalLog = await readFile(logPath, "utf8");
+      const redirectedLog = join(cwd, "redirected-events.jsonl");
+      await writeFile(redirectedLog, originalLog, "utf8");
+      await unlink(logPath);
+      await symlink(redirectedLog, logPath);
+
+      expect(loadSession(storage, cwd, "file-symlink", "glm-test")).toBeNull();
+      await expect(saveSessionTurnCheckpoint(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "file-symlink",
+        checkpointId: "must-not-follow",
+        branchId: "branch",
+        prompt: "继续",
+        history: [],
+        todos: [],
+        permissionMode: "default",
+        collaborationMode: "build",
+      })).rejects.toThrow();
+      expect(await readFile(redirectedLog, "utf8")).toBe(originalLog);
+
+      const indexPath = getSessionIndexPath(storage, cwd);
+      const redirectedIndex = join(cwd, "redirected-index.json");
+      const originalIndex = await readFile(indexPath, "utf8");
+      await writeFile(redirectedIndex, originalIndex, "utf8");
+      await unlink(indexPath);
+      await symlink(redirectedIndex, indexPath);
+      expect(listSessionIndex(storage, cwd)).toEqual([]);
+      expect(await readFile(redirectedIndex, "utf8")).toBe(originalIndex);
     });
   });
 });

@@ -2,7 +2,7 @@ import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from "node:fs/promises
 import {tmpdir} from "node:os";
 import {resolve} from "node:path";
 
-const repositoryRoot = resolve(import.meta.dirname, "..");
+const repositoryRoot = resolve(import.meta.dirname, "..", "..");
 const packageDirectory = resolve(repositoryRoot, "dist", "sdk-package");
 
 async function run(
@@ -37,7 +37,10 @@ async function main(): Promise<void> {
     );
     try {
         await run(
-            [process.execPath, resolve(repositoryRoot, "scripts/build-sdk-package.ts")],
+            [
+                process.execPath,
+                resolve(repositoryRoot, "tooling", "scripts", "build-sdk-package.ts"),
+            ],
             repositoryRoot
         );
         const packageManifest = JSON.parse(await readFile(

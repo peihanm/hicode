@@ -2,7 +2,6 @@ import {useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import TextInput from "ink-text-input";
 import stringWidth from "string-width";
-import type {PermissionMode} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {TerminalMarkdown} from "../conversation/TerminalMarkdown.js";
 import {COLORS} from "../theme.js";
@@ -11,11 +10,9 @@ import {useTerminalWidth} from "../terminalSize.js";
 const MAX_PLAN_PREVIEW_CHARS = 4000;
 const MAX_PLAN_FEEDBACK_CHARS = 16_384;
 
-type ExitPermissionMode = Exclude<PermissionMode, "plan">;
-
 interface ApprovalOption {
     label: string;
-    value: ExitPermissionMode | "keep_planning";
+    value: "build" | "keep_planning";
 }
 
 function readPlan(input: unknown): string | undefined {
@@ -25,21 +22,6 @@ function readPlan(input: unknown): string | undefined {
     const plan = input.plan;
     if (typeof plan !== "string" || !plan.trim()) return undefined;
     return plan.trim();
-}
-
-function primaryApprovalOption(
-    bypassPermissionsAvailable: boolean
-): ApprovalOption {
-    if (bypassPermissionsAvailable) {
-        return {
-            label: "Build now · bypass permissions",
-            value: "bypassPermissions",
-        };
-    }
-    return {
-        label: "Build now · auto-accept edits",
-        value: "acceptEdits",
-    };
 }
 
 function fitRow(value: string, width: number): string {
@@ -63,13 +45,9 @@ function planPreview(plan: string): {value: string; truncated: boolean} {
 
 export function PlanApprovalDialog({
                                        req,
-                                       bypassPermissionsAvailable = false,
-                                       onApprove,
                                        onDone,
                                    }: {
     req: ConfirmReq;
-    bypassPermissionsAvailable?: boolean;
-    onApprove: (mode: ExitPermissionMode) => void;
     onDone: () => void;
 }) {
     const contentWidth = Math.max(20, useTerminalWidth() - 6);
@@ -89,10 +67,9 @@ export function PlanApprovalDialog({
     };
 
     const options: ApprovalOption[] = [
-        primaryApprovalOption(bypassPermissionsAvailable),
         {
-            label: "Build now · approve edits manually",
-            value: "default",
+            label: "Build now",
+            value: "build",
         },
         {
             label: "Keep planning",
@@ -107,7 +84,6 @@ export function PlanApprovalDialog({
             return;
         }
         completedRef.current = true;
-        onApprove(option.value);
         req.resolve({behavior: "allow"});
         onDone();
     };
@@ -159,8 +135,7 @@ export function PlanApprovalDialog({
 
     return (
         <Box flexDirection="column" paddingLeft={2}>
-            <Text color={COLORS.accent} bold>◆ READY TO BUILD?</Text>
-            <Box marginTop={1} flexDirection="column" width={contentWidth}>
+            <Box flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>PLAN</Text>
                 <TerminalMarkdown value={preview.value} width={contentWidth}/>
                 {preview.truncated && (

@@ -23,6 +23,7 @@ describe("Checkpoint tool integration", () => {
             });
             const ctx = createTestContext(cwd, {
                 permissionMode: "bypassPermissions",
+        collaborationMode: "build",
                 fileState,
             });
             ctx.fileCheckpoints = runtime;

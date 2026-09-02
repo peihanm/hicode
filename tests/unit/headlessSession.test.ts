@@ -4,17 +4,37 @@ import { loadHeadlessSession } from "../../src/headless/session.js";
 import { saveSessionSnapshot } from "../../src/session/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestSettings } from "../helpers/runtimeResources.js";
+import {
+  CLI_FILE_SOURCES,
+  createPillarRootConfiguration,
+} from "../../src/runtime/rootConfiguration.js";
+import type {PillarStorageLayout} from "../../src/persistence/index.js";
+import type {ResolvedPillarSettings} from "../../src/settings/index.js";
+
+function configuration(
+  cwd: string,
+  storage: PillarStorageLayout,
+  settings: ResolvedPillarSettings = createTestSettings()
+) {
+  return createPillarRootConfiguration({
+    cwd,
+    workspaceBoundary: cwd,
+    storage,
+    settings,
+    fileSources: CLI_FILE_SOURCES,
+  });
+}
 
 describe("headless session boundary", () => {
   test("none 创建默认 state 且使用 CLI permission override", async () => {
     await withTempProject(async (cwd, storage) => {
-      const state = loadHeadlessSession({ storage,
-        cwd,
-        settings: createTestSettings(),
+      const state = loadHeadlessSession({
+        configuration: configuration(cwd, storage),
         resumeMode: { kind: "none" },
-        permissionMode: "dontAsk",
+        permissionMode: "readOnly",
+        collaborationMode: "build",
       });
-      expect(state.permissionMode).toBe("dontAsk");
+      expect(state.permissionMode).toBe("readOnly");
       expect(state.history[0]?.role).toBe("system");
       expect(state.todos).toEqual([]);
     });
@@ -22,40 +42,36 @@ describe("headless session boundary", () => {
 
   test("没有 CLI 或 Session mode 时使用同一 Settings snapshot", async () => {
     await withTempProject(async (cwd, storage) => {
-      const state = loadHeadlessSession({ storage,
-        cwd,
-        settings: createTestSettings({
+      const state = loadHeadlessSession({
+        configuration: configuration(cwd, storage, createTestSettings({
           permissions: {
-            defaultMode: "dontAsk",
+            defaultMode: "readOnly",
             rules: { allow: [], ask: [], deny: [] },
           },
-        }),
+        })),
         resumeMode: { kind: "none" },
       });
-      expect(state.permissionMode).toBe("dontAsk");
+      expect(state.permissionMode).toBe("readOnly");
     });
   });
 
   test("picker、missing continue 和 missing id 保持错误", async () => {
     await withTempProject(async (cwd, storage) => {
       expect(() =>
-        loadHeadlessSession({ storage,
-          cwd,
-          settings: createTestSettings(),
+        loadHeadlessSession({
+          configuration: configuration(cwd, storage),
           resumeMode: { kind: "picker" },
         })
       ).toThrow("headless 模式不能使用交互式 -r");
       expect(() =>
-        loadHeadlessSession({ storage,
-          cwd,
-          settings: createTestSettings(),
+        loadHeadlessSession({
+          configuration: configuration(cwd, storage),
           resumeMode: { kind: "continue" },
         })
       ).toThrow("没有找到可继续的历史会话");
       expect(() =>
-        loadHeadlessSession({ storage,
-          cwd,
-          settings: createTestSettings(),
+        loadHeadlessSession({
+          configuration: configuration(cwd, storage),
           resumeMode: { kind: "session", sessionId: "missing" },
         })
       ).toThrow("没有找到会话: missing");
@@ -74,7 +90,8 @@ describe("headless session boundary", () => {
           { role: "assistant", content: "world" },
         ],
         todos: [],
-        permissionMode: "acceptEdits",
+        permissionMode: "default",
+        collaborationMode: "build",
         compactState: createCompactState(),
         uiEvents: [],
         toolDiscovery: {
@@ -82,22 +99,21 @@ describe("headless session boundary", () => {
           discoveredNames: ["mcp__fixture__echo"],
         },
       });
-      const resumed = loadHeadlessSession({ storage,
-          cwd,
-          settings: createTestSettings(),
+      const resumed = loadHeadlessSession({
+          configuration: configuration(cwd, storage),
           resumeMode: { kind: "continue" },
         });
-      expect(resumed.permissionMode).toBe("acceptEdits");
+      expect(resumed.permissionMode).toBe("default");
       expect(resumed.toolDiscovery).toEqual({
         version: 1,
         discoveredNames: ["mcp__fixture__echo"],
       });
       expect(
-        loadHeadlessSession({ storage,
-          cwd,
-          settings: createTestSettings(),
+        loadHeadlessSession({
+          configuration: configuration(cwd, storage),
           resumeMode: { kind: "session", sessionId: "session-1" },
           permissionMode: "bypassPermissions",
+        collaborationMode: "build",
         }).permissionMode
       ).toBe("bypassPermissions");
     });

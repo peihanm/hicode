@@ -11,6 +11,7 @@ function snapshot(content: string): SaveSessionSnapshotInput {
     history: [{ role: "user", content }],
     todos: [],
     permissionMode: "default",
+        collaborationMode: "build",
     compactState: createCompactState(),
     uiEvents: [],
   };

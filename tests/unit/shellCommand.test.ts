@@ -5,6 +5,10 @@ import {
   isShellCommandReadOnly,
   splitShellSubCommands,
 } from "../../src/permissions/shellCommand.js";
+import {
+  inferShellNetworkRequirement,
+  missingAllowedDomains,
+} from "../../src/tools/bash/networkAccess.js";
 
 describe("shell command permissions", () => {
   test("识别只读命令和只读 git 子命令", () => {
@@ -47,6 +51,57 @@ describe("shell command permissions", () => {
     expect(generateShellAllowPattern("npm test && git status")).toBe(
       "npm test:* | git status:*"
     );
+  });
+
+  test("识别常见依赖安装所需网络域名", () => {
+    expect(
+      inferShellNetworkRequirement("npm install && npm run build")
+    ).toEqual({
+      reason: "npm install",
+      domains: ["registry.npmjs.org"],
+    });
+    expect(
+      inferShellNetworkRequirement(
+        "npm install --registry=https://registry.npmmirror.com"
+      )
+    ).toEqual({
+      reason: "npm install",
+      domains: ["registry.npmmirror.com"],
+    });
+    expect(inferShellNetworkRequirement("python3 -m pip install flask"))
+      .toEqual({
+        reason: "pip install",
+        domains: ["pypi.org", "files.pythonhosted.org"],
+      });
+    expect(inferShellNetworkRequirement("pnpm --dir web install"))
+      .toEqual({
+        reason: "pnpm install",
+        domains: ["registry.npmjs.org"],
+      });
+    expect(inferShellNetworkRequirement("pnpm -C web install"))
+      .toEqual({
+        reason: "pnpm install",
+        domains: ["registry.npmjs.org"],
+      });
+    expect(inferShellNetworkRequirement("npm install --offline"))
+      .toBeUndefined();
+    expect(inferShellNetworkRequirement("pip install --no-index ./pkg.whl"))
+      .toBeUndefined();
+    expect(inferShellNetworkRequirement("npm config get registry"))
+      .toBeUndefined();
+    expect(inferShellNetworkRequirement("npm run build")).toBeUndefined();
+  });
+
+  test("已配置的精确域名和通配符不会重复申请", () => {
+    const requirement = inferShellNetworkRequirement("npm ci");
+    expect(requirement).toBeDefined();
+    expect(missingAllowedDomains(requirement!, [])).toEqual([
+      "registry.npmjs.org",
+    ]);
+    expect(missingAllowedDomains(requirement!, ["registry.npmjs.org"]))
+      .toEqual([]);
+    expect(missingAllowedDomains(requirement!, ["*.npmjs.org"]))
+      .toEqual([]);
   });
 
 });

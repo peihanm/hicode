@@ -27,6 +27,7 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
     description: "删除普通文件。删除前必须完整读取；项目文件进入权限和 Checkpoint，Memory 主题通过受管 Memory 边界删除。",
     parameters: inputSchema,
     isReadOnly: () => false,
+    getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
 
     async checkPermissions({path}: Input, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);

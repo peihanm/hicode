@@ -1,32 +1,41 @@
 import {describe, expect, test} from "bun:test";
-import {mkdir, readFile, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {
     collectWorkspaceDiff,
     prepareEvalRun,
-} from "../../evals/src/artifacts.js";
-import {getEvalCase, listEvalCases} from "../../evals/src/cases.js";
+} from "../src/artifacts.js";
+import {getEvalCase, listEvalCases} from "../src/cases.js";
 import {
     evaluateEvalBudget,
     mergeEvalBudget,
-} from "../../evals/src/budget.js";
-import {runEvalCase} from "../../evals/src/runner.js";
-import {classifyEvalFailure} from "../../evals/src/failure.js";
-import {inspectEvalRun} from "../../evals/src/inspect.js";
+} from "../src/budget.js";
+import {runEvalCase} from "../src/runner.js";
+import {classifyEvalFailure} from "../src/failure.js";
+import {inspectEvalRun} from "../src/inspect.js";
 import {
     createEvalLiveStatus,
     formatEvalHeartbeat,
     reduceEvalLiveStatus,
-} from "../../evals/src/liveStatus.js";
-import {refreshEvalTrendReport} from "../../evals/src/trends.js";
+} from "../src/liveStatus.js";
+import {refreshEvalTrendReport} from "../src/trends.js";
 import {
     createVerifierEnvironment,
     runProcess,
-} from "../../evals/src/process.js";
-import {runEvalVerification} from "../../evals/src/verifier.js";
-import {runEvalSuite, validateCaseIds} from "../../evals/src/suite.js";
-import {withTempProject} from "../helpers/tempProject.js";
+} from "../src/process.js";
+import {runEvalVerification} from "../src/verifier.js";
+import {runEvalSuite, validateCaseIds} from "../src/suite.js";
+
+async function withTempDirectory<T>(run: (root: string) => Promise<T>): Promise<T> {
+    const root = await mkdtemp(join(tmpdir(), "pillar-eval-test-"));
+    try {
+        return await run(root);
+    } finally {
+        await rm(root, {recursive: true, force: true});
+    }
+}
 
 describe("SDK Eval Harness", () => {
     test("公开首批 Case 并拒绝未知 Case", () => {
@@ -39,7 +48,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("LeetCode Web 隐藏验证器真实启动服务并覆盖执行隔离", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const evalCase = getEvalCase("leetcode-web");
             const command = evalCase.commands.find(
                 (candidate) => candidate.id === "hidden-leetcode-web-contract"
@@ -49,7 +58,7 @@ describe("SDK Eval Harness", () => {
             const result = await runProcess(command.argv, {
                 cwd: fileURLToPath(
                     new URL(
-                        "../fixtures/evalLeetcodeWeb/",
+                        "./fixtures/leetcodeWeb/",
                         import.meta.url
                     )
                 ),
@@ -194,7 +203,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("从不可变 Run report 重建按 Case、Provider 和模型分组的历史趋势", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const firstDirectory = join(root, "runs", "run-1");
             const secondDirectory = join(root, "runs", "run-2");
             const malformedDirectory = join(root, "runs", "run-bad");
@@ -290,7 +299,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("复制 Fixture、隔离 Settings，并用隐藏验证器检查真实修改", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const userSettings = join(root, "user-settings.json");
             await writeFile(
                 userSettings,
@@ -329,7 +338,7 @@ describe("SDK Eval Harness", () => {
             expect(generatedSettings.sources).toBeDefined();
             expect(generatedSettings.hooks).toBeUndefined();
             expect(generatedSettings.permissions).toEqual({
-                defaultMode: "acceptEdits",
+                defaultMode: "default",
             });
             expect(prepared.verifierEnvironment.DASHSCOPE_API_KEY).toBeUndefined();
 
@@ -376,7 +385,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("缺少 Provider Key 时离线生成可诊断失败报告并执行保留策略", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const userSettings = join(root, "user-settings.json");
             await writeFile(
                 userSettings,
@@ -420,7 +429,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("Suite 顺序运行多个 Case 并写入独立汇总报告", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const userSettings = join(root, "suite-settings.json");
             await writeFile(
                 userSettings,
@@ -517,7 +526,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("Inspect 从不可信 Run 产物提取失败、活性与交互等待", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const runId = "run-inspect";
             const runDirectory = join(root, "runs", runId);
             await mkdir(runDirectory, {recursive: true});
@@ -625,7 +634,7 @@ describe("SDK Eval Harness", () => {
     });
 
     test("Inspect 能识别没有最终 report 的中断 Run", async () => {
-        await withTempProject(async (root) => {
+        await withTempDirectory(async (root) => {
             const runId = "run-partial";
             const runDirectory = join(root, "runs", runId);
             await mkdir(runDirectory, {recursive: true});

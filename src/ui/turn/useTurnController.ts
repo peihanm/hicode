@@ -8,6 +8,7 @@ import {
 } from "../../session/index.js";
 import type {PermissionDecision} from "../../permissions/index.js";
 import {addToAllowList, type PermissionMode, type PermissionRules,} from "../../permissions/index.js";
+import type {CollaborationMode} from "../../collaboration/index.js";
 import type {RootRuntimeResources} from "../../runtime/resources.js";
 import type {Todo} from "../../todos.js";
 import type {UIThread} from "../conversation/types.js";
@@ -20,6 +21,7 @@ import {estimateRestoredTokenInfo} from "./tokenInfo.js";
 import {formatAgentLoadWarning} from "../../subagents/diagnostics.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../../hooks/index.js";
 import type {RootSessionRuntime} from "../../runtime/sessionRuntime.js";
+import {runRootTurn} from "../../runtime/turnRuntime.js";
 import type {ModelTargetSettings} from "../../settings/types.js";
 import {formatModelTarget} from "../../llm/modelCatalog.js";
 import {createUICheckpointActions} from "./checkpointActions.js";
@@ -27,6 +29,7 @@ import {createUICheckpointActions} from "./checkpointActions.js";
 export interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
     initialPermissionMode?: PermissionMode;
+    initialCollaborationMode?: CollaborationMode;
     initialSession?: LoadedSession;
     rootSession: RootSessionRuntime;
     resumedDraft?: string;
@@ -35,6 +38,7 @@ export interface UseTurnControllerOptions {
     openAgents?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
+    openPermissions?: () => void;
 }
 
 /**
@@ -58,6 +62,7 @@ export function selectLiveThreads(
 export function useTurnController({
                                           resources,
                                           initialPermissionMode,
+                                          initialCollaborationMode,
                                           initialSession,
                                           rootSession,
                                           resumedDraft,
@@ -66,9 +71,9 @@ export function useTurnController({
                                           openAgents,
                                           openGitDiff,
                                           openModel,
+                                          openPermissions,
                                       }: UseTurnControllerOptions) {
         const {cwd, model, toolRuntime} = resources;
-        const runAgentImpl = resources.agentRuntime.runAgent;
         const messageQueue = rootSession.messageQueue;
         const taskSession = rootSession.taskSession;
         const sessionInitializationRef = useRef<Promise<void> | null>(null);
@@ -94,9 +99,11 @@ export function useTurnController({
             () => resources.primaryModel.target
         );
         const permissionModeRef = useRef<PermissionMode>(permissionMode);
-        const prePlanModeRef = useRef<PermissionMode | undefined>(
-            permissionMode === "plan" ? initialSession?.prePlanMode : undefined
-        );
+        const [collaborationMode, setCollaborationModeState] =
+            useState<CollaborationMode>(
+                () => initialCollaborationMode ?? initialSession?.collaborationMode ?? "build"
+            );
+        const collaborationModeRef = useRef<CollaborationMode>(collaborationMode);
         const [todos, setTodosState] = useState<Todo[]>(
             () => initialSession?.todos ?? []
         );
@@ -198,14 +205,15 @@ export function useTurnController({
             (overrides?: {
                 todos?: Todo[];
                 permissionMode?: PermissionMode;
-                prePlanMode?: PermissionMode;
+                collaborationMode?: CollaborationMode;
                 allowEmpty?: boolean;
                 summaryHint?: string;
             }): SaveSessionSnapshotInput => rootSession.createSnapshot({
                 todos: [...(overrides?.todos ?? todosRef.current)],
                 permissionMode:
                     overrides?.permissionMode ?? permissionModeRef.current,
-                prePlanMode: overrides?.prePlanMode ?? prePlanModeRef.current,
+                collaborationMode:
+                    overrides?.collaborationMode ?? collaborationModeRef.current,
                 uiEvents: eventStore.getPersistedUIEvents(),
                 allowEmpty: overrides?.allowEmpty,
                 summaryHint: overrides?.summaryHint,
@@ -217,7 +225,7 @@ export function useTurnController({
             (overrides?: {
                 todos?: Todo[];
                 permissionMode?: PermissionMode;
-                prePlanMode?: PermissionMode;
+                collaborationMode?: CollaborationMode;
                 allowEmpty?: boolean;
                 summaryHint?: string;
             }) => sessionQueue.enqueue(createSnapshot(overrides)),
@@ -247,18 +255,18 @@ export function useTurnController({
 
         const setPermissionMode = useCallback(
             (mode: PermissionMode) => {
-                const current = permissionModeRef.current;
-                if (mode === "plan" && current !== "plan") {
-                    prePlanModeRef.current = current;
-                } else if (current === "plan" && mode !== "plan") {
-                    prePlanModeRef.current = undefined;
-                }
                 permissionModeRef.current = mode;
                 setPermissionModeState(mode);
-                void persistSnapshot({
-                    permissionMode: mode,
-                    prePlanMode: prePlanModeRef.current,
-                });
+                void persistSnapshot({permissionMode: mode});
+            },
+            [persistSnapshot]
+        );
+
+        const setCollaborationMode = useCallback(
+            (mode: CollaborationMode) => {
+                collaborationModeRef.current = mode;
+                setCollaborationModeState(mode);
+                void persistSnapshot({collaborationMode: mode});
             },
             [persistSnapshot]
         );
@@ -276,33 +284,35 @@ export function useTurnController({
             (
                 toolName: string,
                 message: string,
-                input: unknown
+                input: unknown,
+                options?: {allowPersistent?: boolean}
             ): Promise<PermissionDecision> =>
-                permissionRequests.request(toolName, message, input),
+                permissionRequests.request(toolName, message, input, options),
             [permissionRequests]
         );
 
         const turnControllerRef = useRef<UITurnController | null>(null);
         if (turnControllerRef.current === null) {
+            const toolContextHost = {
+                canUseTool,
+                getPermissionRules: () => permissionRulesRef.current!,
+                getPermissionMode: () => permissionModeRef.current,
+                getCollaborationMode: () => collaborationModeRef.current,
+                getPermissionPromptPolicy: () => "onRequest" as const,
+                setPermissionMode,
+                setCollaborationMode,
+                setTodos,
+            };
             turnControllerRef.current = new UITurnController({
                 getHistory: () => rootSession.history,
                 createContext: (signal) => rootSession.createContext({
                     signal,
                     onEvent: eventStore.handleEvent,
-                    host: {
-                        canUseTool,
-                        getPermissionRules: () => permissionRulesRef.current!,
-                        getPermissionMode: () => permissionModeRef.current,
-                        getPrePlanMode: () => prePlanModeRef.current,
-                        setPermissionMode,
-                        setTodos,
-                    },
+                    host: toolContextHost,
                 }),
                 onUserInput: (input) => eventStore.appendUser(input),
                 onEvent: eventStore.handleEvent,
                 onUnexpectedError: (error) => eventStore.appendError(error),
-                onQueuedInputConsumed: (input) => eventStore.appendUser(input),
-                onTurnSettled: () => eventStore.settleTurn(),
                 denyPendingPermission: (message) => {
                     permissionRequests.denyPending(message);
                 },
@@ -318,65 +328,42 @@ export function useTurnController({
                 openAgents,
                 openGitDiff,
                 openModel,
-                runUserPromptHooks: async (input, ctx) => {
+                openPermissions,
+                runTurn: async (input, signal) => {
                     await startSessionHooks();
-                    if (ctx.signal.aborted) {
-                        return {
-                            blocked: false,
-                            additionalUserContextBlocks:
-                                sessionStartContextsRef.current,
-                        };
-                    }
-                    const result = await rootSession.runUserPromptHooks(
-                        input,
-                        permissionModeRef.current,
-                        ctx.signal
-                    );
-                    recordHookIssues(result);
-                    return {
-                        blocked: result.blocked,
-                        ...(result.blockReason
-                            ? {blockReason: result.blockReason}
-                            : {}),
-                        additionalUserContextBlocks: [
-                            ...sessionStartContextsRef.current,
-                            ...formatHookContext(
-                                "UserPromptSubmit",
-                                result.additionalContexts
-                            ),
-                        ],
-                    };
-                },
-                beginCheckpoint: async (input) => {
-                    try {
-                        await rootSession.beginCheckpoint(input, {
+                    await runRootTurn({
+                        resources,
+                        session: rootSession,
+                        prompt: input,
+                        signal,
+                        host: toolContextHost,
+                        onEvent: eventStore.handleEvent,
+                        onHookResult: (result) => {
+                            recordHookIssues(result);
+                        },
+                        onLifecycleIssue: (issue) => {
+                            eventStore.appendWarning(
+                                `${issue.message}：${issue.error instanceof Error ? issue.error.message : String(issue.error)}`
+                            );
+                        },
+                        onTurnSettled: () => eventStore.settleTurn(),
+                        getSnapshotState: () => ({
                             todos: todosRef.current,
                             permissionMode: permissionModeRef.current,
-                            prePlanMode: prePlanModeRef.current,
+                            collaborationMode: collaborationModeRef.current,
                             uiEvents: eventStore.getPersistedUIEvents(),
-                        });
-                    } catch (error) {
-                        eventStore.appendWarning(
-                            `File Checkpoint 创建失败，本轮已阻止执行：${error instanceof Error ? error.message : String(error)}`
-                        );
-                        throw error;
-                    }
+                        }),
+                        sessionStartContextBlocks:
+                            sessionStartContextsRef.current,
+                        inputChannel: messageQueue.createAgentInputChannel(
+                            (message) => {
+                                if (message.type === "user_input") {
+                                    eventStore.appendUser(message.content);
+                                }
+                            }
+                        ),
+                    });
                 },
-                settleCheckpoint: async () => {
-                    try {
-                        await rootSession.settleCheckpoint();
-                    } catch (error) {
-                        eventStore.appendWarning(
-                            `File Checkpoint 收尾失败：${error instanceof Error ? error.message : String(error)}`
-                        );
-                        throw error;
-                    }
-                },
-                runAgent: runAgentImpl,
-                persistSnapshot: () => persistSnapshot(),
-                getToolSchemas: toolRuntime.getToolSchemas,
-                executeTool: toolRuntime.executeTool,
-                isToolConcurrencySafe: toolRuntime.isConcurrencySafe,
                 messageQueue,
                 now: Date.now,
             });
@@ -412,15 +399,8 @@ export function useTurnController({
                 await turnController.waitForSettled();
                 sessionHookControllerRef.current?.abort("shutdown");
                 await sessionStartPromiseRef.current?.catch(() => undefined);
-                const endController = new AbortController();
-                const timer = setTimeout(
-                    () => endController.abort("session-end-timeout"),
-                    1_500
-                );
-                timer.unref?.();
-                await rootSession.runSessionEnd("shutdown", endController.signal)
-                    .catch(() => undefined)
-                    .finally(() => clearTimeout(timer));
+                await rootSession.runSessionEnd("shutdown")
+                    .catch(() => undefined);
                 await persistSnapshot();
                 await sessionQueue.drain();
             })();
@@ -502,15 +482,16 @@ export function useTurnController({
             history: Parameters<typeof eventStore.restore>[0]["history"];
             todos: Todo[];
             permissionMode: PermissionMode;
-            prePlanMode?: PermissionMode;
+            collaborationMode: CollaborationMode;
             uiEvents: Parameters<typeof eventStore.restore>[0]["uiEvents"];
             prompt: string;
         }) => {
             todosRef.current = [...restored.todos];
             setTodosState([...restored.todos]);
             permissionModeRef.current = restored.permissionMode;
-            prePlanModeRef.current = restored.prePlanMode;
+            collaborationModeRef.current = restored.collaborationMode;
             setPermissionModeState(restored.permissionMode);
+            setCollaborationModeState(restored.collaborationMode);
             eventStore.restore({
                 history: restored.history,
                 uiEvents: restored.uiEvents,
@@ -559,9 +540,9 @@ export function useTurnController({
             modelStreamProgressRef: eventStore.getModelStreamProgressRef(),
             todos,
             permissionMode,
+            collaborationMode,
             primaryModel,
             availableModels: resources.primaryModel.available,
-            prePlanMode: prePlanModeRef.current,
             confirmRequest,
             submit: turnController.submit.bind(turnController),
             enqueue: turnController.enqueue.bind(turnController),
@@ -569,6 +550,7 @@ export function useTurnController({
             takeQueuedInputsForEditing:
                 turnController.takeQueuedInputsForEditing.bind(turnController),
             setPermissionMode,
+            setCollaborationMode,
             setPrimaryModel,
             clearConfirmRequest: (request: ConfirmReq | null) =>
                 permissionRequests.clear(request),

@@ -1,9 +1,16 @@
 import {randomUUID} from "node:crypto";
-import {realpathSync} from "node:fs";
-import {chmod, lstat, mkdir, open, readdir, readFile, stat, unlink,} from "node:fs/promises";
+import {constants, realpathSync} from "node:fs";
+import {chmod, open, readdir, stat, unlink,} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
 import {createFileChange} from "../fileChanges/index.js";
-import {withFileLock, writeFileAtomically} from "../persistence/index.js";
+import {
+    ensurePrivateStorageDirectory,
+    readPrivateStorageFile,
+    readPrivateStorageTextFile,
+    type PillarStorageLayout,
+    withFileLock,
+    writeFileAtomically,
+} from "../persistence/index.js";
 import {
     fingerprintContent,
     fingerprintFile,
@@ -37,7 +44,6 @@ import {
     type FileCheckpointRecord,
     type FileFingerprint,
 } from "./types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
 
 const MAX_CHECKPOINTS_PER_SESSION = 100;
 const MAX_CHECKPOINT_MUTATIONS = 100_000;
@@ -354,7 +360,7 @@ export class FileCheckpointStore {
     private readonly mutationPathCache = new Map<string, Set<string>>();
 
     private constructor(
-        storage: PillarStorageLayout,
+        private readonly storage: PillarStorageLayout,
         cwd: string,
         readonly sessionId: string
     ) {
@@ -381,21 +387,27 @@ export class FileCheckpointStore {
         return new FileCheckpointStore(storage, cwd, sessionId);
     }
 
+    private withLock<T>(action: () => Promise<T>): Promise<T> {
+        ensurePrivateStorageDirectory(this.storage, this.directory);
+        return withFileLock(this.lockPath, action);
+    }
+
     private async readManifest(): Promise<FileCheckpointManifest> {
         try {
-            const info = await stat(this.manifestPath);
-            if (info.size > MAX_CHECKPOINT_MANIFEST_BYTES) {
-                throw new Error("Checkpoint manifest 超过大小上限");
+            const content = readPrivateStorageTextFile(
+                this.storage,
+                this.manifestPath,
+                MAX_CHECKPOINT_MANIFEST_BYTES
+            );
+            if (content === null) {
+                return createEmptyManifest(this.cwd, this.sessionId);
             }
             return parseManifest(
-                await readFile(this.manifestPath, "utf8"),
+                content,
                 this.cwd,
                 this.sessionId
             );
         } catch (error) {
-            if (isErrorCode(error, "ENOENT")) {
-                return createEmptyManifest(this.cwd, this.sessionId);
-            }
             throw new Error(`无法读取 Checkpoint manifest: ${this.manifestPath}`, {
                 cause: error,
             });
@@ -403,8 +415,7 @@ export class FileCheckpointStore {
     }
 
     private async writeManifest(manifest: FileCheckpointManifest): Promise<void> {
-        await mkdir(this.directory, {recursive: true, mode: 0o700});
-        await chmod(this.directory, 0o700).catch(() => undefined);
+        ensurePrivateStorageDirectory(this.storage, this.directory);
         const content = `${JSON.stringify(manifest, null, 2)}\n`;
         if (Buffer.byteLength(content, "utf8") > MAX_CHECKPOINT_MANIFEST_BYTES) {
             throw new Error("Checkpoint manifest 超过大小上限");
@@ -418,19 +429,20 @@ export class FileCheckpointStore {
     ): Promise<StoredCheckpointRecord> {
         const path = getCheckpointRecordPath(this.directory, checkpointId);
         try {
-            const info = await stat(path);
-            if (info.size > MAX_CHECKPOINT_RECORD_BYTES) {
-                throw new Error(`Checkpoint record 超过大小上限: ${checkpointId}`);
+            const content = readPrivateStorageTextFile(
+                this.storage,
+                path,
+                MAX_CHECKPOINT_RECORD_BYTES
+            );
+            if (content === null) {
+                throw new Error(`Checkpoint record 缺失: ${checkpointId}`);
             }
             return parseStoredRecord(
-                await readFile(path, "utf8"),
+                content,
                 checkpointId,
                 this.sessionId
             );
         } catch (error) {
-            if (isErrorCode(error, "ENOENT")) {
-                throw new Error(`Checkpoint record 缺失: ${checkpointId}`);
-            }
             throw error;
         }
     }
@@ -442,7 +454,7 @@ export class FileCheckpointStore {
             this.directory,
             checkpoint.checkpointId
         );
-        await mkdir(dirname(path), {recursive: true, mode: 0o700});
+        ensurePrivateStorageDirectory(this.storage, dirname(path));
         const content = `${JSON.stringify(checkpoint, null, 2)}\n`;
         if (Buffer.byteLength(content, "utf8") > MAX_CHECKPOINT_RECORD_BYTES) {
             throw new Error(`Checkpoint record 超过大小上限: ${checkpoint.checkpointId}`);
@@ -455,19 +467,12 @@ export class FileCheckpointStore {
         checkpointId: string
     ): Promise<CheckpointFileMutation[]> {
         const path = getCheckpointMutationLogPath(this.directory, checkpointId);
-        let content: string;
-        try {
-            const info = await stat(path);
-            if (info.size > MAX_CHECKPOINT_MUTATION_LOG_BYTES) {
-                throw new Error(
-                    `Checkpoint mutation log 超过 ${MAX_CHECKPOINT_MUTATION_LOG_BYTES} 字节上限`
-                );
-            }
-            content = await readFile(path, "utf8");
-        } catch (error) {
-            if (isErrorCode(error, "ENOENT")) return [];
-            throw error;
-        }
+        const content = readPrivateStorageTextFile(
+            this.storage,
+            path,
+            MAX_CHECKPOINT_MUTATION_LOG_BYTES
+        );
+        if (content === null) return [];
 
         const mutations = new Map<string, CheckpointFileMutation>();
         for (const line of content.split("\n")) {
@@ -546,12 +551,13 @@ export class FileCheckpointStore {
     ): Promise<void> {
         const path = getCheckpointMutationLogPath(this.directory, checkpointId);
         const line = `${JSON.stringify(event)}\n`;
-        const currentBytes = await stat(path)
-            .then((info) => info.size)
-            .catch((error) => {
-                if (isErrorCode(error, "ENOENT")) return 0;
-                throw error;
-            });
+        ensurePrivateStorageDirectory(this.storage, dirname(path));
+        const current = readPrivateStorageFile(
+            this.storage,
+            path,
+            MAX_CHECKPOINT_MUTATION_LOG_BYTES
+        );
+        const currentBytes = current?.byteLength ?? 0;
         if (
             currentBytes + Buffer.byteLength(line) >
             MAX_CHECKPOINT_MUTATION_LOG_BYTES
@@ -560,9 +566,19 @@ export class FileCheckpointStore {
                 `Checkpoint mutation log 超过 ${MAX_CHECKPOINT_MUTATION_LOG_BYTES} 字节上限`
             );
         }
-        await mkdir(dirname(path), {recursive: true, mode: 0o700});
-        const handle = await open(path, "a", 0o600);
+        const handle = await open(
+            path,
+            constants.O_WRONLY |
+            constants.O_APPEND |
+            constants.O_CREAT |
+            constants.O_NOFOLLOW,
+            0o600
+        );
         try {
+            const metadata = await handle.stat();
+            if (!metadata.isFile()) {
+                throw new Error(`Checkpoint mutation log 不是 regular file: ${path}`);
+            }
             await handle.appendFile(line, "utf8");
             await handle.sync();
         } finally {
@@ -575,7 +591,7 @@ export class FileCheckpointStore {
         checkpointId: string,
         action: (checkpoint: StoredCheckpointRecord) => void
     ): Promise<void> {
-        await withFileLock(this.lockPath, async () => {
+        await this.withLock(async () => {
             findCheckpointIndex(await this.readManifest(), checkpointId);
             const checkpoint = await this.readRecordMetadata(checkpointId);
             action(checkpoint);
@@ -593,6 +609,7 @@ export class FileCheckpointStore {
             }
         }
         const blobDirectory = resolve(this.directory, "blobs");
+        ensurePrivateStorageDirectory(this.storage, blobDirectory);
         const entries = await readdir(blobDirectory, {withFileTypes: true})
             .catch((error) => {
                 if (isErrorCode(error, "ENOENT")) return [];
@@ -609,18 +626,17 @@ export class FileCheckpointStore {
     private async ensureBlob(content: string | Buffer): Promise<string> {
         const blobId = hashCheckpointContent(content);
         const path = getCheckpointBlobPath(this.directory, blobId);
+        ensurePrivateStorageDirectory(this.storage, dirname(path));
         let replacedBytes = 0;
-        try {
-            const info = await lstat(path);
-            if (!info.isFile() || info.isSymbolicLink()) {
-                throw new Error(`Checkpoint Blob 不是 regular file: ${blobId}`);
-            }
-            replacedBytes = info.size;
-            if (hashCheckpointContent(await readFile(path)) === blobId) return blobId;
-        } catch (error) {
-            if (!isErrorCode(error, "ENOENT")) throw error;
+        const existing = readPrivateStorageFile(
+            this.storage,
+            path,
+            MAX_CHECKPOINT_FILE_BYTES
+        );
+        if (existing) {
+            replacedBytes = existing.byteLength;
+            if (hashCheckpointContent(existing) === blobId) return blobId;
         }
-        await mkdir(dirname(path), {recursive: true, mode: 0o700});
         const entries = await readdir(dirname(path), {withFileTypes: true})
             .catch(() => []);
         let totalBytes = 0;
@@ -645,21 +661,12 @@ export class FileCheckpointStore {
 
     private async readVerifiedBlob(blobId: string): Promise<Buffer> {
         const path = getCheckpointBlobPath(this.directory, blobId);
-        let content: Buffer;
-        try {
-            const info = await lstat(path);
-            if (
-                !info.isFile() ||
-                info.isSymbolicLink() ||
-                info.size > MAX_CHECKPOINT_FILE_BYTES
-            ) throw new Error(`Checkpoint Blob 类型或大小无效: ${blobId}`);
-            content = await readFile(path);
-        } catch (error) {
-            if (isErrorCode(error, "ENOENT")) {
-                throw new Error(`Checkpoint Blob 缺失: ${blobId}`);
-            }
-            throw error;
-        }
+        const content = readPrivateStorageFile(
+            this.storage,
+            path,
+            MAX_CHECKPOINT_FILE_BYTES
+        );
+        if (content === null) throw new Error(`Checkpoint Blob 缺失: ${blobId}`);
         if (hashCheckpointContent(content) !== blobId) {
             throw new Error(`Checkpoint Blob 校验失败: ${blobId}`);
         }
@@ -671,7 +678,7 @@ export class FileCheckpointStore {
     }
 
     async beginCheckpoint(input: BeginCheckpointInput): Promise<FileCheckpointRecord> {
-        return withFileLock(this.lockPath, async () => {
+        return this.withLock(async () => {
             const manifest = await this.readManifest();
             const checkpointId = input.checkpointId ?? randomUUID();
             if (manifest.checkpoints.some((item) => item.checkpointId === checkpointId)) {
@@ -767,7 +774,7 @@ export class FileCheckpointStore {
                 throw new Error(`文件超过 ${MAX_CHECKPOINT_FILE_BYTES} 字节上限`);
             }
         }
-        await withFileLock(this.lockPath, async () => {
+        await this.withLock(async () => {
             findCheckpointIndex(await this.readManifest(), checkpointId);
             const paths = await this.getMutationPaths(checkpointId);
             if (paths.has(validated.relativePath)) return;
@@ -808,7 +815,7 @@ export class FileCheckpointStore {
         const after = input.content === null
             ? missingFingerprint()
             : fingerprintContent(input.content, validated.mode);
-        await withFileLock(this.lockPath, async () => {
+        await this.withLock(async () => {
             findCheckpointIndex(await this.readManifest(), checkpointId);
             const paths = await this.getMutationPaths(checkpointId);
             if (!paths.has(validated.relativePath)) {
@@ -973,7 +980,7 @@ export class FileCheckpointStore {
     }
 
     async restoreCode(checkpointId: string): Promise<CheckpointRestoreResult> {
-        return withFileLock(this.lockPath, async () => {
+        return this.withLock(async () => {
             const manifest = await this.readManifest();
             const targetCheckpoint = findCheckpointIndex(manifest, checkpointId);
             const plan = await this.buildRestorePlan(manifest, checkpointId);

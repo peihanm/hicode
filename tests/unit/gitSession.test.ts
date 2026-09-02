@@ -129,6 +129,7 @@ describe("Git Session baseline", () => {
                 ],
                 todos: [],
                 permissionMode: "default",
+        collaborationMode: "build",
                 gitSession: runtime.getState(),
             });
             const loaded = loadSession(storage, cwd, "git-session", "glm-test");

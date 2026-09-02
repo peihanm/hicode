@@ -1,7 +1,14 @@
-import {existsSync, readFileSync, statSync} from "node:fs";
-import {appendFile, chmod, mkdir} from "node:fs/promises";
+import {constants} from "node:fs";
+import {open} from "node:fs/promises";
 import {dirname} from "node:path";
-import {getProjectKey, type PillarStorageLayout, withFileLock, writeFileAtomically,} from "../persistence/index.js";
+import {
+    ensurePrivateStorageDirectory,
+    getProjectKey,
+    readPrivateStorageTextFile,
+    type PillarStorageLayout,
+    withFileLock,
+    writeFileAtomically,
+} from "../persistence/index.js";
 import {decodeSessionEntry} from "./codec.js";
 import {ensureSessionsDirectory, getSessionLogPath, getSessionPersistenceLockPath,} from "./paths.js";
 import type {SessionEntry, SessionSnapshotEntry,} from "./types.js";
@@ -16,6 +23,7 @@ export function withSessionPersistenceLock<T>(
     cwd: string,
     action: () => Promise<T>
 ): Promise<T> {
+    ensureSessionsDirectory(storage, cwd);
     return withFileLock(getSessionPersistenceLockPath(storage, cwd), action);
 }
 
@@ -27,8 +35,7 @@ export async function appendSessionEntry(
 ): Promise<void> {
     ensureSessionsDirectory(storage, cwd);
     const path = getSessionLogPath(storage, cwd, sessionId);
-    await mkdir(dirname(path), {recursive: true, mode: 0o700});
-    await chmod(dirname(path), 0o700);
+    ensurePrivateStorageDirectory(storage, dirname(path));
     const decodedEntry = decodeSessionEntry(entry);
     if (!decodedEntry) {
         throw new Error(`Refusing to persist invalid session entry: ${path}`);
@@ -58,7 +65,6 @@ export async function appendSessionEntry(
     }
     const line = `${JSON.stringify(decodedEntry)}\n`;
     const lineBytes = Buffer.byteLength(line, "utf8");
-    const currentBytes = existsSync(path) ? statSync(path).size : 0;
     if (lineBytes > MAX_SESSION_LOG_LINE_BYTES) {
         throw new Error(`Session log size limit exceeded: ${path}`);
     }
@@ -71,14 +77,27 @@ export async function appendSessionEntry(
         }
         await writeFileAtomically(path, `${content}\n`, 0o600);
     } else {
-        if (currentBytes + lineBytes > MAX_SESSION_LOG_BYTES) {
-            throw new Error(`Session log size limit exceeded: ${path}`);
-        }
-        await appendFile(
+        const handle = await open(
             path,
-            line,
-            {encoding: "utf8", mode: 0o600}
+            constants.O_WRONLY |
+            constants.O_APPEND |
+            constants.O_CREAT |
+            constants.O_NOFOLLOW,
+            0o600
         );
+        try {
+            const metadata = await handle.stat();
+            if (!metadata.isFile()) {
+                throw new Error(`Session log 不是 regular file: ${path}`);
+            }
+            if (metadata.size + lineBytes > MAX_SESSION_LOG_BYTES) {
+                throw new Error(`Session log size limit exceeded: ${path}`);
+            }
+            await handle.chmod(0o600);
+            await handle.writeFile(line, "utf8");
+        } finally {
+            await handle.close();
+        }
     }
 }
 
@@ -91,8 +110,7 @@ export async function replaceLatestSessionSnapshot(
 ): Promise<void> {
     ensureSessionsDirectory(storage, cwd);
     const path = getSessionLogPath(storage, cwd, sessionId);
-    await mkdir(dirname(path), {recursive: true, mode: 0o700});
-    await chmod(dirname(path), 0o700);
+    ensurePrivateStorageDirectory(storage, dirname(path));
     const decodedSnapshot = decodeSessionEntry(snapshot);
     if (!decodedSnapshot || decodedSnapshot.type !== "snapshot") {
         throw new Error(`Refusing to persist invalid session snapshot: ${path}`);
@@ -168,12 +186,12 @@ function readSessionEntriesForMutation(
     sessionId: string
 ): {entries: SessionEntry[]; requiresRewrite: boolean} {
     const path = getSessionLogPath(storage, cwd, sessionId);
-    if (!existsSync(path)) return {entries: [], requiresRewrite: false};
-    const size = statSync(path).size;
-    if (size > MAX_SESSION_LOG_BYTES) {
-        throw new Error(`Session log size limit exceeded: ${path}`);
-    }
-    const content = readFileSync(path, "utf8");
+    const content = readPrivateStorageTextFile(
+        storage,
+        path,
+        MAX_SESSION_LOG_BYTES
+    );
+    if (content === null) return {entries: [], requiresRewrite: false};
     return {
         entries: parseSessionEntries({
             content,
@@ -192,11 +210,15 @@ export function readSessionEntries(
     sessionId: string
 ): SessionEntry[] {
     const path = getSessionLogPath(storage, cwd, sessionId);
-    if (!existsSync(path)) return [];
     try {
-        if (statSync(path).size > MAX_SESSION_LOG_BYTES) return [];
+        const content = readPrivateStorageTextFile(
+            storage,
+            path,
+            MAX_SESSION_LOG_BYTES
+        );
+        if (content === null) return [];
         return parseSessionEntries({
-            content: readFileSync(path, "utf8"),
+            content,
             cwd,
             sessionId,
             path,

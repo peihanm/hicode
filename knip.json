@@ -2,8 +2,9 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/index.tsx!",
+    "src/sdk/index.ts!",
     "src/lsp/userInfoPatch.cjs!"
   ],
   "project": ["src/**/*.{ts,tsx,cjs}!"],
-  "includeEntryExports": true
+  "includeEntryExports": false
 }

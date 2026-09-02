@@ -290,6 +290,8 @@ describe("RootRuntimeResources", () => {
       expect(instructionLoads).toBe(1);
       expect(resources.instructions.files[0]?.content).toBe("runtime instructions");
 
+      resources.beginShutdown();
+      resources.beginShutdown();
       const firstClose = resources.close();
       const secondClose = resources.close();
       expect(firstClose).toBe(secondClose);

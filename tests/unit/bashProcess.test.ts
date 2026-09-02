@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
-import { createProcessTreeKiller } from "../../src/tools/bash/process.js";
+import {
+  createProcessTreeKiller,
+  runShellCommand,
+} from "../../src/tools/bash/process.js";
 
 type SpawnProcess = typeof import("node:child_process").spawn;
 
@@ -17,6 +20,22 @@ function fakeChild(): ChildProcess & { killCalls: number } {
 }
 
 describe("Bash process tree termination", () => {
+  test("跨 chunk 的 UTF-8 输出不会产生替换字符", async () => {
+    const result = await runShellCommand({
+      command: [
+        "node -e \"",
+        "process.stdout.write(Buffer.from([0xe4,0xbd]));",
+        "setTimeout(() => process.stdout.write(Buffer.from([0xa0])), 20)",
+        "\"",
+      ].join(""),
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+    });
+
+    expect(result.termination).toMatchObject({kind: "exit", code: 0});
+    expect(result.stdout).toBe("你");
+  });
+
   test("Windows taskkill 非零退出时回退 child.kill", async () => {
     const child = fakeChild();
     const spawnProcess = (() => {

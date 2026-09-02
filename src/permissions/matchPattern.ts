@@ -2,7 +2,7 @@
 // 参考 claude-code src/utils/permissions/shellRuleMatching.ts
 //
 // 两种模式：
-// 1. "prefix:*" 老语法（prefix matching）
+// 1. "prefix:*" 前缀规则语法（prefix matching）
 //    "git add:*" → 匹配以 "git add" 开头的命令（包括 "git add" 本身）
 // 2. "*" 通配符（wildcard matching）
 //    "*" → 匹配任意
@@ -13,7 +13,7 @@
 // - 否则用通配符正则匹配
 
 export function matchPattern(pattern: string, input: string): boolean {
-    // 1. 老语法 prefix:* → 前缀匹配
+    // 1. prefix:* → 前缀匹配
     const prefixMatch = pattern.match(/^(.+):\*$/);
     if (prefixMatch) {
         const prefix = prefixMatch[1];

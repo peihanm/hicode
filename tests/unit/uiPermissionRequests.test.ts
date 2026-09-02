@@ -32,6 +32,18 @@ describe("UIPermissionRequests", () => {
     requests.denyPending("stop");
   });
 
+  test("单次 Sandbox 网络授权不展示永久允许", () => {
+    const requests = new UIPermissionRequests();
+    void requests.request(
+      "bash",
+      "allow registry network",
+      {command: "npm install"},
+      {allowPersistent: false}
+    );
+    expect(requests.getSnapshot()?.allowAddToAllowList).toBe(false);
+    requests.denyPending("stop");
+  });
+
   test("取消只 resolve 一次，旧 request 不能清掉新 request", async () => {
     const requests = new UIPermissionRequests();
     const firstDecision = requests.request("bash", "first", {});

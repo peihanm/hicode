@@ -1,5 +1,6 @@
 import {createCompactState} from "../context/index.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import {createInitialHistory} from "../prompt/index.js";
 import {createSessionId, loadLatestSession, loadSession,} from "../session/index.js";
 import type {Todo} from "../todos.js";
@@ -15,7 +16,7 @@ export interface HeadlessSessionState {
     history: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     compactState: ReturnType<typeof createCompactState>;
     uiEvents: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
@@ -26,10 +27,12 @@ export interface HeadlessSessionState {
 export function loadHeadlessSession(
     options: Pick<
         HeadlessOptions,
-        "storage" | "cwd" | "settings" | "resumeMode" | "permissionMode"
+        "configuration" | "resumeMode" | "permissionMode" |
+        "collaborationMode"
     >
 ): HeadlessSessionState {
-    const {storage, cwd, settings, resumeMode, permissionMode} = options;
+    const {configuration, resumeMode, permissionMode, collaborationMode} = options;
+    const {storage, cwd, settings} = configuration;
     const model = settings.models.primary.model;
     if (resumeMode.kind === "picker") {
         throw new Error("headless 模式不能使用交互式 -r；请使用 -c 或 -r <sessionId>");
@@ -57,7 +60,8 @@ export function loadHeadlessSession(
             permissionMode ??
             loaded?.permissionMode ??
             settings.permissions.defaultMode,
-        prePlanMode: loaded?.prePlanMode,
+        collaborationMode:
+            collaborationMode ?? loaded?.collaborationMode ?? "build",
         compactState: loaded?.compactState ?? createCompactState(),
         uiEvents: loaded?.uiEvents ?? [],
         checkpointHead: loaded?.checkpointHead,

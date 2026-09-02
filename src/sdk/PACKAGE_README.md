@@ -48,4 +48,6 @@ declaration. Supported runtimes are Node.js 22.12 or newer and Bun 1.3 or
 newer. The Host must provide absolute workspace and storage paths; the SDK does
 not implicitly load a CLI `.env` or the real user home. Host Tools run through
 the same schema, permission, Hook, cancellation, and result-budget chain as
-built-in Tools. They are Root-only and must not directly modify workspace files.
+built-in Tools. `fileSources` arrays select sources but do not redefine their
+canonical precedence. They are Root-only and must not directly modify workspace
+files.

@@ -211,7 +211,7 @@ Options:
       --env-file <path>           Explicit env file; values override current env
       --source <source>           glm | qwen | deepseek | codex
       --model <model>             Primary model override
-      --permission-mode <mode>    default | acceptEdits | bypassPermissions | plan | dontAsk
+      --permission-mode <mode>    default | readOnly | bypassPermissions
       --resume <sessionId>        Resume an existing SDK Thread
       --max-iterations <n>        1..100
       --timeout-ms <ms>           1000..3600000 (default: 300000)
@@ -331,16 +331,14 @@ function optionalPermissionMode(
     if (value === undefined) return undefined;
     if (
         value === "default" ||
-        value === "acceptEdits" ||
-        value === "bypassPermissions" ||
-        value === "plan" ||
-        value === "dontAsk"
+        value === "readOnly" ||
+        value === "bypassPermissions"
     ) {
         return value;
     }
     throw new PillarSDKError(
         "invalid_runner_option",
-        "--permission-mode 必须是 default | acceptEdits | bypassPermissions | plan | dontAsk"
+        "--permission-mode 必须是 default | readOnly | bypassPermissions"
     );
 }
 

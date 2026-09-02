@@ -39,6 +39,7 @@ describe("headless output", () => {
     result,
     sessionId: "session-exit-code",
     permissionMode: "default",
+        collaborationMode: "build",
     collector: {toolCalls, subagents, currentUIEvents: []},
     mcpServers: [],
   }).exitCode;
@@ -114,6 +115,7 @@ describe("headless output", () => {
       result: completed,
       sessionId: "session-1",
       permissionMode: "default",
+        collaborationMode: "build",
       collector: {
         toolCalls: [denied, failed],
         subagents: [],
@@ -129,6 +131,7 @@ describe("headless output", () => {
       "iterations",
       "reply",
       "permissionMode",
+      "collaborationMode",
       "toolCalls",
       "permissionDenials",
       "toolFailures",
@@ -144,6 +147,7 @@ describe("headless output", () => {
       result: { ...completed, reply: "  partial  " },
       sessionId: "session-1",
       permissionMode: "default",
+        collaborationMode: "build",
       collector: {
         toolCalls: [denied, failed],
         subagents: [],

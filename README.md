@@ -11,22 +11,22 @@ Pillar 是一个运行在终端中的 Code Agent，使用 Bun、TypeScript、Rea
 - Session 恢复、Checkpoint 和代码回退
 - 子 Agent、后台任务和 Git Worktree 隔离
 - MCP、LSP、Skills、Hooks 和持久 Memory
-- GLM、Qwen 与 DeepSeek Provider
+- Codex/GPT、GLM、Qwen 与 DeepSeek Provider
 
 ## 环境要求
 
 - [Bun](https://bun.sh/) 1.3 或更高版本
-- 至少一个受支持模型服务的 API Key
+- 已登录的 Codex CLI，或至少一个受支持模型服务的 API Key
 
 ## 快速开始
 
 ```bash
 bun install
-cp .env.sample .env
 bun run start
 ```
 
-编辑 `.env`，选择主力与快速模型，并填写对应 Provider 的 API Key。
+内置 primary/fast 默认使用 Codex GPT-5.6 Luna。使用 GLM、Qwen 或 DeepSeek 时，再复制 `.env.sample` 为
+`.env` 填写凭证，并在 `~/.pillar/settings.json` 中选择模型。
 
 如需在任意目录通过 `pillar` 启动：
 
@@ -46,7 +46,8 @@ pillar -p "解释这个项目的结构"
 ## 配置与本地数据
 
 Pillar 优先读取当前目录的 `.env`，找不到时读取 `~/.pillar/.env`。
-项目会话、日志和其他运行数据保存在 `.pillar/`，这些内容默认不会进入 Git。
+项目 `.pillar/` 只保存可声明的 Settings、MCP、LSP、Skills、Agent 和 Hook 配置；Session、Checkpoint、
+Tool Result、后台任务日志和 Prompt Log 等运行数据统一保存在 `~/.pillar/projects/<project-key>/`。
 
 支持的凭证变量：
 
@@ -69,9 +70,24 @@ bun run verify
 
 `bun run verify` 会运行完整测试和 TypeScript 检查。
 
+## 仓库结构
+
+```text
+src/             产品源码
+tests/           离线、确定性的自动化测试
+tooling/         不进入产品运行时的开发辅助内容
+  evals/         显式调用真实模型的隔离评测，不进入默认测试
+  examples/      公共 SDK 的可运行示例
+  scripts/       构建、审计和发布前验证脚本
+docs/reference/  当前架构与行为的唯一文档真相源
+```
+
+`tooling/` 中的内容都有 package script 或测试调用方，不是生成目录。可删除并重建的
+SDK 构建产物统一写入被 Git 忽略的 `dist/`。文档从 [reference 索引](docs/reference/README.md) 开始阅读。
+
 ### 冗余代码审计
 
-生产代码和测试代码使用独立的 TypeScript 配置。下面的命令会在排除测试入口后检查无生产消费者的文件、导出和类型，并补充检查仅被测试引用的生产 API：
+生产代码、产品测试和开发工具使用独立的 TypeScript 配置。下面的命令会在排除测试入口后检查无生产消费者的文件、导出和类型，并补充检查仅被测试引用的生产 API：
 
 ```bash
 bun run audit:unused

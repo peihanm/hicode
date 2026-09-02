@@ -26,6 +26,7 @@ export interface SandboxedCommand {
 
 export interface SandboxRuntimeLike {
     readonly status: SandboxStatus;
+    readonly networkAllowedDomains?: readonly string[];
 
     wrapCommand(
         command: string,

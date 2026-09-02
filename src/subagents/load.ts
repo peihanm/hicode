@@ -296,7 +296,7 @@ export async function loadAgentSourceDirectory(
     return {definitions, issues};
 }
 
-export function mergeCustomAgentSources(
+function mergeCustomAgentSources(
     userDefinitions: readonly AgentDefinition[],
     projectDefinitions: readonly AgentDefinition[],
     hostDefinitions: readonly AgentDefinition[] = [],

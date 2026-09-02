@@ -237,7 +237,7 @@ describe("tool registry contract", () => {
     await withTempProject(async (cwd) => {
       const path = join(cwd, "remove.txt");
       await writeFile(path, "remove me\n");
-      const ctx = createTestContext(cwd, {permissionMode: "acceptEdits"});
+      const ctx = createTestContext(cwd, {permissionMode: "default"});
 
       const unread = await executeToolResult(
         "delete_file",
@@ -561,11 +561,13 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("dontAsk 模式拒绝需要确认的新文件写入", async () => {
+  test("非交互 Read Only Host 拒绝需要确认的新文件写入", async () => {
     await withTempProject(async (cwd) => {
       let asked = false;
       const ctx = createTestContext(cwd, {
-        permissionMode: "dontAsk",
+        permissionMode: "readOnly",
+        collaborationMode: "build",
+        permissionPromptPolicy: "never",
         canUseTool: async () => {
           asked = true;
           return { behavior: "allow" };
@@ -577,8 +579,30 @@ describe("tool registry contract", () => {
         ctx
       );
 
-      expect(result).toContain("dontAsk 模式下需要确认的操作被拒绝");
+      expect(result).toContain("当前 Host 不支持权限交互");
       expect(asked).toBe(false);
+    });
+  });
+
+  test("default 自动允许 canonical workspace 内的新文件写入", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd, {
+        permissionMode: "default",
+        collaborationMode: "build",
+        canUseTool: async () => {
+          throw new Error("workspace-scoped write_file 不应请求权限");
+        },
+      });
+      const result = await executeToolResult(
+        "write_file",
+        JSON.stringify({path: "default-write.txt", content: "hello"}),
+        ctx,
+        "default-workspace-write"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(await readFile(join(cwd, "default-write.txt"), "utf8"))
+        .toBe("hello");
     });
   });
 
@@ -592,6 +616,7 @@ describe("tool registry contract", () => {
       });
       const ctx = createTestContext(cwd, {
         permissionMode: "default",
+        collaborationMode: "build",
         signal: controller.signal,
         canUseTool: async () => {
           permissionRequested();
@@ -599,6 +624,10 @@ describe("tool registry contract", () => {
             resolveDecision = resolve;
           });
         },
+      });
+      ctx.permissionRules.ask.push({
+        toolName: "write_file",
+        source: "project",
       });
 
       const running = executeTool(
@@ -612,6 +641,64 @@ describe("tool registry contract", () => {
 
       expect(await running).toBe("工具调用已取消（user-cancel）");
       expect(existsSync(join(cwd, "cancelled.txt"))).toBe(false);
+    });
+  });
+
+  test("权限审批不能改写普通工具输入", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd, {
+        permissionMode: "default",
+        collaborationMode: "build",
+        canUseTool: async () => ({
+          behavior: "allow",
+          updatedInput: {path: "mutated.txt", content: "changed"},
+        }),
+      });
+      ctx.permissionRules.ask.push({
+        toolName: "write_file",
+        source: "project",
+      });
+
+      const result = await executeToolResult(
+        "write_file",
+        JSON.stringify({path: "original.txt", content: "original"}),
+        ctx,
+        "permission-input-mutation"
+      );
+
+      expect(result.outcome).toBe("denied");
+      expect(result.modelContent).toContain("权限交互不能修改工具");
+      expect(existsSync(join(cwd, "original.txt"))).toBe(false);
+      expect(existsSync(join(cwd, "mutated.txt"))).toBe(false);
+    });
+  });
+
+  test("权限交互异常只让当前工具失败", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd, {
+        permissionMode: "default",
+        collaborationMode: "build",
+        canUseTool: async () => {
+          throw new Error("interaction unavailable");
+        },
+      });
+      ctx.permissionRules.ask.push({
+        toolName: "write_file",
+        source: "project",
+      });
+
+      const result = await executeToolResult(
+        "write_file",
+        JSON.stringify({path: "not-created.txt", content: "nope"}),
+        ctx,
+        "permission-interaction-error"
+      );
+
+      expect(result.outcome).toBe("failed");
+      expect(result.modelContent).toContain(
+        "权限交互失败: interaction unavailable"
+      );
+      expect(existsSync(join(cwd, "not-created.txt"))).toBe(false);
     });
   });
 });

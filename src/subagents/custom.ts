@@ -1,4 +1,5 @@
 import type {PermissionMode} from "../permissions/index.js";
+import type {ToolContext} from "../tools/types.js";
 import type {AgentDefinition} from "./types.js";
 import type {SubagentRegistration} from "./registration.js";
 
@@ -15,9 +16,18 @@ export const CUSTOM_AGENT_FORBIDDEN_TOOLS = new Set([
 ]);
 
 function customAgentPermissionMode(
-    parentMode: PermissionMode
+    parentContext: Pick<
+        ToolContext,
+        "permissionMode" | "workspaceBoundary" | "permissionPromptPolicy"
+    >
 ): PermissionMode {
-    return parentMode === "default" ? "dontAsk" : parentMode;
+    if (parentContext.permissionMode !== "default") {
+        return parentContext.permissionMode;
+    }
+    return parentContext.workspaceBoundary &&
+        parentContext.permissionPromptPolicy === "never"
+        ? "default"
+        : "readOnly";
 }
 
 export function createCustomSubagentRegistration(
@@ -53,9 +63,10 @@ export function createCustomSubagentRegistration(
                     deny: [...parentContext.permissionRules.deny],
                 },
                 permissionMode: customAgentPermissionMode(
-                    parentContext.permissionMode
+                    parentContext
                 ),
-                prePlanMode: parentContext.prePlanMode,
+                collaborationMode: "build",
+                permissionPromptPolicy: "never",
             };
         },
     };

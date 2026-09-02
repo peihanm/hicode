@@ -1,7 +1,8 @@
 import type {CompactState} from "../context/index.js";
 import type {LspManagerLike} from "../lsp/types.js";
 import type {McpManagerLike} from "../mcp/types.js";
-import type {PermissionMode, PermissionRules,} from "../permissions/index.js";
+import type {PermissionMode, PermissionPromptPolicy, PermissionRules,} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {Todo} from "../todos.js";
@@ -53,9 +54,13 @@ export interface ToolContextHost {
 
     getPermissionMode(): PermissionMode;
 
-    getPrePlanMode(): PermissionMode | undefined;
+    getCollaborationMode(): CollaborationMode;
+
+    getPermissionPromptPolicy(): PermissionPromptPolicy;
 
     setPermissionMode(mode: PermissionMode): void;
+
+    setCollaborationMode(mode: CollaborationMode): void;
 
     setTodos(todos: Todo[]): void;
 }
@@ -80,10 +85,14 @@ export function createToolContext({
         get permissionMode() {
             return host.getPermissionMode();
         },
-        get prePlanMode() {
-            return host.getPrePlanMode();
+        get collaborationMode() {
+            return host.getCollaborationMode();
+        },
+        get permissionPromptPolicy() {
+            return host.getPermissionPromptPolicy();
         },
         setPermissionMode: host.setPermissionMode,
+        setCollaborationMode: host.setCollaborationMode,
         setTodos: host.setTodos,
         skills: resources.skills,
         instructions: resources.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,

@@ -1,6 +1,6 @@
-import {chmodSync, mkdirSync} from "node:fs";
 import {join} from "node:path";
 import {
+    ensurePrivateStorageDirectory,
     getProjectSessionsDirectory,
     getSessionStorageDirectory,
     type PillarStorageLayout,
@@ -33,9 +33,5 @@ export function ensureSessionsDirectory(
     cwd: string
 ): void {
     const directory = getProjectSessionsDirectory(storage, cwd);
-    mkdirSync(directory, {
-        recursive: true,
-        mode: 0o700,
-    });
-    chmodSync(directory, 0o700);
+    ensurePrivateStorageDirectory(storage, directory);
 }

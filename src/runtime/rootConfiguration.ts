@@ -2,6 +2,7 @@ import {isAbsolute, relative, resolve, sep} from "node:path";
 import type {McpConfigSource} from "../mcp/types.js";
 import type {LspConfigSource} from "../lsp/config.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import {normalizePillarStorageLayout} from "../persistence/layout.js";
 import type {InstructionFileSource} from "../prompt/instructions.js";
 import type {ResolvedPillarSettings, SettingsFileSource,} from "../settings/index.js";
 import type {SkillFileSource} from "../skills/types.js";
@@ -71,7 +72,7 @@ export function createPillarRootConfiguration(
         [rootConfigurationBrand]: true,
         cwd,
         workspaceBoundary,
-        storage: immutableCopy(options.storage),
+        storage: normalizePillarStorageLayout(options.storage),
         settings: immutableCopy(options.settings),
         fileSources: normalizePillarFileSources(options.fileSources),
         contributions: normalizePillarRootContributions(
@@ -139,7 +140,6 @@ function normalizeSources<T extends string>(
     }
     const allowedSet = new Set<string>(allowed);
     const seen = new Set<string>();
-    const normalized: T[] = [];
     for (const value of values) {
         if (!allowedSet.has(value)) {
             throw new Error(`fileSources.${domain} 包含无效来源 ${String(value)}`);
@@ -148,9 +148,8 @@ function normalizeSources<T extends string>(
             throw new Error(`fileSources.${domain} 包含重复来源 ${value}`);
         }
         seen.add(value);
-        normalized.push(value);
     }
-    return Object.freeze(normalized);
+    return Object.freeze(allowed.filter((value) => seen.has(value)));
 }
 
 function freezeFileSources(sources: PillarFileSources): PillarFileSources {

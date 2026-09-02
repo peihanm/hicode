@@ -225,7 +225,12 @@ export class UITurnEventStore {
             // assistant_text 已经是完整的最终文本，不存在后续增量更新。若先放进
             // live 区、Turn settled 时再转入 Static，长回答可能已经滚进终端
             // scrollback，Ink 无法擦除旧帧，最终就会看起来输出了两次。
-            const completedAssistantId = event.type === "assistant_text"
+            const completedAssistantId =
+                event.type === "assistant_text" ||
+                event.type === "compact_start" ||
+                event.type === "compact_end" ||
+                event.type === "compact_error" ||
+                event.type === "turn_interrupted"
                 ? threads.at(-1)?.id
                 : undefined;
             if (completedAssistantId) {
@@ -291,33 +296,15 @@ export class UITurnEventStore {
 
     appendError(error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);
-        this.update({
-            ...this.snapshot,
-            threads: [
-                ...this.snapshot.threads,
-                createAssistantThread(`出错: ${message}`, this.createThreadId),
-            ],
-        });
+        this.appendCompletedAssistant(`出错: ${message}`);
     }
 
     appendWarning(message: string): void {
-        this.update({
-            ...this.snapshot,
-            threads: [
-                ...this.snapshot.threads,
-                createAssistantThread(`警告: ${message}`, this.createThreadId),
-            ],
-        });
+        this.appendCompletedAssistant(`警告: ${message}`);
     }
 
     appendNotice(message: string): void {
-        this.update({
-            ...this.snapshot,
-            threads: [
-                ...this.snapshot.threads,
-                createAssistantThread(message, this.createThreadId),
-            ],
-        });
+        this.appendCompletedAssistant(message);
     }
 
     appendTaskNotification(notification: TaskNotification): void {
@@ -385,6 +372,15 @@ export class UITurnEventStore {
                 !(thread.role === "tool_call" && thread.status === "running")
         );
         if (nextSnapshot !== this.snapshot) this.update(nextSnapshot);
+    }
+
+    private appendCompletedAssistant(text: string): void {
+        const thread = createAssistantThread(text, this.createThreadId);
+        const nextSnapshot = {
+            ...this.snapshot,
+            threads: [...this.snapshot.threads, thread],
+        };
+        this.update(this.archiveThroughSettledThread(nextSnapshot, thread.id));
     }
 
     private archiveSettledBeforeTrailingActivity(): void {

@@ -64,7 +64,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
     constructor(
         readonly status: Extract<SandboxStatus, {kind: "ready"}>,
         private readonly backend: SandboxBackend,
-        private readonly release: () => Promise<void>
+        private readonly release: () => Promise<void>,
+        readonly networkAllowedDomains: readonly string[]
     ) {}
 
     async wrapCommand(
@@ -175,7 +176,9 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 kind: "ready",
                 platform,
                 warnings: dependencies.warnings,
-            }, backend, release);
+            }, backend, release, Object.freeze([
+                ...settings.network.allowedDomains,
+            ]));
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

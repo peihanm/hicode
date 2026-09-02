@@ -384,6 +384,12 @@ describe("GLM cancellation", () => {
 
       expect(fetchCalls).toBe(2);
       expect(result.message.content).toBe("恢复成功");
+      expect(result.usage).toEqual({
+        prompt_tokens: 16,
+        completion_tokens: 2,
+        total_tokens: 18,
+      });
+      expect(result.contextUsage).toEqual({tokenCount: 10});
       const logs = (await readdir(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);
       const first = JSON.parse(

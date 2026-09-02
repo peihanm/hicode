@@ -366,7 +366,7 @@ export function describeToolCall(
         case "enter_plan_mode":
             return {label: "Enter plan mode", detail: ""};
         case "exit_plan_mode":
-            return {label: "Exit plan mode", detail: ""};
+            return {label: "Exit plan mode", detail: "· Ready to build?"};
         case "skill":
             return {
                 label: "Skill",

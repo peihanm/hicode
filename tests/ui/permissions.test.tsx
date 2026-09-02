@@ -20,6 +20,30 @@ async function flush(ms = 20): Promise<void> {
 }
 
 describe("permission confirmation UI", () => {
+  test("Shift+Tab 只切换 Build/Plan，不改变权限 Profile", async () => {
+    await withTempProject(async (cwd) => {
+      const instance = render(
+        <App
+          resources={createTestRuntimeResources(cwd)}
+          initialPermissionMode="readOnly"
+        />
+      );
+      await flush(10);
+      const initial = instance.lastFrame() ?? "";
+      expect(initial).toContain("Read Only");
+      expect(initial).not.toContain("Read Only | Plan");
+
+      instance.stdin.write("\u001B[Z");
+      await flush(10);
+      expect(instance.lastFrame()).toContain("Read Only | Plan");
+
+      instance.stdin.write("\u001B[Z");
+      await flush(10);
+      expect(instance.lastFrame()).not.toContain("Read Only | Plan");
+      expect(instance.lastFrame()).toContain("Read Only");
+    });
+  });
+
   test("enter_plan_mode 使用紧凑专用界面和整行选择", async () => {
     const decisions: PermissionDecision[] = [];
     const onDone = mock(() => {});
@@ -151,7 +175,7 @@ describe("permission confirmation UI", () => {
     });
   });
 
-  test("exit_plan_mode 使用专用三项审批并更新当前 Session 模式", async () => {
+  test("exit_plan_mode 使用专用审批且不改变当前权限模式", async () => {
     await withTempProject(async (cwd) => {
       let modeAfterApproval: PermissionMode | undefined;
       let completed!: () => void;
@@ -174,7 +198,8 @@ describe("permission confirmation UI", () => {
       const instance = render(
         <App
           resources={createTestRuntimeResources(cwd)}
-          initialPermissionMode="plan"
+          initialPermissionMode="default"
+          initialCollaborationMode="plan"
           runAgentImpl={runAgentImpl}
         />
       );
@@ -184,14 +209,15 @@ describe("permission confirmation UI", () => {
       instance.stdin.write(ENTER);
       await flush();
 
-      expect(instance.lastFrame()).toContain("READY TO BUILD?");
+      expect(instance.lastFrame()).toContain("Build now");
+      expect(instance.lastFrame()).not.toContain("current permissions");
       expect(instance.lastFrame()).toContain("Explore commands and workflows");
       expect(instance.lastFrame()).toContain("Keep planning");
       instance.stdin.write(ENTER);
       await done;
 
-      expect(modeAfterApproval).toBe("acceptEdits");
-      expect(instance.lastFrame()).not.toContain("READY TO BUILD?");
+      expect(modeAfterApproval).toBe("default");
+      expect(instance.lastFrame()).not.toContain("Build now");
     });
   });
 
@@ -217,7 +243,8 @@ describe("permission confirmation UI", () => {
       const instance = render(
         <App
           resources={createTestRuntimeResources(cwd)}
-          initialPermissionMode="plan"
+          initialPermissionMode="default"
+          initialCollaborationMode="plan"
           runAgentImpl={runAgentImpl}
         />
       );
@@ -226,7 +253,7 @@ describe("permission confirmation UI", () => {
       await flush(10);
       instance.stdin.write(ENTER);
       await flush();
-      expect(instance.lastFrame()).toContain("READY TO BUILD?");
+      expect(instance.lastFrame()).toContain("Build now");
 
       instance.stdin.write("\u001B");
       await done;

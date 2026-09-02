@@ -13,11 +13,6 @@ import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
 import {buildHeadlessRunSummary, formatHeadlessProgress,} from "./output.js";
 import {loadHeadlessSession} from "./session.js";
 import type {HeadlessOptions, HeadlessOutputFormat, HeadlessRunSummary,} from "./types.js";
-import {parse} from "node:path";
-import {
-    CLI_FILE_SOURCES,
-    createPillarRootConfiguration,
-} from "../runtime/rootConfiguration.js";
 
 interface HeadlessRunnerDependencies {
     createResources: typeof createRootRuntimeResources;
@@ -48,19 +43,12 @@ export function createHeadlessRunner(
         signal?: AbortSignal
     ): Promise<HeadlessRunSummary> {
         const state = loadHeadlessSession(options);
-        const permissionRules = options.settings.permissions.rules;
+        const permissionRules = options.configuration.settings.permissions.rules;
         const collector = new HeadlessEventCollector();
         const fallbackController = createTurnAbortController();
         const activeSignal = signal ?? fallbackController.signal;
-        const configuration = createPillarRootConfiguration({
-            cwd: options.cwd,
-            workspaceBoundary: parse(options.cwd).root,
-            storage: options.storage,
-            settings: options.settings,
-            fileSources: CLI_FILE_SOURCES,
-        });
         const resources = await dependencies.createResources({
-            configuration,
+            configuration: options.configuration,
             signal: activeSignal,
             headless: true,
         });
@@ -93,7 +81,9 @@ export function createHeadlessRunner(
             const writeLifecycleIssue = async (issue: RootTurnLifecycleIssue) => {
                 const scope = issue.scope === "checkpoint"
                     ? "Checkpoint"
-                    : "Session";
+                    : issue.scope === "session"
+                        ? "Session"
+                        : "Host";
                 await dependencies.writeDiagnostic(
                     `${scope}: ${issue.message}：${issue.error instanceof Error ? issue.error.message : String(issue.error)}`
                 );
@@ -101,7 +91,7 @@ export function createHeadlessRunner(
             const getSnapshotState = () => ({
                 todos: state.todos,
                 permissionMode: state.permissionMode,
-                prePlanMode: state.prePlanMode,
+                collaborationMode: state.collaborationMode,
                 uiEvents: [
                     ...state.uiEvents,
                     ...collector.getSnapshot().currentUIEvents,
@@ -116,22 +106,18 @@ export function createHeadlessRunner(
                     message: [
                         `headless 模式不能交互确认工具 ${toolName}`,
                         message,
-                        "请使用 --permission-mode acceptEdits、--dangerously-skip-permissions 或配置 allow 规则。",
+                        "请使用 Default 的受限能力、--dangerously-skip-permissions 或配置 allow 规则。",
                     ].join("\n"),
                 }),
                 getPermissionRules: () => permissionRules,
                 getPermissionMode: () => state.permissionMode,
-                getPrePlanMode: () => state.prePlanMode,
+                getCollaborationMode: () => state.collaborationMode,
+                getPermissionPromptPolicy: () => "never",
                 setPermissionMode(mode) {
-                    if (mode === "plan" && state.permissionMode !== "plan") {
-                        state.prePlanMode = state.permissionMode;
-                    } else if (
-                        state.permissionMode === "plan" &&
-                        mode !== "plan"
-                    ) {
-                        state.prePlanMode = undefined;
-                    }
                     state.permissionMode = mode;
+                },
+                setCollaborationMode(mode) {
+                    state.collaborationMode = mode;
                 },
                 setTodos(todos) {
                     state.todos = todos;
@@ -181,6 +167,7 @@ export function createHeadlessRunner(
                     result,
                     sessionId: state.sessionId,
                     permissionMode: state.permissionMode,
+                    collaborationMode: state.collaborationMode,
                     collector: collectorSnapshot,
                     mcpServers: resources.mcpManager?.getSnapshots() ?? [],
                 });
@@ -203,7 +190,7 @@ export function createHeadlessRunner(
                     }
                     try {
                         await dependencies.saveSession(
-                            options.storage,
+                            resources.storage,
                             rootSession.createSnapshot({
                                 ...getSnapshotState(),
                                 allowEmpty: true,
@@ -222,30 +209,19 @@ export function createHeadlessRunner(
                         }
                     }
                 }
-                const endController = new AbortController();
-                const timer = setTimeout(
-                    () => endController.abort("session-end-timeout"),
-                    1_500
-                );
-                timer.unref?.();
                 try {
+                    const endResult = await rootSession.runSessionEnd(
+                        sessionEndReason
+                    );
+                    await writeHookIssues(endResult);
+                } catch (error) {
                     try {
-                        const endResult = await rootSession.runSessionEnd(
-                            sessionEndReason,
-                            endController.signal
+                        await dependencies.writeDiagnostic(
+                            `Hook: SessionEnd 执行失败: ${error instanceof Error ? error.message : String(error)}`
                         );
-                        await writeHookIssues(endResult);
-                    } catch (error) {
-                        try {
-                            await dependencies.writeDiagnostic(
-                                `Hook: SessionEnd 执行失败: ${error instanceof Error ? error.message : String(error)}`
-                            );
-                        } catch {
-                            // stderr sink 失败也不能破坏资源回收。
-                        }
+                    } catch {
+                        // stderr sink 失败也不能破坏资源回收。
                     }
-                } finally {
-                    clearTimeout(timer);
                 }
             }
         } finally {

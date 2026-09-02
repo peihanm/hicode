@@ -1,5 +1,7 @@
 import { createCompactState } from "../../src/context/index.js";
 import type { PermissionDecision, PermissionMode } from "../../src/permissions/index.js";
+import type {PermissionPromptPolicy} from "../../src/permissions/index.js";
+import type {CollaborationMode} from "../../src/collaboration/index.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import type { MemoryFileAccess } from "../../src/memory/index.js";
 import { createTestToolResultStore } from "./toolResultStore.js";
@@ -34,6 +36,8 @@ export function createTestContext(
   cwd: string,
   options: {
     permissionMode?: PermissionMode;
+    collaborationMode?: CollaborationMode;
+    permissionPromptPolicy?: PermissionPromptPolicy;
     canUseTool?: ToolContext["canUseTool"];
     signal?: AbortSignal;
     sessionId?: string;
@@ -54,6 +58,7 @@ export function createTestContext(
   } = {}
 ): ToolContext {
   let permissionMode = options.permissionMode ?? "bypassPermissions";
+  let collaborationMode = options.collaborationMode ?? "build";
 
   const allow: PermissionDecision = { behavior: "allow" };
 
@@ -99,9 +104,14 @@ export function createTestContext(
       canUseTool: options.canUseTool ?? (async () => allow),
       getPermissionRules: () => permissionRules,
       getPermissionMode: () => permissionMode,
-      getPrePlanMode: () => undefined,
+      getCollaborationMode: () => collaborationMode,
+      getPermissionPromptPolicy: () =>
+        options.permissionPromptPolicy ?? "onRequest",
       setPermissionMode(mode) {
         permissionMode = mode;
+      },
+      setCollaborationMode(mode) {
+        collaborationMode = mode;
       },
       setTodos: options.setTodos ?? (() => {}),
     },

@@ -2,6 +2,7 @@ import {z} from "zod";
 import type {Message} from "../llm/types.js";
 import {normalizeGitSessionState} from "../git/index.js";
 import {isPermissionMode} from "../permissions/index.js";
+import {isCollaborationMode} from "../collaboration/index.js";
 import {getProjectKey} from "../persistence/index.js";
 import {normalizeRuntimeQueuedMessages} from "../runtime/messageQueue.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
@@ -51,6 +52,9 @@ const timestampSchema = z.string().max(64).refine(
 );
 const permissionModeSchema = z.custom<SessionSnapshotEntry["permissionMode"]>(
     isPermissionMode
+);
+const collaborationModeSchema = z.custom<SessionSnapshotEntry["collaborationMode"]>(
+    isCollaborationMode
 );
 const nonNegativeIntegerSchema = z.number().int().nonnegative().max(
     Number.MAX_SAFE_INTEGER
@@ -184,7 +188,7 @@ const sessionEntryBase = {
     conversation: conversationSchema,
     todos: z.array(todoSchema).max(MAX_TODOS),
     permissionMode: permissionModeSchema,
-    prePlanMode: permissionModeSchema.optional(),
+    collaborationMode: collaborationModeSchema,
     compactState: compactStateSchema.optional(),
     uiEvents: z.array(persistedUIEventSchema).max(MAX_UI_EVENTS),
     toolDiscovery: z.unknown().optional(),

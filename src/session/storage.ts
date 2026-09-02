@@ -65,7 +65,7 @@ export async function saveSessionSnapshot(
             conversation,
             todos: input.todos,
             permissionMode: input.permissionMode,
-            prePlanMode: input.prePlanMode,
+            collaborationMode: input.collaborationMode,
             compactState: input.compactState,
             uiEvents: limitSessionUIEvents(input.uiEvents),
             ...(input.checkpointHead
@@ -117,7 +117,7 @@ export async function saveSessionTurnCheckpoint(
         conversation,
         todos: [...input.todos],
         permissionMode: input.permissionMode,
-        prePlanMode: input.prePlanMode,
+        collaborationMode: input.collaborationMode,
         compactState: input.compactState ? {...input.compactState} : undefined,
         uiEvents: limitSessionUIEvents(input.uiEvents),
         ...(toolDiscovery ? {toolDiscovery} : {}),
@@ -204,7 +204,7 @@ export function loadSession(
         history: [...createInitialHistory(cwd, model), ...snapshot.conversation],
         todos: snapshot.todos,
         permissionMode: snapshot.permissionMode,
-        prePlanMode: snapshot.prePlanMode,
+        collaborationMode: snapshot.collaborationMode,
         compactState: snapshot.compactState,
         uiEvents: limitSessionUIEvents(snapshot.uiEvents),
         checkpointHead: snapshot.checkpointHead

@@ -1,6 +1,8 @@
-import {existsSync, readFileSync, statSync} from "node:fs";
-import {readFile, stat} from "node:fs/promises";
-import {type PillarStorageLayout, writeFileAtomically} from "../persistence/index.js";
+import {
+    readPrivateStorageTextFile,
+    type PillarStorageLayout,
+    writeFileAtomically,
+} from "../persistence/index.js";
 import {decodeSessionIndexEntries} from "./codec.js";
 import {ensureSessionsDirectory, getSessionIndexPath} from "./paths.js";
 import {SESSION_INDEX_VERSION, type SessionIndexEntry, type SessionIndexFile,} from "./types.js";
@@ -29,13 +31,14 @@ export function readSessionIndex(
     cwd: string
 ): SessionIndexFile {
     const path = getSessionIndexPath(storage, cwd);
-    if (!existsSync(path)) return emptySessionIndex();
-
     try {
-        if (statSync(path).size > MAX_SESSION_INDEX_BYTES) {
-            return emptySessionIndex();
-        }
-        const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<SessionIndexFile>;
+        const content = readPrivateStorageTextFile(
+            storage,
+            path,
+            MAX_SESSION_INDEX_BYTES
+        );
+        if (content === null) return emptySessionIndex();
+        const parsed = JSON.parse(content) as Partial<SessionIndexFile>;
         if (
             parsed.version !== SESSION_INDEX_VERSION ||
             !Array.isArray(parsed.sessions)
@@ -56,24 +59,12 @@ async function readSessionIndexForMutation(
     cwd: string
 ): Promise<SessionIndexFile> {
     const path = getSessionIndexPath(storage, cwd);
-    let content: string;
-    try {
-        const metadata = await stat(path);
-        if (metadata.size > MAX_SESSION_INDEX_BYTES) {
-            throw new Error(`Session index size limit exceeded: ${path}`);
-        }
-        content = await readFile(path, "utf8");
-    } catch (error) {
-        if (
-            error &&
-            typeof error === "object" &&
-            "code" in error &&
-            (error as { code?: string }).code === "ENOENT"
-        ) {
-            return emptySessionIndex();
-        }
-        throw error;
-    }
+    const content = readPrivateStorageTextFile(
+        storage,
+        path,
+        MAX_SESSION_INDEX_BYTES
+    );
+    if (content === null) return emptySessionIndex();
 
     try {
         const parsed = JSON.parse(content) as Partial<SessionIndexFile>;

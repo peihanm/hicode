@@ -30,6 +30,7 @@ await saveSessionTurnCheckpoint(storage, {
     history: [{role: "system", content: "system"}],
     todos: [],
     permissionMode: "default",
+        collaborationMode: "build",
 });
 await runtime.beforeWrite({
     path,
@@ -54,6 +55,7 @@ await saveSessionSnapshot(storage, {
     ],
     todos: [],
     permissionMode: "default",
+        collaborationMode: "build",
     checkpointHead: runtime.getHead(),
 });
 

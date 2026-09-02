@@ -8,6 +8,7 @@ describe("exit_plan_mode", () => {
         await withTempProject(async (cwd) => {
             const defaultContext = createTestContext(cwd, {
                 permissionMode: "default",
+        collaborationMode: "build",
             });
             expect(await exitPlanModeTool.checkPermissions?.(
                 {plan: "实施计划"},
@@ -18,7 +19,8 @@ describe("exit_plan_mode", () => {
             });
 
             const planContext = createTestContext(cwd, {
-                permissionMode: "plan",
+                permissionMode: "default",
+        collaborationMode: "plan",
             });
             expect(await exitPlanModeTool.checkPermissions?.(
                 {plan: "实施计划"},
@@ -27,10 +29,11 @@ describe("exit_plan_mode", () => {
         });
     });
 
-    test("execute 只生成 Approved Plan，权限模式由审批 UI 选择", async () => {
+    test("execute 生成 Approved Plan 并切换到 Build，不改变权限模式", async () => {
         await withTempProject(async (cwd) => {
             const context = createTestContext(cwd, {
-                permissionMode: "plan",
+                permissionMode: "default",
+        collaborationMode: "plan",
             });
             const result = await exitPlanModeTool.execute(
                 {plan: "  1. 修改代码\n2. 运行测试  "},
@@ -40,7 +43,8 @@ describe("exit_plan_mode", () => {
 
             expect(result).toContain("用户已批准计划");
             expect(result).toContain("1. 修改代码\n2. 运行测试");
-            expect(context.permissionMode).toBe("plan");
+            expect(context.permissionMode).toBe("default");
+            expect(context.collaborationMode).toBe("build");
         });
     });
 });

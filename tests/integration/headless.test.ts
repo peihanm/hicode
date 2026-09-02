@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { formatHeadlessOutput } from "../../src/headless/output.js";
-import type {
-  HeadlessOptions,
-  HeadlessRunSummary,
-} from "../../src/headless/types.js";
+import type {HeadlessRunSummary} from "../../src/headless/types.js";
 import { assistantText, assistantToolCall, createFakeLLM } from "../helpers/fakeLLM.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { join } from "node:path";
@@ -18,17 +15,21 @@ import {
   createTestSettings,
 } from "../helpers/runtimeResources.js";
 import type { AgentRunner } from "../../src/agent/index.js";
-import { runHeadlessForTest as runHeadless } from "../helpers/headless.js";
+import {
+  type HeadlessTestInput,
+  runHeadlessForTest as runHeadless,
+} from "../helpers/headless.js";
 import { createSubagentRegistry } from "../../src/subagents/index.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
-function options(cwd: string): Omit<HeadlessOptions, "storage"> {
+function options(cwd: string): HeadlessTestInput {
   return {
     cwd,
     settings: createTestSettings(),
     prompt: "执行任务",
     permissionMode: "bypassPermissions",
+        collaborationMode: "build",
     resumeMode: { kind: "none" },
     outputFormat: "json",
   };

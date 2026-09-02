@@ -43,7 +43,7 @@ export interface LoadedCustomAgents {
 }
 
 export interface RegisteredSubagentRequest {
-    kind?: "registered";
+    kind: "registered";
     agentType: AgentName;
     description: string;
     prompt: string;
@@ -97,10 +97,11 @@ export interface SubagentThread {
 export interface CreateSubagentRunnerOptions {
     parentContext: ToolContext;
     onEvent: (event: AgentEvent) => void | Promise<void>;
-    /** 后台 Task 使用独立 signal；同步调用省略并继承 parentContext.signal。 */
-    signal?: AbortSignal;
+}
+
+export interface CreateSubagentThreadOptions extends CreateSubagentRunnerOptions {
     /** 后台 Task 使用稳定 task identity 作为 agent identity。 */
-    agentId?: string;
+    agentId: string;
     /** 仅供 Task Runtime 汇总 child progress；同步 UI 不展开内部工具事件。 */
     onChildEvent?: (event: AgentEvent) => void | Promise<void>;
     /** Worktree Agent 的 transcript/tool artifacts 仍归父项目存储。 */
@@ -112,8 +113,6 @@ export type CreateSubagentRunner = (
 ) => SubagentRunner;
 
 export type CreateSubagentThread = (
-    options: Omit<CreateSubagentRunnerOptions, "signal" | "agentId"> & {
-        agentId: string;
-    },
+    options: CreateSubagentThreadOptions,
     request: SubagentRequest
 ) => SubagentThread;

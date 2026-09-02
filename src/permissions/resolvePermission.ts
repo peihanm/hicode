@@ -6,12 +6,13 @@
 //   2. tool.checkPermissions 的 deny
 //   3. ask 规则匹配
 //   4. 必须用户交互的 tool ask
-//   5. PermissionMode 顶层开关
-//   6. acceptEdits 模式 + cwd 内文件编辑工具
-//   7. allow 规则匹配
-//   8. tool.checkPermissions 的 allow/ask
-//   9. 默认规则（isReadOnly → allow，写操作 → ask）
-//   10. dontAsk 把 ask 转 deny
+//   5. Plan collaboration mode 收窄写操作
+//   6. Bypass / Read Only permission profile
+//   7. Default + 可验证的 workspace/sandboxed 副作用范围
+//   8. allow 规则匹配
+//   9. tool.checkPermissions 的 allow/ask
+//   10. 默认规则（isReadOnly → allow，写操作 → ask）
+//   11. 非交互 Host 把 ask 转 deny
 
 import type {PermissionMatcher, PermissionRuleBehavior, Tool, ToolContext} from "../tools/types.js";
 import type {PermissionResult} from "./types.js";
@@ -41,10 +42,10 @@ export async function resolvePermission(
     ctx: ToolContext
 ): Promise<PermissionResult> {
     const result = await resolvePermissionInner(tool, input, ctx);
-    if (ctx.permissionMode === "dontAsk" && result.behavior === "ask") {
+    if (ctx.permissionPromptPolicy === "never" && result.behavior === "ask") {
         return {
             behavior: "deny",
-            message: "dontAsk 模式下需要确认的操作被拒绝",
+            message: "当前 Host 不支持权限交互，需要确认的操作被拒绝",
         };
     }
     return result;
@@ -103,46 +104,59 @@ async function resolvePermissionInner(
     }
 
     // 4. 必须用户交互的工具即使在 bypassPermissions 下也要问。
-    if (tool.requiresUserInteraction?.(input) && toolResult.behavior === "ask") {
+    if (tool.requiresUserInteraction?.(input, ctx) && toolResult.behavior === "ask") {
         return toolResult;
     }
 
-    // 5. bypassPermissions：跳过普通确认，但不绕过 deny/ask/user interaction。
-    if (mode === "bypassPermissions") {
-        return {behavior: "allow"};
-    }
-
-    // 6. plan：只读自动放行，写操作需要确认而不是硬拒绝。
-    if (mode === "plan") {
+    // 5. Plan 是独立工作模式，在 Permission Profile 前收窄写操作。
+    if (ctx.collaborationMode === "plan") {
         const isReadOnly = tool.isReadOnly?.(input) ?? false;
         if (isReadOnly) return {behavior: "allow"};
         return toolResult.behavior === "ask"
             ? toolResult
-            : {behavior: "ask", message: `plan 模式下工具 ${tool.name} 需要确认`};
+            : {behavior: "ask", message: `Plan 模式下工具 ${tool.name} 需要确认`};
     }
 
-    // 7. acceptEdits：仅 cwd 内文件编辑自动放行，且不绕过上面的 deny/ask。
-    if (mode === "acceptEdits" && isFileEditTool(tool)) {
-        const path = toolPathInput(tool.name, input);
-        if (path !== undefined) {
-            const scoped = await validateWorkspacePath(ctx.cwd, ctx.cwd, path);
+    // 6. Bypass 跳过普通确认；Read Only 只自动允许只读调用。
+    if (mode === "bypassPermissions") {
+        return {behavior: "allow"};
+    }
+    if (mode === "readOnly") {
+        const isReadOnly = tool.isReadOnly?.(input) ?? false;
+        if (isReadOnly) return {behavior: "allow"};
+        return toolResult.behavior === "ask"
+            ? toolResult
+            : {behavior: "ask", message: `Read Only 模式下工具 ${tool.name} 需要确认`};
+    }
+
+    // 8. Default：只自动批准可验证的 workspace 或 OS Sandbox 副作用。
+    // 显式 ask、Tool deny、强制交互与 Plan 已在更高优先级处理。
+    if (mode === "default" && tool.getDefaultApprovalScope) {
+        const scope = tool.getDefaultApprovalScope(input, ctx);
+        if (scope?.kind === "sandboxed") return {behavior: "allow"};
+        if (scope?.kind === "workspace") {
+            const scoped = await validateWorkspacePath(
+                ctx.cwd,
+                ctx.cwd,
+                scope.path
+            );
             if (scoped.ok) return {behavior: "allow"};
         }
     }
 
-    // 8. allow 规则
+    // 9. allow 规则
     for (const rule of rules.allow) {
         if (ruleMatches(rule, tool.name, matcher, "allow")) {
             return {behavior: "allow"};
         }
     }
 
-    // 9. 工具自己的 allow/ask
+    // 10. 工具自己的 allow/ask
     if (toolResult.behavior !== "passthrough") {
         return toolResult;
     }
 
-    // 10. default fallback：只读放行，写操作 ask
+    // 11. default fallback：只读放行，写操作 ask
     const isReadOnly = tool.isReadOnly?.(input) ?? false;
     return isReadOnly
         ? {behavior: "allow"}
@@ -173,11 +187,4 @@ async function getMatcher(
     const inputStr =
         typeof input === "string" ? input : JSON.stringify(input);
     return (pattern: string) => matchPattern(pattern, inputStr);
-}
-
-// 判断是否文件编辑工具（用于 acceptEdits 模式）
-function isFileEditTool(tool: Tool): boolean {
-    return tool.name === "write_file" ||
-        tool.name === "edit_file" ||
-        tool.name === "delete_file";
 }

@@ -10,7 +10,6 @@ export const CLEAR_SCROLLBACK_AND_SCREEN = "\u001B[3J\u001B[2J\u001B[H";
 
 interface TranscriptSnapshot {
     width: number;
-    height: number;
     threadIds: string[];
 }
 
@@ -20,7 +19,8 @@ export type TranscriptEmissionPlan =
 
 /**
  * Finalized threads remain the source of truth. Ink Static owns ordinary append-only writes;
- * width/height changes and non-append mutations require a full source-backed replay.
+ * Width changes and non-append mutations require a full source-backed replay.
+ * Height does not affect retained transcript layout.
  */
 export function planTranscriptEmission(
     previous: TranscriptSnapshot | undefined,
@@ -28,7 +28,7 @@ export function planTranscriptEmission(
     showWelcome: boolean
 ): TranscriptEmissionPlan {
     if (!previous) return {kind: "none"};
-    if (previous.width !== current.width || previous.height !== current.height) {
+    if (previous.width !== current.width) {
         return {kind: "replay", includeWelcome: showWelcome};
     }
     const isAppendOnly = previous.threadIds.length <= current.threadIds.length &&
@@ -132,7 +132,6 @@ export function ScrollbackTranscript({
         if (!isInteractive) return;
         const current: TranscriptSnapshot = {
             width,
-            height,
             threadIds: threads.map((thread) => thread.id),
         };
         const plan = planTranscriptEmission(
@@ -140,8 +139,11 @@ export function ScrollbackTranscript({
             current,
             showWelcome
         );
-        previousRef.current = current;
-        if (plan.kind === "none") return;
+        if (plan.kind === "none") {
+            // Static has synchronously accepted an ordinary append-only update.
+            previousRef.current = current;
+            return;
+        }
 
         // A second Ink renderer cannot be entered while React is flushing this renderer's
         // passive effects. Defer one task so the retained transcript render is isolated.
@@ -155,6 +157,10 @@ export function ScrollbackTranscript({
             }).then((rendered) => {
                 if (active) {
                     write(`${CLEAR_SCROLLBACK_AND_SCREEN}${rendered}`);
+                    // Only a successful terminal write commits replay state.
+                    // If this effect was cancelled by a newer source snapshot,
+                    // the next effect must still see the old committed width and replay.
+                    previousRef.current = current;
                 }
             }).catch(() => {
                 // Keep the existing terminal-owned history if replay rendering fails.

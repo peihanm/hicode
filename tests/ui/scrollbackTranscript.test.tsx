@@ -14,7 +14,7 @@ function cleanLines(value: string): string[] {
 
 describe("source-backed terminal scrollback", () => {
     test("普通追加交给 Static，resize 和非追加变化触发完整 replay", () => {
-        const initial = {width: 80, height: 24, threadIds: ["a"]};
+        const initial = {width: 80, threadIds: ["a"]};
         expect(planTranscriptEmission(undefined, initial, true)).toEqual({kind: "none"});
         expect(planTranscriptEmission(initial, {
             ...initial,

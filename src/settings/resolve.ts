@@ -191,7 +191,7 @@ export function resolvePillarSettings(
     let memoryDisabled = false;
     let autoExtractDisabled = false;
     let checkpointingEnabled = true;
-    let sandboxEnabled = false;
+    let sandboxEnabled = true;
     let sandboxAllowWrite = ["."];
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
     let sandboxDenyWrite = [".pillar", ".env"];

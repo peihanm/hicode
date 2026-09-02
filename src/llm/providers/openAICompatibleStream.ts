@@ -116,7 +116,6 @@ export async function consumeOpenAICompatibleSSE({
         }
         const data = getEventData(event);
         if (!data) return;
-        onActivity();
         if (data === "[DONE]") {
             done = true;
             clearCompletionTailTimer();
@@ -199,6 +198,10 @@ export async function consumeOpenAICompatibleSSE({
         while (!done) {
             const part = await reader.read();
             if (part.done) break;
+            // Transport activity and model progress are separate signals.
+            // SSE comments/heartbeats keep the connection alive, but only
+            // decoded output deltas refresh the generation watchdog.
+            if (part.value.length > 0) onActivity();
             buffer += decoder.decode(part.value, {stream: true});
             let boundary = buffer.search(/\r?\n\r?\n/);
             while (boundary >= 0) {

@@ -57,7 +57,7 @@ async function saveConversationState(input: {
         history: checkpointHistory(input.cwd, input.model, input.checkpoint),
         todos: input.checkpoint.todos,
         permissionMode: input.checkpoint.permissionMode,
-        prePlanMode: input.checkpoint.prePlanMode,
+        collaborationMode: input.checkpoint.collaborationMode,
         compactState: input.checkpoint.compactState ?? createCompactState(),
         uiEvents: input.checkpoint.uiEvents,
         toolDiscovery: input.checkpoint.toolDiscovery,

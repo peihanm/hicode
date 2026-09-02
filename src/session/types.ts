@@ -4,12 +4,13 @@ import type {PersistedUIEvent} from "./uiEvents.js";
 import type {GitSessionState} from "../git/index.js";
 import type {Message} from "../llm/types.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {RuntimeQueuedMessage} from "../runtime/messageQueue.js";
 import type {Todo} from "../todos.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 1;
-export const SESSION_ENTRY_VERSION = 2;
+export const SESSION_ENTRY_VERSION = 3;
 
 export interface SessionIndexEntry {
     sessionId: string;
@@ -31,7 +32,7 @@ export interface SessionIndexFile {
 
 export interface SessionSnapshotEntry {
     type: "snapshot";
-    version: 2;
+    version: 3;
     sessionId: string;
     cwd: string;
     model: string;
@@ -39,7 +40,7 @@ export interface SessionSnapshotEntry {
     conversation: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
@@ -50,7 +51,7 @@ export interface SessionSnapshotEntry {
 
 export interface SessionTurnCheckpointEntry {
     type: "turn_checkpoint";
-    version: 2;
+    version: 3;
     checkpointId: string;
     sessionId: string;
     branchId: string;
@@ -62,7 +63,7 @@ export interface SessionTurnCheckpointEntry {
     conversation: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents: PersistedUIEvent[];
     toolDiscovery?: ToolDiscoverySnapshot;
@@ -77,7 +78,7 @@ export interface LoadedSession {
     history: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
@@ -94,7 +95,7 @@ export interface SaveSessionSnapshotInput {
     history: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents?: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
@@ -118,7 +119,7 @@ export interface SaveSessionTurnCheckpointInput {
     history: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents?: PersistedUIEvent[];
     toolDiscovery?: ToolDiscoverySnapshot;

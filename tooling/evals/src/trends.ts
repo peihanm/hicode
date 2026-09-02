@@ -1,6 +1,6 @@
 import {lstat, readFile, readdir} from "node:fs/promises";
 import {join, resolve} from "node:path";
-import {withFileLock} from "../../src/persistence/index.js";
+import {withFileLock} from "../../../src/persistence/index.js";
 import {writeJsonAtomic} from "./artifacts.js";
 import type {
     EvalFailureKind,

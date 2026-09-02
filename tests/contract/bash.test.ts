@@ -9,8 +9,50 @@ import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { join } from "node:path";
 import { createTaskRuntimeForTest } from "../helpers/taskRuntime.js";
 import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
-import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
+import {
+  createShellRunner,
+  type ShellRunnerLike,
+} from "../../src/tools/bash/shellRunner.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
+
+const readySandboxRunner: ShellRunnerLike = {
+  sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+  sandboxNetworkAllowedDomains: [],
+  run: runShellCommand,
+};
+
+function networkCaptureRunner(
+  allowedDomains: readonly string[] = []
+): {
+  runner: ShellRunnerLike;
+  calls: Array<{
+    command: string;
+    sandboxPermissions?: "use_default" | "require_escalated";
+  }>;
+} {
+  const calls: Array<{
+    command: string;
+    sandboxPermissions?: "use_default" | "require_escalated";
+  }> = [];
+  return {
+    calls,
+    runner: {
+      sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+      sandboxNetworkAllowedDomains: allowedDomains,
+      async run(request) {
+        calls.push({
+          command: request.command,
+          sandboxPermissions: request.sandboxPermissions,
+        });
+        return {
+          stdout: "install completed",
+          stderr: "",
+          termination: {kind: "exit", code: 0, signal: null},
+        };
+      },
+    },
+  };
+}
 
 function createTaskSession(cwd: string) {
   const runtime = createTaskRuntimeForTest(
@@ -33,6 +75,50 @@ function createTaskSession(cwd: string) {
 }
 
 describe("bash tool contract", () => {
+  test("default 自动执行 ready Sandbox 内的普通 Bash", async () => {
+    await withTempProject(async (cwd) => {
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command: "printf sandboxed-default"}),
+        createTestContext(cwd, {
+          permissionMode: "default",
+        collaborationMode: "build",
+          shellRunner: readySandboxRunner,
+          canUseTool: async () => {
+            throw new Error("ready Sandbox 内的普通 Bash 不应请求权限");
+          },
+        }),
+        "sandboxed-default-bash"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(result.modelContent).toBe("sandboxed-default");
+    });
+  });
+
+  test("default 在 Sandbox disabled 时仍询问普通 Bash", async () => {
+    await withTempProject(async (cwd) => {
+      const requests: string[] = [];
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command: "printf host-default"}),
+        createTestContext(cwd, {
+          permissionMode: "default",
+        collaborationMode: "build",
+          canUseTool: async (tool) => {
+            requests.push(tool);
+            return {behavior: "allow"};
+          },
+        }),
+        "host-default-bash"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(result.modelContent).toBe("host-default");
+      expect(requests).toEqual(["bash"]);
+    });
+  });
+
   test("require_escalated 即使在 bypassPermissions 下也单独询问", async () => {
     await withTempProject(async (cwd) => {
       const requests: Array<{ tool: string; message: string }> = [];
@@ -44,6 +130,7 @@ describe("bash tool contract", () => {
         }),
         createTestContext(cwd, {
           permissionMode: "bypassPermissions",
+        collaborationMode: "build",
           canUseTool: async (tool, message) => {
             requests.push({ tool, message });
             return { behavior: "allow" };
@@ -59,7 +146,90 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("dontAsk 拒绝 require_escalated 且不执行命令", async () => {
+  test("依赖安装申请单次网络权限后以 elevated 执行", async () => {
+    await withTempProject(async (cwd) => {
+      const {runner, calls} = networkCaptureRunner();
+      const requests: Array<{
+        message: string;
+        options?: {allowPersistent?: boolean};
+      }> = [];
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command: "npm install && npm run build"}),
+        createTestContext(cwd, {
+          permissionMode: "bypassPermissions",
+          collaborationMode: "build",
+          shellRunner: runner,
+          canUseTool: async (_tool, message, _input, options) => {
+            requests.push({message, options});
+            return {behavior: "allow"};
+          },
+        }),
+        "network-package-install"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.message).toContain("registry.npmjs.org");
+      expect(requests[0]?.message).toContain("脱离 OS Sandbox");
+      expect(requests[0]?.options).toEqual({allowPersistent: false});
+      expect(calls).toEqual([{
+        command: "npm install && npm run build",
+        sandboxPermissions: "require_escalated",
+      }]);
+    });
+  });
+
+  test("Sandbox 已允许包仓库时依赖安装不再询问", async () => {
+    await withTempProject(async (cwd) => {
+      const {runner, calls} = networkCaptureRunner(["*.npmjs.org"]);
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command: "npm ci"}),
+        createTestContext(cwd, {
+          permissionMode: "default",
+          collaborationMode: "build",
+          shellRunner: runner,
+          canUseTool: async () => {
+            throw new Error("已允许的 Registry 不应再次询问");
+          },
+        }),
+        "allowed-package-install"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(calls).toEqual([{
+        command: "npm ci",
+        sandboxPermissions: undefined,
+      }]);
+    });
+  });
+
+  test("非交互 Host 拒绝依赖安装网络申请且不执行", async () => {
+    await withTempProject(async (cwd) => {
+      const {runner, calls} = networkCaptureRunner();
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command: "npm install"}),
+        createTestContext(cwd, {
+          permissionMode: "default",
+          collaborationMode: "build",
+          permissionPromptPolicy: "never",
+          shellRunner: runner,
+          canUseTool: async () => {
+            throw new Error("非交互 Host 不应进入权限 callback");
+          },
+        }),
+        "denied-package-install"
+      );
+
+      expect(result.outcome).toBe("denied");
+      expect(result.modelContent).toContain("当前 Host 不支持权限交互");
+      expect(calls).toEqual([]);
+    });
+  });
+
+  test("非交互 Host 拒绝 require_escalated 且不执行命令", async () => {
     await withTempProject(async (cwd) => {
       const result = await executeToolResult(
         "bash",
@@ -68,7 +238,9 @@ describe("bash tool contract", () => {
           sandbox_permissions: "require_escalated",
         }),
         createTestContext(cwd, {
-          permissionMode: "dontAsk",
+          permissionMode: "readOnly",
+        collaborationMode: "build",
+          permissionPromptPolicy: "never",
           canUseTool: async () => {
             throw new Error("不应进入交互确认");
           },
@@ -76,7 +248,7 @@ describe("bash tool contract", () => {
         "denied-elevated-bash"
       );
       expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("dontAsk");
+      expect(result.modelContent).toContain("当前 Host 不支持权限交互");
     });
   });
 

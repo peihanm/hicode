@@ -132,6 +132,8 @@ class TaskRuntime implements TaskRuntimeLike {
     >();
     private readonly notifications = new TaskNotificationCenter();
     private readonly worktreeTasks: TaskWorktreeManager;
+    private readonly pendingAgentStarts = new Map<string, number>();
+    private pendingTaskStarts = 0;
     private sequence = 0;
     private closed = false;
     private closePromise: Promise<void> | undefined;
@@ -163,27 +165,31 @@ class TaskRuntime implements TaskRuntimeLike {
         input: StartShellTaskInput
     ): Promise<ShellTaskSnapshot> {
         this.assertOpen();
-        this.reserveTaskSlot();
-        const task = await createShellTask(binding, input);
-        if (this.closed) {
-            await task.store.removeTemporaryFile(task.outputPath);
-            throw new Error("Task Runtime 已关闭");
-        }
-        this.tasks.set(task.id, task);
+        const releaseSlot = this.reserveTaskSlot();
         try {
-            await this.publish("task_started", task, true);
-        } catch (error) {
-            this.tasks.delete(task.id);
-            await task.store.removeTemporaryFile(task.outputPath).catch(() => undefined);
-            throw error;
+            const task = await createShellTask(binding, input);
+            if (this.closed) {
+                await task.store.removeTemporaryFile(task.outputPath);
+                throw new Error("Task Runtime 已关闭");
+            }
+            this.tasks.set(task.id, task);
+            try {
+                await this.publish("task_started", task, true);
+            } catch (error) {
+                this.tasks.delete(task.id);
+                await task.store.removeTemporaryFile(task.outputPath).catch(() => undefined);
+                throw error;
+            }
+            task.completion = runShellTask(
+                task,
+                input,
+                this.shellRunner,
+                (finished) => this.publish("task_finished", finished)
+            );
+            return snapshotShell(task);
+        } finally {
+            releaseSlot();
         }
-        task.completion = runShellTask(
-            task,
-            input,
-            this.shellRunner,
-            (finished) => this.publish("task_finished", finished)
-        );
-        return snapshotShell(task);
     }
 
     async startAgent(
@@ -192,53 +198,49 @@ class TaskRuntime implements TaskRuntimeLike {
     ): Promise<AgentTaskSnapshot> {
         this.assertOpen();
         validateAgentTaskInput(input, this.subagents);
-        const runningAgents = [...this.tasks.values()].filter(
-            (task) =>
-                !isShellTask(task) &&
-                task.owner.sessionId === binding.sessionId &&
-                task.status === "running"
-        ).length;
-        if (runningAgents >= MAX_RUNNING_AGENT_TASKS_PER_SESSION) {
-            throw new Error(
-                `当前 Session 同时运行的后台 Agent 已达到上限 ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
-            );
-        }
-        this.reserveTaskSlot();
-        const id = randomUUID();
-        const prepared = await this.worktreeTasks.prepare(
-            id,
-            binding.sessionId,
-            input,
-            this.hasActiveWorktree(binding.sessionId)
-        );
-        if (this.closed) {
-            await this.worktreeTasks.release(prepared.worktree);
-            throw new Error("Task Runtime 已关闭");
-        }
-        const task = createAgentTask(
-            id,
-            binding,
-            prepared.input,
-            prepared.context,
-            this.createSubagentThread,
-            (progress) => this.publish("task_progress", progress),
-            prepared.worktree,
-        );
-        this.tasks.set(id, task);
+        const releaseTaskSlot = this.reserveTaskSlot();
+        let releaseAgentSlot: (() => void) | undefined;
         try {
-            await this.publish("task_started", task, true);
-        } catch (error) {
-            this.tasks.delete(id);
-            await this.worktreeTasks.release(task.worktree);
-            throw error;
+            releaseAgentSlot = this.reserveAgentSlot(binding.sessionId);
+            const id = randomUUID();
+            const prepared = await this.worktreeTasks.prepare(
+                id,
+                binding.sessionId,
+                input,
+                this.hasActiveWorktree(binding.sessionId)
+            );
+            if (this.closed) {
+                await this.worktreeTasks.release(prepared.worktree);
+                throw new Error("Task Runtime 已关闭");
+            }
+            const task = createAgentTask(
+                id,
+                binding,
+                prepared.input,
+                prepared.context,
+                this.createSubagentThread,
+                (progress) => this.publish("task_progress", progress),
+                prepared.worktree,
+            );
+            this.tasks.set(id, task);
+            try {
+                await this.publish("task_started", task, true);
+            } catch (error) {
+                this.tasks.delete(id);
+                await this.worktreeTasks.release(task.worktree);
+                throw error;
+            }
+            task.completion = runAgentTask(
+                task,
+                prepared.input.request.prompt,
+                this.worktreeTasks,
+                (finished) => this.publish("task_finished", finished)
+            );
+            return snapshotAgent(task);
+        } finally {
+            releaseAgentSlot?.();
+            releaseTaskSlot();
         }
-        task.completion = runAgentTask(
-            task,
-            prepared.input.request.prompt,
-            this.worktreeTasks,
-            (finished) => this.publish("task_finished", finished)
-        );
-        return snapshotAgent(task);
     }
 
     async sendAgent(
@@ -515,19 +517,60 @@ class TaskRuntime implements TaskRuntimeLike {
         ).length;
     }
 
-    private reserveTaskSlot(): void {
-        if (this.tasks.size + this.archived.size < MAX_TRACKED_TASKS) return;
-        for (const [id, task] of this.tasks) {
-            if (task.status === "running" || task.notificationPending) continue;
-            this.tasks.delete(id);
-            return;
+    private reserveTaskSlot(): () => void {
+        if (
+            this.tasks.size + this.archived.size + this.pendingTaskStarts >=
+            MAX_TRACKED_TASKS
+        ) {
+            let evicted = false;
+            for (const [id, task] of this.tasks) {
+                if (task.status === "running" || task.notificationPending) continue;
+                this.tasks.delete(id);
+                evicted = true;
+                break;
+            }
+            if (!evicted) {
+                for (const [id] of this.archived) {
+                    if (this.notifications.hasArchivedPending(id)) continue;
+                    this.archived.delete(id);
+                    evicted = true;
+                    break;
+                }
+            }
+            if (!evicted) {
+                throw new Error(
+                    `后台任务数量已达到上限 ${MAX_TRACKED_TASKS}，请先停止任务`
+                );
+            }
         }
-        for (const [id] of this.archived) {
-            if (this.notifications.hasArchivedPending(id)) continue;
-            this.archived.delete(id);
-            return;
+        this.pendingTaskStarts += 1;
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            this.pendingTaskStarts -= 1;
+        };
+    }
+
+    private reserveAgentSlot(sessionId: string): () => void {
+        const pending = this.pendingAgentStarts.get(sessionId) ?? 0;
+        if (
+            this.runningAgentCount(sessionId) + pending >=
+            MAX_RUNNING_AGENT_TASKS_PER_SESSION
+        ) {
+            throw new Error(
+                `当前 Session 同时运行的后台 Agent 已达到上限 ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
+            );
         }
-        throw new Error(`后台任务数量已达到上限 ${MAX_TRACKED_TASKS}，请先停止任务`);
+        this.pendingAgentStarts.set(sessionId, pending + 1);
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            const remaining = (this.pendingAgentStarts.get(sessionId) ?? 1) - 1;
+            if (remaining === 0) this.pendingAgentStarts.delete(sessionId);
+            else this.pendingAgentStarts.set(sessionId, remaining);
+        };
     }
 
     private async getWorktreeRecord(

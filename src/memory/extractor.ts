@@ -130,9 +130,11 @@ export function createMemoryExtractor(
                         message: "Memory Agent 不允许交互式权限确认",
                     }),
                     getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-                    getPermissionMode: () => "dontAsk",
-                    getPrePlanMode: () => undefined,
+                    getPermissionMode: () => "default",
+                    getCollaborationMode: () => "build",
+                    getPermissionPromptPolicy: () => "never",
                     setPermissionMode() {},
+                    setCollaborationMode() {},
                     setTodos() {},
                 },
             });

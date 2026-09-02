@@ -1,6 +1,7 @@
 import {createCompactState, type CompactState} from "../../context/index.js";
 import {createInitialHistory} from "../../prompt/index.js";
 import type {PermissionMode} from "../../permissions/index.js";
+import type {CollaborationMode} from "../../collaboration/index.js";
 import type {RootRuntimeResources} from "../../runtime/resources.js";
 import type {RootSessionRuntime} from "../../runtime/sessionRuntime.js";
 import {
@@ -17,7 +18,7 @@ interface RestoredCheckpointState {
     compactState: CompactState;
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     uiEvents: PersistedUIEvent[];
     prompt: string;
 }
@@ -66,7 +67,7 @@ export function createUICheckpointActions({
                 history,
                 todos: checkpoint.todos,
                 permissionMode: checkpoint.permissionMode,
-                prePlanMode: checkpoint.prePlanMode,
+                collaborationMode: checkpoint.collaborationMode,
                 compactState,
                 uiEvents: checkpoint.uiEvents,
                 toolDiscovery: toolRuntime.getToolDiscoverySnapshot(),
@@ -85,7 +86,7 @@ export function createUICheckpointActions({
             compactState,
             todos: [...checkpoint.todos],
             permissionMode: checkpoint.permissionMode,
-            prePlanMode: checkpoint.prePlanMode,
+            collaborationMode: checkpoint.collaborationMode,
             uiEvents: checkpoint.uiEvents,
             prompt: checkpoint.prompt,
         });

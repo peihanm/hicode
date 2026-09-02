@@ -162,6 +162,7 @@ describe("MCP stdio integration", () => {
         const runtime = createToolRuntime({ additionalTools: manager.getTools() });
         const ctx = createTestContext(cwd, {
           permissionMode: "default",
+        collaborationMode: "build",
           canUseTool: async () => {
             confirmations++;
             return { behavior: "allow" };
@@ -308,6 +309,7 @@ describe("MCP stdio integration", () => {
         settings: createTestSettings(),
         prompt: "call MCP",
         permissionMode: "bypassPermissions",
+        collaborationMode: "build",
         resumeMode: { kind: "none" },
         outputFormat: "json",
       }, {
@@ -336,6 +338,7 @@ describe("MCP stdio integration", () => {
         settings: createTestSettings(),
         prompt: "continue with the loaded MCP tool",
         permissionMode: "bypassPermissions",
+        collaborationMode: "build",
         resumeMode: {kind: "session", sessionId: summary.sessionId},
         outputFormat: "json",
       }, {

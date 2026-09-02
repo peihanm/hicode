@@ -33,7 +33,7 @@ export const exitPlanModeTool: Tool<typeof inputSchema> = {
     requiresUserInteraction: () => true,
 
     async checkPermissions(input: Input, ctx: ToolContext): Promise<PermissionResult> {
-        if (ctx.permissionMode !== "plan") {
+        if (ctx.collaborationMode !== "plan") {
             return {
                 behavior: "deny",
                 message: "exit_plan_mode 只能在 Plan 模式下使用",
@@ -58,8 +58,9 @@ export const exitPlanModeTool: Tool<typeof inputSchema> = {
         };
     },
 
-    async execute({plan}: Input, _ctx: ToolContext): Promise<string> {
+    async execute({plan}: Input, ctx: ToolContext): Promise<string> {
         const approvedPlan = plan.trim();
+        ctx.setCollaborationMode("build");
 
         return [
             "用户已批准计划。现在可以开始实现。",

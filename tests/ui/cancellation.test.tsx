@@ -12,7 +12,7 @@ import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 afterEach(() => cleanup());
 
 describe("App cancellation", () => {
-  test("Agent 运行期间 Shift+Tab 会切换后续工具使用的权限模式", async () => {
+  test("Agent 运行期间 Shift+Tab 会切换后续工具使用的协作模式", async () => {
     await withTempProject(async (cwd) => {
       let release!: () => void;
       const released = new Promise<void>((resolve) => {
@@ -22,7 +22,8 @@ describe("App cancellation", () => {
       const didStart = new Promise<void>((resolve) => {
         started = resolve;
       });
-      let observedMode: string | undefined;
+      let observedCollaborationMode: string | undefined;
+      let observedPermissionMode: string | undefined;
       const runAgentImpl: AgentRunner = async (
         _input,
         _history,
@@ -31,7 +32,8 @@ describe("App cancellation", () => {
       ) => {
         started();
         await released;
-        observedMode = ctx.permissionMode;
+        observedCollaborationMode = ctx.collaborationMode;
+        observedPermissionMode = ctx.permissionMode;
         return {
           reply: "done",
           reason: "completed",
@@ -54,11 +56,12 @@ describe("App cancellation", () => {
 
       instance.stdin.write("\u001B[Z");
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(instance.lastFrame()).toContain("Accept");
+      expect(instance.lastFrame()).toContain("| Plan | new sessi");
 
       release();
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(observedMode).toBe("acceptEdits");
+      expect(observedCollaborationMode).toBe("plan");
+      expect(observedPermissionMode).toBe("default");
     });
   });
 

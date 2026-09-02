@@ -1,5 +1,5 @@
 import {compactCommand} from "./commands/compact.js";
-import {modeCommand} from "./commands/mode.js";
+import {permissionsCommand} from "./commands/permissions.js";
 import {mcpCommand} from "./commands/mcp.js";
 import {agentsCommand} from "./commands/agents.js";
 import {memoryCommand} from "./commands/memory.js";
@@ -15,7 +15,7 @@ const COMMANDS: readonly SlashCommand[] = [
     compactCommand,
     modelCommand,
     resumeCommand,
-    modeCommand,
+    permissionsCommand,
     mcpCommand,
     agentsCommand,
     memoryCommand,

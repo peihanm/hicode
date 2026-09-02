@@ -1,4 +1,5 @@
 import {parsePermissionMode, type PermissionMode,} from "../permissions/index.js";
+import {parseCollaborationMode, type CollaborationMode} from "../collaboration/index.js";
 import type {ResumeMode} from "../session/index.js";
 import {
     formatLLMProviderNames,
@@ -14,6 +15,7 @@ export interface CliOptions {
     model?: string;
     source?: LLMProviderName;
     permissionMode?: PermissionMode;
+    collaborationMode?: CollaborationMode;
     resumeMode: ResumeMode;
     printPrompt?: string;
     outputFormat: CliOutputFormat;
@@ -34,7 +36,8 @@ Options:
   -c, --continue                 Resume the most recently updated session
   --model <model>                Override the primary model for this run
   --source <source>              Override primary model source: ${LLM_PROVIDER_NAMES.join(" | ")}
-  --permission-mode <mode>       default | acceptEdits | plan | bypassPermissions | dontAsk
+  --permission-mode <mode>       default | readOnly | bypassPermissions
+  --collaboration-mode <mode>    build | plan
   --dangerously-skip-permissions Start in bypassPermissions mode
   -h, --help                     Show help
 `);
@@ -194,6 +197,28 @@ export function parseCliArgs(args: string[]): CliOptions {
             }
             options.permissionMode = mode;
             i++;
+            continue;
+        }
+        if (arg === "--collaboration-mode") {
+            const value = args[i + 1];
+            if (!value) {
+                throw new Error("--collaboration-mode 需要提供 mode");
+            }
+            const mode = parseCollaborationMode(value);
+            if (!mode) {
+                throw new Error(`未知协作模式: ${value}`);
+            }
+            options.collaborationMode = mode;
+            i++;
+            continue;
+        }
+        if (arg.startsWith("--collaboration-mode=")) {
+            const value = arg.slice("--collaboration-mode=".length);
+            const mode = parseCollaborationMode(value);
+            if (!mode) {
+                throw new Error(`未知协作模式: ${value}`);
+            }
+            options.collaborationMode = mode;
             continue;
         }
         if (arg.startsWith("--permission-mode=")) {

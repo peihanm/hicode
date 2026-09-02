@@ -5,6 +5,7 @@ export type {
     PermissionResult,
     PermissionDecision,
     PermissionMode,
+    PermissionPromptPolicy,
     PermissionRules,
 } from "./types.js";
 
@@ -15,10 +16,8 @@ export {
 } from "./resolvePermission.js";
 export {generateRuleForTool, addToAllowList} from "./addRule.js";
 export {
-    getNextPermissionMode,
     getPermissionModeDescription,
     getPermissionModeShortLabel,
     isPermissionMode,
-    listPermissionModes,
     parsePermissionMode,
 } from "./mode.js";

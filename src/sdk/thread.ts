@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {getHookExecutionIssues, formatHookContext} from "../hooks/index.js";
 import {isPermissionMode, type PermissionDecision, type PermissionMode,} from "../permissions/index.js";
+import {isCollaborationMode, type CollaborationMode,} from "../collaboration/index.js";
 import {normalizeTurnAbortReason} from "../runtime/abort.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {createRootSessionRuntime, type RootSessionRuntime, type RootSessionSeed,} from "../runtime/sessionRuntime.js";
@@ -35,11 +36,11 @@ const MAX_SDK_ITERATIONS = 100;
 interface SDKSessionState {
     todos: Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     uiEvents: PersistedUIEvent[];
 }
 
-export interface CreateSDKThreadOptions {
+interface CreateSDKThreadOptions {
     resources: RootRuntimeResources;
     seed: RootSessionSeed;
     state: SDKSessionState;
@@ -60,7 +61,7 @@ interface ActiveRun {
     settled: Promise<void>;
 }
 
-export function createSDKThreadFactory(
+function createSDKThreadFactory(
     overrides: Partial<SDKThreadDependencies> = {}
 ) {
     const dependencies: SDKThreadDependencies = {
@@ -123,6 +124,7 @@ class SDKThreadImpl implements Thread {
             model: this.options.resources.model,
             provider: this.options.resources.provider,
             permissionMode: this.options.state.permissionMode,
+            collaborationMode: this.options.state.collaborationMode,
             sandbox: this.options.resources.sandbox.status,
             mcpServers:
                 this.options.resources.mcpManager?.getSnapshots() ?? [],
@@ -232,7 +234,10 @@ class SDKThreadImpl implements Thread {
         });
         const adapter = new SDKEventAdapter(turnId, emit);
         if (turnOptions.permissionMode !== undefined) {
-            setPermissionMode(this.options.state, turnOptions.permissionMode);
+            this.options.state.permissionMode = turnOptions.permissionMode;
+        }
+        if (turnOptions.collaborationMode !== undefined) {
+            this.options.state.collaborationMode = turnOptions.collaborationMode;
         }
 
         try {
@@ -259,7 +264,7 @@ class SDKThreadImpl implements Thread {
                 getSnapshotState: () => ({
                     todos: this.options.state.todos,
                     permissionMode: this.options.state.permissionMode,
-                    prePlanMode: this.options.state.prePlanMode,
+                    collaborationMode: this.options.state.collaborationMode,
                     uiEvents: limitPersistedUIEvents([
                         ...this.options.state.uiEvents,
                         ...adapter.getPersistedUIEvents(),
@@ -335,9 +340,14 @@ class SDKThreadImpl implements Thread {
             getPermissionRules: () =>
                 this.options.resources.settings.permissions.rules,
             getPermissionMode: () => this.options.state.permissionMode,
-            getPrePlanMode: () => this.options.state.prePlanMode,
+            getCollaborationMode: () => this.options.state.collaborationMode,
+            getPermissionPromptPolicy: () =>
+                this.options.host?.onInteraction ? "onRequest" : "never",
             setPermissionMode: (mode) => {
-                setPermissionMode(this.options.state, mode);
+                this.options.state.permissionMode = mode;
+            },
+            setCollaborationMode: (mode) => {
+                this.options.state.collaborationMode = mode;
             },
             setTodos: (todos) => {
                 this.options.state.todos = todos;
@@ -393,7 +403,7 @@ class SDKThreadImpl implements Thread {
         adapter.emitDiagnostic(issue.scope, message, "error");
         await this.reportDiagnostic({
             severity: "error",
-            scope: issue.scope,
+            scope: issue.scope === "host" ? "runtime" : issue.scope,
             message,
         });
     }
@@ -415,16 +425,9 @@ class SDKThreadImpl implements Thread {
         }
         try {
             await active?.settled;
-            const endController = new AbortController();
-            const timer = setTimeout(
-                () => endController.abort("session-end-timeout"),
-                1_500
-            );
-            timer.unref?.();
             try {
                 const result = await this.options.session.runSessionEnd(
-                    this.lastEndReason,
-                    endController.signal
+                    this.lastEndReason
                 );
                 await reportHookIssues(this.options.host, result);
             } catch (error) {
@@ -433,15 +436,13 @@ class SDKThreadImpl implements Thread {
                     scope: "hook",
                     message: `SessionEnd 执行失败: ${error instanceof Error ? error.message : String(error)}`,
                 });
-            } finally {
-                clearTimeout(timer);
             }
             await this.options.dependencies.saveSession(
                 this.options.resources.storage,
                 this.options.session.createSnapshot({
                     todos: this.options.state.todos,
                     permissionMode: this.options.state.permissionMode,
-                    prePlanMode: this.options.state.prePlanMode,
+                    collaborationMode: this.options.state.collaborationMode,
                     uiEvents: this.options.state.uiEvents,
                 })
             );
@@ -481,6 +482,15 @@ function validateTurnOptions(options: TurnOptions): void {
         );
     }
     if (
+        options.collaborationMode !== undefined &&
+        !isCollaborationMode(options.collaborationMode)
+    ) {
+        throw new PillarSDKError(
+            "invalid_collaboration_mode",
+            `无效 collaborationMode: ${String(options.collaborationMode)}`
+        );
+    }
+    if (
         options.maxIterations !== undefined &&
         (!Number.isInteger(options.maxIterations) ||
             options.maxIterations < 1 ||
@@ -491,18 +501,6 @@ function validateTurnOptions(options: TurnOptions): void {
             `maxIterations 必须是 1-${MAX_SDK_ITERATIONS} 的整数`
         );
     }
-}
-
-function setPermissionMode(
-    state: SDKSessionState,
-    mode: PermissionMode
-): void {
-    if (mode === "plan" && state.permissionMode !== "plan") {
-        state.prePlanMode = state.permissionMode;
-    } else if (state.permissionMode === "plan" && mode !== "plan") {
-        state.prePlanMode = undefined;
-    }
-    state.permissionMode = mode;
 }
 
 function boundedInputSummary(input: string): string {

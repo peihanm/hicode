@@ -1,5 +1,6 @@
 import {z} from "zod";
-import type {PermissionDecision, PermissionMode, PermissionResult, PermissionRules,} from "../permissions/index.js";
+import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionResult, PermissionRules,} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {Todo} from "../todos.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {CompactState} from "../context/index.js";
@@ -26,6 +27,9 @@ export type PermissionMatcher = (
 
 export type ToolExposure = "direct" | "deferred";
 export type ExternalSideEffectBoundary = "mcp" | "host";
+export type DefaultApprovalScope =
+    | {kind: "workspace"; path: string}
+    | {kind: "sandboxed"};
 
 interface ToolSearchSource {
     name: string;
@@ -45,20 +49,26 @@ export interface ToolContext {
     canUseTool: (
         tool: string,
         message: string,
-        input: unknown
+        input: unknown,
+        options?: {allowPersistent?: boolean}
     ) => Promise<PermissionDecision>;
 
     // 配置文件加载的权限规则（allow/ask/deny 三桶）
     permissionRules: PermissionRules;
 
-    // 当前 PermissionMode（default/acceptEdits/bypassPermissions/plan/dontAsk）
+    // 当前 Permission Profile（default/readOnly/bypassPermissions）。
     permissionMode: PermissionMode;
 
-    // 进入 plan 前的 PermissionMode。Plan 审批 UI 用它生成明确的退出选项。
-    prePlanMode?: PermissionMode;
+    // Build/Plan 与权限 Profile 独立；Plan 只收窄能力，不改变 permissionMode。
+    collaborationMode: CollaborationMode;
+
+    // 非交互 Host 把 ask 收窄为 deny；它不是用户权限 Profile。
+    permissionPromptPolicy: PermissionPromptPolicy;
 
     // 运行时切换 PermissionMode（shift+tab、slash command、plan 工具共用）
     setPermissionMode: (mode: PermissionMode) => void;
+
+    setCollaborationMode: (mode: CollaborationMode) => void;
 
     // TodoWrite 工具用：更新 React state 驱动 TodoList UI
     setTodos: (todos: Todo[]) => void;
@@ -183,7 +193,19 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
 
     // 这类工具即使在 bypassPermissions 下也必须询问用户。
     // 例如 ask_user / exit_plan_mode，本质是用户交互而不是普通副作用。
-    requiresUserInteraction?(input: z.infer<T>): boolean;
+    requiresUserInteraction?(input: z.infer<T>, ctx: ToolContext): boolean;
+
+    // 只有把用户回答作为工具输入一部分的交互工具才能声明此能力。
+    // 普通权限审批只能批准原输入，不能借 updatedInput 改写已完成权限检查的参数。
+    acceptsUpdatedInputFromUser?: boolean;
+
+    // Default 只自动批准能证明副作用范围的调用。workspace 路径仍会由
+    // permission resolver 做 canonical path 校验；sandboxed 只应由确认
+    // 当前 OS Sandbox 已 ready 的执行边界声明。省略表示副作用范围未知。
+    getDefaultApprovalScope?(
+        input: z.infer<T>,
+        ctx: ToolContext
+    ): DefaultApprovalScope | undefined;
 
     // 模型可见结果超过该字符数时进入 Tool Result Store。
     // Infinity 表示工具已经自行保证输出有界，禁止递归落盘。

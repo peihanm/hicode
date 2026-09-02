@@ -28,7 +28,7 @@ export const enterPlanModeTool: Tool<typeof inputSchema> = {
     requiresUserInteraction: () => true,
 
     async checkPermissions(input: Input, ctx: ToolContext): Promise<PermissionResult> {
-        if (ctx.permissionMode === "plan") {
+        if (ctx.collaborationMode === "plan") {
             return {behavior: "allow"};
         }
 
@@ -46,7 +46,7 @@ export const enterPlanModeTool: Tool<typeof inputSchema> = {
     },
 
     async execute(_input: Input, ctx: ToolContext): Promise<string> {
-        ctx.setPermissionMode("plan");
+        ctx.setCollaborationMode("plan");
 
         return [
             "已进入 Plan 模式。",

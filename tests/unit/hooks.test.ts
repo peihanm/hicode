@@ -745,6 +745,7 @@ describe("Hook tool boundary", () => {
                 JSON.stringify({command: "pwd"}),
                 createTestContext(cwd, {
                     permissionMode: "default",
+        collaborationMode: "build",
                     canUseTool: async (_name, _message, input) => {
                         askedInput = input;
                         return {behavior: "deny", message: "fixture deny"};
@@ -781,6 +782,7 @@ describe("Hook tool boundary", () => {
                     JSON.stringify({command: "pwd"}),
                     createTestContext(cwd, {
                         permissionMode: "default",
+        collaborationMode: "build",
                         canUseTool: async () => {
                             permissionCalls += 1;
                             return {behavior: "allow"};
@@ -872,7 +874,10 @@ describe("Hook tool boundary", () => {
             const denied = await runtime.executeTool(
                 "hook_fixture",
                 JSON.stringify({write: true}),
-                createTestContext(cwd, {permissionMode: "dontAsk"}),
+                createTestContext(cwd, {
+                    permissionMode: "readOnly",
+                    permissionPromptPolicy: "never",
+                }),
                 "denied"
             );
             expect(denied.outcome).toBe("denied");

@@ -4,6 +4,7 @@ import {loadEnv} from "../../src/cli/env.js";
 import {consumeOpenAICompatibleSSE} from "../../src/llm/providers/openAICompatibleStream.js";
 import type {LLMProviderName} from "../../src/llm/providerRegistry.js";
 import {loadPillarSettings} from "../../src/settings/index.js";
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 import type {LLMStreamProgress} from "../../src/llm/types.js";
 
 interface PromptLogDocument {
@@ -262,7 +263,10 @@ async function main(): Promise<void> {
     const projectCwd = projectCwdFromPromptLog(options.promptLogPath);
     process.chdir(projectCwd);
     loadEnv();
-    const settings = loadPillarSettings(projectCwd);
+    const settings = loadPillarSettings({
+        storage: createPillarStorageLayout(),
+        cwd: projectCwd,
+    });
     const document = JSON.parse(
         await readFile(options.promptLogPath, "utf8")
     ) as PromptLogDocument;

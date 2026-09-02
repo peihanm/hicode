@@ -51,6 +51,7 @@ describe("synchronous subagent", () => {
       ]);
       const ctx = createTestContext(cwd, {
         permissionMode: "default",
+        collaborationMode: "build",
         canUseTool: async () => {
           confirmations += 1;
           return {behavior: "allow"};
@@ -87,7 +88,7 @@ describe("synchronous subagent", () => {
       const path = `${cwd}/owned-by-parent.ts`;
       const original = "export const value = 1;\n";
       await writeFile(path, original);
-      const ctx = createTestContext(cwd, {permissionMode: "acceptEdits"});
+      const ctx = createTestContext(cwd, {permissionMode: "default"});
       ctx.fileState.recordRead({
         path,
         content: original,
@@ -169,6 +170,7 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
+        kind: "registered",
         agentType: "Verification",
         description: "拒绝收敛",
         prompt: "验证服务",
@@ -216,6 +218,7 @@ describe("synchronous subagent", () => {
       ]);
       const ctx = createTestContext(cwd, {
         permissionMode: "default",
+        collaborationMode: "build",
         canUseTool: async () => {
           confirmations += 1;
           return { behavior: "allow" };
@@ -229,6 +232,7 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
+        kind: "registered",
         agentType: "Verification",
         description: "验证权限边界",
         prompt: "验证命令权限",
@@ -332,6 +336,7 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
+        kind: "registered",
         agentType: "Verification",
         description: "验证浏览器快照",
         prompt: "读取页面快照",
@@ -421,6 +426,7 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
+        kind: "registered",
         agentType: "Verification",
         description: "验证服务",
         prompt: "检查 server-1 后台任务",
@@ -464,6 +470,7 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
+        kind: "registered",
         agentType: "Explore",
         description: "LSP capability",
         prompt: "使用 LSP 调查符号",
@@ -616,6 +623,7 @@ describe("synchronous subagent", () => {
       });
 
       const running = runner({
+        kind: "registered",
         agentType: "Explore",
         description: "等待取消",
         prompt: "调查长任务",
@@ -633,7 +641,7 @@ describe("synchronous subagent", () => {
     });
   });
 
-  test("父 ask 规则在 child dontAsk 中收窄为拒绝且不改变父状态", async () => {
+  test("父 ask 规则在非交互 child 中收窄为拒绝且不改变父状态", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/guarded.ts`, "export const guarded = true;\n");
       const child = createFakeLLM([
@@ -643,7 +651,7 @@ describe("synchronous subagent", () => {
             (message) =>
               message.role === "tool" && message.tool_call_id === "guarded-read"
           );
-          expect(toolResult?.content).toContain("dontAsk 模式");
+          expect(toolResult?.content).toContain("当前 Host 不支持权限交互");
           return assistantText("读取被父规则收窄");
         },
       ]);
@@ -661,6 +669,7 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
+        kind: "registered",
         agentType: "Explore",
         description: "权限收窄",
         prompt: "读取 guarded.ts",
@@ -705,6 +714,7 @@ describe("synchronous subagent", () => {
         toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
       const result = await runner({
+        kind: "registered",
         agentType: "Explore",
         description: "轮次上限",
         prompt: "持续读取",
@@ -730,6 +740,7 @@ describe("synchronous subagent", () => {
         toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
       const result = await runner({
+        kind: "registered",
         agentType: "Explore",
         description: "transcript 降级",
         prompt: "返回报告",

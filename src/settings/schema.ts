@@ -5,10 +5,8 @@ import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
 
 const permissionModeSchema = z.enum([
     "default",
-    "acceptEdits",
+    "readOnly",
     "bypassPermissions",
-    "plan",
-    "dontAsk",
 ]);
 
 const configuredLLMProviderSchema = z.enum(LLM_PROVIDER_NAMES);

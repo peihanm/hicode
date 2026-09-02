@@ -1,28 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentRunner } from "../../src/agent/index.js";
+import {
+  EMPTY_AGENT_INPUT_CHANNEL,
+  type AgentRunner,
+} from "../../src/agent/index.js";
 import type { AgentEvent } from "../../src/agent/types.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import { UITurnController } from "../../src/ui/turn/controller.js";
 import { RuntimeMessageQueue } from "../../src/runtime/messageQueue.js";
 import type {SlashCommandProcessor} from "../../src/slash/types.js";
+import type {Todo} from "../../src/todos.js";
 
 function createHarness(overrides: {
     runAgent?: AgentRunner;
   processSlashCommand?: SlashCommandProcessor["process"];
   getSlashBusyBehavior?: SlashCommandProcessor["getBusyBehavior"];
   persistSnapshot?: () => Promise<void>;
-  runUserPromptHooks?: ConstructorParameters<
-    typeof UITurnController
-  >[0]["runUserPromptHooks"];
+  runUserPromptHooks?: (
+    input: string,
+    ctx: ToolContext
+  ) => Promise<{
+    blocked: boolean;
+    blockReason?: string;
+    additionalUserContextBlocks: readonly string[];
+  }>;
   now?: () => number;
   beginCheckpoint?: (input: string) => Promise<void>;
   settleCheckpoint?: () => Promise<void>;
-  getToolSchemas?: ConstructorParameters<typeof UITurnController>[0]["getToolSchemas"];
-  executeTool?: ConstructorParameters<typeof UITurnController>[0]["executeTool"];
-  isToolConcurrencySafe?: ConstructorParameters<
-    typeof UITurnController
-  >[0]["isToolConcurrencySafe"];
   initialize?: () => Promise<void>;
+  getTodos?: () => readonly Todo[];
+  runTurn?: ConstructorParameters<typeof UITurnController>[0]["runTurn"];
 } = {}) {
   const events: AgentEvent[] = [];
   const users: string[] = [];
@@ -30,6 +36,12 @@ function createHarness(overrides: {
   const signals: AbortSignal[] = [];
   const messageQueue = new RuntimeMessageQueue();
   let agentCalls = 0;
+  const runAgent =
+    overrides.runAgent ??
+    (async () => {
+      agentCalls += 1;
+      return { reply: "ok", reason: "completed", iterations: 1 };
+    });
   const controller = new UITurnController({
     getHistory: () => [{ role: "system", content: "system" }],
     createContext: (signal) => {
@@ -39,8 +51,6 @@ function createHarness(overrides: {
     onUserInput: (input) => users.push(input),
     onEvent: (event) => events.push(event),
     onUnexpectedError: (error) => errors.push(error),
-    onQueuedInputConsumed: () => {},
-    onTurnSettled: () => {},
     denyPendingPermission: () => {},
     initialize: overrides.initialize ?? (async () => {}),
     slashCommands: {
@@ -48,24 +58,53 @@ function createHarness(overrides: {
       getBusyBehavior:
         overrides.getSlashBusyBehavior ?? (() => "defer"),
     },
-    runUserPromptHooks:
-      overrides.runUserPromptHooks ??
-      (async () => ({
-        blocked: false,
-        additionalUserContextBlocks: [],
-      })),
-    beginCheckpoint: overrides.beginCheckpoint ?? (async () => {}),
-    settleCheckpoint: overrides.settleCheckpoint ?? (async () => {}),
-    runAgent:
-      overrides.runAgent ??
-      (async () => {
-        agentCalls += 1;
-        return { reply: "ok", reason: "completed", iterations: 1 };
-      }),
-    persistSnapshot: overrides.persistSnapshot ?? (async () => {}),
-    getToolSchemas: overrides.getToolSchemas ?? (() => []),
-    executeTool: overrides.executeTool ?? (async () => "ok"),
-    isToolConcurrencySafe: overrides.isToolConcurrencySafe ?? (() => false),
+    runTurn: overrides.runTurn ?? (async (input, signal) => {
+      signals.push(signal);
+      try {
+        await (overrides.beginCheckpoint ?? (async () => {}))(input);
+        const hookResult = await (
+          overrides.runUserPromptHooks ??
+          (async () => ({
+            blocked: false,
+            additionalUserContextBlocks: [],
+          }))
+        )(input, {signal} as ToolContext);
+        if (signal.aborted) throw new Error("aborted");
+        if (hookResult.blocked) {
+          events.push({
+            type: "assistant_text",
+            content: `UserPromptSubmit Hook 阻止了请求: ${hookResult.blockReason ?? "未提供原因"}`,
+          });
+          return;
+        }
+        await runAgent(
+          input,
+          [{role: "system", content: "system"}],
+          (event) => events.push(event),
+          {signal} as ToolContext,
+          EMPTY_AGENT_INPUT_CHANNEL,
+          {
+            getToolSchemas: () => [],
+            executeTool: async () => "ok",
+            isToolConcurrencySafe: () => false,
+            getTodos: overrides.getTodos ?? (() => []),
+            additionalUserContextBlocks:
+              hookResult.additionalUserContextBlocks,
+          }
+        );
+      } catch (error) {
+        if (signal.aborted) {
+          events.push({type: "turn_interrupted", reason: "user-cancel"});
+        }
+        throw error;
+      } finally {
+        try {
+          await (overrides.settleCheckpoint ?? (async () => {}))();
+        } finally {
+          await (overrides.persistSnapshot ?? (async () => {}))();
+        }
+      }
+    }),
     messageQueue,
     now: overrides.now ?? Date.now,
   });
@@ -83,6 +122,33 @@ function createHarness(overrides: {
 }
 
 describe("UITurnController", () => {
+  test("向 Agent 提供实时 Session Todo getter", async () => {
+    let todos: Todo[] = [{
+      content: "完成验证",
+      status: "in_progress",
+      activeForm: "正在完成验证",
+    }];
+    const harness = createHarness({
+      getTodos: () => todos,
+      runAgent: (async (
+        _input,
+        _history,
+        _onEvent,
+        _ctx,
+        _inputChannel,
+        options
+      ) => {
+        expect(options?.getTodos?.()).toEqual(todos);
+        todos = [{...todos[0]!, status: "completed"}];
+        expect(options?.getTodos?.()).toEqual(todos);
+        return {reply: "完成", reason: "completed", iterations: 1};
+      }) as AgentRunner,
+    });
+
+    await harness.controller.submit("完成任务");
+    expect(harness.errors).toEqual([]);
+  });
+
   test("Esc 只取消当前 turn，排队输入在清理后继续执行", async () => {
     let calls = 0;
     let started!: () => void;

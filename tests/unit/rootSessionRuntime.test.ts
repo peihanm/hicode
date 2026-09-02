@@ -64,10 +64,12 @@ describe("RootSessionRuntime", () => {
           }),
           getPermissionRules: () => ({allow: [], ask: [], deny: []}),
           getPermissionMode: () => permissionMode,
-          getPrePlanMode: () => undefined,
+          getCollaborationMode: () => "build",
+          getPermissionPromptPolicy: () => "onRequest",
           setPermissionMode(mode) {
             permissionMode = mode;
           },
+          setCollaborationMode() {},
           setTodos: () => {},
         },
       });
@@ -88,6 +90,7 @@ describe("RootSessionRuntime", () => {
       const snapshot = runtime.createSnapshot({
         todos: [],
         permissionMode: "default",
+        collaborationMode: "build",
         uiEvents: [],
       });
       expect(snapshot.history.at(-1)?.content).toBe("new turn");
@@ -98,7 +101,7 @@ describe("RootSessionRuntime", () => {
       const signal = new AbortController().signal;
       await runtime.runSessionStart("resume", signal);
       await runtime.runUserPromptHooks("继续", "default", signal);
-      await runtime.runSessionEnd("completed", signal);
+      await runtime.runSessionEnd("completed");
       expect(hookEvents).toEqual([
         "SessionStart",
         "UserPromptSubmit",

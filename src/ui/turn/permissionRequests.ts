@@ -10,7 +10,8 @@ export class UIPermissionRequests {
     request(
         toolName: string,
         question: string,
-        input: unknown
+        input: unknown,
+        options?: {allowPersistent?: boolean}
     ): Promise<PermissionDecision> {
         if (this.current) {
             return Promise.reject(new Error("已有权限请求正在等待处理"));
@@ -23,6 +24,7 @@ export class UIPermissionRequests {
                 toolName,
                 input,
                 allowAddToAllowList:
+                    options?.allowPersistent !== false &&
                     toolName !== "enter_plan_mode" &&
                     toolName !== "exit_plan_mode" &&
                     !(

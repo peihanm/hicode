@@ -1,5 +1,4 @@
 import {describe, expect, test} from "bun:test";
-import {readFile} from "node:fs/promises";
 import {
     createSubagentRegistry,
     type AgentDefinition,
@@ -148,12 +147,13 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "blocked-write"
                     );
-                    expect(denied?.content).toContain("dontAsk 模式");
+                    expect(denied?.content).toContain("当前 Host 不支持权限交互");
                     return assistantText("写入被安全拒绝，审查结束。");
                 },
             ]);
             const ctx = createTestContext(cwd, {
                 permissionMode: "default",
+        collaborationMode: "build",
                 canUseTool: async () => {
                     confirmations += 1;
                     return {behavior: "allow"};
@@ -177,6 +177,7 @@ describe("custom subagent runtime", () => {
             });
 
             const result = await runner({
+                kind: "registered",
                 agentType: "PROJECT-REVIEWER",
                 description: "检查自定义权限",
                 prompt: "尝试写入并说明结果",
@@ -190,7 +191,7 @@ describe("custom subagent runtime", () => {
         });
     });
 
-    test("acceptEdits 允许 cwd 内写入，plan 即使有 allow 规则也不会绕过确认", async () => {
+    test("直接 Custom child 收窄 Default，且父 allow 不能绕过非交互边界", async () => {
         await withTempProject(async (cwd) => {
             const registry = createSubagentRegistry({
                 definitions: [customDefinition({
@@ -199,7 +200,7 @@ describe("custom subagent runtime", () => {
                 })],
                 issues: [],
             });
-            const allowedLLM = createFakeLLM([
+            const defaultLLM = createFakeLLM([
                 assistantToolCall(
                     "write_file",
                     {path: "allowed.txt", content: "written by child"},
@@ -210,28 +211,28 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "allowed-write"
                     );
-                    expect(result?.content).toContain("已写入");
-                    return assistantText("写入完成");
+                    expect(result?.content).toContain("当前 Host 不支持权限交互");
+                    return assistantText("写入被拒绝");
                 },
             ]);
             const accepted = createSubagentRunnerForTest({
                 parentContext: createTestContext(cwd, {
-                    permissionMode: "acceptEdits",
+                    permissionMode: "default",
+        collaborationMode: "build",
                 }),
                 onEvent: () => {},
                 registry,
-                agentOptions: {callLLM: allowedLLM.callLLM},
+                agentOptions: {callLLM: defaultLLM.callLLM},
                 toolResultStoreOptions: {pillarHome: `${cwd}/accepted-results`},
             });
             await accepted({
+                kind: "registered",
                 agentType: "writer",
                 description: "写入 cwd",
                 prompt: "创建 allowed.txt",
                 parentToolCallId: "custom-accept",
             });
-            expect(await readFile(`${cwd}/allowed.txt`, "utf8")).toBe(
-                "written by child"
-            );
+            expect(await Bun.file(`${cwd}/allowed.txt`).exists()).toBe(false);
 
             const planLLM = createFakeLLM([
                 assistantToolCall(
@@ -244,13 +245,14 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "plan-write"
                     );
-                    expect(result?.content).toContain(
-                        "子 Agent 不允许交互式权限确认"
-                    );
+                    expect(result?.content).toContain("当前 Host 不支持权限交互");
                     return assistantText("plan 写入未执行");
                 },
             ]);
-            const planContext = createTestContext(cwd, {permissionMode: "plan"});
+            const planContext = createTestContext(cwd, {
+                permissionMode: "default",
+                collaborationMode: "plan",
+            });
             planContext.permissionRules.allow.push({
                 toolName: "write_file",
                 source: "project",
@@ -263,6 +265,7 @@ describe("custom subagent runtime", () => {
                 toolResultStoreOptions: {pillarHome: `${cwd}/plan-results`},
             });
             await planned({
+                kind: "registered",
                 agentType: "writer",
                 description: "plan 隔离",
                 prompt: "尝试创建 plan-blocked.txt",
@@ -298,6 +301,7 @@ describe("custom subagent runtime", () => {
             ]);
             const ctx = createTestContext(cwd, {
                 permissionMode: "bypassPermissions",
+        collaborationMode: "build",
             });
             ctx.permissionRules.deny.push({
                 toolName: "write_file",
@@ -311,6 +315,7 @@ describe("custom subagent runtime", () => {
                 toolResultStoreOptions: {pillarHome: `${cwd}/deny-results`},
             });
             await runner({
+                kind: "registered",
                 agentType: "writer",
                 description: "deny 优先",
                 prompt: "尝试写入",
@@ -383,13 +388,14 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "mcp-write"
                     );
-                    expect(result?.content).toContain("dontAsk 模式");
+                    expect(result?.content).toContain("当前 Host 不支持权限交互");
                     return assistantText("MCP 权限边界正常");
                 },
             ]);
             const runner = createSubagentRunnerForTest({
                 parentContext: createTestContext(cwd, {
                     permissionMode: "default",
+        collaborationMode: "build",
                     mcpManager,
                 }),
                 onEvent: () => {},
@@ -399,6 +405,7 @@ describe("custom subagent runtime", () => {
             });
 
             const result = await runner({
+                kind: "registered",
                 agentType: "mcp-reader",
                 description: "MCP 权限",
                 prompt: "读取后尝试写入",

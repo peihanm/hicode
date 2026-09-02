@@ -67,6 +67,47 @@ describe("Root Configuration", () => {
         });
     });
 
+    test("文件来源只负责选择，始终按领域规范优先级排列", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const configuration = createPillarRootConfiguration({
+                cwd,
+                workspaceBoundary: cwd,
+                storage,
+                settings: createTestSettings(),
+                fileSources: {
+                    ...sources(),
+                    settings: ["local", "user", "project"],
+                    instructions: ["local", "user", "project"],
+                },
+            });
+
+            expect(configuration.fileSources.settings)
+                .toEqual(["user", "project", "local"]);
+            expect(configuration.fileSources.instructions)
+                .toEqual(["user", "project", "local"]);
+        });
+    });
+
+    test("拒绝 Host 注入分裂或相对的 StorageLayout", async () => {
+        await withTempProject(async (cwd, storage) => {
+            expect(() => createPillarRootConfiguration({
+                cwd,
+                workspaceBoundary: cwd,
+                storage: {...storage, projectsRoot: join(cwd, "elsewhere")},
+                settings: createTestSettings(),
+                fileSources: sources(),
+            })).toThrow("projectsRoot 必须由 pillarHome 唯一派生");
+
+            expect(() => createPillarRootConfiguration({
+                cwd,
+                workspaceBoundary: cwd,
+                storage: {pillarHome: "relative", projectsRoot: "relative/projects"},
+                settings: createTestSettings(),
+                fileSources: sources(),
+            })).toThrow("pillarHome 必须是非空绝对路径");
+        });
+    });
+
     test("严格校验、复制并冻结 Host contributions", async () => {
         await withTempProject(async (cwd, storage) => {
             const rootContributions = {

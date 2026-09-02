@@ -70,7 +70,7 @@ export function Welcome() {
                     {!compact && (
                         <>
                             {"  ·  "}
-                            <Text color={COLORS.accent}>shift+tab</Text> mode
+                            <Text color={COLORS.accent}>shift+tab</Text> Build/Plan
                         </>
                     )}
                 </Text>

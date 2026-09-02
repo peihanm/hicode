@@ -1,7 +1,7 @@
 import {cp, mkdir, readFile, rm, writeFile} from "node:fs/promises";
 import {dirname, relative, resolve} from "node:path";
 
-const repositoryRoot = resolve(import.meta.dirname, "..");
+const repositoryRoot = resolve(import.meta.dirname, "..", "..");
 const packageDirectory = resolve(repositoryRoot, "dist", "sdk-package");
 const sdkDirectory = resolve(packageDirectory, "sdk");
 const packageJsonPath = resolve(repositoryRoot, "package.json");

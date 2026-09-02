@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import type {PermissionMode} from "../../permissions/index.js";
+import type {CollaborationMode} from "../../collaboration/index.js";
 import {loadSession, type LoadedSession} from "../../session/index.js";
 import {
     createRootRuntimeResources,
@@ -32,6 +33,7 @@ interface PendingHookApproval {
 interface RuntimeBootstrapProps {
     configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
+    initialCollaborationMode?: CollaborationMode;
     session?: LoadedSession;
     onSessionSwitch?: (session: LoadedSession) => void;
 }
@@ -49,6 +51,7 @@ export function createRuntimeBootstrap(
     return function RuntimeBootstrap({
         configuration,
         initialPermissionMode,
+        initialCollaborationMode,
         session,
         onSessionSwitch,
     }: RuntimeBootstrapProps) {
@@ -200,6 +203,7 @@ export function createRuntimeBootstrap(
                 rootSession={ready.session.rootSession}
                 resumedDraft={ready.session.resumedDraft}
                 initialPermissionMode={initialPermissionMode}
+                initialCollaborationMode={initialCollaborationMode}
                 initialSession={session}
                 registerSessionShutdown={(shutdown) => {
                     sessionShutdownRef.current = shutdown;

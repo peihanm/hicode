@@ -4,6 +4,7 @@ import type {PersistedUIEvent} from "../session/index.js";
 import {createHookSessionRuntime, didRunCommandHook, type HookBatchResult,} from "../hooks/index.js";
 import type {Message} from "../llm/types.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint,} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
@@ -35,11 +36,13 @@ export interface RootSessionSeed {
 interface RootSessionSnapshotState {
     todos: readonly Todo[];
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
     uiEvents: readonly PersistedUIEvent[];
     allowEmpty?: boolean;
     summaryHint?: string;
 }
+
+const SESSION_END_TIMEOUT_MS = 1_500;
 
 export interface RootSessionRuntime {
     readonly sessionId: string;
@@ -81,7 +84,7 @@ export interface RootSessionRuntime {
         signal: AbortSignal
     ): Promise<HookBatchResult>;
 
-    runSessionEnd(reason: string, signal: AbortSignal): Promise<HookBatchResult>;
+    runSessionEnd(reason: string): Promise<HookBatchResult>;
 }
 
 export function createRootSessionRuntime({
@@ -137,7 +140,7 @@ export function createRootSessionRuntime({
         history: [...history],
         todos: [...state.todos],
         permissionMode: state.permissionMode,
-        prePlanMode: state.prePlanMode,
+        collaborationMode: state.collaborationMode,
         compactState: {...compactState},
         uiEvents: [...state.uiEvents],
         checkpointHead: fileCheckpoints.getHead(),
@@ -212,7 +215,7 @@ export function createRootSessionRuntime({
                 history,
                 todos: [...state.todos],
                 permissionMode: state.permissionMode,
-                prePlanMode: state.prePlanMode,
+                collaborationMode: state.collaborationMode,
                 compactState,
                 uiEvents: [...state.uiEvents],
                 toolDiscovery:
@@ -245,12 +248,22 @@ export function createRootSessionRuntime({
             }
             return result;
         },
-        runSessionEnd(reason, signal) {
-            return resources.hooks.execute({
-                hook_event_name: "SessionEnd",
-                session_id: seed.sessionId,
-                reason,
-            }, signal, {session: hookSession});
+        async runSessionEnd(reason) {
+            const controller = new AbortController();
+            const timer = setTimeout(
+                () => controller.abort("session-end-timeout"),
+                SESSION_END_TIMEOUT_MS
+            );
+            timer.unref?.();
+            try {
+                return await resources.hooks.execute({
+                    hook_event_name: "SessionEnd",
+                    session_id: seed.sessionId,
+                    reason,
+                }, controller.signal, {session: hookSession});
+            } finally {
+                clearTimeout(timer);
+            }
         },
     };
 }

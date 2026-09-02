@@ -5,6 +5,7 @@ import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";
 import type {LoadedSkill} from "../skills/types.js";
 import {createToolRuntime, type ToolRuntime,} from "../tools/registry.js";
+import {createToolCatalog} from "../tools/catalog.js";
 import {createTaskRuntime, type TaskRuntimeLike,} from "../tasks/index.js";
 import {createShellRunner, type ShellRunnerLike,} from "../tools/bash/shellRunner.js";
 import {createSandboxRuntime, type SandboxRuntimeLike,} from "../sandbox/index.js";
@@ -74,6 +75,7 @@ export interface RootRuntimeResources {
     readonly memoryFiles?: MemoryFileAccess;
     readonly gitWorkspace: GitWorkspaceRuntimeLike;
 
+    beginShutdown(): void;
     close(): Promise<void>;
 }
 
@@ -123,6 +125,11 @@ interface RootRuntimeDependencies {
     ): Promise<LoadedCustomAgents>;
 }
 
+interface RootResourceCloser {
+    beginShutdown(): void;
+    close(): Promise<void>;
+}
+
 function createResourceCloser(
     mcpManager: McpManagerLike | undefined,
     lspManager: LspManagerLike | undefined,
@@ -130,19 +137,29 @@ function createResourceCloser(
     memory: MemoryRuntimeLike,
     sandbox: SandboxRuntimeLike,
     codex: CodexAppServerRuntimeLike
-): () => Promise<void> {
+): RootResourceCloser {
     let closePromise: Promise<void> | undefined;
-    return () => {
-        closePromise ??= (async () => {
-            await Promise.allSettled([taskRuntime.close()]);
-            await Promise.allSettled([
-                lspManager?.shutdown(),
-                mcpManager?.closeAll(),
-                memory.close(),
-            ]);
-            await Promise.allSettled([sandbox.close(), codex.close()]);
-        })();
-        return closePromise;
+    let taskClosePromise: Promise<void> | undefined;
+    const beginShutdown = () => {
+        taskClosePromise ??= Promise.resolve()
+            .then(() => taskRuntime.close())
+            .catch(() => undefined);
+    };
+    return {
+        beginShutdown,
+        close() {
+            closePromise ??= (async () => {
+                beginShutdown();
+                await Promise.allSettled([taskClosePromise]);
+                await Promise.allSettled([
+                    lspManager?.shutdown(),
+                    mcpManager?.closeAll(),
+                    memory.close(),
+                ]);
+                await Promise.allSettled([sandbox.close(), codex.close()]);
+            })();
+            return closePromise;
+        },
     };
 }
 
@@ -196,25 +213,27 @@ export function createRootRuntimeResourcesFactory(
         let mcpManager: McpManagerLike | undefined;
         let taskRuntime: TaskRuntimeLike | undefined;
         let memory: MemoryRuntimeLike | undefined;
-        let closeOwnedResources: (() => Promise<void>) | undefined;
+        let closeOwnedResources: RootResourceCloser | undefined;
+        let codex: CodexAppServerRuntimeLike | undefined;
         const sandbox = await createSandboxRuntime({
             cwd,
             settings: settings.sandbox,
         });
-        const childEnvironment = createChildProcessEnvironment(
-            process.env,
-            Object.values(settings.sources).map(
-                (source) => source.apiKeyEnv
-            )
-        );
-        const codex = createCodexAppServerRuntime(childEnvironment);
-        const shellRunner = createShellRunner(sandbox, childEnvironment);
-        const primaryModel = createPrimaryModelRuntime(
-            settings.models.primary,
-            settings.sources
-        );
 
         try {
+            const childEnvironment = createChildProcessEnvironment(
+                process.env,
+                Object.values(settings.sources).map(
+                    (source) => source.apiKeyEnv
+                )
+            );
+            const createdCodex = createCodexAppServerRuntime(childEnvironment);
+            codex = createdCodex;
+            const shellRunner = createShellRunner(sandbox, childEnvironment);
+            const primaryModel = createPrimaryModelRuntime(
+                settings.models.primary,
+                settings.sources
+            );
             const fileState = dependencies.createFileStateTracker();
             const gitWorkspace = createGitWorkspaceRuntime(
                 cwd,
@@ -233,7 +252,7 @@ export function createRootRuntimeResourcesFactory(
                 getModelSource: (source) => settings.sources[source],
                 shellRunner,
                 settings: settings.memory,
-                codex,
+                codex: createdCodex,
             });
             memory = createdMemory;
             lspManager = await dependencies.createLspManager(
@@ -265,16 +284,16 @@ export function createRootRuntimeResourcesFactory(
                     source: settings.sources[settings.models.fast.source],
                     cwd,
                     model: settings.models.fast.model,
-                    codex,
+                    codex: createdCodex,
                 }),
                 requestTrust: options.requestHookTrust,
             });
             const mcpTools = mcpManager?.getTools() ?? [];
-            const toolCatalog = dependencies.createToolRuntime({
+            const catalogToolNames = createToolCatalog({
                 additionalTools: mcpTools,
-            });
+            }).tools.map((tool) => tool.name);
             const validateLoadedAgents = (loaded: LoadedCustomAgents) =>
-                validateCustomAgentTools(loaded, toolCatalog.toolNames);
+                validateCustomAgentTools(loaded, catalogToolNames);
             const subagents = createSubagentCatalog({
                 initial: validateLoadedAgents(loadedCustomAgents),
                 load: async () => validateLoadedAgents(
@@ -289,7 +308,7 @@ export function createRootRuntimeResourcesFactory(
             const agentDefinitions = createAgentDefinitionManager({
                 store: createAgentDefinitionStore(storage, cwd),
                 catalog: subagents,
-                availableToolNames: toolCatalog.toolNames,
+                availableToolNames: catalogToolNames,
             });
             const agentAuthoring = createAgentAuthoringRuntime({
                 storage,
@@ -297,13 +316,13 @@ export function createRootRuntimeResourcesFactory(
                 getModelTarget: auxiliaryModelTarget,
                 getModelSource: (source) => settings.sources[source],
                 instructions,
-                availableToolNames: toolCatalog.toolNames.filter(
+                availableToolNames: catalogToolNames.filter(
                     (name) => !name.startsWith("mcp__")
                 ),
                 getExistingAgentNames: () => subagents
                     .listDefinitions()
                     .map((definition) => definition.agentType),
-                codex,
+                codex: createdCodex,
             });
             const toolRuntime = dependencies.createToolRuntime({
                 additionalTools: [
@@ -324,7 +343,7 @@ export function createRootRuntimeResourcesFactory(
                 sources: settings.sources,
                 subagents,
                 memory: createdMemory,
-                codex,
+                codex: createdCodex,
             });
             const createdTaskRuntime = dependencies.createTaskRuntime(
                 storage,
@@ -341,7 +360,7 @@ export function createRootRuntimeResourcesFactory(
                 createdTaskRuntime,
                 createdMemory,
                 sandbox,
-                codex
+                createdCodex
             );
 
             return {
@@ -377,11 +396,12 @@ export function createRootRuntimeResourcesFactory(
                     ? createdMemory.fileAccess("explicit")
                     : undefined,
                 gitWorkspace,
-                close: closeOwnedResources,
+                beginShutdown: closeOwnedResources.beginShutdown,
+                close: closeOwnedResources.close,
             };
         } catch (error) {
             if (closeOwnedResources) {
-                await closeOwnedResources();
+                await closeOwnedResources.close();
             } else {
                 await Promise.allSettled([
                     taskRuntime?.close(),
@@ -389,7 +409,7 @@ export function createRootRuntimeResourcesFactory(
                     mcpManager?.closeAll(),
                     memory?.close(),
                     sandbox.close(),
-                    codex.close(),
+                    codex?.close(),
                 ]);
             }
             throw error;

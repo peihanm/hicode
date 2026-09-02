@@ -2,20 +2,19 @@ import type {AgentResult} from "../agent/index.js";
 import type {AgentType, VerificationVerdict,} from "../subagents/types.js";
 import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {ResumeMode} from "../session/index.js";
 import type {PersistedToolResult} from "../toolResults/index.js";
 import type {FileChange, ToolUIData} from "../fileChanges/index.js";
-import type {ResolvedPillarSettings} from "../settings/index.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
 
 export type HeadlessOutputFormat = "text" | "json";
 
 export interface HeadlessOptions {
-    storage: PillarStorageLayout;
-    cwd: string;
-    settings: ResolvedPillarSettings;
+    configuration: PillarRootConfiguration;
     prompt: string;
     permissionMode?: PermissionMode;
+    collaborationMode?: CollaborationMode;
     resumeMode: ResumeMode;
     outputFormat: HeadlessOutputFormat;
 }
@@ -53,6 +52,7 @@ export interface HeadlessRunSummary {
     iterations: number;
     reply: string;
     permissionMode: PermissionMode;
+    collaborationMode: CollaborationMode;
     toolCalls: HeadlessToolCall[];
     permissionDenials: HeadlessToolCall[];
     toolFailures: HeadlessToolCall[];

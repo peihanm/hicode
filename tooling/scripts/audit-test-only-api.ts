@@ -1,5 +1,5 @@
 import * as ts from "typescript";
-import {dirname, isAbsolute, relative, resolve} from "node:path";
+import {dirname, isAbsolute, relative, resolve, sep} from "node:path";
 
 type CandidateKind = "export" | "member";
 type FindingKind =
@@ -39,6 +39,7 @@ interface Finding {
 const root = process.cwd();
 const sourceRoot = resolve(root, "src");
 const testRoot = resolve(root, "tests");
+const toolingRoot = resolve(root, "tooling");
 const jsonOutput = process.argv.includes("--json");
 const failOnFindings = process.argv.includes("--fail-on-findings");
 const includeAmbiguousMembers = process.argv.includes("--include-ambiguous-members");
@@ -51,6 +52,18 @@ function fail(message: string): never {
 function isInside(fileName: string, directory: string): boolean {
     const path = relative(directory, resolve(fileName));
     return path === "" || (!path.startsWith("..") && !isAbsolute(path));
+}
+
+function isTestFile(fileName: string): boolean {
+    if (isInside(fileName, testRoot)) return true;
+    if (!isInside(fileName, toolingRoot)) return false;
+    return relative(toolingRoot, resolve(fileName)).split(sep).includes("tests");
+}
+
+function isNonTestConsumer(fileName: string): boolean {
+    return !isTestFile(fileName) && (
+        isInside(fileName, sourceRoot) || isInside(fileName, toolingRoot)
+    );
 }
 
 function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
@@ -170,28 +183,36 @@ function collectMemberCandidates(sourceFile: ts.SourceFile): Candidate[] {
     return candidates;
 }
 
-function createLanguageService(configPath: string): {
+function createLanguageService(configPaths: string[]): {
     service: ts.LanguageService;
     program: ts.Program;
 } {
-    const config = ts.readConfigFile(configPath, ts.sys.readFile);
-    if (config.error) {
-        fail(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
-    }
-    const parsed = ts.parseJsonConfigFileContent(
-        config.config,
-        ts.sys,
-        dirname(configPath),
-        undefined,
-        configPath
-    );
-    if (parsed.errors.length > 0) {
-        fail(parsed.errors
-            .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
-            .join("\n"));
-    }
+    const parsedConfigs = configPaths.map((configPath) => {
+        const config = ts.readConfigFile(configPath, ts.sys.readFile);
+        if (config.error) {
+            fail(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
+        }
+        const parsed = ts.parseJsonConfigFileContent(
+            config.config,
+            ts.sys,
+            dirname(configPath),
+            undefined,
+            configPath
+        );
+        if (parsed.errors.length > 0) {
+            fail(parsed.errors
+                .map((diagnostic) =>
+                    ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
+                )
+                .join("\n"));
+        }
+        return parsed;
+    });
+    const fileNames = [...new Set(parsedConfigs.flatMap((parsed) => parsed.fileNames))];
+    const options = parsedConfigs[0]?.options;
+    if (!options) fail("至少需要一个 TypeScript 审计配置");
     const host: ts.LanguageServiceHost = {
-        getScriptFileNames: () => parsed.fileNames,
+        getScriptFileNames: () => fileNames,
         getScriptVersion: () => "0",
         getScriptSnapshot(fileName) {
             const content = ts.sys.readFile(fileName);
@@ -200,7 +221,7 @@ function createLanguageService(configPath: string): {
                 : ts.ScriptSnapshot.fromString(content);
         },
         getCurrentDirectory: () => root,
-        getCompilationSettings: () => parsed.options,
+        getCompilationSettings: () => options,
         getDefaultLibFileName: ts.getDefaultLibFilePath,
         fileExists: ts.sys.fileExists,
         readFile: ts.sys.readFile,
@@ -308,13 +329,13 @@ function findCandidateIssues(
     for (const candidate of candidates) {
         const references = collectReferences(service, program, candidate);
         const productionReferences = references.filter((reference) =>
-            isInside(reference.file, sourceRoot)
+            isNonTestConsumer(reference.file)
         );
         const externalProductionReferences = productionReferences.filter(
             (reference) => resolve(reference.file) !== resolve(candidate.fileName)
         );
         const testReferences = references.filter((reference) =>
-            isInside(reference.file, testRoot)
+            isTestFile(reference.file)
         );
         const production = countReferences(productionReferences);
         const tests = countReferences(testReferences);
@@ -370,15 +391,22 @@ function findCandidateIssues(
     );
 }
 
-const configPath = ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.test.json");
-if (!configPath) fail("找不到 tsconfig.test.json");
-const {service, program} = createLanguageService(configPath);
+const configPaths = ["tsconfig.test.json", "tsconfig.tooling.json"].map((name) =>
+    resolve(root, name)
+);
+for (const configPath of configPaths) {
+    if (!ts.sys.fileExists(configPath)) fail(`找不到 ${relative(root, configPath)}`);
+}
+const {service, program} = createLanguageService(configPaths);
 const sourceFiles = program.getSourceFiles().filter((sourceFile) =>
     !sourceFile.isDeclarationFile && isInside(sourceFile.fileName, sourceRoot)
 );
+const nonTestFiles = program.getSourceFiles().filter((sourceFile) =>
+    !sourceFile.isDeclarationFile && isNonTestConsumer(sourceFile.fileName)
+);
 const exportCandidates = sourceFiles.flatMap(collectExportCandidates);
 const memberCandidates = sourceFiles.flatMap(collectMemberCandidates);
-const productionPropertyUses = collectProductionPropertyUses(sourceFiles);
+const productionPropertyUses = collectProductionPropertyUses(nonTestFiles);
 const findings = findCandidateIssues(
     service,
     program,
@@ -407,6 +435,7 @@ if (jsonOutput) {
         console.log(
             "TEST_ONLY_EXPORT 表示没有其他生产模块引用该导出；定义文件内部仍可能使用其实现。"
         );
+        console.log("普通 tooling 调用方计入非测试消费者；tooling/**/tests 仍按测试处理。");
         if (includeAmbiguousMembers) {
             console.log(
                 "POSSIBLE_TEST_ONLY_MEMBER 表示存在同名生产属性，但 TypeScript 无法确认是否属于该成员。"
@@ -417,7 +446,7 @@ if (jsonOutput) {
                 `\n[${finding.kind}] ${finding.file}:${finding.line} ${finding.symbol}`
             );
             console.log(
-                `  production reads ${finding.productionReads} · writes ${finding.productionWrites}` +
+                `  non-test reads ${finding.productionReads} · writes ${finding.productionWrites}` +
                 ` · external ${finding.externalProductionReferences}`
             );
             console.log(

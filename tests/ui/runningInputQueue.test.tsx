@@ -114,6 +114,7 @@ describe("running input queue UI", () => {
                 ],
                 todos: [],
                 permissionMode: "default",
+        collaborationMode: "build",
                 uiEvents: [],
                 queuedInputs: [
                     {

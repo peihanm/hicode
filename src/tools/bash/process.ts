@@ -1,5 +1,6 @@
 import {type ChildProcess, spawn, type SpawnOptions,} from "node:child_process";
 import {closeSync, openSync, writeSync} from "node:fs";
+import {StringDecoder} from "node:string_decoder";
 import {normalizeTurnAbortReason, type TurnAbortReason,} from "../../runtime/abort.js";
 
 export type ShellTermination =
@@ -166,6 +167,8 @@ function runProcess({
         let outputWrittenBytes = 0;
         let outputComplete = true;
         let outputFd: number | undefined;
+        const stdoutDecoder = new StringDecoder("utf8");
+        const stderrDecoder = new StringDecoder("utf8");
 
         if (outputFilePath) {
             try {
@@ -251,6 +254,8 @@ function runProcess({
         const finish = (termination: ShellTermination) => {
             if (settled) return;
             settled = true;
+            stdout += stdoutDecoder.end();
+            stderr += stderrDecoder.end();
             cleanup();
             resolve({
                 stdout,
@@ -279,7 +284,9 @@ function runProcess({
 
         const append = (target: "stdout" | "stderr", chunk: Buffer | string) => {
             const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            const text = buffer.toString("utf8");
+            const text = target === "stdout"
+                ? stdoutDecoder.write(buffer)
+                : stderrDecoder.write(buffer);
             if (outputFd !== undefined) {
                 outputBytes += buffer.length;
                 if (target === "stdout") {

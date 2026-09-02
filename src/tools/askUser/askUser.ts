@@ -55,6 +55,7 @@ export const askUserTool: Tool<typeof inputSchema> = {
     parameters: inputSchema,
     isReadOnly: () => true,
     requiresUserInteraction: () => true,
+    acceptsUpdatedInputFromUser: true,
     // 声明权限意向：需要问用户（触发权限弹窗流程）
     // App.tsx 根据 toolName === "ask_user" 分发到 AskDialog
     async checkPermissions(input) {

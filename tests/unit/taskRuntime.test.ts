@@ -8,6 +8,82 @@ import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("TaskRuntime", () => {
+    test("并发启动在异步准备期也不会突破 Session Agent 上限", async () => {
+        await withTempProject(async (cwd) => {
+            const shellRunner: ShellRunnerLike = {
+                sandboxStatus: {kind: "disabled"},
+                async run() {
+                    throw new Error("不应执行 Shell");
+                },
+            };
+            let created = 0;
+            const runtime = createTaskRuntimeForTest(
+                cwd,
+                shellRunner,
+                (options, request) => {
+                    created += 1;
+                    return {
+                        agentId: options.agentId,
+                        async run(input) {
+                            await new Promise<void>((resolve) => {
+                                input.signal.addEventListener("abort", () => resolve(), {
+                                    once: true,
+                                });
+                            });
+                            return {
+                                agentId: options.agentId,
+                                agentType: request.agentType,
+                                description: request.description,
+                                reply: "",
+                                reason: "interrupted",
+                                iterations: 0,
+                                toolUseCount: 0,
+                                durationMs: 0,
+                            };
+                        },
+                    };
+                }
+            );
+            const session = runtime.forSession({
+                sessionId: "concurrent-agent-session",
+                toolResultStore: createTestToolResultStore(
+                    cwd,
+                    "concurrent-agent-session",
+                    {pillarHome: `${cwd}/tool-results`}
+                ),
+            });
+            const context = createTestContext(cwd, {tasks: session});
+            const starts = Array.from({length: 5}, (_, index) =>
+                session.startAgent({
+                    request: {
+                        kind: "registered",
+                        agentType: "Explore",
+                        description: `并发调查 ${index}`,
+                        prompt: "等待 Runtime 关闭",
+                        parentToolCallId: `concurrent-agent-${index}`,
+                    },
+                    parentContext: context,
+                })
+            );
+
+            const settled = await Promise.allSettled(starts);
+            expect(settled.filter((result) => result.status === "fulfilled"))
+                .toHaveLength(4);
+            const rejected = settled.find((result) => result.status === "rejected");
+            expect(rejected?.status === "rejected" ? rejected.reason : undefined)
+                .toEqual(expect.objectContaining({
+                    message: expect.stringContaining("已达到上限 4"),
+                }));
+            expect(created).toBe(4);
+            expect(session.getRunningSummary()).toEqual({
+                total: 4,
+                shell: 0,
+                agent: 4,
+            });
+            await runtime.close();
+        });
+    });
+
     test("执行层拒绝把 Verification 直接作为后台 Agent 启动", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
@@ -27,6 +103,7 @@ describe("TaskRuntime", () => {
             const context = createTestContext(cwd, {tasks: session});
             await expect(session.startAgent({
                 request: {
+                    kind: "registered",
                     agentType: "Verification",
                     description: "不允许的后台验证",
                     prompt: "验证项目",

@@ -1,4 +1,5 @@
-import type {PermissionMode, PermissionRules} from "../permissions/index.js";
+import type {PermissionMode, PermissionPromptPolicy, PermissionRules} from "../permissions/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 import type {ToolContextResources} from "../runtime/toolContext.js";
 import type {CreateToolRuntimeOptions} from "../tools/runtime.js";
 import type {ToolContext} from "../tools/types.js";
@@ -56,7 +57,8 @@ export interface SubagentRuntimeConfig {
     >;
     permissionRules: PermissionRules;
     permissionMode: PermissionMode;
-    prePlanMode?: PermissionMode;
+    collaborationMode: CollaborationMode;
+    permissionPromptPolicy: PermissionPromptPolicy;
     maxConsecutiveDeniedToolCalls?: number;
 }
 

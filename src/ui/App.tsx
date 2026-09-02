@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
-import {getNextPermissionMode, type PermissionMode,} from "../permissions/index.js";
+import type {PermissionMode} from "../permissions/index.js";
+import {getNextCollaborationMode, type CollaborationMode} from "../collaboration/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {MessageList, TranscriptDetails,} from "./conversation/MessageList.js";
 import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
@@ -10,6 +11,7 @@ import {ConfirmDialog} from "./dialogs/ConfirmDialog.js";
 import {EnterPlanDialog} from "./dialogs/EnterPlanDialog.js";
 import {AskDialog} from "./dialogs/AskDialog.js";
 import {PlanApprovalDialog} from "./dialogs/PlanApprovalDialog.js";
+import {PermissionsDialog} from "./dialogs/PermissionsDialog.js";
 import {StatusBar} from "./status/StatusBar.js";
 import {TodoList} from "./status/TodoList.js";
 import {ModelStreamStatus} from "./status/ModelStreamStatus.js";
@@ -65,6 +67,7 @@ function runningActivityLabel(
 export function App({
                             resources,
                             initialPermissionMode,
+                            initialCollaborationMode,
                             initialSession,
                             rootSession,
                             resumedDraft,
@@ -73,6 +76,7 @@ export function App({
                         }: {
         resources: RootRuntimeResources;
         initialPermissionMode?: PermissionMode;
+        initialCollaborationMode?: CollaborationMode;
         initialSession?: LoadedSession;
         rootSession: RootSessionRuntime;
         resumedDraft?: string;
@@ -86,11 +90,13 @@ export function App({
         const [showAgents, setShowAgents] = useState(false);
         const [showGitDiff, setShowGitDiff] = useState(false);
         const [showModel, setShowModel] = useState(false);
+        const [showPermissions, setShowPermissions] = useState(false);
         const openResume = useCallback(() => {
             setShowRewind(false);
             setShowAgents(false);
             setShowGitDiff(false);
             setShowModel(false);
+            setShowPermissions(false);
             setResumeSessions(listSessionIndex(resources.storage, resources.cwd));
             setShowResume(true);
         }, [resources.cwd, resources.storage]);
@@ -99,6 +105,7 @@ export function App({
             setShowAgents(false);
             setShowGitDiff(false);
             setShowModel(false);
+            setShowPermissions(false);
             setShowRewind(true);
         }, []);
         const openAgents = useCallback(() => {
@@ -106,6 +113,7 @@ export function App({
             setShowRewind(false);
             setShowGitDiff(false);
             setShowModel(false);
+            setShowPermissions(false);
             setShowAgents(true);
         }, []);
         const openGitDiff = useCallback(() => {
@@ -113,6 +121,7 @@ export function App({
             setShowRewind(false);
             setShowAgents(false);
             setShowModel(false);
+            setShowPermissions(false);
             setShowGitDiff(true);
         }, []);
         const openModel = useCallback(() => {
@@ -120,11 +129,21 @@ export function App({
             setShowRewind(false);
             setShowAgents(false);
             setShowGitDiff(false);
+            setShowPermissions(false);
             setShowModel(true);
+        }, []);
+        const openPermissions = useCallback(() => {
+            setShowResume(false);
+            setShowRewind(false);
+            setShowAgents(false);
+            setShowGitDiff(false);
+            setShowModel(false);
+            setShowPermissions(true);
         }, []);
         const turn = useTurnController({
             resources,
             initialPermissionMode,
+            initialCollaborationMode,
             initialSession,
             rootSession,
             resumedDraft,
@@ -133,6 +152,7 @@ export function App({
             openAgents,
             openGitDiff,
             openModel,
+            openPermissions,
         });
         const [showTodos, setShowTodos] = useState(true);
         const [showTranscript, setShowTranscript] = useState(false);
@@ -143,9 +163,9 @@ export function App({
         }, [registerSessionShutdown, turn.shutdown]);
         const requestExit = useCallback(() => {
             // 先同步触发后台任务 abort，避免 CLI 的有界强制退出留下 detached 进程。
-            void resources.taskRuntime.close();
+            resources.beginShutdown();
             exit();
-        }, [exit, resources.taskRuntime]);
+        }, [exit, resources]);
 
         const handleSubmit = useCallback(
             async (input: string) => {
@@ -164,7 +184,7 @@ export function App({
 
         useInput((input, key) => {
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showResume || showRewind || showAgents || showGitDiff || showModel) return;
+            if (showResume || showRewind || showAgents || showGitDiff || showModel || showPermissions) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             const planDialogHandlesEscape =
                 turn.confirmRequest?.toolName === "exit_plan_mode" &&
@@ -187,7 +207,9 @@ export function App({
                 return;
             }
             if (!turn.confirmRequest && key.shift && key.tab) {
-                turn.setPermissionMode(getNextPermissionMode(turn.permissionMode));
+                turn.setCollaborationMode(
+                    getNextCollaborationMode(turn.collaborationMode)
+                );
                 return;
             }
             if (key.ctrl && input === "t") {
@@ -218,14 +240,14 @@ export function App({
                     <TranscriptDetails threads={turn.threads}/>
                 )}
 
-                {showTodos && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && (
+                {showTodos && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && (
+                {turn.busy && !turn.confirmRequest && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <ModelStreamStatus
                         modelStream={turn.modelStream}
                         progressRef={turn.modelStreamProgressRef}
@@ -250,6 +272,15 @@ export function App({
                             setShowModel(false);
                         }}
                         onClose={() => setShowModel(false)}
+                    />
+                ) : showPermissions ? (
+                    <PermissionsDialog
+                        current={turn.permissionMode}
+                        onSelect={(mode) => {
+                            turn.setPermissionMode(mode);
+                            setShowPermissions(false);
+                        }}
+                        onClose={() => setShowPermissions(false)}
                     />
                 ) : showAgents ? (
                     <AgentsDialog
@@ -281,10 +312,6 @@ export function App({
                     ) : turn.confirmRequest.toolName === "exit_plan_mode" ? (
                         <PlanApprovalDialog
                             req={turn.confirmRequest}
-                            bypassPermissionsAvailable={
-                                turn.prePlanMode === "bypassPermissions"
-                            }
-                            onApprove={turn.setPermissionMode}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : turn.confirmRequest.toolName === "enter_plan_mode" ? (
@@ -331,6 +358,7 @@ export function App({
                     cwd={cwd}
                     model={turn.primaryModel.label}
                     permissionMode={turn.permissionMode}
+                    collaborationMode={turn.collaborationMode}
                     tokenCount={turn.tokenInfo.count}
                     percentUsed={turn.tokenInfo.percentUsed}
                     warning={turn.tokenInfo.warning}
