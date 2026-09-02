@@ -4,7 +4,7 @@ export const EXPLORE_AGENT: AgentDefinition = {
     agentType: "Explore",
     source: "builtin",
     whenToUse:
-        "主动用于开放式代码库问题，例如『这个项目做什么』『深入理解 src』『某功能完整链路』，以及预计涉及 3 个以上文件、2 个以上目录或 3 次以上查询的调查。具体文件、符号或最多 2–3 个文件的定向问题由 Root 直接处理。调用时提供完整背景、目标范围、quick/medium/very thorough 深度和期望报告。",
+        "仅用于大型陌生代码库中可独立完成、能显著压缩 Root 上下文的只读调查，或多个互不依赖、可并发推进的研究方向。空项目、明确文件或符号、已有计划，以及 Root 必须等待结果才能继续的普通顺序调查不使用。调用时提供完整背景、目标范围、调查深度和期望报告。",
     allowedTools: [
         "list_files",
         "glob",

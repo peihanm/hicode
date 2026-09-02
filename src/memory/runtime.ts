@@ -3,7 +3,6 @@ import type {AgentRunner} from "../agent/index.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {LLMSourceConnection} from "../llm/types.js";
-import type {CodexAppServerRuntimeLike} from "../llm/providers/codex/index.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
 import type {ModelTargetSettings} from "../settings/types.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
@@ -441,7 +440,6 @@ export interface MemoryRuntimeFactoryDependencies {
         source: LLMSourceConnection;
         shellRunner: ShellRunnerLike;
         memoryFiles: MemoryFileAccess;
-        codex?: CodexAppServerRuntimeLike;
     }): MemoryExtractor;
 }
 
@@ -462,7 +460,6 @@ export function createMemoryRuntimeFactory(
         ): ResolvedPillarSettings["sources"][ModelTargetSettings["source"]];
         shellRunner: ShellRunnerLike;
         settings: ResolvedPillarSettings["memory"];
-        codex?: CodexAppServerRuntimeLike;
     }): MemoryRuntimeLike {
         const directory = getMemoryDirectory(options.storage, options.cwd);
         const store = createStore(directory);
@@ -481,7 +478,6 @@ export function createMemoryRuntimeFactory(
                     cwd: options.cwd,
                     shellRunner: options.shellRunner,
                     memoryFiles,
-                    codex: options.codex,
                 });
             }
         );

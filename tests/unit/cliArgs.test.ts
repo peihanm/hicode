@@ -65,12 +65,6 @@ describe("parseCliArgs", () => {
       model: "deepseek-v4-pro",
       source: "deepseek",
     });
-    expect(
-      parseCliArgs(["--model=gpt-5.6-sol", "--source", "CODEX"])
-    ).toMatchObject({
-      model: "gpt-5.6-sol",
-      source: "codex",
-    });
   });
 
   test("拒绝互斥或不完整参数", () => {
@@ -82,6 +76,9 @@ describe("parseCliArgs", () => {
     );
     expect(() => parseCliArgs(["--permission-mode", "unknown"])).toThrow(
       "未知权限模式"
+    );
+    expect(() => parseCliArgs(["--source", "CODEX"])).toThrow(
+      "未知模型来源"
     );
     for (const legacyMode of [
       "acceptEdits",

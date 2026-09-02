@@ -11,7 +11,7 @@ import type {
     SettingsOrigins,
 } from "./types.js";
 
-export const DEFAULT_MODEL = "gpt-5.6-luna";
+export const DEFAULT_MODEL = "qwen3.6-flash";
 
 const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
     glm: {
@@ -39,16 +39,6 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
         models: [
             {id: "deepseek-v4-pro", label: "DeepSeek V4 Pro"},
             {id: "deepseek-v4-flash", label: "DeepSeek V4 Flash"},
-        ],
-    },
-    codex: {
-        id: "codex",
-        label: "OpenAI Codex",
-        apiKeyEnv: "CODEX_API_KEY",
-        models: [
-            {id: "gpt-5.6-sol", label: "GPT-5.6 Sol"},
-            {id: "gpt-5.6-terra", label: "GPT-5.6 Terra"},
-            {id: "gpt-5.6-luna", label: "GPT-5.6 Luna"},
         ],
     },
 };
@@ -284,6 +274,21 @@ export function resolvePillarSettings(
     if (cli.model !== undefined) {
         primaryModel = cli.model;
         origins.primaryModel = "cli";
+    }
+
+    if (
+        origins.primarySource === "default" &&
+        origins.primaryModel === "default" &&
+        !sources[primarySource].models.some((model) => model.id === primaryModel)
+    ) {
+        primaryModel = sources[primarySource].models[0]?.id ?? primaryModel;
+    }
+    if (
+        origins.fastSource === "default" &&
+        origins.fastModel === "default" &&
+        !sources[fastSource].models.some((model) => model.id === fastModel)
+    ) {
+        fastModel = sources[fastSource].models[0]?.id ?? fastModel;
     }
 
     return {

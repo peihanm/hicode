@@ -25,12 +25,10 @@ function sourceIsAvailable(
     source: ModelSourceSettings,
     environment: NodeJS.ProcessEnv
 ): boolean {
-    // Codex authenticates through the local Codex account rather than a Pillar
-    // API key. Authentication is verified by app-server on the first call.
-    return source.id === "codex" || Boolean(nonEmpty(environment[source.apiKeyEnv]));
+    return Boolean(nonEmpty(environment[source.apiKeyEnv]));
 }
 
-/** Build the startup catalog from API-key sources and local Codex account models. */
+/** Build the startup catalog from sources with configured API keys. */
 export function listConfiguredPrimaryModels(
     sources: ResolvedPillarSettings["sources"],
     environment: NodeJS.ProcessEnv = process.env

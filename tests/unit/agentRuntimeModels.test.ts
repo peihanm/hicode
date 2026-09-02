@@ -4,10 +4,7 @@ import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/index.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createTestMemoryRuntime} from "../helpers/memory.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import {
-    createDisabledTestCodexRuntime,
-    createTestSettings,
-} from "../helpers/runtimeResources.js";
+import {createTestSettings} from "../helpers/runtimeResources.js";
 
 const originalFetch = globalThis.fetch;
 const originalDashscopeKey = process.env.DASHSCOPE_API_KEY;
@@ -91,7 +88,6 @@ describe("AgentRuntime model targets", () => {
                 },
                 subagents: BUILTIN_SUBAGENT_REGISTRY,
                 memory,
-                codex: createDisabledTestCodexRuntime(),
             });
             const parentContext = createTestContext(cwd, {
                 model: "qwen-primary-test",

@@ -11,12 +11,12 @@ Pillar 是一个运行在终端中的 Code Agent，使用 Bun、TypeScript、Rea
 - Session 恢复、Checkpoint 和代码回退
 - 子 Agent、后台任务和 Git Worktree 隔离
 - MCP、LSP、Skills、Hooks 和持久 Memory
-- Codex/GPT、GLM、Qwen 与 DeepSeek Provider
+- GLM、Qwen 与 DeepSeek Provider
 
 ## 环境要求
 
 - [Bun](https://bun.sh/) 1.3 或更高版本
-- 已登录的 Codex CLI，或至少一个受支持模型服务的 API Key
+- 至少一个受支持模型服务的 API Key
 
 ## 快速开始
 
@@ -25,8 +25,8 @@ bun install
 bun run start
 ```
 
-内置 primary/fast 默认使用 Codex GPT-5.6 Luna。使用 GLM、Qwen 或 DeepSeek 时，再复制 `.env.sample` 为
-`.env` 填写凭证，并在 `~/.pillar/settings.json` 中选择模型。
+内置 primary/fast 默认使用 Qwen 3.6 Flash。复制 `.env.sample` 为 `.env` 并填写对应凭证；需要使用
+GLM、DeepSeek 或其他已登记模型时，在 `~/.pillar/settings.json` 中选择模型。
 
 如需在任意目录通过 `pillar` 启动：
 
@@ -56,7 +56,6 @@ Tool Result、后台任务日志和 Prompt Log 等运行数据统一保存在 `~
 | GLM | `GLM_API_KEY` |
 | Qwen | `DASHSCOPE_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
-| Codex / GPT | 不需要 API Key；先用本机 Codex CLI 登录 |
 
 不要提交 `.env`、`.mcp.json` 或任何包含凭证和私人上下文的本地配置。
 

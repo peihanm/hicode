@@ -285,13 +285,15 @@ export class UITurnEventStore {
 
     appendUser(input: string): void {
         this.archiveSettledThreads();
-        this.update({
+        const thread = createUserThread(input, this.createThreadId);
+        const nextSnapshot = {
             ...this.snapshot,
-            threads: [
-                ...this.snapshot.threads,
-                createUserThread(input, this.createThreadId),
-            ],
-        });
+            threads: [...this.snapshot.threads, thread],
+        };
+        // 用户提交的文本不会再更新。若先进入 live 区，长 Prompt 已滚入终端
+        // scrollback 后再迁入 Static 会被物理打印两次；因此与完整 Assistant
+        // 文本一样，在没有未完成前置工具时直接原子固化。
+        this.update(this.archiveThroughSettledThread(nextSnapshot, thread.id));
     }
 
     appendError(error: unknown): void {

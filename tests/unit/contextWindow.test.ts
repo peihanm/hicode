@@ -5,16 +5,10 @@ import {
 } from "../../src/context/window.js";
 
 describe("context window", () => {
-  test("GPT-5.6 使用官方 1.05M 窗口", () => {
-    expect(getAutoCompactThreshold("gpt-5.6-sol")).toBe(1_017_000);
-    expect(getAutoCompactThreshold("gpt-5.6-terra")).toBe(1_017_000);
-    expect(getAutoCompactThreshold("gpt-5.6-luna")).toBe(1_017_000);
-  });
-
   test("Provider 实报窗口覆盖模型名回退", () => {
     expect(getAutoCompactThreshold("provider-specific-model", 256_000))
       .toBe(223_000);
-    const state = getTokenWarningState(237_267, "gpt-5.6-luna", 1_050_000);
+    const state = getTokenWarningState(237_267, "provider-specific-model", 1_050_000);
     expect(state.percentUsed).toBeCloseTo(237_267 / 1_030_000, 6);
     expect(state.critical).toBe(false);
   });

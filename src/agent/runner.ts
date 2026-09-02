@@ -12,7 +12,6 @@ import {
     recordRuntimeInputs,
     recordToolOutcomes,
 } from "./turnCompletion.js";
-import {DEFAULT_MAX_ITERATIONS} from "./constants.js";
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../todos.js";
 
@@ -100,10 +99,9 @@ async function runAgentCore(
     options: AgentRunOptions,
     dependencies: AgentRunnerDependencies
 ): Promise<AgentResult> {
-    const maxIterations = Math.max(
-        1,
-        Math.floor(options.maxIterations ?? DEFAULT_MAX_ITERATIONS)
-    );
+    const maxIterations = options.maxIterations === undefined
+        ? undefined
+        : Math.max(1, Math.floor(options.maxIterations));
     const callLLMImpl = dependencies.callLLM;
     const getToolSchemasImpl = options.getToolSchemas;
     const executeToolImpl = options.executeTool;
@@ -167,9 +165,19 @@ async function runAgentCore(
 
     try {
         throwIfTurnAborted(ctx.signal);
-        for (let i = 0; i < maxIterations; i++) {
+        for (
+            let i = 0;
+            maxIterations === undefined || i < maxIterations;
+            i++
+        ) {
             iterations = i + 1;
-            await onEvent({type: "iteration", current: i + 1, max: maxIterations});
+            await onEvent({
+                type: "iteration",
+                current: i + 1,
+                ...(maxIterations === undefined ? {} : {max: maxIterations}),
+            });
+            const hasNextIteration =
+                maxIterations === undefined || i + 1 < maxIterations;
             const {invokeMessages, tools, estimatedTokens} = await prepareAgentInvoke({
                 history,
                 ctx,
@@ -267,7 +275,7 @@ async function runAgentCore(
                 const textContent = rawTextContent.trim().length > 0
                     ? rawTextContent
                     : "";
-                if (!textContent && !emptyResponseRetryUsed && i + 1 < maxIterations) {
+                if (!textContent && !emptyResponseRetryUsed && hasNextIteration) {
                     history.pop();
                     emptyResponseRetryUsed = true;
                     completionNudge = [
@@ -290,7 +298,7 @@ async function runAgentCore(
                     completionNudge = completionReminder;
                     continue;
                 }
-                if (i + 1 < maxIterations) {
+                if (hasNextIteration) {
                     const queued = inputChannel.drainSafeBoundary();
                     if (queued.length > 0) {
                         if (textContent) {
@@ -356,13 +364,18 @@ async function runAgentCore(
                     ...resultUsage(),
                 };
             }
-            if (i + 1 < maxIterations) {
+            if (hasNextIteration) {
                 appendQueuedInputs(inputChannel.drainSafeBoundary());
             }
         }
 
+        if (maxIterations === undefined) {
+            throw new Error("未设迭代上限的 Agent 主循环意外退出");
+        }
+        const reply = `(达到最大迭代次数 ${maxIterations}，已停止)`;
+        await onEvent({type: "assistant_text", content: reply});
         return {
-            reply: `(达到最大迭代次数 ${maxIterations}，已停止)`,
+            reply,
             reason: "max_turns",
             iterations: maxIterations,
             ...resultUsage(),

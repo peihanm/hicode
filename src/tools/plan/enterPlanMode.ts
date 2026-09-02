@@ -20,7 +20,7 @@ export const enterPlanModeTool: Tool<typeof inputSchema> = {
         "进入后只能探索、阅读、搜索、询问澄清问题和设计方案；不要写入或修改文件。",
         "当方案准备好后，调用 exit_plan_mode 并提供具体计划，等待用户批准后再开始编码。",
         "",
-        "不要用于简单问答、单文件小修或用户已经明确要求立即执行的低风险任务。纯代码库研究和架构解释直接使用 Explore，不要为了研究本身进入 Plan。",
+        "不要用于简单问答、单文件小修或用户已经明确要求立即执行的低风险任务。纯代码库研究和架构解释直接调查，不要为了研究本身进入 Plan。",
     ].join("\n"),
     parameters: inputSchema,
 
@@ -48,12 +48,6 @@ export const enterPlanModeTool: Tool<typeof inputSchema> = {
     async execute(_input: Input, ctx: ToolContext): Promise<string> {
         ctx.setCollaborationMode("plan");
 
-        return [
-            "已进入 Plan 模式。",
-            "现在应专注于探索代码库、理解现有模式、比较方案和制定实现计划。",
-            "如果范围横跨多个目录或尚不清楚关键文件，先启动 Explore 获取浓缩报告；不要由 Root 连续遍历整个代码库。",
-            "不要写入或修改文件；需要用户拍板时使用 ask_user。",
-            "方案准备好后，调用 exit_plan_mode，提交具体计划等待用户批准。",
-        ].join("\n");
+        return "已进入 Plan 模式：先了解项目并整理方案，确认后再开始修改。";
     },
 };

@@ -1,7 +1,6 @@
 import {z} from "zod";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import {createLLMCaller} from "../llm/index.js";
-import type {CodexAppServerRuntimeLike} from "../llm/providers/codex/index.js";
 import type {LLMCaller, Message, OpenAITool} from "../llm/types.js";
 import type {LLMSourceConnection} from "../llm/types.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
@@ -244,9 +243,8 @@ export function createHookPromptExecutor(options: {
     source: LLMSourceConnection;
     cwd: string;
     model: string;
-    codex?: CodexAppServerRuntimeLike;
 }): HookPromptExecutor {
     return createHookPromptExecutorFactory({
-        callLLM: createLLMCaller(options.source, {codex: options.codex}),
+        callLLM: createLLMCaller(options.source),
     })(options);
 }

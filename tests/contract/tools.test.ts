@@ -92,19 +92,19 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("agent schema 前置 Explore 委派边界和前后台选择", () => {
+  test("agent schema 以 Root ownership 和真实并发能力约束委派", () => {
     const agent = getToolSchemas().find(
       (tool) => tool.function.name === "agent"
     );
 
-    expect(agent?.function.description).toContain("深入理解 src");
-    expect(agent?.function.description).toContain("不要先由 Root 遍历多个目录");
-    expect(agent?.function.description).toContain("使用前台默认模式");
-    expect(agent?.function.description).toContain("run_in_background=true");
-    expect(agent?.function.description).toContain(
-      "model=fast 使用独立配置的快速 Provider 与模型"
-    );
+    expect(agent?.function.description).toContain("Root 默认亲自完成顺序性的调查、实现和验证");
+    expect(agent?.function.description).toContain("本身都不是委派理由");
+    expect(agent?.function.description).toContain("若 Root 必须等待结果才能继续");
+    expect(agent?.function.description).toContain("GeneralPurpose 默认不自动使用");
+    expect(agent?.function.description).toContain("它是前台串行 Agent");
+    expect(agent?.function.description).not.toContain("3 个以上文件");
     expect(JSON.stringify(agent?.function.parameters)).toContain("fast");
+    expect(JSON.stringify(agent?.function.parameters)).toContain("run_in_background");
   });
 
   test("agent 调用把显式模型层级传给 registered runner", async () => {

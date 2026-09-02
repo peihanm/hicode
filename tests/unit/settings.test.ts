@@ -20,7 +20,7 @@ function document(
 }
 
 describe("Unified Settings", () => {
-    test("primary 和 fast 默认使用 GPT-5.6 Luna", () => {
+    test("primary 和 fast 默认使用 Qwen 3.6 Flash", () => {
         const resolved = resolvePillarSettings([]);
         expect(resolved.values).toMatchObject({
             models: {
@@ -28,13 +28,13 @@ describe("Unified Settings", () => {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
-                    label: "GPT-5.6 Luna",
+                    label: "Qwen 3.6 Flash",
                 },
                 fast: {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
-                    label: "GPT-5.6 Luna",
+                    label: "Qwen 3.6 Flash",
                 },
             },
             permissions: {defaultMode: "default"},
@@ -172,29 +172,6 @@ describe("Unified Settings", () => {
         });
     });
 
-    test("Codex 可同时作为 primary 和 fast 来源", () => {
-        const resolved = resolvePillarSettings([
-            document("project", {
-                models: {
-                    primary: {source: "codex", model: "gpt-5.6-sol"},
-                    fast: {source: "codex", model: "gpt-5.6-luna"},
-                },
-            }),
-        ]);
-        expect(resolved.values.models.primary).toEqual({
-            provider: "codex",
-            source: "codex",
-            model: "gpt-5.6-sol",
-            label: "GPT-5.6 Sol",
-        });
-        expect(resolved.values.models.fast).toEqual({
-            provider: "codex",
-            source: "codex",
-            model: "gpt-5.6-luna",
-            label: "GPT-5.6 Luna",
-        });
-    });
-
     test("source 目录只接受用户级定义，项目只能选择模型", () => {
         const resolved = resolvePillarSettings([
             document("user", {
@@ -228,6 +205,11 @@ describe("Unified Settings", () => {
             baseUrl: "https://relay.example/v1",
         });
         expect(resolved.values.models.primary).toMatchObject({
+            source: "qwen",
+            model: "qwen3.8-flash",
+            label: "Qwen 3.8 Flash",
+        });
+        expect(resolved.values.models.fast).toMatchObject({
             source: "qwen",
             model: "qwen3.8-flash",
             label: "Qwen 3.8 Flash",

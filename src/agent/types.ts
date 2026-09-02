@@ -117,7 +117,7 @@ export type AgentEvent =
         agentName?: string;
         message: string;
     }
-    | {type: "iteration"; current: number; max: number}
+    | {type: "iteration"; current: number; max?: number}
     | {
         type: "token_update";
         tokenCount: number;

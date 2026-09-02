@@ -65,6 +65,12 @@ describe("SDK Host config", () => {
                 model: "host-qwen",
                 label: "Host Qwen",
             });
+            expect(loaded.configuration.settings.models.fast).toEqual({
+                source: "qwen",
+                provider: "qwen",
+                model: "host-qwen",
+                label: "Host Qwen",
+            });
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
                 "default"
             );
@@ -153,11 +159,11 @@ describe("SDK Host config", () => {
             });
 
             expect(loaded.configuration.settings.models.primary.model).toBe(
-                "gpt-5.6-luna"
+                "qwen3.6-flash"
             );
             expect(loaded.configuration.settings.models.fast).toMatchObject({
-                source: "codex",
-                model: "gpt-5.6-luna",
+                source: "qwen",
+                model: "qwen3.6-flash",
             });
             expect(loaded.issues).toEqual([]);
         });

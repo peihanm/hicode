@@ -17,7 +17,6 @@ const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
 // 按模型名推断上下文窗口大小
 function getContextWindowForModel(model: string): number {
     const normalizedModel = model.toLowerCase();
-    if (normalizedModel.startsWith("gpt-5.6")) return 1_050_000;
     if (normalizedModel.includes("glm-5.2")) return 1_000_000;
     if (normalizedModel.includes("glm")) return 128_000;
     if (normalizedModel.startsWith("deepseek-v4-")) return 1_000_000;

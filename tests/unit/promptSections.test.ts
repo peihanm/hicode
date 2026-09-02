@@ -43,16 +43,21 @@ describe("system prompt task constraints", () => {
     expect(content).toContain("可检查、可恢复的文件状态");
   });
 
-  test("开放式代码库问题在第一次搜索前优先委派 Explore", () => {
+  test("Root 默认完成顺序任务，子 Agent 只用于有收益的并行或隔离工作", () => {
     const content = getToolGuidanceSection();
 
-    expect(content).toContain("在第一次开放式 glob/list_files/grep/read_file 前");
-    expect(content).toContain("『这个项目做什么』『深入理解 src』『某功能的完整链路』");
-    expect(content).toContain("3 个以上文件、2 个以上目录或 3 次以上查询");
-    expect(content).toContain("不要先由 Root 遍历多个目录再委派");
-    expect(content).toContain("需要 Explore 结果才能继续回答或实现时使用前台默认模式");
-    expect(content).toContain("委派后不要在 Root 重复同一调查");
-    expect(content.indexOf("在第一次开放式")).toBeLessThan(
+    expect(content).toContain("Root 默认亲自完成调查、实现和验证");
+    expect(content).toContain("跨多个文件或目录");
+    expect(content).toContain("本身都不是委派理由");
+    expect(content).toContain("能与 Root 的其他有效工作并行");
+    expect(content).toContain("若 Root 必须等待结果才能继续");
+    expect(content).toContain("GeneralPurpose 默认不自动使用");
+    expect(content).toContain("它是前台串行 Agent");
+    expect(content).toContain("不要把整个已批准计划转交给它");
+    expect(content).toContain("委派后不要重复同一调查");
+    expect(content).not.toContain("3 个以上文件、2 个以上目录或 3 次以上查询");
+    expect(content).not.toContain("必须先用 agent 启动 Explore");
+    expect(content.indexOf("Root 默认亲自完成")).toBeLessThan(
       content.indexOf("搜索文本字面量用 grep")
     );
   });

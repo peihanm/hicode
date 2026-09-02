@@ -278,6 +278,41 @@ describe("UITurnEventStore", () => {
       .toEqual([]);
   });
 
+  test("长用户 Prompt 在 Plan 工具出现前已经原子进入 Static", () => {
+    const store = new UITurnEventStore();
+    const prompt = "请实现一个完整的五子棋游戏。\n".repeat(100);
+    store.appendUser(prompt);
+
+    const submitted = store.getSnapshot();
+    expect(submitted.threads).toHaveLength(1);
+    expect(submitted.staticThreads).toHaveLength(1);
+    expect(submitted.staticThreads[0]).toMatchObject({
+      role: "user",
+      text: prompt,
+    });
+    expect(selectLiveThreads(submitted.threads, submitted.staticThreads))
+      .toEqual([]);
+
+    store.handleEvent({
+      type: "tool_call_start",
+      turnId: "turn-1",
+      toolCallId: "plan-1",
+      name: "enter_plan_mode",
+      args: "{}",
+    });
+
+    const planning = store.getSnapshot();
+    expect(planning.threads.filter((thread) => thread.role === "user"))
+      .toHaveLength(1);
+    expect(planning.staticThreads.filter((thread) => thread.role === "user"))
+      .toHaveLength(1);
+    expect(selectLiveThreads(planning.threads, planning.staticThreads))
+      .toEqual([expect.objectContaining({
+        role: "tool_call",
+        name: "enter_plan_mode",
+      })]);
+  });
+
   test("快速 Slash 回答与用户命令按原时间顺序一起进入 Static", () => {
     const store = new UITurnEventStore();
     store.appendUser("/agents");

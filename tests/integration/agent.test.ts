@@ -136,7 +136,7 @@ describe("agent loop", () => {
         "处理任务",
         initialHistory(),
         (event) => events.push(event),
-        createTestContext(cwd, {model: "gpt-5.6-luna"}),
+        createTestContext(cwd, {model: "qwen3.6-flash"}),
         {
           callLLM: async () => ({
             message: {role: "assistant", content: "完成"},
@@ -764,6 +764,7 @@ describe("agent loop", () => {
   test("可配置 max iterations，防止无限工具循环", async () => {
     await withTempProject(async (cwd) => {
       let sequence = 0;
+      const events: AgentEvent[] = [];
       const fake = createFakeLLM([
         () => assistantToolCall("loop", {}, `loop-${++sequence}`),
         () => assistantToolCall("loop", {}, `loop-${++sequence}`),
@@ -772,7 +773,7 @@ describe("agent loop", () => {
       const result = await runAgent(
         "不要停止",
         initialHistory(),
-        () => {},
+        (event) => events.push(event),
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
@@ -793,6 +794,38 @@ describe("agent loop", () => {
         },
       });
       expect(fake.calls).toHaveLength(2);
+      expect(events).toContainEqual({
+        type: "assistant_text",
+        content: "(达到最大迭代次数 2，已停止)",
+      });
+    });
+  });
+
+  test("Root 未显式配置时不受默认迭代轮次限制", async () => {
+    await withTempProject(async (cwd) => {
+      const toolIterations = 35;
+      const fake = createFakeLLM([
+        ...Array.from({length: toolIterations}, (_, index) =>
+          () => assistantToolCall("loop", {}, `unbounded-${index + 1}`)
+        ),
+        assistantText("任务完成"),
+      ]);
+
+      const result = await runAgent(
+        "完成一个长任务",
+        initialHistory(),
+        () => {},
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => "continue",
+        }
+      );
+
+      expect(result.reason).toBe("completed");
+      expect(result.reply).toBe("任务完成");
+      expect(result.iterations).toBe(toolIterations + 1);
+      expect(fake.calls).toHaveLength(toolIterations + 1);
     });
   });
 

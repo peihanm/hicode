@@ -309,7 +309,7 @@ Options:
       --eval-root <path>      Run artifacts root (default: ~/.pillar-evals)
       --settings-file <path>  User Settings catalog (default: ~/.pillar/settings.json when present)
       --env-file <path>       Explicit Provider env file; never copied into artifacts
-      --source <source>       glm | qwen | deepseek | codex
+      --source <source>       glm | qwen | deepseek
       --model <model>         Primary and fast model override
       --keep <policy>         all | failed | none (default: all)
       --max-iterations <n>    1..100 override
@@ -546,12 +546,11 @@ function parseSource(value: string | undefined): EvalModelSource | undefined {
     if (
         value === "glm" ||
         value === "qwen" ||
-        value === "deepseek" ||
-        value === "codex"
+        value === "deepseek"
     ) {
         return value;
     }
-    throw new Error("--source 必须是 glm | qwen | deepseek | codex");
+    throw new Error("--source 必须是 glm | qwen | deepseek");
 }
 
 function parseKeepPolicy(value: string | undefined): EvalKeepPolicy {

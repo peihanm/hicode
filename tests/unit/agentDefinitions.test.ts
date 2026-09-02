@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   BUILTIN_SUBAGENT_REGISTRY,
 } from "../../src/subagents/index.js";
+import {createAgentTool} from "../../src/tools/agent/agent.js";
 
 describe("agent definitions", () => {
   test("内置 Agent 各自使用收窄工具集", () => {
@@ -18,9 +19,10 @@ describe("agent definitions", () => {
     expect(explore.allowedTools).not.toContain("agent");
     expect(explore.allowedTools).not.toContain("bash");
     expect(explore.allowedTools).not.toContain("write_file");
-    expect(explore.whenToUse).toContain("主动用于开放式代码库问题");
-    expect(explore.whenToUse).toContain("深入理解 src");
-    expect(explore.whenToUse).toContain("2–3 个文件");
+    expect(explore.whenToUse).toContain("可独立完成");
+    expect(explore.whenToUse).toContain("可并发推进");
+    expect(explore.whenToUse).toContain("Root 必须等待结果才能继续");
+    expect(explore.whenToUse).not.toContain("3 个以上文件");
     expect(explore.model).toBe("fast");
 
     const general = BUILTIN_SUBAGENT_REGISTRY.get("GeneralPurpose")!.definition;
@@ -38,6 +40,10 @@ describe("agent definitions", () => {
     expect(general.allowedTools).not.toContain("bash");
     expect(general.allowedTools).not.toContain("agent");
     expect(general.allowedTools).not.toContain("task");
+    expect(general.whenToUse).toContain("默认不自动使用");
+    expect(general.whenToUse).toContain("用户明确要求委派");
+    expect(general.whenToUse).toContain("前台串行 Agent");
+    expect(general.whenToUse).toContain("不用于承接整个已批准计划");
     expect(general.model).toBe("inherit");
 
     const verification = BUILTIN_SUBAGENT_REGISTRY.get("Verification")!.definition;
@@ -56,5 +62,18 @@ describe("agent definitions", () => {
     expect(BUILTIN_SUBAGENT_REGISTRY.has("Explore")).toBe(true);
     expect(BUILTIN_SUBAGENT_REGISTRY.has("verification")).toBe(true);
     expect(BUILTIN_SUBAGENT_REGISTRY.has("GeneralPurpose")).toBe(true);
+  });
+
+  test("Agent Tool 不按文件数量机械要求委派", () => {
+    const description = createAgentTool(BUILTIN_SUBAGENT_REGISTRY).description;
+
+    expect(description).toContain("Root 默认亲自完成顺序性的调查、实现和验证");
+    expect(description).toContain("本身都不是委派理由");
+    expect(description).toContain("若 Root 必须等待结果才能继续");
+    expect(description).toContain("GeneralPurpose 默认不自动使用");
+    expect(description).toContain("它是前台串行 Agent");
+    expect(description).toContain("不用于承接整个已批准计划");
+    expect(description).not.toContain("3 个以上文件");
+    expect(description).not.toContain("必须优先使用 Explore");
   });
 });

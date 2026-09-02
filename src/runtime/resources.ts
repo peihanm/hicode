@@ -40,10 +40,6 @@ import {
     createChildProcessEnvironment,
     type ChildProcessEnvironment,
 } from "./childEnvironment.js";
-import {
-    createCodexAppServerRuntime,
-    type CodexAppServerRuntimeLike,
-} from "../llm/providers/codex/index.js";
 import type {PillarRootConfiguration} from "./rootConfiguration.js";
 import type {Tool} from "../tools/types.js";
 
@@ -135,8 +131,7 @@ function createResourceCloser(
     lspManager: LspManagerLike | undefined,
     taskRuntime: TaskRuntimeLike,
     memory: MemoryRuntimeLike,
-    sandbox: SandboxRuntimeLike,
-    codex: CodexAppServerRuntimeLike
+    sandbox: SandboxRuntimeLike
 ): RootResourceCloser {
     let closePromise: Promise<void> | undefined;
     let taskClosePromise: Promise<void> | undefined;
@@ -156,7 +151,7 @@ function createResourceCloser(
                     mcpManager?.closeAll(),
                     memory.close(),
                 ]);
-                await Promise.allSettled([sandbox.close(), codex.close()]);
+                await Promise.allSettled([sandbox.close()]);
             })();
             return closePromise;
         },
@@ -214,7 +209,6 @@ export function createRootRuntimeResourcesFactory(
         let taskRuntime: TaskRuntimeLike | undefined;
         let memory: MemoryRuntimeLike | undefined;
         let closeOwnedResources: RootResourceCloser | undefined;
-        let codex: CodexAppServerRuntimeLike | undefined;
         const sandbox = await createSandboxRuntime({
             cwd,
             settings: settings.sandbox,
@@ -227,8 +221,6 @@ export function createRootRuntimeResourcesFactory(
                     (source) => source.apiKeyEnv
                 )
             );
-            const createdCodex = createCodexAppServerRuntime(childEnvironment);
-            codex = createdCodex;
             const shellRunner = createShellRunner(sandbox, childEnvironment);
             const primaryModel = createPrimaryModelRuntime(
                 settings.models.primary,
@@ -239,12 +231,7 @@ export function createRootRuntimeResourcesFactory(
                 cwd,
                 childEnvironment
             );
-            const auxiliaryModelTarget = () => {
-                const target = primaryModel.target;
-                return target.provider === "codex"
-                    ? settings.models.fast
-                    : target;
-            };
+            const auxiliaryModelTarget = () => primaryModel.target;
             const createdMemory = dependencies.createMemoryRuntime({
                 storage,
                 cwd,
@@ -252,7 +239,6 @@ export function createRootRuntimeResourcesFactory(
                 getModelSource: (source) => settings.sources[source],
                 shellRunner,
                 settings: settings.memory,
-                codex: createdCodex,
             });
             memory = createdMemory;
             lspManager = await dependencies.createLspManager(
@@ -284,7 +270,6 @@ export function createRootRuntimeResourcesFactory(
                     source: settings.sources[settings.models.fast.source],
                     cwd,
                     model: settings.models.fast.model,
-                    codex: createdCodex,
                 }),
                 requestTrust: options.requestHookTrust,
             });
@@ -322,7 +307,6 @@ export function createRootRuntimeResourcesFactory(
                 getExistingAgentNames: () => subagents
                     .listDefinitions()
                     .map((definition) => definition.agentType),
-                codex: createdCodex,
             });
             const toolRuntime = dependencies.createToolRuntime({
                 additionalTools: [
@@ -343,7 +327,6 @@ export function createRootRuntimeResourcesFactory(
                 sources: settings.sources,
                 subagents,
                 memory: createdMemory,
-                codex: createdCodex,
             });
             const createdTaskRuntime = dependencies.createTaskRuntime(
                 storage,
@@ -359,8 +342,7 @@ export function createRootRuntimeResourcesFactory(
                 lspManager,
                 createdTaskRuntime,
                 createdMemory,
-                sandbox,
-                createdCodex
+                sandbox
             );
 
             return {
@@ -409,7 +391,6 @@ export function createRootRuntimeResourcesFactory(
                     mcpManager?.closeAll(),
                     memory?.close(),
                     sandbox.close(),
-                    codex?.close(),
                 ]);
             }
             throw error;

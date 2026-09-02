@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {DEFAULT_MAX_ITERATIONS} from "../agent/constants.js";
+import {DEFAULT_SUBAGENT_MAX_ITERATIONS} from "../agent/constants.js";
 import type {AgentRunner} from "../agent/runner.js";
 import {createCompactState} from "../context/state.js";
 import type {ToolResultStore} from "../toolResults/index.js";
@@ -326,7 +326,8 @@ export function createSubagentFactories(
                         }
                         await onChildEvent?.(event);
                     };
-                    const totalBudget = definition.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+                    const totalBudget =
+                        definition.maxIterations ?? DEFAULT_SUBAGENT_MAX_ITERATIONS;
                     const explorationBudget = Math.max(1, totalBudget - 1);
                     const childPrompt = firstRun && request.kind === "fork"
                         ? createForkDirective({

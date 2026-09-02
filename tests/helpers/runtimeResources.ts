@@ -41,7 +41,6 @@ import { createPrimaryModelRuntime } from "../../src/runtime/primaryModel.js";
 import {testChildEnvironment} from "./childEnvironment.js";
 import {createTestStorage} from "./tempProject.js";
 import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
-import type {CodexAppServerRuntimeLike} from "../../src/llm/providers/codex/index.js";
 import {
   CLI_FILE_SOURCES,
   createPillarRootConfiguration,
@@ -49,15 +48,6 @@ import {
   type PillarRootConfiguration,
   type PillarRootContributions,
 } from "../../src/runtime/rootConfiguration.js";
-
-export function createDisabledTestCodexRuntime(): CodexAppServerRuntimeLike {
-  return {
-    async call(): Promise<never> {
-      throw new Error("测试 Runtime 未配置 Codex 响应");
-    },
-    async close(): Promise<void> {},
-  };
-}
 
 export function createTestSettings(
   overrides: Partial<ResolvedPillarSettings> = {}
@@ -167,7 +157,6 @@ export function createTestRuntimeResources(
       sources: settings.sources,
       subagents,
       memory,
-      codex: createDisabledTestCodexRuntime(),
     });
   const taskRuntime = createTaskRuntimeForTest(
     cwd,

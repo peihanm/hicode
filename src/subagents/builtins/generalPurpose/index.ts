@@ -6,7 +6,7 @@ const GENERAL_PURPOSE_AGENT: AgentDefinition = {
     agentType: "GeneralPurpose",
     source: "builtin",
     whenToUse:
-        "用于边界明确、需要跨多个文件完成的普通实现任务。简单修改仍由 Root 直接完成；完成后 Root 负责运行测试和最终验收。",
+        "默认不自动使用。只有用户明确要求委派，或边界清楚的独立实现确实需要 fresh context 隔离时才使用。它是前台串行 Agent，不用于承接整个已批准计划，也不能声称与 Root 并行；普通顺序实现由 Root 直接完成。",
     allowedTools: [
         "list_files",
         "glob",

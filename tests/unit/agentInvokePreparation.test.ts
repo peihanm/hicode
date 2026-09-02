@@ -136,7 +136,7 @@ describe("Agent invoke preparation", () => {
 
       await prepareAgentInvoke({
         history: history(true),
-        ctx: createTestContext(cwd, {model: "gpt-5.6-luna"}),
+        ctx: createTestContext(cwd, {model: "qwen3.6-flash"}),
         contextWindow: 1_050_000,
         onEvent: () => {},
         getToolSchemas: () => [],
