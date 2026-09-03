@@ -159,11 +159,11 @@ describe("SDK Host config", () => {
             });
 
             expect(loaded.configuration.settings.models.primary.model).toBe(
-                "qwen3.6-flash"
+                "qwen3.8-flash"
             );
             expect(loaded.configuration.settings.models.fast).toMatchObject({
                 source: "qwen",
-                model: "qwen3.6-flash",
+                model: "qwen3.8-flash",
             });
             expect(loaded.issues).toEqual([]);
         });

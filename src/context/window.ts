@@ -21,6 +21,7 @@ function getContextWindowForModel(model: string): number {
     if (normalizedModel.includes("glm")) return 128_000;
     if (normalizedModel.startsWith("deepseek-v4-")) return 1_000_000;
     if (
+        normalizedModel.startsWith("qwen3.8-flash") ||
         normalizedModel.startsWith("qwen3.7-plus") ||
         normalizedModel.startsWith("qwen3.7-max") ||
         normalizedModel.startsWith("qwen3.6-plus") ||

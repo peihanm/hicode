@@ -7,6 +7,7 @@ import type { PermissionDecision, PermissionMode } from "../../src/permissions/t
 import type { Tool } from "../../src/tools/types.js";
 import { AppForTest as App } from "../helpers/AppForTest.js";
 import { ConfirmDialog } from "../../src/ui/dialogs/ConfirmDialog.js";
+import { ElevatedBashDialog } from "../../src/ui/dialogs/ElevatedBashDialog.js";
 import { EnterPlanDialog } from "../../src/ui/dialogs/EnterPlanDialog.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
@@ -130,6 +131,55 @@ describe("permission confirmation UI", () => {
     expect(frame).toContain("❯ 1. Yes");
     expect(frame).toContain("↑↓ 选择 · Enter 确认 · Esc 取消");
     expect(frame.split("\n").every((line) => line.startsWith("│"))).toBe(true);
+  });
+
+  test("脱离 Sandbox 的 Bash 使用紧凑预览并可展开完整命令", async () => {
+    const decisions: PermissionDecision[] = [];
+    const onDone = mock(() => {});
+    const command = [
+      "for i in {1..20}; do curl -sf http://127.0.0.1:8173/ && break; done",
+      "for f in / /index.html /css/styles.css; do",
+      "  curl -sf http://127.0.0.1:8173$f",
+      "done",
+    ].join("\n");
+    const instance = render(
+      <ElevatedBashDialog
+        req={{
+          question: `该命令请求脱离 OS Sandbox：\n${command}`,
+          toolName: "bash",
+          input: {command, sandbox_permissions: "require_escalated"},
+          allowAddToAllowList: false,
+          resolve: (decision) => decisions.push(decision),
+        }}
+        onDone={onDone}
+      />
+    );
+
+    await flush();
+    const compact = instance.lastFrame() ?? "";
+    expect(compact).toContain("◆ RUN OUTSIDE SANDBOX");
+    expect(compact).toContain("COMMAND");
+    expect(compact).toContain("+3 more lines · e to expand");
+    expect(compact).toContain("本次命令可直接访问宿主文件、网络及子进程。");
+    expect(compact).toContain("› Run once");
+    expect(compact).not.toContain("for f in / /index.html");
+    expect(compact).not.toContain("Permission request");
+    expect(compact.split("\n").some((line) => line.startsWith("│"))).toBe(false);
+
+    instance.stdin.write("e");
+    await flush();
+    expect(instance.lastFrame()).toContain("for f in / /index.html");
+    expect(instance.lastFrame()).toContain("e 收起");
+
+    instance.stdin.write("\u001B[B");
+    await flush();
+    instance.stdin.write(ENTER);
+    await flush();
+    expect(decisions).toEqual([{
+      behavior: "deny",
+      message: "用户拒绝脱离 Sandbox 执行命令",
+    }]);
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   test("App 将 enter_plan_mode 路由到专用界面", async () => {

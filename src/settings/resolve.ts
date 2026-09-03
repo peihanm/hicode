@@ -11,7 +11,7 @@ import type {
     SettingsOrigins,
 } from "./types.js";
 
-export const DEFAULT_MODEL = "qwen3.6-flash";
+export const DEFAULT_MODEL = "qwen3.8-flash";
 
 const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
     glm: {
@@ -28,6 +28,7 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
         label: "阿里云百炼",
         apiKeyEnv: "DASHSCOPE_API_KEY",
         models: [
+            {id: "qwen3.8-flash", label: "Qwen 3.8 Flash"},
             {id: "qwen3.6-plus", label: "Qwen 3.6 Plus"},
             {id: "qwen3.6-flash", label: "Qwen 3.6 Flash"},
         ],

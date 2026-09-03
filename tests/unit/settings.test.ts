@@ -20,7 +20,7 @@ function document(
 }
 
 describe("Unified Settings", () => {
-    test("primary 和 fast 默认使用 Qwen 3.6 Flash", () => {
+    test("primary 和 fast 默认使用 Qwen 3.8 Flash", () => {
         const resolved = resolvePillarSettings([]);
         expect(resolved.values).toMatchObject({
             models: {
@@ -28,13 +28,13 @@ describe("Unified Settings", () => {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
-                    label: "Qwen 3.6 Flash",
+                    label: "Qwen 3.8 Flash",
                 },
                 fast: {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     provider: DEFAULT_LLM_PROVIDER,
-                    label: "Qwen 3.6 Flash",
+                    label: "Qwen 3.8 Flash",
                 },
             },
             permissions: {defaultMode: "default"},
