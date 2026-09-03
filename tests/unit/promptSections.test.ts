@@ -58,7 +58,7 @@ describe("system prompt task constraints", () => {
     expect(content).not.toContain("3 个以上文件、2 个以上目录或 3 次以上查询");
     expect(content).not.toContain("必须先用 agent 启动 Explore");
     expect(content.indexOf("Root 默认亲自完成")).toBeLessThan(
-      content.indexOf("搜索文本字面量用 grep")
+      content.indexOf("搜索代码位置、符号名")
     );
   });
 

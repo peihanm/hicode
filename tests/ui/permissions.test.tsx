@@ -173,7 +173,7 @@ describe("permission confirmation UI", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  test("脱离 Sandbox 的 Bash 使用紧凑预览并可展开完整命令", async () => {
+  test("脱离 Sandbox 的本地验证显示明确用途并可展开完整命令", async () => {
     const decisions: PermissionDecision[] = [];
     const onDone = mock(() => {});
     const command = [
@@ -198,10 +198,12 @@ describe("permission confirmation UI", () => {
     await flush();
     const compact = instance.lastFrame() ?? "";
     expect(compact).toContain("◆ RUN OUTSIDE SANDBOX");
+    expect(compact).toContain("PURPOSE");
+    expect(compact).toContain("Verify local service");
     expect(compact).toContain("COMMAND");
     expect(compact).toContain("+3 more lines · e to expand");
     expect(compact).toContain("本次命令可直接访问宿主文件、网络及子进程。");
-    expect(compact).toContain("› Run once");
+    expect(compact).toContain("› Verify once");
     expect(compact).not.toContain("for f in / /index.html");
     expect(compact).not.toContain("Permission request");
     expect(compact.split("\n").some((line) => line.startsWith("│"))).toBe(false);
@@ -220,6 +222,27 @@ describe("permission confirmation UI", () => {
       message: "用户拒绝脱离 Sandbox 执行命令",
     }]);
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test("脱离 Sandbox 的服务启动使用独立操作文案", async () => {
+    const instance = render(
+      <ElevatedBashDialog
+        req={{
+          question: "start server",
+          toolName: "bash",
+          input: {
+            command: "node server.cjs 8000",
+            sandbox_permissions: "require_escalated",
+          },
+          resolve: () => {},
+        }}
+        onDone={() => {}}
+      />
+    );
+
+    await flush();
+    expect(instance.lastFrame()).toContain("Start local service");
+    expect(instance.lastFrame()).toContain("› Start once");
   });
 
   test("App 将 enter_plan_mode 路由到专用界面", async () => {

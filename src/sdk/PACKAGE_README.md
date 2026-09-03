@@ -17,7 +17,6 @@ const {configuration} = loadPillarHostConfig({
         skills: [],
         agents: [],
         mcp: [],
-        lsp: [],
     },
 });
 

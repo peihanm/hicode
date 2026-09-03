@@ -146,7 +146,7 @@ export const grepTool: Tool<typeof inputSchema> = {
     description: [
         "强大的文件内容正则搜索工具。当任务是寻找代码位置、字面量、配置值或大文件中的目标时，先用 grep 缩小范围，不要盲目分段读取。",
         "默认 content 模式返回文件、行号和匹配行；支持 files_with_matches/count、glob/type、上下文、分页和 multiline。",
-        "已经明确具体小文件且需要整体理解时，可以直接 read_file；找符号定义/引用/类型优先使用 lsp。",
+        "已经明确具体小文件且需要整体理解时，可以直接 read_file；需要类型语义时运行项目已有的类型检查、编译器或测试。",
     ].join("\n"),
     parameters: inputSchema,
     maxResultSizeChars: 20_000,

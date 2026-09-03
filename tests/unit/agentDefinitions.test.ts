@@ -13,7 +13,6 @@ describe("agent definitions", () => {
       "glob",
       "read_file",
       "grep",
-      "lsp",
       "read_tool_result",
     ]);
     expect(explore.allowedTools).not.toContain("agent");
@@ -31,7 +30,6 @@ describe("agent definitions", () => {
       "glob",
       "read_file",
       "grep",
-      "lsp",
       "edit_file",
       "write_file",
       "delete_file",

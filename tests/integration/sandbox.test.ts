@@ -67,7 +67,7 @@ describe("OS Sandbox integration", () => {
                     },
                     network: {
                         allowedDomains: [],
-                        allowLocalBinding: false,
+                        allowLocalBinding: true,
                     },
                 },
             });
@@ -126,18 +126,40 @@ describe("OS Sandbox integration", () => {
                 expect(protectedPillar.termination).toMatchObject({kind: "exit", code: 1});
                 expect(await exists(pillarPath)).toBe(false);
 
-                const deniedNetwork = await runner.run({
+                const localBinding = await runner.run({
+                    command: `node -e ${JSON.stringify([
+                        "const http = require('node:http')",
+                        "const server = http.createServer((_req, res) => res.end('ok'))",
+                        "server.listen(0, '127.0.0.1', () => server.close(() => console.log('local-binding-ok')))",
+                    ].join(";"))}`,
+                    cwd,
+                    signal,
+                });
+                expect(localBinding.termination)
+                    .toMatchObject({kind: "exit", code: 0});
+                expect(localBinding.stdout.trim()).toBe("local-binding-ok");
+
+                const allowedLocalNetwork = await runner.run({
                     command: `/usr/bin/curl --silent --show-error --max-time 2 http://127.0.0.1:${address.port}`,
                     cwd,
                     signal,
                 });
-                expect(deniedNetwork.termination).toMatchObject({kind: "exit"});
+                expect(allowedLocalNetwork.termination)
+                    .toMatchObject({kind: "exit", code: 0});
+                expect(allowedLocalNetwork.stdout).toBe("reachable");
+                expect(serverHits).toBe(1);
+
+                const deniedRemoteNetwork = await runner.run({
+                    command: "/usr/bin/curl --silent --show-error --max-time 2 https://example.com",
+                    cwd,
+                    signal,
+                });
+                expect(deniedRemoteNetwork.termination).toMatchObject({kind: "exit"});
                 expect(
-                    deniedNetwork.termination.kind === "exit"
-                        ? deniedNetwork.termination.code
+                    deniedRemoteNetwork.termination.kind === "exit"
+                        ? deniedRemoteNetwork.termination.code
                         : 0
                 ).not.toBe(0);
-                expect(serverHits).toBe(0);
 
                 const elevated = await runner.run({
                     command: `/usr/bin/printf elevated > ${JSON.stringify(elevatedPath)}`,

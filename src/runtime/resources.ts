@@ -1,5 +1,3 @@
-import {createLspManager} from "../lsp/manager.js";
-import type {CreateLspManager, LspManagerLike,} from "../lsp/types.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";
@@ -62,7 +60,6 @@ export interface RootRuntimeResources {
     readonly toolRuntime: ToolRuntime;
     readonly hooks: HookRuntime;
     readonly mcpManager?: McpManagerLike;
-    readonly lspManager?: LspManagerLike;
     readonly taskRuntime: TaskRuntimeLike;
     readonly shellRunner: ShellRunnerLike;
     readonly sandbox: SandboxRuntimeLike;
@@ -92,7 +89,6 @@ interface RootRuntimeDependencies {
         options: McpManagerOptions
     ): McpManagerLike | undefined;
 
-    createLspManager: CreateLspManager;
     loadSkills: typeof loadSkills;
     loadProjectInstructions: typeof loadProjectInstructions;
     createToolRuntime: typeof createToolRuntime;
@@ -128,7 +124,6 @@ interface RootResourceCloser {
 
 function createResourceCloser(
     mcpManager: McpManagerLike | undefined,
-    lspManager: LspManagerLike | undefined,
     taskRuntime: TaskRuntimeLike,
     memory: MemoryRuntimeLike,
     sandbox: SandboxRuntimeLike
@@ -147,7 +142,6 @@ function createResourceCloser(
                 beginShutdown();
                 await Promise.allSettled([taskClosePromise]);
                 await Promise.allSettled([
-                    lspManager?.shutdown(),
                     mcpManager?.closeAll(),
                     memory.close(),
                 ]);
@@ -163,7 +157,6 @@ export function createRootRuntimeResourcesFactory(
 ) {
     const dependencies: RootRuntimeDependencies = {
         createMcpManager: overrides.createMcpManager ?? createMcpManager,
-        createLspManager: overrides.createLspManager ?? createLspManager,
         loadSkills: overrides.loadSkills ?? loadSkills,
         loadProjectInstructions:
             overrides.loadProjectInstructions ?? loadProjectInstructions,
@@ -204,7 +197,6 @@ export function createRootRuntimeResourcesFactory(
                 options.configuration.contributions.agents
             ),
         ]);
-        let lspManager: LspManagerLike | undefined;
         let mcpManager: McpManagerLike | undefined;
         let taskRuntime: TaskRuntimeLike | undefined;
         let memory: MemoryRuntimeLike | undefined;
@@ -241,12 +233,6 @@ export function createRootRuntimeResourcesFactory(
                 settings: settings.memory,
             });
             memory = createdMemory;
-            lspManager = await dependencies.createLspManager(
-                storage,
-                cwd,
-                childEnvironment,
-                options.configuration.fileSources.lsp
-            );
             mcpManager = dependencies.createMcpManager({
                 storage,
                 cwd,
@@ -339,7 +325,6 @@ export function createRootRuntimeResourcesFactory(
             taskRuntime = createdTaskRuntime;
             closeOwnedResources = createResourceCloser(
                 mcpManager,
-                lspManager,
                 createdTaskRuntime,
                 createdMemory,
                 sandbox
@@ -368,7 +353,6 @@ export function createRootRuntimeResourcesFactory(
                 toolRuntime,
                 hooks,
                 mcpManager,
-                lspManager,
                 taskRuntime: createdTaskRuntime,
                 shellRunner,
                 sandbox,
@@ -387,7 +371,6 @@ export function createRootRuntimeResourcesFactory(
             } else {
                 await Promise.allSettled([
                     taskRuntime?.close(),
-                    lspManager?.shutdown(),
                     mcpManager?.closeAll(),
                     memory?.close(),
                     sandbox.close(),

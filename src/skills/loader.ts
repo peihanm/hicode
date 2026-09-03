@@ -8,7 +8,7 @@
 // - 不支持条件激活（paths frontmatter）
 // - 不支持单文件 .md，只支持目录格式 `<name>/SKILL.md`
 // - sync 加载（用 readFileSync）：skills 影响 attachment 注入，必须在 runAgent 前完成
-//   跟 LSP 不同——LSP 要 spawn 进程必须 async，skills 只是读几个本地文件
+//   Skills 只读取少量本地文件，启动阶段同步加载可以保持调用链简单。
 // - 优先级：project > user > bundled（project 覆盖 user 同名，bundled 最低）
 
 import {existsSync, readdirSync, readFileSync, statSync} from "node:fs";

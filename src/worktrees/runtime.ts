@@ -185,7 +185,6 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
             fileCheckpoints: createDisabledFileCheckpointRuntime(),
             gitSession: undefined,
             mcpManager: undefined,
-            lspManager: undefined,
             tasks: undefined,
             subagentLauncher: undefined,
         };

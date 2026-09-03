@@ -16,7 +16,6 @@ function sources() {
         skills: [],
         agents: [],
         mcp: [],
-        lsp: [],
     } satisfies PillarFileSources;
 }
 

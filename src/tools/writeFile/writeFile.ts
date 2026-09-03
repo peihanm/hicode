@@ -2,7 +2,6 @@ import {z} from "zod";
 import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
 import {dirname} from "node:path";
 import type {Tool} from "../types.js";
-import {getPostWriteDiagnostics} from "../shared/lspDiagnostics.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {createFileChange} from "../../fileChanges/index.js";
 import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
@@ -152,10 +151,8 @@ export const writeFileTool: Tool<
             observedContent: content,
             modelKnowsWholeFile: true,
         });
-        const diagnostics = await getPostWriteDiagnostics(absPath, content, ctx);
-
         const result =
-            `已写入 ${path}（${content.length} 字符）${diagnostics}` +
+            `已写入 ${path}（${content.length} 字符）` +
             formatCheckpointWarnings(checkpointWarnings);
         return {
             content: result,

@@ -14,7 +14,6 @@ import {
 } from "../helpers/fakeLLM.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createFakeLspManager } from "../helpers/fakeLsp.js";
 import type { TaskSessionLike } from "../../src/tasks/index.js";
 import type { McpManagerLike } from "../../src/mcp/types.js";
 import type { Tool } from "../../src/tools/types.js";
@@ -31,7 +30,6 @@ describe("synchronous subagent", () => {
           expect(options.model).toBe("glm-test");
           const names = options.tools.map((tool) => tool.function.name);
           expect(names).toContain("write_file");
-          expect(names).toContain("lsp");
           expect(names).not.toContain("bash");
           expect(names).not.toContain("agent");
           expect(names).not.toContain("task");
@@ -439,50 +437,6 @@ describe("synchronous subagent", () => {
     });
   });
 
-  test("Explore 显式继承父 Runtime 的 LSP capability 且不关闭它", async () => {
-    await withTempProject(async (cwd) => {
-      const lsp = createFakeLspManager(cwd, "parent-lsp");
-      const child = createFakeLLM([
-        assistantToolCall(
-          "lsp",
-          {
-            operation: "workspaceSymbol",
-            filePath: "src/index.ts",
-            query: "parent",
-          },
-          "child-lsp"
-        ),
-        (call) => {
-          const result = call.messages.find(
-            (message) =>
-              message.role === "tool" && message.tool_call_id === "child-lsp"
-          );
-          expect(result?.content).toContain("parent-lsp");
-          return assistantText("LSP 调查完成");
-        },
-      ]);
-      const ctx = createTestContext(cwd, { lspManager: lsp.manager });
-      const runner = createSubagentRunner({
-        parentContext: ctx,
-        onEvent: () => {},
-        agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
-      });
-
-      const result = await runner({
-        kind: "registered",
-        agentType: "Explore",
-        description: "LSP capability",
-        prompt: "使用 LSP 调查符号",
-        parentToolCallId: "parent-call",
-      });
-
-      expect(result.reply).toBe("LSP 调查完成");
-      expect(lsp.state.requests).toEqual(["workspace/symbol"]);
-      expect(lsp.state.shutdownCount).toBe(0);
-    });
-  });
-
   test("父 Agent 通过普通 tool result 获得 Explore 报告且 history 隔离", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/target.ts`, "export const target = 42;\n");
@@ -507,7 +461,6 @@ describe("synchronous subagent", () => {
             "read_file",
             "grep",
             "glob",
-            "lsp",
             "read_tool_result",
           ]);
           expect(

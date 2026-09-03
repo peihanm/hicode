@@ -61,7 +61,6 @@ async function main(): Promise<void> {
             skills: ["project"],
             agents: ["project"],
             mcp: [],
-            lsp: [],
         },
         ...(options.model || options.source
             ? {

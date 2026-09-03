@@ -27,7 +27,6 @@ const fileSources: PillarFileSources = {
     skills: [],
     agents: [],
     mcp: [],
-    lsp: [],
 };
 
 const loaded = loadPillarHostConfig({

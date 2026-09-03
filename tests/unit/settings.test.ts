@@ -53,7 +53,7 @@ describe("Unified Settings", () => {
             },
             network: {
                 allowedDomains: [],
-                allowLocalBinding: false,
+                allowLocalBinding: true,
             },
         });
     });

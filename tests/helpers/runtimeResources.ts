@@ -8,7 +8,6 @@ import {
   createRootRuntimeResourcesFactory,
   type CreateRootRuntimeResourcesOptions,
 } from "../../src/runtime/resources.js";
-import type { CreateLspManager } from "../../src/lsp/types.js";
 import type { McpManagerLike } from "../../src/mcp/types.js";
 import type { LoadedSkill } from "../../src/skills/types.js";
 import type { ProjectInstructions } from "../../src/prompt/instructions.js";
@@ -92,7 +91,7 @@ export function createTestSettings(
         denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
         denyWrite: [".pillar", ".env"],
       },
-      network: { allowedDomains: [], allowLocalBinding: false },
+      network: { allowedDomains: [], allowLocalBinding: true },
     },
     ...overrides,
   };
@@ -264,7 +263,6 @@ function createDisabledTestHookRuntime(): HookRuntime {
 
 interface RootRuntimeTestDependencies {
   mcpManager?: McpManagerLike | false;
-  createLspManager?: CreateLspManager;
   loadSkills?: (cwd: string) => LoadedSkill[];
   loadProjectInstructions?: (cwd: string) => Promise<ProjectInstructions>;
   createToolRuntime?: () => ToolRuntime;
@@ -293,9 +291,6 @@ export function createRootRuntimeResourcesForTest(
           createMcpManager: () =>
             test.mcpManager === false ? undefined : test.mcpManager,
         }),
-    ...(test.createLspManager
-      ? { createLspManager: test.createLspManager }
-      : {}),
     ...(test.loadSkills
       ? {loadSkills: ({cwd}: {cwd: string}) => test.loadSkills!(cwd)}
       : {}),

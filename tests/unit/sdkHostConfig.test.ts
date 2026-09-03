@@ -14,7 +14,6 @@ const FILE_SOURCES = {
     skills: ["project"],
     agents: ["project"],
     mcp: [],
-    lsp: [],
 } as const;
 
 describe("SDK Host config", () => {

@@ -10,7 +10,7 @@ Pillar 是一个运行在终端中的 Code Agent，使用 Bun、TypeScript、Rea
 - 权限模式、操作审批与 OS Sandbox
 - Session 恢复、Checkpoint 和代码回退
 - 子 Agent、后台任务和 Git Worktree 隔离
-- MCP、LSP、Skills、Hooks 和持久 Memory
+- MCP、Skills、Hooks 和持久 Memory
 - GLM、Qwen 与 DeepSeek Provider
 
 ## 环境要求
@@ -46,7 +46,7 @@ pillar -p "解释这个项目的结构"
 ## 配置与本地数据
 
 Pillar 优先读取当前目录的 `.env`，找不到时读取 `~/.pillar/.env`。
-项目 `.pillar/` 只保存可声明的 Settings、MCP、LSP、Skills、Agent 和 Hook 配置；Session、Checkpoint、
+项目 `.pillar/` 只保存可声明的 Settings、MCP、Skills、Agent 和 Hook 配置；Session、Checkpoint、
 Tool Result、后台任务日志和 Prompt Log 等运行数据统一保存在 `~/.pillar/projects/<project-key>/`。
 
 支持的凭证变量：

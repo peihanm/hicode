@@ -4,12 +4,11 @@ import type {HeadlessRunSummary} from "../../src/headless/types.js";
 import { assistantText, assistantToolCall, createFakeLLM } from "../helpers/fakeLLM.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { join } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import {
   abortableDelay,
   createTurnAbortController,
 } from "../../src/runtime/abort.js";
-import { createFakeLspManager } from "../helpers/fakeLsp.js";
 import {
   createTestRuntimeResources,
   createTestSettings,
@@ -90,79 +89,15 @@ describe("headless integration", () => {
   test("输出写入失败仍关闭本轮 Root resources", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([assistantText("完成")]);
-      const lsp = createFakeLspManager(cwd, "output-failure-lsp");
-
       await expect(
         runHeadless(options(cwd), {
           mcpManager: false,
-          createLspManager: () => lsp.manager,
           agent: { callLLM: fake.callLLM },
           writeOutput: async () => {
             throw new Error("stdout failed");
           },
         })
       ).rejects.toThrow("stdout failed");
-      expect(lsp.state.shutdownCount).toBe(1);
-    });
-  });
-
-  test("并行 run 各自使用并关闭 factory 创建的 LSP manager", async () => {
-    await withTempProject(async (root) => {
-      const cwdA = join(root, "runtime-a");
-      const cwdB = join(root, "runtime-b");
-      await Promise.all([mkdir(cwdA), mkdir(cwdB)]);
-      const lspA = createFakeLspManager(cwdA, "runtime-a");
-      const lspB = createFakeLspManager(cwdB, "runtime-b");
-      const createRunFake = (label: string) => createFakeLLM([
-        assistantToolCall(
-          "lsp",
-          {
-            operation: "workspaceSymbol",
-            filePath: "src/index.ts",
-            query: "runtime",
-          },
-          `${label}-lsp`
-        ),
-        (call) => {
-          const result = call.messages.find(
-            (message) =>
-              message.role === "tool" &&
-              message.tool_call_id === `${label}-lsp`
-          );
-          expect(result?.content).toContain(label);
-          return assistantText(`${label} complete`);
-        },
-      ]);
-      const fakeA = createRunFake("runtime-a");
-      const fakeB = createRunFake("runtime-b");
-
-      const [summaryA, summaryB] = await Promise.all([
-        runHeadless(options(cwdA), {
-          mcpManager: false,
-          createLspManager: (_storage, cwd) => {
-            expect(cwd).toBe(cwdA);
-            return lspA.manager;
-          },
-          agent: { callLLM: fakeA.callLLM },
-          writeOutput: ignoreOutput,
-        }),
-        runHeadless(options(cwdB), {
-          mcpManager: false,
-          createLspManager: (_storage, cwd) => {
-            expect(cwd).toBe(cwdB);
-            return lspB.manager;
-          },
-          agent: { callLLM: fakeB.callLLM },
-          writeOutput: ignoreOutput,
-        }),
-      ]);
-
-      expect(summaryA.reply).toBe("runtime-a complete");
-      expect(summaryB.reply).toBe("runtime-b complete");
-      expect(lspA.state.requests).toEqual(["workspace/symbol"]);
-      expect(lspB.state.requests).toEqual(["workspace/symbol"]);
-      expect(lspA.state.shutdownCount).toBe(1);
-      expect(lspB.state.shutdownCount).toBe(1);
     });
   });
 

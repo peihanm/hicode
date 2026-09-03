@@ -10,7 +10,6 @@ import {deleteFileTool} from "./deleteFile/deleteFile.js";
 import {globTool} from "./glob/glob.js";
 import {grepTool} from "./grep/grep.js";
 import {listFilesTool} from "./listFiles/listFiles.js";
-import {lspTool} from "./lsp/lsp.js";
 import {enterPlanModeTool} from "./plan/enterPlanMode.js";
 import {exitPlanModeTool} from "./plan/exitPlanMode.js";
 import {readFileTool} from "./readFile/readFile.js";
@@ -57,7 +56,6 @@ function createBuiltinTools(): Tool[] {
         todoWriteTool,
         enterPlanModeTool,
         exitPlanModeTool,
-        lspTool,
         skillTool,
         readToolResultTool,
         createAgentTool(BUILTIN_SUBAGENT_REGISTRY),

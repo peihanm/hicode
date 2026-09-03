@@ -115,7 +115,6 @@ try {
             skills: [],
             agents: [],
             mcp: [],
-            lsp: [],
         },
         settingsOverrides: {
             sources: {

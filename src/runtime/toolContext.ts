@@ -1,5 +1,4 @@
 import type {CompactState} from "../context/index.js";
-import type {LspManagerLike} from "../lsp/types.js";
 import type {McpManagerLike} from "../mcp/types.js";
 import type {PermissionMode, PermissionPromptPolicy, PermissionRules,} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
@@ -29,7 +28,6 @@ export interface ToolContextResources {
     skills: LoadedSkill[];
     instructions?: ProjectInstructions;
     mcpManager?: McpManagerLike;
-    lspManager?: LspManagerLike;
     taskRuntime?: TaskRuntimeLike;
     tasks?: TaskSessionLike;
     shellRunner: ShellRunnerLike;
@@ -111,7 +109,6 @@ export function createToolContext({
         memoryFiles: resources.memoryFiles,
         fileCheckpoints: session.fileCheckpoints,
         mcpManager: resources.mcpManager,
-        lspManager: resources.lspManager,
         tasks: resources.tasks ?? resources.taskRuntime?.forSession({
             sessionId: session.sessionId,
             toolResultStore: session.toolResultStore,

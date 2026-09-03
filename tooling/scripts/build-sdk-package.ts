@@ -107,10 +107,6 @@ async function main(): Promise<void> {
         {recursive: true}
     );
     await cp(
-        resolve(repositoryRoot, "src", "lsp", "userInfoPatch.cjs"),
-        resolve(sdkDirectory, "userInfoPatch.cjs")
-    );
-    await cp(
         resolve(repositoryRoot, "src", "sdk", "PACKAGE_README.md"),
         resolve(packageDirectory, "README.md")
     );

@@ -10,7 +10,6 @@ export const EXPLORE_AGENT: AgentDefinition = {
         "glob",
         "read_file",
         "grep",
-        "lsp",
         "read_tool_result",
     ],
     model: "fast",
@@ -25,10 +24,10 @@ export const EXPLORE_AGENT: AgentDefinition = {
 
 ## 工作方式
 
-- 按文件名或路径找文件时用 glob，浏览单层目录时用 list_files；再用 grep 缩小内容范围，并用 read_file / lsp 阅读关键实现。
+- 按文件名或路径找文件时用 glob，浏览单层目录时用 list_files；再用 grep 缩小内容范围，并用 read_file 阅读关键实现。
 - 如果任务已经给出目标目录，不要从其父目录逐层 list；直接在目标范围内搜索。
 - 互不依赖的搜索或读取尽量在同一次回复中并行调用，避免一轮只做一个机械操作。
-- 搜索符号定义、引用和类型关系时优先使用 lsp；文本、配置和字面量使用 grep。
+- 搜索符号定义、引用、类型名、文本和配置时使用 grep，并结合真实调用方与项目类型检查判断语义。
 - 根据任务要求控制调查深度，不做无关扩展。
 - 证据足够后立即停止调用工具并输出报告；不要为了耗尽运行时预算继续搜索。
 - 无论调查是否完全，都必须在结束前基于已有证据给出最终报告，并明确尚未确认的部分。

@@ -221,13 +221,6 @@ export function describeToolPhase(
                 success: `Found paths for ${quotedTarget(target)}`,
             };
         }
-        case "lsp":
-            return {
-                kind: "inspect",
-                label: "Inspecting project",
-                activity: "Querying code intelligence",
-                success: "Code intelligence queried",
-            };
         case "bash":
             return describeBashPhase(args);
         default:
@@ -317,14 +310,6 @@ export function describeToolCall(
         case "list_files": {
             const target = stringArg(args, "dir") ?? ".";
             return {label: "List", detail: target};
-        }
-        case "lsp": {
-            const operation = stringArg(args, "operation") ?? "query";
-            const target = stringArg(args, "filePath") ?? stringArg(args, "query");
-            return {
-                label: "LSP",
-                detail: [operation, target].filter(Boolean).join(" "),
-            };
         }
         case "tool_search":
             return {

@@ -187,7 +187,7 @@ export function resolvePillarSettings(
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
     let sandboxDenyWrite = [".pillar", ".env"];
     let sandboxAllowedDomains: string[] = [];
-    let sandboxAllowLocalBinding = false;
+    let sandboxAllowLocalBinding = true;
     const origins: SettingsOrigins = {
         primaryModel: "default",
         primarySource: "default",

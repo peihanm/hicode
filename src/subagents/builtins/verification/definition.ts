@@ -10,7 +10,6 @@ export const VERIFICATION_AGENT: AgentDefinition = {
         "glob",
         "read_file",
         "grep",
-        "lsp",
         "bash",
         "bash_task",
         "read_tool_result",

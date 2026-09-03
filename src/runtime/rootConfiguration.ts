@@ -1,6 +1,5 @@
 import {isAbsolute, relative, resolve, sep} from "node:path";
 import type {McpConfigSource} from "../mcp/types.js";
-import type {LspConfigSource} from "../lsp/config.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import {normalizePillarStorageLayout} from "../persistence/layout.js";
 import type {InstructionFileSource} from "../prompt/instructions.js";
@@ -26,7 +25,6 @@ export interface PillarFileSources {
     readonly skills: readonly SkillFileSource[];
     readonly agents: readonly AgentFileSource[];
     readonly mcp: readonly McpConfigSource[];
-    readonly lsp: readonly LspConfigSource[];
 }
 
 const rootConfigurationBrand: unique symbol = Symbol("PillarRootConfiguration");
@@ -56,7 +54,6 @@ export const CLI_FILE_SOURCES: PillarFileSources = freezeFileSources({
     skills: ["user", "project"],
     agents: ["user", "project"],
     mcp: ["user", "project"],
-    lsp: ["user"],
 });
 
 export function createPillarRootConfiguration(
@@ -126,7 +123,6 @@ export function normalizePillarFileSources(
             ["user", "project"],
             "mcp"
         ),
-        lsp: normalizeSources(sources.lsp, ["user"], "lsp"),
     });
 }
 
@@ -159,7 +155,6 @@ function freezeFileSources(sources: PillarFileSources): PillarFileSources {
         skills: Object.freeze([...sources.skills]),
         agents: Object.freeze([...sources.agents]),
         mcp: Object.freeze([...sources.mcp]),
-        lsp: Object.freeze([...sources.lsp]),
     };
     return Object.freeze(frozen);
 }

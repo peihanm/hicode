@@ -15,6 +15,24 @@ interface ElevatedBashInput {
     cwd?: string;
 }
 
+function describeElevatedAction(command: string): {
+    purpose: string;
+    action: string;
+} {
+    const normalized = command.toLowerCase();
+    const targetsLoopback = /(?:localhost|127\.0\.0\.1|\[::1\])/.test(normalized);
+    if (targetsLoopback && /\b(?:curl|wget)\b/.test(normalized)) {
+        return {purpose: "Verify local service", action: "Verify once"};
+    }
+    if (
+        /(?:http\.server|\bnode\s+[^\n;&|]*(?:server|serve)[^\n;&|]*|\b(?:vite|next)\b.*\b(?:dev|preview)\b|\bnpm\s+(?:run\s+)?(?:start|dev|preview)\b|\bbun\s+(?:run\s+)?(?:start|dev|preview)\b)/
+            .test(normalized)
+    ) {
+        return {purpose: "Start local service", action: "Start once"};
+    }
+    return {purpose: "Run command on host", action: "Run once"};
+}
+
 function readElevatedBashInput(req: ConfirmReq): ElevatedBashInput | undefined {
     if (req.toolName !== "bash" || !req.input || typeof req.input !== "object") {
         return undefined;
@@ -89,6 +107,7 @@ export function ElevatedBashDialog({
     if (!input) return null;
 
     const commandLines = input.command.split("\n");
+    const elevatedAction = describeElevatedAction(input.command);
     const commandPreview = truncateToWidth(`$ ${commandLines[0] ?? ""}`, contentWidth);
     const previewTruncated = commandLines.length > 1 ||
         stringWidth(`$ ${commandLines[0] ?? ""}`) > contentWidth;
@@ -96,6 +115,10 @@ export function ElevatedBashDialog({
     return (
         <Box flexDirection="column" paddingLeft={2}>
             <Text color={COLORS.warning} bold>◆ RUN OUTSIDE SANDBOX</Text>
+            <Box marginTop={1} flexDirection="column" width={contentWidth}>
+                <Text color={COLORS.dim} bold>PURPOSE</Text>
+                <Text>{elevatedAction.purpose}</Text>
+            </Box>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>COMMAND</Text>
                 {expanded ? (
@@ -129,7 +152,10 @@ export function ElevatedBashDialog({
                             color={focused ? "white" : undefined}
                             bold={focused}
                         >
-                            {fitRow(`${focused ? "›" : " "} ${option.label}`, contentWidth)}
+                            {fitRow(
+                                `${focused ? "›" : " "} ${option.allow ? elevatedAction.action : option.label}`,
+                                contentWidth
+                            )}
                         </Text>
                     );
                 })}

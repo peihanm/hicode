@@ -47,7 +47,6 @@ const READONLY_FORK_TOOLS = [
     "glob",
     "read_file",
     "grep",
-    "lsp",
     "read_tool_result",
 ] as const;
 
@@ -90,9 +89,6 @@ function createForkRegistration(
                         parentContext.workspaceBoundary ?? parentContext.cwd,
                     skills: [],
                     instructions: parentContext.instructions,
-                    lspManager: request.isolation === "worktree"
-                        ? undefined
-                        : parentContext.lspManager,
                     gitSession: parentContext.gitSession,
                     shellRunner: parentContext.shellRunner,
                 },

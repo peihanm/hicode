@@ -7,7 +7,6 @@ import type {CompactState} from "../context/index.js";
 import type {ToolOutput, ToolResultStore} from "../toolResults/index.js";
 import type {SubagentLauncher} from "../subagents/launcher.js";
 import type {McpManagerLike} from "../mcp/types.js";
-import type {LspManagerLike} from "../lsp/types.js";
 import type {TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "./bash/shellRunner.js";
 import type {FileStateTracker} from "./shared/fileState.js";
@@ -125,10 +124,6 @@ export interface ToolContext {
     // Root runtime 的 MCP 状态；供 /mcp 和子 Agent 能力收窄读取。
     // Verification 只从中筛选明确标注为只读的工具，不传入 manager 本身。
     mcpManager?: McpManagerLike;
-
-    // Root runtime 拥有的 LSP capability。工具只能消费，不能管理其生命周期。
-    // Explore 显式继承同一实例；无配置或初始化失败时省略。
-    lspManager?: LspManagerLike;
 
     // 当前 Session 的任务视图；任务状态归 Root Runtime 管理，子 Agent 默认不继承。
     tasks?: TaskSessionLike;

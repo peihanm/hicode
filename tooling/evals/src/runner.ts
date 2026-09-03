@@ -83,7 +83,6 @@ export async function runEvalCase(
                 skills: ["project"],
                 agents: ["project"],
                 mcp: [],
-                lsp: [],
             },
             settingsOverrides: {
                 models: {

@@ -1,7 +1,6 @@
 import {z} from "zod";
 import {readFile, writeFile} from "node:fs/promises";
 import type {Tool, ToolContext} from "../types.js";
-import {getPostWriteDiagnostics} from "../shared/lspDiagnostics.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {countOccurrences, findActualString} from "./strMatch.js";
 import {formatDiff} from "./utils.js";
@@ -232,10 +231,8 @@ export const editFileTool: Tool<
             content: newContent,
             observedContent: normalizedNewString,
         });
-        const diagnostics = await getPostWriteDiagnostics(absPath, newContent, ctx);
-
         const result =
-            `已修改 ${path}（替换 ${count} 处）${diagnostics}` +
+            `已修改 ${path}（替换 ${count} 处）` +
             formatCheckpointWarnings(checkpointWarnings);
         return {
             content: result,

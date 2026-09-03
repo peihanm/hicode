@@ -44,7 +44,6 @@ export function createVerificationRuntimeConfig(
                 parentContext.workspaceBoundary ?? parentContext.cwd,
             skills: [],
             instructions: parentContext.instructions,
-            lspManager: parentContext.lspManager,
             shellRunner: parentContext.shellRunner,
             ...(parentContext.tasks
                 ? {tasks: parentContext.tasks}

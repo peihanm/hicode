@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { McpManagerLike } from "../../src/mcp/types.js";
 import type { Tool } from "../../src/tools/types.js";
-import { createFakeLspManager } from "../helpers/fakeLsp.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import type { TaskRuntimeLike } from "../../src/tasks/index.js";
 import { EMPTY_PROJECT_INSTRUCTIONS } from "../../src/prompt/instructions.js";
@@ -82,7 +81,6 @@ describe("RootRuntimeResources", () => {
             skills: [],
             agents: [],
             mcp: [],
-            lsp: [],
           },
           rootContributions: {
             instructions: [{id: "policy", content: "host instruction"}],
@@ -228,7 +226,7 @@ describe("RootRuntimeResources", () => {
     });
   });
 
-  test("统一加载 Skills、PILLAR.md、MCP tools 和 LSP，并发 close 保持幂等", async () => {
+  test("统一加载 Skills、PILLAR.md 和 MCP tools，并发 close 保持幂等", async () => {
     await withTempProject(async (cwd) => {
       const dynamicTool: Tool<any> = {
         name: "mcp__fixture__runtime",
@@ -237,7 +235,6 @@ describe("RootRuntimeResources", () => {
         execute: async () => "ok",
       };
       const mcp = createFakeMcpManager([dynamicTool]);
-      const lsp = createFakeLspManager(cwd, "runtime-lsp");
       const background = createFakeTaskRuntime();
       let skillLoads = 0;
       let instructionLoads = 0;
@@ -246,7 +243,6 @@ describe("RootRuntimeResources", () => {
         settings: createTestSettings(),
       }, {
         mcpManager: mcp.manager,
-        createLspManager: () => lsp.manager,
         loadSkills: () => {
           skillLoads += 1;
           return [];
@@ -282,7 +278,6 @@ describe("RootRuntimeResources", () => {
       expect(resources.cwd).toBe(cwd);
       expect(resources.model).toBe("glm-test");
       expect(resources.mcpManager).toBe(mcp.manager);
-      expect(resources.lspManager).toBe(lsp.manager);
       expect(resources.toolRuntime.toolNames).toContain("mcp__fixture__runtime");
       expect(resources.subagents.has("mcp-reader")).toBe(true);
       expect(mcp.state.initializeCount).toBe(1);
@@ -297,7 +292,6 @@ describe("RootRuntimeResources", () => {
       expect(firstClose).toBe(secondClose);
       await Promise.all([firstClose, secondClose, resources.close()]);
       expect(mcp.state.closeCount).toBe(1);
-      expect(lsp.state.shutdownCount).toBe(1);
       expect(background.state.closeCount).toBe(1);
     });
   });
@@ -309,7 +303,6 @@ describe("RootRuntimeResources", () => {
         initializeError: original,
         closeError: new Error("close also failed"),
       });
-      const lsp = createFakeLspManager(cwd, "rollback-lsp");
 
       await expect(
         createRootRuntimeResources({
@@ -317,20 +310,17 @@ describe("RootRuntimeResources", () => {
           settings: createTestSettings(),
         }, {
           mcpManager: mcp.manager,
-          createLspManager: () => lsp.manager,
           loadSkills: () => [],
           loadProjectInstructions: loadNoInstructions,
         })
       ).rejects.toBe(original);
       expect(mcp.state.closeCount).toBe(1);
-      expect(lsp.state.shutdownCount).toBe(1);
     });
   });
 
   test("ToolRuntime 构造失败同样回滚，禁用 MCP 时仍返回 builtin runtime", async () => {
     await withTempProject(async (cwd) => {
       const mcp = createFakeMcpManager();
-      const lsp = createFakeLspManager(cwd, "tool-runtime-failure");
       const original = new Error("tool runtime failed");
 
       await expect(
@@ -339,7 +329,6 @@ describe("RootRuntimeResources", () => {
           settings: createTestSettings(),
         }, {
           mcpManager: mcp.manager,
-          createLspManager: () => lsp.manager,
           loadSkills: () => [],
           loadProjectInstructions: loadNoInstructions,
           createToolRuntime: () => {
@@ -348,14 +337,12 @@ describe("RootRuntimeResources", () => {
         })
       ).rejects.toBe(original);
       expect(mcp.state.closeCount).toBe(1);
-      expect(lsp.state.shutdownCount).toBe(1);
 
       const disabled = await createRootRuntimeResources({
         cwd,
         settings: createTestSettings(),
       }, {
         mcpManager: false,
-        createLspManager: () => undefined,
         loadSkills: () => [],
         loadProjectInstructions: loadNoInstructions,
       });

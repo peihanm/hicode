@@ -9,7 +9,6 @@ import type {
   HeadlessOutputFormat,
   HeadlessRunSummary,
 } from "../../src/headless/types.js";
-import type { CreateLspManager } from "../../src/lsp/types.js";
 import type { McpManagerLike } from "../../src/mcp/index.js";
 import { createRootRuntimeResources } from "../../src/runtime/resources.js";
 import { saveSessionSnapshot } from "../../src/session/index.js";
@@ -45,7 +44,6 @@ interface HeadlessTestOptions {
   writeDiagnostic?: (line: string) => void | Promise<void>;
   toolResultStoreOptions?: TestToolResultStoreOptions;
   mcpManager?: McpManagerLike | false;
-  createLspManager?: CreateLspManager;
   createResources?: typeof createRootRuntimeResources;
   runAgent?: AgentRunner;
   saveSession?: typeof saveSessionSnapshot;
@@ -111,7 +109,6 @@ export function runHeadlessForTest(
               : {}),
           }, {
             mcpManager: test.mcpManager,
-            createLspManager: test.createLspManager,
             agentRuntime,
           });
       return {...resources, agentRuntime};

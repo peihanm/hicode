@@ -76,7 +76,6 @@ describe("fork subagent", () => {
                         "read_file",
                         "grep",
                         "glob",
-                        "lsp",
                         "read_tool_result",
                     ]);
                     return assistantText("frontend 已理解父上下文");

@@ -17,7 +17,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(19);
+    expect(schemas).toHaveLength(18);
     expect(new Set(names).size).toBe(names.length);
     for (const tool of schemas) {
       expect(tool.type).toBe("function");

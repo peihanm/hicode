@@ -53,7 +53,6 @@ export function createCustomSubagentRegistration(
                         parentContext.workspaceBoundary ?? parentContext.cwd,
                     skills: [],
                     instructions: parentContext.instructions,
-                    lspManager: parentContext.lspManager,
                     gitSession: parentContext.gitSession,
                     shellRunner: parentContext.shellRunner,
                 },

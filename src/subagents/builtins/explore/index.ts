@@ -15,7 +15,6 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
                 workspaceBoundary:
                     parentContext.workspaceBoundary ?? parentContext.cwd,
                 skills: [],
-                lspManager: parentContext.lspManager,
                 shellRunner: parentContext.shellRunner,
             },
             permissionRules: {

@@ -6,7 +6,6 @@ import type { ToolContext } from "../../src/tools/types.js";
 import type { MemoryFileAccess } from "../../src/memory/index.js";
 import { createTestToolResultStore } from "./toolResultStore.js";
 import type { ToolResultStore } from "../../src/toolResults/index.js";
-import type { LspManagerLike } from "../../src/lsp/types.js";
 import { createToolContext } from "../../src/runtime/toolContext.js";
 import type { TaskSessionLike } from "../../src/tasks/index.js";
 import type { McpManagerLike } from "../../src/mcp/types.js";
@@ -42,7 +41,6 @@ export function createTestContext(
     signal?: AbortSignal;
     sessionId?: string;
     toolResultStore?: ToolResultStore;
-    lspManager?: LspManagerLike;
     tasks?: TaskSessionLike;
     mcpManager?: McpManagerLike;
     fileState?: FileStateTracker;
@@ -82,7 +80,6 @@ export function createTestContext(
       fastProvider: options.fastProvider ?? "glm",
       skills: [],
       instructions: options.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
-      lspManager: options.lspManager,
       tasks: options.tasks,
       mcpManager: options.mcpManager,
       fileState: options.fileState ?? createFileStateTracker(),
