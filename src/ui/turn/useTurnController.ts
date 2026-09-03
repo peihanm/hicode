@@ -285,7 +285,7 @@ export function useTurnController({
                 toolName: string,
                 message: string,
                 input: unknown,
-                options?: {allowPersistent?: boolean}
+                options?: Parameters<UIPermissionRequests["request"]>[3]
             ): Promise<PermissionDecision> =>
                 permissionRequests.request(toolName, message, input, options),
             [permissionRequests]

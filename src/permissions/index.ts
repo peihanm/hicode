@@ -6,6 +6,7 @@ export type {
     PermissionDecision,
     PermissionMode,
     PermissionPromptPolicy,
+    PermissionPromptPresentation,
     PermissionRules,
 } from "./types.js";
 

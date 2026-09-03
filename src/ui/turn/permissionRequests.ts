@@ -1,4 +1,7 @@
-import type {PermissionDecision} from "../../permissions/index.js";
+import type {
+    PermissionDecision,
+    PermissionPromptPresentation,
+} from "../../permissions/index.js";
 import type {ConfirmReq} from "./types.js";
 
 type Listener = () => void;
@@ -11,7 +14,10 @@ export class UIPermissionRequests {
         toolName: string,
         question: string,
         input: unknown,
-        options?: {allowPersistent?: boolean}
+        options?: {
+            allowPersistent?: boolean;
+            presentation?: PermissionPromptPresentation;
+        }
     ): Promise<PermissionDecision> {
         if (this.current) {
             return Promise.reject(new Error("已有权限请求正在等待处理"));
@@ -34,6 +40,7 @@ export class UIPermissionRequests {
                         "sandbox_permissions" in input &&
                         input.sandbox_permissions === "require_escalated"
                     ),
+                presentation: options?.presentation,
                 resolve: (decision) => {
                     if (settled) return;
                     settled = true;

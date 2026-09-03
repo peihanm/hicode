@@ -5,7 +5,7 @@ import type {PermissionDecision} from "../../permissions/index.js";
 import {generateRuleForTool} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
-import {DialogFrame, DialogIndicator, DialogItem} from "./DialogFrame.js";
+import {DialogIndicator, DialogItem} from "./DialogFrame.js";
 
 interface ConfirmOption {
     label: string;
@@ -96,12 +96,14 @@ export function ConfirmDialog({
     };
 
     return (
-        <DialogFrame
-            title="Permission request"
-            subtitle={<Text>{req.question}</Text>}
-            footer="↑↓ 选择 · Enter 确认 · Esc 取消"
-        >
-            <Box marginTop={1}>
+        <Box flexDirection="column" paddingLeft={2}>
+            <Text color={COLORS.warning} bold>◆ PERMISSION REQUIRED</Text>
+            <Box marginTop={1} flexDirection="column">
+                <Text color={COLORS.dim} bold>REQUEST</Text>
+                <Text>{req.question}</Text>
+            </Box>
+            <Box marginTop={1} flexDirection="column">
+                <Text color={COLORS.dim} bold>ACTION</Text>
                 <SelectInput
                     items={options}
                     onSelect={handleSelect}
@@ -125,6 +127,9 @@ export function ConfirmDialog({
                     </Text>
                 </Box>
             )}
-        </DialogFrame>
+            <Box marginTop={1}>
+                <Text color={COLORS.dim}>↑↓ 选择 · Enter 确认 · Esc 取消</Text>
+            </Box>
+        </Box>
     );
 }

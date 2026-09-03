@@ -46,6 +46,21 @@ import type {
 
 const MAX_TRACKED_TASKS = 32;
 const MAX_RUNNING_AGENT_TASKS_PER_SESSION = 4;
+const SHELL_STARTUP_OBSERVATION_MS = 600;
+
+async function observeShellStartup(completion: Promise<void>): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            completion.then(() => true),
+            new Promise<boolean>((resolve) => {
+                timer = setTimeout(() => resolve(false), SHELL_STARTUP_OBSERVATION_MS);
+            }),
+        ]);
+    } finally {
+        if (timer !== undefined) clearTimeout(timer);
+    }
+}
 
 class TaskSession implements TaskSessionLike {
     readonly sessionId: string;
@@ -186,7 +201,20 @@ class TaskRuntime implements TaskRuntimeLike {
                 this.shellRunner,
                 (finished) => this.publish("task_finished", finished)
             );
-            return snapshotShell(task);
+            task.suppressTerminalNotification = true;
+            const finishedDuringStartup = await observeShellStartup(task.completion);
+            if (!finishedDuringStartup) task.suppressTerminalNotification = false;
+            let snapshot = await snapshotShell(task);
+            if (snapshot.status !== "running") {
+                // runShellTask sets the in-memory terminal state before it finishes
+                // publishing task_finished. Wait for that publication so the claimed
+                // notification can never be journaled ahead of the terminal event.
+                await task.completion;
+                snapshot = await snapshotShell(task);
+                task.notificationPending = false;
+                await this.markNotificationClaimed(binding.sessionId, task.id);
+            }
+            return snapshot;
         } finally {
             releaseSlot();
         }

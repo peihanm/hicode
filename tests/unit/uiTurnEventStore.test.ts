@@ -278,6 +278,36 @@ describe("UITurnEventStore", () => {
       .toEqual([]);
   });
 
+  test("过程说明先进入 Static，随后工具调用继续显示", () => {
+    const store = new UITurnEventStore();
+    store.handleEvent({
+      type: "assistant_text",
+      content: "已定位根因，接下来修改事件链。",
+      phase: "commentary",
+    });
+    store.handleEvent({
+      type: "tool_call_start",
+      turnId: "turn-commentary",
+      toolCallId: "edit-after-commentary",
+      name: "edit_file",
+      args: JSON.stringify({path: "src/agent/runner.ts"}),
+    });
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.staticThreads).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        text: "已定位根因，接下来修改事件链。",
+      }),
+    ]);
+    expect(selectLiveThreads(snapshot.threads, snapshot.staticThreads)).toEqual([
+      expect.objectContaining({
+        role: "tool_call",
+        toolCallId: "edit-after-commentary",
+      }),
+    ]);
+  });
+
   test("长用户 Prompt 在 Plan 工具出现前已经原子进入 Static", () => {
     const store = new UITurnEventStore();
     const prompt = "请实现一个完整的五子棋游戏。\n".repeat(100);

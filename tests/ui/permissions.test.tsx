@@ -9,6 +9,7 @@ import { AppForTest as App } from "../helpers/AppForTest.js";
 import { ConfirmDialog } from "../../src/ui/dialogs/ConfirmDialog.js";
 import { ElevatedBashDialog } from "../../src/ui/dialogs/ElevatedBashDialog.js";
 import { EnterPlanDialog } from "../../src/ui/dialogs/EnterPlanDialog.js";
+import { NetworkAccessDialog } from "../../src/ui/dialogs/NetworkAccessDialog.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 
@@ -111,7 +112,7 @@ describe("permission confirmation UI", () => {
     expect(instance.lastFrame()).not.toContain(reason);
   });
 
-  test("权限问题、选项和操作提示位于同一个确认框内", async () => {
+  test("通用权限确认使用无竖线的紧凑布局", async () => {
     const instance = render(
       <ConfirmDialog
         req={{
@@ -126,11 +127,50 @@ describe("permission confirmation UI", () => {
 
     await flush();
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("◆ Permission request");
+    expect(frame).toContain("◆ PERMISSION REQUIRED");
+    expect(frame).toContain("REQUEST");
+    expect(frame).toContain("ACTION");
     expect(frame).toContain("bash 需要确认");
     expect(frame).toContain("❯ 1. Yes");
     expect(frame).toContain("↑↓ 选择 · Enter 确认 · Esc 取消");
-    expect(frame.split("\n").every((line) => line.startsWith("│"))).toBe(true);
+    expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
+  });
+
+  test("Sandbox 网络授权使用专用紧凑界面", async () => {
+    const decisions: PermissionDecision[] = [];
+    const onDone = mock(() => {});
+    const instance = render(
+      <NetworkAccessDialog
+        req={{
+          question: "fallback text",
+          toolName: "bash",
+          input: {command: "npx vite"},
+          allowAddToAllowList: false,
+          presentation: {
+            kind: "network_access",
+            reason: "npx",
+            domains: ["registry.npmjs.org"],
+          },
+          resolve: (decision) => decisions.push(decision),
+        }}
+        onDone={onDone}
+      />
+    );
+
+    await flush();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("◆ NETWORK ACCESS");
+    expect(frame).toContain("npx 需要访问");
+    expect(frame).toContain("registry.npmjs.org");
+    expect(frame).toContain("RISK");
+    expect(frame).toContain("› Allow once");
+    expect(frame).not.toContain("fallback text");
+    expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
+
+    instance.stdin.write(ENTER);
+    await flush();
+    expect(decisions).toEqual([{behavior: "allow"}]);
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   test("脱离 Sandbox 的 Bash 使用紧凑预览并可展开完整命令", async () => {

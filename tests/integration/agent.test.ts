@@ -25,6 +25,59 @@ function assistantToolCalls(calls: ToolCall[]) {
 }
 
 describe("agent loop", () => {
+  test("带工具调用的 Assistant 正文作为 commentary 在工具前显示", async () => {
+    await withTempProject(async (cwd) => {
+      const history = initialHistory();
+      const events: AgentEvent[] = [];
+      const fake = createFakeLLM([
+        assistantToolCall(
+          "read_file",
+          {path: "README.md"},
+          "commentary-read",
+          "我已经定位到入口，接下来读取配置。"
+        ),
+        assistantText("检查完成"),
+      ]);
+
+      const result = await runAgent(
+        "检查项目",
+        history,
+        (event) => events.push(event),
+        createTestContext(cwd),
+        {
+          callLLM: fake.callLLM,
+          executeTool: async () => "读取完成",
+        }
+      );
+
+      expect(result.reply).toBe("检查完成");
+      const visible = events.filter(
+        (event) =>
+          event.type === "assistant_text" || event.type === "tool_call_start"
+      );
+      expect(visible.slice(0, 2)).toEqual([
+        {
+          type: "assistant_text",
+          content: "我已经定位到入口，接下来读取配置。",
+          phase: "commentary",
+        },
+        expect.objectContaining({
+          type: "tool_call_start",
+          toolCallId: "commentary-read",
+        }),
+      ]);
+      expect(visible.at(-1)).toEqual({
+        type: "assistant_text",
+        content: "检查完成",
+        phase: "final",
+      });
+      expect(history).toContainEqual(expect.objectContaining({
+        role: "assistant",
+        content: "我已经定位到入口，接下来读取配置。",
+      }));
+    });
+  });
+
   test("同一 root turn 的文件修改事件携带稳定 turnId 和 uiData", async () => {
     await withTempProject(async (cwd) => {
       const events: AgentEvent[] = [];
@@ -797,6 +850,7 @@ describe("agent loop", () => {
       expect(events).toContainEqual({
         type: "assistant_text",
         content: "(达到最大迭代次数 2，已停止)",
+        phase: "final",
       });
     });
   });
@@ -875,6 +929,7 @@ describe("agent loop", () => {
       expect(events).toContainEqual({
         type: "assistant_text",
         content: "模型连续两次未返回有效正文或工具调用，已停止本轮。",
+        phase: "final",
       });
     });
   });

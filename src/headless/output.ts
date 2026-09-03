@@ -31,6 +31,10 @@ function summarizeResult(result: string): string {
 
 export function formatHeadlessProgress(event: AgentEvent): string | null {
     switch (event.type) {
+        case "assistant_text":
+            return event.phase === "commentary"
+                ? `● ${summarizeResult(event.content)}`
+                : null;
         case "tool_call_start":
             return `● ${event.name} ${summarizeArgs(event.args)}`;
         case "tool_call_end":

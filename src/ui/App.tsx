@@ -8,6 +8,7 @@ import {MessageList, TranscriptDetails,} from "./conversation/MessageList.js";
 import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
 import {InputBox} from "./input/InputBox.js";
 import {ConfirmDialog} from "./dialogs/ConfirmDialog.js";
+import {isNetworkAccessRequest, NetworkAccessDialog} from "./dialogs/NetworkAccessDialog.js";
 import {ElevatedBashDialog, isElevatedBashRequest,} from "./dialogs/ElevatedBashDialog.js";
 import {EnterPlanDialog} from "./dialogs/EnterPlanDialog.js";
 import {AskDialog} from "./dialogs/AskDialog.js";
@@ -322,6 +323,11 @@ export function App({
                         />
                     ) : isElevatedBashRequest(turn.confirmRequest) ? (
                         <ElevatedBashDialog
+                            req={turn.confirmRequest}
+                            onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
+                        />
+                    ) : isNetworkAccessRequest(turn.confirmRequest) ? (
+                        <NetworkAccessDialog
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />

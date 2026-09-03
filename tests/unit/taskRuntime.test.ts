@@ -194,6 +194,7 @@ describe("TaskRuntime", () => {
             const shellRunner: ShellRunnerLike = {
                 sandboxStatus: {kind: "disabled"},
                 async run(request) {
+                    await new Promise((resolve) => setTimeout(resolve, 650));
                     await appendFile(request.outputFilePath!, "task output\n");
                     return {
                         stdout: "",
@@ -272,6 +273,7 @@ describe("TaskRuntime", () => {
             const shellRunner: ShellRunnerLike = {
                 sandboxStatus: {kind: "disabled"},
                 async run(request) {
+                    await new Promise((resolve) => setTimeout(resolve, 650));
                     await appendFile(
                         request.outputFilePath!,
                         "node:events: throw er\nError: listen EADDRINUSE: address already in use :::3000\n"
@@ -331,6 +333,7 @@ describe("TaskRuntime", () => {
                 sandboxStatus: {kind: "disabled"},
                 async run(request) {
                     runs += 1;
+                    await new Promise((resolve) => setTimeout(resolve, 650));
                     await appendFile(request.outputFilePath!, "persisted\n");
                     return {
                         stdout: "",

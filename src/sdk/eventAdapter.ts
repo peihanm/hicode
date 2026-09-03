@@ -120,6 +120,7 @@ export class SDKEventAdapter {
                     type: "agent_message",
                     status: "completed",
                     text: event.content,
+                    phase: event.phase ?? "final",
                 });
                 break;
             case "tool_call_start": {

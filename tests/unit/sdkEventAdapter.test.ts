@@ -64,7 +64,11 @@ describe("SDK event adapter", () => {
         });
         const content = "回".repeat(12_000);
 
-        adapter.handleAgentEvent({type: "assistant_text", content});
+        adapter.handleAgentEvent({
+            type: "assistant_text",
+            content,
+            phase: "commentary",
+        });
 
         const completed = events.find(
             (event) =>
@@ -79,6 +83,7 @@ describe("SDK event adapter", () => {
             throw new Error("缺少 agent_message completed event");
         }
         expect(completed.item.text).toBe(content);
+        expect(completed.item.phase).toBe("commentary");
     });
 
     test("超限 Tool 参数只投影有界 preview", () => {

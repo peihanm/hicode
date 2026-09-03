@@ -25,7 +25,8 @@ export function assistantText(content: string | null): LLMCallResult {
 export function assistantToolCall(
   name: string,
   args: unknown,
-  id = "tool-call-1"
+  id = "tool-call-1",
+  content: string | null = null
 ): LLMCallResult {
   const toolCall: ToolCall = {
     id,
@@ -39,7 +40,7 @@ export function assistantToolCall(
   return {
     message: {
       role: "assistant",
-      content: null,
+      content,
       tool_calls: [toolCall],
     },
     toolCalls: [toolCall],

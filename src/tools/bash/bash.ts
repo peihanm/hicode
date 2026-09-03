@@ -10,6 +10,7 @@ import {
     splitShellSubCommands,
 } from "../../permissions/shellCommand.js";
 import type {ShellExecutionResult} from "./process.js";
+import type {ShellTaskSnapshot} from "../../tasks/index.js";
 import {displayToolPath} from "../shared/paths.js";
 import {
     inferShellNetworkRequirement,
@@ -18,7 +19,7 @@ import {
 
 const inputSchema = z.object({
     command: z.string().describe(
-        "要执行的 shell 命令。优先运行项目已有脚本/测试；curl 仅用于少量本地 API/HTML 探测，不要用临时 curl 测试矩阵代替项目测试或浏览器验证。HTTP 检查应有界等待服务 ready，并让 4xx/5xx 返回失败；非 ASCII 文本不要用 head -c/cut -b 按字节截断；不要在末尾添加 &"
+        "要执行的 shell 命令。优先运行项目已有脚本/测试；curl 仅用于少量本地 API/HTML 探测，不要用临时 curl 测试矩阵代替项目测试或浏览器验证。HTTP 检查应有界等待服务 ready，并保证任一端点失败时整个命令返回非零；不要用 `|| echo FAIL` 掩盖失败。若本地监听或访问返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。非 ASCII 文本不要用 head -c/cut -b 按字节截断；不要在末尾添加 &"
     ),
     cwd: z
         .string()
@@ -153,9 +154,43 @@ function formatShellStatus(result: ShellExecutionResult): string {
     return `命令启动失败：${termination.error.message}`;
 }
 
+function shellTaskTermination(task: ShellTaskSnapshot): string {
+    const termination = task.termination;
+    if (!termination) return task.status;
+    if (termination.kind === "exit") {
+        return termination.signal
+            ? `signal ${termination.signal}`
+            : `exit ${termination.code}`;
+    }
+    if (termination.kind === "timeout") return `timeout ${termination.timeoutMs}ms`;
+    if (termination.kind === "aborted") return `aborted ${termination.reason}`;
+    if (termination.kind === "output_limit") {
+        return `output limit ${termination.maxBuffer} bytes`;
+    }
+    return `spawn error: ${termination.error.message}`;
+}
+
+function formatObservedBackgroundTask(task: ShellTaskSnapshot): string {
+    const heading = task.status === "completed"
+        ? "后台命令在启动观察期内已完成。"
+        : task.status === "cancelled"
+            ? "后台任务在启动观察期内已取消。"
+            : "后台任务在启动观察期内已失败。";
+    return [
+        heading,
+        `Task: ${task.id}`,
+        `Status: ${task.status}`,
+        `Termination: ${shellTaskTermination(task)}`,
+        task.output || task.outputIssue || "(无输出)",
+        ...(task.outputResult
+            ? [`Full output: read_tool_result(${task.outputResult.resultId})`]
+            : []),
+    ].join("\n");
+}
+
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。常见包管理器需要 Sandbox 未允许的 Registry 时，Runtime 会自动向用户申请仅限本次命令的 elevated 授权，不要改用镜像或离线模式规避网络限制。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，并应让 HTTP 错误返回失败。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
+    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。常见包管理器需要 Sandbox 未允许的 Registry 时，Runtime 会自动向用户申请仅限本次命令的 elevated 授权，不要改用镜像或离线模式规避网络限制。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，且任一失败必须让整个命令返回非零。若本地监听或访问返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
     isReadOnly: ({command, sandbox_permissions}) =>
@@ -200,10 +235,15 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {
                 behavior: "ask",
                 allowPersistent: false,
+                presentation: {
+                    kind: "network_access",
+                    reason: networkGrant.reason,
+                    domains: networkGrant.domains,
+                },
                 message: [
                     `检测到 ${networkGrant.reason} 需要访问当前 Sandbox 未允许的网络域名：`,
                     ...networkGrant.domains.map((domain) => `  ${domain}`),
-                    "批准后本次命令将脱离 OS Sandbox；命令及其子进程不再受文件和网络边界保护。是否继续?",
+                    "批准后本次命令将脱离 OS Sandbox；命令及其子进程不再受文件和网络边界保护。",
                 ].join("\n"),
             };
         }
@@ -306,6 +346,16 @@ export const bashTool: Tool<typeof inputSchema> = {
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                     sandboxPermissions: effectiveSandboxPermissions,
                 });
+                if (task.status !== "running") {
+                    return {
+                        content: formatObservedBackgroundTask(task),
+                        outcome: task.status === "completed"
+                            ? "ok" as const
+                            : task.status === "cancelled"
+                                ? "interrupted" as const
+                                : "failed" as const,
+                    };
+                }
                 return {
                     content: [
                         `后台任务已启动。`,

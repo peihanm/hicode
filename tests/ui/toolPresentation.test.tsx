@@ -236,6 +236,22 @@ describe("phase-based tool presentation", () => {
         expect(frame).not.toContain("node --check");
     });
 
+    test("curl 批次即使 exit 0 也不会把 000FAIL 包装成验证通过", () => {
+        const threads = completeTool([], {
+            id: "endpoint-false-positive",
+            name: "bash",
+            args: {
+                command: "for f in / /app.js; do curl -sf http://127.0.0.1:8173$f || echo FAIL; done",
+            },
+            result: "/ -> 000FAIL\n/app.js -> 000FAIL",
+        });
+
+        const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
+        expect(frame).not.toContain("Local endpoint checks passed");
+        expect(frame).toContain("● Bash");
+        expect(frame).toContain("000FAIL");
+    });
+
     test("拒绝结果在标记后保留固定间距", () => {
         const threads = completeTool([], {
             id: "write-denied",

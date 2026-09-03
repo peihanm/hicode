@@ -1,7 +1,10 @@
 import {randomUUID} from "node:crypto";
 import {createTurnAbortController} from "../runtime/abort.js";
 import type {ShellExecutionResult} from "../tools/bash/process.js";
-import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
+import {
+    annotateSandboxLocalNetworkFailure,
+    type ShellRunnerLike,
+} from "../tools/bash/shellRunner.js";
 import type {StartShellTaskInput, TaskSessionBinding, TaskStatus,} from "./types.js";
 import {type ManagedShellTask, readOutputPreview,} from "./managed.js";
 
@@ -55,7 +58,12 @@ export async function runShellTask(
         });
         finalStatus = statusFromResult(result);
         task.termination = result.termination;
-        task.outputPreview = await readOutputPreview(task.outputPath);
+        const outputPreview = await readOutputPreview(task.outputPath);
+        task.outputPreview =
+            input.sandboxPermissions !== "require_escalated" &&
+            shellRunner.sandboxStatus.kind === "ready"
+                ? annotateSandboxLocalNetworkFailure(outputPreview)
+                : outputPreview;
         try {
             task.outputResult = await task.store.promoteFile({
                 toolCallId: task.owner.toolCallId,

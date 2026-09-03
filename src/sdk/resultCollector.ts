@@ -103,7 +103,7 @@ export async function collectTurnResult(
         );
     }
     const finalResponse = [...completedItems].reverse().find(
-        (item) => item.type === "agent_message"
+        (item) => item.type === "agent_message" && item.phase === "final"
     );
     return {
         threadId: terminal.threadId,

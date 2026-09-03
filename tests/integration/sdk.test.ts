@@ -213,7 +213,8 @@ describe("TypeScript SDK", () => {
                 assistantToolCall(
                     "write_file",
                     {path: "sdk-output.txt", content: "hello sdk"},
-                    "sdk-write"
+                    "sdk-write",
+                    "准备写入 SDK 测试文件。"
                 ),
                 (call) => {
                     const result = call.messages.find(
@@ -271,6 +272,20 @@ describe("TypeScript SDK", () => {
                 const result = await collectTurnResult(replay(captured));
 
                 expect(result.finalResponse).toBe("写入完成");
+                expect(result.items.filter(
+                    (item) => item.type === "agent_message"
+                )).toEqual([
+                    expect.objectContaining({
+                        type: "agent_message",
+                        text: "准备写入 SDK 测试文件。",
+                        phase: "commentary",
+                    }),
+                    expect.objectContaining({
+                        type: "agent_message",
+                        text: "写入完成",
+                        phase: "final",
+                    }),
+                ]);
                 expect(interactions).toEqual(["permission"]);
                 expect(captured.map((event) => event.sequence)).toEqual(
                     captured.map((_, index) => index + 1)

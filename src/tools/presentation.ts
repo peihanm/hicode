@@ -157,6 +157,13 @@ function describeBashPhase(args: ParsedArgs): ToolPhasePresentation | undefined 
     return undefined;
 }
 
+function reportsLocalEndpointFailure(result: string | undefined): boolean {
+    if (!result) return false;
+    return /(?:^|\s)(?:GET\s+\S+\s*->\s*)?000(?:FAIL)?(?:\s|$)/im.test(result) ||
+        /^curl:\s*\(\d+\)/im.test(result) ||
+        /(?:Failed to connect to|Immediate connect fail for)\s+(?:127\.0\.0\.1|localhost|\[::1\])/i.test(result);
+}
+
 /**
  * Default TUI phase semantics. Only deterministic, well-known operations are
  * grouped; unknown Bash/MCP calls keep their ordinary Tool row.
@@ -406,10 +413,23 @@ export function isSuccessfulToolActivity(input: {
     args: string;
     status: "running" | "done";
     outcome?: ToolOutcome;
+    result?: string;
 }): boolean {
     const activity = describeToolPhase(input.name, input.args);
     if (!activity) return false;
-    return input.status === "running" || input.outcome === "ok";
+    if (input.status === "running") return true;
+    if (input.outcome !== "ok") return false;
+    if (
+        input.name === "bash" &&
+        activity.kind === "verify" &&
+        reportsLocalEndpointFailure(input.result)
+    ) return false;
+    if (
+        input.name === "bash" &&
+        activity.kind === "service" &&
+        /^Status:\s*(?:completed|failed|cancelled)$/im.test(input.result ?? "")
+    ) return false;
+    return true;
 }
 
 export function summarizeToolResult(

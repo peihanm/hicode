@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, readdir, realpath } from "node:fs/promises";
+import { appendFile, mkdir, readdir, realpath } from "node:fs/promises";
 import { executeTool, executeToolResult } from "../helpers/executeTool.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -13,6 +13,7 @@ import {
   createShellRunner,
   type ShellRunnerLike,
 } from "../../src/tools/bash/shellRunner.js";
+import type {ToolContext} from "../../src/tools/types.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 const readySandboxRunner: ShellRunnerLike = {
@@ -54,10 +55,16 @@ function networkCaptureRunner(
   };
 }
 
-function createTaskSession(cwd: string) {
+function createTaskSession(
+  cwd: string,
+  shellRunner: ShellRunnerLike = createShellRunner(
+    createDisabledSandboxRuntime(),
+    testChildEnvironment
+  )
+) {
   const runtime = createTaskRuntimeForTest(
     cwd,
-    createShellRunner(createDisabledSandboxRuntime(), testChildEnvironment),
+    shellRunner,
     () => ({
       agentId: "unused",
       async run() {
@@ -151,7 +158,7 @@ describe("bash tool contract", () => {
       const {runner, calls} = networkCaptureRunner();
       const requests: Array<{
         message: string;
-        options?: {allowPersistent?: boolean};
+        options?: Parameters<ToolContext["canUseTool"]>[3];
       }> = [];
       const result = await executeToolResult(
         "bash",
@@ -172,7 +179,14 @@ describe("bash tool contract", () => {
       expect(requests).toHaveLength(1);
       expect(requests[0]?.message).toContain("registry.npmjs.org");
       expect(requests[0]?.message).toContain("脱离 OS Sandbox");
-      expect(requests[0]?.options).toEqual({allowPersistent: false});
+      expect(requests[0]?.options).toEqual({
+        allowPersistent: false,
+        presentation: {
+          kind: "network_access",
+          reason: "npm install",
+          domains: ["registry.npmjs.org"],
+        },
+      });
       expect(calls).toEqual([{
         command: "npm install && npm run build",
         sandboxPermissions: "require_escalated",
@@ -351,6 +365,7 @@ describe("bash tool contract", () => {
           "background-bash"
         );
         expect(started.outcome).toBe("ok");
+        expect(started.modelContent).toContain("启动观察期内已完成");
         const taskId = started.modelContent.match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 
@@ -366,6 +381,49 @@ describe("bash tool contract", () => {
         expect(status.modelContent).toContain("字节已省略");
         expect(status.modelContent.length).toBeLessThan(22_000);
         expect(status.modelContent).toContain("done");
+      } finally {
+        await runtime.close();
+      }
+    });
+  });
+
+  test("后台 Bash 在启动观察期内失败时直接返回失败且不重复通知", async () => {
+    await withTempProject(async (cwd) => {
+      const sandboxDeniedRunner: ShellRunnerLike = {
+        sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+        async run(request) {
+          const output = "Error: listen EPERM: operation not permitted 127.0.0.1:8000\n";
+          await appendFile(request.outputFilePath!, output);
+          return {
+            stdout: "",
+            stderr: "",
+            termination: {kind: "exit", code: 1, signal: null},
+            outputFilePath: request.outputFilePath,
+            outputBytes: Buffer.byteLength(output),
+            outputComplete: true,
+          };
+        },
+      };
+      const {runtime, tasks} = createTaskSession(cwd, sandboxDeniedRunner);
+      try {
+        const result = await executeToolResult(
+          "bash",
+          JSON.stringify({
+            command: "node server.js",
+            run_in_background: true,
+          }),
+          createTestContext(cwd, {tasks}),
+          "background-startup-failure"
+        );
+
+        expect(result.outcome).toBe("failed");
+        expect(result.modelContent).toContain("启动观察期内已失败");
+        expect(result.modelContent).toContain("Status: failed");
+        expect(result.modelContent).toContain("Termination: exit 1");
+        expect(result.modelContent).toContain("listen EPERM");
+        expect(result.modelContent).toContain("Pillar Sandbox: 本地端口监听被");
+        expect(result.modelContent).toContain("不要换端口或重写服务");
+        expect(await tasks.claimNotifications()).toEqual([]);
       } finally {
         await runtime.close();
       }

@@ -3,10 +3,21 @@
 
 // 权限意向：工具通过 checkPermissions 声明自己需要什么级别的权限
 // executeTool 拿到意向后决定是否弹窗、是否直接执行、是否拒绝
+export type PermissionPromptPresentation = {
+    kind: "network_access";
+    reason: string;
+    domains: string[];
+};
+
 export type PermissionResult =
     | { behavior: "allow" } // 放行，不问用户
     | { behavior: "deny"; message: string } // 拒绝，不执行
-    | { behavior: "ask"; message: string; allowPersistent?: boolean } // 需要问用户
+    | {
+        behavior: "ask";
+        message: string;
+        allowPersistent?: boolean;
+        presentation?: PermissionPromptPresentation;
+    } // 需要问用户
     | { behavior: "passthrough" }; // 交给默认规则（根据 isReadOnly 决定）
 
 // 权限决策：canUseTool 的返回值（用户裁决的结果）

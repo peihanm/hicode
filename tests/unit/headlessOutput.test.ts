@@ -164,6 +164,20 @@ describe("headless output", () => {
   test("progress 只格式化受支持事件", () => {
     expect(
       formatHeadlessProgress({
+        type: "assistant_text",
+        content: "已完成调查，接下来修改实现。",
+        phase: "commentary",
+      })
+    ).toBe("● 已完成调查，接下来修改实现。");
+    expect(
+      formatHeadlessProgress({
+        type: "assistant_text",
+        content: "任务完成",
+        phase: "final",
+      })
+    ).toBeNull();
+    expect(
+      formatHeadlessProgress({
         type: "tool_call_start",
         turnId: "turn-1",
         toolCallId: "call-1",

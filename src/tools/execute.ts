@@ -161,7 +161,10 @@ export async function executeRegisteredTool(
                 name,
                 permission.message,
                 input,
-                {allowPersistent: permission.allowPersistent}
+                {
+                    allowPersistent: permission.allowPersistent,
+                    presentation: permission.presentation,
+                }
             );
         } catch (error) {
             if (isTurnInterruptedError(error, ctx.signal)) {

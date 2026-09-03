@@ -222,7 +222,7 @@ export class UITurnEventStore {
                 event.uiData?.type !== "file_change"
                     ? event.toolCallId
                     : undefined;
-            // assistant_text 已经是完整的最终文本，不存在后续增量更新。若先放进
+            // assistant_text 已经是完整的一段 commentary 或最终文本，不存在后续增量更新。若先放进
             // live 区、Turn settled 时再转入 Static，长回答可能已经滚进终端
             // scrollback，Ink 无法擦除旧帧，最终就会看起来输出了两次。
             const completedAssistantId =

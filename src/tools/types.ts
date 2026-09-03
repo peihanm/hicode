@@ -1,5 +1,5 @@
 import {z} from "zod";
-import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionResult, PermissionRules,} from "../permissions/index.js";
+import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionPromptPresentation, PermissionResult, PermissionRules,} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import type {Todo} from "../todos.js";
 import type {LoadedSkill} from "../skills/types.js";
@@ -50,7 +50,10 @@ export interface ToolContext {
         tool: string,
         message: string,
         input: unknown,
-        options?: {allowPersistent?: boolean}
+        options?: {
+            allowPersistent?: boolean;
+            presentation?: PermissionPromptPresentation;
+        }
     ) => Promise<PermissionDecision>;
 
     // 配置文件加载的权限规则（allow/ask/deny 三桶）

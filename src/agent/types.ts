@@ -30,7 +30,12 @@ export interface AgentUsage {
 
 /** Agent 主循环向宿主发布的运行事件。 */
 export type AgentEvent =
-    | {type: "assistant_text"; content: string}
+    | {
+        type: "assistant_text";
+        content: string;
+        /** 省略时视为本地命令产生的最终文本。 */
+        phase?: "commentary" | "final";
+    }
     | {type: "model_stream_start"}
     | ({type: "model_stream_progress"} & LLMStreamProgress)
     | {type: "model_stream_end"}

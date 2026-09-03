@@ -38,9 +38,21 @@ describe("UIPermissionRequests", () => {
       "bash",
       "allow registry network",
       {command: "npm install"},
-      {allowPersistent: false}
+      {
+        allowPersistent: false,
+        presentation: {
+          kind: "network_access",
+          reason: "npm",
+          domains: ["registry.npmjs.org"],
+        },
+      }
     );
     expect(requests.getSnapshot()?.allowAddToAllowList).toBe(false);
+    expect(requests.getSnapshot()?.presentation).toEqual({
+      kind: "network_access",
+      reason: "npm",
+      domains: ["registry.npmjs.org"],
+    });
     requests.denyPending("stop");
   });
 

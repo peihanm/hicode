@@ -221,6 +221,11 @@ async function runAgentCore(
             assertFreshToolCallIds(history, toolCalls);
             // assistant message 和 tool result 入 history（真实对话内容）
             history.push(message);
+            const rawTextContent =
+                typeof message.content === "string" ? message.content : "";
+            const textContent = rawTextContent.trim().length > 0
+                ? rawTextContent
+                : "";
 
             // OpenAI-compatible 中转站不一定返回流式 usage。prompt_tokens=0 对
             // 当前非空请求不可能是有效统计；此时保留 preparation 的上下文估算，
@@ -270,11 +275,6 @@ async function runAgentCore(
 
             // needsFollowUp = false：LLM 没调工具，应该是给最终回答了
             if (toolCalls.length === 0) {
-                const rawTextContent =
-                    typeof message.content === "string" ? message.content : "";
-                const textContent = rawTextContent.trim().length > 0
-                    ? rawTextContent
-                    : "";
                 if (!textContent && !emptyResponseRetryUsed && hasNextIteration) {
                     history.pop();
                     emptyResponseRetryUsed = true;
@@ -305,6 +305,7 @@ async function runAgentCore(
                             await onEvent({
                                 type: "assistant_text",
                                 content: textContent,
+                                phase: "final",
                             });
                         }
                         appendQueuedInputs(queued);
@@ -312,11 +313,19 @@ async function runAgentCore(
                     }
                 }
                 if (textContent) {
-                    await onEvent({type: "assistant_text", content: textContent});
+                    await onEvent({
+                        type: "assistant_text",
+                        content: textContent,
+                        phase: "final",
+                    });
                 }
                 let reply = textContent || "模型连续两次未返回有效正文或工具调用，已停止本轮。";
                 if (!textContent) {
-                    await onEvent({type: "assistant_text", content: reply});
+                    await onEvent({
+                        type: "assistant_text",
+                        content: reply,
+                        phase: "final",
+                    });
                 }
                 if (postState.critical) {
                     reply += `\n\n⚠️ 上下文已用 ${Math.round(postState.percentUsed * 100)}%，建议结束本轮后开新会话。`;
@@ -327,6 +336,18 @@ async function runAgentCore(
                     iterations: i + 1,
                     ...resultUsage(),
                 };
+            }
+
+            // OpenAI-compatible providers may return user-facing text together
+            // with tool calls. It is mid-turn commentary, not a final answer:
+            // publish it before the matching tools instead of silently keeping
+            // it only in History (which made it appear only after /resume).
+            if (textContent) {
+                await onEvent({
+                    type: "assistant_text",
+                    content: textContent,
+                    phase: "commentary",
+                });
             }
 
             const batchResult = await executeToolCallBatch({
@@ -373,7 +394,7 @@ async function runAgentCore(
             throw new Error("未设迭代上限的 Agent 主循环意外退出");
         }
         const reply = `(达到最大迭代次数 ${maxIterations}，已停止)`;
-        await onEvent({type: "assistant_text", content: reply});
+        await onEvent({type: "assistant_text", content: reply, phase: "final"});
         return {
             reply,
             reason: "max_turns",

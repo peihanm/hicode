@@ -34,6 +34,8 @@ interface ThreadItemBase {
 export interface AgentMessageItem extends ThreadItemBase {
     type: "agent_message";
     text: string;
+    /** commentary 是 Turn 中途的进度说明；final 才能成为 finalResponse。 */
+    phase: "commentary" | "final";
 }
 
 export interface ToolCallItem extends ThreadItemBase {

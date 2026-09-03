@@ -107,6 +107,51 @@ describe("ShellRunner", () => {
         });
     });
 
+    test("Sandbox 本地端口 EPERM 提示保持原命令并申请 elevated", async () => {
+        await withTempProject(async (cwd) => {
+            const runner = createShellRunner(
+                sandboxRuntime({
+                    kind: "ready",
+                    platform: "macos",
+                    warnings: [],
+                }),
+                testChildEnvironment
+            );
+            const result = await runner.run({
+                command: "printf 'Error: listen EPERM: operation not permitted 127.0.0.1:8000' >&2; exit 1",
+                cwd,
+                signal: new AbortController().signal,
+            });
+
+            expect(result.stderr).toContain("listen EPERM");
+            expect(result.stderr).toContain("Pillar Sandbox: 本地端口监听被");
+            expect(result.stderr).toContain('sandbox_permissions="require_escalated"');
+            expect(result.stderr).toContain("不要换端口或重写服务");
+        });
+    });
+
+    test("Sandbox 本地端点连接失败提示提升原探测命令", async () => {
+        await withTempProject(async (cwd) => {
+            const runner = createShellRunner(
+                sandboxRuntime({
+                    kind: "ready",
+                    platform: "macos",
+                    warnings: [],
+                }),
+                testChildEnvironment
+            );
+            const result = await runner.run({
+                command: "printf '* Immediate connect fail for 127.0.0.1:8173: Operation not permitted' >&2; exit 7",
+                cwd,
+                signal: new AbortController().signal,
+            });
+
+            expect(result.stderr).toContain("Immediate connect fail");
+            expect(result.stderr).toContain("Pillar Sandbox: 本地端点访问被");
+            expect(result.stderr).toContain('sandbox_permissions="require_escalated"');
+        });
+    });
+
     test("unavailable 状态 fail closed，显式 elevated 才能执行", async () => {
         await withTempProject(async (cwd) => {
             const runner = createShellRunner(
