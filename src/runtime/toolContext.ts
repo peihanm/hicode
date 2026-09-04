@@ -16,6 +16,10 @@ import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import {
+    createDirectoryAccessRuntime,
+    type DirectoryAccessRuntimeLike,
+} from "../permissions/index.js";
 
 export interface ToolContextResources {
     storage: PillarStorageLayout;
@@ -43,6 +47,7 @@ export interface ToolContextSession {
     fileCheckpoints: FileCheckpointRuntimeLike;
     allowBackgroundTasks?: boolean;
     hookSession?: HookSessionRuntime;
+    directoryAccess?: DirectoryAccessRuntimeLike;
 }
 
 export interface ToolContextHost {
@@ -108,6 +113,11 @@ export function createToolContext({
         gitSession: resources.gitSession,
         memoryFiles: resources.memoryFiles,
         fileCheckpoints: session.fileCheckpoints,
+        directoryAccess: session.directoryAccess ?? createDirectoryAccessRuntime({
+            cwd: resources.cwd,
+            hardBoundary: resources.workspaceBoundary ?? resources.cwd,
+            allowGrants: false,
+        }),
         mcpManager: resources.mcpManager,
         tasks: resources.tasks ?? resources.taskRuntime?.forSession({
             sessionId: session.sessionId,

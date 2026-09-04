@@ -3,7 +3,12 @@ import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";
 import {createHookSessionRuntime, didRunCommandHook, type HookBatchResult,} from "../hooks/index.js";
 import type {Message} from "../llm/types.js";
-import type {PermissionMode} from "../permissions/index.js";
+import {
+    createDirectoryAccessRuntime,
+    type DirectoryAccessRuntimeLike,
+    type PermissionMode,
+} from "../permissions/index.js";
+import {appendLocalPermissionDirectory} from "../settings/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint,} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
@@ -53,6 +58,7 @@ export interface RootSessionRuntime {
     readonly gitSession: GitSessionRuntimeLike;
     readonly taskSession: TaskSessionLike;
     readonly messageQueue: RuntimeMessageQueue;
+    readonly directoryAccess: DirectoryAccessRuntimeLike;
 
     initialize(): Promise<void>;
 
@@ -115,6 +121,7 @@ export function createRootSessionRuntime({
     const fileCheckpoints = createFileCheckpointRuntime({
         storage: resources.storage,
         cwd: resources.cwd,
+        hardBoundary: resources.workspaceBoundary,
         sessionId: seed.sessionId,
         enabled: resources.settings.checkpointing.enabled,
         fileState: resources.fileState,
@@ -129,6 +136,13 @@ export function createRootSessionRuntime({
         messages: seed.queuedInputs,
     });
     const hookSession = createHookSessionRuntime();
+    const directoryAccess = createDirectoryAccessRuntime({
+        cwd: resources.cwd,
+        hardBoundary: resources.workspaceBoundary,
+        initialDirectories: resources.settings.permissions.additionalDirectories,
+        persistDirectory: (directory) =>
+            appendLocalPermissionDirectory(resources.cwd, directory),
+    });
     let initializePromise: Promise<void> | undefined;
 
     const snapshot = (
@@ -164,10 +178,12 @@ export function createRootSessionRuntime({
         gitSession,
         taskSession,
         messageQueue,
+        directoryAccess,
         initialize() {
             initializePromise ??= Promise.all([
                 gitSession.initialize(),
                 taskSession.initialize(),
+                directoryAccess.initialize(),
             ]).then(() => undefined);
             return initializePromise;
         },
@@ -186,6 +202,7 @@ export function createRootSessionRuntime({
                     fileCheckpoints,
                     allowBackgroundTasks,
                     hookSession,
+                    directoryAccess,
                 },
                 host,
             });

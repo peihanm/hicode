@@ -17,6 +17,13 @@ export function generateRuleForTool(
     toolName: string,
     input: unknown
 ): string | null {
+    if (
+        toolName === "write_file" ||
+        toolName === "edit_file" ||
+        toolName === "delete_file"
+    ) {
+        return null;
+    }
     if (toolName === "bash") {
         if (!input || typeof input !== "object" || !("command" in input)) {
             return null;

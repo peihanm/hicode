@@ -91,3 +91,29 @@ export async function appendLocalPermissionAllowRule(
         await writeFileAtomically(path, content, 0o600);
     });
 }
+
+export async function appendLocalPermissionDirectory(
+    cwd: string,
+    directory: string
+): Promise<void> {
+    const path = getSettingsPath(cwd, "local");
+    await ensureSafeLocalSettingsPath(cwd, path);
+    await withFileLock(`${path}.lock`, async () => {
+        await ensureSafeLocalSettingsPath(cwd, path);
+        const settings = await readSettingsForUpdate(path);
+        const permissions = settings.permissions ?? {};
+        const additionalDirectories =
+            permissions.additionalDirectories ?? [];
+        if (additionalDirectories.includes(directory)) return;
+
+        settings.permissions = {
+            ...permissions,
+            additionalDirectories: [...additionalDirectories, directory],
+        };
+        const content = `${JSON.stringify(settings, null, 2)}\n`;
+        if (Buffer.byteLength(content, "utf8") > MAX_LOCAL_SETTINGS_BYTES) {
+            throw new Error("Cannot update settings larger than 4 MiB");
+        }
+        await writeFileAtomically(path, content, 0o600);
+    });
+}

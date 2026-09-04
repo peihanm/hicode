@@ -87,6 +87,7 @@ export type InteractionResponse =
     | {
         behavior: "allow";
         persistence?: "once" | "always";
+        directoryScope?: "once" | "session" | "project";
         updatedInput?: unknown;
     }
     | {behavior: "deny"; message: string};

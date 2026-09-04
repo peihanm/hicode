@@ -209,6 +209,7 @@ class DisabledFileCheckpointRuntime implements FileCheckpointRuntimeLike {
 export function createFileCheckpointRuntime(input: {
     storage: PillarStorageLayout;
     cwd: string;
+    hardBoundary?: string;
     sessionId: string;
     enabled: boolean;
     fileState?: FileStateTracker;
@@ -218,7 +219,8 @@ export function createFileCheckpointRuntime(input: {
     const store = createFileCheckpointStore(
         input.storage,
         input.cwd,
-        input.sessionId
+        input.sessionId,
+        input.hardBoundary ?? input.cwd
     );
     if (!input.enabled) {
         return new DisabledFileCheckpointRuntime(head, store, input.fileState);

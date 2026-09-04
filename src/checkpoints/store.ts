@@ -1,7 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {constants, realpathSync} from "node:fs";
-import {chmod, open, readdir, stat, unlink,} from "node:fs/promises";
-import {dirname, resolve} from "node:path";
+import {chmod, open, readdir, realpath, stat, unlink,} from "node:fs/promises";
+import {dirname, isAbsolute, relative, resolve, sep} from "node:path";
 import {createFileChange} from "../fileChanges/index.js";
 import {
     ensurePrivateStorageDirectory,
@@ -18,6 +18,7 @@ import {
     hashCheckpointContent,
     MAX_CHECKPOINT_FILE_BYTES,
     missingFingerprint,
+    resolveCheckpointPath,
     validateCheckpointPath,
 } from "./fingerprint.js";
 import {
@@ -61,8 +62,9 @@ const MAX_CHECKPOINT_WARNING_CHARACTERS = 8_000;
 type StoredCheckpointRecord = Omit<FileCheckpointRecord, "mutations">;
 
 interface BeforeMutationEvent {
-    version: 1;
+    version: 2;
     type: "before";
+    root: string;
     path: string;
     before: FileFingerprint;
     beforeBlobId?: string;
@@ -70,14 +72,28 @@ interface BeforeMutationEvent {
 }
 
 interface AfterMutationEvent {
-    version: 1;
+    version: 2;
     type: "after";
+    root: string;
     path: string;
     after: FileFingerprint;
     toolCallId: string;
 }
 
 type MutationEvent = BeforeMutationEvent | AfterMutationEvent;
+
+function mutationKey(root: string, path: string): string {
+    return `${root}\u0000${path}`;
+}
+
+function isWithin(root: string, target: string): boolean {
+    const candidate = relative(root, target);
+    return candidate === "" || (
+        candidate !== ".." &&
+        !candidate.startsWith(`..${sep}`) &&
+        !isAbsolute(candidate)
+    );
+}
 
 const WARNING_CODES = new Set<CheckpointCoverageWarning["code"]>([
     "bash_side_effects",
@@ -228,7 +244,7 @@ function parseStoredRecord(
     }
     const record = parsed as Partial<StoredCheckpointRecord>;
     if (
-        record.version !== 2 ||
+        record.version !== CHECKPOINT_MANIFEST_VERSION ||
         record.checkpointId !== checkpointId ||
         record.sessionId !== sessionId ||
         typeof record.branchId !== "string" ||
@@ -263,7 +279,10 @@ function parseMutationEvent(value: unknown): MutationEvent {
     }
     const event = value as Partial<MutationEvent>;
     if (
-        event.version !== 1 ||
+        event.version !== 2 ||
+        typeof event.root !== "string" ||
+        event.root.length === 0 ||
+        event.root.length > MAX_CHECKPOINT_PATH_CHARACTERS ||
         typeof event.path !== "string" ||
         event.path.length === 0 ||
         event.path.length > MAX_CHECKPOINT_PATH_CHARACTERS ||
@@ -357,14 +376,17 @@ export class FileCheckpointStore {
     private readonly manifestPath: string;
     private readonly lockPath: string;
     private readonly pathCwd: string;
+    private readonly hardBoundary: string;
     private readonly mutationPathCache = new Map<string, Set<string>>();
 
     private constructor(
         private readonly storage: PillarStorageLayout,
         cwd: string,
-        readonly sessionId: string
+        readonly sessionId: string,
+        hardBoundary: string
     ) {
         this.pathCwd = resolve(cwd);
+        this.hardBoundary = resolve(hardBoundary);
         try {
             this.cwd = realpathSync.native(cwd).normalize("NFC");
         } catch {
@@ -382,9 +404,33 @@ export class FileCheckpointStore {
     static create(
         storage: PillarStorageLayout,
         cwd: string,
-        sessionId: string
+        sessionId: string,
+        hardBoundary: string = cwd
     ): FileCheckpointStore {
-        return new FileCheckpointStore(storage, cwd, sessionId);
+        return new FileCheckpointStore(storage, cwd, sessionId, hardBoundary);
+    }
+
+    private displayPath(root: string, path: string): string {
+        return root === this.cwd ? path : resolve(root, path);
+    }
+
+    private async validateStoredRoot(root: string): Promise<string> {
+        if (!isAbsolute(root)) throw new Error("Checkpoint root 必须是绝对路径");
+        const [canonicalBoundary, canonicalRoot, rootInfo] = await Promise.all([
+            realpath(this.hardBoundary),
+            realpath(root),
+            stat(root),
+        ]);
+        if (!rootInfo.isDirectory()) {
+            throw new Error("Checkpoint root 不是目录");
+        }
+        if (canonicalRoot.normalize("NFC") !== resolve(root).normalize("NFC")) {
+            throw new Error("Checkpoint root 已被 symlink 重定向");
+        }
+        if (!isWithin(canonicalBoundary, canonicalRoot)) {
+            throw new Error("Checkpoint root 越过 Host 边界");
+        }
+        return canonicalRoot;
     }
 
     private withLock<T>(action: () => Promise<T>): Promise<T> {
@@ -485,7 +531,8 @@ export class FileCheckpointStore {
             }
             const event = parseMutationEvent(value);
             if (event.type === "before") {
-                if (mutations.has(event.path)) {
+                const key = mutationKey(event.root, event.path);
+                if (mutations.has(key)) {
                     throw new Error(`Checkpoint mutation 重复记录 before: ${event.path}`);
                 }
                 if (mutations.size >= MAX_CHECKPOINT_MUTATIONS) {
@@ -493,7 +540,8 @@ export class FileCheckpointStore {
                         `Checkpoint mutation 数量超过异常保护上限 ${MAX_CHECKPOINT_MUTATIONS}`
                     );
                 }
-                mutations.set(event.path, {
+                mutations.set(key, {
+                    root: event.root,
                     path: event.path,
                     before: event.before,
                     ...(event.beforeBlobId
@@ -504,7 +552,7 @@ export class FileCheckpointStore {
                 });
                 continue;
             }
-            const mutation = mutations.get(event.path);
+            const mutation = mutations.get(mutationKey(event.root, event.path));
             if (!mutation) {
                 throw new Error(`Checkpoint mutation 缺少 before: ${event.path}`);
             }
@@ -539,7 +587,9 @@ export class FileCheckpointStore {
         const cached = this.mutationPathCache.get(checkpointId);
         if (cached) return cached;
         const paths = new Set(
-            (await this.readMutations(checkpointId)).map((mutation) => mutation.path)
+            (await this.readMutations(checkpointId)).map(
+                (mutation) => mutationKey(mutation.root, mutation.path)
+            )
         );
         this.mutationPathCache.set(checkpointId, paths);
         return paths;
@@ -692,7 +742,7 @@ export class FileCheckpointStore {
             }
             manifest.sequence += 1;
             const checkpoint: FileCheckpointRecord = {
-                version: 2,
+                version: CHECKPOINT_MANIFEST_VERSION,
                 checkpointId,
                 sessionId: this.sessionId,
                 branchId,
@@ -767,7 +817,11 @@ export class FileCheckpointStore {
         checkpointId: string,
         input: CaptureBeforeWriteInput
     ): Promise<void> {
-        const validated = await validateCheckpointPath(this.pathCwd, input.path);
+        const validated = await resolveCheckpointPath(
+            this.pathCwd,
+            this.hardBoundary,
+            input.path
+        );
         if (input.content !== null) {
             const bytes = Buffer.byteLength(input.content, "utf8");
             if (bytes > MAX_CHECKPOINT_FILE_BYTES) {
@@ -777,7 +831,8 @@ export class FileCheckpointStore {
         await this.withLock(async () => {
             findCheckpointIndex(await this.readManifest(), checkpointId);
             const paths = await this.getMutationPaths(checkpointId);
-            if (paths.has(validated.relativePath)) return;
+            const key = mutationKey(validated.root, validated.relativePath);
+            if (paths.has(key)) return;
             if (paths.size >= MAX_CHECKPOINT_MUTATIONS) {
                 throw new Error(
                     `Checkpoint mutation 数量超过异常保护上限 ${MAX_CHECKPOINT_MUTATIONS}`
@@ -790,14 +845,15 @@ export class FileCheckpointStore {
                 ? undefined
                 : await this.ensureBlob(input.content);
             await this.appendMutationEvent(checkpointId, {
-                version: 1,
+                version: 2,
                 type: "before",
+                root: validated.root,
                 path: validated.relativePath,
                 before,
                 ...(beforeBlobId ? {beforeBlobId} : {}),
                 toolCallId: input.toolCallId,
             });
-            paths.add(validated.relativePath);
+            paths.add(key);
         });
     }
 
@@ -805,7 +861,11 @@ export class FileCheckpointStore {
         checkpointId: string,
         input: CaptureAfterWriteInput
     ): Promise<void> {
-        const validated = await validateCheckpointPath(this.pathCwd, input.path);
+        const validated = await resolveCheckpointPath(
+            this.pathCwd,
+            this.hardBoundary,
+            input.path
+        );
         const bytes = input.content === null
             ? 0
             : Buffer.byteLength(input.content, "utf8");
@@ -818,12 +878,13 @@ export class FileCheckpointStore {
         await this.withLock(async () => {
             findCheckpointIndex(await this.readManifest(), checkpointId);
             const paths = await this.getMutationPaths(checkpointId);
-            if (!paths.has(validated.relativePath)) {
+            if (!paths.has(mutationKey(validated.root, validated.relativePath))) {
                 throw new Error("写入前 Preimage 未成功提交");
             }
             await this.appendMutationEvent(checkpointId, {
-                version: 1,
+                version: 2,
                 type: "after",
+                root: validated.root,
                 path: validated.relativePath,
                 after,
                 toolCallId: input.toolCallId,
@@ -854,9 +915,10 @@ export class FileCheckpointStore {
         for (const checkpoint of lineage) {
             for (const mutation of checkpoint.mutations) {
                 if (!mutation.after) continue;
-                const existing = grouped.get(mutation.path);
+                const key = mutationKey(mutation.root, mutation.path);
+                const existing = grouped.get(key);
                 if (existing) existing.last = mutation;
-                else grouped.set(mutation.path, {first: mutation, last: mutation});
+                else grouped.set(key, {first: mutation, last: mutation});
             }
         }
 
@@ -868,10 +930,14 @@ export class FileCheckpointStore {
                 reason: "incomplete_checkpoint" as const,
                 message: `任务“${checkpoint.promptPreview}”存在未捕获的文件写入，无法保证完整恢复`,
             }));
-        for (const [relativePath, {first, last}] of grouped) {
-            const absolutePath = resolve(this.cwd, relativePath);
+        for (const {first, last} of grouped.values()) {
+            const displayPath = this.displayPath(first.root, first.path);
             try {
-                const validated = await validateCheckpointPath(this.cwd, absolutePath);
+                const root = await this.validateStoredRoot(first.root);
+                const validated = await validateCheckpointPath(
+                    root,
+                    resolve(root, first.path)
+                );
                 const actual = await fingerprintFile(validated.absolutePath);
                 const expectedCurrent = last.after!;
                 const target = first.before;
@@ -880,7 +946,7 @@ export class FileCheckpointStore {
                     !fingerprintsEqual(actual.fingerprint, target)
                 ) {
                     conflicts.push({
-                        path: relativePath,
+                        path: displayPath,
                         reason: "external_change",
                         message: "文件内容与 Pillar 最后一次已知写入不一致",
                     });
@@ -891,7 +957,7 @@ export class FileCheckpointStore {
                 if (target.kind === "regular") {
                     if (!first.beforeBlobId) {
                         conflicts.push({
-                            path: relativePath,
+                            path: displayPath,
                             reason: "missing_blob",
                             message: "Checkpoint 缺少文件正文引用",
                         });
@@ -901,7 +967,7 @@ export class FileCheckpointStore {
                         targetContent = await this.readVerifiedBlob(first.beforeBlobId);
                     } catch (error) {
                         conflicts.push({
-                            path: relativePath,
+                            path: displayPath,
                             reason: error instanceof Error && error.message.includes("校验失败")
                                 ? "corrupt_blob"
                                 : "missing_blob",
@@ -922,13 +988,15 @@ export class FileCheckpointStore {
                 const change = action === "noop"
                     ? undefined
                     : createFileChange({
-                        path: relativePath,
+                        path: displayPath,
                         kind: action === "create" ? "create" : "update",
                         oldContent: actualText,
                         newContent: targetText,
                     });
                 files.push({
-                    path: relativePath,
+                    root,
+                    relativePath: first.path,
+                    path: displayPath,
                     action,
                     target,
                     ...(first.beforeBlobId
@@ -940,7 +1008,7 @@ export class FileCheckpointStore {
                 });
             } catch (error) {
                 conflicts.push({
-                    path: relativePath,
+                    path: displayPath,
                     reason: "unsupported_path",
                     message: error instanceof Error ? error.message : String(error),
                 });
@@ -1002,18 +1070,18 @@ export class FileCheckpointStore {
             >();
             for (const file of plan.files) {
                 if (file.action === "noop") continue;
-                const absolutePath = resolve(this.cwd, file.path);
+                const absolutePath = resolve(file.root, file.relativePath);
                 const actual = await fingerprintFile(absolutePath);
                 const blobId = actual.content
                     ? await this.ensureBlob(actual.content)
                     : undefined;
-                rollback.set(file.path, {
+                rollback.set(mutationKey(file.root, file.relativePath), {
                     fingerprint: actual.fingerprint,
                     ...(blobId ? {blobId} : {}),
                 });
             }
 
-            const applied: string[] = [];
+            const applied: CheckpointRestoreFile[] = [];
             const deletedFiles: string[] = [];
             let applyingPath = "<restore>";
             try {
@@ -1021,11 +1089,11 @@ export class FileCheckpointStore {
                     if (file.action === "noop") continue;
                     applyingPath = file.path;
                     await this.applyFingerprint(
-                        resolve(this.cwd, file.path),
+                        resolve(file.root, file.relativePath),
                         file.target,
                         file.targetBlobId
                     );
-                    applied.push(file.path);
+                    applied.push(file);
                     if (file.action === "delete") deletedFiles.push(file.path);
                 }
             } catch (error) {
@@ -1034,18 +1102,20 @@ export class FileCheckpointStore {
                     message: error instanceof Error ? error.message : String(error),
                 }];
                 let rollbackFailed = false;
-                for (const path of [...applied].reverse()) {
-                    const original = rollback.get(path)!;
+                for (const file of [...applied].reverse()) {
+                    const original = rollback.get(
+                        mutationKey(file.root, file.relativePath)
+                    )!;
                     try {
                         await this.applyFingerprint(
-                            resolve(this.cwd, path),
+                            resolve(file.root, file.relativePath),
                             original.fingerprint,
                             original.blobId
                         );
                     } catch (rollbackError) {
                         rollbackFailed = true;
                         failures.push({
-                            path,
+                            path: file.path,
                             message: `回滚失败: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
                         });
                     }
@@ -1053,7 +1123,9 @@ export class FileCheckpointStore {
                 return {
                     status: rollbackFailed ? "partial" : "failed",
                     checkpointId,
-                    restoredFiles: rollbackFailed ? applied : [],
+                    restoredFiles: rollbackFailed
+                        ? applied.map((file) => file.path)
+                        : [],
                     deletedFiles: [],
                     conflicts: [],
                     failures,
@@ -1071,7 +1143,7 @@ export class FileCheckpointStore {
             return {
                 status: "complete",
                 checkpointId,
-                restoredFiles: applied,
+                restoredFiles: applied.map((file) => file.path),
                 deletedFiles,
                 conflicts: [],
                 failures: [],

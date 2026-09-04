@@ -77,6 +77,7 @@ export interface StartShellTaskInput {
     toolCallId: string;
     maxOutputBytes?: number;
     sandboxPermissions?: SandboxExecutionPreference;
+    writableRoots?: readonly string[];
 }
 
 export interface StartAgentTaskInput {

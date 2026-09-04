@@ -11,6 +11,7 @@ type SettingsValueSource =
 
 interface PermissionSettingsFile {
     defaultMode?: PermissionMode;
+    additionalDirectories?: string[];
     allow?: string[];
     ask?: string[];
     deny?: string[];
@@ -28,7 +29,6 @@ interface CheckpointingSettingsFile {
 interface SandboxSettingsFile {
     enabled?: boolean;
     filesystem?: {
-        allowWrite?: string[];
         denyRead?: string[];
         denyWrite?: string[];
     };
@@ -119,6 +119,7 @@ export interface ResolvedPillarSettings {
     };
     permissions: {
         defaultMode: PermissionMode;
+        additionalDirectories: string[];
         rules: PermissionRules;
     };
     hooks: ResolvedHookSettings;
@@ -132,7 +133,6 @@ export interface ResolvedPillarSettings {
     sandbox: {
         enabled: boolean;
         filesystem: {
-            allowWrite: string[];
             denyRead: string[];
             denyWrite: string[];
         };

@@ -47,7 +47,6 @@ describe("Unified Settings", () => {
         expect(resolved.values.sandbox).toEqual({
             enabled: true,
             filesystem: {
-                allowWrite: ["."],
                 denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
                 denyWrite: [".pillar", ".env"],
             },
@@ -250,13 +249,31 @@ describe("Unified Settings", () => {
         expect(resolved.origins.checkpointingEnabled).toBe("local");
     });
 
-    test("Sandbox 默认开启，嵌套字段按来源覆盖且允许显式关闭", () => {
+    test("目录授权按来源合并去重且与 Sandbox 配置分离", () => {
+        const resolved = resolvePillarSettings([
+            document("user", {
+                permissions: {additionalDirectories: ["/shared/a"]},
+            }),
+            document("project", {
+                permissions: {
+                    additionalDirectories: ["/shared/a", "/shared/b"],
+                },
+            }),
+        ]);
+
+        expect(resolved.values.permissions.additionalDirectories).toEqual([
+            "/shared/a",
+            "/shared/b",
+        ]);
+        expect(resolved.values.sandbox.filesystem).not.toHaveProperty("allowWrite");
+    });
+
+    test("Sandbox 默认开启，安全字段按来源覆盖且允许显式关闭", () => {
         const resolved = resolvePillarSettings([
             document("user", {
                 sandbox: {
                     enabled: true,
                     filesystem: {
-                        allowWrite: [".", "~/shared"],
                         denyRead: ["~/.ssh"],
                     },
                     network: {
@@ -266,9 +283,6 @@ describe("Unified Settings", () => {
             }),
             document("project", {
                 sandbox: {
-                    filesystem: {
-                        allowWrite: ["."],
-                    },
                     network: {
                         allowedDomains: ["api.example.com"],
                         allowLocalBinding: true,
@@ -283,7 +297,6 @@ describe("Unified Settings", () => {
         expect(resolved.values.sandbox).toEqual({
             enabled: false,
             filesystem: {
-                allowWrite: ["."],
                 denyRead: ["~/.ssh"],
                 denyWrite: [".pillar", ".env"],
             },

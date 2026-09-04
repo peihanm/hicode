@@ -2,6 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {
     mkdir,
     readFile,
+    realpath,
     stat,
     symlink,
     unlink,
@@ -20,12 +21,13 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {createTestFileCheckpointStore} from "../helpers/checkpointStore.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
-function createRuntime(cwd: string) {
+function createRuntime(cwd: string, hardBoundary: string = cwd) {
     return createFileCheckpointRuntime({
         storage: createPillarStorageLayout({
             pillarHome: join(cwd, ".pillar-test-checkpoints"),
         }),
         cwd,
+        hardBoundary,
         sessionId: "checkpoint-session",
         enabled: true,
         fileState: createFileStateTracker(),
@@ -33,6 +35,52 @@ function createRuntime(cwd: string) {
 }
 
 describe("File Checkpoint Store", () => {
+    test("记录并恢复 Host 边界内的项目外文件", async () => {
+        await withTempProject(async (root) => {
+            const cwd = join(root, "project");
+            const externalDirectory = join(root, "external");
+            await mkdir(cwd);
+            await mkdir(externalDirectory);
+            const canonicalExternalDirectory = await realpath(externalDirectory);
+            const path = join(externalDirectory, "shared.txt");
+            await writeFile(path, "before\n");
+            const runtime = createRuntime(cwd, root);
+            const checkpoint = await runtime.beginTurn({prompt: "修改外部文件"});
+
+            expect((await runtime.beforeWrite({
+                path,
+                content: "before\n",
+                toolCallId: "external-edit",
+            })).captured).toBe(true);
+            await writeFile(path, "after\n");
+            expect((await runtime.afterWrite({
+                path,
+                content: "after\n",
+                toolCallId: "external-edit",
+            })).captured).toBe(true);
+            await runtime.settleTurn();
+
+            const listed = await runtime.listCheckpoints();
+            expect(listed[0]?.mutations[0]).toMatchObject({
+                root: canonicalExternalDirectory,
+                path: "shared.txt",
+            });
+            const preview = await runtime.previewRestore(checkpoint!.checkpointId);
+            expect(preview.files[0]).toMatchObject({
+                path: join(canonicalExternalDirectory, "shared.txt"),
+                root: canonicalExternalDirectory,
+                relativePath: "shared.txt",
+                action: "update",
+            });
+            const restored = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(restored.status).toBe("complete");
+            expect(restored.restoredFiles).toEqual([
+                join(canonicalExternalDirectory, "shared.txt"),
+            ]);
+            expect(await readFile(path, "utf8")).toBe("before\n");
+        });
+    });
+
     test("同一 Turn 多次写入只保留第一次 Preimage", async () => {
         await withTempProject(async (cwd) => {
             const path = join(cwd, "app.ts");
@@ -130,6 +178,52 @@ describe("File Checkpoint Store", () => {
             expect(result.status).toBe("conflict");
             expect(result.conflicts[0]?.reason).toBe("external_change");
             expect(await readFile(path, "utf8")).toBe("external\n");
+        });
+    });
+
+    test("恢复时拒绝 mutation root 越过 Host 边界", async () => {
+        await withTempProject(async (cwd) => {
+            const path = join(cwd, "guarded.txt");
+            await writeFile(path, "before\n");
+            const runtime = createRuntime(cwd);
+            const checkpoint = await runtime.beginTurn({prompt: "修改受保护文件"});
+            await runtime.beforeWrite({
+                path,
+                content: "before\n",
+                toolCallId: "guarded-edit",
+            });
+            await writeFile(path, "after\n");
+            await runtime.afterWrite({
+                path,
+                content: "after\n",
+                toolCallId: "guarded-edit",
+            });
+            await runtime.settleTurn();
+
+            const store = createTestFileCheckpointStore(cwd, "checkpoint-session");
+            const mutationPath = getCheckpointMutationLogPath(
+                store.directory,
+                checkpoint!.checkpointId
+            );
+            const outsideRoot = await realpath(dirname(cwd));
+            const events = (await readFile(mutationPath, "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => ({...JSON.parse(line), root: outsideRoot}));
+            await writeFile(
+                mutationPath,
+                `${events.map((event) => JSON.stringify(event)).join("\n")}\n`
+            );
+
+            const preview = await runtime.previewRestore(checkpoint!.checkpointId);
+            expect(preview.conflicts[0]).toMatchObject({
+                reason: "unsupported_path",
+                message: expect.stringContaining("Host 边界"),
+            });
+            expect((await runtime.restoreCode(checkpoint!.checkpointId).then(
+                (result) => result.status
+            ))).toBe("conflict");
+            expect(await readFile(path, "utf8")).toBe("after\n");
         });
     });
 

@@ -5,6 +5,7 @@ import {runShellArgv, runShellCommand, type ShellCommandOptions, type ShellExecu
 
 interface ShellRunnerRequest extends ShellCommandOptions {
     sandboxPermissions?: SandboxExecutionPreference;
+    writableRoots?: readonly string[];
 }
 
 const LOCAL_BINDING_HINT =
@@ -74,6 +75,7 @@ export function createShellRunner(
         async run(request) {
             const {
                 sandboxPermissions = "use_default",
+                writableRoots,
                 command,
                 env,
                 ...processOptions
@@ -100,7 +102,8 @@ export function createShellRunner(
                 wrapped = await sandbox.wrapCommand(
                     command,
                     request.cwd,
-                    request.signal
+                    request.signal,
+                    {writableRoots}
                 );
             } catch (error) {
                 return sandboxFailure(request.signal, error);

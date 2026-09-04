@@ -2,6 +2,7 @@ import {
     SandboxManager,
     type SandboxRuntimeConfig,
 } from "@anthropic-ai/sandbox-runtime";
+import {resolve} from "node:path";
 import {createSandboxRuntimeConfig} from "./config.js";
 import type {
     ResolvedSandboxSettings,
@@ -19,7 +20,7 @@ interface SandboxBackend {
     wrapWithSandboxArgv(
         command: string,
         shell: string | undefined,
-        customConfig: undefined,
+        customConfig: Partial<SandboxRuntimeConfig> | undefined,
         signal: AbortSignal,
         cwd: string
     ): Promise<SandboxedCommand>;
@@ -65,20 +66,43 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         readonly status: Extract<SandboxStatus, {kind: "ready"}>,
         private readonly backend: SandboxBackend,
         private readonly release: () => Promise<void>,
-        readonly networkAllowedDomains: readonly string[]
+        readonly networkAllowedDomains: readonly string[],
+        private readonly baseConfig: SandboxRuntimeConfig
     ) {}
 
     async wrapCommand(
         command: string,
         cwd: string,
-        signal: AbortSignal
+        signal: AbortSignal,
+        options?: {writableRoots?: readonly string[]}
     ): Promise<SandboxedCommand> {
         if (this.closed) throw new Error("Sandbox Runtime 已关闭");
         const shell = process.platform === "win32" ? undefined : "/bin/sh";
+        const baseWritableRoots = this.baseConfig.filesystem.allowWrite
+            .map((path) => resolve(path));
+        const writableRoots = [...new Set([
+            ...baseWritableRoots,
+            ...(options?.writableRoots ?? []).map((path) => resolve(path)),
+        ])];
+        if (
+            this.status.platform === "windows" &&
+            writableRoots.some((path) => !baseWritableRoots.includes(path))
+        ) {
+            throw new Error("Windows Sandbox 不支持在 Session 中动态增加 writable root");
+        }
+        const customConfig = writableRoots.length === 0
+            ? undefined
+            : {
+                ...this.baseConfig,
+                filesystem: {
+                    ...this.baseConfig.filesystem,
+                    allowWrite: writableRoots,
+                },
+            };
         return this.backend.wrapWithSandboxArgv(
             command,
             shell,
-            undefined,
+            customConfig,
             signal,
             cwd
         );
@@ -109,9 +133,11 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
     return async function createSandboxRuntime({
         cwd,
         settings,
+        writableRoots = [],
     }: {
         cwd: string;
         settings: ResolvedSandboxSettings;
+        writableRoots?: readonly string[];
     }): Promise<SandboxRuntimeLike> {
         if (!settings.enabled) return createDisabledSandboxRuntime();
 
@@ -163,7 +189,8 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         };
 
         try {
-            await backend.initialize(createSandboxRuntimeConfig(cwd, settings));
+            const config = createSandboxRuntimeConfig(cwd, settings, writableRoots);
+            await backend.initialize(config);
             if (!backend.isSandboxingEnabled()) {
                 await release();
                 return new InactiveSandboxRuntime({
@@ -178,7 +205,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 warnings: dependencies.warnings,
             }, backend, release, Object.freeze([
                 ...settings.network.allowedDomains,
-            ]));
+            ]), config);
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

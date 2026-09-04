@@ -30,6 +30,7 @@ import {
 } from "../../src/git/index.js";
 import {createTestStorage} from "./tempProject.js";
 import type { LLMProviderName } from "../../src/llm/providerRegistry.js";
+import type {DirectoryAccessRuntimeLike} from "../../src/permissions/index.js";
 
 export function createTestContext(
   cwd: string,
@@ -52,6 +53,7 @@ export function createTestContext(
     fastProvider?: LLMProviderName;
     memoryFiles?: MemoryFileAccess;
     workspaceBoundary?: string;
+    directoryAccess?: DirectoryAccessRuntimeLike;
     setTodos?: ToolContext["setTodos"];
   } = {}
 ): ToolContext {
@@ -96,6 +98,7 @@ export function createTestContext(
         options.toolResultStore ??
         createTestToolResultStore(cwd, sessionId),
       fileCheckpoints: createDisabledFileCheckpointRuntime(),
+      directoryAccess: options.directoryAccess,
     },
     host: {
       canUseTool: options.canUseTool ?? (async () => allow),

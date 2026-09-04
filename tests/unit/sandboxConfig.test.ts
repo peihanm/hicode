@@ -9,7 +9,6 @@ describe("Sandbox config", () => {
         const config = createSandboxRuntimeConfig(cwd, {
             enabled: true,
             filesystem: {
-                allowWrite: [".", "output"],
                 denyRead: ["~/.ssh"],
                 denyWrite: ["secrets"],
             },
@@ -17,7 +16,7 @@ describe("Sandbox config", () => {
                 allowedDomains: ["api.example.com"],
                 allowLocalBinding: true,
             },
-        });
+        }, ["output"]);
 
         expect(config.filesystem.allowWrite).toEqual([
             resolve(cwd),
@@ -41,7 +40,6 @@ describe("Sandbox config", () => {
         const config = createSandboxRuntimeConfig(cwd, {
             enabled: true,
             filesystem: {
-                allowWrite: ["."],
                 denyRead: [],
                 denyWrite: [],
             },

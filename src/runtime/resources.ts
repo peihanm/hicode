@@ -45,6 +45,7 @@ export interface RootRuntimeResources {
     readonly storage: PillarStorageLayout;
     readonly inputHistory: InputHistoryStore;
     readonly cwd: string;
+    readonly workspaceBoundary: string;
     readonly model: string;
     readonly provider: ResolvedPillarSettings["models"]["primary"]["provider"];
     readonly fastModel: string;
@@ -204,6 +205,7 @@ export function createRootRuntimeResourcesFactory(
         const sandbox = await createSandboxRuntime({
             cwd,
             settings: settings.sandbox,
+            writableRoots: settings.permissions.additionalDirectories,
         });
 
         try {
@@ -334,6 +336,7 @@ export function createRootRuntimeResourcesFactory(
                 storage,
                 inputHistory: createInputHistoryStore(storage),
                 cwd,
+                workspaceBoundary: options.configuration.workspaceBoundary,
                 get model() {
                     return primaryModel.target.model;
                 },

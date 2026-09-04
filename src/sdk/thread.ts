@@ -516,6 +516,9 @@ function toPermissionDecision(
     return response.behavior === "allow"
         ? {
             behavior: "allow",
+            ...(response.directoryScope === undefined
+                ? {}
+                : {directoryScope: response.directoryScope}),
             ...(response.updatedInput === undefined
                 ? {}
                 : {updatedInput: response.updatedInput}),

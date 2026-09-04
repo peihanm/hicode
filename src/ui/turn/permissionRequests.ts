@@ -31,6 +31,9 @@ export class UIPermissionRequests {
                 input,
                 allowAddToAllowList:
                     options?.allowPersistent !== false &&
+                    toolName !== "write_file" &&
+                    toolName !== "edit_file" &&
+                    toolName !== "delete_file" &&
                     toolName !== "enter_plan_mode" &&
                     toolName !== "exit_plan_mode" &&
                     !(

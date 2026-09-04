@@ -70,6 +70,7 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
         permissions: z
             .object({
                 defaultMode: permissionModeSchema.optional(),
+                additionalDirectories: z.array(z.string().trim().min(1)).optional(),
                 allow: permissionRuleListSchema.optional(),
                 ask: permissionRuleListSchema.optional(),
                 deny: permissionRuleListSchema.optional(),
@@ -95,7 +96,6 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
                 enabled: z.boolean().optional(),
                 filesystem: z
                     .object({
-                        allowWrite: z.array(z.string().trim().min(1)).optional(),
                         denyRead: z.array(z.string().trim().min(1)).optional(),
                         denyWrite: z.array(z.string().trim().min(1)).optional(),
                     })
@@ -139,6 +139,7 @@ export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
         permissions: z
             .object({
                 defaultMode: permissionModeSchema.optional(),
+                additionalDirectories: z.array(z.string().trim().min(1)).optional(),
                 allow: permissionRuleListSchema.optional(),
                 ask: permissionRuleListSchema.optional(),
                 deny: permissionRuleListSchema.optional(),
@@ -157,7 +158,6 @@ export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
             .object({
                 enabled: z.boolean().optional(),
                 filesystem: z.object({
-                    allowWrite: z.array(z.string().trim().min(1)).optional(),
                     denyRead: z.array(z.string().trim().min(1)).optional(),
                     denyWrite: z.array(z.string().trim().min(1)).optional(),
                 }).strict().optional(),

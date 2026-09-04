@@ -3,11 +3,15 @@
 
 // 权限意向：工具通过 checkPermissions 声明自己需要什么级别的权限
 // executeTool 拿到意向后决定是否弹窗、是否直接执行、是否拒绝
-export type PermissionPromptPresentation = {
-    kind: "network_access";
-    reason: string;
-    domains: string[];
-};
+import type {DirectoryAccessRequest, DirectoryGrantScope} from "./directoryAccess.js";
+
+export type PermissionPromptPresentation =
+    | {
+        kind: "network_access";
+        reason: string;
+        domains: string[];
+    }
+    | ({kind: "filesystem_access"} & DirectoryAccessRequest);
 
 export type PermissionResult =
     | { behavior: "allow" } // 放行，不问用户
@@ -25,7 +29,11 @@ export type PermissionResult =
 // updatedInput：UI 可以把用户的额外输入注入回来（如 askUser 的答案）
 //   参考 claude-code：AskUserQuestion 的答案通过 PermissionDecision.updatedInput 回流
 export type PermissionDecision =
-    | { behavior: "allow"; updatedInput?: unknown } // 用户同意（可携带修改后的 input）
+    | {
+        behavior: "allow";
+        updatedInput?: unknown;
+        directoryScope?: "once" | DirectoryGrantScope;
+    } // 用户同意（可携带修改后的 input）
     | { behavior: "deny"; message: string }; // 用户拒绝
 
 // ─── 配置规则相关类型 ───

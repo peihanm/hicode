@@ -21,11 +21,12 @@ function resolveUniquePaths(cwd: string, paths: readonly string[]): string[] {
 
 export function createSandboxRuntimeConfig(
     cwd: string,
-    settings: ResolvedSandboxSettings
+    settings: ResolvedSandboxSettings,
+    writableRoots: readonly string[] = []
 ): SandboxRuntimeConfig {
     return {
         filesystem: {
-            allowWrite: resolveUniquePaths(cwd, settings.filesystem.allowWrite),
+            allowWrite: resolveUniquePaths(cwd, [".", ...writableRoots]),
             denyRead: resolveUniquePaths(cwd, settings.filesystem.denyRead),
             denyWrite: resolveUniquePaths(cwd, [
                 ...settings.filesystem.denyWrite,

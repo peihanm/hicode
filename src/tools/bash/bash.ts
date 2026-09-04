@@ -345,6 +345,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                     toolCallId: invocation.toolCallId,
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                     sandboxPermissions: effectiveSandboxPermissions,
+                    writableRoots: ctx.directoryAccess.listDirectories(),
                 });
                 if (task.status !== "running") {
                     return {
@@ -388,6 +389,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                 previewChars: 30_000,
                 sandboxPermissions: effectiveSandboxPermissions,
+                writableRoots: ctx.directoryAccess.listDirectories(),
             });
             const shouldPersist =
                 (result.outputBytes ?? 0) > 30_000 ||

@@ -229,6 +229,7 @@ describe("TypeScript SDK", () => {
             const settings = createTestSettings({
                 permissions: {
                     defaultMode: "default",
+                    additionalDirectories: [],
                     rules: {
                         allow: [],
                         ask: [{toolName: "write_file", source: "host"}],

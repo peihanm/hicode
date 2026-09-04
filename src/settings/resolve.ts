@@ -139,6 +139,19 @@ function mergePermissionRules(
     };
 }
 
+function mergeAdditionalDirectories(
+    documents: readonly LoadedSettingsDocument[]
+): string[] {
+    const directories = new Set<string>();
+    for (const document of documents) {
+        for (const directory of
+            document.value.permissions?.additionalDirectories ?? []) {
+            directories.add(directory);
+        }
+    }
+    return [...directories];
+}
+
 function mergeHooks(
     documents: readonly LoadedSettingsDocument[]
 ): ResolvedHookSettings {
@@ -183,7 +196,6 @@ export function resolvePillarSettings(
     let autoExtractDisabled = false;
     let checkpointingEnabled = true;
     let sandboxEnabled = true;
-    let sandboxAllowWrite = ["."];
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
     let sandboxDenyWrite = [".pillar", ".env"];
     let sandboxAllowedDomains: string[] = [];
@@ -251,9 +263,6 @@ export function resolvePillarSettings(
             sandboxEnabled = value.sandbox.enabled;
             origins.sandboxEnabled = document.source;
         }
-        if (value.sandbox?.filesystem?.allowWrite !== undefined) {
-            sandboxAllowWrite = [...value.sandbox.filesystem.allowWrite];
-        }
         if (value.sandbox?.filesystem?.denyRead !== undefined) {
             sandboxDenyRead = [...value.sandbox.filesystem.denyRead];
         }
@@ -301,6 +310,7 @@ export function resolvePillarSettings(
             },
             permissions: {
                 defaultMode: permissionMode,
+                additionalDirectories: mergeAdditionalDirectories(documents),
                 rules: mergePermissionRules(documents),
             },
             hooks: mergeHooks(documents),
@@ -312,7 +322,6 @@ export function resolvePillarSettings(
             sandbox: {
                 enabled: sandboxEnabled,
                 filesystem: {
-                    allowWrite: sandboxAllowWrite,
                     denyRead: sandboxDenyRead,
                     denyWrite: sandboxDenyWrite,
                 },

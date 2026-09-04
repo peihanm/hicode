@@ -17,6 +17,7 @@ import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";
 export type PermissionMatcher = (
@@ -95,6 +96,9 @@ export interface ToolContext {
 
     // Worktree Agent 的执行层文件边界；Root Runtime 默认不设置。
     workspaceBoundary?: string;
+
+    // 当前 Session 已授权的工作目录；不能替代 Host/子 Agent hard boundary。
+    directoryAccess: DirectoryAccessRuntimeLike;
 
     // Root-only 文件式 Memory capability。子 Agent 不得继承。
     memoryFiles?: MemoryFileAccess;

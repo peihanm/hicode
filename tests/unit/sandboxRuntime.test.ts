@@ -1,10 +1,10 @@
 import {describe, expect, test} from "bun:test";
 import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
+import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 
 const settings = {
     enabled: true,
     filesystem: {
-        allowWrite: ["."],
         denyRead: [],
         denyWrite: [],
     },
@@ -15,6 +15,48 @@ const settings = {
 };
 
 describe("Sandbox Runtime lease", () => {
+    test("每条命令只获得当前 Session 提供的 writable roots", async () => {
+        let enabled = false;
+        const wrappedConfigs: Array<Partial<SandboxRuntimeConfig> | undefined> = [];
+        const createRuntime = createSandboxRuntimeFactory({
+            isSupportedPlatform: () => true,
+            isSandboxingEnabled: () => enabled,
+            checkDependencies: () => ({errors: [], warnings: []}),
+            async initialize() {
+                enabled = true;
+            },
+            async wrapWithSandboxArgv(command, _shell, customConfig) {
+                wrappedConfigs.push(customConfig);
+                return {argv: ["sh", "-c", command], env: {}};
+            },
+            annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
+            cleanupAfterCommand() {},
+            async reset() {
+                enabled = false;
+            },
+        });
+        const runtime = await createRuntime({cwd: "/project", settings});
+
+        await runtime.wrapCommand(
+            "first",
+            "/project",
+            new AbortController().signal,
+            {writableRoots: ["/shared/session-a"]}
+        );
+        await runtime.wrapCommand(
+            "second",
+            "/project",
+            new AbortController().signal
+        );
+
+        expect(wrappedConfigs[0]?.filesystem?.allowWrite).toEqual([
+            "/project",
+            "/shared/session-a",
+        ]);
+        expect(wrappedConfigs[1]?.filesystem?.allowWrite).toEqual(["/project"]);
+        await runtime.close();
+    });
+
     test("同一 Factory 只允许一个 enabled Root 持有全局 Manager", async () => {
         let enabled = false;
         let finishInitialization: (() => void) | undefined;

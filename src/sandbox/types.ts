@@ -24,6 +24,10 @@ export interface SandboxedCommand {
     env: NodeJS.ProcessEnv;
 }
 
+export interface SandboxCommandOptions {
+    writableRoots?: readonly string[];
+}
+
 export interface SandboxRuntimeLike {
     readonly status: SandboxStatus;
     readonly networkAllowedDomains?: readonly string[];
@@ -31,7 +35,8 @@ export interface SandboxRuntimeLike {
     wrapCommand(
         command: string,
         cwd: string,
-        signal: AbortSignal
+        signal: AbortSignal,
+        options?: SandboxCommandOptions
     ): Promise<SandboxedCommand>;
 
     annotateStderr(command: string, stderr: string): string;

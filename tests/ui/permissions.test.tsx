@@ -10,6 +10,7 @@ import { ConfirmDialog } from "../../src/ui/dialogs/ConfirmDialog.js";
 import { ElevatedBashDialog } from "../../src/ui/dialogs/ElevatedBashDialog.js";
 import { EnterPlanDialog } from "../../src/ui/dialogs/EnterPlanDialog.js";
 import { NetworkAccessDialog } from "../../src/ui/dialogs/NetworkAccessDialog.js";
+import { FileAccessDialog } from "../../src/ui/dialogs/FileAccessDialog.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 
@@ -378,7 +379,7 @@ describe("permission confirmation UI", () => {
     });
   });
 
-  test("永久允许写入失败后保留确认框，用户可改为仅允许本次", async () => {
+  test("永久允许规则写入失败后保留确认框，用户可改为仅允许本次", async () => {
     const decisions: PermissionDecision[] = [];
     const onDone = mock(() => {});
     const persist = mock(async () => {
@@ -387,9 +388,9 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <ConfirmDialog
         req={{
-          question: "write_file 需要确认",
-          toolName: "write_file",
-          input: { path: "a.ts" },
+          question: "bash 需要确认",
+          toolName: "bash",
+          input: { command: "git status" },
           resolve: (decision) => decisions.push(decision),
         }}
         onDone={onDone}
@@ -460,11 +461,11 @@ describe("permission confirmation UI", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  test("永久允许对当前 turn 已创建的 ToolContext 立即生效", async () => {
+  test("普通工具永久允许对当前 turn 已创建的 ToolContext 立即生效", async () => {
     await withTempProject(async (cwd) => {
       const schema = z.object({ path: z.string() });
       const writeTool: Tool<typeof schema> = {
-        name: "write_file",
+        name: "synthetic_write",
         description: "synthetic write",
         parameters: schema,
         execute: async () => "ok",
@@ -481,8 +482,8 @@ describe("permission confirmation UI", () => {
         ctx
       ) => {
         await ctx.canUseTool(
-          "write_file",
-          "write_file 需要确认",
+          "synthetic_write",
+          "synthetic_write 需要确认",
           { path: "a.ts" }
         );
         secondDecision = await resolvePermission(writeTool, { path: "b.ts" }, ctx);
@@ -501,13 +502,50 @@ describe("permission confirmation UI", () => {
       await flush(10);
       instance.stdin.write(ENTER);
       await flush();
-      expect(instance.lastFrame()).toContain("write_file 需要确认");
+      expect(instance.lastFrame()).toContain("synthetic_write 需要确认");
 
       instance.stdin.write("2");
       await done;
 
       expect(secondDecision).toEqual({ behavior: "allow" });
-      expect(instance.lastFrame()).not.toContain("write_file 需要确认");
+      expect(instance.lastFrame()).not.toContain("synthetic_write 需要确认");
     });
+  });
+
+  test("项目外文件使用目录范围审批", async () => {
+    const decisions: PermissionDecision[] = [];
+    const onDone = mock(() => {});
+    const instance = render(
+      <FileAccessDialog
+        req={{
+          question: "write",
+          toolName: "write_file",
+          input: {path: "/tmp/a.ts"},
+          presentation: {
+            kind: "filesystem_access",
+            operation: "write",
+            targetPath: "/tmp/a.ts",
+            suggestedDirectory: "/tmp",
+          },
+          resolve: (decision) => decisions.push(decision),
+        }}
+        onDone={onDone}
+      />
+    );
+
+    await flush();
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("◆ FILE ACCESS");
+    expect(frame).toContain("/tmp/a.ts");
+    expect(frame).toContain("Allow /tmp for this session");
+    expect(frame).toContain("Always allow /tmp for this project");
+
+    instance.stdin.write("2");
+    await flush();
+    expect(decisions).toEqual([{
+      behavior: "allow",
+      directoryScope: "session",
+    }]);
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 });

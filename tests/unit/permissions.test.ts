@@ -1,17 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { readFile, writeFile, mkdir, symlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import {tmpdir} from "node:os";
 import {
   addToAllowList,
+  createDirectoryAccessRuntime,
 } from "../../src/permissions/index.js";
 import type { PermissionRules } from "../../src/permissions/index.js";
 import { resolvePermission } from "../../src/permissions/resolvePermission.js";
 import type { Tool } from "../../src/tools/types.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { loadPillarSettings } from "../../src/settings/index.js";
+import {
+  appendLocalPermissionDirectory,
+  loadPillarSettings,
+} from "../../src/settings/index.js";
 
 const inputSchema = z.object({ path: z.string().optional() });
 
@@ -118,6 +122,72 @@ describe("resolvePermission", () => {
     });
   });
 
+  test("项目外文件生成结构化目录授权且裸工具 allow 不能扩权", async () => {
+    await withTempProject(async (cwd) => {
+      const hardBoundary = parse(cwd).root;
+      const directoryAccess = createDirectoryAccessRuntime({
+        cwd,
+        hardBoundary,
+      });
+      const ctx = createTestContext(cwd, {
+        permissionMode: "default",
+        workspaceBoundary: hardBoundary,
+      });
+      ctx.directoryAccess = directoryAccess;
+      ctx.permissionRules.allow.push({
+        toolName: "write_file",
+        source: "local",
+      });
+      const tool = createTool({
+        name: "write_file",
+        checkPermissions: async () => ({behavior: "ask", message: "write"}),
+        getDefaultApprovalScope: ({path}) =>
+          path ? {kind: "workspace", path} : undefined,
+      });
+      const target = join(tmpdir(), "pillar-external-write.txt");
+
+      const result = await resolvePermission(tool, {path: target}, ctx);
+      expect(result).toMatchObject({
+          behavior: "ask",
+          allowPersistent: false,
+          presentation: {
+            kind: "filesystem_access",
+            operation: "write",
+          },
+        });
+      expect(
+        result.behavior === "ask" &&
+        result.presentation?.kind === "filesystem_access" &&
+        result.presentation.targetPath.endsWith("pillar-external-write.txt")
+      ).toBe(true);
+    });
+  });
+
+  test("Session 目录授权只扩大所选目录", async () => {
+    await withTempProject(async (cwd) => {
+      const granted = join(tmpdir(), `pillar-grant-${Date.now()}`);
+      const other = join(tmpdir(), `pillar-other-${Date.now()}`);
+      await mkdir(granted);
+      await mkdir(other);
+      try {
+        const access = createDirectoryAccessRuntime({
+          cwd,
+          hardBoundary: tmpdir(),
+        });
+        await access.grantDirectory(granted, "session");
+        expect(await access.canAccess(join(granted, "a.txt"))).toBe(true);
+        expect(await access.canAccess(join(other, "a.txt"))).toBe(false);
+      } finally {
+        await import("node:fs/promises").then(({rm}) =>
+          Promise.all([
+            rm(granted, {recursive: true, force: true}),
+            rm(other, {recursive: true, force: true}),
+          ])
+        );
+      }
+    });
+  });
+
   test("default 自动放行 sandboxed scope，但显式 ask 和 plan 仍优先", async () => {
     const tool = createTool({
       checkPermissions: async () => ({behavior: "ask", message: "command"}),
@@ -162,6 +232,31 @@ describe("resolvePermission", () => {
 });
 
 describe("permission rule persistence", () => {
+  test("项目目录授权原子持久化且重复追加幂等", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const directory = join(cwd, "shared");
+      await mkdir(directory);
+      await appendLocalPermissionDirectory(cwd, directory);
+      await appendLocalPermissionDirectory(cwd, directory);
+
+      expect(
+        loadPillarSettings({storage, cwd}).values.permissions.additionalDirectories
+      ).toEqual([directory]);
+      const settings = JSON.parse(
+        await readFile(join(cwd, ".pillar", "settings.local.json"), "utf8")
+      );
+      expect(settings.permissions.additionalDirectories).toEqual([directory]);
+    });
+  });
+
+  test("文件工具不再生成整工具永久 allow 规则", async () => {
+    const {generateRuleForTool} = await import(
+      "../../src/permissions/index.js"
+    );
+    expect(generateRuleForTool("write_file", {path: "/tmp/a"})).toBeNull();
+    expect(generateRuleForTool("edit_file", {path: "/tmp/a"})).toBeNull();
+    expect(generateRuleForTool("delete_file", {path: "/tmp/a"})).toBeNull();
+  });
   test("新增 local allow rule 同时更新文件和返回值且重复追加幂等", async () => {
     await withTempProject(async (cwd) => {
       const emptyRules: PermissionRules = { allow: [], ask: [], deny: [] };

@@ -21,9 +21,24 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
                 message: "SDK Host 返回了无效 persistence",
             };
         }
+        const directoryScope = "directoryScope" in value
+            ? value.directoryScope
+            : undefined;
+        if (
+            directoryScope !== undefined &&
+            directoryScope !== "once" &&
+            directoryScope !== "session" &&
+            directoryScope !== "project"
+        ) {
+            return {
+                behavior: "deny",
+                message: "SDK Host 返回了无效 directoryScope",
+            };
+        }
         return {
             behavior: "allow",
             ...(persistence === undefined ? {} : {persistence}),
+            ...(directoryScope === undefined ? {} : {directoryScope}),
             ...("updatedInput" in value
                 ? {updatedInput: value.updatedInput}
                 : {}),

@@ -80,6 +80,7 @@ if (
     await runCheckpointRewindFromCli({
         storage,
         cwd,
+        hardBoundary: configuration.workspaceBoundary,
         model: loadedSettings.values.models.primary.model,
         sessionId: cliOptions.resumeMode.sessionId,
         checkpointId: cliOptions.rewindCheckpointId,

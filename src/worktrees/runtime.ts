@@ -1,6 +1,7 @@
 import {realpath} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
+import {createDirectoryAccessRuntime} from "../permissions/index.js";
 import {
     createGitCommandRunner,
     formatGitProcessError,
@@ -163,6 +164,11 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
             ...parentContext,
             cwd: mapped.cwd,
             workspaceBoundary: mapped.root,
+            directoryAccess: createDirectoryAccessRuntime({
+                cwd: mapped.cwd,
+                hardBoundary: mapped.root,
+                allowGrants: false,
+            }),
             permissionMode: "default",
             collaborationMode: "build",
             permissionPromptPolicy: "never",

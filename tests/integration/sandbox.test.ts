@@ -61,7 +61,6 @@ describe("OS Sandbox integration", () => {
                 settings: {
                     enabled: true,
                     filesystem: {
-                        allowWrite: ["."],
                         denyRead: [secretPath],
                         denyWrite: [],
                     },

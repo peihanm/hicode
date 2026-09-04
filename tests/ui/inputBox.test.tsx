@@ -8,6 +8,7 @@ import {
 } from "../../src/ui/input/InputBox.js";
 import { layoutInputRows } from "../../src/ui/input/MultilineTextInput.js";
 import type { InputHistoryStore } from "../../src/session/inputHistory/index.js";
+import {getSlashCommandSuggestions} from "../../src/slash/registry.js";
 
 afterEach(() => cleanup());
 
@@ -184,7 +185,10 @@ describe("multiline input box", () => {
     expect(initial).not.toContain("/rewind");
     expect(initial).toContain("↑/↓ 选择 · Tab 补全");
 
-    for (let index = 0; index < 8; index += 1) {
+    const rewindIndex = getSlashCommandSuggestions("/")
+      .findIndex((suggestion) => suggestion.name === "rewind");
+    expect(rewindIndex).toBeGreaterThan(0);
+    for (let index = 0; index < rewindIndex; index += 1) {
       instance.stdin.write("\u001B[B");
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
@@ -192,7 +196,7 @@ describe("multiline input box", () => {
     const scrolled = instance.lastFrame() ?? "";
     expect(scrolled).not.toContain("/help");
     expect(scrolled).toContain("❯ /rewind");
-    expect(scrolled).toContain("4–9 / 12");
+    expect(scrolled).toContain(`/ ${getSlashCommandSuggestions("/").length}`);
   });
 
   test("Up/Down 浏览已提交输入并恢复当前草稿", async () => {

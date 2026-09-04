@@ -17,6 +17,15 @@ export {
 } from "./resolvePermission.js";
 export {generateRuleForTool, addToAllowList} from "./addRule.js";
 export {
+    createDirectoryAccessRuntime,
+    directoryOperationForTool,
+} from "./directoryAccess.js";
+export type {
+    DirectoryAccessRequest,
+    DirectoryAccessRuntimeLike,
+    DirectoryGrantScope,
+} from "./directoryAccess.js";
+export {
     getPermissionModeDescription,
     getPermissionModeShortLabel,
     isPermissionMode,

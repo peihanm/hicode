@@ -71,6 +71,7 @@ async function saveConversationState(input: {
 export async function rewindSessionCheckpoint(input: {
     storage: PillarStorageLayout;
     cwd: string;
+    hardBoundary: string;
     model: string;
     sessionId: string;
     checkpointId: string;
@@ -86,6 +87,7 @@ export async function rewindSessionCheckpoint(input: {
     const runtime = createFileCheckpointRuntime({
         storage: input.storage,
         cwd: input.cwd,
+        hardBoundary: input.hardBoundary,
         sessionId: input.sessionId,
         enabled: false,
         initialHead: loaded.checkpointHead,

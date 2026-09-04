@@ -55,6 +55,7 @@ export async function runShellTask(
             maxOutputBytes: input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
             previewChars: 0,
             sandboxPermissions: input.sandboxPermissions,
+            writableRoots: input.writableRoots,
         });
         finalStatus = statusFromResult(result);
         task.termination = result.termination;

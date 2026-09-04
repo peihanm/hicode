@@ -24,12 +24,12 @@ const KNOWN_PERMISSION_KEYS = new Set([
     "allow",
     "ask",
     "deny",
+    "additionalDirectories",
 ]);
 const KNOWN_MEMORY_KEYS = new Set(["enabled", "autoExtract"]);
 const KNOWN_CHECKPOINTING_KEYS = new Set(["enabled"]);
 const KNOWN_SANDBOX_KEYS = new Set(["enabled", "filesystem", "network"]);
 const KNOWN_SANDBOX_FILESYSTEM_KEYS = new Set([
-    "allowWrite",
     "denyRead",
     "denyWrite",
 ]);

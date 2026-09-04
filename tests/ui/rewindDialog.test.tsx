@@ -6,7 +6,7 @@ import type {FileCheckpointRecord} from "../../src/checkpoints/index.js";
 afterEach(() => cleanup());
 
 const checkpoint: FileCheckpointRecord = {
-    version: 2,
+    version: 3,
     checkpointId: "checkpoint-1",
     sessionId: "session-1",
     branchId: "branch-1",

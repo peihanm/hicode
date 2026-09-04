@@ -46,6 +46,7 @@ describe("headless session boundary", () => {
         configuration: configuration(cwd, storage, createTestSettings({
           permissions: {
             defaultMode: "readOnly",
+            additionalDirectories: [],
             rules: { allow: [], ask: [], deny: [] },
           },
         })),

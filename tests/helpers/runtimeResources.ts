@@ -79,6 +79,7 @@ export function createTestSettings(
     },
     permissions: {
       defaultMode: "default",
+      additionalDirectories: [],
       rules: { allow: [], ask: [], deny: [] },
     },
     hooks: createEmptyResolvedHookSettings(),
@@ -87,7 +88,6 @@ export function createTestSettings(
     sandbox: {
       enabled: false,
       filesystem: {
-        allowWrite: ["."],
         denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
         denyWrite: [".pillar", ".env"],
       },
@@ -185,6 +185,7 @@ export function createTestRuntimeResources(
     storage,
     inputHistory: createInputHistoryStore(storage),
     cwd,
+    workspaceBoundary: overrides.workspaceBoundary ?? cwd,
     get model() {
       return primaryModel.target.model;
     },

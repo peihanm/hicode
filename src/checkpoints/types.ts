@@ -1,6 +1,6 @@
 import type {FileChange} from "../fileChanges/index.js";
 
-export const CHECKPOINT_MANIFEST_VERSION = 2;
+export const CHECKPOINT_MANIFEST_VERSION = 3;
 
 type CheckpointWarningCode =
     | "bash_side_effects"
@@ -27,6 +27,7 @@ export interface FileFingerprint {
 }
 
 export interface CheckpointFileMutation {
+    root: string;
     path: string;
     before: FileFingerprint;
     beforeBlobId?: string;
@@ -36,7 +37,7 @@ export interface CheckpointFileMutation {
 }
 
 export interface FileCheckpointRecord {
-    version: 2;
+    version: 3;
     checkpointId: string;
     sessionId: string;
     branchId: string;
@@ -63,7 +64,7 @@ export interface CheckpointHead {
 }
 
 export interface FileCheckpointManifest {
-    version: 2;
+    version: 3;
     cwd: string;
     sessionId: string;
     sequence: number;
@@ -86,6 +87,8 @@ interface CheckpointConflict {
 }
 
 export interface CheckpointRestoreFile {
+    root: string;
+    relativePath: string;
     path: string;
     action: RestoreFileAction;
     target: FileFingerprint;

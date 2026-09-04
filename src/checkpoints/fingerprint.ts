@@ -80,6 +80,10 @@ export interface ValidatedCheckpointPath {
     exists: boolean;
 }
 
+export interface RootedCheckpointPath extends ValidatedCheckpointPath {
+    root: string;
+}
+
 export async function validateCheckpointPath(
     cwd: string,
     inputPath: string
@@ -131,6 +135,35 @@ export async function validateCheckpointPath(
             exists: false,
         };
     }
+}
+
+export async function resolveCheckpointPath(
+    cwd: string,
+    hardBoundary: string,
+    inputPath: string
+): Promise<RootedCheckpointPath> {
+    const withinBoundary = await validateCheckpointPath(hardBoundary, inputPath);
+    try {
+        const withinCwd = await validateCheckpointPath(cwd, withinBoundary.absolutePath);
+        return {
+            ...withinCwd,
+            root: await realpath(cwd),
+        };
+    } catch (error) {
+        if (
+            !(error instanceof Error) ||
+            !error.message.includes("当前项目内")
+        ) {
+            throw error;
+        }
+    }
+
+    const existingParent = await nearestExistingParent(
+        resolve(withinBoundary.absolutePath, "..")
+    );
+    const root = await realpath(existingParent);
+    const external = await validateCheckpointPath(root, withinBoundary.absolutePath);
+    return {...external, root};
 }
 
 export async function fingerprintFile(path: string): Promise<{

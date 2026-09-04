@@ -19,6 +19,7 @@ import type {PermissionResult} from "./types.js";
 import {matchPattern} from "./matchPattern.js";
 import {toolPathInput, validateWorkspacePath} from "../worktrees/pathGuard.js";
 import {parsePermissionRule} from "./rules.js";
+import {directoryOperationForTool} from "./directoryAccess.js";
 
 /**
  * 用当前工具的真实权限 matcher 判断单条规则。Hook `if` 复用该
@@ -74,6 +75,7 @@ async function resolvePermissionInner(
 
     const matcher = await getMatcher(tool, input);
     const rules = ctx.permissionRules;
+    const defaultScope = tool.getDefaultApprovalScope?.(input, ctx);
 
     // 1. deny 规则（最高优先级）
     for (const rule of rules.deny) {
@@ -129,30 +131,66 @@ async function resolvePermissionInner(
             : {behavior: "ask", message: `Read Only 模式下工具 ${tool.name} 需要确认`};
     }
 
+    let workspaceAccess: boolean | undefined;
+    if (defaultScope?.kind === "workspace") {
+        try {
+            workspaceAccess = await ctx.directoryAccess.canAccess(defaultScope.path);
+        } catch (error) {
+            return {
+                behavior: "deny",
+                message: `无法安全验证目录访问: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
+    }
+
     // 8. Default：只自动批准可验证的 workspace 或 OS Sandbox 副作用。
     // 显式 ask、Tool deny、强制交互与 Plan 已在更高优先级处理。
-    if (mode === "default" && tool.getDefaultApprovalScope) {
-        const scope = tool.getDefaultApprovalScope(input, ctx);
-        if (scope?.kind === "sandboxed") return {behavior: "allow"};
-        if (scope?.kind === "workspace") {
-            const scoped = await validateWorkspacePath(
-                ctx.cwd,
-                ctx.cwd,
-                scope.path
-            );
-            if (scoped.ok) return {behavior: "allow"};
+    if (mode === "default") {
+        if (defaultScope?.kind === "sandboxed") return {behavior: "allow"};
+        if (defaultScope?.kind === "workspace" && workspaceAccess) {
+            return {behavior: "allow"};
         }
     }
 
     // 9. allow 规则
     for (const rule of rules.allow) {
         if (ruleMatches(rule, tool.name, matcher, "allow")) {
+            // Tool allow 只控制调用确认，不能隐式扩大文件系统范围。
+            if (defaultScope?.kind === "workspace" && !workspaceAccess) {
+                continue;
+            }
             return {behavior: "allow"};
         }
     }
 
     // 10. 工具自己的 allow/ask
     if (toolResult.behavior !== "passthrough") {
+        if (
+            toolResult.behavior === "ask" &&
+            defaultScope?.kind === "workspace" &&
+            workspaceAccess === false
+        ) {
+            const operation = directoryOperationForTool(tool.name);
+            if (operation) {
+                let request;
+                try {
+                    request = await ctx.directoryAccess.createRequest(
+                        defaultScope.path,
+                        operation
+                    );
+                } catch (error) {
+                    return {
+                        behavior: "deny",
+                        message: `无法安全创建目录授权: ${error instanceof Error ? error.message : String(error)}`,
+                    };
+                }
+                return {
+                    ...toolResult,
+                    allowPersistent: false,
+                    presentation: {kind: "filesystem_access", ...request},
+                };
+            }
+        }
         return toolResult;
     }
 

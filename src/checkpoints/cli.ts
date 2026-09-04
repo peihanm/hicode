@@ -25,6 +25,7 @@ function formatTextResult(result: CheckpointRestoreResult): string {
 export async function runCheckpointRewindFromCli(input: {
     storage: PillarStorageLayout;
     cwd: string;
+    hardBoundary: string;
     model: string;
     sessionId: string;
     checkpointId: string;

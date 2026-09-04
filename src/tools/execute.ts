@@ -189,6 +189,35 @@ export async function executeRegisteredTool(
                 preHookResult
             );
         }
+        if (permission.presentation?.kind === "filesystem_access") {
+            const scope = decision.directoryScope ?? "once";
+            if (scope !== "once") {
+                try {
+                    await ctx.directoryAccess.grantDirectory(
+                        permission.presentation.suggestedDirectory,
+                        scope
+                    );
+                } catch (error) {
+                    return hookDecoratedResult(
+                        inlineToolResult(
+                            `目录授权失败: ${error instanceof Error ? error.message : String(error)}`,
+                            "failed"
+                        ),
+                        "PreToolUse",
+                        preHookResult
+                    );
+                }
+            }
+        } else if (decision.directoryScope !== undefined) {
+            return hookDecoratedResult(
+                inlineToolResult(
+                    "权限交互返回了不适用于当前请求的目录授权",
+                    "denied"
+                ),
+                "PreToolUse",
+                preHookResult
+            );
+        }
         if (decision.updatedInput !== undefined) {
             if (tool.acceptsUpdatedInputFromUser !== true) {
                 return hookDecoratedResult(

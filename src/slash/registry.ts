@@ -9,6 +9,7 @@ import {tasksCommand} from "./commands/tasks.js";
 import {diffCommand} from "./commands/diff.js";
 import {modelCommand} from "./commands/model.js";
 import {resumeCommand} from "./commands/resume.js";
+import {addDirCommand} from "./commands/addDir.js";
 import type {SlashCommand} from "./types.js";
 
 const COMMANDS: readonly SlashCommand[] = [
@@ -16,6 +17,7 @@ const COMMANDS: readonly SlashCommand[] = [
     modelCommand,
     resumeCommand,
     permissionsCommand,
+    addDirCommand,
     mcpCommand,
     agentsCommand,
     memoryCommand,
