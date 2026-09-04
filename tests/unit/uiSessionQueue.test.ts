@@ -53,17 +53,17 @@ describe("SessionSnapshotQueue", () => {
       await gate;
       observed.push({
         content: input.history[0]?.content ?? "",
-        discovered: input.toolDiscovery?.discoveredNames[0],
+        discovered: input.toolDiscovery?.loadedNames[0],
       });
     });
     const input = snapshot("original");
     input.toolDiscovery = {
-      version: 1,
-      discoveredNames: ["mcp__fixture__echo"],
+      version: 2,
+      loadedNames: ["mcp__fixture__echo"],
     };
     const pending = queue.enqueue(input);
     input.history[0] = { role: "user", content: "mutated" };
-    input.toolDiscovery.discoveredNames[0] = "mcp__fixture__mutated";
+    input.toolDiscovery.loadedNames[0] = "mcp__fixture__mutated";
     release();
     await pending;
     expect(observed).toEqual([{

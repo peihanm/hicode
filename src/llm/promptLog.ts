@@ -23,6 +23,7 @@ const PROMPT_LOG_DIR = "prompt-logs";
 const MAX_PROMPT_LOG_BYTES = 64 * 1024 * 1024;
 const MAX_PROMPT_LOG_FILES = 200;
 const MAX_PROMPT_LOG_TOTAL_BYTES = 512 * 1024 * 1024;
+const MAX_TOOL_SEARCH_DESCRIPTION_CHARS = 20_000;
 const PROMPT_LOG_FILE = /^\d{4}-\d{2}-\d{2}T.+_[0-9a-f-]+\.json$/i;
 
 export interface PromptLogHandle {
@@ -37,15 +38,31 @@ function toolName(value: unknown): string | undefined {
     return typeof name === "string" ? name : undefined;
 }
 
+function toolDescription(value: unknown): string | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const fn = (value as Record<string, unknown>).function;
+    if (!fn || typeof fn !== "object") return undefined;
+    const description = (fn as Record<string, unknown>).description;
+    return typeof description === "string" ? description : undefined;
+}
+
 function compactRequest(request: PromptLogRequest): Record<string, unknown> {
     const {messages, tools, ...metadata} = request;
     const toolNames = (tools ?? [])
         .map(toolName)
         .filter((name): name is string => name !== undefined);
+    const toolSearchDescription = (tools ?? []).find(
+        (tool) => toolName(tool) === "tool_search"
+    );
+    const deferredToolManifest = toolDescription(toolSearchDescription)
+        ?.slice(0, MAX_TOOL_SEARCH_DESCRIPTION_CHARS);
     return {
         ...metadata,
         messages,
         ...(toolNames.length > 0 ? {toolNames} : {}),
+        ...(deferredToolManifest
+            ? {toolSearchDescription: deferredToolManifest}
+            : {}),
     };
 }
 

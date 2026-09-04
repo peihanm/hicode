@@ -5,6 +5,8 @@ import type {ToolSearchDocument, ToolSearchIndex,} from "./searchIndex.js";
 export const TOOL_SEARCH_NAME = "tool_search";
 const TOOL_SEARCH_DEFAULT_LIMIT = 8;
 const TOOL_SEARCH_MAX_LIMIT = 10;
+const TOOL_SEARCH_MANIFEST_MAX_CHARS = 16_000;
+const TOOL_SEARCH_SOURCE_DESCRIPTION_MAX_CHARS = 240;
 
 const toolSearchParameters = z.object({
     query: z.string().trim().min(1).max(500),
@@ -56,28 +58,89 @@ export function selectToolSearchDocuments(
     };
 }
 
-function sourceSummary(documents: readonly ToolSearchDocument[]): string {
-    const sources = new Map<string, string | undefined>();
+function oneLine(value: string): string {
+    return value.replace(/\s+/g, " ").trim();
+}
+
+function deferredToolManifest(
+    documents: readonly ToolSearchDocument[]
+): string {
+    const sources = new Map<
+        string,
+        {description?: string; documents: ToolSearchDocument[]}
+    >();
     for (const document of documents) {
-        if (!document.source?.name) continue;
-        const current = sources.get(document.source.name);
-        if (current === undefined || !current) {
-            sources.set(document.source.name, document.source.description);
+        const sourceName = oneLine(document.source?.name || "other");
+        const current = sources.get(sourceName);
+        if (current) {
+            current.documents.push(document);
+            if (!current.description && document.source?.description) {
+                current.description = oneLine(document.source.description)
+                    .slice(0, TOOL_SEARCH_SOURCE_DESCRIPTION_MAX_CHARS);
+            }
+        } else {
+            const description = document.source?.description
+                ? oneLine(document.source.description)
+                    .slice(0, TOOL_SEARCH_SOURCE_DESCRIPTION_MAX_CHARS)
+                : undefined;
+            sources.set(sourceName, {
+                ...(description ? {description} : {}),
+                documents: [document],
+            });
         }
     }
-    if (sources.size === 0) return "Deferred tools registered in this runtime.";
-    const entries = [...sources]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .slice(0, 20);
+    if (sources.size === 0) return "- none";
+
+    const entries = [...sources].sort(([left], [right]) =>
+        left.localeCompare(right, "en-US")
+    );
+    const perSourceBudget = Math.max(
+        256,
+        Math.floor(TOOL_SEARCH_MANIFEST_MAX_CHARS / entries.length)
+    );
     const lines: string[] = [];
-    for (const [name, description] of entries) {
-        const line = description ? `- ${name}: ${description}` : `- ${name}`;
-        if ([...lines, line].join("\n").length > 3_900) break;
+    for (const [name, source] of entries) {
+        const documentsForSource = [...source.documents].sort((left, right) =>
+            left.normalizedName.localeCompare(right.normalizedName, "en-US")
+        );
+        const countLabel = documentsForSource.length === 1 ? "tool" : "tools";
+        const prefix = `- ${name} (${documentsForSource.length} ${countLabel})` +
+            (source.description ? `: ${source.description}` : "");
+        const visibleNames: string[] = [];
+        for (const document of documentsForSource) {
+            const candidate = `${prefix}\n  ${[
+                ...visibleNames,
+                document.name,
+            ].join(", ")}`;
+            const totalCandidate = [...lines, candidate].join("\n");
+            if (
+                candidate.length > perSourceBudget ||
+                totalCandidate.length > TOOL_SEARCH_MANIFEST_MAX_CHARS
+            ) break;
+            visibleNames.push(document.name);
+        }
+        const omitted = documentsForSource.length - visibleNames.length;
+        const names = visibleNames.length > 0
+            ? `\n  ${visibleNames.join(", ")}${omitted > 0
+                ? `, … ${omitted} more`
+                : ""}`
+            : `\n  … ${omitted} registered ${omitted === 1 ? "tool" : "tools"}`;
+        const line = `${prefix}${names}`;
+        if ([...lines, line].join("\n").length > TOOL_SEARCH_MANIFEST_MAX_CHARS) {
+            break;
+        }
         lines.push(line);
     }
-    const omitted = sources.size - lines.length;
-    if (omitted > 0) lines.push(`- … ${omitted} more source(s)`);
-    return lines.join("\n").slice(0, 4_000);
+    const omittedSources = entries.length - lines.length;
+    if (omittedSources > 0) {
+        const suffix = `- … ${omittedSources} more registered ${omittedSources === 1
+            ? "source"
+            : "sources"}`;
+        if ([...lines, suffix].join("\n").length <= TOOL_SEARCH_MANIFEST_MAX_CHARS) {
+            lines.push(suffix);
+        }
+    }
+    return lines.join("\n");
 }
 
 export function createToolSearchTool(input: {
@@ -85,18 +148,24 @@ export function createToolSearchTool(input: {
     discover(
         names: readonly string[],
         transactionId: string
-    ): {newlyLoaded: string[]; alreadyLoaded: string[]};
+    ): {
+        newlyLoaded: string[];
+        alreadyLoaded: string[];
+        skipped: string[];
+    };
     remainingCount(): number;
 }): Tool<typeof toolSearchParameters> {
-    const sources = sourceSummary(input.index.documents);
+    const manifest = deferredToolManifest(input.index.documents);
     return {
         name: TOOL_SEARCH_NAME,
         description: [
-            "Search deferred tool metadata and load matching tools for the next model request.",
+            "Search the registered deferred tools below and load matching schemas for the next model request.",
+            "This tool cannot install tools or discover capabilities outside this exact runtime catalog. Do not guess unlisted sources or tool names.",
             "Use query=\"select:tool_a,tool_b\" for exact names, or natural-language keywords for BM25 search.",
             "A matched tool becomes callable only after this tool result is returned and the model receives the next request.",
-            "Available sources:",
-            sources,
+            "If no tool matches, treat that capability as unavailable; do not retry with invented names.",
+            "Registered deferred tools (exact names):",
+            manifest,
         ].join("\n"),
         parameters: toolSearchParameters,
         isReadOnly: () => true,
@@ -116,17 +185,20 @@ export function createToolSearchTool(input: {
                 `Loaded ${discovered.newlyLoaded.length} deferred tool(s); ${input.remainingCount()} remaining.`,
             ];
             for (const document of selection.matches) {
-                const status = discovered.alreadyLoaded.includes(document.name)
-                    ? "already loaded"
-                    : "available next request";
+                const status = discovered.skipped.includes(document.name)
+                    ? "not loaded: working-set budget reached"
+                    : discovered.alreadyLoaded.includes(document.name)
+                        ? "already loaded"
+                        : "available next request";
                 lines.push(`- ${document.name} — ${status}: ${document.description}`);
             }
             if (selection.missingNames.length > 0) {
                 lines.push(`Not found: ${selection.missingNames.join(", ")}`);
             }
             if (selection.matches.length === 0) {
-                lines.push("No matching deferred tools. Try one shorter capability or source keyword.");
-                return {content: lines.join("\n"), outcome: "failed"};
+                lines.push(
+                    "No registered deferred tool matched. Tool search cannot install tools or access capabilities outside the catalog."
+                );
             }
             return lines.join("\n");
         },

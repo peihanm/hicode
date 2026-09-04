@@ -64,6 +64,9 @@ export function createToolRuntime(
                     "failed"
                 );
             }
+            if (discovery.isDeferred(name)) {
+                discovery.touch(name);
+            }
             try {
                 const result = await executeRegisteredTool(
                     runtimeMap,
@@ -94,3 +97,4 @@ export function createToolRuntime(
 }
 
 export type {ToolDiscoverySnapshot} from "./discovery.js";
+export {MAX_LOADED_DEFERRED_TOOLS} from "./discovery.js";

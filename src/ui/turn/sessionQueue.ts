@@ -32,8 +32,8 @@ export class SessionSnapshotQueue {
             compactState: input.compactState ? {...input.compactState} : undefined,
             toolDiscovery: input.toolDiscovery
                 ? {
-                    version: 1,
-                    discoveredNames: [...input.toolDiscovery.discoveredNames],
+                    version: 2,
+                    loadedNames: [...input.toolDiscovery.loadedNames],
                 }
                 : undefined,
             uiEvents: input.uiEvents ? [...input.uiEvents] : undefined,

@@ -95,8 +95,8 @@ describe("headless session boundary", () => {
         compactState: createCompactState(),
         uiEvents: [],
         toolDiscovery: {
-          version: 1,
-          discoveredNames: ["mcp__fixture__echo"],
+          version: 2,
+          loadedNames: ["mcp__fixture__echo"],
         },
       });
       const resumed = loadHeadlessSession({
@@ -105,8 +105,8 @@ describe("headless session boundary", () => {
         });
       expect(resumed.permissionMode).toBe("default");
       expect(resumed.toolDiscovery).toEqual({
-        version: 1,
-        discoveredNames: ["mcp__fixture__echo"],
+        version: 2,
+        loadedNames: ["mcp__fixture__echo"],
       });
       expect(
         loadHeadlessSession({

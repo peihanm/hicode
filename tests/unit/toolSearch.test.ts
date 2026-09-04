@@ -78,6 +78,19 @@ describe("tool search", () => {
             .toBe("mcp__files__allowed_directories");
     });
 
+    test("工具名命中优先于只在说明中命中", () => {
+        const index = createToolSearchIndex([
+            documentFor("mcp__calendar__list_events", "List events", "range"),
+            documentFor(
+                "mcp__workspace__lookup",
+                "Search calendar calendar calendar records",
+                "calendar calendar filter"
+            ),
+        ]);
+        expect(index.search("calendar", 8)[0]?.document.name)
+            .toBe("mcp__calendar__list_events");
+    });
+
     test("select 精确路径大小写不敏感、去重并报告缺失名称", () => {
         const index = createToolSearchIndex([
             documentFor("Deferred_Echo", "Echo", "message"),

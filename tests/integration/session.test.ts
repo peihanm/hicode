@@ -76,8 +76,8 @@ describe("session persistence", () => {
         collaborationMode: "build",
         compactState: createCompactState(),
         toolDiscovery: {
-          version: 1,
-          discoveredNames: ["mcp__fixture__echo"],
+          version: 2,
+          loadedNames: ["mcp__fixture__echo"],
         },
       });
 
@@ -95,8 +95,8 @@ describe("session persistence", () => {
       expect(loaded?.history.filter((message) => message.role === "system")).toHaveLength(1);
       expect(loaded?.history.slice(-2)).toEqual(history.slice(-2));
       expect(loaded?.toolDiscovery).toEqual({
-        version: 1,
-        discoveredNames: ["mcp__fixture__echo"],
+        version: 2,
+        loadedNames: ["mcp__fixture__echo"],
       });
       const snapshot = JSON.parse(
         await readFile(
@@ -112,6 +112,40 @@ describe("session persistence", () => {
         getSessionLogPath(storage, cwd, "session-1")
       ))).mode & 0o777).toBe(0o700);
       expect(loadLatestSession(storage, cwd, "glm-test")?.sessionId).toBe("session-1");
+    });
+  });
+
+  test("旧 Tool Discovery 状态被丢弃但不会阻止恢复对话", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await saveSessionSnapshot(storage, {
+        cwd,
+        model: "glm-test",
+        sessionId: "legacy-tool-discovery",
+        history: [
+          {role: "system", content: "system"},
+          {role: "user", content: "继续之前的对话"},
+          {role: "assistant", content: "可以继续"},
+        ],
+        todos: [],
+        permissionMode: "default",
+        collaborationMode: "build",
+      });
+      const path = getSessionLogPath(storage, cwd, "legacy-tool-discovery");
+      const snapshot = JSON.parse(await readFile(path, "utf8"));
+      snapshot.toolDiscovery = {
+        version: 1,
+        discoveredNames: ["mcp__legacy__tool"],
+      };
+      await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
+
+      const loaded = loadSession(
+        storage,
+        cwd,
+        "legacy-tool-discovery",
+        "glm-test"
+      );
+      expect(loaded?.history.at(-1)?.content).toBe("可以继续");
+      expect(loaded?.toolDiscovery).toBeUndefined();
     });
   });
 
@@ -173,8 +207,8 @@ describe("session persistence", () => {
         collaborationMode: "build",
         compactState: createCompactState(),
         toolDiscovery: {
-          version: 1,
-          discoveredNames: ["mcp__fixture__echo"],
+          version: 2,
+          loadedNames: ["mcp__fixture__echo"],
         },
       });
       await saveSessionSnapshot(storage, {
@@ -207,8 +241,8 @@ describe("session persistence", () => {
         permissionMode: "default",
         collaborationMode: "build",
         toolDiscovery: {
-          version: 1,
-          discoveredNames: ["mcp__fixture__echo"],
+          version: 2,
+          loadedNames: ["mcp__fixture__echo"],
         },
       });
       expect(loadSession(storage, cwd, "checkpoint-session", "glm-test")).toMatchObject({

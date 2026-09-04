@@ -380,31 +380,93 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("write_file 默认不能覆盖，先读后显式覆盖才成功", async () => {
+  test("write_file 未读取已有文件时返回前置条件失败，完整读取后可直接覆盖", async () => {
     await withTempProject(async (cwd) => {
       const path = join(cwd, "existing.txt");
       await writeFile(path, "before");
       const ctx = createTestContext(cwd);
 
-      const denied = await executeTool(
+      const unread = await executeToolResult(
         "write_file",
         JSON.stringify({ path: "existing.txt", content: "after" }),
-        ctx
+        ctx,
+        "write-unread"
       );
-      expect(denied).toContain("文件已存在");
+      expect(unread.outcome).toBe("failed");
+      expect(unread.modelContent).toContain("写入前置条件未满足");
+      expect(unread.modelContent).toContain("必须先用 read_file 完整读取");
+      expect(unread.modelContent).not.toContain("权限拒绝");
+      expect(await readFile(path, "utf8")).toBe("before");
 
       await executeTool("read_file", JSON.stringify({ path: "existing.txt" }), ctx);
-      const written = await executeTool(
+      const written = await executeToolResult(
         "write_file",
+        JSON.stringify({ path: "existing.txt", content: "after" }),
+        ctx,
+        "write-after-read"
+      );
+      expect(written.outcome).toBe("ok");
+      expect(written.modelContent).toContain("已写入 existing.txt");
+      expect(await readFile(path, "utf8")).toBe("after");
+    });
+  });
+
+  test("write_file 可以直接整体重写本 Runtime 刚创建的文件", async () => {
+    await withTempProject(async (cwd) => {
+      const ctx = createTestContext(cwd);
+
+      const schema = getToolSchemas().find(
+        (tool) => tool.function.name === "write_file"
+      );
+      expect(JSON.stringify(schema?.function.parameters)).not.toContain(
+        "overwrite_existing"
+      );
+
+      await executeTool(
+        "write_file",
+        JSON.stringify({path: "created.txt", content: "first"}),
+        ctx
+      );
+      await executeTool(
+        "edit_file",
         JSON.stringify({
-          path: "existing.txt",
-          content: "after",
-          overwrite_existing: true,
+          path: "created.txt",
+          old_string: "first",
+          new_string: "middle",
         }),
         ctx
       );
-      expect(written).toContain("已写入 existing.txt");
-      expect(await readFile(path, "utf8")).toBe("after");
+      const rewritten = await executeToolResult(
+        "write_file",
+        JSON.stringify({path: "created.txt", content: "second"}),
+        ctx,
+        "rewrite-created"
+      );
+
+      expect(rewritten.outcome).toBe("ok");
+      expect(rewritten.modelContent).toContain("已写入 created.txt");
+      expect(await readFile(join(cwd, "created.txt"), "utf8")).toBe("second");
+    });
+  });
+
+  test("write_file 拒绝覆盖读取后被外部修改的文件", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "stale-write.txt");
+      await writeFile(path, "before\n");
+      const ctx = createTestContext(cwd);
+
+      await executeTool("read_file", JSON.stringify({path: "stale-write.txt"}), ctx);
+      await writeFile(path, "changed elsewhere\n");
+      const stale = await executeToolResult(
+        "write_file",
+        JSON.stringify({path: "stale-write.txt", content: "replacement\n"}),
+        ctx,
+        "write-stale"
+      );
+
+      expect(stale.outcome).toBe("failed");
+      expect(stale.modelContent).toContain("自上次 read_file 后已被修改");
+      expect(await readFile(path, "utf8")).toBe("changed elsewhere\n");
     });
   });
 

@@ -58,7 +58,6 @@ describe("Persistent Memory", () => {
                 assistantToolCall("write_file", {
                     path: topicPath,
                     content: topic,
-                    overwrite_existing: false,
                 }, "write-topic"),
                 assistantToolCall("edit_file", {
                     path: indexPath,

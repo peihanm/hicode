@@ -13,8 +13,16 @@ import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 
 const fixture = resolve(import.meta.dir, "../fixtures/mcp/stdioServer.ts");
+const manyToolsFixture = resolve(
+  import.meta.dir,
+  "../fixtures/mcp/manyToolsServer.ts"
+);
+const collaborationToolsFixture = resolve(
+  import.meta.dir,
+  "../fixtures/mcp/collaborationToolsServer.ts"
+);
 
-async function createFixtureManager(cwd: string) {
+async function createFixtureManager(cwd: string, fixturePath = fixture) {
   const storage = createTestStorage(cwd);
   const userConfigPath = join(storage.pillarHome, "mcp.json");
   await mkdir(storage.pillarHome, {recursive: true});
@@ -23,7 +31,39 @@ async function createFixtureManager(cwd: string) {
       fixture: {
         type: "stdio",
         command: process.execPath,
-        args: [fixture],
+        args: [fixturePath],
+        timeoutMs: 10_000,
+        toolTimeoutMs: 5_000,
+      },
+    },
+  }));
+  const manager = createMcpManager({
+    storage,
+    cwd,
+    childEnvironment: testChildEnvironment,
+    headless: true,
+  });
+  await manager.initialize();
+  return manager;
+}
+
+async function createMultiFixtureManager(cwd: string) {
+  const storage = createTestStorage(cwd);
+  const userConfigPath = join(storage.pillarHome, "mcp.json");
+  await mkdir(storage.pillarHome, {recursive: true});
+  await writeFile(userConfigPath, JSON.stringify({
+    mcpServers: {
+      mega_catalog: {
+        type: "stdio",
+        command: process.execPath,
+        args: [manyToolsFixture],
+        timeoutMs: 10_000,
+        toolTimeoutMs: 5_000,
+      },
+      collaboration_hub: {
+        type: "stdio",
+        command: process.execPath,
+        args: [collaborationToolsFixture],
         timeoutMs: 10_000,
         toolTimeoutMs: 5_000,
       },
@@ -56,6 +96,141 @@ async function exposeDeferredTools(
 }
 
 describe("MCP stdio integration", () => {
+  test("多个大型 MCP 来源共享名称目录并分别按需加载和调用", async () => {
+    await withTempProject(async (cwd) => {
+      const manager = await createMultiFixtureManager(cwd);
+      try {
+        expect(manager.getSnapshots()).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            name: "mega_catalog",
+            status: "connected",
+            toolCount: 100,
+          }),
+          expect.objectContaining({
+            name: "collaboration_hub",
+            status: "connected",
+            toolCount: 60,
+          }),
+        ]));
+
+        const runtime = createToolRuntime({additionalTools: manager.getTools()});
+        const initialSchemas = runtime.getToolSchemas();
+        expect(initialSchemas.filter(
+          (tool) => tool.function.name.startsWith("mcp__")
+        )).toHaveLength(0);
+        const searchDescription = initialSchemas.find(
+          (tool) => tool.function.name === "tool_search"
+        )?.function.description ?? "";
+        expect(searchDescription).toContain("mega_catalog (100 tools)");
+        expect(searchDescription).toContain("collaboration_hub (60 tools)");
+        expect(searchDescription).toContain("mcp__mega_catalog__github_001");
+        expect(searchDescription).toContain("mcp__collaboration_hub__slack_000");
+
+        const githubName = "mcp__mega_catalog__github_001";
+        const slackName = "mcp__collaboration_hub__slack_000";
+        const schemas = await exposeDeferredTools(
+          runtime,
+          cwd,
+          githubName,
+          slackName
+        );
+        expect(schemas.map((tool) => tool.function.name)).toEqual(
+          expect.arrayContaining([githubName, slackName])
+        );
+
+        const ctx = createTestContext(cwd);
+        const [githubResult, slackResult] = await Promise.all([
+          runtime.executeTool(
+            githubName,
+            JSON.stringify({query: "open pull requests", limit: 2}),
+            ctx,
+            "multi-github"
+          ),
+          runtime.executeTool(
+            slackName,
+            JSON.stringify({query: "release blocker", limit: 3}),
+            ctx,
+            "multi-slack"
+          ),
+        ]);
+        expect(githubResult).toMatchObject({outcome: "ok"});
+        expect(githubResult.modelContent).toContain('"tool":"github_001"');
+        expect(slackResult).toMatchObject({outcome: "ok"});
+        expect(slackResult.modelContent).toContain('"tool":"slack_000"');
+      } finally {
+        await manager.closeAll();
+      }
+      expect(manager.getSnapshots().every(
+        (snapshot) => snapshot.status === "closed"
+      )).toBe(true);
+    });
+  });
+
+  test("大型 MCP Catalog 只暴露名称并按需加载真实 Schema", async () => {
+    await withTempProject(async (cwd) => {
+      const manager = await createFixtureManager(cwd, manyToolsFixture);
+      try {
+        expect(manager.getSnapshots()).toEqual([
+          expect.objectContaining({status: "connected", toolCount: 100}),
+        ]);
+        const runtime = createToolRuntime({additionalTools: manager.getTools()});
+        const initialSchemas = runtime.getToolSchemas();
+        expect(initialSchemas.filter(
+          (tool) => tool.function.name.startsWith("mcp__")
+        )).toHaveLength(0);
+        const searchDescription = initialSchemas.find(
+          (tool) => tool.function.name === "tool_search"
+        )?.function.description ?? "";
+        expect(searchDescription).toContain("fixture (100 tools)");
+        expect(searchDescription).toContain("mcp__fixture__browser_000");
+        expect(searchDescription.length).toBeLessThan(17_000);
+
+        const ctx = createTestContext(cwd);
+        const searches = [
+          ["browser", "browser screenshot inspect DOM"],
+          ["github", "repository pull request issue"],
+          ["calendar", "meeting attendee available time"],
+          ["documents", "knowledge base document pages"],
+          ["database", "database schema aggregate records"],
+        ] as const;
+        for (const [category, query] of searches) {
+          const result = await runtime.executeTool(
+            "tool_search",
+            JSON.stringify({query, limit: 5}),
+            ctx,
+            `many-${category}`
+          );
+          expect(result.outcome).toBe("ok");
+          expect(result.modelContent.split("\n")[1]).toContain(
+            `mcp__fixture__${category}_`
+          );
+          runtime.getToolSchemas();
+        }
+
+        const snapshot = runtime.getToolDiscoverySnapshot();
+        expect(snapshot.loadedNames).toHaveLength(24);
+        const callableName = snapshot.loadedNames.at(-1)!;
+        const called = await runtime.executeTool(
+          callableName,
+          JSON.stringify({query: "probe", limit: 3}),
+          ctx,
+          "many-call"
+        );
+        expect(called).toMatchObject({outcome: "ok"});
+        expect(called.modelContent).toContain('"query":"probe"');
+
+        const resumed = createToolRuntime({additionalTools: manager.getTools()});
+        resumed.restoreToolDiscovery(snapshot);
+        expect(resumed.getToolDiscoverySnapshot()).toEqual(snapshot);
+        expect(resumed.getToolSchemas().filter(
+          (tool) => tool.function.name.startsWith("mcp__")
+        )).toHaveLength(24);
+      } finally {
+        await manager.closeAll();
+      }
+    });
+  });
+
   test("连接、发现、调用和关闭都经过 ToolRuntime", async () => {
     await withTempProject(async (cwd) => {
       const manager = await createFixtureManager(cwd);
@@ -68,6 +243,9 @@ describe("MCP stdio integration", () => {
         const initialNames = runtime.getToolSchemas().map((item) => item.function.name);
         expect(initialNames).toContain("tool_search");
         expect(initialNames).not.toContain(name);
+        expect(runtime.getToolSchemas().find(
+          (item) => item.function.name === "tool_search"
+        )?.function.description).toContain(name);
         const schemas = await exposeDeferredTools(runtime, cwd, name);
         expect(schemas.find((item) => item.function.name === name)?.function.parameters)
           .toMatchObject({ type: "object", required: ["message"] });
@@ -281,6 +459,9 @@ describe("MCP stdio integration", () => {
           expect(call.tools.map((tool) => tool.function.name)).toContain("tool_search");
           expect(call.tools.map((tool) => tool.function.name))
             .not.toContain("mcp__fixture__echo");
+          expect(call.tools.find(
+            (tool) => tool.function.name === "tool_search"
+          )?.function.description).toContain("mcp__fixture__echo");
           return assistantToolCall(
             "tool_search",
             {query: "select:mcp__fixture__echo"},

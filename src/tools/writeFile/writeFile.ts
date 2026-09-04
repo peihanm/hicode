@@ -32,45 +32,20 @@ export const writeFileTool: Tool<
     z.ZodObject<{
         path: z.ZodString;
         content: z.ZodString;
-        overwrite_existing: z.ZodDefault<z.ZodBoolean>;
     }>
 > = {
     name: "write_file",
     description:
-        "写入文件。默认只用于新建文件；覆盖已有文件必须显式传 overwrite_existing=true，且覆盖前必须先用 read_file 完整读取当前版本。修改已有文件优先用 edit_file。",
+        "创建文件或整体重写文件。整体重写时必须已完整掌握当前版本；此前未读取的已有文件要先用 read_file 完整读取，小范围修改优先用 edit_file。",
     parameters: z.object({
         path: z.string().describe("文件路径"),
         content: z.string().describe("完整的文件内容"),
-        overwrite_existing: z
-            .boolean()
-            .default(false)
-            .describe("是否允许覆盖已有文件。默认 false；覆盖前必须先完整 read_file 目标文件"),
     }),
     isReadOnly: () => false,
     getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
-    async checkPermissions({path, content, overwrite_existing}, ctx) {
+    async checkPermissions({path, content}, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
         const exists = await fileExists(absPath);
-        if (exists) {
-            if (!overwrite_existing) {
-                return {
-                    behavior: "deny" as const,
-                    message:
-                        `文件已存在: ${path}。` +
-                        "若要局部修改请用 edit_file；若确实要整体覆盖，请先 read_file 后再传 overwrite_existing=true。",
-                };
-            }
-            const currentContent = await readFile(absPath, "utf-8");
-            const state = ctx.fileState.check(absPath, currentContent, {
-                requireFullRead: true,
-            });
-            if (!state.ok) {
-                return {
-                    behavior: "deny" as const,
-                    message: overwriteStateMessage(path, state.reason),
-                };
-            }
-        }
 
         if (ctx.memoryFiles?.classify(absPath)) {
             try {
@@ -90,7 +65,7 @@ export const writeFileTool: Tool<
         };
     },
     execute: async (
-        {path, content, overwrite_existing},
+        {path, content},
         ctx,
         invocation
     ) => {
@@ -98,16 +73,16 @@ export const writeFileTool: Tool<
         // 父目录不存在则创建
         const absPath = resolveToolPath(ctx.cwd, path);
         const exists = await fileExists(absPath);
-        if (exists && !overwrite_existing) {
-            return `写入取消: 文件已存在 ${path}。请使用 edit_file，或先 read_file 后传 overwrite_existing=true。`;
-        }
         const oldContent = exists ? await readFile(absPath, "utf-8") : "";
         if (exists) {
             const state = ctx.fileState.check(absPath, oldContent, {
                 requireFullRead: true,
             });
             if (!state.ok) {
-                return `写入取消: ${overwriteStateMessage(path, state.reason)}`;
+                return {
+                    content: `写入前置条件未满足: ${overwriteStateMessage(path, state.reason)}`,
+                    outcome: "failed" as const,
+                };
             }
         }
         if (exists && oldContent === content) {

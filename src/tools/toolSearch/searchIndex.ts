@@ -6,13 +6,20 @@ const MAX_RESULT_DESCRIPTION_CHARS = 1_000;
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 
+interface WeightedSearchToken {
+    token: string;
+    weight: number;
+}
+
 export interface ToolSearchDocument {
     name: string;
     normalizedName: string;
     description: string;
     source?: {name: string; description?: string};
     schema: OpenAITool;
-    tokens: readonly string[];
+    weightedTokens: readonly WeightedSearchToken[];
+    nameTokens: readonly string[];
+    sourceTokens: readonly string[];
 }
 
 interface ToolSearchMatch {
@@ -105,17 +112,24 @@ export function buildToolSearchDocument(
                 : {}),
         }
         : undefined;
-    const parts = [
-        tool.name,
-        identifierText(tool.name),
-        tool.name,
-        tool.description,
-        tool.searchHint ?? "",
-        source?.name ?? "",
-        source?.description ?? "",
-        ...schemaParts,
+    const weightedParts: Array<{text: string; weight: number}> = [
+        {text: `${tool.name} ${identifierText(tool.name)}`, weight: 8},
+        {text: source?.name ?? "", weight: 6},
+        {text: tool.searchHint ?? "", weight: 5},
+        {text: tool.description, weight: 3},
+        {text: source?.description ?? "", weight: 3},
+        {text: schemaParts.join(" "), weight: 1},
     ];
-    const searchText = parts.join(" ").slice(0, MAX_SEARCH_TEXT_CHARS);
+    let remainingChars = MAX_SEARCH_TEXT_CHARS;
+    const weightedTokens: WeightedSearchToken[] = [];
+    for (const part of weightedParts) {
+        if (remainingChars <= 0) break;
+        const text = part.text.slice(0, remainingChars);
+        remainingChars -= text.length;
+        for (const token of tokenizeToolSearchText(text)) {
+            weightedTokens.push({token, weight: part.weight});
+        }
+    }
     return {
         name: tool.name,
         normalizedName: tool.name.normalize("NFKC").toLocaleLowerCase("en-US"),
@@ -125,7 +139,9 @@ export function buildToolSearchDocument(
             .slice(0, MAX_RESULT_DESCRIPTION_CHARS),
         ...(source?.name ? {source} : {}),
         schema,
-        tokens: tokenizeToolSearchText(searchText),
+        weightedTokens,
+        nameTokens: tokenizeToolSearchText(tool.name),
+        sourceTokens: tokenizeToolSearchText(source?.name ?? ""),
     };
 }
 
@@ -134,8 +150,8 @@ export function createToolSearchIndex(
 ): ToolSearchIndex {
     const termFrequencies = documents.map((document) => {
         const frequencies = new Map<string, number>();
-        for (const token of document.tokens) {
-            frequencies.set(token, (frequencies.get(token) ?? 0) + 1);
+        for (const {token, weight} of document.weightedTokens) {
+            frequencies.set(token, (frequencies.get(token) ?? 0) + weight);
         }
         return frequencies;
     });
@@ -148,10 +164,13 @@ export function createToolSearchIndex(
             );
         }
     }
+    const documentLengths = termFrequencies.map((frequencies) =>
+        [...frequencies.values()].reduce((total, frequency) => total + frequency, 0)
+    );
     const averageLength = documents.length === 0
         ? 0
-        : documents.reduce((total, document) => total + document.tokens.length, 0) /
-        documents.length;
+        : documentLengths.reduce((total, length) => total + length, 0) /
+            documents.length;
 
     return {
         documents,
@@ -159,6 +178,10 @@ export function createToolSearchIndex(
             if (documents.length === 0 || limit <= 0) return [];
             const queryTokens = [...new Set(tokenizeToolSearchText(query))];
             if (queryTokens.length === 0) return [];
+            const normalizedQuery = query
+                .normalize("NFKC")
+                .trim()
+                .toLocaleLowerCase("en-US");
             const matches: ToolSearchMatch[] = [];
             for (let index = 0; index < documents.length; index++) {
                 const document = documents[index]!;
@@ -174,11 +197,23 @@ export function createToolSearchIndex(
                         (containingDocuments + 0.5)
                     );
                     const lengthRatio = averageLength > 0
-                        ? document.tokens.length / averageLength
+                        ? documentLengths[index]! / averageLength
                         : 1;
                     score += inverseDocumentFrequency *
                         (frequency * (BM25_K1 + 1)) /
                         (frequency + BM25_K1 * (1 - BM25_B + BM25_B * lengthRatio));
+                }
+                if (document.normalizedName === normalizedQuery) score += 1_000;
+                if (
+                    queryTokens.every((token) => document.nameTokens.includes(token))
+                ) {
+                    score += 40;
+                }
+                if (
+                    document.sourceTokens.length > 0 &&
+                    queryTokens.every((token) => document.sourceTokens.includes(token))
+                ) {
+                    score += 20;
                 }
                 if (score > 0) matches.push({document, score});
             }

@@ -150,6 +150,62 @@ describe("prompt log lifecycle", () => {
         });
     });
 
+    test("单独保留有界 tool_search 描述用于诊断 Deferred Catalog", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const manifest = [
+                "Registered deferred tools (exact names):",
+                "- mega_catalog (2 tools)",
+                "  mcp__mega__browser, mcp__mega__github",
+            ].join("\n");
+            const handle = beginPromptLog(
+                storage,
+                cwd,
+                "main",
+                "qwen3.8-flash",
+                {
+                    messages: [{role: "user", content: "查找浏览器工具"}],
+                    tools: [
+                        {
+                            type: "function",
+                            function: {
+                                name: "read_file",
+                                description: "普通工具说明不应进入日志",
+                                parameters: {type: "object"},
+                            },
+                        },
+                        {
+                            type: "function",
+                            function: {
+                                name: "tool_search",
+                                description: manifest,
+                                parameters: {type: "object"},
+                            },
+                        },
+                    ],
+                },
+                []
+            );
+            handle.finish({error: "fixture complete"});
+
+            const directory = join(
+                getProjectDebugDirectory(storage, cwd),
+                "prompt-logs"
+            );
+            const [filename] = await readdir(directory);
+            const content = await readFile(join(directory, filename!), "utf8");
+            const logged = JSON.parse(content) as {
+                request: Record<string, unknown>;
+            };
+            expect(logged.request.toolNames).toEqual([
+                "read_file",
+                "tool_search",
+            ]);
+            expect(logged.request.toolSearchDescription).toBe(manifest);
+            expect(content).not.toContain("普通工具说明不应进入日志");
+            expect(logged.request.tools).toBeUndefined();
+        });
+    });
+
     test("日志保留调试参数但遮蔽 Provider API key", async () => {
         await withTempProject(async (cwd, storage) => {
             const apiKey = "provider-key-must-not-leak";

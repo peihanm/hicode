@@ -5,7 +5,10 @@ import {isPermissionMode} from "../permissions/index.js";
 import {isCollaborationMode} from "../collaboration/index.js";
 import {getProjectKey} from "../persistence/index.js";
 import {normalizeRuntimeQueuedMessages} from "../runtime/messageQueue.js";
-import type {ToolDiscoverySnapshot} from "../tools/registry.js";
+import {
+    MAX_LOADED_DEFERRED_TOOLS,
+    type ToolDiscoverySnapshot,
+} from "../tools/registry.js";
 import {limitPersistedUIEvents, type PersistedUIEvent,} from "./uiEvents.js";
 import {
     SESSION_ENTRY_VERSION,
@@ -15,7 +18,6 @@ import {
     type SessionTurnCheckpointEntry,
 } from "./types.js";
 
-const MAX_PERSISTED_DISCOVERED_TOOLS = 4_096;
 const MAX_PERSISTED_TOOL_NAME_CHARS = 256;
 const MAX_SESSION_MESSAGES = 20_000;
 const MAX_SESSION_CONVERSATION_BYTES = 64 * 1024 * 1024;
@@ -229,14 +231,14 @@ export function normalizeToolDiscoverySnapshot(
 ): ToolDiscoverySnapshot | undefined {
     if (!value || typeof value !== "object") return undefined;
     const snapshot = value as Partial<ToolDiscoverySnapshot>;
-    if (snapshot.version !== 1 || !Array.isArray(snapshot.discoveredNames)) {
+    if (snapshot.version !== 2 || !Array.isArray(snapshot.loadedNames)) {
         return undefined;
     }
     const seen = new Set<string>();
-    const discoveredNames: string[] = [];
-    for (const value of snapshot.discoveredNames.slice(
+    const loadedNames: string[] = [];
+    for (const value of snapshot.loadedNames.slice(
         0,
-        MAX_PERSISTED_DISCOVERED_TOOLS
+        MAX_LOADED_DEFERRED_TOOLS
     )) {
         if (
             typeof value !== "string" ||
@@ -245,10 +247,9 @@ export function normalizeToolDiscoverySnapshot(
             seen.has(value)
         ) continue;
         seen.add(value);
-        discoveredNames.push(value);
+        loadedNames.push(value);
     }
-    discoveredNames.sort((left, right) => left.localeCompare(right, "en-US"));
-    return {version: 1, discoveredNames};
+    return {version: 2, loadedNames};
 }
 
 export function limitSessionUIEvents(
@@ -273,9 +274,6 @@ export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
         const toolDiscovery = snapshot.data.toolDiscovery === undefined
             ? undefined
             : normalizeToolDiscoverySnapshot(snapshot.data.toolDiscovery);
-        if (snapshot.data.toolDiscovery !== undefined && !toolDiscovery) {
-            return undefined;
-        }
         const gitSession = snapshot.data.gitSession === undefined
             ? undefined
             : normalizeGitSessionState(snapshot.data.gitSession);
@@ -295,9 +293,6 @@ export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
     const toolDiscovery = checkpoint.data.toolDiscovery === undefined
         ? undefined
         : normalizeToolDiscoverySnapshot(checkpoint.data.toolDiscovery);
-    if (checkpoint.data.toolDiscovery !== undefined && !toolDiscovery) {
-        return undefined;
-    }
     return {
         ...checkpoint.data,
         ...(toolDiscovery === undefined ? {} : {toolDiscovery}),

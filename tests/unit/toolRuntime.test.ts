@@ -41,25 +41,15 @@ describe("scoped tool runtime", () => {
       .toThrow("未知工具");
   });
 
-  test("内置 web_fetch 默认 deferred，可由 tool_search 按需加载", async () => {
+  test("内置 web_fetch 直接暴露，无 deferred 工具时不提供 tool_search", async () => {
     await withTempProject(async (cwd) => {
       const runtime = createToolRuntime();
       const initialNames = runtime.getToolSchemas().map(
         (tool) => tool.function.name
       );
-      expect(initialNames).toContain("tool_search");
+      expect(initialNames).not.toContain("tool_search");
       expect(initialNames).toContain("glob");
-      expect(initialNames).not.toContain("web_fetch");
-
-      const search = await runtime.executeTool(
-        "tool_search",
-        JSON.stringify({ query: "select:web_fetch" }),
-        createTestContext(cwd),
-        "load-web-fetch"
-      );
-      expect(search.outcome).toBe("ok");
-      expect(runtime.getToolSchemas().map((tool) => tool.function.name))
-        .toContain("web_fetch");
+      expect(initialNames).toContain("web_fetch");
 
       const blocked = await runtime.executeTool(
         "web_fetch",
@@ -148,16 +138,16 @@ describe("scoped tool runtime", () => {
       "discover"
     );
     const snapshot = first.getToolDiscoverySnapshot();
-    expect(snapshot).toEqual({ version: 1, discoveredNames: ["deferred_lookup"] });
+    expect(snapshot).toEqual({ version: 2, loadedNames: ["deferred_lookup"] });
 
     const restored = createToolRuntime({ additionalTools: [deferredTool] });
     restored.restoreToolDiscovery({
-      version: 1,
-      discoveredNames: ["missing_tool", ...snapshot.discoveredNames],
+      version: 2,
+      loadedNames: ["missing_tool", ...snapshot.loadedNames],
     });
     expect(restored.getToolSchemas().map((tool) => tool.function.name))
       .toContain("deferred_lookup");
-    expect(restored.getToolDiscoverySnapshot().discoveredNames)
+    expect(restored.getToolDiscoverySnapshot().loadedNames)
       .toEqual(["deferred_lookup"]);
 
     const isolated = createToolRuntime({additionalTools: [deferredTool]});
@@ -190,13 +180,13 @@ describe("scoped tool runtime", () => {
       expect(names.filter((name) => name === "deferred_alpha")).toHaveLength(1);
       expect(names.filter((name) => name === "deferred_beta")).toHaveLength(1);
       expect(runtime.getToolDiscoverySnapshot()).toEqual({
-        version: 1,
-        discoveredNames: ["deferred_alpha", "deferred_beta"],
+        version: 2,
+        loadedNames: ["deferred_alpha", "deferred_beta"],
       });
     });
   });
 
-  test("无匹配搜索返回 failed 且不改变 discovery", async () => {
+  test("无匹配搜索返回普通结果且不改变 discovery", async () => {
     await withTempProject(async (cwd) => {
       const runtime = createToolRuntime({
         additionalTools: [{
@@ -215,8 +205,155 @@ describe("scoped tool runtime", () => {
         createTestContext(cwd),
         "no-match"
       );
-      expect(result.outcome).toBe("failed");
-      expect(runtime.getToolDiscoverySnapshot().discoveredNames).toEqual([]);
+      expect(result.outcome).toBe("ok");
+      expect(result.modelContent).toContain("cannot install tools");
+      expect(runtime.getToolDiscoverySnapshot().loadedNames).toEqual([]);
+    });
+  });
+
+  test("tool_search 在 schema 描述中按来源列出准确的 deferred 工具名", () => {
+    const runtime = createToolRuntime({
+      additionalTools: [
+        {
+          name: "mcp__github__search_issues",
+          description: "Search issue bodies",
+          parameters: z.object({query: z.string()}),
+          exposure: "deferred",
+          searchSource: {name: "GitHub", description: "Repository tools"},
+          isReadOnly: () => true,
+          execute: async () => "ok",
+        },
+        {
+          name: "mcp__browser__navigate",
+          description: "Navigate a page",
+          parameters: z.object({url: z.string()}),
+          exposure: "deferred",
+          searchSource: {name: "Browser"},
+          isReadOnly: () => true,
+          execute: async () => "ok",
+        },
+      ],
+    });
+
+    const searchSchema = runtime.getToolSchemas().find(
+      (tool) => tool.function.name === "tool_search"
+    );
+    expect(searchSchema?.function.description).toContain(
+      "mcp__github__search_issues"
+    );
+    expect(searchSchema?.function.description).toContain(
+      "mcp__browser__navigate"
+    );
+    expect(searchSchema?.function.description).toContain("GitHub (1 tool)");
+  });
+
+  test("tool_search 名称清单保持有界并标明省略项", () => {
+    const runtime = createToolRuntime({
+      additionalTools: Array.from({length: 300}, (_, index) => ({
+        name: `mcp__large_catalog__tool_${String(index).padStart(4, "0")}_${"x".repeat(48)}`,
+        description: `Remote tool ${index}`,
+        parameters: z.object({value: z.string()}),
+        exposure: "deferred" as const,
+        searchSource: {name: "Large catalog"},
+        isReadOnly: () => true,
+        execute: async () => "ok",
+      })),
+    });
+    const description = runtime.getToolSchemas().find(
+      (tool) => tool.function.name === "tool_search"
+    )?.function.description ?? "";
+
+    expect(description.length).toBeLessThan(17_000);
+    expect(description).toContain("Large catalog (300 tools)");
+    expect(description).toContain("more");
+  });
+
+  test("loaded deferred tools 使用有界 LRU 工作集", async () => {
+    await withTempProject(async (cwd) => {
+      const names = Array.from({length: 25}, (_, index) =>
+        `deferred_${String(index + 1).padStart(2, "0")}`
+      );
+      const runtime = createToolRuntime({
+        additionalTools: names.map((name) => ({
+          name,
+          description: `Deferred tool ${name}`,
+          parameters: z.object({}),
+          exposure: "deferred" as const,
+          isReadOnly: () => true,
+          execute: async () => name,
+        })),
+      });
+      runtime.getToolSchemas();
+      for (let offset = 0; offset < 24; offset += 10) {
+        await runtime.executeTool(
+          "tool_search",
+          JSON.stringify({query: `select:${names.slice(offset, Math.min(offset + 10, 24)).join(",")}`}),
+          createTestContext(cwd),
+          `load-${offset}`
+        );
+      }
+      runtime.getToolSchemas();
+      const touched = await runtime.executeTool(
+        "deferred_01",
+        "{}",
+        createTestContext(cwd),
+        "touch-oldest"
+      );
+      expect(touched.outcome).toBe("ok");
+      await runtime.executeTool(
+        "tool_search",
+        JSON.stringify({query: "select:deferred_25"}),
+        createTestContext(cwd),
+        "load-25"
+      );
+
+      const snapshot = runtime.getToolDiscoverySnapshot();
+      expect(snapshot.version).toBe(2);
+      expect(snapshot.loadedNames).toHaveLength(24);
+      expect(snapshot.loadedNames).toContain("deferred_01");
+      expect(snapshot.loadedNames).not.toContain("deferred_02");
+      expect(snapshot.loadedNames).toContain("deferred_25");
+      const visible = runtime.getToolSchemas().map((tool) => tool.function.name);
+      expect(visible).toContain("deferred_01");
+      expect(visible).not.toContain("deferred_02");
+      expect(visible).toContain("deferred_25");
+    });
+  });
+
+  test("单次搜索不会声明加载超过 schema 字符预算的工具", async () => {
+    await withTempProject(async (cwd) => {
+      const names = ["deferred_large_1", "deferred_large_2", "deferred_large_3"];
+      const runtime = createToolRuntime({
+        additionalTools: names.map((name) => ({
+          name,
+          description: name,
+          parameters: z.object({}),
+          inputJsonSchema: {
+            type: "object",
+            properties: {
+              value: {type: "string", description: "x".repeat(60_000)},
+            },
+          },
+          exposure: "deferred" as const,
+          isReadOnly: () => true,
+          execute: async () => name,
+        })),
+      });
+      runtime.getToolSchemas();
+      const result = await runtime.executeTool(
+        "tool_search",
+        JSON.stringify({query: `select:${names.join(",")}`}),
+        createTestContext(cwd),
+        "load-large"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(result.modelContent).toContain(
+        "deferred_large_3 — not loaded: working-set budget reached"
+      );
+      expect(runtime.getToolDiscoverySnapshot().loadedNames).toEqual(
+        names.slice(0, 2)
+      );
     });
   });
 });

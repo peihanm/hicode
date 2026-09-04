@@ -33,8 +33,8 @@ describe("RootSessionRuntime", () => {
           history: [{role: "system", content: "system"}],
           compactState: initialCompactState,
           toolDiscovery: {
-            version: 1,
-            discoveredNames: ["web_fetch"],
+            version: 2,
+            loadedNames: ["missing_tool"],
           },
           queuedInputs: [{
             id: "queued-1",
@@ -96,7 +96,7 @@ describe("RootSessionRuntime", () => {
       expect(snapshot.history.at(-1)?.content).toBe("new turn");
       expect(snapshot.compactState).toEqual(nextCompactState);
       expect(snapshot.queuedInputs).toHaveLength(1);
-      expect(snapshot.toolDiscovery?.discoveredNames).toContain("web_fetch");
+      expect(snapshot.toolDiscovery?.loadedNames).toEqual([]);
 
       const signal = new AbortController().signal;
       await runtime.runSessionStart("resume", signal);
