@@ -36,6 +36,7 @@ export interface AgentMessageItem extends ThreadItemBase {
     text: string;
     /** commentary 是 Turn 中途的进度说明；final 才能成为 finalResponse。 */
     phase: "commentary" | "final";
+    responseId?: string;
 }
 
 export interface ToolCallItem extends ThreadItemBase {
@@ -175,6 +176,8 @@ export type TurnProgressPhase =
     | "stalled";
 
 export type ThreadEventPayload =
+    | {type: "turn.draft"; turnId: string; responseId: string; text: string; truncated: boolean}
+    | {type: "turn.draft_end"; turnId: string; responseId: string; disposition: "committed" | "discarded"}
     | {type: "thread.started"}
     | {type: "turn.started"; turnId: string; inputSummary: string}
     | {

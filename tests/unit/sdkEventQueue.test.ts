@@ -33,6 +33,9 @@ test("字节预算独立于条数生效，满队列的进度不产生等待者",
     for (let i = 0; i < 1_000; i++) await queue.push({protocolVersion: 1, sequence: i + 2,
         threadId: "thread", emittedAt: "2026-09-05T00:00:00.000Z", type: "turn.progress", turnId: "turn",
         phase: "reasoning", outputCharacters: i, estimatedOutputTokens: i});
+    for (let i = 0; i < 1_000; i++) await queue.push({protocolVersion: 1, sequence: i + 1002,
+        threadId: "thread", emittedAt: "2026-09-05T00:00:00.000Z", type: "turn.draft", turnId: "turn",
+        responseId: "r", text: "中".repeat(8_000), truncated: true});
     const iterator = queue.iterate();
     await iterator.next();
     await waiting;

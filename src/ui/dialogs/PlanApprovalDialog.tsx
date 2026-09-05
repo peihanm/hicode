@@ -1,13 +1,13 @@
-import {useRef, useState} from "react";
+import {useMemo, useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import TextInput from "ink-text-input";
 import stringWidth from "string-width";
 import type {ConfirmReq} from "../turn/types.js";
-import {TerminalMarkdown} from "../conversation/TerminalMarkdown.js";
 import {COLORS} from "../theme.js";
-import {useTerminalWidth} from "../terminalSize.js";
+import {useTerminalSize} from "../terminalSize.js";
+import {MAX_PLAN_CHARS, planReview} from "../../tools/plan/review.js";
+import {textRows} from "../textRows.js";
 
-const MAX_PLAN_PREVIEW_CHARS = 4000;
 const MAX_PLAN_FEEDBACK_CHARS = 16_384;
 
 interface ApprovalOption {
@@ -20,7 +20,7 @@ function readPlan(input: unknown): string | undefined {
         return undefined;
     }
     const plan = input.plan;
-    if (typeof plan !== "string" || !plan.trim()) return undefined;
+    if (typeof plan !== "string" || !plan.trim() || plan.length > MAX_PLAN_CHARS) return undefined;
     return plan.trim();
 }
 
@@ -33,16 +33,6 @@ function fitRow(value: string, width: number): string {
     return result + " ".repeat(Math.max(0, width - stringWidth(result)));
 }
 
-function planPreview(plan: string): {value: string; truncated: boolean} {
-    if (plan.length <= MAX_PLAN_PREVIEW_CHARS) {
-        return {value: plan, truncated: false};
-    }
-    return {
-        value: plan.slice(0, MAX_PLAN_PREVIEW_CHARS),
-        truncated: true,
-    };
-}
-
 export function PlanApprovalDialog({
                                        req,
                                        onDone,
@@ -50,10 +40,16 @@ export function PlanApprovalDialog({
     req: ConfirmReq;
     onDone: () => void;
 }) {
-    const contentWidth = Math.max(20, useTerminalWidth() - 6);
+    const terminal = useTerminalSize();
+    const contentWidth = Math.max(10, terminal.width - 6);
     const menuWidth = contentWidth;
-    const plan = readPlan(req.input);
-    const preview = plan ? planPreview(plan) : undefined;
+    const [plan] = useState(() => readPlan(req.input));
+    const review = useMemo(() => plan ? planReview(plan) : undefined, [plan]);
+    const rows = useMemo(() => textRows(plan ?? "", contentWidth), [plan, contentWidth]);
+    const pageSize = Math.max(1, terminal.height - 12);
+    const [page, setPage] = useState(0);
+    const lastPage = Math.max(0, Math.ceil(rows.length / pageSize) - 1);
+    const currentPage = Math.min(page, lastPage);
     const completedRef = useRef(false);
     const [feedbackMode, setFeedbackMode] = useState(false);
     const [feedback, setFeedback] = useState("");
@@ -88,7 +84,7 @@ export function PlanApprovalDialog({
         onDone();
     };
 
-    useInput((_input, key) => {
+    useInput((input, key) => {
         if (completedRef.current) return;
         if (feedbackMode) {
             if (key.escape) {
@@ -99,8 +95,16 @@ export function PlanApprovalDialog({
         }
         if (key.escape) {
             finishDeny("用户取消计划审批，继续留在 Plan 模式");
-        } else if (!plan || !preview) {
+        } else if (!plan || !review) {
             return;
+        } else if (key.pageDown || key.rightArrow) {
+            setPage(Math.min(lastPage, currentPage + 1));
+        } else if (key.pageUp || key.leftArrow) {
+            setPage(Math.max(0, currentPage - 1));
+        } else if (input === "G") {
+            setPage(lastPage);
+        } else if (input === "g") {
+            setPage(0);
         } else if (key.upArrow) {
             setSelectedIndex((index) =>
                 (index - 1 + options.length) % options.length
@@ -113,7 +117,7 @@ export function PlanApprovalDialog({
         }
     });
 
-    if (!plan || !preview) {
+    if (!plan || !review) {
         return (
             <Box flexDirection="column" paddingLeft={2}>
                 <Text color={COLORS.error} bold>◆ INVALID PLAN</Text>
@@ -137,10 +141,8 @@ export function PlanApprovalDialog({
         <Box flexDirection="column" paddingLeft={2}>
             <Box flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>PLAN</Text>
-                <TerminalMarkdown value={preview.value} width={contentWidth}/>
-                {preview.truncated && (
-                    <Text color={COLORS.dim}>…计划预览已截断，批准后仍会使用完整计划。</Text>
-                )}
+                <Text color={COLORS.dim}>版本 {review.version.slice(0, 12)} · 全文 {currentPage + 1}/{lastPage + 1}</Text>
+                <Text>{rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize).join("\n")}</Text>
             </Box>
             {feedbackMode ? (
                 <Box marginTop={1} flexDirection="column" width={contentWidth}>
@@ -186,7 +188,7 @@ export function PlanApprovalDialog({
                 <Text color={COLORS.dim}>
                     {feedbackMode
                         ? "enter 提交  ·  esc 返回选项"
-                        : "↑↓ 选择  ·  enter 确认  ·  esc 继续规划"}
+                        : "←→/PgUp/PgDn 翻页 · g/G 首尾页 · ↑↓ 选择 · enter 确认 · esc 继续规划"}
                 </Text>
             </Box>
         </Box>

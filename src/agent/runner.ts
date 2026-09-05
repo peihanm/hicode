@@ -1,3 +1,4 @@
+import {ResponseDraft} from "./draft.js";
 import {randomUUID} from "node:crypto";
 import type {ToolContext} from "../tools/types.js";
 import type {LLMCaller, Message} from "../llm/types.js";
@@ -94,7 +95,7 @@ function assertFreshToolCallIds(
 async function runAgentCore(
     userInput: string,
     history: Message[],
-    onEvent: (event: AgentEvent) => void | Promise<void>,
+    emitEvent: (event: AgentEvent) => void | Promise<void>,
     ctx: ToolContext,
     inputChannel: AgentInputChannel,
     options: AgentRunOptions,
@@ -109,6 +110,13 @@ async function runAgentCore(
     const isToolConcurrencySafeImpl = options.isToolConcurrencySafe;
     const compactHistoryImpl = dependencies.compactHistory;
     const turnId = randomUUID();
+    const draft = new ResponseDraft(emitEvent);
+    const onEvent = async (event: AgentEvent): Promise<void> => {
+        if (event.type === "assistant_text") {
+            const responseId = await draft.finish("committed");
+            await emitEvent({...event, ...(responseId ? {responseId} : {})});
+        } else await emitEvent(event);
+    };
     const maxConsecutiveDeniedToolCalls =
         options.maxConsecutiveDeniedToolCalls === undefined
             ? undefined
@@ -179,6 +187,7 @@ async function runAgentCore(
             });
             const hasNextIteration =
                 maxIterations === undefined || i + 1 < maxIterations;
+            await draft.finish("discarded");
             const evidenceContext = formatCompletionContext(completionState, options.getTodos?.() ?? []);
             const {invokeMessages, tools, estimatedTokens} = await prepareAgentInvoke({
                 history,
@@ -212,7 +221,8 @@ async function runAgentCore(
                             type: "model_stream_progress",
                             ...progress,
                         });
-                    }
+                    },
+                    draft.update
                 );
             } finally {
                 await onEvent({type: "model_stream_end"});
@@ -408,5 +418,7 @@ async function runAgentCore(
             return interruptedResult();
         }
         throw error;
+    } finally {
+        await draft.finish("discarded");
     }
 }

@@ -55,6 +55,18 @@ const EMPTY_TOKEN_INFO: UITokenInfo = {
 };
 
 export class UITurnEventStore {
+    private draft: Extract<AgentEvent, {type: "assistant_draft"}> | null = null;
+    private readonly draftListeners = new Set<Listener>();
+    getDraftSnapshot = () => this.draft;
+    subscribeDraft = (listener: Listener): (() => void) => {
+        this.draftListeners.add(listener);
+        return () => {this.draftListeners.delete(listener);};
+    };
+    private updateDraft(draft: typeof this.draft): void {
+        if (this.draft === draft) return;
+        this.draft = draft;
+        for (const listener of this.draftListeners) listener();
+    }
     private readonly listeners = new Set<Listener>();
     private readonly modelStreamProgressRef: UIModelStreamProgressRef = {
         current: null,
@@ -83,6 +95,15 @@ export class UITurnEventStore {
     }
 
     handleEvent = (event: AgentEvent): void => {
+        if (event.type === "assistant_draft") {
+            this.updateDraft(event);
+            return;
+        }
+        if (event.type === "assistant_draft_end") {
+            if (this.draft?.responseId === event.responseId) this.updateDraft(null);
+            return;
+        }
+        if (event.type === "turn_interrupted") this.updateDraft(null);
         if (event.type === "iteration") {
             this.activeIteration = event.current;
             this.archiveSettledBeforeTrailingActivity();
@@ -347,6 +368,7 @@ export class UITurnEventStore {
         this.archivedThreadIds.clear();
         for (const thread of threads) this.archivedThreadIds.add(thread.id);
         this.activeIteration = 0;
+        this.updateDraft(null);
         this.modelStreamProgressRef.current = null;
         this.update({
             threads,

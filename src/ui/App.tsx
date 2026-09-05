@@ -1,3 +1,4 @@
+import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
 import {useCallback, useEffect, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
@@ -254,12 +255,15 @@ export function App({
                 )}
 
                 {turn.busy && !turn.confirmRequest && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && !showPermissions && (
-                    <ModelStreamStatus
-                        modelStream={turn.modelStream}
-                        progressRef={turn.modelStreamProgressRef}
-                        stopping={turn.stopping}
-                        activityLabel={activityLabel}
-                    />
+                    <>
+                        <AssistantDraftView store={turn.draftStore}/>
+                        <ModelStreamStatus
+                            modelStream={turn.modelStream}
+                            progressRef={turn.modelStreamProgressRef}
+                            stopping={turn.stopping}
+                            activityLabel={activityLabel}
+                        />
+                    </>
                 )}
 
                 {showResume && requestSessionSwitch ? (

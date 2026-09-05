@@ -35,7 +35,10 @@ export type AgentEvent =
         content: string;
         /** 省略时视为本地命令产生的最终文本。 */
         phase?: "commentary" | "final";
+        responseId?: string;
     }
+    | {type: "assistant_draft"; responseId: string; text: string; truncated: boolean}
+    | {type: "assistant_draft_end"; responseId: string; disposition: "committed" | "discarded"}
     | {type: "model_stream_start"}
     | ({type: "model_stream_progress"} & LLMStreamProgress)
     | {type: "model_stream_end"}

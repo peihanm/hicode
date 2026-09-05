@@ -39,6 +39,8 @@ export async function collectTurnResult(
                 }
                 turnId = event.turnId;
                 break;
+            case "turn.draft":
+            case "turn.draft_end":
             case "turn.progress":
                 assertTurn(event.turnId, turnId);
                 break;

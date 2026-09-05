@@ -548,6 +548,7 @@ export function useTurnController({
                 eventSnapshot.staticThreads
             ),
             tokenInfo: eventSnapshot.tokenInfo,
+            draftStore: eventStore,
             modelStream: eventSnapshot.modelStream,
             modelStreamProgressRef: eventStore.getModelStreamProgressRef(),
             todos,

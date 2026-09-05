@@ -570,6 +570,7 @@ describe("GLM cancellation", () => {
       let fetchCalls = 0;
       const requestBodies: Array<Record<string, unknown>> = [];
       const progress: string[] = [];
+      const textUpdates: string[] = [];
       globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
         fetchCalls += 1;
         requestBodies.push(
@@ -580,7 +581,7 @@ describe("GLM cancellation", () => {
             if (fetchCalls === 1) {
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "开始推理" } }] })}\n\n`
+                  `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "开始推理", content: "旧草稿" } }] })}\n\n`
                 )
               );
               return;
@@ -610,9 +611,11 @@ describe("GLM cancellation", () => {
         model: "glm-5.2",
         kind: "main",
         onStreamProgress: (item) => progress.push(item.phase),
+        onText: update => {textUpdates.push(update.type === "reset" ? "reset" : update.text);},
       });
 
       expect(fetchCalls).toBe(2);
+      expect(textUpdates).toEqual(["reset", "旧草稿", "reset", "重试成功"]);
       expect(requestBodies[0]?.thinking).toEqual({ type: "enabled" });
       expect(requestBodies[1]?.thinking).toEqual({ type: "enabled" });
       expect(requestBodies[0]?.reasoning_effort).toBeUndefined();

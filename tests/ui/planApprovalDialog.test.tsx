@@ -33,6 +33,32 @@ function renderDialog(options: {plan?: unknown} = {}) {
 }
 
 describe("PlanApprovalDialog", () => {
+    test("窄屏长 Markdown 可翻页，resize 后末尾与版本仍可审阅", async () => {
+        const harness = renderDialog({plan: "# 标题\n```ts\n" + "const text = '中文';\n".repeat(180) + "```\n风险末尾"});
+        let columns = 34;
+        let rows = 20;
+        Object.defineProperties(harness.instance.stdout, {
+            columns: {configurable: true, get: () => columns}, rows: {configurable: true, get: () => rows},
+        });
+        harness.instance.stdout.emit("resize");
+        await flush(90);
+        harness.instance.stdin.write("G");
+        await flush();
+        expect(harness.instance.lastFrame()).toContain("风险末尾");
+        const version = /版本 ([a-f0-9]+)/.exec(harness.instance.lastFrame() ?? "")?.[1];
+        columns = 48;
+        rows = 26;
+        harness.instance.stdout.emit("resize");
+        await flush(90);
+        harness.instance.stdin.write("G");
+        await flush();
+        expect(harness.instance.lastFrame()).toContain("风险末尾");
+        expect(harness.instance.lastFrame()).toContain(`版本 ${version}`);
+        harness.instance.stdin.write("g");
+        await flush();
+        expect(harness.instance.lastFrame()).toContain("标题");
+        expect(harness.decisions).toEqual([]);
+    });
     test("展示计划和两个专用操作，默认选择立即构建", async () => {
         const harness = renderDialog();
         await flush();
@@ -110,11 +136,15 @@ describe("PlanApprovalDialog", () => {
         }]);
     });
 
-    test("长计划只截断 UI 预览，非法输入不能被批准", async () => {
-        const longPlan = `# 长计划\n${"a".repeat(4500)}`;
+    test("长计划能在批准前翻到末尾，非法输入不能被批准", async () => {
+        const longPlan = `# 长计划\n${"a".repeat(4500)}\n最终风险：回滚数据库`;
         const longHarness = renderDialog({plan: longPlan});
         await flush();
-        expect(longHarness.instance.lastFrame()).toContain("计划预览已截断");
+        expect(longHarness.instance.lastFrame()).toContain("全文");
+        longHarness.instance.stdin.write("G");
+        await flush();
+        expect(longHarness.instance.lastFrame()).toContain("最终风险：回滚数据库");
+        expect(longHarness.decisions).toEqual([]);
         cleanup();
 
         const invalid = renderDialog({plan: 42});

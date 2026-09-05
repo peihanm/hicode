@@ -735,6 +735,10 @@ for (const action of ["resume", "return", "close", "abort"] as const) {
                 async runAgent(_prompt, history, onEvent, ctx) {
                     history.push({role: "user", content: "bounded stream"});
                     for (let index = 0; index < 400 && !ctx.signal.aborted; index++) {
+                        if (index === 100) {
+                            for (let draft = 0; draft < 1000; draft++) await onEvent({type: "assistant_draft", responseId: "slow-draft", text: String(draft), truncated: false});
+                            await onEvent({type: "assistant_draft_end", responseId: "slow-draft", disposition: "discarded"});
+                        }
                         await onEvent({type: "assistant_text", content: String(index), phase: "commentary"});
                         produced++;
                         if (produced === 100) reached();
@@ -767,6 +771,10 @@ for (const action of ["resume", "return", "close", "abort"] as const) {
                         received.push(result.value);
                     }
                     expect(produced).toBe(400);
+                    expect(received.filter(event => event.type === "turn.draft").length).toBeLessThan(1000);
+                    expect(received.filter(event => event.type === "turn.draft_end")).toHaveLength(1);
+                    expect(received.every((event, index) => index === 0 || event.sequence === received[index - 1]!.sequence + 1)).toBe(true);
+                    await expect(collectTurnResult(replay(received))).resolves.toBeDefined();
                     expect(received.filter(event => event.type === "item.started")).toHaveLength(400);
                     expect(received.filter(event => event.type === "item.completed")).toHaveLength(400);
                     expect(received.at(-1)?.type).toBe("turn.completed");

@@ -287,6 +287,7 @@ async function callOpenAICompatibleCore(
 
     for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
         if (options.signal) throwIfTurnAborted(options.signal);
+        await options.onText?.({type: "reset"});
         const disableThinking =
             endpoint.disableThinkingOnFinalStallRetry === true &&
             outputStallRetries >= LLM_MAX_OUTPUT_STALL_RETRIES;
@@ -402,6 +403,7 @@ async function callOpenAICompatibleCore(
                 signal: requestSignal.signal,
                 onActivity: requestSignal.reset,
                 onCompletionSignal: requestSignal.recordCompletion,
+                onText: text => options.onText?.({type: "delta", text}),
                 onProgress: (progress) => {
                     requestSignal.recordProgress();
                     lastStreamProgress = progress;

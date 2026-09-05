@@ -9,6 +9,7 @@ import type {
     LLMProvider,
     LLMSourceConnection,
     LLMStreamProgress,
+    LLMTextUpdate,
     Message,
     OpenAITool,
 } from "./types.js";
@@ -43,7 +44,8 @@ export function createLLMCaller(
         model: string,
         kind: LLMCallKind,
         signal?: AbortSignal,
-        onStreamProgress?: (progress: LLMStreamProgress) => void
+        onStreamProgress?: (progress: LLMStreamProgress) => void,
+        onText?: (update: LLMTextUpdate) => void | Promise<void>
     ): Promise<LLMCallResult> {
         if (!provider.supports(model)) {
             throw new Error(
@@ -59,6 +61,7 @@ export function createLLMCaller(
             kind,
             signal,
             onStreamProgress,
+            onText,
         }, source);
     };
 }

@@ -3,6 +3,15 @@ import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import type {ThreadEventPayload} from "../../src/sdk/protocol.js";
 
 describe("SDK event adapter", async () => {
+    test("草稿快照及撤销独立于正式 Item，最终正文关联同一响应", async () => {
+        const events: ThreadEventPayload[] = [];
+        const adapter = new SDKEventAdapter("turn", event => {events.push(event);});
+        await adapter.handleAgentEvent({type: "assistant_draft", responseId: "r", text: "draft", truncated: false});
+        expect(events[0]?.type).toBe("turn.draft");
+        await adapter.handleAgentEvent({type: "assistant_draft_end", responseId: "r", disposition: "committed"});
+        await adapter.handleAgentEvent({type: "assistant_text", content: "final", responseId: "r", phase: "final"});
+        expect(events.filter(event => event.type === "item.completed")).toEqual([expect.objectContaining({item: expect.objectContaining({text: "final", responseId: "r"})})]);
+    });
     test("投影有界模型进度并按阶段和 Token 增量节流", async () => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn-progress", (event) => {

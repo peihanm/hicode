@@ -81,6 +81,12 @@ export class SDKEventAdapter {
     handleAgentEvent = async (event: AgentEvent): Promise<void> => {
         this.uiEvents.handleEvent(event);
         switch (event.type) {
+            case "assistant_draft":
+                await this.emit({type: "turn.draft", turnId: this.turnId, responseId: event.responseId, text: event.text, truncated: event.truncated});
+                break;
+            case "assistant_draft_end":
+                await this.emit({type: "turn.draft_end", turnId: this.turnId, responseId: event.responseId, disposition: event.disposition});
+                break;
             case "model_stream_start":
                 await this.flushEndedTools();
                 this.lastProgress = undefined;
@@ -121,6 +127,7 @@ export class SDKEventAdapter {
                     status: "completed",
                     text: event.content,
                     phase: event.phase ?? "final",
+                    ...(event.responseId ? {responseId: event.responseId} : {}),
                 });
                 break;
             case "tool_call_start": {

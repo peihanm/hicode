@@ -194,6 +194,8 @@ export function reduceThreads(
     switch (event.type) {
         case "iteration":
             return threads;
+        case "assistant_draft":
+        case "assistant_draft_end":
         case "model_stream_start":
         case "model_stream_progress":
         case "model_stream_end":

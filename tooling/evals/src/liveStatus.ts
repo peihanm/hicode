@@ -53,6 +53,8 @@ export function reduceEvalLiveStatus(
                 phase: "item",
                 detail: `updating ${event.item.type}`,
             };
+        case "turn.draft":
+        case "turn.draft_end":
         case "item.updated":
             return base;
         case "item.completed":

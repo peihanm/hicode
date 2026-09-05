@@ -40,6 +40,7 @@ export async function consumeOpenAICompatibleSSE({
     onActivity,
     onCompletionSignal,
     onProgress,
+    onText,
 }: {
     body: ReadableStream<Uint8Array>;
     signal: AbortSignal;
@@ -47,6 +48,7 @@ export async function consumeOpenAICompatibleSSE({
     /** finish_reason 后继续短暂读取 usage 与 [DONE]，同时停止生成阶段 watchdog。 */
     onCompletionSignal?: () => void;
     onProgress?: (progress: LLMStreamProgress) => void;
+    onText?: (text: string) => void | Promise<void>;
 }): Promise<OpenAICompatibleStreamResult> {
     const reader = body.getReader();
     let aborted = signal.aborted;
@@ -108,7 +110,7 @@ export async function consumeOpenAICompatibleSSE({
         }
     };
 
-    const processEvent = (event: string) => {
+    const processEvent = async (event: string) => {
         if (event.length > MAX_SSE_EVENT_CHARACTERS) {
             throw new Error(
                 `OpenAI-compatible stream 单个 SSE 事件超过 ${MAX_SSE_EVENT_CHARACTERS} 字符`
@@ -158,6 +160,7 @@ export async function consumeOpenAICompatibleSSE({
                 content += delta.content;
                 outputCharacters += delta.content.length;
                 report("content");
+                await onText?.(delta.content);
             }
             for (const streamed of delta.tool_calls ?? []) {
                 const index = streamed.index ?? 0;
@@ -208,7 +211,7 @@ export async function consumeOpenAICompatibleSSE({
                 const event = buffer.slice(0, boundary);
                 const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/)?.[0] ?? "\n\n";
                 buffer = buffer.slice(boundary + separator.length);
-                processEvent(event);
+                await processEvent(event);
                 if (done) break;
                 boundary = buffer.search(/\r?\n\r?\n/);
             }
@@ -219,7 +222,7 @@ export async function consumeOpenAICompatibleSSE({
             }
         }
         buffer += decoder.decode();
-        if (!done && buffer.trim()) processEvent(buffer);
+        if (!done && buffer.trim()) await processEvent(buffer);
     } finally {
         clearCompletionTailTimer();
         signal.removeEventListener("abort", cancelReader);

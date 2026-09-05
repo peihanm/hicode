@@ -196,20 +196,21 @@ class SDKThreadImpl implements Thread {
             controller.signal.removeEventListener("abort", expireCancelledStream);
             if (cancelTimer !== undefined) clearTimeout(cancelTimer);
             queue.close();
-            if (this.activeRun?.controller === controller) {
-                this.activeRun = undefined;
-            }
         });
         this.activeRun = {controller, settled: execution};
 
         try {
-            yield* queue.iterate();
+            for await (const event of queue.iterate()) {
+                yield {...event, sequence: ++this.sequence};
+            }
         } finally {
             queue.discard();
             if (!executionCompleted && !controller.signal.aborted) {
                 controller.abort("user-cancel");
             }
-            await execution;
+            try {await execution;} finally {
+                if (this.activeRun?.controller === controller) this.activeRun = undefined;
+            }
         }
     }
 
@@ -222,11 +223,10 @@ class SDKThreadImpl implements Thread {
     ): Promise<void> {
         const startedAt = this.options.dependencies.now();
         const emit = (payload: ThreadEventPayload): Promise<void> => {
-            this.sequence += 1;
             return queue.push({
                 ...payload,
                 protocolVersion: 1,
-                sequence: this.sequence,
+                sequence: 0,
                 threadId: this.id,
                 emittedAt: new Date().toISOString(),
             } as ThreadEvent);

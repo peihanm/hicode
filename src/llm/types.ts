@@ -68,6 +68,8 @@ export interface LLMStreamProgress {
     idleMilliseconds?: number;
 }
 
+export type LLMTextUpdate = {type: "reset"} | {type: "delta"; text: string};
+
 export interface LLMCallOptions {
     storage: PillarStorageLayout;
     messages: Message[];
@@ -78,6 +80,7 @@ export interface LLMCallOptions {
     signal?: AbortSignal;
     /** 收到文本、推理或 Function Calling 参数增量时报告累计进度。 */
     onStreamProgress?: (progress: LLMStreamProgress) => void;
+    onText?: (update: LLMTextUpdate) => void | Promise<void>;
 }
 
 export interface LLMCallResult {
@@ -102,7 +105,8 @@ export type LLMCaller = (
     model: string,
     kind: LLMCallKind,
     signal?: AbortSignal,
-    onStreamProgress?: (progress: LLMStreamProgress) => void
+    onStreamProgress?: (progress: LLMStreamProgress) => void,
+    onText?: (update: LLMTextUpdate) => void | Promise<void>
 ) => Promise<LLMCallResult>;
 
 export interface LLMProvider {

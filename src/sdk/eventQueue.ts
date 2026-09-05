@@ -28,7 +28,7 @@ export class AsyncEventQueue {
         }
         const entry = {value, bytes};
         if (this.writers.length === 0 && this.admit(entry)) return Promise.resolve();
-        if (value.type === "turn.progress") return Promise.resolve();
+        if (value.type === "turn.progress" || value.type === "turn.draft") return Promise.resolve();
         if (this.writers.length >= MAX_WAITING_WRITERS || this.waitingBytes + bytes > MAX_BYTES) {
             this.fail(new Error("SDK 事件生产者超过并发等待上限，事件流已中断"));
             return Promise.resolve();

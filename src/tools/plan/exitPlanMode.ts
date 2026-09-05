@@ -1,11 +1,13 @@
 import {z} from "zod";
 import type {Tool, ToolContext} from "../types.js";
 import type {PermissionResult} from "../../permissions/index.js";
+import {MAX_PLAN_CHARS, planReview} from "./review.js";
 
 const inputSchema = z.object({
     plan: z
         .string()
         .min(1)
+        .max(MAX_PLAN_CHARS)
         .describe("准备交给用户批准的执行计划。应具体说明要改哪些模块、关键步骤和验证方式。"),
 });
 
@@ -16,7 +18,7 @@ const MAX_CONFIRM_PLAN_CHARS = 4000;
 function formatPlanForConfirm(plan: string): string {
     const trimmed = plan.trim();
     if (trimmed.length <= MAX_CONFIRM_PLAN_CHARS) return trimmed;
-    return `${trimmed.slice(0, MAX_CONFIRM_PLAN_CHARS)}\n\n... (计划过长，已截断显示)`;
+    return `${trimmed.slice(0, MAX_CONFIRM_PLAN_CHARS)}\n\n...（摘要；完整审批对象见 input.plan，TUI 可翻页阅读全文）`;
 }
 
 export const exitPlanModeTool: Tool<typeof inputSchema> = {
@@ -52,6 +54,7 @@ export const exitPlanModeTool: Tool<typeof inputSchema> = {
             behavior: "ask",
             message: [
                 "是否批准这个计划并开始执行？",
+                `Plan version: ${planReview(plan).version}`,
                 "",
                 formatPlanForConfirm(plan),
             ].join("\n"),
@@ -59,7 +62,7 @@ export const exitPlanModeTool: Tool<typeof inputSchema> = {
     },
 
     async execute({plan}: Input, ctx: ToolContext): Promise<string> {
-        const approvedPlan = plan.trim();
+        const review = planReview(plan);
         ctx.setCollaborationMode("build");
 
         return [
@@ -67,7 +70,8 @@ export const exitPlanModeTool: Tool<typeof inputSchema> = {
             "如果任务包含多个步骤，先用 todo_write 更新清单。",
             "",
             "## Approved Plan",
-            approvedPlan,
+            `Plan version: ${review.version}`,
+            review.content,
         ].join("\n");
     },
 };
