@@ -1,6 +1,0 @@
-:root { color: #24292f; background: #ffffff; font-family: system-ui, sans-serif; }
-body { margin: 0; background: #f6f8fa; }
-main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 24px; }
-section { padding: 20px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 6px; }
-textarea { width: 100%; min-height: 300px; color: #1f2328; }
-button { padding: 8px 16px; color: #ffffff; background: #2da44e; border: 0; border-radius: 6px; }

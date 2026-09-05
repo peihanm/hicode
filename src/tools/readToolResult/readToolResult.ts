@@ -23,21 +23,24 @@ export const readToolResultTool: Tool<typeof inputSchema> = {
     name: "read_tool_result",
     description: [
         "分页读取此前因输出过大而保存的完整工具结果。",
-        "只能读取当前 Session 的 result_id，不接受任意文件路径。",
+        "只能读取当前 Session 的结果，以及 Fork 父快照明确引用的结果；不接受任意文件路径。",
         "根据返回的 next offset 继续读取后续内容。",
     ].join("\n"),
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    async execute({result_id, offset, limit}, ctx) {
+    async execute({result_id, offset, limit}, ctx, invocation) {
         try {
-            const chunk = await ctx.toolResultStore.readRange({
+            const chunk = await ctx.toolResultReader.readRange({
                 resultId: result_id,
                 offset,
                 limit,
+                expectedHash: ctx.fileState.resultDigest(result_id),
             });
-            return formatToolResultChunk(chunk);
+            const output = formatToolResultChunk(chunk);
+            ctx.fileState.stagePage(invocation.toolCallId, result_id, chunk.offset, chunk.content, output);
+            return output;
         } catch (error) {
             return {
                 content: `无法读取工具结果 ${result_id}: ${error instanceof Error ? error.message : String(error)}`,

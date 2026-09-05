@@ -13,6 +13,7 @@ import type {AgentTaskSnapshot, StartAgentTaskInput} from "./types.js";
 const WORKTREE_DIFF_PREVIEW_CHARS = 12_000;
 
 interface CapturedWorktreeDiff {
+    revision: string;
     stat: string;
     preview: string;
     result: NonNullable<AgentTaskSnapshot["worktreeDiffResult"]>;
@@ -141,6 +142,7 @@ export class TaskWorktreeManager {
         }
         const diff = await this.worktrees.readDiff(input.record, input.inspection);
         return {
+            revision: diff.revision,
             stat: diff.stat,
             preview: diff.patch.length <= WORKTREE_DIFF_PREVIEW_CHARS
                 ? diff.patch
@@ -149,7 +151,7 @@ export class TaskWorktreeManager {
                 toolCallId: input.toolCallId,
                 toolName: "task",
                 content: diff.patch,
-                resultId: `worktree_${input.record.taskId}_${input.inspection.revision.slice(0, 12)}`,
+                resultId: `worktree_${input.record.taskId}_${diff.revision}`,
             }),
         };
     }
@@ -189,6 +191,10 @@ export class TaskWorktreeManager {
         inspection: AvailableWorktreeInspection
     ): Promise<void> {
         if (!task.worktree) return;
+        task.worktreeDiffStat = undefined;
+        task.worktreeDiffPreview = undefined;
+        task.worktreeDiffResult = undefined;
+        task.worktreeDiffRevision = undefined;
         try {
             const captured = await this.captureDiff({
                 record: task.worktree,
@@ -197,6 +203,7 @@ export class TaskWorktreeManager {
                 toolCallId: task.owner.toolCallId,
             });
             task.worktreeDiffStat = captured?.stat;
+            task.worktreeDiffRevision = captured?.revision;
             task.worktreeDiffPreview = captured?.preview;
             task.worktreeDiffResult = captured?.result;
         } catch (error) {

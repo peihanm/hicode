@@ -218,6 +218,7 @@ async function runAgentCore(
             }
             const {message, toolCalls, usage, contextUsage} = llmResult;
             throwIfTurnAborted(ctx.signal);
+            ctx.fileState.commitVisible(invokeMessages);
             assertFreshToolCallIds(history, toolCalls);
             // assistant message 和 tool result 入 history（真实对话内容）
             history.push(message);

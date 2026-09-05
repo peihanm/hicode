@@ -1,3 +1,4 @@
+import {executeDeliveredTool} from "../helpers/executeTool.js";
 import {describe, expect, test} from "bun:test";
 import {chmod, lstat, mkdir, readFile, readdir, rename, symlink, writeFile} from "node:fs/promises";
 import {createToolRuntime} from "../../src/tools/runtime.js";
@@ -48,7 +49,7 @@ describe("file commit boundary", () => {
             ctx.fileCheckpoints = checkpoints;
             await checkpoints.beginTurn({prompt: "edit"});
             const tools = createToolRuntime();
-            await tools.executeTool("read_file", '{"path":"target/file.txt"}', ctx, "read");
+            await executeDeliveredTool(tools, "read_file", '{"path":"target/file.txt"}', ctx, "read");
             const before = checkpoints.beforeWrite.bind(checkpoints);
             checkpoints.beforeWrite = async input => {
                 const result = await before(input);
@@ -90,7 +91,7 @@ describe("file commit boundary", () => {
             ctx.fileCheckpoints = runtime;
             await runtime.beginTurn({prompt: "edit"});
             const tools = createToolRuntime();
-            await tools.executeTool("read_file", '{"path":"file.txt"}', ctx, "read");
+            await executeDeliveredTool(tools, "read_file", '{"path":"file.txt"}', ctx, "read");
             const before = runtime.beforeWrite.bind(runtime);
             runtime.beforeWrite = async input => {
                 const result = await before(input);
@@ -142,7 +143,7 @@ describe("file commit boundary", () => {
                 const runtime = createFileCheckpointRuntime({storage, cwd, sessionId: `writer-${index}`, enabled: true});
                 ctx.fileCheckpoints = runtime;
                 await runtime.beginTurn({prompt: "edit"});
-                await tools.executeTool("read_file", '{"path":"file.txt"}', ctx, `read-${index}`);
+                await executeDeliveredTool(tools, "read_file", '{"path":"file.txt"}', ctx, `read-${index}`);
                 const before = runtime.beforeWrite.bind(runtime);
                 const after = runtime.afterWrite.bind(runtime);
                 runtime.beforeWrite = async input => {
@@ -173,7 +174,7 @@ describe("file commit boundary", () => {
                 ctx.fileCheckpoints = checkpoints;
                 await checkpoints.beginTurn({prompt: "change"});
                 const rt = createToolRuntime();
-                await rt.executeTool("read_file", '{"path":"file.txt"}', ctx, "read");
+                await executeDeliveredTool(rt, "read_file", '{"path":"file.txt"}', ctx, "read");
                 const before = checkpoints.beforeWrite.bind(checkpoints);
                 checkpoints.beforeWrite = async input => {
                     const result = await before(input);
@@ -196,7 +197,7 @@ describe("file commit boundary", () => {
                 ctx.fileCheckpoints = checkpoints;
                 await checkpoints.beginTurn({prompt: "change"});
                 const rt = createToolRuntime();
-                await rt.executeTool("read_file", '{"path":"file.txt"}', ctx, "read");
+                await executeDeliveredTool(rt, "read_file", '{"path":"file.txt"}', ctx, "read");
                 const before = checkpoints.beforeWrite.bind(checkpoints);
                 checkpoints.beforeWrite = async input => {
                     const result = await before(input);
@@ -219,7 +220,7 @@ describe("file commit boundary", () => {
             ctx.fileCheckpoints = checkpoints;
             await checkpoints.beginTurn({prompt: "change"});
             const rt = createToolRuntime();
-            await rt.executeTool("read_file", '{"path":"file.txt"}', ctx, "read");
+            await executeDeliveredTool(rt, "read_file", '{"path":"file.txt"}', ctx, "read");
             const after = checkpoints.afterWrite.bind(checkpoints);
             checkpoints.afterWrite = async input => {
                 const result = await after(input);
@@ -260,7 +261,7 @@ describe("file commit boundary", () => {
                 events.push(input.hook_event_name);
                 return {blocked: false, additionalContexts: [], executions: []};
             }}});
-            await rt.executeTool("read_file", '{"path":"file.txt"}', ctx, "read");
+            await executeDeliveredTool(rt, "read_file", '{"path":"file.txt"}', ctx, "read");
             events.length = 0;
             const result = await rt.executeTool("delete_file", '{"path":"file.txt"}', ctx, "delete");
             expect(result.outcome).toBe("failed");

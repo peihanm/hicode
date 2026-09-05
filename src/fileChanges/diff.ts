@@ -1,9 +1,21 @@
 import {structuredPatch} from "diff";
+import {isUtf8} from "node:buffer";
 import type {DiffHunk, DiffLine, DiffLineType, FileChange,} from "./types.js";
 
 const DIFF_CONTEXT_LINES = 3;
 const DIFF_TIMEOUT_MS = 5_000;
 const MAX_FILE_CHANGE_UI_BYTES = 2 * 1024 * 1024;
+
+export function createByteFileChange(input: {
+    path: string; kind: FileChange["kind"]; oldContent: Buffer; newContent: Buffer;
+}): FileChange {
+    const binary = [input.oldContent, input.newContent].some(content => content.includes(0) || !isUtf8(content));
+    if (binary || input.oldContent.length + input.newContent.length > MAX_FILE_CHANGE_UI_BYTES) {
+        return {version: 1, path: input.path, kind: input.kind, hunks: [], linesAdded: null, linesRemoved: null,
+            diffStatus: "unavailable", diffUnavailableReason: binary ? "binary" : "too_large"};
+    }
+    return createFileChange({...input, oldContent: input.oldContent.toString("utf8"), newContent: input.newContent.toString("utf8")});
+}
 
 export interface CreateFileChangeInput {
     path: string;

@@ -47,6 +47,7 @@ export interface ToolContextSession {
     sessionId: string;
     compactState: CompactState;
     toolResultStore: ToolResultStore;
+    toolResultReader?: ToolContext["toolResultReader"];
     fileCheckpoints: FileCheckpointRuntimeLike;
     allowBackgroundTasks?: boolean;
     hookSession?: HookSessionRuntime;
@@ -112,6 +113,9 @@ export function createToolContext({
         compactState: session.compactState,
         sessionId: session.sessionId,
         toolResultStore: session.toolResultStore,
+        toolResultReader: session.toolResultReader ?? {
+            readRange: input => session.toolResultStore.readRange(input),
+        },
         fileState: session.fileState,
         fileCommits: resources.fileCommits,
         gitSession: resources.gitSession,

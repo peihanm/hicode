@@ -46,7 +46,7 @@ export interface FileCheckpointRecord {
     createdAt: string;
     prompt: string;
     promptPreview: string;
-    status: "active" | "settled" | "no_agent_run";
+    status: "active" | "settled" | "no_agent_run" | "interrupted";
     fileCoverage: "complete" | "incomplete";
     coverageWarnings: CheckpointCoverageWarning[];
     mutations: CheckpointFileMutation[];
@@ -61,6 +61,12 @@ export interface FileCheckpointIndexEntry {
 export interface CheckpointHead {
     branchId: string;
     checkpointId?: string;
+}
+
+export interface CheckpointSessionLink {
+    checkpointId: string;
+    branchId: string;
+    parentCheckpointId?: string;
 }
 
 export interface FileCheckpointManifest {
@@ -129,13 +135,13 @@ export interface BeginCheckpointInput {
 
 export interface CaptureBeforeWriteInput {
     path: string;
-    content: string | null;
+    content: string | Buffer | null;
     toolCallId: string;
 }
 
 export interface CaptureAfterWriteInput {
     path: string;
-    content: string | null;
+    content: string | Buffer | null;
     toolCallId: string;
 }
 
@@ -146,6 +152,8 @@ export interface CaptureResult {
 
 export interface FileCheckpointRuntimeLike {
     readonly enabled: boolean;
+
+    reconcileSession(head: CheckpointHead | undefined, links: readonly CheckpointSessionLink[]): Promise<FileCheckpointRecord[]>;
 
     beginTurn(input: BeginCheckpointInput): Promise<FileCheckpointRecord | null>;
 

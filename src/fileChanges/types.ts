@@ -15,7 +15,7 @@ export interface DiffHunk {
     lines: DiffLine[];
 }
 
-type DiffUnavailableReason = "timeout" | "too_large" | "error";
+type DiffUnavailableReason = "timeout" | "too_large" | "binary" | "error";
 
 export interface FileChange {
     version: 1;

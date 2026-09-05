@@ -1,46 +1,40 @@
-import {readFile, stat} from "node:fs/promises";
+import {readFileSnapshot} from "../shared/fileSnapshot.js";
 import {z} from "zod";
-import {createFileChange} from "../../fileChanges/index.js";
+import {createByteFileChange} from "../../fileChanges/index.js";
 import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 
 const inputSchema = z.object({
-    path: z.string().describe("要删除的文件路径。删除前必须先用 read_file 完整读取当前版本。"),
+    path: z.string().describe("要删除的文件路径。删除前必须先用 read_file 确认目标当前版本。"),
 });
 
 type Input = z.infer<typeof inputSchema>;
 
-async function readRegularFile(path: string): Promise<string> {
-    const info = await stat(path);
-    if (!info.isFile()) throw new Error("delete_file 只能删除普通文件");
-    return readFile(path, "utf8");
-}
-
 function readRequirement(path: string, reason: "not_read" | "partial_read" | "stale"): string {
     if (reason === "stale") return `文件 ${path} 自上次 read_file 后已被修改，必须重新读取。`;
-    return `删除 ${path} 前必须先用 read_file 完整读取当前版本。`;
+    return `删除 ${path} 前必须先用 read_file 确认目标当前版本。`;
 }
 
 export const deleteFileTool: Tool<typeof inputSchema> = {
     name: "delete_file",
-    description: "删除普通文件。删除前必须完整读取；项目文件进入权限和 Checkpoint，Memory 主题通过受管 Memory 边界删除。",
+    description: "删除普通文件。删除前必须读取并确认目标版本（支持二进制资产）；项目文件进入权限和 Checkpoint，Memory 主题通过受管 Memory 边界删除。",
     parameters: inputSchema,
     isReadOnly: () => false,
     getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
 
     async checkPermissions({path}: Input, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
-        let content: string;
+        let snapshot: Awaited<ReturnType<typeof readFileSnapshot>>;
         try {
-            content = await readRegularFile(absPath);
+            snapshot = await readFileSnapshot(absPath);
         } catch (error) {
             return {
                 behavior: "deny" as const,
                 message: error instanceof Error ? error.message : String(error),
             };
         }
-        const state = ctx.fileState.check(absPath, content, {requireFullRead: true});
+        const state = ctx.fileState.check(absPath, snapshot.content, {identity: ctx.memoryFiles?.classify(absPath) ? undefined : snapshot.identity, requireFullRead: Boolean(ctx.memoryFiles?.classify(absPath))});
         if (!state.ok) {
             return {behavior: "deny" as const, message: readRequirement(path, state.reason)};
         }
@@ -55,44 +49,34 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
 
     async execute({path}: Input, ctx, invocation) {
         const absPath = resolveToolPath(ctx.cwd, path);
-        const content = await readRegularFile(absPath);
-        const state = ctx.fileState.check(absPath, content, {requireFullRead: true});
+        const snapshot = await readFileSnapshot(absPath);
+        const state = ctx.fileState.check(absPath, snapshot.content, {identity: ctx.memoryFiles?.classify(absPath) ? undefined : snapshot.identity, requireFullRead: Boolean(ctx.memoryFiles?.classify(absPath))});
         if (!state.ok) return {content: `删除取消: ${readRequirement(path, state.reason)}`, outcome: "failed" as const};
 
         const memoryPath = ctx.memoryFiles?.classify(absPath);
         if (memoryPath) {
             if (memoryPath.kind !== "topic") return {content: "删除取消: MEMORY.md 不能删除", outcome: "failed" as const};
-            await ctx.memoryFiles!.delete(absPath, content);
-            ctx.fileState.recordWrite({
-                path: absPath,
-                content: "",
-                observedContent: "",
-                modelKnowsWholeFile: true,
-            });
+            await ctx.memoryFiles!.delete(absPath, snapshot.content.toString("utf8"));
+            ctx.fileState.forget(absPath);
             return `Memory 主题已删除: ${path}`;
         }
 
-        const change = createFileChange({
+        const change = createByteFileChange({
             path: displayToolPath(ctx.cwd, absPath),
             kind: "delete",
-            oldContent: content,
-            newContent: "",
+            oldContent: snapshot.content,
+            newContent: Buffer.alloc(0),
         });
-        const warnings = await runTrackedFileWrite({
+        const {warnings} = await runTrackedFileWrite({
             runtime: ctx.fileCheckpoints,
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
             path: absPath,
-            beforeContent: content,
+            beforeContent: snapshot.content,
             afterContent: null,
             toolCallId: invocation.toolCallId,
         });
-        ctx.fileState.recordWrite({
-            path: absPath,
-            content: "",
-            observedContent: "",
-            modelKnowsWholeFile: true,
-        });
+        ctx.fileState.forget(absPath);
         const result = `已删除 ${path}${formatCheckpointWarnings(warnings)}`;
         return {
             content: result,

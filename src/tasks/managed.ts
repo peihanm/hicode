@@ -52,6 +52,7 @@ export interface ManagedAgentTask extends ManagedTaskBase {
     worktree?: AgentWorktreeRecord;
     worktreeInspection?: WorktreeInspection;
     worktreeDiffStat?: string;
+    worktreeDiffRevision?: string;
     worktreeDiffPreview?: string;
     worktreeDiffResult?: AgentTaskSnapshot["worktreeDiffResult"];
 }
@@ -69,7 +70,8 @@ export function appendTaskIssue(task: ManagedTask, issue: string): void {
 
 export function worktreeSnapshot(
     record: AgentWorktreeRecord,
-    inspection?: WorktreeInspection
+    inspection?: WorktreeInspection,
+    revision?: string
 ) {
     return {
         path: record.path,
@@ -86,9 +88,9 @@ export function worktreeSnapshot(
                 headCommit: inspection.headCommit,
                 dirty: inspection.dirty,
                 commitsAhead: inspection.commitsAhead,
-                revision: inspection.revision,
             }
             : {}),
+        ...(revision ? {revision} : {}),
         ...(record.cleanupReason ? {cleanupReason: record.cleanupReason} : {}),
         ...(inspection?.status === "unavailable"
             ? {issue: inspection.issue}
@@ -162,7 +164,7 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
         ...(task.transcriptPath ? {transcriptPath: task.transcriptPath} : {}),
         ...(task.outputIssue ? {outputIssue: task.outputIssue} : {}),
         ...(task.worktree
-            ? {worktree: worktreeSnapshot(task.worktree, task.worktreeInspection)}
+            ? {worktree: worktreeSnapshot(task.worktree, task.worktreeInspection, task.worktreeDiffRevision)}
             : {}),
         ...(task.worktreeDiffStat
             ? {worktreeDiffStat: task.worktreeDiffStat}

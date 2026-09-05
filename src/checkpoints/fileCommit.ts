@@ -45,7 +45,7 @@ function readVersion(path: string): FileVersion {
     } finally { closeSync(fd); }
 }
 
-function assertContent(version: FileVersion, expected: string | null, path: string): void {
+function assertContent(version: FileVersion, expected: string | Buffer | null, path: string): void {
     if (expected === null ? version.content !== null : !version.content?.equals(Buffer.from(expected))) {
         throw new Error(`文件在提交前发生变化，已保留外部内容；请重新 read_file: ${path}`);
     }
@@ -77,11 +77,11 @@ export class FileCommitCoordinator {
     }
 }
 
-export function prepareFileCommit(path: string, canonical: string, expected: string | null) {
+export function prepareFileCommit(path: string, canonical: string, expected: string | Buffer | null) {
     if (canonicalPath(path) !== canonical) throw new Error(`文件路径在等待期间发生变化: ${path}`);
     const version = readVersion(path);
     assertContent(version, expected, path);
-    return async (content: string | null, signal: AbortSignal): Promise<void> => {
+    return async (content: string | Buffer | null, signal: AbortSignal): Promise<string | undefined> => {
         let temporary: string | undefined;
         try {
             throwIfTurnAborted(signal);
@@ -107,7 +107,17 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
             else if (expected === null) {
                 // Unlike rename, link cannot replace a file created by an external writer.
                 linkSync(temporary!, canonical);
+                // Unlink changes ctime on the shared inode; capture the receipt afterwards.
+                try { unlinkSync(temporary!); temporary = undefined; }
+                catch { return undefined; } // Committed, but final cleanup may change its identity.
             } else renameSync(temporary!, canonical);
+            if (content !== null) {
+                try {
+                    const info = lstatSync(canonical, {bigint: true});
+                    return [info.dev, info.ino, info.size, info.mode, info.mtimeNs, info.ctimeNs].join(":");
+                } catch { /* The write committed; a missing receipt only requires a new read. */ }
+            }
+            return undefined;
         } finally {
             if (temporary) await unlink(temporary).catch(() => undefined);
         }

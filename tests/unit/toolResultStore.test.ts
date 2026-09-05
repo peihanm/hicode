@@ -16,6 +16,45 @@ import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 
 describe("ToolResultStore", () => {
+  test("capture 在单项和剩余 Session 配额的多字节边界截断后能到 EOF", async () => {
+    await withTempProject(async (cwd) => {
+      for (const char of ["é", "你", "😀"]) {
+        for (const sessionQuota of [false, true]) {
+          const size = Buffer.byteLength(char);
+          const store = createTestToolResultStore(cwd, `${size}-${sessionQuota}`, {
+            maxArtifactBytes: sessionQuota ? 100 : size * 2 - 1,
+            maxSessionBytes: sessionQuota ? size * 2 : 100,
+          });
+          if (sessionQuota) await store.persistText({toolCallId: "prior", toolName: "test", content: "x"});
+          const sourcePath = await store.createCapture();
+          await writeFile(sourcePath, char.repeat(2));
+          const result = await store.promoteFile({toolCallId: "capture", toolName: "bash", sourcePath});
+          expect(result).toMatchObject({byteLength: size, originalByteLength: size * 2, complete: false});
+          const page = await store.readRange({resultId: result.resultId, offset: 0, limit: 1});
+          expect(page).toMatchObject({content: char, nextOffset: size, eof: true, complete: false});
+        }
+      }
+    });
+  });
+
+  test("损坏尾字符明确失败，不产生永不推进的空页", async () => {
+    await withTempProject(async (cwd) => {
+      const store = createTestToolResultStore(cwd, "damaged-tail");
+      const result = await store.persistText({toolCallId: "text", toolName: "test", content: "abcde"});
+      await writeFile(result.path, Buffer.from([97, 98, 99, 0xe4, 0xbd]));
+      await expect(store.readRange({resultId: result.resultId, offset: 3, limit: 1})).rejects.toThrow("UTF-8");
+    });
+  });
+
+  test("从四字节字符内部开始且 limit=1 时读到下一个完整字符", async () => {
+    await withTempProject(async (cwd) => {
+      const store = createTestToolResultStore(cwd, "continuation");
+      const result = await store.persistText({toolCallId: "text", toolName: "test", content: "😀😀"});
+      expect(await store.readRange({resultId: result.resultId, offset: 1, limit: 1}))
+        .toMatchObject({content: "😀", offset: 4, nextOffset: 8, eof: true});
+    });
+  });
+
   test("project key 稳定隔离且 artifact key 不暴露输入路径", async () => {
     await withTempProject(async (cwd) => {
       const other = join(cwd, "other");

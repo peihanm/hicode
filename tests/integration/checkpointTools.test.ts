@@ -1,3 +1,4 @@
+import {executeDeliveredTool} from "../helpers/executeTool.js";
 import {describe, expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -40,7 +41,7 @@ describe("Checkpoint tool integration", () => {
 
             const existingPath = join(cwd, "existing.txt");
             await writeFile(existingPath, "before\n");
-            const read = await tools.executeTool(
+            const read = await executeDeliveredTool(tools,
                 "read_file",
                 JSON.stringify({path: "existing.txt"}),
                 ctx,
@@ -61,7 +62,7 @@ describe("Checkpoint tool integration", () => {
 
             const deletedPath = join(cwd, "deleted.txt");
             await writeFile(deletedPath, "restore me\n");
-            expect((await tools.executeTool(
+            expect((await executeDeliveredTool(tools,
                 "read_file",
                 JSON.stringify({path: "deleted.txt"}),
                 ctx,

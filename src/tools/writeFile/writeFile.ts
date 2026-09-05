@@ -96,7 +96,6 @@ export const writeFileTool: Tool<
             ctx.fileState.recordWrite({
                 path: absPath,
                 content,
-                observedContent: content,
                 modelKnowsWholeFile: true,
             });
             return `Memory 文件已写入: ${path}`;
@@ -108,7 +107,7 @@ export const writeFileTool: Tool<
             newContent: content,
         });
 
-        const checkpointWarnings = await runTrackedFileWrite({
+        const {warnings: checkpointWarnings, identity} = await runTrackedFileWrite({
             runtime: ctx.fileCheckpoints,
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
@@ -118,9 +117,9 @@ export const writeFileTool: Tool<
             toolCallId: invocation.toolCallId,
         });
         ctx.fileState.recordWrite({
+            identity,
             path: absPath,
             content,
-            observedContent: content,
             modelKnowsWholeFile: true,
         });
         const result =

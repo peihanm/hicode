@@ -113,6 +113,7 @@ export interface ToolContext {
     // 当前 Session 的大工具结果存储。由 UI / Headless / tests 注入。
     sessionId: string;
     toolResultStore: ToolResultStore;
+    toolResultReader: Pick<ToolResultStore, "readRange">;
 
     // Session 级的文件观测状态，供 Read/Edit/Write 做 stale
     // 和部分读取范围检查。不得使用进程级全局状态代替。

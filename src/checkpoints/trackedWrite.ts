@@ -6,10 +6,10 @@ export async function runTrackedFileWrite(input: {
     coordinator: FileCommitCoordinator;
     signal: AbortSignal;
     path: string;
-    beforeContent: string | null;
-    afterContent: string | null;
+    beforeContent: string | Buffer | null;
+    afterContent: string | Buffer | null;
     toolCallId: string;
-}): Promise<CheckpointCoverageWarning[]> {
+}): Promise<{warnings: CheckpointCoverageWarning[]; identity?: string}> {
     return input.coordinator.run(input.path, input.signal, async canonical => {
         const commit = prepareFileCommit(input.path, canonical, input.beforeContent);
         const warnings: CheckpointCoverageWarning[] = [];
@@ -19,8 +19,11 @@ export async function runTrackedFileWrite(input: {
             toolCallId: input.toolCallId,
         });
         if (before.warning) warnings.push(before.warning);
+        if (input.afterContent === null && input.runtime.enabled && !before.captured) {
+            throw new Error(`未能保存删除前的 Checkpoint，已取消删除: ${before.warning?.message ?? input.path}`);
+        }
 
-        await commit(input.afterContent, input.signal);
+        const identity = await commit(input.afterContent, input.signal);
 
         if (before.captured) {
             try {
@@ -38,7 +41,7 @@ export async function runTrackedFileWrite(input: {
                 });
             }
         }
-        return warnings;
+        return {warnings, ...(identity ? {identity} : {})};
     });
 }
 

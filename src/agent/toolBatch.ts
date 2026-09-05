@@ -58,11 +58,19 @@ export async function executeToolCallBatch({
 
     const finalizeBudget = async (): Promise<void> => {
         if (budgetEntries.length === 0) return;
+        const before = budgetEntries.map(entry => history[entry.messageIndex]?.content);
         const replacements = await applyBatchToolResultBudget({
             history,
             entries: budgetEntries,
             store: ctx.toolResultStore,
         });
+        for (const [index, entry] of budgetEntries.entries()) {
+            const content = history[entry.messageIndex]?.content;
+            if (typeof content === "string" && typeof before[index] === "string" && content !== before[index]) {
+                ctx.fileState.bindOutput(entry.toolCallId, before[index]!, {modelContent: content,
+                    persisted: replacements.find(item => item.toolCallId === entry.toolCallId)?.persisted});
+            }
+        }
         budgetEntries = [];
         for (const replacement of replacements) {
             await onEvent({

@@ -87,12 +87,7 @@ describe("synchronous subagent", () => {
       const original = "export const value = 1;\n";
       await writeFile(path, original);
       const ctx = createTestContext(cwd, {permissionMode: "default"});
-      ctx.fileState.recordRead({
-        path,
-        content: original,
-        observedContent: original,
-        fullRead: true,
-      });
+      await executeToolResult("read_file", JSON.stringify({path}), ctx, "parent-read");
       const child = createFakeLLM([
         assistantToolCall("edit_file", {
           path: "owned-by-parent.ts",

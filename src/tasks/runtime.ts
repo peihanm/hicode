@@ -626,6 +626,10 @@ class TaskRuntime implements TaskRuntimeLike {
 
     private async refreshManagedWorktree(task: ManagedAgentTask): Promise<void> {
         if (!task.worktree || task.worktree.state === "cleaned") return;
+        task.worktreeDiffStat = undefined;
+        task.worktreeDiffPreview = undefined;
+        task.worktreeDiffResult = undefined;
+        task.worktreeDiffRevision = undefined;
         try {
             const inspection = await this.worktreeTasks.refresh(task.worktree);
             task.worktreeInspection = inspection;
@@ -637,6 +641,7 @@ class TaskRuntime implements TaskRuntimeLike {
                 toolCallId: task.owner.toolCallId,
             });
             task.worktreeDiffStat = captured?.stat;
+            task.worktreeDiffRevision = captured?.revision;
             task.worktreeDiffPreview = captured?.preview;
             task.worktreeDiffResult = captured?.result;
         } catch (error) {
@@ -677,7 +682,7 @@ class TaskRuntime implements TaskRuntimeLike {
         }
         const updated: AgentTaskSnapshot = {
             ...task,
-            worktree: worktreeSnapshot(record, inspection),
+            worktree: worktreeSnapshot(record, inspection, captured?.revision),
             ...(captured
                 ? {
                     worktreeDiffStat: captured.stat,

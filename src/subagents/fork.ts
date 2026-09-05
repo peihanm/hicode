@@ -1,10 +1,47 @@
 import type {Message} from "../llm/types.js";
+import type {ToolResultStore} from "../toolResults/index.js";
 
 export interface ForkContextSnapshot {
     history: Message[];
 }
 
 const PLACEHOLDER_PREFIX = "[Fork context placeholder]";
+
+export function createForkResultReader(
+    history: readonly Message[],
+    parent: Pick<ToolResultStore, "readRange">,
+    local: ToolResultStore
+): Pick<ToolResultStore, "readRange"> {
+    const resultIds = new Set<string>();
+    const toolNames = new Map<string, string>();
+    for (const message of history) {
+        if (message.role === "assistant") {
+            for (const call of message.tool_calls ?? []) toolNames.set(call.id, call.function.name);
+        }
+        if (message.role !== "tool") continue;
+        for (const match of message.content.matchAll(/^<persisted-output>\nResult ID: ("(?:[^"\\\n]|\\.)*")\n/gm)) {
+            try {
+                const id: unknown = JSON.parse(match[1]!);
+                if (typeof id === "string" && id.length > 0 && id.length <= 4096) resultIds.add(id);
+            } catch { /* Malformed references grant no capability. */ }
+        }
+        const name = toolNames.get(message.tool_call_id);
+        const pattern = name === "task" || name === "bash_task"
+            ? /^(?:Diff )?Result ID: ([^\r\n]+)$/gm
+            : name === "read_tool_result" ? /^Result: ([^\r\n]+)\nBytes: /g : undefined;
+        if (pattern) {
+            for (const match of message.content.matchAll(pattern)) {
+                if (match[1]!.length <= 4096) resultIds.add(match[1]!);
+            }
+        }
+    }
+    // Captured once from the inherited snapshot. Parent IDs keep their meaning
+    // even if a later child tool call happens to use the same ID.
+    return Object.freeze({
+        readRange: (input: Parameters<ToolResultStore["readRange"]>[0]) =>
+            resultIds.has(input.resultId) ? parent.readRange(input) : local.readRange(input),
+    });
+}
 
 function cloneMessage(message: Message): Message {
     return structuredClone(message);

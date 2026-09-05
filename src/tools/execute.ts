@@ -332,11 +332,13 @@ export async function executeRegisteredTool(
     if (ctx.signal.aborted && !committedFile) {
         return interruptedToolResult(ctx.signal);
     }
-    return hookDecoratedResult(
+    const decorated = hookDecoratedResult(
         hookDecoratedResult(processed, "PreToolUse", preHookResult),
         postEvent,
         postHookResult
     );
+    ctx.fileState.bindOutput(toolCallId, typeof result === "string" ? result : result.content, decorated);
+    return decorated;
 }
 
 async function executePostToolHooks({

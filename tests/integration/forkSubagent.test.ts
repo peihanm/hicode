@@ -18,6 +18,9 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {attachSubagentLauncher} from "../helpers/subagentLauncher.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {buildForkContextSnapshot} from "../../src/subagents/fork.js";
+import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
+import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
     const process = Bun.spawn(["git", "-C", cwd, ...args], {
@@ -43,6 +46,55 @@ async function initializeRepository(cwd: string): Promise<void> {
 }
 
 describe("fork subagent", () => {
+    test("Fork 只读 snapshot 引用的父 artifact，缺失结果明确失败", async () => {
+        await withTempProject(async cwd => {
+            const store = createTestToolResultStore(cwd, "parent");
+            const visible = await store.persistText({toolCallId: "log", toolName: "bash", content: `父${"日志".repeat(10_000)}日志全文尾部`});
+            const hidden = await store.persistText({toolCallId: "hidden", toolName: "bash", content: "不可继承"});
+            const missing = await store.persistText({toolCallId: "missing", toolName: "bash", content: "已丢失"});
+            const history: Message[] = [
+                {role: "system", content: "root"},
+                {role: "assistant", content: null, tool_calls: ["log", "missing"].map(id => ({
+                    id, type: "function", function: {name: "bash", arguments: "{}"},
+                }))},
+                {role: "tool", tool_call_id: "log", content: buildPersistedToolResultMessage(visible)},
+                {role: "tool", tool_call_id: "missing", content: buildPersistedToolResultMessage(missing)},
+                {role: "assistant", content: null, tool_calls: [{id: "fork", type: "function", function: {name: "agent", arguments: "{}"}}]},
+            ];
+            const snapshot = buildForkContextSnapshot(history, "fork");
+            await store.removeArtifact(missing.resultId);
+            const child = createFakeLLM([
+                () => assistantToolCall("read_tool_result", {result_id: visible.resultId, limit: 3}, "read-parent"),
+                options => {
+                    const result = options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-parent");
+                    expect(result?.content).toContain("父");
+                    expect(result?.content).toContain("offset=3");
+                    return assistantToolCall("read_tool_result", {result_id: visible.resultId, offset: visible.byteLength - 18}, "read-tail");
+                },
+                options => {
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-tail")?.content).toContain("日志全文尾部");
+                    return assistantToolCall("read_tool_result", {result_id: hidden.resultId}, "read-hidden");
+                },
+                options => {
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-hidden")?.content).toContain("not found");
+                    return assistantToolCall("read_tool_result", {result_id: missing.resultId}, "read-missing");
+                },
+                options => {
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-missing")?.content).toContain("not found");
+                    return assistantText("evidence checked");
+                },
+                () => assistantText("evidence checked"),
+            ]);
+            const thread = createSubagentThreadForTest({
+                parentContext: createTestContext(cwd, {toolResultStore: store}),
+                agentId: "fork-evidence", onEvent: () => {}, agentOptions: {callLLM: child.callLLM},
+            }, {kind: "fork", agentType: "fork", name: "evidence", description: "检查证据",
+                prompt: "检查证据", parentToolCallId: "fork", contextSnapshot: snapshot});
+            const result = await thread.run({prompt: "检查证据", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
+            expect(result.reply).toBe("evidence checked");
+        });
+    });
+
     test("只读 Fork 继承父对话、使用固定工具集并以具名 Task 返回", async () => {
         await withTempProject(async (cwd) => {
             const parentToolCallId = "fork-frontend-call";

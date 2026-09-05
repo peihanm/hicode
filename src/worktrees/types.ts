@@ -24,7 +24,6 @@ export interface AvailableWorktreeInspection {
     dirty: boolean;
     commitsAhead: number;
     hasWork: boolean;
-    revision: string;
     changedFiles: readonly WorktreeChangedFile[];
     omittedChangedFiles: number;
     untrackedFiles: readonly string[];
@@ -76,6 +75,7 @@ export interface AgentWorktreeRecord {
 }
 
 export interface WorktreeDiff {
+    revision: string;
     stat: string;
     patch: string;
 }

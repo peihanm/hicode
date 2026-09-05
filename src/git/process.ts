@@ -26,6 +26,7 @@ export interface GitProcessResult {
 export interface GitProcessOptions {
     timeoutMs?: number;
     maxOutputBytes?: number;
+    input?: Buffer;
 }
 
 export interface GitCommandRunner {
@@ -155,7 +156,7 @@ function runGitCommand(
                 shell: false,
                 detached: process.platform !== "win32",
                 windowsHide: true,
-                stdio: ["ignore", "pipe", "pipe"],
+                stdio: [options.input ? "pipe" : "ignore", "pipe", "pipe"],
                 env: mergeChildProcessEnvironment(environment, {
                     GIT_TERMINAL_PROMPT: "0",
                     GIT_ASKPASS: "",
@@ -188,6 +189,8 @@ function runGitCommand(
                 signal: closeSignal,
             }
         ));
+        child.stdin?.on("error", error => terminate({kind: "spawn-error", error}));
+        if (options.input) child.stdin?.end(options.input);
         signal?.addEventListener("abort", onAbort, {once: true});
         if (signal?.aborted) onAbort();
 

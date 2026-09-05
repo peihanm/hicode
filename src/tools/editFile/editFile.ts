@@ -2,8 +2,9 @@ import {z} from "zod";
 import {readFile} from "node:fs/promises";
 import type {Tool, ToolContext} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
-import {countOccurrences, findActualString} from "./strMatch.js";
+import {findMatches, type MatchSpan} from "./strMatch.js";
 import {formatDiff} from "./utils.js";
+import {normalizeFileText} from "../shared/fileState.js";
 import {createFileChange} from "../../fileChanges/index.js";
 import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
 
@@ -12,11 +13,7 @@ interface EditValidation {
     normalizedContent: string;
     lineEnding: "\n" | "\r\n";
     count: number;
-    match: ReturnType<typeof findActualString>;
-}
-
-function normalizeLineEndings(content: string): string {
-    return content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    spans: MatchSpan[];
 }
 
 function restoreLineEndings(
@@ -60,24 +57,29 @@ async function validateEdit(
     }
 
     const state = ctx.fileState.check(path, originalContent, {
-        oldString,
         replaceAll,
     });
     if (!state.ok) {
         return {ok: false, message: readStateMessage(path, state.reason)};
     }
 
-    const normalizedContent = normalizeLineEndings(originalContent);
-    const normalizedOldString = normalizeLineEndings(oldString);
+    const normalizedContent = normalizeFileText(originalContent);
+    const normalizedOldString = normalizeFileText(oldString);
 
-    const match = findActualString(normalizedContent, normalizedOldString);
-    const count = countOccurrences(normalizedContent, normalizedOldString);
-    if (match.index === -1 || count === 0) {
+    const spans = findMatches(normalizedContent, normalizedOldString);
+    const count = spans.length;
+    if (count === 0) {
         return {
             ok: false,
             message: `在 ${path} 中找不到 old_string。请确认字符串是否完全一致（包括空格、缩进、换行）。`,
         };
     }
+
+    const observed = ctx.fileState.check(path, originalContent, {ranges: spans.map(span => [
+        Buffer.byteLength(normalizedContent.slice(0, span.start)),
+        Buffer.byteLength(normalizedContent.slice(0, span.end)),
+    ] as const)});
+    if (!observed.ok) return {ok: false, message: readStateMessage(path, observed.reason)};
 
     if (!replaceAll && count > 1) {
         return {
@@ -95,7 +97,7 @@ async function validateEdit(
             normalizedContent,
             lineEnding: originalContent.includes("\r\n") ? "\r\n" : "\n",
             count,
-            match,
+            spans,
         },
     };
 }
@@ -155,23 +157,18 @@ export const editFileTool: Tool<
             normalizedContent,
             lineEnding,
             count,
-            match,
+            spans,
         } = validation.value;
-        const normalizedNewString = normalizeLineEndings(new_string);
+        const normalizedNewString = normalizeFileText(new_string);
 
-        let normalizedNewContent: string;
-        if (replace_all) {
-            const actualStr = match.actualString;
-            normalizedNewContent = normalizedContent
-                .split(actualStr)
-                .join(normalizedNewString);
-        } else {
-            normalizedNewContent =
-                normalizedContent.slice(0, match.index) +
-                normalizedNewString +
-                normalizedContent.slice(match.index + match.actualString.length);
+        let normalizedNewContent = normalizedContent;
+        for (const span of [...spans].reverse()) {
+            normalizedNewContent = normalizedNewContent.slice(0, span.start) +
+                normalizedNewString + normalizedNewContent.slice(span.end);
         }
         const newContent = restoreLineEndings(normalizedNewContent, lineEnding);
+        const edits = spans.map(span => ({start: Buffer.byteLength(normalizedContent.slice(0, span.start)),
+            end: Buffer.byteLength(normalizedContent.slice(0, span.end)), insertedBytes: Buffer.byteLength(normalizedNewString)}));
 
         if (ctx.memoryFiles?.classify(absPath)) {
             ctx.memoryFiles.validateWrite(absPath, newContent);
@@ -186,7 +183,8 @@ export const editFileTool: Tool<
             ctx.fileState.recordWrite({
                 path: absPath,
                 content: newContent,
-                observedContent: normalizedNewString,
+                beforeContent: originalContent,
+                edits,
             });
             return `Memory 文件已修改: ${path}`;
         }
@@ -199,7 +197,7 @@ export const editFileTool: Tool<
             replacements: count,
         });
 
-        const checkpointWarnings = await runTrackedFileWrite({
+        const {warnings: checkpointWarnings, identity} = await runTrackedFileWrite({
             runtime: ctx.fileCheckpoints,
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
@@ -209,9 +207,11 @@ export const editFileTool: Tool<
             toolCallId: invocation.toolCallId,
         });
         ctx.fileState.recordWrite({
+            identity,
             path: absPath,
             content: newContent,
-            observedContent: normalizedNewString,
+            beforeContent: originalContent,
+            edits,
         });
         const result =
             `已修改 ${path}（替换 ${count} 处）` +

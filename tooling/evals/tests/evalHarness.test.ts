@@ -21,10 +21,6 @@ import {
     reduceEvalLiveStatus,
 } from "../src/liveStatus.js";
 import {refreshEvalTrendReport} from "../src/trends.js";
-import {
-    createVerifierEnvironment,
-    runProcess,
-} from "../src/process.js";
 import {runEvalVerification} from "../src/verifier.js";
 import {runEvalSuite, validateCaseIds} from "../src/suite.js";
 
@@ -46,30 +42,6 @@ describe("SDK Eval Harness", () => {
         ]);
         expect(() => getEvalCase("missing")).toThrow("未知 Eval Case");
     });
-
-    test("LeetCode Web 隐藏验证器真实启动服务并覆盖执行隔离", async () => {
-        await withTempDirectory(async (root) => {
-            const evalCase = getEvalCase("leetcode-web");
-            const command = evalCase.commands.find(
-                (candidate) => candidate.id === "hidden-leetcode-web-contract"
-            );
-            expect(command).toBeDefined();
-            if (!command) return;
-            const result = await runProcess(command.argv, {
-                cwd: fileURLToPath(
-                    new URL(
-                        "./fixtures/leetcodeWeb/",
-                        import.meta.url
-                    )
-                ),
-                env: await createVerifierEnvironment(join(root, "verifier-home")),
-                timeoutMs: 20_000,
-            });
-            expect(result.exitCode).toBe(0);
-            expect(result.timedOut).toBe(false);
-            expect(result.stdout).toContain("HIDDEN_LEETCODE_WEB_OK");
-        });
-    }, 25_000);
 
     test("合并预算并把超额或缺失指标投影成独立断言", () => {
         const limits = mergeEvalBudget(

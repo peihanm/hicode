@@ -22,7 +22,7 @@ import type {
 } from "./types.js";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
-import {createForkDirective} from "./fork.js";
+import {createForkDirective, createForkResultReader} from "./fork.js";
 import {supportsWorkspaceWriteGrant, type SubagentRegistration} from "./registration.js";
 import {resolveSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
@@ -185,6 +185,9 @@ export function createSubagentFactories(
             options.storageCwd ?? parentContext.cwd,
             childSessionId
         );
+        const childToolResultReader = request.kind === "fork"
+            ? createForkResultReader(childHistory, parentContext.toolResultReader, childToolResultStore)
+            : undefined;
         const childFileCheckpoints =
             runtimeConfig.toolRuntimeOptions.allowedToolNames?.some(
                 (name) => name === "edit_file" ||
@@ -238,6 +241,7 @@ export function createSubagentFactories(
                             sessionId: childSessionId,
                             compactState: childCompactState,
                             toolResultStore: childToolResultStore,
+                            toolResultReader: childToolResultReader,
                             fileCheckpoints: childFileCheckpoints,
                         },
                         host: {

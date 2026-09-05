@@ -98,6 +98,7 @@ describe("Worktree background Agent", () => {
                 );
                 const rootStore = createTestToolResultStore(cwd, "root-session", {
                     pillarHome: join(projectsRoot, "root-results"),
+                    maxSessionBytes: 10_000,
                 });
                 const tasks = runtime.forSession({
                     sessionId: "root-session",
@@ -161,6 +162,27 @@ describe("Worktree background Agent", () => {
                     .toStartWith(`worktree_${completed.id}_`);
                 expect(await access(join(cwd, "feature.txt")).then(() => true, () => false))
                     .toBe(false);
+
+                const firstDiff = completed.worktreeDiffResult!;
+                await writeFile(join(completed.worktree.path, "feature.txt"), "second version\n");
+                const changed = await tasks.get(completed.id);
+                if (changed?.kind !== "agent") throw new Error("missing refreshed task");
+                expect(changed.worktree?.revision).not.toBe(completed.worktree.revision);
+                expect(changed.worktreeDiffResult?.resultId).not.toBe(firstDiff.resultId);
+                expect(changed.worktreeDiffPreview).toContain("+second version");
+                expect(await readFile(changed.worktreeDiffResult!.path, "utf8")).toBe(changed.worktreeDiffPreview!);
+                expect(await readFile(firstDiff.path, "utf8")).toContain("+isolated change");
+
+                const filler = await rootStore.persistText({toolCallId: "fill-quota", toolName: "test", content: "x".repeat(10_000)});
+                await writeFile(join(completed.worktree.path, "feature.txt"), "third version\n");
+                const failedCapture = await tasks.get(completed.id);
+                if (failedCapture?.kind !== "agent") throw new Error("missing task");
+                expect(failedCapture.worktreeDiffResult).toBeUndefined();
+                expect(failedCapture.worktreeDiffPreview).toBeUndefined();
+                expect(failedCapture.worktree?.revision).toBeUndefined();
+                expect(failedCapture.outputIssue).toContain("quota exceeded");
+                await rootStore.removeArtifact(filler.resultId);
+                await writeFile(join(completed.worktree.path, "feature.txt"), "isolated change\n");
 
                 await git(completed.worktree.path, "add", "feature.txt");
                 await git(completed.worktree.path, "commit", "-q", "-m", "child result");

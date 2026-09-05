@@ -3,6 +3,7 @@ import TurndownService from "turndown";
 import {matchPattern} from "../../permissions/index.js";
 import type {Tool} from "../types.js";
 import {fetchPublicWebUrl, parsePublicWebUrl} from "./network.js";
+import {buildPersistFailureMessage} from "../../toolResults/format.js";
 
 const DEFAULT_MAX_CHARS = 50_000;
 const MAX_CHARS = 100_000;
@@ -15,7 +16,7 @@ const inputSchema = z.object({
         .min(1_000)
         .max(MAX_CHARS)
         .default(DEFAULT_MAX_CHARS)
-        .describe(`最多返回的正文字符数，默认 ${DEFAULT_MAX_CHARS}，最大 ${MAX_CHARS}`),
+        .describe(`正文预览字符数，默认 ${DEFAULT_MAX_CHARS}，最大 ${MAX_CHARS}；超出部分保存后可分页读取`),
 });
 
 export function htmlToReadableText(html: string): string {
@@ -64,6 +65,7 @@ export const webFetchTool: Tool<typeof inputSchema> = {
         "读取用户提供或已知的公共网页、文档或文本 API，并把 HTML 转成紧凑可读文本。",
         "仅执行 GET；不支持登录态、Cookie、localhost、私网地址或二进制下载。交互式页面和本地 UI 请使用浏览器工具。",
         "首次访问每个域名需要权限确认；跨域重定向不会自动跟随，必须对新域名重新调用。",
+        "长正文保存为固定结果，使用返回的 Result ID 和 read_tool_result 继续读取。",
     ].join("\n"),
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
@@ -92,7 +94,7 @@ export const webFetchTool: Tool<typeof inputSchema> = {
         }
         return (pattern) => matchPattern(pattern, target);
     },
-    async execute({url, max_chars}, ctx) {
+    async execute({url, max_chars}, ctx, invocation) {
         const response = await fetchPublicWebUrl(url, ctx.signal);
         if (
             response.status >= 300 && response.status < 400 &&
@@ -127,10 +129,27 @@ export const webFetchTool: Tool<typeof inputSchema> = {
             ...header,
             "",
             visibleBody || "（响应正文为空）",
-            ...(truncated
-                ? [`\n（正文已截断为 ${max_chars} 个字符，原始正文 ${body.length} 个字符。）`]
-                : []),
         ].join("\n");
+        if (truncated) {
+            try {
+                const persisted = await ctx.toolResultStore.persistText({
+                    toolCallId: invocation.toolCallId,
+                    toolName: "web_fetch",
+                    content: [...header, "", body].join("\n"),
+                });
+                return {
+                    content: "",
+                    displayContent: content,
+                    persisted: {...persisted, preview: persisted.preview.slice(0, max_chars)},
+                    outcome: response.status >= 400 ? "failed" : "ok",
+                };
+            } catch (error) {
+                return {
+                    content: buildPersistFailureMessage("web_fetch", content.slice(0, Math.min(max_chars, ctx.toolResultStore.previewChars)), error),
+                    outcome: response.status >= 400 ? "failed" : "ok",
+                };
+            }
+        }
         return response.status >= 400
             ? {content, outcome: "failed"}
             : content;

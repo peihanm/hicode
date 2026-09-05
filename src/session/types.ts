@@ -10,7 +10,7 @@ import type {Todo} from "../todos.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 1;
-export const SESSION_ENTRY_VERSION = 3;
+export const SESSION_ENTRY_VERSION = 4;
 
 export interface SessionIndexEntry {
     sessionId: string;
@@ -32,7 +32,7 @@ export interface SessionIndexFile {
 
 export interface SessionSnapshotEntry {
     type: "snapshot";
-    version: 3;
+    version: 4;
     sessionId: string;
     cwd: string;
     model: string;
@@ -51,7 +51,7 @@ export interface SessionSnapshotEntry {
 
 export interface SessionTurnCheckpointEntry {
     type: "turn_checkpoint";
-    version: 3;
+    version: 4;
     checkpointId: string;
     sessionId: string;
     branchId: string;

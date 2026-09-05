@@ -1,6 +1,9 @@
 import {z} from "zod";
-import {readFile, stat} from "node:fs/promises";
+import {isUtf8} from "node:buffer";
+import {createHash} from "node:crypto";
+import {readFileSnapshot} from "../shared/fileSnapshot.js";
 import type {Tool} from "../types.js";
+import {normalizeFileText} from "../shared/fileState.js";
 import {resolveToolPath} from "../shared/paths.js";
 
 const DEFAULT_LIMIT = 2000;
@@ -38,6 +41,7 @@ export const readFileTool: Tool<typeof inputSchema> = {
     name: "read_file",
     description: [
         "读取指定路径文件的内容，返回带行号的文本。",
+        "二进制资产和超过 5 MiB 的文本仅返回目标摘要，可用于确认删除，不能授权正文编辑；超过 20 MiB 拒绝读取。",
         "",
         "行号格式为 `     1\\t内容`，仅用于定位，不是文件真实内容；调用 edit_file 时不要把行号复制进 old_string。",
         `普通文件不要传 offset/limit，默认一次读取完整文件（最多 ${DEFAULT_LIMIT} 行）；不要人为切成小页连续扫描。`,
@@ -47,19 +51,25 @@ export const readFileTool: Tool<typeof inputSchema> = {
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    execute: async ({path, offset, limit}: Input, ctx) => {
+    execute: async ({path, offset, limit}: Input, ctx, invocation) => {
         const absPath = resolveToolPath(ctx.cwd, path);
-        const fileStat = await stat(absPath);
-        if (fileStat.size > MAX_FILE_SIZE) {
-            return `文件 ${path} 过大（${Math.ceil(fileStat.size / 1024 / 1024)}MB，超过 5MB 限制）。请用 grep 或 bash 针对性查看。`;
+        const snapshot = await readFileSnapshot(absPath);
+        const binary = !isUtf8(snapshot.content) || snapshot.content.includes(0);
+        if (snapshot.content.length > MAX_FILE_SIZE || binary) {
+            const output = [
+                `文件: ${path}`,
+                `类型: ${binary ? "二进制" : "大型文本"}`,
+                `大小: ${snapshot.content.length} bytes`,
+                `SHA256: ${createHash("sha256").update(snapshot.content).digest("hex")}`,
+                "已确认目标版本；未展示正文，不能据此 edit_file/write_file。可按权限策略使用 delete_file 删除此版本。",
+            ].join("\n");
+            ctx.fileState.stageRead({toolCallId: invocation.toolCallId, path: absPath, content: snapshot.content,
+                normalizedBytes: snapshot.content.length, output, segments: [], identity: snapshot.identity});
+            return output;
         }
-
-        const content = await readFile(absPath, "utf-8");
-        if (content.includes("\0")) {
-            return `文件 ${path} 看起来是二进制文件，read_file 不返回二进制内容。`;
-        }
-
-        const lines = content.split(/\r?\n/);
+        const content = snapshot.content.toString("utf8");
+        const normalized = normalizeFileText(content);
+        const lines = normalized.split("\n");
         const startLine = offset ?? 1;
         const lineLimit = limit ?? DEFAULT_LIMIT;
         if (startLine > lines.length) {
@@ -69,12 +79,6 @@ export const readFileTool: Tool<typeof inputSchema> = {
         const startIndex = startLine - 1;
         const endIndex = Math.min(startIndex + lineLimit, lines.length);
         const selected = lines.slice(startIndex, endIndex);
-        ctx.fileState.recordRead({
-            path: absPath,
-            content,
-            observedContent: selected.join("\n"),
-            fullRead: startIndex === 0 && endIndex === lines.length,
-        });
         const body = selected
             .map((line, index) => `${formatLineNumber(startLine + index)}\t${line}`)
             .join("\n");
@@ -90,6 +94,19 @@ export const readFileTool: Tool<typeof inputSchema> = {
                 ? `\n\n...（本次未返回后续 ${lines.length - endIndex} 行）`
                 : "";
 
-        return `${header}\n\n${body}${more}`;
+        const output = `${header}\n\n${body}${more}`;
+        let outputByte = Buffer.byteLength(`${header}\n\n`);
+        let fileByte = Buffer.byteLength(lines.slice(0, startIndex).join("\n")) + (startIndex > 0 ? 1 : 0);
+        const segments = selected.map((line, index): readonly [number, number, number] => {
+            const prefix = Buffer.byteLength(`${formatLineNumber(startLine + index)}\t`);
+            const bytes = Buffer.byteLength(line) + (startIndex + index < lines.length - 1 ? 1 : 0);
+            const segment = [outputByte + prefix, outputByte + prefix + bytes, fileByte] as const;
+            outputByte += prefix + Buffer.byteLength(line) + 1;
+            fileByte += bytes;
+            return segment;
+        });
+        ctx.fileState.stageRead({toolCallId: invocation.toolCallId, path: absPath, content,
+            normalizedBytes: Buffer.byteLength(normalized), output, segments, identity: snapshot.identity});
+        return output;
     },
 };

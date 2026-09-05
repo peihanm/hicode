@@ -104,7 +104,7 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(3);
+      expect(snapshot.version).toBe(4);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
@@ -149,7 +149,7 @@ describe("session persistence", () => {
     });
   });
 
-  test("不读取版本 1/2 或缺少当前格式版本的旧 snapshot", async () => {
+  test("不读取旧版或缺少版本的 snapshot，列表只使用索引", async () => {
     await withTempProject(async (cwd, storage) => {
       await saveSessionSnapshot(storage, {
         cwd,
@@ -168,6 +168,9 @@ describe("session persistence", () => {
         string,
         unknown
       >;
+      snapshot.version = 3;
+      await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
+      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
       snapshot.version = 2;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
       expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
@@ -180,7 +183,7 @@ describe("session persistence", () => {
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
 
       expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
-      expect(listSessionIndex(storage, cwd)).toEqual([]);
+      expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["unversioned"]);
     });
   });
 
@@ -322,7 +325,7 @@ describe("session persistence", () => {
       snapshot.cwd = `${cwd}-other`;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
       expect(loadSession(storage, cwd, "untrusted-session", "glm-test")).toBeNull();
-      expect(listSessionIndex(storage, cwd)).toEqual([]);
+      expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["untrusted-session"]);
 
       snapshot.cwd = cwd;
       snapshot.conversation = [{

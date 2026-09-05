@@ -11,7 +11,7 @@ import {
 } from "../permissions/index.js";
 import {appendLocalPermissionDirectory} from "../settings/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
-import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint,} from "../session/index.js";
+import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint, listSessionTurnCheckpoints} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
 import type {Todo} from "../todos.js";
@@ -148,6 +148,7 @@ export function createRootSessionRuntime({
             appendLocalPermissionDirectory(resources.cwd, directory),
     });
     let initializePromise: Promise<void> | undefined;
+    let checkpointStartFailed = false;
 
     const snapshot = (
         state: RootSessionSnapshotState
@@ -184,11 +185,27 @@ export function createRootSessionRuntime({
         messageQueue,
         directoryAccess,
         initialize() {
-            initializePromise ??= Promise.all([
-                gitSession.initialize(),
-                taskSession.initialize(),
-                directoryAccess.initialize(),
-            ]).then(() => undefined);
+            initializePromise ??= (async () => {
+                // Task Session restoration starts at construction. Drain every initializer even when head reconciliation fails.
+                const results = await Promise.allSettled([
+                    Promise.resolve().then(() => fileCheckpoints.reconcileSession(seed.checkpointHead,
+                        listSessionTurnCheckpoints(resources.storage, resources.cwd, seed.sessionId))),
+                    gitSession.initialize(),
+                    taskSession.initialize(),
+                    directoryAccess.initialize(),
+                ] as const);
+                for (const result of results) if (result.status === "rejected") throw result.reason;
+                const recovery = results[0];
+                if (recovery.status !== "fulfilled") throw recovery.reason;
+                const interrupted = recovery.value;
+                if (interrupted.length) {
+                    const details = interrupted.map(record => {
+                        const paths = record.mutations.slice(0, 20).map(mutation => mutation.path.slice(0, 512));
+                        return `${record.checkpointId}: ${record.promptPreview}; 已记录 ${record.mutations.length} 个文件变更，路径示例 ${JSON.stringify(paths)}`;
+                    });
+                    history.push({role: "user", content: `<system-reminder>\nSession 崩溃恢复：以下 Turn 的最终对话未完整保存，已按 interrupted 保留文件 Checkpoint lineage。文件不会自动撤销；不要假定任务完成，请重新读取涉及文件并核验。\n${details.join("\n")}\n</system-reminder>`});
+                }
+            })();
             return initializePromise;
         },
         replaceConversation(nextHistory, nextCompactState) {
@@ -225,25 +242,32 @@ export function createRootSessionRuntime({
         },
         createSnapshot: snapshot,
         async beginCheckpoint(prompt, state) {
-            const checkpoint = await fileCheckpoints.beginTurn({prompt});
-            if (!checkpoint) return;
-            await saveSessionTurnCheckpoint(resources.storage, {
-                cwd: resources.cwd,
-                model: resources.model,
-                sessionId: seed.sessionId,
-                checkpointId: checkpoint.checkpointId,
-                branchId: checkpoint.branchId,
-                parentCheckpointId: checkpoint.parentCheckpointId,
-                prompt,
-                history,
-                todos: [...state.todos],
-                permissionMode: state.permissionMode,
-                collaborationMode: state.collaborationMode,
-                compactState,
-                uiEvents: [...state.uiEvents],
-                toolDiscovery:
-                    resources.toolRuntime.getToolDiscoverySnapshot(),
-            });
+            await this.initialize();
+            if (checkpointStartFailed) throw new Error("Checkpoint 启动未完整提交，必须重新恢复 Session");
+            try {
+                const checkpoint = await fileCheckpoints.beginTurn({prompt});
+                if (!checkpoint) return;
+                await saveSessionTurnCheckpoint(resources.storage, {
+                    cwd: resources.cwd,
+                    model: resources.model,
+                    sessionId: seed.sessionId,
+                    checkpointId: checkpoint.checkpointId,
+                    branchId: checkpoint.branchId,
+                    parentCheckpointId: checkpoint.parentCheckpointId,
+                    prompt,
+                    history,
+                    todos: [...state.todos],
+                    permissionMode: state.permissionMode,
+                    collaborationMode: state.collaborationMode,
+                    compactState,
+                    uiEvents: [...state.uiEvents],
+                    toolDiscovery:
+                        resources.toolRuntime.getToolDiscoverySnapshot(),
+                });
+            } catch (error) {
+                checkpointStartFailed = true;
+                throw error;
+            }
         },
         settleCheckpoint(status = "settled") {
             return fileCheckpoints.settleTurn(status);

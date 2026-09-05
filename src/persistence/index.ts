@@ -16,6 +16,7 @@ export {
     getProjectSessionsDirectory,
     getProjectStorageDirectory,
     getSessionStorageDirectory,
+    getSessionContentDirectory,
 } from "./layout.js";
 export type {
     CreatePillarStorageLayoutOptions,

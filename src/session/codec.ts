@@ -148,7 +148,7 @@ const fileChangeSchema = z.object({
     replacements: nonNegativeIntegerSchema.optional(),
     diffStatus: z.enum(["complete", "truncated", "unavailable"]),
     omittedDiffLines: nonNegativeIntegerSchema.optional(),
-    diffUnavailableReason: z.enum(["timeout", "too_large", "error"]).optional(),
+    diffUnavailableReason: z.enum(["timeout", "too_large", "binary", "error"]).optional(),
 }).strict();
 
 const persistedUIEventSchema = z.discriminatedUnion("type", [
@@ -175,6 +175,17 @@ const compactStateSchema = z.object({
     compactCount: nonNegativeIntegerSchema,
     lastCompactAt: timestampSchema.optional(),
 }).strict();
+
+const contentBlockSchema = z.discriminatedUnion("kind", [
+    z.object({kind: z.literal("message"), value: messageSchema}).strict(),
+    z.object({kind: z.literal("ui"), value: persistedUIEventSchema}).strict(),
+]);
+
+export function decodeSessionContentBlock(value: unknown) {
+    const parsed = contentBlockSchema.safeParse(value);
+    if (!parsed.success) throw new Error("Invalid Session content block");
+    return parsed.data;
+}
 
 const checkpointHeadSchema = z.object({
     branchId: idSchema,

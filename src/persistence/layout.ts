@@ -92,3 +92,7 @@ export function getProjectDebugDirectory(
 ): string {
     return join(getProjectStorageDirectory(storage, cwd), "debug");
 }
+
+export function getSessionContentDirectory(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "content");
+}

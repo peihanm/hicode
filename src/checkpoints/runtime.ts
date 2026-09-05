@@ -9,6 +9,7 @@ import type {
     CaptureResult,
     CheckpointCoverageWarning,
     CheckpointHead,
+    CheckpointSessionLink,
     CheckpointRestorePlan,
     CheckpointRestoreResult,
     FileCheckpointRecord,
@@ -40,13 +41,19 @@ class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
         this.head = initialHead ?? {branchId: randomUUID()};
     }
 
+    async reconcileSession(head: CheckpointHead | undefined, links: readonly CheckpointSessionLink[]): Promise<FileCheckpointRecord[]> {
+        const result = await this.store.reconcileSession(head, links);
+        this.head = result.head;
+        return result.interrupted;
+    }
+
     async beginTurn(input: BeginCheckpointInput): Promise<FileCheckpointRecord> {
         const checkpoint = await this.store.beginCheckpoint({
             ...input,
             branchId: input.branchId ?? this.head.branchId,
             parentCheckpointId:
                 input.parentCheckpointId ?? this.head.checkpointId,
-        });
+        }, this.head);
         this.activeCheckpointId = checkpoint.checkpointId;
         this.head = {
             branchId: checkpoint.branchId,
@@ -124,7 +131,6 @@ class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
     }
 
     async listCheckpoints(): Promise<FileCheckpointRecord[]> {
-        this.head = await this.store.getHead();
         return this.store.listCheckpoints();
     }
 
@@ -157,6 +163,13 @@ class DisabledFileCheckpointRuntime implements FileCheckpointRuntimeLike {
     ) {
     }
 
+    async reconcileSession(head: CheckpointHead | undefined, links: readonly CheckpointSessionLink[]): Promise<FileCheckpointRecord[]> {
+        if (!this.store) return [];
+        const result = await this.store.reconcileSession(head, links);
+        this.head = result.head;
+        return result.interrupted;
+    }
+
     async beginTurn(): Promise<null> {
         return null;
     }
@@ -177,7 +190,6 @@ class DisabledFileCheckpointRuntime implements FileCheckpointRuntimeLike {
 
     async listCheckpoints(): Promise<FileCheckpointRecord[]> {
         if (!this.store) return [];
-        this.head = await this.store.getHead();
         return this.store.listCheckpoints();
     }
 

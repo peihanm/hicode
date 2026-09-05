@@ -7,6 +7,10 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 import type {WorktreeRuntimeLike} from "../../src/worktrees/types.js";
+import {TaskWorktreeManager} from "../../src/tasks/worktreeTask.js";
+import {createTestToolResultStore} from "../helpers/toolResultStore.js";
+import {readWorktreeDiff} from "../../src/worktrees/git.js";
+import {createGitCommandRunner, type GitCommandRunner} from "../../src/git/process.js";
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
     const child = Bun.spawn(["git", "-C", cwd, ...args], {
@@ -41,6 +45,57 @@ function runtime(cwd: string, storage: string): WorktreeRuntimeLike {
 }
 
 describe("WorktreeRuntime", () => {
+    test("同文件内容和未跟踪文件变化产生独立全文 artifact", async () => {
+        await withTempProject(async cwd => {
+            await initializeRepository(cwd);
+            const worktrees = runtime(cwd, join(cwd, "storage"));
+            const manager = new TaskWorktreeManager(worktrees);
+            const store = createTestToolResultStore(cwd, "evidence");
+            const record = await worktrees.create({taskId: "task-evidence", sessionId: "evidence", signal: new AbortController().signal});
+            try {
+                const results = [];
+                for (const value of [1, 2]) {
+                    await writeFile(join(record.path, "tracked.txt"), `value=${value}\n`);
+                    await writeFile(join(record.path, "new.txt"), `new=${value}\n`);
+                    const inspection = await worktrees.inspect(record);
+                    const result = await manager.captureDiff({record, inspection, store, toolCallId: "task-call"});
+                    expect(result).toBeDefined();
+                    if (!result) throw new Error("missing diff");
+                    expect(result.preview).toContain(`+value=${value}`);
+                    expect(result.preview).toContain(`+new=${value}`);
+                    expect(await readFile(result.result.path, "utf8")).toBe(result.preview);
+                    results.push(result);
+                }
+                expect(results[1]!.result.resultId).not.toBe(results[0]!.result.resultId);
+                expect(await readFile(results[0]!.result.path, "utf8")).toContain("+value=1");
+            } finally { await worktrees.finish(record); await worktrees.discard(record); }
+        });
+    });
+
+    test("统计从捕获 patch 生成，不读取随后变化的工作区", async () => {
+        await withTempProject(async cwd => {
+            await initializeRepository(cwd);
+            const worktrees = runtime(cwd, join(cwd, "storage"));
+            const record = await worktrees.create({taskId: "task-stat", sessionId: "stat", signal: new AbortController().signal});
+            try {
+                await writeFile(join(record.path, "tracked.txt"), "one\n");
+                const inspection = await worktrees.inspect(record);
+                if (inspection.status !== "available") throw new Error(inspection.issue);
+                const realRun = createGitCommandRunner(testChildEnvironment);
+                const run: GitCommandRunner = async (...args) => {
+                    const result = await realRun(...args);
+                    if (args[1].includes("--binary")) await writeFile(join(record.path, "tracked.txt"), "many\n".repeat(20));
+                    return result;
+                };
+                const diff = await readWorktreeDiff(run, record, inspection);
+                expect(diff.patch).toContain("+one");
+                expect(diff.patch).not.toContain("+many");
+                expect(diff.stat).toContain("1 insertion(+)");
+                expect(diff.stat).not.toContain("20 insertions");
+            } finally { await worktrees.finish(record); await worktrees.discard(record); }
+        });
+    });
+
     test("无工作产物时自动清理", async () => {
         await withTempProject(async (cwd) => {
             const storage = await mkdtemp(join(tmpdir(), "pillar-worktree-unit-"));

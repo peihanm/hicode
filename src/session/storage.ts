@@ -1,4 +1,5 @@
 import {randomUUID} from "node:crypto";
+import {createFileCheckpointStore} from "../checkpoints/store.js";
 import {createInitialHistory} from "../prompt/index.js";
 import {normalizeGitSessionState} from "../git/index.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
@@ -18,6 +19,7 @@ import {
     replaceLatestSessionSnapshot,
     readLatestSessionSnapshot,
     readSessionEntries,
+    readSessionCheckpointLinks,
     withSessionPersistenceLock,
 } from "./snapshotStore.js";
 import {
@@ -84,6 +86,7 @@ export async function saveSessionSnapshot(
             input.sessionId,
             entry
         );
+        await synchronizeCheckpointWindow(storage, input.cwd, input.sessionId);
         await upsertSessionIndex(storage, {
             cwd: input.cwd,
             sessionId: input.sessionId,
@@ -122,8 +125,24 @@ export async function saveSessionTurnCheckpoint(
         uiEvents: limitSessionUIEvents(input.uiEvents),
         ...(toolDiscovery ? {toolDiscovery} : {}),
     };
-    await withSessionPersistenceLock(storage, input.cwd, () =>
-        appendSessionEntry(storage, input.cwd, input.sessionId, entry)
+    await withSessionPersistenceLock(storage, input.cwd, async () => {
+        await appendSessionEntry(storage, input.cwd, input.sessionId, entry);
+        await synchronizeCheckpointWindow(storage, input.cwd, input.sessionId);
+        const summary = summarizeSessionHistory(conversation);
+        await upsertSessionIndex(storage, {
+            cwd: input.cwd,
+            sessionId: input.sessionId,
+            model: input.model,
+            timestamp: entry.timestamp,
+            messageCount: countSessionConversationMessages(conversation),
+            ...(summary.summary ? summary : {summary: normalizeSessionSummaryHint(input.prompt)}),
+        });
+    });
+}
+
+async function synchronizeCheckpointWindow(storage: PillarStorageLayout, cwd: string, sessionId: string): Promise<void> {
+    await createFileCheckpointStore(storage, cwd, sessionId).retainSessionCheckpoints(
+        readSessionCheckpointLinks(storage, cwd, sessionId).map(link => link.checkpointId)
     );
 }
 
@@ -168,17 +187,6 @@ export function listSessionIndex(
         .filter(
             (entry) => getProjectKey(entry.cwd) === projectKey && !entry.archived
         )
-        .flatMap((entry) => {
-            const snapshot = readLatestSessionSnapshot(storage, cwd, entry.sessionId);
-            return snapshot
-                ? [{
-                    ...entry,
-                    messageCount: countSessionConversationMessages(
-                        snapshot.conversation
-                    ),
-                }]
-                : [];
-        })
         .sort(
             (left, right) =>
                 new Date(right.updatedAt).getTime() -

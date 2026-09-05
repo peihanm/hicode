@@ -1,4 +1,3 @@
-import {createServer} from "node:http";
 import {writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import {definePillarTool, loadPillarHostConfig, Pillar} from "pillar-core-sdk";
@@ -12,17 +11,19 @@ if (!workspace || !pillarHome) {
 let requestCount = 0;
 let sawHostToolResult = false;
 let sawGlobResult = false;
-const server = createServer(async (request, response) => {
-    const chunks = [];
-    for await (const chunk of request) chunks.push(chunk);
-    const body = Buffer.concat(chunks).toString("utf8");
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    if (request.url !== "https://sdk-package.invalid/v1/chat/completions" || request.method !== "POST") {
+        throw new Error(`unexpected fixture request: ${request.method} ${request.url}`);
+    }
+    const body = await request.text();
     requestCount += 1;
     if (requestCount === 2) {
         sawHostToolResult = body.includes("HOST_TOOL_SENTINEL:package-smoke");
     }
     if (requestCount === 3) sawGlobResult = body.includes("fixture.ts");
 
-    response.writeHead(200, {"content-type": "text/event-stream"});
     const event = requestCount === 1
         ? {
             choices: [{
@@ -87,18 +88,10 @@ const server = createServer(async (request, response) => {
                 total_tokens: 15,
             },
         };
-    response.write(`data: ${JSON.stringify(event)}\n\n`);
-    response.end("data: [DONE]\n\n");
-});
-
-await new Promise((resolveListen, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolveListen);
-});
-const address = server.address();
-if (!address || typeof address === "string") {
-    throw new Error("failed to resolve fixture server address");
-}
+    return new Response(`data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`, {
+        headers: {"content-type": "text/event-stream"},
+    });
+};
 
 process.env.PILLAR_SDK_SMOKE_KEY = "offline-fixture-key";
 await writeFile(resolve(workspace, "fixture.ts"), "export const fixture = true;\n");
@@ -121,7 +114,7 @@ try {
                 qwen: {
                     label: "SDK package fixture",
                     apiKeyEnv: "PILLAR_SDK_SMOKE_KEY",
-                    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                    baseUrl: "https://sdk-package.invalid/v1",
                     models: [{id: "qwen3.6-flash", label: "Fixture model"}],
                 },
             },
@@ -199,8 +192,6 @@ try {
     const runtime = typeof globalThis.Bun === "undefined" ? "node" : "bun";
     console.log(`SDK_PACKAGE_RUN_OK:${runtime}`);
 } finally {
-    await pillar?.close();
-    await new Promise((resolveClose, reject) => {
-        server.close((error) => error ? reject(error) : resolveClose());
-    });
+    try { await pillar?.close(); }
+    finally { globalThis.fetch = originalFetch; }
 }

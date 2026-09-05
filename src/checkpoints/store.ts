@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {constants, realpathSync} from "node:fs";
 import {chmod, open, readdir, realpath, stat, unlink,} from "node:fs/promises";
 import {dirname, isAbsolute, relative, resolve, sep} from "node:path";
-import {createFileChange} from "../fileChanges/index.js";
+import {createByteFileChange} from "../fileChanges/index.js";
 import {
     ensurePrivateStorageDirectory,
     readPrivateStorageFile,
@@ -37,6 +37,7 @@ import {
     type CheckpointCoverageWarning,
     type CheckpointFileMutation,
     type CheckpointHead,
+    type CheckpointSessionLink,
     type CheckpointRestoreFile,
     type CheckpointRestorePlan,
     type CheckpointRestoreResult,
@@ -262,7 +263,7 @@ function parseStoredRecord(
         Buffer.byteLength(record.prompt, "utf8") > MAX_PROMPT_BYTES ||
         typeof record.promptPreview !== "string" ||
         record.promptPreview.length > MAX_PROMPT_PREVIEW_CHARACTERS ||
-        !["active", "settled", "no_agent_run"].includes(record.status ?? "") ||
+        !["active", "settled", "no_agent_run", "interrupted"].includes(record.status ?? "") ||
         !["complete", "incomplete"].includes(record.fileCoverage ?? "") ||
         !Array.isArray(record.coverageWarnings) ||
         record.coverageWarnings.length > MAX_CHECKPOINT_WARNINGS ||
@@ -727,9 +728,75 @@ export class FileCheckpointStore {
         return {...(await this.readManifest()).head};
     }
 
-    async beginCheckpoint(input: BeginCheckpointInput): Promise<FileCheckpointRecord> {
+    async reconcileSession(expected: CheckpointHead | undefined, links: readonly CheckpointSessionLink[]) {
         return this.withLock(async () => {
             const manifest = await this.readManifest();
+            const lineage = activeLineage(manifest);
+            if (lineage.length === 0) {
+                if (expected?.checkpointId || (manifest.sequence === 0 && links.length)) throw new Error("Session 与 Checkpoint head 无法对账");
+                if (manifest.sequence > 0 && expected?.branchId !== manifest.head.branchId) throw new Error("Session 与 Checkpoint branch 不一致");
+                return {head: manifest.head, interrupted: []};
+            }
+            if (expected && expected.branchId !== manifest.head.branchId) throw new Error("Session 与 Checkpoint branch 不一致，拒绝继续写入");
+            const anchor = expected?.checkpointId
+                ? lineage.findIndex(item => item.checkpointId === expected.checkpointId) : -1;
+            if (expected?.checkpointId && anchor < 0 && lineage[0]?.parentCheckpointId !== expected.checkpointId) {
+                throw new Error("Session head 不在 Checkpoint 活动 lineage 中");
+            }
+            const byId = new Map(links.map(link => [link.checkpointId, link]));
+            const interrupted: FileCheckpointRecord[] = [];
+            for (let n = Math.max(0, anchor); n < lineage.length; n++) {
+                const index = lineage[n]!;
+                const record = await this.readCheckpointRecord(index.checkpointId);
+                if (n === anchor && n < lineage.length - 1 && record.status !== "active") continue;
+                const link = byId.get(index.checkpointId);
+                if (!link || link.branchId !== record.branchId || link.parentCheckpointId !== record.parentCheckpointId ||
+                    record.parentCheckpointId !== index.parentCheckpointId || record.sequence !== index.sequence) {
+                    throw new Error(`缺少或不匹配的 Session turn checkpoint: ${index.checkpointId}`);
+                }
+                if (n > anchor || record.status === "active") interrupted.push({...record, status: "interrupted"});
+            }
+            for (const record of interrupted) {
+                const metadata = await this.readRecordMetadata(record.checkpointId);
+                await this.writeRecordMetadata({...metadata, status: "interrupted"});
+            }
+            return {head: manifest.head, interrupted};
+        });
+    }
+
+    async retainSessionCheckpoints(ids: readonly string[]): Promise<void> {
+        await this.withLock(async () => {
+            const manifest = await this.readManifest();
+            const retained = new Set(ids);
+            const lineage = activeLineage(manifest);
+            const first = lineage.findIndex(item => retained.has(item.checkpointId));
+            if (first < 0) return;
+            const cutoff = lineage[first]!.sequence;
+            const removed = manifest.checkpoints.filter(item => item.sequence < cutoff);
+            if (!removed.length) return;
+            manifest.checkpoints = manifest.checkpoints.filter(item => item.sequence >= cutoff);
+            await this.writeManifest(manifest);
+            for (const item of removed) {
+                this.mutationPathCache.delete(item.checkpointId);
+                await unlink(getCheckpointRecordPath(this.directory, item.checkpointId)).catch(() => undefined);
+                await unlink(getCheckpointMutationLogPath(this.directory, item.checkpointId)).catch(() => undefined);
+            }
+            await this.garbageCollectBlobs(manifest).catch(() => undefined);
+        });
+    }
+
+    async beginCheckpoint(input: BeginCheckpointInput, expectedHead?: CheckpointHead): Promise<FileCheckpointRecord> {
+        return this.withLock(async () => {
+            const manifest = await this.readManifest();
+            if (expectedHead && manifest.sequence > 0 &&
+                (expectedHead.checkpointId !== manifest.head.checkpointId || expectedHead.branchId !== manifest.head.branchId)) {
+                throw new Error("Checkpoint head 已变化，必须重新恢复 Session 后才能继续写入");
+            }
+            // Session byte retention can prune through another Store instance between Turns.
+            const retainedIds = new Set(manifest.checkpoints.map(item => item.checkpointId));
+            for (const id of this.mutationPathCache.keys()) {
+                if (!retainedIds.has(id)) this.mutationPathCache.delete(id);
+            }
             const checkpointId = input.checkpointId ?? randomUUID();
             if (manifest.checkpoints.some((item) => item.checkpointId === checkpointId)) {
                 throw new Error(`Checkpoint 已存在: ${checkpointId}`);
@@ -983,15 +1050,13 @@ export class FileCheckpointStore {
                 else if (actual.fingerprint.kind === "missing") action = "create";
                 else action = "update";
 
-                const actualText = actual.content?.toString("utf8") ?? "";
-                const targetText = targetContent?.toString("utf8") ?? "";
                 const change = action === "noop"
                     ? undefined
-                    : createFileChange({
+                    : createByteFileChange({
                         path: displayPath,
-                        kind: action === "create" ? "create" : "update",
-                        oldContent: actualText,
-                        newContent: targetText,
+                        kind: action,
+                        oldContent: actual.content ?? Buffer.alloc(0),
+                        newContent: targetContent ?? Buffer.alloc(0),
                     });
                 files.push({
                     root,
@@ -1041,7 +1106,7 @@ export class FileCheckpointStore {
         }
         if (!blobId) throw new Error("恢复 regular file 时缺少 Blob");
         const content = await this.readVerifiedBlob(blobId);
-        await writeFileAtomically(path, content.toString("utf8"), fingerprint.mode);
+        await writeFileAtomically(path, content, fingerprint.mode);
         if (fingerprint.mode !== undefined) {
             await chmod(path, fingerprint.mode).catch(() => undefined);
         }

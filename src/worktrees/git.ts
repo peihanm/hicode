@@ -234,11 +234,6 @@ export async function inspectWorktree(
         if (!/^[0-9a-f]{40,64}$/i.test(headCommit)) {
             throw new Error("Git 返回了无效的 HEAD commit");
         }
-        const revision = createHash("sha256")
-            .update(head.stdout)
-            .update(status.stdout)
-            .update(names.stdout)
-            .digest("hex");
         const dirty = parsedStatus.files.length > 0;
         return {
             status: "available",
@@ -247,7 +242,6 @@ export async function inspectWorktree(
             dirty,
             commitsAhead,
             hasWork: dirty || commitsAhead > 0,
-            revision,
             changedFiles,
             omittedChangedFiles: detectedFiles.length - changedFiles.length,
             untrackedFiles: parsedStatus.files
@@ -279,26 +273,17 @@ export async function readWorktreeDiff(
     if (tracked.code !== 0) {
         throw new Error(`无法生成 Worktree diff：${formatGitProcessError(tracked)}`);
     }
-    const statResult = await runGit(record.path, [
-        "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--stat",
-        record.baseCommit, "--", ".",
-    ]);
-    if (statResult.code !== 0) {
-        throw new Error(`无法生成 Worktree diff stat：${formatGitProcessError(statResult)}`);
-    }
     const patches = [tracked.stdout];
     let bytes = tracked.stdout.length;
-    const untrackedStats: string[] = [];
     for (const relativePath of inspection.untrackedFiles) {
         if (!safeRelativePath(relativePath)) continue;
         const path = resolve(record.path, relativePath);
         if (!isPathInside(record.path, path)) throw new Error(`Worktree diff 路径越界: ${relativePath}`);
         const info = await lstat(path);
         if (!info.isFile() || info.isSymbolicLink()) continue;
-        untrackedStats.push(` ${relativePath} | ${info.size} bytes (new)`);
         const diff = await runGit(record.path, [
             "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color",
-            "--binary", "--", "/dev/null", path,
+            "--binary", "--", "/dev/null", relativePath,
         ], undefined, {maxOutputBytes: MAX_WORKTREE_DIFF_BYTES - bytes});
         if (diff.code !== 0 && diff.code !== 1) {
             throw new Error(`无法生成未跟踪文件 diff (${relativePath})：${formatGitProcessError(diff)}`);
@@ -309,11 +294,17 @@ export async function readWorktreeDiff(
         }
         patches.push(diff.stdout);
     }
+    const patch = Buffer.concat(patches);
+    // Derive every representation from these bytes; the live checkout may
+    // already have changed again while the parent is inspecting this result.
+    const statResult = await runGit(record.path, ["apply", "--stat", "--allow-empty", "-"], undefined, {input: patch});
+    if (statResult.code !== 0) {
+        throw new Error(`无法生成 Worktree diff stat：${formatGitProcessError(statResult)}`);
+    }
     return {
-        stat: [statResult.stdout.toString("utf8").trimEnd(), ...untrackedStats]
-            .filter(Boolean).join("\n") ||
-            `${inspection.changedFiles.length + inspection.omittedChangedFiles} changed file(s)`,
-        patch: Buffer.concat(patches).toString("utf8"),
+        revision: createHash("sha256").update(record.baseCommit).update("\0").update(patch).digest("hex"),
+        stat: statResult.stdout.toString("utf8").trimEnd() || "0 files changed",
+        patch: patch.toString("utf8"),
     };
 }
 

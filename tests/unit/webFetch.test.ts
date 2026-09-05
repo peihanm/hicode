@@ -5,8 +5,18 @@ import {
 } from "../../src/tools/webFetch/network.js";
 import {htmlToReadableText} from "../../src/tools/webFetch/webFetch.js";
 import {generateRuleForTool} from "../../src/permissions/index.js";
+import {fileURLToPath} from "node:url";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 describe("web_fetch boundaries", () => {
+  test.each(["default", "maximum", "http-error", "save-failure"])("全文证据 %s", async mode => {
+    const child = Bun.spawn([process.execPath,
+      fileURLToPath(new URL("../fixtures/webFetchEvidence.ts", import.meta.url)), mode],
+      {env: testChildEnvironment.base, stdout: "pipe", stderr: "pipe"});
+    const [code, stdout, stderr] = await Promise.all([child.exited,
+      new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stdout, stderr}).toEqual({code: 0, stdout: "verified\n", stderr: ""});
+  });
   test("只接受不含凭据的公共 HTTP(S) URL", () => {
     expect(parsePublicWebUrl("https://example.com/docs").hostname)
       .toBe("example.com");
