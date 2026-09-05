@@ -15,7 +15,7 @@ function resolveSandboxPath(cwd: string, configuredPath: string): string {
         : resolve(cwd, configuredPath);
 }
 
-function resolveUniquePaths(cwd: string, paths: readonly string[]): string[] {
+export function resolveSandboxPaths(cwd: string, paths: readonly string[]): string[] {
     return [...new Set(paths.map((path) => resolveSandboxPath(cwd, path)))];
 }
 
@@ -26,9 +26,9 @@ export function createSandboxRuntimeConfig(
 ): SandboxRuntimeConfig {
     return {
         filesystem: {
-            allowWrite: resolveUniquePaths(cwd, [".", ...writableRoots]),
-            denyRead: resolveUniquePaths(cwd, settings.filesystem.denyRead),
-            denyWrite: resolveUniquePaths(cwd, [
+            allowWrite: resolveSandboxPaths(cwd, [".", ...writableRoots]),
+            denyRead: resolveSandboxPaths(cwd, settings.filesystem.denyRead),
+            denyWrite: resolveSandboxPaths(cwd, [
                 ...settings.filesystem.denyWrite,
                 ...MANDATORY_DENY_WRITE,
             ]),

@@ -1,6 +1,9 @@
 import {describe, expect, test} from "bun:test";
 import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
+import {withTempProject} from "../helpers/tempProject.js";
+import {mkdir, realpath} from "node:fs/promises";
+import {join} from "node:path";
 
 const settings = {
     enabled: true,
@@ -15,6 +18,31 @@ const settings = {
 };
 
 describe("Sandbox Runtime lease", () => {
+    test("快照 scope 只收窄 allowWrite，保留 denyRead 并禁写排除路径，下一命令不继承", async () => {
+        await withTempProject(async cwd => {
+            const root = await realpath(cwd);
+            const shared = join(root, "shared");
+            const project = join(root, "project");
+            await mkdir(shared); await mkdir(project);
+            const configs: Array<Partial<SandboxRuntimeConfig> | undefined> = [];
+            let enabled = false;
+            const factory = createSandboxRuntimeFactory({isSupportedPlatform: () => true, isSandboxingEnabled: () => enabled,
+                checkDependencies: () => ({errors: [], warnings: []}), async initialize() {enabled = true;},
+                async wrapWithSandboxArgv(command, _shell, config) {configs.push(config); return {argv: ["sh", "-c", command], env: {}};},
+                annotateStderrWithSandboxFailures: (_command, stderr) => stderr, cleanupAfterCommand() {}, async reset() {}});
+            const runtime = await factory({cwd: project, settings: {...settings, filesystem: {denyRead: [join(project, "secret")], denyWrite: []}}});
+            try {
+                await runtime.wrapCommand("bun test", project, new AbortController().signal, {writableRoots: [shared],
+                    filesystemScope: {root: project, denyWrite: [join(project, "node_modules")]}});
+                expect(configs[0]?.filesystem?.allowWrite).toEqual([project]);
+                expect(configs[0]?.filesystem?.denyRead).toEqual([join(project, "secret")]);
+                expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, "node_modules"));
+                await runtime.wrapCommand("next", project, new AbortController().signal, {writableRoots: [shared]});
+                expect(configs[1]?.filesystem?.allowWrite).toEqual([project, shared]);
+                await expect(runtime.wrapCommand("bad", project, new AbortController().signal, {filesystemScope: {root, denyWrite: []}})).rejects.toThrow("收窄");
+            } finally {await runtime.close();}
+        });
+    });
     test("每条命令只获得当前 Session 提供的 writable roots", async () => {
         let enabled = false;
         const wrappedConfigs: Array<Partial<SandboxRuntimeConfig> | undefined> = [];

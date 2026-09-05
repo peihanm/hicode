@@ -1,3 +1,4 @@
+import {toolFileChanges} from "../fileChanges/index.js";
 import {didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
@@ -246,12 +247,7 @@ export async function executeRegisteredTool(
 
     if (permission.behavior === "ask") userApproved = true;
 
-    if (name === "bash") {
-        await ctx.fileCheckpoints.markCoverageWarning({
-            code: "bash_side_effects",
-            message: "Bash 可能产生未被 File Checkpoint 捕获的文件副作用",
-        });
-    } else if (tool.externalSideEffects && tool.isReadOnly?.(input) !== true) {
+    if (tool.externalSideEffects && tool.isReadOnly?.(input) !== true) {
         const source = tool.externalSideEffects === "mcp" ? "MCP" : "Host Tool";
         await ctx.fileCheckpoints.markCoverageWarning({
             code: tool.externalSideEffects === "mcp"
@@ -295,7 +291,7 @@ export async function executeRegisteredTool(
 
     // A completed file commit is a fact even if the Turn was cancelled while
     // its checkpoint/result was being recorded. Do not erase its FileChange.
-    const committedFile = typeof result !== "string" && result.uiData?.type === "file_change";
+    const committedFile = typeof result !== "string" && toolFileChanges(result.uiData).length > 0;
     if (ctx.signal.aborted && !committedFile) {
         return interruptedToolResult(ctx.signal);
     }
@@ -306,15 +302,8 @@ export async function executeRegisteredTool(
         maxResultSizeChars: tool.maxResultSizeChars,
         store: ctx.toolResultStore,
     });
-    if (
-        processed.outcome === "ok" &&
-        processed.uiData?.type === "file_change"
-    ) {
-        ctx.gitSession?.observePaths(
-            [processed.uiData.change.path],
-            ctx.cwd
-        );
-    }
+    const changes = toolFileChanges(processed.uiData);
+    if (changes.length) ctx.gitSession?.observePaths(changes.map(change => change.path), ctx.cwd);
 
     const postEvent = processed.outcome === "ok"
         ? "PostToolUse"

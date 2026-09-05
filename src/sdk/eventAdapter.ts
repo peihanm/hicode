@@ -1,3 +1,4 @@
+import {toolFileChanges} from "../fileChanges/index.js";
 import type {AgentEvent, StopReason} from "../agent/types.js";
 import {SessionUIEventCollector} from "../session/index.js";
 import type {
@@ -163,13 +164,14 @@ export class SDKEventAdapter {
                 this.tools.set(event.toolCallId, item);
                 this.endedTools.add(event.toolCallId);
                 await this.emitItem("item.updated", item);
-                if (event.uiData?.type === "file_change") {
+                const changes = toolFileChanges(event.uiData, event.outcome);
+                if (changes.length) {
                     const fileItem: FileChangeItem = {
                         id: this.nextId("file-change"),
                         type: "file_change",
                         status: "completed",
                         parentToolCallId: event.toolCallId,
-                        changes: [event.uiData.change],
+                        changes: [...changes],
                     };
                     const pending = this.fileChanges.get(event.toolCallId) ?? [];
                     pending.push(fileItem);

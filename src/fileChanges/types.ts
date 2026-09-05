@@ -1,3 +1,4 @@
+import type {ToolOutcome} from "../toolResults/types.js";
 export type DiffLineType = "context" | "add" | "remove";
 
 export interface DiffLine {
@@ -35,4 +36,9 @@ export interface FileChange {
 export type ToolUIData = {
     type: "file_change";
     change: FileChange;
-};
+} | {type: "file_changes"; changes: FileChange[]};
+
+export function toolFileChanges(data?: ToolUIData, outcome?: ToolOutcome): readonly FileChange[] {
+    if (!data || (data.type === "file_change" && outcome !== undefined && outcome !== "ok")) return [];
+    return data.type === "file_change" ? [data.change] : data.changes;
+}

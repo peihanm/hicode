@@ -33,7 +33,8 @@ export function fingerprintsEqual(
     if (left.kind === "missing") return true;
     return (
         left.sha256 === right.sha256 &&
-        left.byteLength === right.byteLength
+        left.byteLength === right.byteLength &&
+        (left.mode === undefined || right.mode === undefined || left.mode === right.mode)
     );
 }
 

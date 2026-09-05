@@ -1,3 +1,4 @@
+import {toolFileChanges} from "../fileChanges/index.js";
 import type {ToolCallOutcome} from "./toolBatch.js";
 import type {QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../todos.js";
@@ -143,9 +144,7 @@ export function recordToolOutcomes(
                 ...(executionId ? {executionId} : {}),
             });
         }
-        if (outcome.uiData?.type === "file_change") {
-            invalidateChecks(state, resolve(cwd, outcome.uiData.change.path));
-        }
+        for (const change of toolFileChanges(outcome.uiData)) invalidateChecks(state, resolve(cwd, change.path));
         const projectCheck = execution && isProjectCheck(execution.command);
         if (execution && !isShellCommandReadOnly(execution.command) && !projectCheck) {
             invalidateChecks(state, execution.cwd, true);

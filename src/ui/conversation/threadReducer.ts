@@ -1,3 +1,4 @@
+import {toolFileChanges} from "../../fileChanges/index.js";
 import {randomUUID} from "node:crypto";
 import {mergeFileChange} from "../../fileChanges/index.js";
 import type {PersistedUIEvent} from "../../session/index.js";
@@ -325,6 +326,7 @@ export function reduceThreads(
                 },
             ];
         case "tool_call_end": {
+            const changes = toolFileChanges(event.uiData, event.outcome);
             const updated: UIThread[] = threads.map((t): UIThread =>
                 t.role === "tool_call" && t.toolCallId === event.toolCallId
                     ? t.name === "agent" && t.subagentReport
@@ -341,14 +343,14 @@ export function reduceThreads(
                             result: event.result,
                             turnId: event.turnId,
                             ...(event.uiData ? {uiData: event.uiData} : {}),
-                            ...(event.uiData?.type === "file_change"
+                            ...(changes.length > 0 && event.uiData?.type === "file_change" && t.name !== "bash"
                                 ? {hiddenByFileChange: true}
                                 : {}),
                             ...(event.persisted ? {persisted: event.persisted} : {}),
                         }
                     : t
             );
-            if (event.outcome !== "ok" || event.uiData?.type !== "file_change") {
+            if (changes.length === 0) {
                 return updated;
             }
             const turnId = event.turnId;
@@ -361,10 +363,7 @@ export function reduceThreads(
                     index === groupIndex && thread.role === "file_change_group"
                         ? {
                             ...thread,
-                            changes: mergeFileChange(
-                                thread.changes,
-                                event.uiData!.change
-                            ),
+                            changes: changes.reduce((current, change) => mergeFileChange(current, change), thread.changes),
                         }
                         : thread
                 );
@@ -377,7 +376,7 @@ export function reduceThreads(
                 id: createId(),
                 role: "file_change_group",
                 turnId,
-                changes: [event.uiData.change],
+                changes: [...changes],
             };
             if (toolIndex < 0) return [...updated, group];
             return [

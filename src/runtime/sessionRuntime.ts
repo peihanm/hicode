@@ -1,3 +1,4 @@
+import {resolveSandboxPaths} from "../sandbox/config.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
@@ -128,6 +129,7 @@ export function createRootSessionRuntime({
         hardBoundary: resources.workspaceBoundary,
         sessionId: seed.sessionId,
         enabled: resources.settings.checkpointing.enabled,
+        shellSnapshotDeniedReadPaths: resolveSandboxPaths(resources.cwd, resources.settings.sandbox.filesystem.denyRead),
         fileState,
         initialHead: seed.checkpointHead,
     });

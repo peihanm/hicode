@@ -1,4 +1,5 @@
 import type {FileChange} from "../fileChanges/index.js";
+import type {SandboxCommandOptions} from "../sandbox/types.js";
 
 export const CHECKPOINT_MANIFEST_VERSION = 3;
 
@@ -137,6 +138,12 @@ export interface CaptureBeforeWriteInput {
     path: string;
     content: string | Buffer | null;
     toolCallId: string;
+    mode?: number;
+}
+
+export interface ShellCheckpointCapture {
+    scope: NonNullable<SandboxCommandOptions["filesystemScope"]>;
+    finish(): Promise<{changes: FileChange[]; warning?: string}>;
 }
 
 export interface CaptureAfterWriteInput {
@@ -162,6 +169,8 @@ export interface FileCheckpointRuntimeLike {
     beforeWrite(input: CaptureBeforeWriteInput): Promise<CaptureResult>;
 
     afterWrite(input: CaptureAfterWriteInput): Promise<CaptureResult>;
+
+    beginShell(input: {cwd: string; toolCallId: string}): Promise<ShellCheckpointCapture | null>;
 
     markCoverageWarning(warning: CheckpointCoverageWarning): Promise<void>;
 

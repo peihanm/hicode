@@ -1,6 +1,10 @@
 import type {FileStateTracker} from "../tools/shared/fileState.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import {randomUUID} from "node:crypto";
+import {relative} from "node:path";
+import {createByteFileChange} from "../fileChanges/index.js";
+import {fingerprintsEqual, missingFingerprint} from "./fingerprint.js";
+import {snapshotShellWorkspace} from "./shellSnapshot.js";
 import {createFileCheckpointStore, FileCheckpointStore} from "./store.js";
 import type {
     BeginCheckpointInput,
@@ -14,6 +18,7 @@ import type {
     CheckpointRestoreResult,
     FileCheckpointRecord,
     FileCheckpointRuntimeLike,
+    ShellCheckpointCapture,
 } from "./types.js";
 
 function failureWarning(
@@ -35,6 +40,8 @@ class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
 
     constructor(
         private readonly store: FileCheckpointStore,
+        private readonly pillarHome: string,
+        private readonly shellSnapshotDeniedReadPaths: readonly string[],
         private readonly fileState?: FileStateTracker,
         initialHead?: CheckpointHead
     ) {
@@ -95,6 +102,51 @@ class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
             await this.store.addWarning(checkpointId, warning).catch(() => undefined);
             return {captured: false, warning};
         }
+    }
+
+    async beginShell(input: {cwd: string; toolCallId: string}): Promise<ShellCheckpointCapture | null> {
+        const checkpointId = this.activeCheckpointId;
+        if (!checkpointId) return null;
+        const marker = `Shell snapshot pending: ${input.toolCallId}`;
+        // A crash before the final diff is durable must leave a non-restorable checkpoint.
+        await this.store.addWarning(checkpointId, {code: "bash_side_effects", message: marker});
+        const before = await snapshotShellWorkspace(input.cwd, this.pillarHome, this.shellSnapshotDeniedReadPaths);
+        let finished: ReturnType<ShellCheckpointCapture["finish"]> | undefined;
+        const finish = async (): ReturnType<ShellCheckpointCapture["finish"]> => {
+            const changes = [];
+            let diffBudget = 512 * 1024;
+            try {
+                const after = await snapshotShellWorkspace(before.root, this.pillarHome, this.shellSnapshotDeniedReadPaths);
+                if (JSON.stringify(after.excludedPaths) !== JSON.stringify(before.excludedPaths)) throw new Error("Shell 执行改变了快照排除路径，不能确认完整覆盖");
+                for (const path of new Set([...before.files.keys(), ...after.files.keys()])) {
+                    const oldFile = before.files.get(path);
+                    const newFile = after.files.get(path);
+                    if (fingerprintsEqual(oldFile?.fingerprint ?? missingFingerprint(), newFile?.fingerprint ?? missingFingerprint())) continue;
+                    await this.store.captureBefore(checkpointId, {path, content: oldFile?.content ?? null, mode: oldFile?.fingerprint.mode, toolCallId: input.toolCallId});
+                    await this.store.captureAfter(checkpointId, {path, content: newFile?.content ?? null, toolCallId: input.toolCallId});
+                    this.fileState?.forget(path);
+                    const changePath = relative(before.root, path);
+                    const kind = !oldFile ? "create" as const : !newFile ? "delete" as const : "update" as const;
+                    const unavailable = {version: 1 as const, path: changePath, kind, hunks: [], linesAdded: null, linesRemoved: null,
+                        diffStatus: "unavailable" as const, diffUnavailableReason: "too_large" as const};
+                    let change = diffBudget > (oldFile?.content.length ?? 0) + (newFile?.content.length ?? 0)
+                        ? createByteFileChange({path: changePath, kind, oldContent: oldFile?.content ?? Buffer.alloc(0), newContent: newFile?.content ?? Buffer.alloc(0)})
+                        : unavailable;
+                    const size = Buffer.byteLength(JSON.stringify(change));
+                    if (size > diffBudget) change = unavailable;
+                    else diffBudget -= size;
+                    changes.push(change);
+                }
+                await this.store.finishShellCoverage(checkpointId, marker);
+                return {changes};
+            } catch (error) {
+                this.fileState?.clear();
+                const warning = `Shell 快照未完成，回退仍受保护: ${error instanceof Error ? error.message : String(error)}`;
+                await this.store.addWarning(checkpointId, {code: "bash_side_effects", message: warning});
+                return {changes, warning};
+            } finally {before.files.clear();}
+        };
+        return {scope: {root: before.root, denyWrite: before.excludedPaths}, finish: () => finished ??= finish()};
     }
 
     async afterWrite(input: CaptureAfterWriteInput): Promise<CaptureResult> {
@@ -181,6 +233,8 @@ class DisabledFileCheckpointRuntime implements FileCheckpointRuntimeLike {
         return {captured: false};
     }
 
+    async beginShell(): Promise<null> {return null;}
+
     async afterWrite(): Promise<CaptureResult> {
         return {captured: false};
     }
@@ -226,6 +280,7 @@ export function createFileCheckpointRuntime(input: {
     enabled: boolean;
     fileState?: FileStateTracker;
     initialHead?: CheckpointHead;
+    shellSnapshotDeniedReadPaths?: readonly string[];
 }): FileCheckpointRuntimeLike {
     const head = input.initialHead ?? {branchId: randomUUID()};
     const store = createFileCheckpointStore(
@@ -239,6 +294,8 @@ export function createFileCheckpointRuntime(input: {
     }
     return new FileCheckpointRuntime(
         store,
+        input.storage.pillarHome,
+        input.shellSnapshotDeniedReadPaths ?? [],
         input.fileState,
         head
     );

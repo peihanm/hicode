@@ -53,28 +53,33 @@ function assertContent(version: FileVersion, expected: string | Buffer | null, p
 
 /** Root owns ordering, while each Session owns its separate observation ledger. */
 export class FileCommitCoordinator {
-    private readonly active = new Map<string, Promise<void>>();
+    private active: Promise<void> | undefined;
 
     async run<T>(path: string, signal: AbortSignal, operation: (canonical: string) => Promise<T>): Promise<T> {
         const canonical = canonicalPath(resolve(path));
-        while (this.active.has(canonical)) {
-            const pending = this.active.get(canonical)!;
+        return this.exclusive(signal, () => operation(canonical));
+    }
+
+    /** A Shell snapshot and its process must not overlap another Root-owned file writer. */
+    async exclusive<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+        while (this.active) {
+            const pending = this.active;
             throwIfTurnAborted(signal);
             await new Promise<void>((done, reject) => {
                 const aborted = () => {
                     signal.removeEventListener("abort", aborted);
-                    try { throwIfTurnAborted(signal); } catch (error) { reject(error); }
+                    try {throwIfTurnAborted(signal);} catch (error) {reject(error);}
                 };
                 signal.addEventListener("abort", aborted, {once: true});
-                void pending.then(() => { signal.removeEventListener("abort", aborted); done(); });
+                void pending.then(() => {signal.removeEventListener("abort", aborted); done();});
             });
         }
         throwIfTurnAborted(signal);
         let release!: () => void;
-        this.active.set(canonical, new Promise<void>(done => { release = done; }));
-        try { return await operation(canonical); }
-        finally { this.active.delete(canonical); release(); }
+        this.active = new Promise<void>(done => {release = done;});
+        try {return await operation();} finally {this.active = undefined; release();}
     }
+
 }
 
 export function prepareFileCommit(path: string, canonical: string, expected: string | Buffer | null) {

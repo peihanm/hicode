@@ -907,7 +907,7 @@ export class FileCheckpointStore {
             }
             const before = input.content === null
                 ? missingFingerprint()
-                : fingerprintContent(input.content, validated.mode);
+                : fingerprintContent(input.content, input.mode ?? validated.mode);
             const beforeBlobId = input.content === null
                 ? undefined
                 : await this.ensureBlob(input.content);
@@ -921,6 +921,14 @@ export class FileCheckpointStore {
                 toolCallId: input.toolCallId,
             });
             paths.add(key);
+        });
+    }
+
+    async finishShellCoverage(checkpointId: string, marker: string): Promise<void> {
+        await this.mutateRecord(checkpointId, checkpoint => {
+            checkpoint.coverageWarnings = checkpoint.coverageWarnings.filter(warning =>
+                warning.code !== "bash_side_effects" || warning.message !== marker);
+            checkpoint.fileCoverage = checkpoint.coverageWarnings.length ? "incomplete" : "complete";
         });
     }
 

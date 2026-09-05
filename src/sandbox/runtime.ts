@@ -4,7 +4,8 @@ import {
     type SandboxRuntimeConfig,
     type SandboxAskCallback,
 } from "@anthropic-ai/sandbox-runtime";
-import {resolve} from "node:path";
+import {isAbsolute, relative, resolve} from "node:path";
+import {realpath} from "node:fs/promises";
 import {createSandboxRuntimeConfig} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
 import type {
@@ -94,7 +95,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         ) {
             throw new Error("Windows Sandbox 不支持在 Session 中动态增加 writable root");
         }
-        const customConfig = writableRoots.length === 0
+        let customConfig = writableRoots.length === 0
             ? undefined
             : {
                 ...this.baseConfig,
@@ -103,6 +104,21 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                     allowWrite: writableRoots,
                 },
             };
+        if (options?.filesystemScope) {
+            if (this.status.platform === "windows") throw new Error("Windows 不支持逐命令工作区快照写边界");
+            const scope = options.filesystemScope;
+            const root = await realpath(scope.root);
+            const allowed = await Promise.all(writableRoots.map(path => realpath(path)));
+            const within = (parent: string, path: string) => {
+                const part = relative(parent, path);
+                return part === "" || (!isAbsolute(part) && part !== ".." && !part.startsWith("../") && !part.startsWith("..\\"));
+            };
+            if (!allowed.some(parent => within(parent, root)) || scope.denyWrite.some(path => !isAbsolute(path) || !within(root, resolve(path)))) {
+                throw new Error("Shell 快照写边界必须收窄已有目录授权");
+            }
+            customConfig = {...this.baseConfig, filesystem: {...this.baseConfig.filesystem,
+                allowWrite: [root], denyWrite: [...this.baseConfig.filesystem.denyWrite, ...scope.denyWrite]}};
+        }
         const approval = this.networkApproval.register(options?.networkAccess, signal);
         try {
             const wrapped = await this.backend.wrapWithSandboxArgv(

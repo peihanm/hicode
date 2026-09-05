@@ -1,3 +1,4 @@
+import type {ShellCheckpointCapture} from "../../checkpoints/types.js";
 import {z} from "zod";
 import {realpath, stat} from "node:fs/promises";
 import {isAbsolute, relative, resolve} from "node:path";
@@ -324,6 +325,9 @@ export const bashTool: Tool<typeof inputSchema> = {
             canUseTool: ctx.canUseTool,
             canPrompt: () => ctx.permissionPromptPolicy === "onRequest",
         } : undefined;
+        if (run_in_background || effectiveSandboxPermissions === "require_escalated" || ctx.shellRunner.sandboxStatus.kind !== "ready" || ctx.shellRunner.sandboxStatus.platform === "windows") {
+            await ctx.fileCheckpoints.markCoverageWarning({code: "bash_side_effects", message: "后台、elevated 或未受支持 OS Sandbox 约束的 Bash 无法完整捕获文件副作用"});
+        }
         if (run_in_background) {
             if (
                 effectiveSandboxPermissions !== "require_escalated" &&
@@ -396,55 +400,78 @@ export const bashTool: Tool<typeof inputSchema> = {
                 };
             }
         }
-        const capturePath = await ctx.toolResultStore.createCapture();
-        try {
-            const result = await ctx.shellRunner.run({
-                command,
-                cwd: commandCwd,
-                signal: ctx.signal,
-                ...(timeout_ms !== undefined ? {timeoutMs: timeout_ms} : {}),
-                outputFilePath: capturePath,
-                maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
-                previewChars: 30_000,
-                sandboxPermissions: effectiveSandboxPermissions,
-                writableRoots: ctx.directoryAccess.listDirectories(),
-                networkAccess,
-            });
-            const shellExecution = {command, cwd: commandCwd, sandboxPermissions: effectiveSandboxPermissions ?? "use_default" as const};
-            const shouldPersist =
-                (result.outputBytes ?? 0) > 30_000 ||
-                result.outputComplete === false;
-            if (!shouldPersist || result.termination.kind === "aborted") {
-                return {
-                    content: formatShellResult(result),
-                    outcome: shellOutcome(result),
-                    shellExecution,
-                };
+        return ctx.fileCommits.exclusive(ctx.signal, async () => {
+            let checkpointCapture: ShellCheckpointCapture | null = null;
+            if (ctx.fileCheckpoints.enabled && effectiveSandboxPermissions !== "require_escalated" && ctx.shellRunner.sandboxStatus.kind === "ready" && ctx.shellRunner.sandboxStatus.platform !== "windows") {
+                try {
+                    if ((await ctx.tasks?.list())?.some(task => task.kind === "shell" && task.status === "running")) {
+                        throw new Error("当前 Session 有运行中的后台 Shell，不能确认前台快照的独占范围");
+                    }
+                    checkpointCapture = await ctx.fileCheckpoints.beginShell({cwd: ctx.cwd, toolCallId: invocation.toolCallId});
+                } catch (error) {
+                    await ctx.fileCheckpoints.markCoverageWarning({code: "bash_side_effects", message: `Shell 快照准备失败: ${error instanceof Error ? error.message : String(error)}`});
+                }
             }
+            const capturePath = await ctx.toolResultStore.createCapture();
             try {
-                const persisted = await ctx.toolResultStore.promoteFile({
-                    toolCallId: invocation.toolCallId,
-                    toolName: "bash",
-                    sourcePath: capturePath,
-                    originalByteLength: result.outputBytes,
-                    complete: result.outputComplete,
+                const result = await ctx.shellRunner.run({
+                    command,
+                    cwd: commandCwd,
+                    signal: ctx.signal,
+                    ...(timeout_ms !== undefined ? {timeoutMs: timeout_ms} : {}),
+                    outputFilePath: capturePath,
+                    maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
+                    previewChars: 30_000,
+                    ...(checkpointCapture ? {filesystemScope: checkpointCapture.scope} : {}),
+                    sandboxPermissions: effectiveSandboxPermissions,
+                    writableRoots: ctx.directoryAccess.listDirectories(),
+                    networkAccess,
                 });
-                return {
-                    content: formatShellStatus(result),
-                    displayContent: `${formatShellStatus(result)}\n${persisted.preview}`,
-                    persisted,
-                    outcome: shellOutcome(result),
-                    shellExecution,
-                };
-            } catch (error) {
-                return {
-                    content: `${formatShellResult(result)}\n\n完整输出保存失败：${error instanceof Error ? error.message : String(error)}`,
-                    outcome: shellOutcome(result),
-                    shellExecution,
-                };
+                const captured = await checkpointCapture?.finish();
+                const uiData = captured?.changes.length ? {type: "file_changes" as const, changes: captured.changes} : undefined;
+                if (captured?.warning) ctx.fileState.clear();
+                else for (const change of captured?.changes ?? []) ctx.fileState.forget(resolve(ctx.cwd, change.path));
+                if (captured?.warning) result.stderr += `\n${captured.warning}`;
+                const shellExecution = {command, cwd: commandCwd, sandboxPermissions: effectiveSandboxPermissions ?? "use_default" as const};
+                const shouldPersist =
+                    (result.outputBytes ?? 0) > 30_000 ||
+                    result.outputComplete === false;
+                if (!shouldPersist || result.termination.kind === "aborted") {
+                    return {
+                        content: formatShellResult(result),
+                        outcome: shellOutcome(result),
+                        shellExecution,
+                        ...(uiData ? {uiData} : {}),
+                    };
+                }
+                try {
+                    const persisted = await ctx.toolResultStore.promoteFile({
+                        toolCallId: invocation.toolCallId,
+                        toolName: "bash",
+                        sourcePath: capturePath,
+                        originalByteLength: result.outputBytes,
+                        complete: result.outputComplete,
+                    });
+                    return {
+                        content: formatShellStatus(result),
+                        displayContent: `${formatShellStatus(result)}\n${persisted.preview}`,
+                        persisted,
+                        outcome: shellOutcome(result),
+                        shellExecution,
+                        ...(uiData ? {uiData} : {}),
+                    };
+                } catch (error) {
+                    return {
+                        content: `${formatShellResult(result)}\n\n完整输出保存失败：${error instanceof Error ? error.message : String(error)}`,
+                        outcome: shellOutcome(result),
+                        shellExecution,
+                        ...(uiData ? {uiData} : {}),
+                    };
+                }
+            } finally {
+                await checkpointCapture?.finish();
+                await ctx.toolResultStore.removeTemporaryFile(capturePath);
             }
-        } finally {
-            await ctx.toolResultStore.removeTemporaryFile(capturePath);
-        }
+        });
     },
 };

@@ -1,3 +1,4 @@
+import {toolFileChanges} from "../fileChanges/index.js";
 import type {AgentEvent} from "../agent/types.js";
 import {mergeFileChange} from "../fileChanges/index.js";
 import {
@@ -17,23 +18,19 @@ export class SessionUIEventCollector {
         }
         if (event.type !== "tool_call_end") return;
         if (!this.activeToolCalls.delete(event.toolCallId)) return;
-        if (
-            event.outcome === "ok" &&
-            event.turnId &&
-            event.uiData?.type === "file_change"
-        ) {
+        for (const change of toolFileChanges(event.uiData, event.outcome)) {
             const previous = [...this.currentEvents].reverse().find(
                 (item): item is PersistedFileChangeUIEvent =>
                     item.type === "file_change" &&
                     item.turnId === event.turnId &&
-                    item.change.path === event.uiData!.change.path
+                    item.change.path === change.path
             );
             const persistedChange = previous
                 ? mergeFileChange(
                     [previous.change],
-                    event.uiData.change
+                    change
                 ).at(-1)!
-                : event.uiData.change;
+                : change;
             this.currentEvents = limitPersistedUIEvents([
                 ...this.currentEvents,
                 {

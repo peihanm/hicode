@@ -1,3 +1,4 @@
+import {toolFileChanges} from "../../fileChanges/index.js";
 import {createAssistantThread, createTaskNotificationThread, createUserThread, reduceThreads, threadsFromHistory,} from "../conversation/threadReducer.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {UIThread} from "../conversation/types.js";
@@ -169,20 +170,16 @@ export class UITurnEventStore {
             return;
         }
 
-        if (
-            event.type === "tool_call_end" &&
-            event.outcome === "ok" &&
-            event.uiData?.type === "file_change"
-        ) {
+        if (event.type === "tool_call_end") for (const change of toolFileChanges(event.uiData, event.outcome)) {
             const previous = [...this.persistedUIEvents].reverse().find(
                 (item): item is PersistedFileChangeUIEvent =>
                     item.type === "file_change" &&
                     item.turnId === event.turnId &&
-                    item.change.path === event.uiData!.change.path
+                    item.change.path === change.path
             );
             const persistedChange = previous
-                ? mergeFileChange([previous.change], event.uiData.change).at(-1)!
-                : event.uiData.change;
+                ? mergeFileChange([previous.change], change).at(-1)!
+                : change;
             this.persistedUIEvents = limitPersistedUIEvents([
                 ...this.persistedUIEvents,
                 {
@@ -222,7 +219,7 @@ export class UITurnEventStore {
 
         const displayEvent =
             event.type === "tool_call_end" &&
-            event.uiData?.type === "file_change"
+            toolFileChanges(event.uiData, event.outcome).length > 0
                 ? {
                     ...event,
                     turnId: `${event.turnId}:iteration:${this.activeIteration}`,
@@ -240,7 +237,7 @@ export class UITurnEventStore {
             // 文件修改继续留到 iteration 边界以合并最终净 diff。
             const completedToolCallId =
                 event.type === "tool_call_end" &&
-                event.uiData?.type !== "file_change"
+                toolFileChanges(event.uiData, event.outcome).length === 0
                     ? event.toolCallId
                     : undefined;
             // assistant_text 已经是完整的一段 commentary 或最终文本，不存在后续增量更新。若先放进
