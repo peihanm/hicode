@@ -470,6 +470,108 @@ describe("tool registry contract", () => {
     });
   });
 
+  test("edit_file 文本不匹配返回 failed，重新读取并修正后可以继续编辑", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "main.js");
+      const original = "const history = [];\n";
+      await writeFile(path, original);
+      const ctx = createTestContext(cwd, {
+        permissionMode: "default",
+        canUseTool: async () => { throw new Error("项目内编辑不应请求额外权限"); },
+      });
+      await executeTool("read_file", JSON.stringify({path}), ctx);
+      const failed = await executeToolResult(
+        "edit_file",
+        JSON.stringify({path, old_string: "let history = [];", new_string: "const history = [1];"}),
+        ctx,
+        "edit-wrong-keyword"
+      );
+      expect(failed.outcome).toBe("failed");
+      expect(failed.modelContent).toContain("编辑失败");
+      expect(failed.modelContent).toContain("找不到 old_string");
+      expect(failed.modelContent).toContain("重新 read_file");
+      expect(failed.modelContent).not.toContain("权限拒绝");
+      expect(failed.uiData).toBeUndefined();
+      expect(await readFile(path, "utf8")).toBe(original);
+
+      await executeTool("read_file", JSON.stringify({path}), ctx);
+      const recovered = await executeToolResult(
+        "edit_file",
+        JSON.stringify({path, old_string: "const history = [];", new_string: "const history = [1];"}),
+        ctx,
+        "edit-correct-keyword"
+      );
+      expect(recovered.outcome).toBe("ok");
+      expect(recovered.uiData?.type).toBe("file_change");
+      expect(await readFile(path, "utf8")).toBe("const history = [1];\n");
+    });
+  });
+
+  test("edit_file 非唯一匹配属于编辑失败，Bypass 也不会执行", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "duplicate.txt");
+      await writeFile(path, "same\nsame\n");
+      const ctx = createTestContext(cwd);
+      await executeTool("read_file", JSON.stringify({path}), ctx);
+      const result = await executeToolResult(
+        "edit_file", JSON.stringify({path, old_string: "same", new_string: "changed"}),
+        ctx, "edit-ambiguous"
+      );
+      expect(result.outcome).toBe("failed");
+      expect(result.modelContent).toContain("匹配到 2 处");
+      expect(result.modelContent).not.toContain("权限拒绝");
+      expect(result.uiData).toBeUndefined();
+      expect(await readFile(path, "utf8")).toBe("same\nsame\n");
+    });
+  });
+
+  test("edit_file 审批期间发生外部修改时返回 failed 且保留外部内容", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "approval.txt");
+      await writeFile(path, "before\n");
+      let approvals = 0;
+      const ctx = createTestContext(cwd, {
+        permissionMode: "readOnly",
+        canUseTool: async () => {
+          approvals++;
+          await writeFile(path, "external\n");
+          return {behavior: "allow"};
+        },
+      });
+      await executeTool("read_file", JSON.stringify({path}), ctx);
+      const result = await executeToolResult(
+        "edit_file", JSON.stringify({path, old_string: "before", new_string: "after"}),
+        ctx, "edit-stale-after-approval"
+      );
+      expect(approvals).toBe(1);
+      expect(result.outcome).toBe("failed");
+      expect(result.modelContent).toContain("自上次 read_file 后已被修改");
+      expect(result.uiData).toBeUndefined();
+      expect(await readFile(path, "utf8")).toBe("external\n");
+    });
+  });
+
+  test("edit_file 真实权限规则与用户拒绝仍返回 denied", async () => {
+    await withTempProject(async (cwd) => {
+      const path = join(cwd, "denied.txt");
+      await writeFile(path, "before\n");
+      const ctx = createTestContext(cwd, {
+        permissionMode: "readOnly",
+        canUseTool: async () => ({behavior: "deny", message: "不要修改"}),
+      });
+      await executeTool("read_file", JSON.stringify({path}), ctx);
+      const args = JSON.stringify({path, old_string: "before", new_string: "after"});
+      const rejected = await executeToolResult("edit_file", args, ctx, "edit-user-denied");
+      expect(rejected.outcome).toBe("denied");
+      expect(rejected.modelContent).toContain("不要修改");
+      ctx.permissionRules.deny.push({toolName: "edit_file", source: "host"});
+      const denied = await executeToolResult("edit_file", args, ctx, "edit-rule-denied");
+      expect(denied.outcome).toBe("denied");
+      expect(denied.modelContent).toContain("被 deny 规则拒绝");
+      expect(await readFile(path, "utf8")).toBe("before\n");
+    });
+  });
+
   test("edit_file 成功结果包含结构化 diff，模型内容保持简短", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(join(cwd, "edit-me.txt"), "before\ncontext\n");
@@ -518,16 +620,18 @@ describe("tool registry contract", () => {
         JSON.stringify({ path: "partial.txt", offset: 2, limit: 1 }),
         first
       );
-      const hidden = await executeTool(
+      const hidden = await executeToolResult(
         "edit_file",
         JSON.stringify({
           path: "partial.txt",
           old_string: "alpha",
           new_string: "ALPHA",
         }),
-        first
+        first,
+        "edit-unobserved"
       );
-      expect(hidden).toContain("未展示要修改的完整内容");
+      expect(hidden.outcome).toBe("failed");
+      expect(hidden.modelContent).toContain("未展示要修改的完整内容");
 
       const visible = await executeTool(
         "edit_file",
@@ -540,16 +644,18 @@ describe("tool registry contract", () => {
       );
       expect(visible).toContain("已修改 partial.txt");
 
-      const leaked = await executeTool(
+      const leaked = await executeToolResult(
         "edit_file",
         JSON.stringify({
           path: "partial.txt",
           old_string: "BETA",
           new_string: "Beta",
         }),
-        second
+        second,
+        "edit-unread"
       );
-      expect(leaked).toContain("必须先用 read_file");
+      expect(leaked.outcome).toBe("failed");
+      expect(leaked.modelContent).toContain("必须先用 read_file");
     });
   });
 

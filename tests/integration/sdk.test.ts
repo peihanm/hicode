@@ -8,7 +8,11 @@ import {createSessionId, loadSession} from "../../src/session/index.js";
 import {Pillar} from "../../src/sdk/index.js";
 import {collectTurnResult} from "../../src/sdk/resultCollector.js";
 import {createSDKThread} from "../../src/sdk/thread.js";
-import type {ThreadEvent} from "../../src/sdk/protocol.js";
+import type {ThreadEvent, InteractionRequest} from "../../src/sdk/protocol.js";
+import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
+import type {SandboxAskCallback} from "@anthropic-ai/sandbox-runtime";
+import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import type {SubagentRunner} from "../../src/subagents/types.js";
 import {runAgentForTest} from "../helpers/agent.js";
 import {
@@ -60,6 +64,72 @@ function createFakeAgentRuntime(
 }
 
 describe("TypeScript SDK", () => {
+    test("真实 ToolRuntime 网络交互穿过 SDK Host，Session 授权跨 Turn 复用且无 elevated", async () => {
+        await withTempProject(async (cwd, storage) => {
+            let enabled = false;
+            let ask: SandboxAskCallback | undefined;
+            let wraps = 0;
+            const createSandbox = createSandboxRuntimeFactory({
+                isSupportedPlatform: () => true,
+                isSandboxingEnabled: () => enabled,
+                checkDependencies: () => ({errors: [], warnings: []}),
+                async initialize(_config, callback) { enabled = true; ask = callback; },
+                async wrapWithSandboxArgv(command, _shell, config) {
+                    wraps++;
+                    expect(config?.network?.allowedDomains).toEqual([]);
+                    const allowed = await ask?.({host: "registry.example.test", port: 443});
+                    return {argv: ["/bin/sh", "-c", allowed ? command : "exit 22"], env: {}};
+                },
+                annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
+                cleanupAfterCommand() {},
+                async reset() { enabled = false; },
+            });
+            const sandbox = await createSandbox({cwd, settings: {
+                enabled: true, filesystem: {denyRead: [], denyWrite: []},
+                network: {allowedDomains: [], allowLocalBinding: false},
+            }});
+            const fake = createFakeLLM([
+                assistantToolCall("bash", {command: "printf first"}, "network-sdk-1"),
+                assistantText("first complete"),
+                assistantToolCall("bash", {command: "printf second"}, "network-sdk-2"),
+                assistantText("second complete"),
+            ]);
+            const resources = createTestRuntimeResources(cwd, {
+                storage, sandbox, shellRunner: createShellRunner(sandbox, testChildEnvironment),
+                agentRuntime: createFakeAgentRuntime(fake),
+            });
+            const interactions: InteractionRequest[] = [];
+            const thread = await createSDKThread({
+                resources,
+                seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+                state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []},
+                resumed: false,
+                host: {async onInteraction(request) {
+                    interactions.push(request);
+                    return {behavior: "allow", networkScope: "session"};
+                }},
+                onClose() {},
+            });
+            try {
+                const first = await thread.run("first");
+                const second = await thread.run("second");
+                expect(first.finalResponse).toBe("first complete");
+                expect(second.finalResponse).toBe("second complete");
+                expect(interactions).toHaveLength(1);
+                expect(interactions[0]).toMatchObject({
+                    kind: "permission", toolName: "bash",
+                    networkAccess: {host: "registry.example.test", port: 443},
+                });
+                expect(first.items.some((item) => item.type === "interaction" && item.status === "completed")).toBe(true);
+                expect(wraps).toBe(2);
+            } finally {
+                await thread.close();
+                await resources.close();
+                await sandbox.close();
+            }
+        });
+    });
+
     test("公开 Pillar 生命周期可以创建 Thread 并幂等关闭", async () => {
         await withTempProject(async (cwd, storage) => {
             const pillar = await Pillar.create({

@@ -41,6 +41,7 @@ export interface ToolContextResources {
 }
 
 export interface ToolContextSession {
+    networkAccess?: ToolContext["networkAccess"];
     sessionId: string;
     compactState: CompactState;
     toolResultStore: ToolResultStore;
@@ -113,6 +114,7 @@ export function createToolContext({
         gitSession: resources.gitSession,
         memoryFiles: resources.memoryFiles,
         fileCheckpoints: session.fileCheckpoints,
+        networkAccess: session.networkAccess,
         directoryAccess: session.directoryAccess ?? createDirectoryAccessRuntime({
             cwd: resources.cwd,
             hardBoundary: resources.workspaceBoundary ?? resources.cwd,

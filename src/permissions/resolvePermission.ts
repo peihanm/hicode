@@ -87,7 +87,7 @@ async function resolvePermissionInner(
         }
     }
 
-    // 2. 工具自己的 deny 永远优先，例如 edit_file 的 stale/read 校验。
+    // 2. 工具自己的 deny 永远优先。
     const toolResult: PermissionResult = tool.checkPermissions
         ? await tool.checkPermissions(input, ctx)
         : {behavior: "passthrough"};

@@ -25,6 +25,11 @@ function describeElevatedAction(command: string): {
         return {purpose: "Verify local service", action: "Verify once"};
     }
     if (
+        /\.app\/contents\/macos\//.test(normalized)
+    ) {
+        return {purpose: "Launch macOS application", action: "Launch once"};
+    }
+    if (
         /(?:http\.server|\bnode\s+[^\n;&|]*(?:server|serve)[^\n;&|]*|\b(?:vite|next)\b.*\b(?:dev|preview)\b|\bnpm\s+(?:run\s+)?(?:start|dev|preview)\b|\bbun\s+(?:run\s+)?(?:start|dev|preview)\b)/
             .test(normalized)
     ) {
@@ -37,17 +42,21 @@ function readElevatedBashInput(req: ConfirmReq): ElevatedBashInput | undefined {
     if (req.toolName !== "bash" || !req.input || typeof req.input !== "object") {
         return undefined;
     }
-    if (!("sandbox_permissions" in req.input) ||
-        req.input.sandbox_permissions !== "require_escalated" ||
-        !("command" in req.input) ||
+    if (!("command" in req.input) ||
         typeof req.input.command !== "string" ||
         !req.input.command.trim()) {
         return undefined;
     }
+    const command = req.input.command.trim();
+    const explicitlyElevated = "sandbox_permissions" in req.input &&
+        req.input.sandbox_permissions === "require_escalated";
+    const hostExecution = req.presentation?.kind === "host_execution" &&
+        req.presentation.command.trim() === command;
+    if (!explicitlyElevated && !hostExecution) return undefined;
     const cwd = "cwd" in req.input && typeof req.input.cwd === "string"
         ? req.input.cwd
         : undefined;
-    return {command: req.input.command.trim(), ...(cwd ? {cwd} : {})};
+    return {command, ...(cwd ? {cwd} : {})};
 }
 
 export function isElevatedBashRequest(req: ConfirmReq): boolean {

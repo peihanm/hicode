@@ -189,6 +189,13 @@ export async function executeRegisteredTool(
                 preHookResult
             );
         }
+        if (decision.networkScope !== undefined) {
+            return hookDecoratedResult(
+                inlineToolResult("网络授权不能用于批准工具执行", "denied"),
+                "PreToolUse",
+                preHookResult
+            );
+        }
         if (permission.presentation?.kind === "filesystem_access") {
             const scope = decision.directoryScope ?? "once";
             if (scope !== "once") {

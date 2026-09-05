@@ -67,6 +67,7 @@ export type InteractionRequest =
         toolName: string;
         message: string;
         input: unknown;
+        networkAccess?: {host: string; port: number};
     })
     | (InteractionRequestBase & {
         kind: "question";
@@ -88,6 +89,7 @@ export type InteractionResponse =
         behavior: "allow";
         persistence?: "once" | "always";
         directoryScope?: "once" | "session" | "project";
+        networkScope?: "once" | "session";
         updatedInput?: unknown;
     }
     | {behavior: "deny"; message: string};

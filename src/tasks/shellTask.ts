@@ -56,6 +56,7 @@ export async function runShellTask(
             previewChars: 0,
             sandboxPermissions: input.sandboxPermissions,
             writableRoots: input.writableRoots,
+            networkAccess: input.networkAccess,
         });
         finalStatus = statusFromResult(result);
         task.termination = result.termination;
@@ -65,6 +66,10 @@ export async function runShellTask(
             shellRunner.sandboxStatus.kind === "ready"
                 ? annotateSandboxLocalNetworkFailure(outputPreview)
                 : outputPreview;
+        // Proxy approval diagnostics are generated after process output capture.
+        if (result.stderr.trim() && !task.outputPreview.includes(result.stderr.trim())) {
+            task.outputPreview = `${task.outputPreview}\n${result.stderr}`.trim();
+        }
         try {
             task.outputResult = await task.store.promoteFile({
                 toolCallId: task.owner.toolCallId,

@@ -19,6 +19,7 @@ function renderDialog(options: {plan?: unknown} = {}) {
     const instance = render(
         <PlanApprovalDialog
             req={{
+          id: 1,
                 question: "是否批准？",
                 toolName: "exit_plan_mode",
                 input: {plan: options.plan ?? "# 实施计划\n\n1. 修改代码\n2. 运行测试"},

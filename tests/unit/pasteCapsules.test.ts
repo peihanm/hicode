@@ -57,6 +57,31 @@ describe("paste capsules", () => {
         )).toBe("a\nb\nc\nd tail ".length + 801);
     });
 
+    test("相邻的长粘贴分块合并为同一个 Capsule", () => {
+        const firstContent = "一\n二\n三\n四\n";
+        const secondContent = "五\n六\n七\n八";
+        const first = insertPasteCapsule(
+            "",
+            0,
+            firstContent,
+            EMPTY_PASTE_CAPSULE_STATE
+        );
+        const second = insertPasteCapsule(
+            first.value,
+            first.cursorOffset,
+            secondContent,
+            first.state
+        );
+
+        expect(second.value).toBe("[Pasted text #1 +7 lines]");
+        expect(second.value).not.toContain("#2");
+        expect(second.state.capsules).toHaveLength(1);
+        expect(second.state.nextId).toBe(2);
+        expect(expandPasteCapsules(second.value, second.state)).toBe(
+            firstContent + secondContent
+        );
+    });
+
     test("删除 Capsule 后不会把已移除的内容带入提交文本", () => {
         const collapsed = collapsePromptText("one\ntwo\nthree\nfour");
         const [range] = getPasteCapsuleRanges(collapsed.value, collapsed.state);

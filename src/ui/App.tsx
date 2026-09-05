@@ -312,36 +312,43 @@ export function App({
                 ) : turn.confirmRequest ? (
                     turn.confirmRequest.toolName === "ask_user" ? (
                         <AskDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : turn.confirmRequest.toolName === "exit_plan_mode" ? (
                         <PlanApprovalDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : turn.confirmRequest.toolName === "enter_plan_mode" ? (
                         <EnterPlanDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : isElevatedBashRequest(turn.confirmRequest) ? (
                         <ElevatedBashDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : isNetworkAccessRequest(turn.confirmRequest) ? (
                         <NetworkAccessDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : isFileAccessRequest(turn.confirmRequest) ? (
                         <FileAccessDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                         />
                     ) : (
                         <ConfirmDialog
+                            key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
                             onAddToAllowList={turn.handleAddToAllowList}

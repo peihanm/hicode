@@ -1,4 +1,5 @@
 import type {SandboxExecutionPreference} from "../sandbox/index.js";
+import type {NetworkAccessExecution} from "../permissions/networkAccess.js";
 import type {PersistedToolResult, ToolResultStore} from "../toolResults/index.js";
 import type {ShellTermination} from "../tools/bash/process.js";
 import type {StopReason} from "../agent/types.js";
@@ -72,6 +73,7 @@ export interface RunningTaskSummary {
 }
 
 export interface StartShellTaskInput {
+    networkAccess?: NetworkAccessExecution;
     command: string;
     cwd: string;
     toolCallId: string;

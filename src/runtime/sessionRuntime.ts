@@ -27,6 +27,7 @@ import type {RuntimeQueuedMessage} from "./messageQueue.js";
 import {RuntimeMessageQueue} from "./messageQueue.js";
 import type {RootRuntimeResources} from "./resources.js";
 import {createToolContext, type ToolContextHost} from "./toolContext.js";
+import {NetworkAccessSession} from "../permissions/networkAccess.js";
 
 export interface RootSessionSeed {
     sessionId: string;
@@ -136,6 +137,7 @@ export function createRootSessionRuntime({
         messages: seed.queuedInputs,
     });
     const hookSession = createHookSessionRuntime();
+    const networkAccess = new NetworkAccessSession();
     const directoryAccess = createDirectoryAccessRuntime({
         cwd: resources.cwd,
         hardBoundary: resources.workspaceBoundary,
@@ -203,6 +205,7 @@ export function createRootSessionRuntime({
                     allowBackgroundTasks,
                     hookSession,
                     directoryAccess,
+                    networkAccess,
                 },
                 host,
             });

@@ -1,4 +1,5 @@
 import type {ResolvedPillarSettings} from "../settings/index.js";
+import type {NetworkAccessExecution} from "../permissions/networkAccess.js";
 
 export type ResolvedSandboxSettings = ResolvedPillarSettings["sandbox"];
 export type SandboxPlatform = "macos" | "linux" | "windows";
@@ -22,15 +23,17 @@ export type SandboxStatus =
 export interface SandboxedCommand {
     argv: string[];
     env: NodeJS.ProcessEnv;
+    release?: () => void;
+    networkDenials?: readonly string[];
 }
 
 export interface SandboxCommandOptions {
     writableRoots?: readonly string[];
+    networkAccess?: NetworkAccessExecution;
 }
 
 export interface SandboxRuntimeLike {
     readonly status: SandboxStatus;
-    readonly networkAllowedDomains?: readonly string[];
 
     wrapCommand(
         command: string,

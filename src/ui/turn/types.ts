@@ -4,6 +4,7 @@ import type {
 } from "../../permissions/index.js";
 
 export interface ConfirmReq {
+    id: number;
     question: string;
     toolName: string;
     input: unknown;

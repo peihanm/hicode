@@ -35,6 +35,44 @@ function createRuntime(cwd: string, hardBoundary: string = cwd) {
 }
 
 describe("File Checkpoint Store", () => {
+    test("通过父目录 alias 创建项目外文件时使用 canonical root", async () => {
+        await withTempProject(async (root) => {
+            const cwd = join(root, "project");
+            const externalDirectory = join(root, "external");
+            const aliasDirectory = join(root, "external-alias");
+            await mkdir(cwd);
+            await mkdir(externalDirectory);
+            await symlink(externalDirectory, aliasDirectory, "dir");
+            const canonicalExternalDirectory = await realpath(externalDirectory);
+            const aliasPath = join(aliasDirectory, "new.txt");
+            const canonicalPath = join(canonicalExternalDirectory, "new.txt");
+            const runtime = createRuntime(cwd, root);
+            const checkpoint = await runtime.beginTurn({prompt: "创建外部文件"});
+
+            expect((await runtime.beforeWrite({
+                path: aliasPath,
+                content: null,
+                toolCallId: "external-create",
+            })).captured).toBe(true);
+            await writeFile(aliasPath, "created\n");
+            expect((await runtime.afterWrite({
+                path: aliasPath,
+                content: "created\n",
+                toolCallId: "external-create",
+            })).captured).toBe(true);
+            await runtime.settleTurn();
+
+            const listed = await runtime.listCheckpoints();
+            expect(listed[0]?.mutations[0]).toMatchObject({
+                root: canonicalExternalDirectory,
+                path: "new.txt",
+            });
+            const restored = await runtime.restoreCode(checkpoint!.checkpointId);
+            expect(restored.status).toBe("complete");
+            await expect(stat(canonicalPath)).rejects.toMatchObject({code: "ENOENT"});
+        });
+    });
+
     test("记录并恢复 Host 边界内的项目外文件", async () => {
         await withTempProject(async (root) => {
             const cwd = join(root, "project");

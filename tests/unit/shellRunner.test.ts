@@ -10,12 +10,10 @@ import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.
 
 function sandboxRuntime(
     status: SandboxStatus,
-    events: string[] = [],
-    networkAllowedDomains?: readonly string[]
+    events: string[] = []
 ): SandboxRuntimeLike {
     return {
         status,
-        networkAllowedDomains,
         async wrapCommand(command) {
             events.push(`wrap:${command}`);
             return {

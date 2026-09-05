@@ -83,6 +83,35 @@ describe("multiline input box", () => {
     expect(submitted).toBe(input);
   });
 
+  test("终端将一次长粘贴拆成相邻数据块时只显示一个 Capsule", async () => {
+    let submitted: string | undefined;
+    const firstChunk = "一\n二\n三\n四\n";
+    const secondChunk = "五\n六\n七\n八";
+    const instance = render(
+      <InputBox
+        disabled={false}
+        terminalWidth={90}
+        onSubmit={(value) => {
+          submitted = value;
+        }}
+      />
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    instance.stdin.write(firstChunk);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    instance.stdin.write(secondChunk);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("[Pasted text #1 +7 lines]");
+    expect(frame).not.toContain("[Pasted text #2");
+
+    instance.stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(submitted).toBe(firstChunk + secondChunk);
+  });
+
   test("可在 Capsule 前后继续输入，Backspace 一次删除整个 Capsule", async () => {
     const submitted: string[] = [];
     const content = "第一行\n第二行\n第三行\n第四行";

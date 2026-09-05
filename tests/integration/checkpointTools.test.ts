@@ -93,7 +93,7 @@ describe("Checkpoint tool integration", () => {
                 ctx,
                 "edit-after-restore"
             );
-            expect(staleEdit.outcome).toBe("denied");
+            expect(staleEdit.outcome).toBe("failed");
             expect(staleEdit.modelContent).toContain("必须先用 read_file");
         });
     });

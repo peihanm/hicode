@@ -105,7 +105,12 @@ describe("synchronous subagent", () => {
             message.tool_call_id === "child-edit-without-read"
           );
           expect(result?.content).toContain("必须先用 read_file");
+          expect(result?.content).toContain("编辑失败");
           return assistantText("子 Agent 没有自己的读取证据，因此未修改文件。");
+        },
+        (options) => {
+          expect(JSON.stringify(options.messages)).toContain("本轮存在失败工具记录");
+          return assistantText("编辑失败，缺少子 Agent 自己的读取证据，未修改文件。");
         },
       ]);
       const runner = createSubagentRunner({

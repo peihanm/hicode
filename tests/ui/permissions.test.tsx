@@ -53,6 +53,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <EnterPlanDialog
         req={{
+          id: 1,
           question: "不应直接展示的通用权限问题",
           toolName: "enter_plan_mode",
           input: { reason: "需要先了解项目结构，再制定实现方案。" },
@@ -90,6 +91,7 @@ describe("permission confirmation UI", () => {
     const createDialog = () => (
       <EnterPlanDialog
         req={{
+          id: 1,
           question: "plan",
           toolName: "enter_plan_mode",
           input: { reason },
@@ -117,6 +119,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <ConfirmDialog
         req={{
+          id: 1,
           question: "bash 需要确认",
           toolName: "bash",
           input: { command: "git status" },
@@ -143,14 +146,15 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <NetworkAccessDialog
         req={{
+          id: 1,
           question: "fallback text",
           toolName: "bash",
           input: {command: "npx vite"},
           allowAddToAllowList: false,
           presentation: {
             kind: "network_access",
-            reason: "npx",
-            domains: ["registry.npmjs.org"],
+            host: "registry.npmjs.org",
+            port: 443,
           },
           resolve: (decision) => decisions.push(decision),
         }}
@@ -161,17 +165,51 @@ describe("permission confirmation UI", () => {
     await flush();
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("◆ NETWORK ACCESS");
-    expect(frame).toContain("npx 需要访问");
+    expect(frame).toContain("连接");
     expect(frame).toContain("registry.npmjs.org");
-    expect(frame).toContain("RISK");
-    expect(frame).toContain("› Allow once");
+    expect(frame).not.toContain("脱离 OS Sandbox");
+    expect(frame).toContain("› Allow for this session");
+    expect(frame).toContain("文件与进程仍受 Sandbox 保护");
     expect(frame).not.toContain("fallback text");
     expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
 
     instance.stdin.write(ENTER);
     await flush();
-    expect(decisions).toEqual([{behavior: "allow"}]);
+    expect(decisions).toEqual([{behavior: "allow", networkScope: "session"}]);
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test("App 连续网络授权使用独立弹窗状态，且单连接范围正确回传", async () => {
+    await withTempProject(async (cwd) => {
+      let decisions: PermissionDecision[] = [];
+      let complete!: () => void;
+      const done = new Promise<void>((resolve) => { complete = resolve; });
+      const runAgentImpl: AgentRunner = async (_input, _history, _event, ctx) => {
+        decisions = await Promise.all(["first.test", "second.test"].map((host) =>
+          ctx.canUseTool("bash", "allow network", {host, port: 443}, {
+            allowPersistent: false, presentation: {kind: "network_access", host, port: 443},
+          })
+        ));
+        complete();
+        return {reply: "done", reason: "completed", iterations: 1};
+      };
+      const instance = render(<App resources={createTestRuntimeResources(cwd)} runAgentImpl={runAgentImpl}/>);
+      await flush();
+      instance.stdin.write("network checks");
+      await flush();
+      instance.stdin.write(ENTER);
+      await flush();
+      expect(instance.lastFrame()).toContain("first.test:443");
+      instance.stdin.write(ENTER);
+      await flush();
+      expect(instance.lastFrame()).toContain("second.test:443");
+      instance.stdin.write("2");
+      await done;
+      expect(decisions).toEqual([
+        {behavior: "allow", networkScope: "session"},
+        {behavior: "allow", networkScope: "once"},
+      ]);
+    });
   });
 
   test("脱离 Sandbox 的本地验证显示明确用途并可展开完整命令", async () => {
@@ -186,6 +224,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <ElevatedBashDialog
         req={{
+          id: 1,
           question: `该命令请求脱离 OS Sandbox：\n${command}`,
           toolName: "bash",
           input: {command, sandbox_permissions: "require_escalated"},
@@ -229,6 +268,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <ElevatedBashDialog
         req={{
+          id: 1,
           question: "start server",
           toolName: "bash",
           input: {
@@ -244,6 +284,34 @@ describe("permission confirmation UI", () => {
     await flush();
     expect(instance.lastFrame()).toContain("Start local service");
     expect(instance.lastFrame()).toContain("› Start once");
+  });
+
+  test("自动识别的 macOS 应用宿主执行使用 elevated 专用界面", async () => {
+    const command =
+      '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new';
+    const instance = render(
+      <ElevatedBashDialog
+        req={{
+          id: 1,
+          question: "launch application",
+          toolName: "bash",
+          input: {command, run_in_background: true},
+          allowAddToAllowList: false,
+          presentation: {
+            kind: "host_execution",
+            reason: "启动 macOS 应用进程",
+            command,
+          },
+          resolve: () => {},
+        }}
+        onDone={() => {}}
+      />
+    );
+
+    await flush();
+    expect(instance.lastFrame()).toContain("◆ RUN OUTSIDE SANDBOX");
+    expect(instance.lastFrame()).toContain("Launch macOS application");
+    expect(instance.lastFrame()).toContain("› Launch once");
   });
 
   test("App 将 enter_plan_mode 路由到专用界面", async () => {
@@ -388,6 +456,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <ConfirmDialog
         req={{
+          id: 1,
           question: "bash 需要确认",
           toolName: "bash",
           input: { command: "git status" },
@@ -432,6 +501,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <ConfirmDialog
         req={{
+          id: 1,
           question: "bash 需要确认",
           toolName: "bash",
           input: { command: "git status" },
@@ -518,6 +588,7 @@ describe("permission confirmation UI", () => {
     const instance = render(
       <FileAccessDialog
         req={{
+          id: 1,
           question: "write",
           toolName: "write_file",
           input: {path: "/tmp/a.ts"},

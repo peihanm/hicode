@@ -307,7 +307,12 @@ class SDKThreadImpl implements Thread {
         controller: AbortController
     ): ToolContextHost {
         return {
-            canUseTool: async (toolName, message, input) => {
+            canUseTool: async (toolName, message, input, options) => {
+                const network = options?.presentation?.kind === "network_access"
+                    ? options.presentation : undefined;
+                const signal = options?.signal
+                    ? AbortSignal.any([controller.signal, options.signal])
+                    : controller.signal;
                 const request: InteractionRequest = toolName === "ask_user"
                     ? {
                         requestId: randomUUID(),
@@ -322,14 +327,21 @@ class SDKThreadImpl implements Thread {
                         toolName,
                         message,
                         input,
+                        ...(network ? {networkAccess: {host: network.host, port: network.port}} : {}),
                     };
                 adapter.emitInteractionStart(request);
-                const response = await this.requestInteraction(
+                let response = await this.requestInteraction(
                     request,
                     turnId,
-                    controller.signal
+                    signal
                 );
-                const status = controller.signal.aborted
+                if (network && response.behavior === "allow" && (
+                    response.persistence === "always" || response.directoryScope !== undefined ||
+                    response.updatedInput !== undefined
+                )) {
+                    response = {behavior: "deny", message: "网络连接不支持永久工具授权、目录授权或修改输入"};
+                }
+                const status = signal.aborted
                     ? "interrupted"
                     : response.behavior === "deny"
                         ? "denied"
@@ -516,6 +528,7 @@ function toPermissionDecision(
     return response.behavior === "allow"
         ? {
             behavior: "allow",
+            ...(response.networkScope === undefined ? {} : {networkScope: response.networkScope}),
             ...(response.directoryScope === undefined
                 ? {}
                 : {directoryScope: response.directoryScope}),

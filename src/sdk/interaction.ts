@@ -24,6 +24,13 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
         const directoryScope = "directoryScope" in value
             ? value.directoryScope
             : undefined;
+        const networkScope = "networkScope" in value ? value.networkScope : undefined;
+        if (networkScope !== undefined && networkScope !== "once" && networkScope !== "session") {
+            return {behavior: "deny", message: "SDK Host 返回了无效 networkScope"};
+        }
+        if (networkScope !== undefined && (directoryScope !== undefined || persistence === "always")) {
+            return {behavior: "deny", message: "网络授权不能混用目录或永久授权"};
+        }
         if (
             directoryScope !== undefined &&
             directoryScope !== "once" &&
@@ -39,6 +46,7 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
             behavior: "allow",
             ...(persistence === undefined ? {} : {persistence}),
             ...(directoryScope === undefined ? {} : {directoryScope}),
+            ...(networkScope === undefined ? {} : {networkScope}),
             ...("updatedInput" in value
                 ? {updatedInput: value.updatedInput}
                 : {}),

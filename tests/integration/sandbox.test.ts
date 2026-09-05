@@ -16,6 +16,8 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {createTestContext} from "../helpers/testContext.js";
+import {NetworkAccessSession} from "../../src/permissions/networkAccess.js";
+import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 
 const ENABLED = process.env.PILLAR_RUN_SANDBOX_INTEGRATION === "1";
 
@@ -29,6 +31,81 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe("OS Sandbox integration", () => {
+    test("实际代理批准域名后保留文件隔离，重复请求复用 Session 授权", async () => {
+        if (!ENABLED) return;
+        await withTempProject(async (cwd) => {
+            let hits = 0;
+            const server = createServer((_request, response) => { hits++; response.end("network-ok"); });
+            await new Promise<void>((resolve, reject) => {
+                server.once("error", reject);
+                server.listen(0, "127.0.0.1", resolve);
+            });
+            const address = server.address();
+            if (!address || typeof address === "string") throw new Error("missing test port");
+            await mkdir(join(cwd, ".pillar"), {recursive: true});
+            const blockedPath = join(cwd, ".pillar", "network-must-not-enable-write.txt");
+            const runtime = await createSandboxRuntime({cwd, settings: {
+                enabled: true, filesystem: {denyRead: [], denyWrite: []},
+                network: {allowedDomains: [], allowLocalBinding: false},
+            }});
+            const runner = createShellRunner(runtime, testChildEnvironment);
+            const tasks = createTaskRuntimeForTest(cwd, runner, () => ({
+                agentId: "unused",
+                async run() { throw new Error("network test does not launch agents"); },
+            }));
+            try {
+                expect(runtime.status.kind).toBe("ready");
+                let asks = 0;
+                const ctx = createTestContext(cwd, {
+                    shellRunner: runner, permissionMode: "default",
+                    canUseTool: async (_tool, _message, _input, options) => {
+                        asks++;
+                        expect(options?.presentation).toEqual({
+                            kind: "network_access", host: "127.0.0.1", port: address.port,
+                        });
+                        return {behavior: "allow", networkScope: "session"};
+                    },
+                });
+                ctx.networkAccess = new NetworkAccessSession();
+                // Force even loopback through the authenticated proxy; no internet required.
+                const command = `/usr/bin/curl --noproxy '' --silent --show-error --fail --max-time 5 http://127.0.0.1:${address.port}`;
+                for (let index = 0; index < 2; index++) {
+                    const result = await executeToolResult("bash", JSON.stringify({command}), ctx, `network-${index}`);
+                    expect(result.outcome).toBe("ok");
+                    expect(result.modelContent).toBe("network-ok");
+                }
+                expect(asks).toBe(1);
+                expect(hits).toBe(2);
+                const blocked = await executeToolResult("bash", JSON.stringify({
+                    command: `${command} && /usr/bin/printf forbidden > ${JSON.stringify(blockedPath)}`,
+                }), ctx, "network-still-sandboxed");
+                expect(blocked.outcome).toBe("failed");
+                expect(blocked.modelContent).toContain("network-ok");
+                expect(await exists(blockedPath)).toBe(false);
+                expect(asks).toBe(1);
+
+                ctx.tasks = tasks.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
+                const background = await executeToolResult("bash", JSON.stringify({
+                    command, run_in_background: true,
+                }), ctx, "network-background");
+                expect(background.outcome).toBe("ok");
+                expect(background.modelContent).toContain("network-ok");
+                expect(asks).toBe(1);
+                expect(hits).toBe(4);
+
+                // An unrelated execution cannot consume another Session's allowance.
+                const denied = await runner.run({command, cwd, signal: new AbortController().signal});
+                expect(denied.termination).toMatchObject({kind: "exit", code: 22});
+                expect(denied.stderr).toContain("本地网络权限限制");
+                expect(hits).toBe(4);
+            } finally {
+                await tasks.close();
+                await runtime.close();
+                await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+            }
+        });
+    });
+
     test("真实 OS 边界限制文件、网络和子进程", async () => {
         if (!ENABLED) return;
         await withTempProject(async (cwd) => {

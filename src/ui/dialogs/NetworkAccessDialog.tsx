@@ -6,8 +6,9 @@ import {COLORS} from "../theme.js";
 import {useTerminalWidth} from "../terminalSize.js";
 
 const OPTIONS = [
-    {label: "Allow once", allow: true},
-    {label: "Cancel", allow: false},
+    {label: "Allow for this session", scope: "session"},
+    {label: "Allow this connection", scope: "once"},
+    {label: "Cancel", scope: undefined},
 ] as const;
 
 function fitRow(value: string, width: number): string {
@@ -23,8 +24,7 @@ function fitRow(value: string, width: number): string {
 }
 
 export function isNetworkAccessRequest(req: ConfirmReq): boolean {
-    return req.presentation?.kind === "network_access" &&
-        req.presentation.domains.length > 0;
+    return req.presentation?.kind === "network_access";
 }
 
 export function NetworkAccessDialog({
@@ -39,26 +39,27 @@ export function NetworkAccessDialog({
     const completedRef = useRef(false);
     const contentWidth = Math.max(20, useTerminalWidth() - 6);
 
-    const finish = (allow: boolean) => {
+    const finish = (scope: "once" | "session" | undefined) => {
         if (completedRef.current) return;
         completedRef.current = true;
-        req.resolve(allow
-            ? {behavior: "allow"}
+        req.resolve(scope
+            ? {behavior: "allow", networkScope: scope}
             : {behavior: "deny", message: "用户拒绝临时网络授权"});
         onDone();
     };
 
     useInput((value, key) => {
         if (completedRef.current) return;
-        if (key.upArrow || key.downArrow) {
-            setSelectedIndex((index) => (index + 1) % OPTIONS.length);
-        } else if (key.return || value === "1" || value === "2") {
-            const index = value === "1" ? 0 : value === "2" ? 1 : selectedIndex;
-            finish(OPTIONS[index]?.allow === true);
+        if (key.escape) finish(undefined);
+        else if (key.upArrow || key.downArrow) {
+            setSelectedIndex((index) => (index + (key.upArrow ? -1 : 1) + OPTIONS.length) % OPTIONS.length);
+        } else if (key.return || /^[1-3]$/.test(value)) {
+            const index = key.return ? selectedIndex : Number(value) - 1;
+            finish(OPTIONS[index]?.scope);
         }
     });
 
-    if (presentation?.kind !== "network_access" || presentation.domains.length === 0) {
+    if (presentation?.kind !== "network_access") {
         return null;
     }
 
@@ -67,14 +68,11 @@ export function NetworkAccessDialog({
             <Text color={COLORS.warning} bold>◆ NETWORK ACCESS</Text>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>REQUEST</Text>
-                <Text>{presentation.reason} 需要访问：</Text>
-                {presentation.domains.map((domain) => (
-                    <Text key={domain}>  {domain}</Text>
-                ))}
+                <Text>连接 {presentation.host}:{presentation.port}</Text>
             </Box>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
-                <Text color={COLORS.dim} bold>RISK</Text>
-                <Text>本次命令将脱离 OS Sandbox，可直接访问宿主网络、文件和子进程。</Text>
+                <Text>仅允许此域名与端口；文件与进程仍受 Sandbox 保护。</Text>
+                <Text color={COLORS.dim}>会话授权不会写入项目配置，关闭会话后失效。</Text>
             </Box>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>ACTION</Text>

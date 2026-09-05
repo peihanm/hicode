@@ -54,6 +54,18 @@ function formatPlaceholder(id: number, content: string): string {
         : `[Pasted text #${id}]`;
 }
 
+function findAdjacentCapsule(
+    value: string,
+    cursorOffset: number,
+    state: PasteCapsuleState
+): PasteCapsule | undefined {
+    return state.capsules.find((capsule) => {
+        const start = cursorOffset - capsule.placeholder.length;
+        return start >= 0 &&
+            value.slice(start, cursorOffset) === capsule.placeholder;
+    });
+}
+
 export function insertPasteCapsule(
     value: string,
     cursorOffset: number,
@@ -70,6 +82,33 @@ export function insertPasteCapsule(
             cursorOffset: cursorOffset + normalized.length,
             state,
             collapsed: false,
+        };
+    }
+
+    // A terminal may split one large paste into multiple stdin chunks. If two
+    // collapsible chunks are adjacent, they are one opaque pasted region from
+    // the editor's perspective, so extend the existing capsule instead of
+    // exposing transport chunk boundaries as separate capsule IDs.
+    const adjacent = findAdjacentCapsule(value, cursorOffset, state);
+    if (adjacent) {
+        const content = adjacent.content + normalized;
+        const placeholder = formatPlaceholder(adjacent.id, content);
+        const start = cursorOffset - adjacent.placeholder.length;
+        return {
+            value:
+                value.slice(0, start) +
+                placeholder +
+                value.slice(cursorOffset),
+            cursorOffset: start + placeholder.length,
+            state: {
+                capsules: state.capsules.map((capsule) =>
+                    capsule.id === adjacent.id
+                        ? {...capsule, content, placeholder}
+                        : capsule
+                ),
+                nextId: state.nextId,
+            },
+            collapsed: true,
         };
     }
 

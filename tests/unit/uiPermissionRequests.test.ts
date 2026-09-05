@@ -42,17 +42,36 @@ describe("UIPermissionRequests", () => {
         allowPersistent: false,
         presentation: {
           kind: "network_access",
-          reason: "npm",
-          domains: ["registry.npmjs.org"],
+          host: "registry.npmjs.org",
+          port: 443,
         },
       }
     );
     expect(requests.getSnapshot()?.allowAddToAllowList).toBe(false);
     expect(requests.getSnapshot()?.presentation).toEqual({
       kind: "network_access",
-      reason: "npm",
-      domains: ["registry.npmjs.org"],
+      host: "registry.npmjs.org",
+      port: 443,
     });
+    requests.denyPending("stop");
+  });
+
+  test("macOS 应用宿主执行授权不展示永久允许", () => {
+    const requests = new UIPermissionRequests();
+    const command = '"/Applications/Test.app/Contents/MacOS/Test"';
+    void requests.request(
+      "bash",
+      "launch application",
+      {command},
+      {
+        presentation: {
+          kind: "host_execution",
+          reason: "启动 macOS 应用进程",
+          command,
+        },
+      }
+    );
+    expect(requests.getSnapshot()?.allowAddToAllowList).toBe(false);
     requests.denyPending("stop");
   });
 
@@ -76,14 +95,18 @@ describe("UIPermissionRequests", () => {
     expect(await secondDecision).toEqual({ behavior: "allow" });
   });
 
-  test("拒绝并发 pending request", async () => {
+  test("并发 pending request 排队，避免后台网络权限覆盖前台弹窗", async () => {
     const requests = new UIPermissionRequests();
     const first = requests.request("bash", "first", {});
-    await expect(requests.request("write_file", "second", {})).rejects.toThrow(
-      "已有权限请求"
-    );
+    const firstRequest = requests.getSnapshot();
+    const second = requests.request("write_file", "second", {});
+    expect(requests.getSnapshot()).toBe(firstRequest);
+    firstRequest?.resolve({behavior: "allow"});
+    requests.clear(firstRequest);
+    expect(requests.getSnapshot()?.question).toBe("second");
     requests.denyPending("stop");
     await first;
+    expect(await second).toEqual({behavior: "deny", message: "stop"});
   });
 
   test("dispose 用 shutdown 文案解决 pending request", async () => {
@@ -105,5 +128,25 @@ describe("UIPermissionRequests", () => {
     const decision = requests.request("bash", "pending", {});
     expect(requests.denyPending("stop")).toBe(true);
     expect(await decision).toEqual({behavior: "deny", message: "stop"});
+  });
+
+  test("队列内取消不会清除当前弹窗；当前取消后继续下一项", async () => {
+    const requests = new UIPermissionRequests();
+    const current = new AbortController();
+    const queued = new AbortController();
+    const first = requests.request("bash", "first", {}, {signal: current.signal});
+    const firstReq = requests.getSnapshot();
+    const second = requests.request("bash", "second", {}, {signal: queued.signal});
+    const third = requests.request("bash", "third", {});
+    queued.abort();
+    expect((await second).behavior).toBe("deny");
+    expect(requests.getSnapshot()).toBe(firstReq);
+    current.abort();
+    expect((await first).behavior).toBe("deny");
+    expect(requests.getSnapshot()?.question).toBe("third");
+    expect(requests.getSnapshot()?.id).not.toBe(firstReq?.id);
+    requests.dispose();
+    expect((await third).behavior).toBe("deny");
+    expect((await requests.request("bash", "after close", {})).behavior).toBe("deny");
   });
 });

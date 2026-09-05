@@ -162,7 +162,14 @@ export async function resolveCheckpointPath(
         resolve(withinBoundary.absolutePath, "..")
     );
     const root = await realpath(existingParent);
-    const external = await validateCheckpointPath(root, withinBoundary.absolutePath);
+    const unresolvedSuffix = relative(existingParent, withinBoundary.absolutePath);
+    if (!isRelativeInside(unresolvedSuffix)) {
+        throw new Error("Checkpoint 无法解析项目外文件路径");
+    }
+    const external = await validateCheckpointPath(
+        root,
+        resolve(root, unresolvedSuffix)
+    );
     return {...external, root};
 }
 

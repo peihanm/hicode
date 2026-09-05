@@ -12,10 +12,6 @@ import {
 import type {ShellExecutionResult} from "./process.js";
 import type {ShellTaskSnapshot} from "../../tasks/index.js";
 import {displayToolPath} from "../shared/paths.js";
-import {
-    inferShellNetworkRequirement,
-    missingAllowedDomains,
-} from "./networkAccess.js";
 
 const inputSchema = z.object({
     command: z.string().describe(
@@ -40,7 +36,7 @@ const inputSchema = z.object({
     sandbox_permissions: z
         .enum(["use_default", "require_escalated"])
         .optional()
-        .describe("默认在已启用的 OS Sandbox 内执行；常见依赖安装缺少 Registry 网络权限时由 Runtime 自动申请本次 elevated 授权。其他命令只有确实需要越过文件或网络边界时才使用 require_escalated，并等待用户单独确认"),
+        .describe("默认在 OS Sandbox 内执行；实际网络连接由 Runtime 按域名与端口申请授权，批准后仍保留 Sandbox。直接启动 macOS .app 可执行文件时自动申请本次 elevated 授权。只有确实需要脱离 Sandbox 时才使用 require_escalated，并等待用户单独确认"),
 });
 
 type CommandCwdResult =
@@ -84,24 +80,25 @@ function backgroundSyntaxMessage(): string {
     return "Bash command 禁止使用 shell 后台操作符 &。启动长运行服务请单独调用 bash 并设置 run_in_background=true；重启受管任务时先用 bash_task stop。";
 }
 
-function requiredNetworkGrant(
+function isDirectMacOSApplicationCommand(command: string): boolean {
+    const quotedExecutable = /^\s*(["'])(\/.+?\.app\/Contents\/MacOS\/.+?)\1(?:\s|$)/i;
+    const unquotedExecutable = /^\s*\/\S+\.app\/Contents\/MacOS\/\S+(?:\s|$)/i;
+    return splitShellSubCommands(command).some((part) =>
+        quotedExecutable.test(part) || unquotedExecutable.test(part)
+    );
+}
+
+function requiredHostExecutionGrant(
     command: string,
     sandboxPermissions: "use_default" | "require_escalated" | undefined,
     ctx: ToolContext
-): {reason: string; domains: string[]} | undefined {
+): {reason: string; command: string} | undefined {
     if (
         sandboxPermissions === "require_escalated" ||
-        ctx.shellRunner.sandboxStatus.kind !== "ready"
+        ctx.shellRunner.sandboxStatus.kind !== "ready" ||
+        !isDirectMacOSApplicationCommand(command)
     ) return undefined;
-    const requirement = inferShellNetworkRequirement(command);
-    if (!requirement) return undefined;
-    const domains = missingAllowedDomains(
-        requirement,
-        ctx.shellRunner.sandboxNetworkAllowedDomains ?? []
-    );
-    return domains.length > 0
-        ? {reason: requirement.reason, domains}
-        : undefined;
+    return {reason: "启动 macOS 应用进程", command};
 }
 
 function formatShellResult(result: ShellExecutionResult): string {
@@ -190,7 +187,7 @@ function formatObservedBackgroundTask(task: ShellTaskSnapshot): string {
 
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。常见包管理器需要 Sandbox 未允许的 Registry 时，Runtime 会自动向用户申请仅限本次命令的 elevated 授权，不要改用镜像或离线模式规避网络限制。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，且任一失败必须让整个命令返回非零。若本地监听或访问返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
+    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。直接启动 macOS .app 可执行文件时，Runtime 会自动申请本次命令的 elevated 授权。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，且任一失败必须让整个命令返回非零。若本地监听返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
     isReadOnly: ({command, sandbox_permissions}) =>
@@ -201,10 +198,10 @@ export const bashTool: Tool<typeof inputSchema> = {
         isShellCommandReadOnly(command),
     requiresUserInteraction: ({command, sandbox_permissions}, ctx) =>
         sandbox_permissions === "require_escalated" ||
-        requiredNetworkGrant(command, sandbox_permissions, ctx) !== undefined,
+        requiredHostExecutionGrant(command, sandbox_permissions, ctx) !== undefined,
     getDefaultApprovalScope: ({command, sandbox_permissions}, ctx) =>
         sandbox_permissions !== "require_escalated" &&
-            requiredNetworkGrant(command, sandbox_permissions, ctx) === undefined &&
+            requiredHostExecutionGrant(command, sandbox_permissions, ctx) === undefined &&
             ctx.shellRunner.sandboxStatus.kind === "ready"
             ? {kind: "sandboxed"}
             : undefined,
@@ -226,23 +223,22 @@ export const bashTool: Tool<typeof inputSchema> = {
                 ].join("\n"),
             };
         }
-        const networkGrant = requiredNetworkGrant(
+        const hostGrant = requiredHostExecutionGrant(
             command,
             sandbox_permissions,
             ctx
         );
-        if (networkGrant) {
+        if (hostGrant) {
             return {
                 behavior: "ask",
                 allowPersistent: false,
                 presentation: {
-                    kind: "network_access",
-                    reason: networkGrant.reason,
-                    domains: networkGrant.domains,
+                    kind: "host_execution",
+                    reason: hostGrant.reason,
+                    command: hostGrant.command,
                 },
                 message: [
-                    `检测到 ${networkGrant.reason} 需要访问当前 Sandbox 未允许的网络域名：`,
-                    ...networkGrant.domains.map((domain) => `  ${domain}`),
+                    `检测到命令需要${hostGrant.reason}。`,
                     "批准后本次命令将脱离 OS Sandbox；命令及其子进程不再受文件和网络边界保护。",
                 ].join("\n"),
             };
@@ -299,14 +295,19 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {content: resolvedCwd.message, outcome: "failed" as const};
         }
         const commandCwd = resolvedCwd.path;
-        const networkGrant = requiredNetworkGrant(
+        const hostGrant = requiredHostExecutionGrant(
             command,
             sandbox_permissions,
             ctx
         );
-        const effectiveSandboxPermissions = networkGrant
+        const effectiveSandboxPermissions = hostGrant
             ? "require_escalated" as const
             : sandbox_permissions;
+        const networkAccess = ctx.networkAccess ? {
+            session: ctx.networkAccess,
+            canUseTool: ctx.canUseTool,
+            canPrompt: () => ctx.permissionPromptPolicy === "onRequest",
+        } : undefined;
         if (run_in_background) {
             if (
                 effectiveSandboxPermissions !== "require_escalated" &&
@@ -346,6 +347,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                     sandboxPermissions: effectiveSandboxPermissions,
                     writableRoots: ctx.directoryAccess.listDirectories(),
+                    networkAccess,
                 });
                 if (task.status !== "running") {
                     return {
@@ -390,6 +392,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 previewChars: 30_000,
                 sandboxPermissions: effectiveSandboxPermissions,
                 writableRoots: ctx.directoryAccess.listDirectories(),
+                networkAccess,
             });
             const shouldPersist =
                 (result.outputBytes ?? 0) > 30_000 ||

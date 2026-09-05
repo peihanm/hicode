@@ -126,40 +126,14 @@ export const editFileTool: Tool<
     getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
     async checkPermissions({path, old_string, new_string, replace_all}, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
-        const validation = await validateEdit(absPath, old_string, replace_all, ctx);
-        if (!validation.ok) {
-            return {
-                behavior: "deny" as const,
-                message: validation.message,
-            };
-        }
-
         if (ctx.memoryFiles?.classify(absPath)) {
-            const normalizedNewString = normalizeLineEndings(new_string);
-            const {normalizedContent, lineEnding, match} = validation.value;
-            const normalizedNewContent = replace_all
-                ? normalizedContent.split(match.actualString).join(normalizedNewString)
-                : normalizedContent.slice(0, match.index) +
-                  normalizedNewString +
-                  normalizedContent.slice(match.index + match.actualString.length);
-            try {
-                ctx.memoryFiles.validateWrite(
-                    absPath,
-                    restoreLineEndings(normalizedNewContent, lineEnding)
-                );
-                return {behavior: "allow" as const};
-            } catch (error) {
-                return {
-                    behavior: "deny" as const,
-                    message: error instanceof Error ? error.message : String(error),
-                };
-            }
+            return {behavior: "allow" as const};
         }
 
         const preview = formatDiff(old_string, new_string);
         return {
             behavior: "ask" as const,
-            message: `即将修改 ${path}（${validation.value.count} 处匹配，replace_all=${replace_all}）:\n${preview}\n是否执行?`,
+            message: `即将修改 ${path}（replace_all=${replace_all}）:\n${preview}\n是否执行?`,
         };
     },
     execute: async (
@@ -170,7 +144,10 @@ export const editFileTool: Tool<
         const absPath = resolveToolPath(ctx.cwd, path);
         const validation = await validateEdit(absPath, old_string, replace_all, ctx);
         if (!validation.ok) {
-            return `编辑取消: ${validation.message} 请重新 read_file 后再修改。`;
+            return {
+                content: `编辑失败: ${validation.message} 请重新 read_file 后再修改。`,
+                outcome: "failed" as const,
+            };
         }
 
         const {
@@ -195,6 +172,10 @@ export const editFileTool: Tool<
                 normalizedContent.slice(match.index + match.actualString.length);
         }
         const newContent = restoreLineEndings(normalizedNewContent, lineEnding);
+
+        if (ctx.memoryFiles?.classify(absPath)) {
+            ctx.memoryFiles.validateWrite(absPath, newContent);
+        }
 
         if (newContent === originalContent) {
             return `无需修改 ${path}（内容未发生变化）`;

@@ -18,13 +18,10 @@ import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 const readySandboxRunner: ShellRunnerLike = {
   sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
-  sandboxNetworkAllowedDomains: [],
   run: runShellCommand,
 };
 
-function networkCaptureRunner(
-  allowedDomains: readonly string[] = []
-): {
+function networkCaptureRunner(): {
   runner: ShellRunnerLike;
   calls: Array<{
     command: string;
@@ -39,7 +36,6 @@ function networkCaptureRunner(
     calls,
     runner: {
       sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
-      sandboxNetworkAllowedDomains: allowedDomains,
       async run(request) {
         calls.push({
           command: request.command,
@@ -153,7 +149,7 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("依赖安装申请单次网络权限后以 elevated 执行", async () => {
+  test("依赖安装不再根据命令字符串推测网络需求或自动提权", async () => {
     await withTempProject(async (cwd) => {
       const {runner, calls} = networkCaptureRunner();
       const requests: Array<{
@@ -176,30 +172,83 @@ describe("bash tool contract", () => {
       );
 
       expect(result.outcome).toBe("ok");
-      expect(requests).toHaveLength(1);
-      expect(requests[0]?.message).toContain("registry.npmjs.org");
-      expect(requests[0]?.message).toContain("脱离 OS Sandbox");
-      expect(requests[0]?.options).toEqual({
-        allowPersistent: false,
-        presentation: {
-          kind: "network_access",
-          reason: "npm install",
-          domains: ["registry.npmjs.org"],
-        },
-      });
+      expect(requests).toHaveLength(0);
       expect(calls).toEqual([{
         command: "npm install && npm run build",
-        sandboxPermissions: "require_escalated",
+        sandboxPermissions: undefined,
       }]);
     });
   });
 
-  test("Sandbox 已允许包仓库时依赖安装不再询问", async () => {
+  test("直接启动 macOS 应用时先申请单次宿主执行权限", async () => {
     await withTempProject(async (cwd) => {
-      const {runner, calls} = networkCaptureRunner(["*.npmjs.org"]);
+      const {runner, calls} = networkCaptureRunner();
+      const command =
+        '"/Applications/Test Browser.app/Contents/MacOS/Test Browser" --headless=new';
+      const requests: Array<{
+        message: string;
+        options?: Parameters<ToolContext["canUseTool"]>[3];
+      }> = [];
       const result = await executeToolResult(
         "bash",
-        JSON.stringify({command: "npm ci"}),
+        JSON.stringify({command}),
+        createTestContext(cwd, {
+          permissionMode: "bypassPermissions",
+          collaborationMode: "build",
+          shellRunner: runner,
+          canUseTool: async (_tool, message, _input, options) => {
+            requests.push({message, options});
+            return {behavior: "allow"};
+          },
+        }),
+        "macos-app-host-execution"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.message).toContain("启动 macOS 应用进程");
+      expect(requests[0]?.options).toEqual({
+        allowPersistent: false,
+        presentation: {
+          kind: "host_execution",
+          reason: "启动 macOS 应用进程",
+          command,
+        },
+      });
+      expect(calls).toEqual([{command, sandboxPermissions: "require_escalated"}]);
+    });
+  });
+
+  test("参数中出现 macOS 应用路径不会误触发宿主执行授权", async () => {
+    await withTempProject(async (cwd) => {
+      const {runner, calls} = networkCaptureRunner();
+      const command =
+        'printf "%s" "/Applications/Test.app/Contents/MacOS/Test"';
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command}),
+        createTestContext(cwd, {
+          permissionMode: "default",
+          collaborationMode: "build",
+          shellRunner: runner,
+          canUseTool: async () => {
+            throw new Error("普通参数不应触发宿主执行授权");
+          },
+        }),
+        "macos-app-path-argument"
+      );
+
+      expect(result.outcome).toBe("ok");
+      expect(calls).toEqual([{command, sandboxPermissions: undefined}]);
+    });
+  });
+
+  test("npx 本地调用不提前询问", async () => {
+    await withTempProject(async (cwd) => {
+      const {runner, calls} = networkCaptureRunner();
+      const result = await executeToolResult(
+        "bash",
+        JSON.stringify({command: "npx --version"}),
         createTestContext(cwd, {
           permissionMode: "default",
           collaborationMode: "build",
@@ -213,13 +262,13 @@ describe("bash tool contract", () => {
 
       expect(result.outcome).toBe("ok");
       expect(calls).toEqual([{
-        command: "npm ci",
+        command: "npx --version",
         sandboxPermissions: undefined,
       }]);
     });
   });
 
-  test("非交互 Host 拒绝依赖安装网络申请且不执行", async () => {
+  test("非交互 Host 也可以执行没有实际联网的缓存安装", async () => {
     await withTempProject(async (cwd) => {
       const {runner, calls} = networkCaptureRunner();
       const result = await executeToolResult(
@@ -237,9 +286,8 @@ describe("bash tool contract", () => {
         "denied-package-install"
       );
 
-      expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("当前 Host 不支持权限交互");
-      expect(calls).toEqual([]);
+      expect(result.outcome).toBe("ok");
+      expect(calls).toEqual([{command: "npm install", sandboxPermissions: undefined}]);
     });
   });
 

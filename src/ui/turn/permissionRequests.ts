@@ -9,6 +9,9 @@ type Listener = () => void;
 export class UIPermissionRequests {
     private readonly listeners = new Set<Listener>();
     private current: ConfirmReq | null = null;
+    private queue: ConfirmReq[] = [];
+    private disposed = false;
+    private nextId = 0;
 
     request(
         toolName: string,
@@ -17,15 +20,17 @@ export class UIPermissionRequests {
         options?: {
             allowPersistent?: boolean;
             presentation?: PermissionPromptPresentation;
+            signal?: AbortSignal;
         }
     ): Promise<PermissionDecision> {
-        if (this.current) {
-            return Promise.reject(new Error("已有权限请求正在等待处理"));
+        if (this.disposed || options?.signal?.aborted) {
+            return Promise.resolve({behavior: "deny", message: "权限请求已取消"});
         }
 
         return new Promise<PermissionDecision>((resolve) => {
             let settled = false;
             const request: ConfirmReq = {
+                id: ++this.nextId,
                 question,
                 toolName,
                 input,
@@ -36,6 +41,8 @@ export class UIPermissionRequests {
                     toolName !== "delete_file" &&
                     toolName !== "enter_plan_mode" &&
                     toolName !== "exit_plan_mode" &&
+                    options?.presentation?.kind !== "host_execution" &&
+                    options?.presentation?.kind !== "network_access" &&
                     !(
                         toolName === "bash" &&
                         typeof input === "object" &&
@@ -47,31 +54,42 @@ export class UIPermissionRequests {
                 resolve: (decision) => {
                     if (settled) return;
                     settled = true;
+                    options?.signal?.removeEventListener("abort", abort);
                     resolve(decision);
                 },
             };
-            this.current = request;
+            const abort = () => {
+                request.resolve({behavior: "deny", message: "权限请求已取消"});
+                if (!this.clear(request)) {
+                    this.queue = this.queue.filter((entry) => entry !== request);
+                }
+            };
+            options?.signal?.addEventListener("abort", abort, {once: true});
+            if (this.current) this.queue.push(request);
+            else this.current = request;
             this.notify();
         });
     }
 
     clear(request: ConfirmReq | null): boolean {
         if (!request || this.current !== request) return false;
-        this.current = null;
+        this.current = this.queue.shift() ?? null;
         this.notify();
         return true;
     }
 
     denyPending(message: string): boolean {
-        const request = this.current;
-        if (!request) return false;
+        const requests = [...(this.current ? [this.current] : []), ...this.queue];
+        if (requests.length === 0) return false;
         this.current = null;
-        request.resolve({behavior: "deny", message});
+        this.queue = [];
+        for (const request of requests) request.resolve({behavior: "deny", message});
         this.notify();
         return true;
     }
 
     dispose(): void {
+        this.disposed = true;
         this.denyPending("应用正在关闭");
         this.listeners.clear();
     }

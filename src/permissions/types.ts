@@ -8,8 +8,13 @@ import type {DirectoryAccessRequest, DirectoryGrantScope} from "./directoryAcces
 export type PermissionPromptPresentation =
     | {
         kind: "network_access";
+        host: string;
+        port: number;
+    }
+    | {
+        kind: "host_execution";
         reason: string;
-        domains: string[];
+        command: string;
     }
     | ({kind: "filesystem_access"} & DirectoryAccessRequest);
 
@@ -33,6 +38,7 @@ export type PermissionDecision =
         behavior: "allow";
         updatedInput?: unknown;
         directoryScope?: "once" | DirectoryGrantScope;
+        networkScope?: "once" | "session";
     } // 用户同意（可携带修改后的 input）
     | { behavior: "deny"; message: string }; // 用户拒绝
 

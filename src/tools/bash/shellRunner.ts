@@ -1,4 +1,5 @@
 import {normalizeTurnAbortReason} from "../../runtime/abort.js";
+import type {NetworkAccessExecution} from "../../permissions/networkAccess.js";
 import {mergeChildProcessEnvironment, type ChildProcessEnvironment,} from "../../runtime/childEnvironment.js";
 import type {SandboxExecutionPreference, SandboxRuntimeLike, SandboxStatus,} from "../../sandbox/index.js";
 import {runShellArgv, runShellCommand, type ShellCommandOptions, type ShellExecutionResult,} from "./process.js";
@@ -6,6 +7,7 @@ import {runShellArgv, runShellCommand, type ShellCommandOptions, type ShellExecu
 interface ShellRunnerRequest extends ShellCommandOptions {
     sandboxPermissions?: SandboxExecutionPreference;
     writableRoots?: readonly string[];
+    networkAccess?: NetworkAccessExecution;
 }
 
 const LOCAL_BINDING_HINT =
@@ -30,7 +32,6 @@ export function annotateSandboxLocalNetworkFailure(output: string): string {
 
 export interface ShellRunnerLike {
     readonly sandboxStatus: SandboxStatus;
-    readonly sandboxNetworkAllowedDomains?: readonly string[];
 
     run(request: ShellRunnerRequest): Promise<ShellExecutionResult>;
 }
@@ -69,13 +70,11 @@ export function createShellRunner(
         get sandboxStatus() {
             return sandbox.status;
         },
-        get sandboxNetworkAllowedDomains() {
-            return sandbox.networkAllowedDomains;
-        },
         async run(request) {
             const {
                 sandboxPermissions = "use_default",
                 writableRoots,
+                networkAccess,
                 command,
                 env,
                 ...processOptions
@@ -103,7 +102,7 @@ export function createShellRunner(
                     command,
                     request.cwd,
                     request.signal,
-                    {writableRoots}
+                    {writableRoots, networkAccess}
                 );
             } catch (error) {
                 return sandboxFailure(request.signal, error);
@@ -125,8 +124,13 @@ export function createShellRunner(
                 } catch {
                 }
                 stderr = annotateSandboxLocalNetworkFailure(stderr);
+                if (wrapped.networkDenials?.length) {
+                    stderr += `\nPillar Sandbox: 网络代理拒绝 ${wrapped.networkDenials.join("；")}。` +
+                        "这是本地网络权限限制，不代表远端服务故障；用户拒绝后不要自动换源或提权绕过。";
+                }
                 return {...result, stderr};
             } finally {
+                wrapped.release?.();
                 try {
                     sandbox.cleanupAfterCommand();
                 } catch {

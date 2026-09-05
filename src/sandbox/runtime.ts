@@ -1,22 +1,25 @@
 import {
     SandboxManager,
     type SandboxRuntimeConfig,
+    type SandboxAskCallback,
 } from "@anthropic-ai/sandbox-runtime";
 import {resolve} from "node:path";
 import {createSandboxRuntimeConfig} from "./config.js";
+import {SandboxNetworkApproval} from "./networkApproval.js";
 import type {
     ResolvedSandboxSettings,
     SandboxedCommand,
     SandboxPlatform,
     SandboxRuntimeLike,
     SandboxStatus,
+    SandboxCommandOptions,
 } from "./types.js";
 
 interface SandboxBackend {
     isSupportedPlatform(): boolean;
     isSandboxingEnabled(): boolean;
     checkDependencies(): {errors: string[]; warnings: string[]};
-    initialize(config: SandboxRuntimeConfig): Promise<void>;
+    initialize(config: SandboxRuntimeConfig, ask?: SandboxAskCallback): Promise<void>;
     wrapWithSandboxArgv(
         command: string,
         shell: string | undefined,
@@ -66,15 +69,15 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         readonly status: Extract<SandboxStatus, {kind: "ready"}>,
         private readonly backend: SandboxBackend,
         private readonly release: () => Promise<void>,
-        readonly networkAllowedDomains: readonly string[],
-        private readonly baseConfig: SandboxRuntimeConfig
+        private readonly baseConfig: SandboxRuntimeConfig,
+        private readonly networkApproval: SandboxNetworkApproval
     ) {}
 
     async wrapCommand(
         command: string,
         cwd: string,
         signal: AbortSignal,
-        options?: {writableRoots?: readonly string[]}
+        options?: SandboxCommandOptions
     ): Promise<SandboxedCommand> {
         if (this.closed) throw new Error("Sandbox Runtime 已关闭");
         const shell = process.platform === "win32" ? undefined : "/bin/sh";
@@ -99,13 +102,20 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                     allowWrite: writableRoots,
                 },
             };
-        return this.backend.wrapWithSandboxArgv(
-            command,
-            shell,
-            customConfig,
-            signal,
-            cwd
-        );
+        const approval = this.networkApproval.register(options?.networkAccess, signal);
+        try {
+            const wrapped = await this.backend.wrapWithSandboxArgv(
+                command,
+                shell,
+                customConfig,
+                signal,
+                cwd
+            );
+            return {...wrapped, ...approval};
+        } catch (error) {
+            approval.release();
+            throw error;
+        }
     }
 
     annotateStderr(command: string, stderr: string): string {
@@ -119,6 +129,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
     async close(): Promise<void> {
         if (this.closed) return;
         this.closed = true;
+        this.networkApproval.close();
         await this.release();
     }
 }
@@ -176,11 +187,13 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         }
 
         const lease = Symbol("pillar-sandbox-lease");
+        const networkApproval = new SandboxNetworkApproval();
         activeLease = lease;
         let released = false;
         const release = async () => {
             if (released || activeLease !== lease) return;
             released = true;
+            networkApproval.close();
             try {
                 await backend.reset();
             } finally {
@@ -190,7 +203,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
 
         try {
             const config = createSandboxRuntimeConfig(cwd, settings, writableRoots);
-            await backend.initialize(config);
+            await backend.initialize(config, networkApproval.ask);
             if (!backend.isSandboxingEnabled()) {
                 await release();
                 return new InactiveSandboxRuntime({
@@ -203,9 +216,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 kind: "ready",
                 platform,
                 warnings: dependencies.warnings,
-            }, backend, release, Object.freeze([
-                ...settings.network.allowedDomains,
-            ]), config);
+            }, backend, release, config, networkApproval);
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({
