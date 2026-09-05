@@ -13,7 +13,7 @@ import {createTurnAbortController} from "../../src/runtime/abort.js";
 test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文件证据经真实请求交付 %s", async mode => {
     await withTempProject(async cwd => {
         const store = createTestToolResultStore(cwd, "evidence", mode === "save-failure" ? {maxSessionBytes: 0} : {});
-        const ctx = createTestContext(cwd, {toolResultStore: store});
+        const ctx = createTestContext(cwd, {toolResultStore: store, model: "glm-5.2"});
         for (const [name, width] of [["a", 110], ["b", 100], ["c", 100]] as const) {
             await writeFile(join(cwd, `${name}.txt`), Array.from({length: 900}, (_, n) => `${name}${n}:${"x".repeat(width)}`).join("\n"));
         }
@@ -78,7 +78,7 @@ test.each(["failed", "cancelled", "iteration-limit", "compacted"])("未交付的
         let compacted = false;
         const read = assistantToolCall("read_file", {path}, "read");
         const fake = createFakeLLM([
-            {...read, ...(mode === "compacted" ? {contextUsage: {tokenCount: 1, contextWindow: 100}} : {})},
+            {...read, ...(mode === "compacted" ? {contextUsage: {tokenCount: 1, contextWindow: 10_000}} : {})},
             options => {
                 if (mode === "failed") throw new Error("offline failure");
                 if (mode === "cancelled") controller.abort("user-cancel");

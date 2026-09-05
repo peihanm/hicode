@@ -9,6 +9,7 @@ import {type CompactHistoryRunner, prepareAgentInvoke, type ToolSchemaProvider,}
 import {
     createTurnCompletionState,
     formatCompletionReminder,
+    formatCompletionContext,
     recordRuntimeInputs,
     recordToolOutcomes,
 } from "./turnCompletion.js";
@@ -178,6 +179,7 @@ async function runAgentCore(
             });
             const hasNextIteration =
                 maxIterations === undefined || i + 1 < maxIterations;
+            const evidenceContext = formatCompletionContext(completionState, options.getTodos?.() ?? []);
             const {invokeMessages, tools, estimatedTokens} = await prepareAgentInvoke({
                 history,
                 ctx,
@@ -185,12 +187,11 @@ async function runAgentCore(
                 getToolSchemas: getToolSchemasImpl,
                 compactHistory: compactHistoryImpl,
                 contextWindow: providerContextWindow,
-                additionalUserContextBlocks: completionNudge
-                    ? [
-                        ...(options.additionalUserContextBlocks ?? []),
-                        completionNudge,
-                    ]
-                    : options.additionalUserContextBlocks ?? [],
+                additionalUserContextBlocks: [
+                    ...(options.additionalUserContextBlocks ?? []),
+                    ...(evidenceContext ? [evidenceContext] : []),
+                    ...(completionNudge ? [completionNudge] : []),
+                ],
             });
             completionNudge = undefined;
 
@@ -293,7 +294,7 @@ async function runAgentCore(
                         options.getTodos?.() ?? []
                     )
                     : undefined;
-                if (completionReminder) {
+                if (completionReminder && hasNextIteration) {
                     history.pop();
                     completionGateUsed = true;
                     completionNudge = completionReminder;
@@ -363,7 +364,7 @@ async function runAgentCore(
             if (batchResult.status === "interrupted") {
                 return interruptedResult();
             }
-            recordToolOutcomes(completionState, batchResult.outcomes);
+            recordToolOutcomes(completionState, batchResult.outcomes, ctx.cwd);
             let denialLimitReached = false;
             for (const outcome of batchResult.outcomes) {
                 if (outcome.outcome === "denied") {

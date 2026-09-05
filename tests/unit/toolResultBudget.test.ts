@@ -10,6 +10,20 @@ import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 
 describe("tool result budgets", () => {
+  test("Bash 失败证据在预算落盘和配额失败后仍保留，其他工具不能冒充", async () => {
+    await withTempProject(async cwd => {
+      for (const quota of [0, 100_000]) {
+        const store = createTestToolResultStore(cwd, `evidence-${quota}`, {maxSessionBytes: quota});
+        const shellExecution = {command: "bun test", cwd, sandboxPermissions: "use_default" as const};
+        const output = {content: "failed".repeat(1000), outcome: "failed" as const, shellExecution};
+        const result = await processToolOutput({output, toolName: "bash", toolCallId: "check", maxResultSizeChars: 10, store});
+        expect(result.shellExecution).toEqual(shellExecution);
+        expect(result.outcome).toBe("failed");
+        const other = await processToolOutput({output, toolName: "mcp__check", toolCallId: "other", maxResultSizeChars: Infinity, store});
+        expect(other.shellExecution).toBeUndefined();
+      }
+    });
+  });
   test("模型结果预算不会丢弃独立的文件修改 UI 数据", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "ui-data", { pillarHome: `${cwd}/results` });

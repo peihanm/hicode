@@ -40,6 +40,8 @@ export interface ToolCallOutcome {
     outcome: ToolOutcome;
     result: string;
     uiData?: ToolUIData;
+    shellExecution?: ToolExecutionResult["shellExecution"];
+    untrackedWorkspaceEffects?: boolean;
 }
 
 export async function executeToolCallBatch({
@@ -184,6 +186,8 @@ export async function executeToolCallBatch({
                     argsJson: toolCall.function.arguments,
                     outcome: interrupted ? "interrupted" : execution.outcome,
                     result: interruptedContent ?? execution.modelContent,
+                    ...(!interrupted && execution.shellExecution ? {shellExecution: execution.shellExecution} : {}),
+                    ...(execution.untrackedWorkspaceEffects ? {untrackedWorkspaceEffects: true} : {}),
                     ...(!interrupted && execution.uiData
                         ? {uiData: execution.uiData}
                         : {}),

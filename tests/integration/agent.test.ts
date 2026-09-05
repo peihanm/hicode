@@ -725,10 +725,11 @@ describe("agent loop", () => {
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
-          executeTool: async () => ({
+          executeTool: async (name, args) => ({
             modelContent: "ok",
             displayContent: "ok",
             outcome: "ok",
+            ...(name === "bash" ? {shellExecution: {command: JSON.parse(args).command, cwd, sandboxPermissions: "use_default" as const}} : {}),
           }),
         }
       );

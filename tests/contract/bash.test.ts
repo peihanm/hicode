@@ -587,6 +587,7 @@ describe("bash tool contract", () => {
       );
       expect(result.modelContent).toContain("<persisted-output>");
       expect(result.modelContent.length).toBeLessThan(5_000);
+      expect(result.shellExecution).toEqual({command: "node -e \"process.stdout.write('x'.repeat(40000))\"", cwd: await realpath(cwd), sandboxPermissions: "use_default"});
       expect(result.persisted?.complete).toBe(true);
       const chunk = await ctx.toolResultStore.readRange({
         resultId: result.persisted!.resultId,

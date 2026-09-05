@@ -410,6 +410,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 writableRoots: ctx.directoryAccess.listDirectories(),
                 networkAccess,
             });
+            const shellExecution = {command, cwd: commandCwd, sandboxPermissions: effectiveSandboxPermissions ?? "use_default" as const};
             const shouldPersist =
                 (result.outputBytes ?? 0) > 30_000 ||
                 result.outputComplete === false;
@@ -417,6 +418,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 return {
                     content: formatShellResult(result),
                     outcome: shellOutcome(result),
+                    shellExecution,
                 };
             }
             try {
@@ -432,11 +434,13 @@ export const bashTool: Tool<typeof inputSchema> = {
                     displayContent: `${formatShellStatus(result)}\n${persisted.preview}`,
                     persisted,
                     outcome: shellOutcome(result),
+                    shellExecution,
                 };
             } catch (error) {
                 return {
                     content: `${formatShellResult(result)}\n\n完整输出保存失败：${error instanceof Error ? error.message : String(error)}`,
                     outcome: shellOutcome(result),
+                    shellExecution,
                 };
             }
         } finally {

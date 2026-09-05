@@ -1,6 +1,8 @@
 import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
 import type {LLMCaller, Message} from "../llm/types.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import {getModelInputBudget} from "./window.js";
+import {tokenCountWithEstimation} from "./tokens.js";
 import {buildCompactPrompt, parseCompactSummary} from "./compactPrompt.js";
 
 const MAX_COMPACT_RETRIES = 3;
@@ -51,6 +53,7 @@ async function generateCompactSummaryCore({
                                               cwd,
                                               model,
                                               customInstructions,
+                                              contextWindow,
                                           }: {
     system: Extract<Message, { role: "system" }>;
     conversation: Message[];
@@ -59,6 +62,7 @@ async function generateCompactSummaryCore({
     cwd: string;
     model: string;
     customInstructions?: string;
+    contextWindow?: number;
 }, callLLMImpl: LLMCaller): Promise<string> {
     let messagesToSummarize = conversation;
     let lastError: unknown;
@@ -72,6 +76,9 @@ async function generateCompactSummaryCore({
         ];
 
         try {
+            if (tokenCountWithEstimation(compactMessages) > getModelInputBudget(model, contextWindow)) {
+                throw new Error("compact prompt too long: 估算已超过输入预算，请缩短输入或固定上下文");
+            }
             const {message} = await callLLMImpl(
                 compactMessages,
                 [],

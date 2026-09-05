@@ -17,7 +17,7 @@ describe("Compact recent tail", () => {
     const history: Message[] = [
       { role: "system", content: "system" },
       { role: "user", content: "old" },
-      { role: "tool", content: "result", tool_call_id: "unmatched" },
+      { role: "assistant", content: "result" },
       { role: "assistant", content: "recent" },
     ];
     expect(
@@ -26,17 +26,17 @@ describe("Compact recent tail", () => {
         minTextMessages: 2,
         maxTokens: 100,
       })
-    ).toBe(1);
+    ).toBe(2);
     expect(
       findCompactTailStart(history, {
         minTokens: 100,
         minTextMessages: 10,
         maxTokens: 4,
       })
-    ).toBe(2);
+    ).toBe(3);
   });
 
-  test("tool result 缺少 use 时向前扩展并保留多 call assistant 整组", () => {
+  test("tool call/result 整组在预算内保留，超限不拆分", () => {
     const history: Message[] = [
       { role: "system", content: "system" },
       { role: "user", content: "task" },
@@ -54,10 +54,11 @@ describe("Compact recent tail", () => {
         minTextMessages: 0,
         maxTokens: 1,
       })
-    ).toBe(2);
+    ).toBe(history.length);
+    expect(findCompactTailStart(history, {minTokens: 0, minTextMessages: 0, maxTokens: 1_000})).toBe(2);
   });
 
-  test("找不到对应 tool use 时保持原 start，空/禁用预算不保留 tail", () => {
+  test("空/禁用预算不保留 tail；孤儿结果与缺失结果不能进入 tail", () => {
     const history: Message[] = [
       { role: "system", content: "system" },
       { role: "tool", content: "orphan", tool_call_id: "missing" },
@@ -69,5 +70,8 @@ describe("Compact recent tail", () => {
         maxTokens: 0,
       })
     ).toBe(history.length);
+    expect(() => findCompactTailStart(history, {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("未配对");
+    expect(() => findCompactTailStart([history[0]!, {role: "assistant", content: null, tool_calls: [toolCall("missing")]}],
+      {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("缺少");
   });
 });

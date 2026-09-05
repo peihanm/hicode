@@ -1,7 +1,7 @@
 import type {CompactHistoryRunner} from "../context/compact.js";
 import {shouldAutoCompact} from "../context/compact.js";
 import {tokenCountWithEstimation} from "../context/tokens.js";
-import {getAutoCompactThreshold, getTokenWarningState,} from "../context/window.js";
+import {getAutoCompactThreshold, getModelInputBudget, getTokenWarningState,} from "../context/window.js";
 import {getUserContextBlocks} from "../prompt/attachments.js";
 import {buildInvokeMessages} from "../prompt/invokeMessages.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
@@ -73,6 +73,7 @@ export async function prepareAgentInvoke({
             tools,
             preTokenCount: estimatedTokens,
             contextWindow,
+            additionalUserContextBlocks,
         });
         throwIfTurnAborted(ctx.signal);
 
@@ -98,5 +99,8 @@ export async function prepareAgentInvoke({
         }
     }
 
+    if (estimatedTokens > getModelInputBudget(ctx.model, contextWindow)) {
+        throw new Error(`当前请求估算 ${estimatedTokens} tokens，超过可用输入预算 ${getModelInputBudget(ctx.model, contextWindow)}；已停止调用模型。请缩短最新输入、减少固定指令/工具，或用新 Session 继续；原历史已保留。`);
+    }
     return {invokeMessages, tools, estimatedTokens};
 }

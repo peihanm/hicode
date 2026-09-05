@@ -338,7 +338,11 @@ export async function executeRegisteredTool(
         postHookResult
     );
     ctx.fileState.bindOutput(toolCallId, typeof result === "string" ? result : result.content, decorated);
-    return decorated;
+    return {
+        ...decorated,
+        ...(((preHookResult && didRunCommandHook(preHookResult)) || (postHookResult && didRunCommandHook(postHookResult)))
+            ? {untrackedWorkspaceEffects: true} : {}),
+    };
 }
 
 async function executePostToolHooks({

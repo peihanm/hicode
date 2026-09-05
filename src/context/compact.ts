@@ -1,16 +1,17 @@
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {ToolContext} from "../tools/types.js";
 import {getAutoCompactThreshold} from "./window.js";
-import {tokenCountWithEstimation} from "./tokens.js";
+import {estimateMessageTokens, tokenCountWithEstimation} from "./tokens.js";
 import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
 import {buildCompactSummaryMessage} from "./compactPrompt.js";
 import {findCompactTailStart} from "./compactTail.js";
+import {getUserContextBlocks} from "../prompt/attachments.js";
+import {buildInvokeMessages} from "../prompt/invokeMessages.js";
 import type {CompactState} from "./state.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 
 const DEFAULT_TAIL_MIN_TOKENS = 10_000;
 const DEFAULT_TAIL_MIN_TEXT_MESSAGES = 5;
-const DEFAULT_TAIL_MAX_TOKENS = 40_000;
 const MAX_CONSECUTIVE_COMPACT_FAILURES = 3;
 
 interface CompactHistoryDependencies {
@@ -26,6 +27,7 @@ interface CompactHistoryInput {
     force?: boolean;
     trigger?: "auto" | "manual";
     customInstructions?: string;
+    additionalUserContextBlocks?: readonly string[];
 }
 
 export type CompactHistoryRunner = (
@@ -40,6 +42,7 @@ type CompactSummaryGenerator = (input: {
     cwd: string;
     model: string;
     customInstructions?: string;
+    contextWindow?: number;
 }) => Promise<string>;
 
 interface CompactResult {
@@ -75,6 +78,7 @@ async function compactHistoryCore({
                                       force = false,
                                       trigger = "auto",
                                       customInstructions,
+                                      additionalUserContextBlocks = [],
                                   }: CompactHistoryInput,
     generateSummary: CompactSummaryGenerator
 ): Promise<CompactResult> {
@@ -111,6 +115,15 @@ async function compactHistoryCore({
     }
 
     try {
+        const contextBlocks = [...getUserContextBlocks(ctx.skills, ctx.instructions), ...additionalUserContextBlocks];
+        const fixedTokens = tokenCountWithEstimation(buildInvokeMessages([system, {role: "user", content: ""}], contextBlocks), tools);
+        const latestUserIndex = history.findLastIndex(message => message.role === "user");
+        const latestUser = latestUserIndex > 0 ? history[latestUserIndex]! : undefined;
+        const latestUserTokens = latestUser ? estimateMessageTokens(latestUser) : 0;
+        if (fixedTokens + latestUserTokens >= threshold) {
+            throw new Error("固定上下文与最新用户任务无法容纳压缩摘要；请缩短输入、指令或工具范围，原历史已保留");
+        }
+        const actualPreTokens = tokenCountWithEstimation(buildInvokeMessages(history, contextBlocks), tools);
         const summary = await generateSummary({
             system,
             conversation: history.slice(1),
@@ -119,16 +132,35 @@ async function compactHistoryCore({
             cwd: ctx.cwd,
             model: ctx.model,
             customInstructions,
+            contextWindow,
         });
         throwIfTurnAborted(ctx.signal);
+        if (!summary.trim()) throw new Error("compact summary 为空");
         const summaryMessage = buildCompactSummaryMessage(summary);
+        const summaryTokens = estimateMessageTokens(summaryMessage);
+        const tailBudget = Math.max(0, threshold - fixedTokens - summaryTokens);
         const tailStart = findCompactTailStart(history, {
-            minTokens: DEFAULT_TAIL_MIN_TOKENS,
+            minTokens: Math.min(DEFAULT_TAIL_MIN_TOKENS, Math.floor(tailBudget / 4)),
             minTextMessages: DEFAULT_TAIL_MIN_TEXT_MESSAGES,
-            maxTokens: DEFAULT_TAIL_MAX_TOKENS,
+            maxTokens: tailBudget,
         });
-        const compactedHistory = [system, summaryMessage, ...history.slice(tailStart)];
-        const postTokenCount = tokenCountWithEstimation(compactedHistory, tools);
+        let compactedHistory: Message[] | undefined;
+        let postTokenCount = 0;
+        let tailTokens = history.slice(tailStart).reduce((sum, message) => sum + estimateMessageTokens(message), 0);
+        for (let start = tailStart; start <= history.length; start++) {
+            if (start > tailStart) tailTokens -= estimateMessageTokens(history[start - 1]!);
+            if (history[start]?.role === "tool") continue;
+            const preserveUser = latestUser && latestUserIndex < start;
+            const candidateTokens = fixedTokens + summaryTokens + tailTokens + (preserveUser ? latestUserTokens : 0);
+            if (candidateTokens >= threshold || candidateTokens >= actualPreTokens) continue;
+            compactedHistory = [system, summaryMessage, ...(preserveUser ? [latestUser] : []), ...history.slice(start)];
+            postTokenCount = tokenCountWithEstimation(buildInvokeMessages(compactedHistory, contextBlocks), tools);
+            break;
+        }
+        if (!compactedHistory || postTokenCount >= threshold || postTokenCount >= actualPreTokens) {
+            throw new Error("压缩候选未减少最终请求或没有足够窗口余量，原历史已保留；请缩短输入或减少固定上下文");
+        }
+        throwIfTurnAborted(ctx.signal);
 
         history.splice(0, history.length, ...compactedHistory);
         state.consecutiveFailures = 0;

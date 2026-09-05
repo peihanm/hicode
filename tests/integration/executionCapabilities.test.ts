@@ -196,6 +196,7 @@ describe("effective execution capabilities", () => {
             const result = await executeToolCallBatch({toolCalls: calls, history, ctx: createTestContext(cwd),
                 turnId: "turn", onEvent: () => {}, executeTool: rt.executeTool, isToolConcurrencySafe: rt.isConcurrencySafe});
             expect(result.outcomes.map(item => item.outcome)).toEqual(["ok", "ok"]);
+            expect(result.outcomes.map(item => item.shellExecution?.command)).toEqual([replacement ?? original, replacement ?? original]);
             expect(sequence).toEqual(["pre:one", "post:one", "pre:two", "post:two"]);
             expect(history.filter(item => item.role === "tool")).toHaveLength(2);
             if (replacement?.includes("shared.txt")) expect(await Bun.file(`${cwd}/shared.txt`).text()).toBe("writtenwritten");

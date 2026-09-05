@@ -46,11 +46,10 @@ function resolveContextWindow(model: string, reportedWindow?: number): number {
     return getContextWindowForModel(model);
 }
 
-function getEffectiveContextWindow(model: string, reportedWindow?: number): number {
-    return Math.max(
-        1,
-        resolveContextWindow(model, reportedWindow) - RESERVED_FOR_SUMMARY
-    );
+export function getModelInputBudget(model: string, reportedWindow?: number): number {
+    const window = resolveContextWindow(model, reportedWindow);
+    const outputReserve = Math.min(RESERVED_FOR_SUMMARY, Math.floor(window * 0.2));
+    return Math.max(1, window - outputReserve);
 }
 
 export function getAutoCompactThreshold(
@@ -59,7 +58,7 @@ export function getAutoCompactThreshold(
 ): number {
     return Math.max(
         1,
-        getEffectiveContextWindow(model, reportedWindow) - AUTOCOMPACT_BUFFER_TOKENS
+        getModelInputBudget(model, reportedWindow) - Math.min(AUTOCOMPACT_BUFFER_TOKENS, Math.floor(getModelInputBudget(model, reportedWindow) * 0.15))
     );
 }
 
@@ -83,7 +82,7 @@ export function getTokenWarningState(
     model: string,
     reportedWindow?: number
 ): TokenWarningState {
-    const effective = getEffectiveContextWindow(model, reportedWindow);
+    const effective = getModelInputBudget(model, reportedWindow);
     const autoCompactThreshold = getAutoCompactThreshold(model, reportedWindow);
     const percentUsed = Math.min(1, tokenCount / effective);
     const critical = tokenCount >= autoCompactThreshold;
