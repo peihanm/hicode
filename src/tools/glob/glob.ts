@@ -1,13 +1,15 @@
-import {glob, lstat, stat} from "node:fs/promises";
-import {isAbsolute, resolve} from "node:path";
+import {stat} from "node:fs/promises";
+import {isAbsolute, relative} from "node:path";
 import {z} from "zod";
-import {throwIfTurnAborted} from "../../runtime/abort.js";
+import {createFileDiscovery, createPathMatcher} from "../shared/fileDiscovery.js";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 
 const MAX_RESULTS = 200;
 
 const inputSchema = z.object({
+    include_hidden: z.boolean().default(false).describe("包含隐藏文件与目录；.git 始终排除"),
+    include_ignored: z.boolean().default(false).describe("包含 .gitignore 与默认 node_modules 排除的文件"),
     pattern: z
         .string()
         .trim()
@@ -18,14 +20,6 @@ const inputSchema = z.object({
         .default(".")
         .describe("搜索根目录，默认当前工作目录"),
 });
-
-function isGitMetadataPath(path: string): boolean {
-    return path === ".git" || path.startsWith(".git/") || path.includes("/.git/");
-}
-
-function normalizePattern(pattern: string): string {
-    return pattern.replaceAll("\\", "/").replace(/^\.\//, "");
-}
 
 export const globTool: Tool<typeof inputSchema> = {
     name: "glob",
@@ -38,7 +32,7 @@ export const globTool: Tool<typeof inputSchema> = {
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    async execute({pattern, path}, ctx) {
+    async execute({pattern, path, include_hidden, include_ignored}, ctx) {
         if (isAbsolute(pattern)) {
             return {
                 content: "pattern 必须是相对于搜索根目录的 glob；绝对目录请放在 path 参数中。",
@@ -62,25 +56,18 @@ export const globTool: Tool<typeof inputSchema> = {
 
         const matches: string[] = [];
         let truncated = false;
-        for await (const match of glob(normalizePattern(pattern), {
-            cwd: searchRoot,
-            exclude: [".git", ".git/**"],
-        })) {
-            throwIfTurnAborted(ctx.signal);
-            const normalized = match.replaceAll("\\", "/");
-            if (isGitMetadataPath(normalized)) continue;
-            const absolute = resolve(searchRoot, match);
-            const metadata = await lstat(absolute).catch(() => undefined);
-            if (!metadata?.isFile()) continue;
-            if (matches.length >= MAX_RESULTS) {
-                truncated = true;
-                break;
-            }
+        const matcher = createPathMatcher(pattern.replaceAll("\\", "/").replace(/^\.\//, ""));
+        const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
+            includeHidden: include_hidden, includeIgnored: include_ignored, maxEntries: 20_000});
+        for await (const absolute of discovery.files) {
+            if (!matcher(relative(searchRoot, absolute))) continue;
+            if (matches.length >= MAX_RESULTS) { truncated = true; break; }
             matches.push(displayToolPath(ctx.cwd, absolute));
         }
+        const stats = discovery.getStats();
 
         matches.sort((left, right) => left.localeCompare(right));
-        if (matches.length === 0) {
+        if (matches.length === 0 && !stats.truncated) {
             return `未找到匹配文件: ${pattern}（搜索目录: ${displayToolPath(ctx.cwd, searchRoot)}）`;
         }
 
@@ -90,6 +77,7 @@ export const globTool: Tool<typeof inputSchema> = {
                 `（结果已截断为 ${MAX_RESULTS} 个，请缩小 path 或 pattern。）`
             );
         }
+        if (stats.truncated) lines.push(`（搜索未完成：${stats.issues.join("；")}；已发现 ${stats.candidateFiles} 个候选文件。请缩小 path。）`);
         return lines.join("\n");
     },
 };

@@ -11,6 +11,8 @@ const runtimeDependencies = [
     "@anthropic-ai/sandbox-runtime",
     "@modelcontextprotocol/sdk",
     "diff",
+    "ignore",
+    "picomatch",
     "string-width",
     "turndown",
     "yaml",

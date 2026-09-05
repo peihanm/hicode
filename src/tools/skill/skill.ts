@@ -19,6 +19,7 @@
 // 4. checkPermissions 直接 allow：注入 prompt 无副作用，跟 todoWrite 一样
 
 import {z} from "zod";
+import {dirname} from "node:path";
 import type {Tool, ToolContext} from "../types.js";
 import type {PermissionResult} from "../../permissions/index.js";
 
@@ -69,6 +70,14 @@ export const skillTool: Tool<typeof inputSchema> = {
         // 有 args 时替换成 args；没传时替换成空串（避免原样输出占位符给用户看）
         // 参考 claude-code argumentSubstitution.ts:appendIfNoPlaceholder
         const argsValue = args ?? "";
-        return found.content.replace(/\$ARGUMENTS/g, argsValue);
+        const source = found.source === "host"
+            ? {source: found.source, id: found.id}
+            : {source: found.source, filePath: found.filePath, resourceRoot: dirname(found.filePath)};
+        const resolution = found.source === "host"
+            ? "此 Skill 为 Host inline 内容，没有本地资源目录。资源必须使用正文中 Host 明确提供的绝对路径或资源标识；不得根据 Skill 名称猜目录。"
+            : "Skill 自带的 scripts、references、assets 等相对资源路径以 resourceRoot 为基准，读取或执行时使用拼接后的绝对路径。项目路径仍以当前工作目录为基准，不要把项目文件解析到 Skill 目录。含空格的 Shell 路径需要正确引用。";
+        return ["<skill-source>", JSON.stringify(source), resolution,
+            "加载 Skill 不扩大文件或命令权限；后续操作仍通过现有工具执行链。", "</skill-source>", "",
+            found.content.replace(/\$ARGUMENTS/g, () => argsValue)].join("\n");
     },
 };

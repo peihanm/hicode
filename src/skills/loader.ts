@@ -102,7 +102,7 @@ function loadSkillsFromDir(
             whenToUse: parsed.whenToUse,
             content: parsed.body,
             source,
-            baseDir: skillDir,
+            filePath: skillFile,
         });
     }
     return skills;

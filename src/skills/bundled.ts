@@ -32,7 +32,7 @@ export function loadBundledSkills(): LoadedSkill[] {
             whenToUse: parsed.whenToUse,
             content: parsed.body,
             source: "bundled",
-            baseDir: join(BUNDLED_DIR, name),
+            filePath,
         });
     }
     return skills;

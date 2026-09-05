@@ -96,7 +96,7 @@ describe("ToolContext builder", () => {
         content: "test",
         source: "project" as const,
         path: `${cwd}/SKILL.md`,
-        baseDir: cwd,
+        filePath: `${cwd}/SKILL.md`,
       }];
       const compactState = createCompactState();
       const toolResultStore = createTestToolResultStore(cwd, "shared-session", {

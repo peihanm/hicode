@@ -1,8 +1,9 @@
 import {z} from "zod";
-import {appendFile, readFile, stat} from "node:fs/promises";
+import {appendFile, open} from "node:fs/promises";
+import {constants} from "node:fs";
 import type {Tool} from "../types.js";
-import {walk} from "./utils.js";
-import {extname} from "node:path";
+import {createFileDiscovery, createPathMatcher} from "../shared/fileDiscovery.js";
+import {basename, extname, relative} from "node:path";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
 
@@ -30,12 +31,14 @@ const FILE_TYPE_EXTENSIONS: Record<string, readonly string[]> = {
 };
 
 const inputSchema = z.object({
+    include_ignored: z.boolean().default(false).describe("包含 .gitignore 与默认 node_modules 排除的文件"),
+    search_mode: z.enum(["fast", "complete"]).default("fast").describe("fast 达到 head_limit 后停止；complete 继续统计全部匹配。两者都有文件数和读取字节硬上限，未覆盖部分会明确标注"),
     pattern: z.string().describe("正则表达式"),
     path: z.string().default(".").describe("搜索起始目录或文件"),
     glob: z
         .string()
         .optional()
-        .describe("文件名过滤 glob，如 *.ts。不传则搜索所有文件"),
+        .describe("文件名或路径 glob，如 *.ts、src/**/*.{ts,tsx}；支持逗号分隔多个模式"),
     type: z
         .string()
         .optional()
@@ -167,6 +170,8 @@ export const grepTool: Tool<typeof inputSchema> = {
             head_limit,
             offset,
             include_hidden,
+            include_ignored,
+            search_mode,
         }: Input,
         ctx,
         invocation
@@ -181,8 +186,16 @@ export const grepTool: Tool<typeof inputSchema> = {
             return `正则表达式不合法: ${err instanceof Error ? err.message : err}`;
         }
 
-        const files: string[] = [];
         const searchRoot = resolveToolPath(ctx.cwd, path);
+        const matcher = glob ? createPathMatcher(glob, true) : undefined;
+        const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
+            includeHidden: include_hidden, includeIgnored: include_ignored,
+            maxEntries: search_mode === "fast" ? 20_000 : 100_000});
+        const fileLimit = search_mode === "fast" ? 2_000 : 20_000;
+        const byteLimit = (search_mode === "fast" ? 32 : 256) * 1024 * 1024;
+        let scannedFiles = 0;
+        let scannedBytes = 0;
+        let searchIncomplete = false;
         let inlineOutput = "";
         let capturePath: string | undefined;
         let totalBytes = 0;
@@ -242,26 +255,36 @@ export const grepTool: Tool<typeof inputSchema> = {
         };
 
         try {
-            // 先收集所有要搜的文件
-            await walk(searchRoot, glob, files, include_hidden);
-
-            // 逐文件搜索。结果超过 inline 阈值后持续写 capture，而不是停止在第 100 条。
-            for (const file of files) {
+            for await (const file of discovery.files) {
                 throwIfTurnAborted(ctx.signal);
+                if (matcher && !matcher(relative(searchRoot, file) || basename(file))) continue;
                 if (!matchesFileType(file, type)) continue;
+                if (scannedFiles >= fileLimit || scannedBytes >= byteLimit) { searchIncomplete = true; break; }
                 let content: string;
+                let handle;
                 try {
-                    const s = await stat(file);
-                    if (s.size > MAX_FILE_SIZE) {
-                        skippedCount++;
-                        continue;
+                    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+                    const info = await handle.stat();
+                    if (!info.isFile() || info.size > MAX_FILE_SIZE) { skippedCount++; continue; }
+                    if (scannedBytes + info.size > byteLimit) { searchIncomplete = true; break; }
+                    const bytes = Buffer.alloc(Math.min(info.size, MAX_FILE_SIZE, byteLimit - scannedBytes) + 1);
+                    let bytesRead = 0;
+                    while (bytesRead < bytes.length) {
+                        throwIfTurnAborted(ctx.signal);
+                        const chunk = await handle.read(bytes, bytesRead, bytes.length - bytesRead, bytesRead);
+                        if (chunk.bytesRead === 0) break;
+                        bytesRead += chunk.bytesRead;
                     }
-                    content = await readFile(file, "utf-8");
+                    scannedFiles++;
+                    scannedBytes += bytesRead;
+                    if (bytesRead === bytes.length || bytesRead > MAX_FILE_SIZE || scannedBytes > byteLimit) { skippedCount++; continue; }
+                    if (bytes.subarray(0, bytesRead).includes(0)) { skippedCount++; continue; }
+                    content = bytes.subarray(0, bytesRead).toString("utf8");
                 } catch (error) {
                     if (ctx.signal.aborted) throw error;
                     skippedCount++;
                     continue;
-                }
+                } finally { await handle?.close(); }
                 const lines = content.split(/\r?\n/);
                 const rel = displayToolPath(ctx.cwd, file);
                 const beforeLines = before ?? context;
@@ -306,10 +329,20 @@ export const grepTool: Tool<typeof inputSchema> = {
                 } else if (output_mode === "count") {
                     await appendPaginated(`${rel}: ${fileMatches}`);
                 }
+                if (!complete || (search_mode === "fast" && head_limit && displayedEntries >= head_limit)) {
+                    searchIncomplete = true;
+                    break;
+                }
             }
 
+            const stats = discovery.getStats();
+            searchIncomplete ||= stats.truncated || skippedCount > 0;
+            const coverage = `搜了 ${scannedFiles} 个文件（${scannedBytes} 字节），发现 ${stats.candidateFiles} 个候选文件`;
+            const incomplete = searchIncomplete
+                ? `；搜索未完整覆盖，仅报告已扫描范围${stats.issues.length ? `：${stats.issues.join("；")}` : ""}，可缩小 path 或使用 search_mode=complete`
+                : "";
             if (totalMatches === 0) {
-                return `未找到匹配 /${pattern}/`;
+                return `未找到匹配 /${pattern}/（${coverage}${skippedCount ? `，跳过 ${skippedCount} 个文件` : ""}${incomplete}）`;
             }
 
             const pagination = displayedEntries < resultEntries
@@ -318,7 +351,7 @@ export const grepTool: Tool<typeof inputSchema> = {
             const modeSummary = output_mode === "content"
                 ? `共 ${totalMatches} 条匹配`
                 : `共 ${matchedFiles} 个匹配文件、${totalMatches} 条匹配`;
-            const summary = `${modeSummary}，搜了 ${files.length} 个文件${pagination}${skippedCount > 0 ? `，跳过 ${skippedCount} 个文件` : ""}${complete ? "" : "；达到结果存储上限，结果不完整"}`;
+            const summary = `${modeSummary}，${coverage}${pagination}${skippedCount > 0 ? `，跳过 ${skippedCount} 个文件` : ""}${complete ? "" : "；达到结果存储上限，结果不完整"}${incomplete}`;
             if (displayedEntries === 0) {
                 return `${summary}；当前分页没有可显示结果`;
             }
@@ -331,7 +364,7 @@ export const grepTool: Tool<typeof inputSchema> = {
                 toolName: "grep",
                 sourcePath: capturePath,
                 originalByteLength: totalBytes,
-                complete,
+                complete: complete && !searchIncomplete,
             });
             return {
                 content: summary,

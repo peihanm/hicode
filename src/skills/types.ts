@@ -22,8 +22,8 @@ interface LoadedSkillContent {
 export type LoadedSkill = LoadedSkillContent & (
     | {
         source: "bundled" | SkillFileSource;
-        // SKILL.md 所在目录绝对路径
-        baseDir: string;
+        // 实际读取的 Markdown 文件绝对路径
+        filePath: string;
     }
     | {
         source: "host";
