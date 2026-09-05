@@ -80,7 +80,7 @@ describe("Persistent Memory", () => {
             const result = await root(
                 "请记住：不要为了测试扩张生产接口",
                 history,
-                (event) => events.push(event),
+                (event) => { events.push(event); },
                 createTestContext(cwd, {
                     memoryFiles: memory.fileAccess("explicit"),
                 }),
@@ -170,7 +170,7 @@ describe("Persistent Memory", () => {
             const result = await root(
                 "以后不要在结尾重复总结",
                 createInitialHistory(cwd, "glm-test"),
-                (event) => events.push(event),
+                (event) => { events.push(event); },
                 createTestContext(cwd, {
                     memoryFiles: memory.fileAccess("explicit"),
                 }),

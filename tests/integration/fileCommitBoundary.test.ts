@@ -234,9 +234,9 @@ describe("file commit boundary", () => {
             const sdkEvents: ThreadEventPayload[] = [];
             const adapter = new SDKEventAdapter("turn", event => { sdkEvents.push(event); });
             const batch = await executeToolCallBatch({toolCalls, history, ctx, turnId: "turn",
-                onEvent: event => { events.push(event); adapter.handleAgentEvent(event); },
+                onEvent: async event => { events.push(event); await adapter.handleAgentEvent(event); },
                 executeTool: rt.executeTool, isToolConcurrencySafe: rt.isConcurrencySafe});
-            adapter.finish("interrupted");
+            await adapter.finish("interrupted");
             expect(batch.status).toBe("interrupted");
             expect(await readFile(`${cwd}/file.txt`, "utf8")).toBe("after\n");
             expect(events.find(event => event.type === "tool_call_end" && event.toolCallId === "one"))

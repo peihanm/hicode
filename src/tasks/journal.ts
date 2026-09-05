@@ -12,6 +12,7 @@ import {
     serializeTaskJournalEntry,
     type TaskJournalEntry,
 } from "./codec.js";
+import {taskNotificationId} from "./notifications.js";
 import type {TaskEventEnvelope, TaskSnapshot} from "./types.js";
 
 const MAX_TASK_JOURNAL_BYTES = 16 * 1024 * 1024;
@@ -23,7 +24,8 @@ const COMPACT_TASK_JOURNAL_ENTRIES = 1_024;
 export interface LoadedTaskJournal {
     sequence: number;
     tasks: readonly TaskSnapshot[];
-    claimedTaskIds: ReadonlySet<string>;
+    pendingRuns: readonly TaskSnapshot[];
+    claimedNotificationIds: ReadonlySet<string>;
 }
 
 export interface TaskJournalLike {
@@ -32,6 +34,7 @@ export interface TaskJournalLike {
         sequence: number;
         sessionId: string;
         taskId: string;
+        notificationId: string;
     }): Promise<void>;
     load(sessionId: string): Promise<LoadedTaskJournal>;
 }
@@ -121,23 +124,27 @@ async function readJournal(
 function compactEntries(entries: readonly TaskJournalEntry[]): TaskJournalEntry[] {
     const latestTasks = new Map<string, TaskEventEnvelope>();
     const claims = new Map<string, TaskJournalEntry>();
+    const terminals = new Map<string, TaskEventEnvelope>();
     for (const entry of entries) {
         if (entry.type === "task_notification_claimed") {
-            claims.set(entry.taskId, entry);
+            claims.set(entry.notificationId, entry);
         } else {
             latestTasks.set(entry.task.id, entry);
+            if (entry.task.status !== "running") terminals.set(taskNotificationId(entry.task.id, entry.task.kind === "agent" ? entry.task.progress.runCount : 1), entry);
         }
     }
     const retainedTasks = [...latestTasks.values()]
         .sort((left, right) => left.sequence - right.sequence)
         .slice(-MAX_PERSISTED_TASKS);
-    const retainedIds = new Set(retainedTasks.map((entry) => entry.task.id));
-    return [
-        ...retainedTasks,
-        ...[...claims.values()].filter((entry) =>
-            entry.type === "task_notification_claimed" && retainedIds.has(entry.taskId)
-        ),
+    const pending = [...terminals].filter(([id]) => !claims.has(id)).map(([, entry]) => entry);
+    const retained = new Map([...retainedTasks, ...pending].map(entry => [entry.sequence, entry]));
+    const retainedNotificationIds = new Set(retainedTasks.map(entry => taskNotificationId(entry.task.id, entry.task.kind === "agent" ? entry.task.progress.runCount : 1)));
+    const result = [
+        ...retained.values(),
+        ...[...claims].filter(([id]) => retainedNotificationIds.has(id)).map(([, entry]) => entry),
     ].sort((left, right) => left.sequence - right.sequence);
+    if (result.length > MAX_TASK_JOURNAL_ENTRIES) throw new Error("Task Journal 未交付通知超过条目上限");
+    return result;
 }
 
 function renderEntries(entries: readonly TaskJournalEntry[]): string {
@@ -146,17 +153,20 @@ function renderEntries(entries: readonly TaskJournalEntry[]): string {
 
 function loadedJournal(entries: readonly TaskJournalEntry[]): LoadedTaskJournal {
     const tasks = new Map<string, TaskSnapshot>();
-    const claimedTaskIds = new Set<string>();
+    const claimedNotificationIds = new Set<string>();
+    const terminalRuns = new Map<string, TaskSnapshot>();
     let sequence = 0;
     for (const entry of entries) {
         sequence = Math.max(sequence, entry.sequence);
         if (entry.type === "task_notification_claimed") {
-            claimedTaskIds.add(entry.taskId);
+            claimedNotificationIds.add(entry.notificationId);
         } else {
             tasks.set(entry.task.id, entry.task);
+            if (entry.task.status !== "running") terminalRuns.set(taskNotificationId(entry.task.id, entry.task.kind === "agent" ? entry.task.progress.runCount : 1), entry.task);
         }
     }
-    return {sequence, tasks: [...tasks.values()], claimedTaskIds};
+    return {sequence, tasks: [...tasks.values()], claimedNotificationIds,
+        pendingRuns: [...terminalRuns].filter(([id]) => !claimedNotificationIds.has(id)).map(([, task]) => task)};
 }
 
 class TaskJournal implements TaskJournalLike {
@@ -176,9 +186,10 @@ class TaskJournal implements TaskJournalLike {
         sequence: number;
         sessionId: string;
         taskId: string;
+        notificationId: string;
     }): Promise<void> {
         await this.appendEntry({
-            version: 3,
+            version: 4,
             type: "task_notification_claimed",
             ...input,
         });

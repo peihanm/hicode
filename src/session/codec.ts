@@ -212,6 +212,7 @@ const sessionSnapshotSchema = z.object({
     type: z.literal("snapshot"),
     checkpointHead: checkpointHeadSchema.optional(),
     queuedInputs: z.unknown().optional(),
+    taskNotificationReceipts: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096).refine(ids => new Set(ids).size === ids.length).optional(),
     gitSession: z.unknown().optional(),
 }).strict();
 
@@ -294,6 +295,7 @@ export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
         return {
             ...snapshot.data,
             ...(queuedInputs === undefined ? {} : {queuedInputs}),
+            ...(snapshot.data.taskNotificationReceipts ? {taskNotificationReceipts: snapshot.data.taskNotificationReceipts} : {}),
             ...(toolDiscovery === undefined ? {} : {toolDiscovery}),
             ...(gitSession === undefined ? {} : {gitSession}),
         } as SessionSnapshotEntry;

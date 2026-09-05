@@ -553,6 +553,7 @@ describe("UITurnEventStore", () => {
     test("后台任务通知进入专用 thread，不伪装成 assistant 回复", () => {
         const store = new UITurnEventStore();
         store.appendTaskNotification({
+            notificationId: "a".repeat(64),
             taskId: "task-1",
             sessionId: "session-1",
             ownerToolCallId: "bash-1",

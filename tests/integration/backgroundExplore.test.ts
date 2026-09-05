@@ -87,8 +87,10 @@ describe("background Explore", () => {
                 resultPreview: "后台调查报告",
                 outputResult: {resultId: `task_${running[0]!.id}_run_1`},
             });
-            expect(await tasks.claimNotifications()).toHaveLength(1);
-            expect(await tasks.claimNotifications()).toHaveLength(0);
+            const pending = await tasks.pendingNotifications();
+            expect(pending).toHaveLength(1);
+            await tasks.acknowledgeNotification(pending[0]!);
+            expect(await tasks.pendingNotifications()).toHaveLength(0);
             await taskRuntime.close();
         });
     });
@@ -159,7 +161,7 @@ describe("background Explore", () => {
             });
             await expect(tasks.send(running!.id, "取消后继续"))
                 .rejects.toThrow("已取消的 Agent 不能继续");
-            expect(await tasks.claimNotifications()).toHaveLength(0);
+            expect(await tasks.pendingNotifications()).toHaveLength(0);
             await taskRuntime.close();
         });
     });
@@ -348,8 +350,20 @@ describe("background Explore", () => {
                 },
                 progress: {runCount: 2, pendingMessages: 0},
             });
-            expect(await tasks.claimNotifications()).toHaveLength(1);
+            const pendingRuns = await tasks.pendingNotifications();
+            expect(pendingRuns).toHaveLength(2);
+            expect(new Set(pendingRuns.map(item => item.notificationId)).size).toBe(2);
             await runtime.close();
+            const restoredRuntime = createTaskRuntimeForTest(cwd, shellRunner);
+            const restored = restoredRuntime.forSession({sessionId: "continue-session",
+                toolResultStore: createTestToolResultStore(cwd, "continue-session", {pillarHome: `${cwd}/root-results`})});
+            try {
+                const recovered = await restored.pendingNotifications();
+                expect(new Set(recovered.map(item => item.notificationId))).toEqual(new Set(pendingRuns.map(item => item.notificationId)));
+                const firstRun = recovered.find(item => item.message.includes("第一轮报告"))!;
+                await restored.acknowledgeNotification(firstRun);
+                expect((await restored.pendingNotifications()).map(item => item.message)).toEqual([expect.stringContaining("第二轮报告")]);
+            } finally { await restoredRuntime.close(); }
         });
     });
 

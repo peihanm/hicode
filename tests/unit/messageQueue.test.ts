@@ -29,6 +29,7 @@ describe("RuntimeMessageQueue", () => {
     test("取回可编辑输入但保留任务通知", () => {
         const queue = new RuntimeMessageQueue();
         queue.enqueueTask({
+            notificationId: "a".repeat(64),
             taskId: "task-1",
             sessionId: "session-1",
             ownerToolCallId: "call-1",
@@ -49,6 +50,7 @@ describe("RuntimeMessageQueue", () => {
     test("没有可编辑输入时返回空数组且不修改通知", () => {
         const queue = new RuntimeMessageQueue();
         queue.enqueueTask({
+            notificationId: "a".repeat(64),
             taskId: "task-1",
             sessionId: "session-1",
             ownerToolCallId: "call-1",
@@ -64,9 +66,10 @@ describe("RuntimeMessageQueue", () => {
         expect(queue.list()[0]?.type).toBe("task_notification");
     });
 
-    test("同一 Task 的完成通知按 taskId 去重", () => {
+    test("同一 Task 的完成通知按通知 ID 去重", () => {
         const queue = new RuntimeMessageQueue();
         const notification = {
+            notificationId: "a".repeat(64),
             taskId: "task-1",
             sessionId: "session-1",
             ownerToolCallId: "call-1",

@@ -51,7 +51,7 @@ export const todoWriteTool: Tool<typeof inputSchema> = {
         // 全部完成时清空 todos（跟 claude-code TodoWriteTool.ts:69 一致）
         // 避免"全部 ✓ 还显示在屏幕上"，任务完成后列表自动消失
         const allDone = todos.length > 0 && todos.every((t) => t.status === "completed");
-        ctx.setTodos(allDone ? [] : todos);
+        await ctx.setTodos(allDone ? [] : todos);
         return allDone
             ? "所有任务已完成，清单已清空。"
             : "Todos 已更新。继续按清单执行任务。";

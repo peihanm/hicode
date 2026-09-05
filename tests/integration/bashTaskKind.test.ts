@@ -54,7 +54,7 @@ test("bash_task 拒绝 Agent ID 时不取消、不 ACK，跨 Session 不泄露�
                 ctx.tasks = restored;
                 await restored.initialize();
                 expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "archived-kind")).outcome).toBe("failed");
-                expect(await restored.claimNotifications()).toHaveLength(1);
+                expect(await restored.pendingNotifications()).toHaveLength(1);
             } finally {
                 await restoredRuntime.close();
             }

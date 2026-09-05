@@ -38,6 +38,7 @@ export interface RootSessionSeed {
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
     queuedInputs?: readonly RuntimeQueuedMessage[];
+    taskNotificationReceipts?: readonly string[];
 }
 
 interface RootSessionSnapshotState {
@@ -137,6 +138,7 @@ export function createRootSessionRuntime({
     });
     const messageQueue = new RuntimeMessageQueue({
         messages: seed.queuedInputs,
+        taskReceipts: seed.taskNotificationReceipts,
     });
     const hookSession = createHookSessionRuntime();
     const networkAccess = new NetworkAccessSession();
@@ -164,6 +166,7 @@ export function createRootSessionRuntime({
         uiEvents: [...state.uiEvents],
         checkpointHead: fileCheckpoints.getHead(),
         queuedInputs: messageQueue.list(),
+        taskNotificationReceipts: messageQueue.getTaskReceipts(),
         toolDiscovery: resources.toolRuntime.getToolDiscoverySnapshot(),
         gitSession: gitSession.getState(),
         ...(state.allowEmpty ? {allowEmpty: true} : {}),

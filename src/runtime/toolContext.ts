@@ -69,7 +69,7 @@ export interface ToolContextHost {
 
     setCollaborationMode(mode: CollaborationMode): void;
 
-    setTodos(todos: Todo[]): void;
+    setTodos(todos: Todo[]): void | Promise<void>;
 }
 
 export function createToolContext({

@@ -49,7 +49,7 @@ function createHarness(overrides: {
       return { signal } as ToolContext;
     },
     onUserInput: (input) => users.push(input),
-    onEvent: (event) => events.push(event),
+    onEvent: (event) => { events.push(event); },
     onUnexpectedError: (error) => errors.push(error),
     denyPendingPermission: () => {},
     initialize: overrides.initialize ?? (async () => {}),
@@ -80,7 +80,7 @@ function createHarness(overrides: {
         await runAgent(
           input,
           [{role: "system", content: "system"}],
-          (event) => events.push(event),
+          (event) => { events.push(event); },
           {signal} as ToolContext,
           EMPTY_AGENT_INPUT_CHANNEL,
           {

@@ -249,10 +249,11 @@ describe("TaskRuntime", () => {
             expect(await second.get(started.id)).toBeUndefined();
             expect(events.map((event) => event.sequence)).toEqual([1, 2]);
             const concurrentClaims = await Promise.all([
-                first.claimNotifications(),
-                first.claimNotifications(),
+                first.pendingNotifications(),
+                first.pendingNotifications(),
             ]);
-            expect(concurrentClaims.flat()).toHaveLength(1);
+            expect(concurrentClaims.flat()).toHaveLength(2);
+            await first.acknowledgeNotification(concurrentClaims[0]![0]!);
             expect(concurrentClaims.flat()[0]).toMatchObject({
                 ownerToolCallId: "task-call",
                 kind: "shell",
@@ -261,7 +262,7 @@ describe("TaskRuntime", () => {
                 summary: "exit 0",
                 resultId: `task_${started.id}`,
             });
-            expect(await first.claimNotifications()).toEqual([]);
+            expect(await first.pendingNotifications()).toEqual([]);
 
             unsubscribe();
             await runtime.close();
@@ -310,7 +311,7 @@ describe("TaskRuntime", () => {
             });
             await finished;
 
-            const [notification] = await session.claimNotifications();
+            const [notification] = await session.pendingNotifications();
             expect(notification).toMatchObject({
                 taskId: started.id,
                 ownerToolCallId: "failed-call",
@@ -379,8 +380,10 @@ describe("TaskRuntime", () => {
                 output: "persisted\n",
             });
             expect(runs).toBe(1);
-            expect(await second.claimNotifications()).toHaveLength(1);
-            expect(await second.claimNotifications()).toHaveLength(0);
+            const pending = await second.pendingNotifications();
+            expect(pending).toHaveLength(1);
+            await second.acknowledgeNotification(pending[0]!);
+            expect(await second.pendingNotifications()).toHaveLength(0);
             await secondRuntime.close();
         });
     });

@@ -172,8 +172,13 @@ class SDKThreadImpl implements Thread {
         }
 
         const turnId = randomUUID();
-        const queue = new AsyncEventQueue<ThreadEvent>();
         const controller = new AbortController();
+        const queue = new AsyncEventQueue(() => controller.abort("user-cancel"));
+        let cancelTimer: ReturnType<typeof setTimeout> | undefined;
+        const expireCancelledStream = () => {
+            cancelTimer ??= setTimeout(() => queue.discard(new Error("SDK 消费者未及时接收取消事件，事件流已断开")), 1_000);
+        };
+        controller.signal.addEventListener("abort", expireCancelledStream, {once: true});
         const removeExternalAbort = linkAbortSignal(
             turnOptions.signal,
             controller
@@ -188,6 +193,8 @@ class SDKThreadImpl implements Thread {
         ).finally(() => {
             executionCompleted = true;
             removeExternalAbort();
+            controller.signal.removeEventListener("abort", expireCancelledStream);
+            if (cancelTimer !== undefined) clearTimeout(cancelTimer);
             queue.close();
             if (this.activeRun?.controller === controller) {
                 this.activeRun = undefined;
@@ -198,6 +205,7 @@ class SDKThreadImpl implements Thread {
         try {
             yield* queue.iterate();
         } finally {
+            queue.discard();
             if (!executionCompleted && !controller.signal.aborted) {
                 controller.abort("user-cancel");
             }
@@ -210,12 +218,12 @@ class SDKThreadImpl implements Thread {
         turnId: string,
         turnOptions: TurnOptions,
         controller: AbortController,
-        queue: AsyncEventQueue<ThreadEvent>
+        queue: AsyncEventQueue
     ): Promise<void> {
         const startedAt = this.options.dependencies.now();
-        const emit = (payload: ThreadEventPayload): void => {
+        const emit = (payload: ThreadEventPayload): Promise<void> => {
             this.sequence += 1;
-            queue.push({
+            return queue.push({
                 ...payload,
                 protocolVersion: 1,
                 sequence: this.sequence,
@@ -225,9 +233,9 @@ class SDKThreadImpl implements Thread {
         };
         if (!this.emittedThreadStarted) {
             this.emittedThreadStarted = true;
-            emit({type: "thread.started"});
+            await emit({type: "thread.started"});
         }
-        emit({
+        await emit({
             type: "turn.started",
             turnId,
             inputSummary: boundedInputSummary(prompt),
@@ -250,7 +258,7 @@ class SDKThreadImpl implements Thread {
                 onEvent: adapter.handleAgentEvent,
                 onHookResult: async (hookResult) => {
                     for (const issue of getHookExecutionIssues(hookResult)) {
-                        adapter.emitDiagnostic("hook", issue);
+                        await adapter.emitDiagnostic("hook", issue);
                         await this.reportDiagnostic({
                             severity: "warning",
                             scope: "hook",
@@ -274,12 +282,12 @@ class SDKThreadImpl implements Thread {
                     this.options.sessionStartContextBlocks,
                 maxIterations: turnOptions.maxIterations,
             });
-            adapter.finish(result.reason);
+            await adapter.finish(result.reason);
             this.commitUIEvents(adapter);
             this.lastEndReason = result.reason;
             const checkpointId =
                 this.options.session.fileCheckpoints.getHead().checkpointId;
-            emit({
+            await emit({
                 type: "turn.completed",
                 turnId,
                 usage: result.usage ?? null,
@@ -294,10 +302,10 @@ class SDKThreadImpl implements Thread {
             });
         } catch (error) {
             const interrupted = controller.signal.aborted;
-            adapter.finish(interrupted ? "interrupted" : "max_turns");
+            await adapter.finish(interrupted ? "interrupted" : "max_turns");
             this.commitUIEvents(adapter);
             const info = toSDKErrorInfo(error, controller.signal);
-            emit({type: "turn.failed", turnId, error: info});
+            await emit({type: "turn.failed", turnId, error: info});
         }
     }
 
@@ -329,7 +337,7 @@ class SDKThreadImpl implements Thread {
                         input,
                         ...(network ? {networkAccess: {host: network.host, port: network.port}} : {}),
                     };
-                adapter.emitInteractionStart(request);
+                await adapter.emitInteractionStart(request);
                 let response = await this.requestInteraction(
                     request,
                     turnId,
@@ -346,7 +354,7 @@ class SDKThreadImpl implements Thread {
                     : response.behavior === "deny"
                         ? "denied"
                         : "completed";
-                adapter.emitInteractionEnd(request, response, status);
+                await adapter.emitInteractionEnd(request, response, status);
                 return toPermissionDecision(response);
             },
             getPermissionRules: () =>
@@ -361,9 +369,9 @@ class SDKThreadImpl implements Thread {
             setCollaborationMode: (mode) => {
                 this.options.state.collaborationMode = mode;
             },
-            setTodos: (todos) => {
+            setTodos: async (todos) => {
                 this.options.state.todos = todos;
-                adapter.emitTodos(todos);
+                await adapter.emitTodos(todos);
             },
         };
     }
@@ -412,7 +420,7 @@ class SDKThreadImpl implements Thread {
         issue: RootTurnLifecycleIssue
     ): Promise<void> {
         const message = `${issue.message}: ${issue.error instanceof Error ? issue.error.message : String(issue.error)}`;
-        adapter.emitDiagnostic(issue.scope, message, "error");
+        await adapter.emitDiagnostic(issue.scope, message, "error");
         await this.reportDiagnostic({
             severity: "error",
             scope: issue.scope === "host" ? "runtime" : issue.scope,

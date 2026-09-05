@@ -2,23 +2,23 @@ import {describe, expect, test} from "bun:test";
 import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import type {ThreadEventPayload} from "../../src/sdk/protocol.js";
 
-describe("SDK event adapter", () => {
-    test("投影有界模型进度并按阶段和 Token 增量节流", () => {
+describe("SDK event adapter", async () => {
+    test("投影有界模型进度并按阶段和 Token 增量节流", async () => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn-progress", (event) => {
             events.push(event);
         });
 
-        adapter.handleAgentEvent({type: "model_stream_start"});
+        await adapter.handleAgentEvent({type: "model_stream_start"});
         for (const estimatedOutputTokens of [1, 64, 127, 129, 200, 260]) {
-            adapter.handleAgentEvent({
+            await adapter.handleAgentEvent({
                 type: "model_stream_progress",
                 phase: "reasoning",
                 outputCharacters: estimatedOutputTokens * 4,
                 estimatedOutputTokens,
             });
         }
-        adapter.handleAgentEvent({
+        await adapter.handleAgentEvent({
             type: "model_stream_progress",
             phase: "tool_input",
             outputCharacters: 1_100,
@@ -57,14 +57,14 @@ describe("SDK event adapter", () => {
             ]);
     });
 
-    test("保留完整 assistant response，不在 SDK 层静默截断", () => {
+    test("保留完整 assistant response，不在 SDK 层静默截断", async () => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn-full-text", (event) => {
             events.push(event);
         });
         const content = "回".repeat(12_000);
 
-        adapter.handleAgentEvent({
+        await adapter.handleAgentEvent({
             type: "assistant_text",
             content,
             phase: "commentary",
@@ -86,14 +86,14 @@ describe("SDK event adapter", () => {
         expect(completed.item.phase).toBe("commentary");
     });
 
-    test("超限 Tool 参数只投影有界 preview", () => {
+    test("超限 Tool 参数只投影有界 preview", async () => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn-large-args", (event) => {
             events.push(event);
         });
         const args = JSON.stringify({content: "x".repeat(12_000)});
 
-        adapter.handleAgentEvent({
+        await adapter.handleAgentEvent({
             type: "tool_call_start",
             turnId: "internal-turn",
             toolCallId: "large-call",

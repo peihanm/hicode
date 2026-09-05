@@ -45,6 +45,7 @@ export interface SessionSnapshotEntry {
     uiEvents: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
     queuedInputs?: RuntimeQueuedMessage[];
+    taskNotificationReceipts?: string[];
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
 }
@@ -83,6 +84,7 @@ export interface LoadedSession {
     uiEvents: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
     queuedInputs: RuntimeQueuedMessage[];
+    taskNotificationReceipts: string[];
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
     index?: SessionIndexEntry;
@@ -100,6 +102,7 @@ export interface SaveSessionSnapshotInput {
     uiEvents?: PersistedUIEvent[];
     checkpointHead?: CheckpointHead;
     queuedInputs?: readonly RuntimeQueuedMessage[];
+    taskNotificationReceipts?: readonly string[];
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
     /** Rewind 到首条问题之前时允许保存空 conversation。 */

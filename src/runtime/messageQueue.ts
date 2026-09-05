@@ -68,6 +68,7 @@ export function normalizeRuntimeQueuedMessages(
         ids.add(message.id);
         if (message.type === "task_notification") {
             if (
+                !/^[a-f0-9]{64}$/.test(message.id) ||
                 typeof message.taskId !== "string" ||
                 message.taskId.length === 0 ||
                 message.taskId.length > MAX_ID_CHARS
@@ -109,17 +110,26 @@ function asAgentInput(message: RuntimeQueuedMessage): QueuedAgentInput {
 
 export class RuntimeMessageQueue {
     private messages: RuntimeQueuedMessage[] = [];
+    private readonly taskReceipts = new Set<string>();
     private readonly listeners = new Set<() => void>();
     private snapshot: RuntimeMessageQueueSnapshot = EMPTY_SNAPSHOT;
 
     constructor(input: {
         messages?: readonly RuntimeQueuedMessage[];
+        taskReceipts?: readonly string[];
     } = {}) {
         const restored = input.messages === undefined
             ? []
             : normalizeRuntimeQueuedMessages(input.messages);
         if (!restored) throw new Error("无效的运行中消息队列快照");
+        const receipts = input.taskReceipts ?? [];
+        if (receipts.length > 4096 || new Set(receipts).size !== receipts.length || receipts.some(id => !/^[a-f0-9]{64}$/.test(id))) {
+            throw new Error("无效的任务通知接收记录");
+        }
+        for (const id of receipts) this.taskReceipts.add(id);
         this.messages = restored;
+        for (const message of restored) if (message.type === "task_notification") this.taskReceipts.add(message.id);
+        if (this.taskReceipts.size > 4096) throw new Error("任务通知接收记录达到上限");
         this.publish();
     }
 
@@ -127,19 +137,24 @@ export class RuntimeMessageQueue {
         return this.enqueue({type: "user_input", content, priority});
     }
 
-    enqueueTask(notification: TaskNotification): RuntimeQueuedMessage {
-        const existing = this.messages.find(
-            (message) =>
-                message.type === "task_notification" &&
-                message.taskId === notification.taskId
-        );
-        if (existing) return existing;
-        return this.enqueue({
-            type: "task_notification",
-            content: notification.message,
-            priority: "next",
-            taskId: notification.taskId,
+    enqueueTask(notification: TaskNotification): boolean {
+        if (!/^[a-f0-9]{64}$/.test(notification.notificationId)) throw new Error("无效的任务通知 ID");
+        if (this.taskReceipts.has(notification.notificationId)) return false;
+        if (this.taskReceipts.size >= 4096) throw new Error("任务通知接收记录达到上限");
+        this.enqueue({
+            type: "task_notification", content: notification.message, priority: "next",
+            taskId: notification.taskId, notificationId: notification.notificationId,
         });
+        return true;
+    }
+
+    getTaskReceipts(): string[] { return [...this.taskReceipts]; }
+
+    pruneTaskReceipts(pending: ReadonlySet<string>): void {
+        const queued = new Set(this.messages.filter(message => message.type === "task_notification").map(message => message.id));
+        for (const id of this.taskReceipts) {
+            if (!pending.has(id) && !queued.has(id)) this.taskReceipts.delete(id);
+        }
     }
 
     createAgentInputChannel(
@@ -225,6 +240,7 @@ export class RuntimeMessageQueue {
         priority: MessagePriority;
         content: string;
         taskId: string;
+        notificationId: string;
     }): RuntimeQueuedMessage {
         const content = input.content.trim();
         if (!content) throw new Error("不能排入空消息");
@@ -242,7 +258,7 @@ export class RuntimeMessageQueue {
             throw new Error(`运行中消息队列总量不能超过 ${MAX_TOTAL_BYTES} 字节`);
         }
         const base = {
-            id: randomUUID(),
+            id: input.type === "task_notification" ? input.notificationId : randomUUID(),
             priority: input.priority,
             content,
             createdAt: new Date().toISOString(),
@@ -250,6 +266,7 @@ export class RuntimeMessageQueue {
         const message: RuntimeQueuedMessage = input.type === "task_notification"
             ? {...base, type: input.type, taskId: input.taskId}
             : {...base, type: input.type};
+        if (input.type === "task_notification") this.taskReceipts.add(input.notificationId);
         this.messages.push(message);
         this.publish();
         return message;

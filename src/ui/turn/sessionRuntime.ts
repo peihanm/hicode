@@ -30,6 +30,7 @@ export function createUITurnSessionRuntime(
             checkpointHead: initialSession?.checkpointHead,
             toolDiscovery: initialSession?.toolDiscovery,
             gitSession: initialSession?.gitSession,
+            taskNotificationReceipts: initialSession?.taskNotificationReceipts,
             queuedInputs: queuedInputs.filter(
                 (message) => message.type !== "user_input"
             ),

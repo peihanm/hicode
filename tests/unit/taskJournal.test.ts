@@ -3,7 +3,7 @@ import {appendFile, readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {createPillarStorageLayout, getSessionStorageDirectory} from "../../src/persistence/index.js";
 import {createTaskJournal} from "../../src/tasks/journal.js";
-import {TaskNotificationCenter} from "../../src/tasks/notifications.js";
+import {taskNotificationId, TaskNotificationCenter} from "../../src/tasks/notifications.js";
 import type {TaskEventEnvelope} from "../../src/tasks/types.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
@@ -18,7 +18,7 @@ function shellEvent(input: {
     const sessionId = input.sessionId ?? "session-a";
     const status = input.status ?? "running";
     return {
-        version: 3,
+        version: 4,
         type: input.type ?? "task_progress",
         sequence: input.sequence,
         sessionId,
@@ -137,16 +137,34 @@ describe("TaskJournal", () => {
         });
     });
 
-    test("通知落盘失败时保留 archived pending", async () => {
+    test("压缩保留旧轮次未交付终态，新轮次 ACK 不会抹掉旧结果", async () => {
+        await withTempProject(async cwd => {
+            const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
+            const journal = createTaskJournal(storage, cwd);
+            for (const runCount of [1, 2]) {
+                await journal.append({version: 4, type: "task_finished", sequence: runCount, sessionId: "session-a",
+                    task: {id: "agent-a", kind: "agent", owner: {sessionId: "session-a", toolCallId: "call"},
+                        agentType: "Explore", description: "test", status: "completed", startedAt: "2026-09-05T00:00:00.000Z",
+                        completedAt: "2026-09-05T00:00:01.000Z", resultPreview: `run ${runCount}`,
+                        progress: {runCount, iterations: 1, toolUseCount: 0, pendingMessages: 0}}});
+            }
+            await journal.markNotificationClaimed({sequence: 3, sessionId: "session-a", taskId: "agent-a",
+                notificationId: taskNotificationId("agent-a", 2)});
+            for (let sequence = 4; sequence <= 1_024; sequence++) await journal.append(shellEvent({sequence}));
+            const loaded = await createTaskJournal(storage, cwd).load("session-a");
+            expect(loaded.tasks.find(task => task.id === "agent-a")).toMatchObject({progress: {runCount: 2}});
+            expect(loaded.pendingRuns).toEqual([expect.objectContaining({resultPreview: "run 1"})]);
+            await journal.markNotificationClaimed({sequence: 1_025, sessionId: "session-a", taskId: "agent-a",
+                notificationId: taskNotificationId("agent-a", 1)});
+            expect((await journal.load("session-a")).pendingRuns).toEqual([]);
+        });
+    });
+
+    test("archived pending 只由显式 ACK 清除", () => {
         const center = new TaskNotificationCenter();
         center.rememberArchived("task-a", false);
-        await expect(center.acknowledgeArchived(
-            "session-a",
-            "task-a",
-            async () => {
-                throw new Error("disk full");
-            }
-        )).rejects.toThrow("disk full");
         expect(center.hasArchivedPending("task-a")).toBe(true);
+        center.acknowledgeArchived("task-a");
+        expect(center.hasArchivedPending("task-a")).toBe(false);
     });
 });

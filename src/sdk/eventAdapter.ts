@@ -59,7 +59,7 @@ function terminalToolStatus(
     }
 }
 
-type EmitPayload = (event: ThreadEventPayload) => void;
+type EmitPayload = (event: ThreadEventPayload) => void | Promise<void>;
 
 export class SDKEventAdapter {
     private readonly uiEvents = new SessionUIEventCollector();
@@ -78,13 +78,13 @@ export class SDKEventAdapter {
         private readonly emit: EmitPayload
     ) {}
 
-    handleAgentEvent = (event: AgentEvent): void => {
+    handleAgentEvent = async (event: AgentEvent): Promise<void> => {
         this.uiEvents.handleEvent(event);
         switch (event.type) {
             case "model_stream_start":
-                this.flushEndedTools();
+                await this.flushEndedTools();
                 this.lastProgress = undefined;
-                this.emit({
+                await this.emit({
                     type: "turn.progress",
                     turnId: this.turnId,
                     phase: "model_waiting",
@@ -103,7 +103,7 @@ export class SDKEventAdapter {
                     phase: event.phase,
                     estimatedOutputTokens: event.estimatedOutputTokens,
                 };
-                this.emit({
+                await this.emit({
                     type: "turn.progress",
                     turnId: this.turnId,
                     phase: event.phase,
@@ -114,8 +114,8 @@ export class SDKEventAdapter {
                 });
                 break;
             case "assistant_text":
-                this.flushEndedTools();
-                this.emitInstant({
+                await this.flushEndedTools();
+                await this.emitInstant({
                     id: this.nextId("assistant"),
                     type: "agent_message",
                     status: "completed",
@@ -134,7 +134,7 @@ export class SDKEventAdapter {
                     arguments: parseArguments(event.args),
                 };
                 this.tools.set(event.toolCallId, item);
-                this.emitItem("item.started", item);
+                await this.emitItem("item.started", item);
                 break;
             }
             case "tool_call_end": {
@@ -155,7 +155,7 @@ export class SDKEventAdapter {
                 };
                 this.tools.set(event.toolCallId, item);
                 this.endedTools.add(event.toolCallId);
-                this.emitItem("item.updated", item);
+                await this.emitItem("item.updated", item);
                 if (event.uiData?.type === "file_change") {
                     const fileItem: FileChangeItem = {
                         id: this.nextId("file-change"),
@@ -180,7 +180,7 @@ export class SDKEventAdapter {
                     resultComplete: event.persisted.complete,
                 };
                 this.tools.set(event.toolCallId, item);
-                this.emitItem("item.updated", item);
+                await this.emitItem("item.updated", item);
                 break;
             }
             case "compact_start": {
@@ -193,7 +193,7 @@ export class SDKEventAdapter {
                     threshold: event.threshold,
                 };
                 this.activeCompact = item;
-                this.emitItem("item.started", item);
+                await this.emitItem("item.started", item);
                 break;
             }
             case "compact_end": {
@@ -206,7 +206,7 @@ export class SDKEventAdapter {
                     postTokenCount: event.postTokenCount,
                 };
                 this.activeCompact = undefined;
-                this.emitItem("item.completed", item);
+                await this.emitItem("item.completed", item);
                 break;
             }
             case "compact_error": {
@@ -218,7 +218,7 @@ export class SDKEventAdapter {
                     error: boundedText(event.message),
                 };
                 this.activeCompact = undefined;
-                this.emitItem("item.completed", item);
+                await this.emitItem("item.completed", item);
                 break;
             }
             case "subagent_start": {
@@ -233,7 +233,7 @@ export class SDKEventAdapter {
                     parentToolCallId: event.parentToolCallId,
                 };
                 this.subagents.set(event.agentId, item);
-                this.emitItem("item.started", item);
+                await this.emitItem("item.started", item);
                 break;
             }
             case "subagent_end": {
@@ -256,7 +256,7 @@ export class SDKEventAdapter {
                     verificationVerdict: event.verificationVerdict,
                 };
                 this.subagents.delete(event.agentId);
-                this.emitItem("item.completed", item);
+                await this.emitItem("item.completed", item);
                 break;
             }
             case "subagent_error": {
@@ -268,7 +268,7 @@ export class SDKEventAdapter {
                     error: boundedText(event.message),
                 };
                 this.subagents.delete(event.agentId);
-                this.emitItem("item.completed", item);
+                await this.emitItem("item.completed", item);
                 break;
             }
             case "memory_update": {
@@ -279,7 +279,7 @@ export class SDKEventAdapter {
                     source: event.source,
                     changes: event.changes,
                 };
-                this.emitInstant(item);
+                await this.emitInstant(item);
                 break;
             }
             default:
@@ -287,22 +287,21 @@ export class SDKEventAdapter {
         }
     };
 
-    emitInteractionStart(request: InteractionRequest): string {
+    async emitInteractionStart(request: InteractionRequest): Promise<void> {
         const item: InteractionItem = {
             id: `interaction:${request.requestId}`,
             type: "interaction",
             status: "in_progress",
             request,
         };
-        this.emitItem("item.started", item);
-        return item.id;
+        await this.emitItem("item.started", item);
     }
 
-    emitInteractionEnd(
+    async emitInteractionEnd(
         request: InteractionRequest,
         response: InteractionResponse,
         status: InteractionItem["status"]
-    ): void {
+    ): Promise<void> {
         const item: InteractionItem = {
             id: `interaction:${request.requestId}`,
             type: "interaction",
@@ -312,24 +311,24 @@ export class SDKEventAdapter {
                 ? {behavior: "allow"}
                 : {behavior: "deny", message: boundedText(response.message)},
         };
-        this.emitItem("item.completed", item);
+        await this.emitItem("item.completed", item);
     }
 
-    emitTodos(todos: readonly Todo[]): void {
+    async emitTodos(todos: readonly Todo[]): Promise<void> {
         const item: TodoListItem = {
             id: this.nextId("todos"),
             type: "todo_list",
             status: "completed",
             todos: todos.map((todo) => ({...todo})),
         };
-        this.emitInstant(item);
+        await this.emitInstant(item);
     }
 
-    emitDiagnostic(
+    async emitDiagnostic(
         scope: string,
         message: string,
         severity: DiagnosticItem["severity"] = "warning"
-    ): void {
+    ): Promise<void> {
         const item: DiagnosticItem = {
             id: this.nextId("diagnostic"),
             type: "diagnostic",
@@ -338,16 +337,16 @@ export class SDKEventAdapter {
             scope,
             message: boundedText(message),
         };
-        this.emitInstant(item);
+        await this.emitInstant(item);
     }
 
-    finish(reason: StopReason): void {
-        this.flushEndedTools();
+    async finish(reason: StopReason): Promise<void> {
+        await this.flushEndedTools();
         const danglingStatus = reason === "interrupted"
             ? "interrupted"
             : "failed";
         for (const [toolCallId, current] of this.tools) {
-            this.emitItem("item.completed", {
+            await this.emitItem("item.completed", {
                 ...current,
                 status: danglingStatus,
                 outcome: reason === "interrupted" ? "interrupted" : "failed",
@@ -355,14 +354,14 @@ export class SDKEventAdapter {
             this.tools.delete(toolCallId);
         }
         for (const [agentId, current] of this.subagents) {
-            this.emitItem("item.completed", {
+            await this.emitItem("item.completed", {
                 ...current,
                 status: danglingStatus,
             });
             this.subagents.delete(agentId);
         }
         if (this.activeCompact) {
-            this.emitItem("item.completed", {
+            await this.emitItem("item.completed", {
                 ...this.activeCompact,
                 status: danglingStatus,
                 error: "Turn 在 Compact 完成前结束",
@@ -375,16 +374,16 @@ export class SDKEventAdapter {
         return this.uiEvents.getEvents();
     }
 
-    private flushEndedTools(): void {
+    private async flushEndedTools(): Promise<void> {
         for (const toolCallId of this.endedTools) {
             const current = this.tools.get(toolCallId);
             if (!current) continue;
-            this.emitItem("item.completed", {
+            await this.emitItem("item.completed", {
                 ...current,
                 status: terminalToolStatus(current.outcome),
             });
             for (const fileItem of this.fileChanges.get(toolCallId) ?? []) {
-                this.emitInstant(fileItem);
+                await this.emitInstant(fileItem);
             }
             this.tools.delete(toolCallId);
             this.fileChanges.delete(toolCallId);
@@ -392,16 +391,16 @@ export class SDKEventAdapter {
         this.endedTools.clear();
     }
 
-    private emitInstant(item: ThreadItem): void {
-        this.emitItem("item.started", {...item, status: "in_progress"});
-        this.emitItem("item.completed", item);
+    private async emitInstant(item: ThreadItem): Promise<void> {
+        await this.emitItem("item.started", {...item, status: "in_progress"});
+        await this.emitItem("item.completed", item);
     }
 
-    private emitItem(
+    private async emitItem(
         type: "item.started" | "item.updated" | "item.completed",
         item: ThreadItem
-    ): void {
-        this.emit({type, turnId: this.turnId, item: structuredClone(item)});
+    ): Promise<void> {
+        await this.emit({type, turnId: this.turnId, item: structuredClone(item)});
     }
 
     private shouldEmitProgress(

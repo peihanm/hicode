@@ -386,7 +386,8 @@ describe("synchronous subagent", () => {
           return {total: 0, shell: 0, agent: 0};
         },
         async list() { return []; },
-        async claimNotifications() { return []; },
+        async pendingNotifications() { return []; },
+        async acknowledgeNotification() {},
         subscribe() { return () => {}; },
       };
       const child = createFakeLLM([

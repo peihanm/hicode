@@ -39,6 +39,7 @@ describe("session persistence", () => {
         todos: [],
         permissionMode: "default",
         collaborationMode: "build",
+        taskNotificationReceipts: ["a".repeat(64)],
         queuedInputs: [{
           id: "queued-1",
           type: "user_input",
@@ -48,6 +49,7 @@ describe("session persistence", () => {
         }],
       });
 
+      expect(loadSession(storage, cwd, "queued-session", "glm-test")?.taskNotificationReceipts).toEqual(["a".repeat(64)]);
       expect(loadSession(storage, cwd, "queued-session", "glm-test")?.queuedInputs)
         .toEqual([{
           id: "queued-1",

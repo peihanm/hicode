@@ -42,7 +42,7 @@ export function createAgentRunner(
     return (
         userInput: string,
         history: Message[],
-        onEvent: (event: AgentEvent) => void,
+        onEvent: (event: AgentEvent) => void | Promise<void>,
         ctx: ToolContext,
         inputChannel: AgentInputChannel,
         options: AgentRunOptions
@@ -60,7 +60,7 @@ export function createAgentRunner(
 export type AgentRunner = (
     userInput: string,
     history: Message[],
-    onEvent: (event: AgentEvent) => void,
+    onEvent: (event: AgentEvent) => void | Promise<void>,
     ctx: ToolContext,
     inputChannel: AgentInputChannel,
     options: AgentRunOptions
@@ -93,7 +93,7 @@ function assertFreshToolCallIds(
 async function runAgentCore(
     userInput: string,
     history: Message[],
-    onEvent: (event: AgentEvent) => void,
+    onEvent: (event: AgentEvent) => void | Promise<void>,
     ctx: ToolContext,
     inputChannel: AgentInputChannel,
     options: AgentRunOptions,

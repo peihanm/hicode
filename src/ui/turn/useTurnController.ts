@@ -17,6 +17,7 @@ import {UITurnController} from "./controller.js";
 import {UITurnEventStore} from "./eventStore.js";
 import {UIPermissionRequests} from "./permissionRequests.js";
 import {SessionSnapshotQueue} from "./sessionQueue.js";
+import {createTaskNotificationDelivery} from "../../runtime/taskNotificationDelivery.js";
 import {estimateRestoredTokenInfo} from "./tokenInfo.js";
 import {formatAgentLoadWarning} from "../../subagents/diagnostics.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../../hooks/index.js";
@@ -415,26 +416,37 @@ export function useTurnController({
         }, [shutdown]);
 
         useEffect(() => {
-            const drainNotifications = async () => {
-                for (const notification of await taskSession.claimNotifications()) {
-                    messageQueue.enqueueTask(notification);
-                    eventStore.appendTaskNotification(notification);
-                }
-            };
+            let disposed = false;
+            let retry: ReturnType<typeof setTimeout> | undefined;
+            let lastError: string | undefined;
+            const delivery = createTaskNotificationDelivery({
+                tasks: taskSession, queue: messageQueue,
+                persist: () => sessionQueue.enqueueCritical(createSnapshot()),
+                onQueued: notification => eventStore.appendTaskNotification(notification),
+            });
+            let observed: Promise<void> | undefined;
             const drain = () => {
-                void drainNotifications().catch((error) => {
-                    eventStore.appendNotice(
-                        `后台任务通知读取失败：${
-                            error instanceof Error ? error.message : String(error)
-                        }`
-                    );
+                if (disposed) return;
+                const operation = delivery.drain();
+                if (observed === operation) return;
+                observed = operation;
+                void operation.then(() => { lastError = undefined; }).catch((error) => {
+                    const message = error instanceof Error ? error.message : String(error);
+                    if (message !== lastError) eventStore.appendNotice(`后台任务通知等待重投：${message}`);
+                    lastError = message;
+                    if (!disposed && retry === undefined) retry = setTimeout(() => { retry = undefined; drain(); }, 1_000);
                 });
             };
             drain();
-            return taskSession.subscribe(() => {
-                drain();
-            });
-        }, [eventStore, messageQueue, taskSession]);
+            const unsubscribeTasks = taskSession.subscribe(drain);
+            const unsubscribeQueue = messageQueue.subscribe(drain);
+            return () => {
+                disposed = true;
+                if (retry !== undefined) clearTimeout(retry);
+                unsubscribeTasks();
+                unsubscribeQueue();
+            };
+        }, [createSnapshot, eventStore, messageQueue, sessionQueue, taskSession]);
 
         useEffect(() => {
             if (turnStatus.busy || messageQueueSnapshot.messages.length === 0) {

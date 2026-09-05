@@ -21,7 +21,7 @@ import {
     snapshotTask,
     worktreeSnapshot,
 } from "./managed.js";
-import {TaskNotificationCenter} from "./notifications.js";
+import {TaskNotificationCenter, taskNotificationId} from "./notifications.js";
 import {createShellTask, runShellTask} from "./shellTask.js";
 import {
     createAgentTask,
@@ -127,9 +127,14 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.getRunningSummary(this.sessionId);
     }
 
-    async claimNotifications(): Promise<readonly TaskNotification[]> {
+    async pendingNotifications(): Promise<readonly TaskNotification[]> {
         await this.ready;
-        return this.runtime.claimNotifications(this.sessionId);
+        return this.runtime.pendingNotifications(this.sessionId);
+    }
+
+    async acknowledgeNotification(notification: Pick<TaskNotification, "taskId" | "notificationId">): Promise<void> {
+        await this.ready;
+        await this.runtime.acknowledgeNotification(this.sessionId, notification);
     }
 
     subscribe(listener: (event: TaskEventEnvelope) => void): () => void {
@@ -212,7 +217,7 @@ class TaskRuntime implements TaskRuntimeLike {
                 await task.completion;
                 snapshot = await snapshotShell(task);
                 task.notificationPending = false;
-                await this.markNotificationClaimed(binding.sessionId, task.id);
+                await this.markNotificationClaimed(binding.sessionId, task.id, taskNotificationId(task.id, 1));
             }
             return snapshot;
         } finally {
@@ -322,6 +327,8 @@ class TaskRuntime implements TaskRuntimeLike {
             );
         }
 
+        const previousNotification = task.notificationPending ? snapshotAgent(task) : undefined;
+        if (previousNotification) this.notifications.rememberPrevious(previousNotification);
         const previous = {
             status: task.status,
             completedAt: task.completedAt,
@@ -339,7 +346,12 @@ class TaskRuntime implements TaskRuntimeLike {
             notificationPending: task.notificationPending,
             suppressTerminalNotification: task.suppressTerminalNotification,
         };
-        task.messageQueue.enqueueUser(message);
+        try {
+            task.messageQueue.enqueueUser(message);
+        } catch (error) {
+            if (previousNotification) this.notifications.acknowledgePrevious(taskNotificationId(task.id, task.runCount));
+            throw error;
+        }
         task.controller = createTurnAbortController();
         resetAgentRun(task, task.runCount + 1);
         task.status = "running";
@@ -349,6 +361,7 @@ class TaskRuntime implements TaskRuntimeLike {
         try {
             await this.publish("task_started", task, true);
         } catch (error) {
+            if (previousNotification) this.notifications.acknowledgePrevious(taskNotificationId(task.id, previous.runCount));
             task.status = previous.status;
             task.completedAt = previous.completedAt;
             task.runCount = previous.runCount;
@@ -410,11 +423,8 @@ class TaskRuntime implements TaskRuntimeLike {
             if (expectedKind !== undefined && archived.kind !== expectedKind) {
                 throw new Error(`任务类型不匹配: 预期 ${expectedKind}，实际 ${archived.kind}`);
             }
-            await this.notifications.acknowledgeArchived(
-                sessionId,
-                id,
-                this.markNotificationClaimed
-            );
+            await this.acknowledgeNotification(sessionId, {taskId: id,
+                notificationId: taskNotificationId(id, archived.kind === "agent" ? archived.progress.runCount : 1)});
             return archived;
         }
         const kind = isShellTask(task) ? "shell" : "agent";
@@ -429,7 +439,7 @@ class TaskRuntime implements TaskRuntimeLike {
             await task.completion;
         }
         if (shouldAcknowledge) {
-            await this.markNotificationClaimed(sessionId, id);
+            await this.markNotificationClaimed(sessionId, id, taskNotificationId(id, isShellTask(task) ? 1 : task.runCount));
         }
         task.notificationPending = false;
         return snapshotTask(task);
@@ -477,14 +487,31 @@ class TaskRuntime implements TaskRuntimeLike {
         );
     }
 
-    claimNotifications(sessionId: string): Promise<readonly TaskNotification[]> {
-        return this.notifications.claim(
+    pendingNotifications(sessionId: string): Promise<readonly TaskNotification[]> {
+        return this.notifications.pending(
             sessionId,
             this.tasks.values(),
             this.archived.values(),
-            snapshotTask,
-            this.markNotificationClaimed
+            snapshotTask
         );
+    }
+
+    async acknowledgeNotification(sessionId: string, notification: Pick<TaskNotification, "taskId" | "notificationId">): Promise<void> {
+        if (this.notifications.hasPrevious(sessionId, notification.taskId, notification.notificationId)) {
+            await this.markNotificationClaimed(sessionId, notification.taskId, notification.notificationId);
+            this.notifications.acknowledgePrevious(notification.notificationId);
+            return;
+        }
+        const task = this.ownedTask(sessionId, notification.taskId);
+        const archived = this.archived.get(notification.taskId);
+        if (!task && archived?.owner.sessionId !== sessionId) return;
+        const runCount = task ? (isShellTask(task) ? 1 : task.runCount) : archived!.kind === "agent" ? archived!.progress.runCount : 1;
+        if (taskNotificationId(notification.taskId, runCount) !== notification.notificationId) return;
+        if (task ? !task.notificationPending : !this.notifications.hasArchivedPending(notification.taskId)) return;
+        await this.markNotificationClaimed(sessionId, notification.taskId, notification.notificationId);
+        if (task) {
+            if (taskNotificationId(task.id, isShellTask(task) ? 1 : task.runCount) === notification.notificationId) task.notificationPending = false;
+        } else this.notifications.acknowledgeArchived(notification.taskId);
     }
 
     subscribe(
@@ -515,12 +542,14 @@ class TaskRuntime implements TaskRuntimeLike {
 
     private readonly markNotificationClaimed = async (
         sessionId: string,
-        taskId: string
+        taskId: string,
+        notificationId: string
     ): Promise<void> => {
         await this.journal.markNotificationClaimed({
             sequence: ++this.sequence,
             sessionId,
             taskId,
+            notificationId,
         });
     };
 
@@ -762,7 +791,7 @@ class TaskRuntime implements TaskRuntimeLike {
         task: TaskSnapshot
     ): TaskEventEnvelope {
         return {
-            version: 3,
+            version: 4,
             sequence: ++this.sequence,
             sessionId: task.owner.sessionId,
             task,
@@ -783,6 +812,12 @@ class TaskRuntime implements TaskRuntimeLike {
     private async restoreSession(sessionId: string): Promise<void> {
         const loaded = await this.journal.load(sessionId);
         this.sequence = Math.max(this.sequence, loaded.sequence);
+        for (const snapshot of loaded.pendingRuns) {
+            const current = loaded.tasks.find(task => task.id === snapshot.id);
+            if (current?.kind === "agent" && snapshot.kind === "agent" && current.progress.runCount !== snapshot.progress.runCount) {
+                this.notifications.rememberPrevious(snapshot);
+            }
+        }
         for (const snapshot of loaded.tasks) {
             if (this.tasks.has(snapshot.id) || this.archived.has(snapshot.id)) {
                 continue;
@@ -828,7 +863,7 @@ class TaskRuntime implements TaskRuntimeLike {
             this.archived.set(restored.id, restored);
             this.notifications.rememberArchived(
                 restored.id,
-                loaded.claimedTaskIds.has(restored.id)
+                loaded.claimedNotificationIds.has(taskNotificationId(restored.id, restored.kind === "agent" ? restored.progress.runCount : 1))
             );
         }
     }

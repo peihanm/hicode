@@ -1,8 +1,11 @@
+import {createHash} from "node:crypto";
 import type {ManagedTask} from "./managed.js";
 import type {TaskNotification, TaskSnapshot,} from "./types.js";
 
 type SnapshotTask = (task: ManagedTask) => Promise<TaskSnapshot>;
-type MarkClaimed = (sessionId: string, taskId: string) => Promise<void>;
+export function taskNotificationId(taskId: string, runCount: number): string {
+    return createHash("sha256").update(JSON.stringify([taskId, runCount])).digest("hex");
+}
 
 function compactLine(value: string, max = 180): string {
     const compact = value.replace(/\s+/g, " ").trim();
@@ -70,6 +73,7 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
         : "";
     const summary = notificationSummary(task);
     return {
+        notificationId: taskNotificationId(task.id, task.kind === "agent" ? task.progress.runCount : 1),
         taskId: task.id,
         sessionId: task.owner.sessionId,
         ownerToolCallId: task.owner.toolCallId,
@@ -89,92 +93,53 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
 }
 
 export class TaskNotificationCenter {
+    private readonly previousRuns = new Map<string, TaskSnapshot>();
+
+    rememberPrevious(snapshot: TaskSnapshot): void {
+        const id = taskNotificationId(snapshot.id, snapshot.kind === "agent" ? snapshot.progress.runCount : 1);
+        if (!this.previousRuns.has(id) && [...this.previousRuns.values()].filter(task => task.owner.sessionId === snapshot.owner.sessionId).length >= 32) {
+            throw new Error("未交付的 Agent 运行通知已达到上限，请先接收任务通知");
+        }
+        this.previousRuns.set(id, snapshot);
+    }
+
+    hasPrevious(sessionId: string, taskId: string, notificationId: string): boolean {
+        const snapshot = this.previousRuns.get(notificationId);
+        return snapshot?.owner.sessionId === sessionId && snapshot.id === taskId;
+    }
+
+    acknowledgePrevious(notificationId: string): void { this.previousRuns.delete(notificationId); }
+
     private readonly archivedPending = new Set<string>();
-    private readonly claims = new Map<
-        string,
-        Promise<readonly TaskNotification[]>
-    >();
 
     rememberArchived(taskId: string, claimed: boolean): void {
         if (!claimed) this.archivedPending.add(taskId);
     }
 
-    hasArchivedPending(taskId: string): boolean {
-        return this.archivedPending.has(taskId);
-    }
+    hasArchivedPending(taskId: string): boolean { return this.archivedPending.has(taskId); }
+    acknowledgeArchived(taskId: string): void { this.archivedPending.delete(taskId); }
 
-    async acknowledgeArchived(
-        sessionId: string,
-        taskId: string,
-        markClaimed: MarkClaimed
-    ): Promise<void> {
-        if (!this.archivedPending.has(taskId)) return;
-        await markClaimed(sessionId, taskId);
-        this.archivedPending.delete(taskId);
-    }
-
-    claim(
+    async pending(
         sessionId: string,
         tasks: Iterable<ManagedTask>,
         archived: Iterable<TaskSnapshot>,
-        snapshotTask: SnapshotTask,
-        markClaimed: MarkClaimed
-    ): Promise<readonly TaskNotification[]> {
-        const previous = this.claims.get(sessionId) ??
-            Promise.resolve([] as readonly TaskNotification[]);
-        const claim = previous
-            .catch(() => [])
-            .then(() => this.claimOnce(
-                sessionId,
-                tasks,
-                archived,
-                snapshotTask,
-                markClaimed
-            ));
-        this.claims.set(sessionId, claim);
-        void claim.then(
-            () => this.clearClaim(sessionId, claim),
-            () => this.clearClaim(sessionId, claim)
-        );
-        return claim;
-    }
-
-    private clearClaim(
-        sessionId: string,
-        claim: Promise<readonly TaskNotification[]>
-    ): void {
-        if (this.claims.get(sessionId) === claim) {
-            this.claims.delete(sessionId);
-        }
-    }
-
-    private async claimOnce(
-        sessionId: string,
-        tasks: Iterable<ManagedTask>,
-        archived: Iterable<TaskSnapshot>,
-        snapshotTask: SnapshotTask,
-        markClaimed: MarkClaimed
+        snapshotTask: SnapshotTask
     ): Promise<readonly TaskNotification[]> {
         const notifications: TaskNotification[] = [];
         for (const task of tasks) {
-            if (
-                task.owner.sessionId !== sessionId ||
-                !task.notificationPending ||
-                task.status === "running"
-            ) continue;
+            if (task.owner.sessionId !== sessionId || !task.notificationPending || task.status === "running") continue;
             const snapshot = await snapshotTask(task);
-            await markClaimed(sessionId, task.id);
-            task.notificationPending = false;
-            notifications.push(notificationFor(snapshot));
+            if (snapshot.status !== "running") notifications.push(notificationFor(snapshot));
         }
         for (const task of archived) {
-            if (
-                task.owner.sessionId !== sessionId ||
-                !this.archivedPending.has(task.id)
-            ) continue;
-            await markClaimed(sessionId, task.id);
-            this.archivedPending.delete(task.id);
-            notifications.push(notificationFor(task));
+            if (task.owner.sessionId === sessionId && this.archivedPending.has(task.id) && task.status !== "running") {
+                notifications.push(notificationFor(task));
+            }
+        }
+        for (const snapshot of this.previousRuns.values()) {
+            if (snapshot.owner.sessionId !== sessionId) continue;
+            const notification = notificationFor(snapshot);
+            if (!notifications.some(current => current.notificationId === notification.notificationId)) notifications.push(notification);
         }
         return notifications;
     }

@@ -471,7 +471,7 @@ describe("bash tool contract", () => {
         expect(result.modelContent).toContain("listen EPERM");
         expect(result.modelContent).toContain("Pillar Sandbox: 本地端口监听被");
         expect(result.modelContent).toContain("不要换端口或重写服务");
-        expect(await tasks.claimNotifications()).toEqual([]);
+        expect(await tasks.pendingNotifications()).toEqual([]);
       } finally {
         await runtime.close();
       }
@@ -532,7 +532,7 @@ describe("bash tool contract", () => {
         expect(stopped.outcome).toBe("ok");
         expect(stopped.modelContent).toContain("Status: cancelled");
         expect(stopped.modelContent).toContain("aborted user-cancel");
-        expect(await tasks.claimNotifications()).toEqual([]);
+        expect(await tasks.pendingNotifications()).toEqual([]);
       } finally {
         await runtime.close();
       }

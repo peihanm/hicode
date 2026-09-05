@@ -116,6 +116,7 @@ describe("running input queue UI", () => {
                 permissionMode: "default",
         collaborationMode: "build",
                 uiEvents: [],
+                taskNotificationReceipts: [],
                 queuedInputs: [
                     {
                         id: "queued-user",
@@ -125,7 +126,7 @@ describe("running input queue UI", () => {
                         createdAt: "2026-07-26T00:00:00.000Z",
                     },
                     {
-                        id: "queued-task",
+                        id: "a".repeat(64),
                         type: "task_notification",
                         priority: "next",
                         taskId: "task-1",

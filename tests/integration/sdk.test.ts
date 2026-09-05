@@ -724,6 +724,66 @@ describe("TypeScript SDK", () => {
     });
 });
 
+for (const action of ["resume", "return", "close", "abort"] as const) {
+    test(`SDK 慢消费者 ${action} 不造成无界生产或资源死锁`, async () => {
+        await withTempProject(async (cwd, storage) => {
+            let produced = 0;
+            let reached!: () => void;
+            const ready = new Promise<void>(resolve => { reached = resolve; });
+            const agentRuntime: AgentRuntime = {
+                ...createFakeAgentRuntime(createFakeLLM([])),
+                async runAgent(_prompt, history, onEvent, ctx) {
+                    history.push({role: "user", content: "bounded stream"});
+                    for (let index = 0; index < 400 && !ctx.signal.aborted; index++) {
+                        await onEvent({type: "assistant_text", content: String(index), phase: "commentary"});
+                        produced++;
+                        if (produced === 100) reached();
+                    }
+                    history.push({role: "assistant", content: "done"});
+                    return {reply: "done", reason: ctx.signal.aborted ? "interrupted" : "completed", iterations: 1};
+                },
+            };
+            const resources = createTestRuntimeResources(cwd, {storage, agentRuntime});
+            const thread = await createSDKThread({resources,
+                seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+                state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []},
+                resumed: false, onClose() {},
+            });
+            const controller = new AbortController();
+            try {
+                const {events} = await thread.runStreamed("stream", {signal: controller.signal});
+                const iterator = events[Symbol.asyncIterator]();
+                await iterator.next();
+                await ready;
+                await new Promise(resolve => setTimeout(resolve, 10));
+                expect(produced).toBeLessThan(150);
+                if (action === "return") {
+                    await iterator.return?.(undefined);
+                } else if (action === "resume") {
+                    const received: ThreadEvent[] = [];
+                    while (true) {
+                        const result = await iterator.next();
+                        if (result.done) break;
+                        received.push(result.value);
+                    }
+                    expect(produced).toBe(400);
+                    expect(received.filter(event => event.type === "item.started")).toHaveLength(400);
+                    expect(received.filter(event => event.type === "item.completed")).toHaveLength(400);
+                    expect(received.at(-1)?.type).toBe("turn.completed");
+                } else {
+                    if (action === "abort") controller.abort("user-cancel");
+                    await thread.close();
+                    await expect(iterator.next()).rejects.toThrow("事件流已断开");
+                }
+                expect(loadSession(storage, cwd, thread.id, resources.model)?.history.at(-1)?.content).toBe("done");
+            } finally {
+                await thread.close();
+                await resources.close();
+            }
+        });
+    });
+}
+
 async function* replay(
     events: readonly ThreadEvent[]
 ): AsyncGenerator<ThreadEvent> {

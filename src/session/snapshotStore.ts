@@ -111,6 +111,7 @@ async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId:
         // Persist the pre-turn state even for the first Turn. Its head remains the parent until settlement.
         const snapshot: StoredEntry = {...state, type: "snapshot",
             checkpointHead: {branchId, ...(parentCheckpointId ? {checkpointId: parentCheckpointId} : {})},
+            ...(prior?.type === "snapshot" && prior.taskNotificationReceipts ? {taskNotificationReceipts: prior.taskNotificationReceipts} : {}),
             ...(prior?.type === "snapshot" && prior.queuedInputs ? {queuedInputs: prior.queuedInputs} : {}),
             ...(prior?.type === "snapshot" && prior.gitSession ? {gitSession: prior.gitSession} : {}),
         };

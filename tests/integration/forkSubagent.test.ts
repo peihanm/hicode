@@ -184,7 +184,7 @@ describe("fork subagent", () => {
                 status: "completed",
                 resultPreview: "frontend 已理解父上下文",
             });
-            const notifications = await tasks.claimNotifications();
+            const notifications = await tasks.pendingNotifications();
             expect(notifications[0]?.message).toContain("frontend (fork)");
             await runtime.close();
         });

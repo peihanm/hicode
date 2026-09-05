@@ -73,6 +73,7 @@ export async function saveSessionSnapshot(
             ...(input.checkpointHead
                 ? {checkpointHead: {...input.checkpointHead}}
                 : {}),
+            ...(input.taskNotificationReceipts?.length ? {taskNotificationReceipts: [...input.taskNotificationReceipts]} : {}),
             ...(input.queuedInputs && input.queuedInputs.length > 0
                 ? {queuedInputs: input.queuedInputs.map((message) => ({...message}))}
                 : {}),
@@ -219,6 +220,7 @@ export function loadSession(
             ? {...snapshot.checkpointHead}
             : undefined,
         queuedInputs: snapshot.queuedInputs ?? [],
+        taskNotificationReceipts: snapshot.taskNotificationReceipts ?? [],
         toolDiscovery: normalizeToolDiscoverySnapshot(snapshot.toolDiscovery),
         gitSession: normalizeGitSessionState(snapshot.gitSession),
         index,

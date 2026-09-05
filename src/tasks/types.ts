@@ -89,6 +89,7 @@ export interface StartAgentTaskInput {
 }
 
 export interface TaskNotification {
+    notificationId: string;
     taskId: string;
     sessionId: string;
     ownerToolCallId: string;
@@ -101,7 +102,7 @@ export interface TaskNotification {
 }
 
 export interface TaskEventEnvelope {
-    version: 3;
+    version: 4;
     sequence: number;
     sessionId: string;
     task: TaskSnapshot;
@@ -131,7 +132,9 @@ export interface TaskSessionLike {
 
     getRunningSummary(): RunningTaskSummary;
 
-    claimNotifications(): Promise<readonly TaskNotification[]>;
+    pendingNotifications(): Promise<readonly TaskNotification[]>;
+
+    acknowledgeNotification(notification: Pick<TaskNotification, "taskId" | "notificationId">): Promise<void>;
 
     subscribe(listener: (event: TaskEventEnvelope) => void): () => void;
 }

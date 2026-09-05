@@ -77,7 +77,7 @@ export interface ToolContext {
     setCollaborationMode: (mode: CollaborationMode) => void;
 
     // TodoWrite 工具用：更新 React state 驱动 TodoList UI
-    setTodos: (todos: Todo[]) => void;
+    setTodos: (todos: Todo[]) => void | Promise<void>;
 
     // Skill 工具用：启动时加载的 skill 列表
     skills: LoadedSkill[];

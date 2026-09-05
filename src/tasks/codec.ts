@@ -13,11 +13,12 @@ import type {
 export type TaskJournalEntry =
     | TaskEventEnvelope
     | {
-    version: 3;
+    version: 4;
     type: "task_notification_claimed";
     sequence: number;
     sessionId: string;
     taskId: string;
+    notificationId: string;
 };
 
 const MAX_ID_CHARACTERS = 512;
@@ -367,17 +368,18 @@ export function decodeTaskJournalEntry(
     value: unknown,
     expectedSessionId: string
 ): TaskJournalEntry | undefined {
-    if (!isRecord(value) || value.version !== 3 || !safeCount(value.sequence) ||
+    if (!isRecord(value) || value.version !== 4 || !safeCount(value.sequence) ||
         value.sequence === 0 || value.sessionId !== expectedSessionId) return undefined;
     if (value.type === "task_notification_claimed") {
-        if (!hasOnlyKeys(value, ["version", "type", "sequence", "sessionId", "taskId"]) ||
-            !boundedString(value.taskId, MAX_ID_CHARACTERS)) return undefined;
+        if (!hasOnlyKeys(value, ["version", "type", "sequence", "sessionId", "taskId", "notificationId"]) ||
+            !boundedString(value.taskId, MAX_ID_CHARACTERS) || typeof value.notificationId !== "string" || !/^[a-f0-9]{64}$/.test(value.notificationId)) return undefined;
         return {
-            version: 3,
+            version: 4,
             type: "task_notification_claimed",
             sequence: value.sequence,
             sessionId: expectedSessionId,
             taskId: value.taskId,
+            notificationId: value.notificationId,
         };
     }
     if (
@@ -395,7 +397,7 @@ export function decodeTaskJournalEntry(
         (value.type === "task_finished" && task.status === "running")
     ) return undefined;
     return {
-        version: 3,
+        version: 4,
         type: value.type,
         sequence: value.sequence,
         sessionId: expectedSessionId,
