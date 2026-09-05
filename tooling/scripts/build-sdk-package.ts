@@ -10,6 +10,9 @@ const SDK_PACKAGE_NAME = "pillar-core-sdk";
 const runtimeDependencies = [
     "@anthropic-ai/sandbox-runtime",
     "@modelcontextprotocol/sdk",
+    "ajv",
+    "ajv-formats",
+    "re2js",
     "diff",
     "ignore",
     "picomatch",

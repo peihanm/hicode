@@ -96,6 +96,33 @@ async function exposeDeferredTools(
 }
 
 describe("MCP stdio integration", () => {
+  test("完整本地 Schema 与 Hook 最终校验阻止真实 stdio 请求，坏 Schema 单独诊断", async () => {
+    await withTempProject(async cwd => {
+      const manager = await createFixtureManager(cwd, resolve(import.meta.dir, "../fixtures/mcp/schemaServer.ts"));
+      try {
+        expect(manager.getSnapshots()[0]).toMatchObject({status: "connected", toolCount: 2});
+        expect(manager.getSnapshots()[0]?.error).toContain("invalid_schema");
+        const runtime = createToolRuntime({additionalTools: manager.getTools()});
+        const name = "mcp__fixture__validated";
+        const stats = "mcp__fixture__stats";
+        await exposeDeferredTools(runtime, cwd, name, stats);
+        const ctx = createTestContext(cwd);
+        for (const args of [{}, {payload: {}}, {payload: {count: "1", mode: "safe"}}, {payload: {count: 1, mode: "unsafe"}}, {payload: {count: 1, mode: "safe", extra: true}}]) {
+          expect((await runtime.executeTool(name, JSON.stringify(args), ctx, "invalid")).outcome).toBe("failed");
+        }
+        expect((await runtime.executeTool(stats, "{}", ctx, "stats-before")).modelContent).toContain("calls:0");
+        const hookRuntime = createToolRuntime({additionalTools: manager.getTools(), hooks: {enabled: true, issues: [], async execute(event) {
+          return {blocked: false, additionalContexts: [], executions: [], ...(event.hook_event_name === "PreToolUse" && event.tool_name === name ? {updatedInput: {payload: {count: 0, mode: "safe"}}} : {})};
+        }}});
+        await exposeDeferredTools(hookRuntime, cwd, name);
+        const valid = {payload: {count: 2, mode: "safe"}};
+        expect((await hookRuntime.executeTool(name, JSON.stringify(valid), ctx, "hook")).outcome).toBe("failed");
+        expect((await runtime.executeTool(stats, "{}", ctx, "stats-hook")).modelContent).toContain("calls:0");
+        expect((await runtime.executeTool(name, JSON.stringify(valid), ctx, "valid")).modelContent).toContain(JSON.stringify(valid));
+        expect((await runtime.executeTool(stats, "{}", ctx, "stats-after")).modelContent).toContain("calls:1");
+      } finally {await manager.closeAll();}
+    });
+  });
   test("多个大型 MCP 来源共享名称目录并分别按需加载和调用", async () => {
     await withTempProject(async (cwd) => {
       const manager = await createMultiFixtureManager(cwd);

@@ -1,4 +1,4 @@
-import {z} from "zod";
+import {compileMcpInputSchema} from "./inputSchema.js";
 import type {Tool} from "../tools/types.js";
 import {buildMcpToolName} from "./names.js";
 import {normalizeMcpResultWithArtifacts} from "./result.js";
@@ -9,7 +9,6 @@ const MAX_TOOLS_PER_SERVER = 100;
 const MAX_SCHEMA_CHARS = 64 * 1024;
 const MAX_TOTAL_SCHEMA_CHARS = 512 * 1024;
 const MAX_REMOTE_TOOL_NAME_CHARS = 512;
-const passthroughObject = z.object({}).passthrough();
 
 export function adaptMcpTools(server: McpConnectedServer): {
     tools: Tool[];
@@ -46,7 +45,12 @@ export function adaptMcpTools(server: McpConnectedServer): {
             issues.push(`工具 ${remote.name} 的 inputSchema 不是 object`);
             continue;
         }
-        const schemaChars = JSON.stringify(remote.inputSchema).length;
+        let schemaChars: number;
+        try {schemaChars = JSON.stringify(remote.inputSchema).length;}
+        catch {
+            issues.push(`工具 ${remote.name} 的 inputSchema 不是有界 JSON`);
+            continue;
+        }
         if (schemaChars > MAX_SCHEMA_CHARS) {
             issues.push(`工具 ${remote.name} 的 inputSchema 超过 ${MAX_SCHEMA_CHARS} 字符`);
             continue;
@@ -56,6 +60,13 @@ export function adaptMcpTools(server: McpConnectedServer): {
             break;
         }
         totalSchemaChars += schemaChars;
+        let compiled;
+        try {
+            compiled = compileMcpInputSchema(remote.inputSchema);
+        } catch (error) {
+            issues.push(`工具 ${remote.name} 的 inputSchema 无法加载: ${error instanceof Error ? error.message.slice(0, 500) : "校验编译失败"}`);
+            continue;
+        }
         const description = (remote.description ?? "")
             .replace(/\s+/g, " ")
             .trim()
@@ -69,8 +80,8 @@ export function adaptMcpTools(server: McpConnectedServer): {
             exposure: "deferred",
             searchHint: `${server.config.name} ${originalName} ${description}`,
             searchSource: {name: server.config.name},
-            parameters: passthroughObject,
-            inputJsonSchema: remote.inputSchema as Record<string, unknown>,
+            parameters: compiled.parameters,
+            inputJsonSchema: compiled.schema,
             externalSideEffects: "mcp",
             async checkPermissions() {
                 return annotationReadOnly

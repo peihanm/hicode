@@ -46,6 +46,8 @@
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.66",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "diff": "^9.0.0",
     "dotenv": "^17.2.3",
     "ignore": "^7.0.8",
@@ -53,6 +55,7 @@
     "ink-select-input": "^6.2.0",
     "ink-text-input": "^6.0.0",
     "picomatch": "^4.0.7",
+    "re2js": "^2.8.6",
     "react": "^18.3.1",
     "string-width": "^7.2.0",
     "turndown": "^7.2.4",
