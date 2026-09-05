@@ -337,7 +337,7 @@ class SDKThreadImpl implements Thread {
                 );
                 if (network && response.behavior === "allow" && (
                     response.persistence === "always" || response.directoryScope !== undefined ||
-                    response.updatedInput !== undefined
+                    response.answers !== undefined
                 )) {
                     response = {behavior: "deny", message: "网络连接不支持永久工具授权、目录授权或修改输入"};
                 }
@@ -532,9 +532,9 @@ function toPermissionDecision(
             ...(response.directoryScope === undefined
                 ? {}
                 : {directoryScope: response.directoryScope}),
-            ...(response.updatedInput === undefined
+            ...(response.answers === undefined
                 ? {}
-                : {updatedInput: response.updatedInput}),
+                : {answers: response.answers}),
         }
         : {behavior: "deny", message: response.message};
 }

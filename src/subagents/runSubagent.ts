@@ -23,9 +23,10 @@ import type {
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective} from "./fork.js";
-import type {SubagentRegistration} from "./registration.js";
+import {supportsWorkspaceWriteGrant, type SubagentRegistration} from "./registration.js";
 import {resolveSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
+import {isPathInside, validateWorkspacePath} from "../worktrees/pathGuard.js";
 
 interface SubagentRunnerDependencies {
     primaryRunAgent: AgentRunner;
@@ -100,7 +101,7 @@ function createForkRegistration(
                 permissionMode: request.isolation === "worktree"
                     ? "default"
                     : "readOnly",
-                collaborationMode: "build",
+                collaborationMode: parentContext.collaborationMode,
                 permissionPromptPolicy: "never",
             };
         },
@@ -136,6 +137,16 @@ export function createSubagentFactories(
         }
         const {definition} = registration;
         const runtimeConfig = registration.createRuntimeConfig(parentContext);
+        let approvedWorkspace: string | undefined;
+        // A one-launch grant only covers structured writes inside the child's
+        // hard workspace boundary. It never authorizes Shell/MCP or changes Root.
+        if (request.kind === "registered" && request.workspaceWriteApproved && supportsWorkspaceWriteGrant(definition)) {
+            runtimeConfig.permissionMode = "default";
+            runtimeConfig.collaborationMode = "build";
+            approvedWorkspace = parentContext.workspaceBoundary && isPathInside(parentContext.cwd, parentContext.workspaceBoundary)
+                ? parentContext.workspaceBoundary : parentContext.cwd;
+            runtimeConfig.contextResources.workspaceBoundary = approvedWorkspace;
+        }
         const runtime = createToolRuntime(runtimeConfig.toolRuntimeOptions);
         const initialToolNames = runtime.getToolSchemas()
             .map((tool) => tool.function.name);
@@ -202,6 +213,12 @@ export function createSubagentFactories(
                 }
                 running = true;
                 try {
+                    if (approvedWorkspace) {
+                        for (const boundary of [parentContext.cwd, parentContext.workspaceBoundary ?? parentContext.cwd]) {
+                            const validation = await validateWorkspacePath(boundary, parentContext.cwd, approvedWorkspace);
+                            if (!validation.ok) throw new Error(validation.message);
+                        }
+                    }
                     const firstRun = runCount === 0;
                     runCount += 1;
                     const childContext: ToolContext = createToolContext({
@@ -209,14 +226,15 @@ export function createSubagentFactories(
                         // 逐字段构造，禁止未来 capability 被 Root resources 自动扩散到 Child。
                         resources: {
                             ...runtimeConfig.contextResources,
+                            fileCommits: parentContext.fileCommits,
                             // Child 只能凭自己实际读取过的内容获得编辑授权。
-                            fileState: childFileState,
                             model: childModel,
                             provider: childProvider,
                             fastModel: dependencies.fastModel,
                             fastProvider: parentContext.fastProvider,
                         },
                         session: {
+                            fileState: childFileState,
                             sessionId: childSessionId,
                             compactState: childCompactState,
                             toolResultStore: childToolResultStore,

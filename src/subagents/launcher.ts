@@ -8,6 +8,7 @@ import type {SubagentModelOverride} from "./model.js";
 type SubagentLaunchInput =
     | {
     kind: "registered";
+    workspaceWriteApproved?: true;
     agentType: string;
     description: string;
     prompt: string;
@@ -63,6 +64,7 @@ export function createSubagentLauncher({
             } else {
                 request = {
                     kind: "registered",
+                    ...(input.workspaceWriteApproved ? {workspaceWriteApproved: true} : {}),
                     agentType: input.agentType,
                     description: input.description,
                     prompt: input.prompt,

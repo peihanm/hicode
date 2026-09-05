@@ -1,8 +1,8 @@
+import {FileCommitCoordinator} from "../../src/checkpoints/fileCommit.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import type { TaskRuntimeLike } from "../../src/tasks/index.js";
 import { createTaskRuntimeForTest } from "./taskRuntime.js";
-import { createFileStateTracker } from "../../src/tools/shared/fileState.js";
 import { EMPTY_PROJECT_INSTRUCTIONS } from "../../src/prompt/instructions.js";
 import {
   createRootRuntimeResourcesFactory,
@@ -12,7 +12,6 @@ import type { McpManagerLike } from "../../src/mcp/types.js";
 import type { LoadedSkill } from "../../src/skills/types.js";
 import type { ProjectInstructions } from "../../src/prompt/instructions.js";
 import type { ToolRuntime } from "../../src/tools/registry.js";
-import type { FileStateTracker } from "../../src/tools/shared/fileState.js";
 import {
   createAgentRuntime,
   type AgentRuntime,
@@ -207,8 +206,8 @@ export function createTestRuntimeResources(
     taskRuntime,
     shellRunner,
     sandbox,
-    fileState: createFileStateTracker(),
     memory,
+    fileCommits: new FileCommitCoordinator(),
     gitWorkspace: createGitWorkspaceRuntime(cwd, testChildEnvironment),
     beginShutdown,
     async close() {
@@ -268,7 +267,6 @@ interface RootRuntimeTestDependencies {
   loadProjectInstructions?: (cwd: string) => Promise<ProjectInstructions>;
   createToolRuntime?: () => ToolRuntime;
   taskRuntime?: TaskRuntimeLike;
-  fileState?: FileStateTracker;
   agentRuntime?: AgentRuntime;
   memory?: MemoryRuntimeLike;
   loadedCustomAgents?: LoadedCustomAgents;
@@ -306,9 +304,6 @@ export function createRootRuntimeResourcesForTest(
       : {}),
     ...(test.taskRuntime
       ? { createTaskRuntime: () => test.taskRuntime! }
-      : {}),
-    ...(test.fileState
-      ? { createFileStateTracker: () => test.fileState! }
       : {}),
     ...(test.agentRuntime
       ? { createAgentRuntime: () => test.agentRuntime! }

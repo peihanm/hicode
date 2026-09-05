@@ -104,9 +104,9 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.list(this.sessionId);
     }
 
-    async stop(id: string): Promise<TaskSnapshot | undefined> {
+    async stop(id: string, expectedKind?: TaskSnapshot["kind"]): Promise<TaskSnapshot | undefined> {
         await this.ready;
-        return this.runtime.stop(this.sessionId, id);
+        return this.runtime.stop(this.sessionId, id, expectedKind);
     }
 
     async send(id: string, message: string): Promise<AgentTaskSnapshot> {
@@ -402,17 +402,24 @@ class TaskRuntime implements TaskRuntimeLike {
         ]);
     }
 
-    async stop(sessionId: string, id: string): Promise<TaskSnapshot | undefined> {
+    async stop(sessionId: string, id: string, expectedKind?: TaskSnapshot["kind"]): Promise<TaskSnapshot | undefined> {
         const task = this.ownedTask(sessionId, id);
         if (!task) {
             const archived = this.archived.get(id);
             if (archived?.owner.sessionId !== sessionId) return undefined;
+            if (expectedKind !== undefined && archived.kind !== expectedKind) {
+                throw new Error(`任务类型不匹配: 预期 ${expectedKind}，实际 ${archived.kind}`);
+            }
             await this.notifications.acknowledgeArchived(
                 sessionId,
                 id,
                 this.markNotificationClaimed
             );
             return archived;
+        }
+        const kind = isShellTask(task) ? "shell" : "agent";
+        if (expectedKind !== undefined && kind !== expectedKind) {
+            throw new Error(`任务类型不匹配: 预期 ${expectedKind}，实际 ${kind}`);
         }
         const shouldAcknowledge =
             task.status === "running" || task.notificationPending;

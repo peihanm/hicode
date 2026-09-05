@@ -42,26 +42,21 @@ export async function defaultExecuteHookCommand(
         stdin: input.stdin,
         env: input.environment,
     };
-    const result = input.shell === "bash"
+    const result = input.shell === "powershell"
         ? await runShellArgv({
             ...processOptions,
-            argv: ["bash", "-c", input.command],
+            argv: [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                input.command,
+            ],
         })
-        : input.shell === "powershell"
-            ? await runShellArgv({
-                ...processOptions,
-                argv: [
-                    "powershell",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    input.command,
-                ],
-            })
-            : await runShellCommand({
-                ...processOptions,
-                command: input.command,
-            });
+        : await runShellCommand({
+            ...processOptions,
+            command: input.command,
+        });
     const termination = result.termination;
     if (termination.kind === "exit") {
         return {

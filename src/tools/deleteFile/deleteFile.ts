@@ -1,4 +1,4 @@
-import {readFile, stat, unlink} from "node:fs/promises";
+import {readFile, stat} from "node:fs/promises";
 import {z} from "zod";
 import {createFileChange} from "../../fileChanges/index.js";
 import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
@@ -57,11 +57,11 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
         const absPath = resolveToolPath(ctx.cwd, path);
         const content = await readRegularFile(absPath);
         const state = ctx.fileState.check(absPath, content, {requireFullRead: true});
-        if (!state.ok) return `删除取消: ${readRequirement(path, state.reason)}`;
+        if (!state.ok) return {content: `删除取消: ${readRequirement(path, state.reason)}`, outcome: "failed" as const};
 
         const memoryPath = ctx.memoryFiles?.classify(absPath);
         if (memoryPath) {
-            if (memoryPath.kind !== "topic") return "删除取消: MEMORY.md 不能删除";
+            if (memoryPath.kind !== "topic") return {content: "删除取消: MEMORY.md 不能删除", outcome: "failed" as const};
             await ctx.memoryFiles!.delete(absPath, content);
             ctx.fileState.recordWrite({
                 path: absPath,
@@ -80,11 +80,12 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
         });
         const warnings = await runTrackedFileWrite({
             runtime: ctx.fileCheckpoints,
+            coordinator: ctx.fileCommits,
+            signal: ctx.signal,
             path: absPath,
             beforeContent: content,
             afterContent: null,
             toolCallId: invocation.toolCallId,
-            write: () => unlink(absPath),
         });
         ctx.fileState.recordWrite({
             path: absPath,

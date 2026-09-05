@@ -33,9 +33,9 @@ function contentHash(content: string): string {
 }
 
 /**
- * Runtime-scoped file observation ledger used by Read/Edit/Write.
+ * Session-scoped file observation ledger used by Read/Edit/Write.
  *
- * It deliberately belongs to RootRuntimeResources instead of process globals:
+ * It belongs to one Session (or one child Agent), never Root resources:
  * one session cannot authorize another session's edit. Partial reads only
  * authorize exact replacement text that was actually visible to the model.
  */

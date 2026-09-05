@@ -64,7 +64,7 @@ export function createCustomSubagentRegistration(
                 permissionMode: customAgentPermissionMode(
                     parentContext
                 ),
-                collaborationMode: "build",
+                collaborationMode: parentContext.collaborationMode,
                 permissionPromptPolicy: "never",
             };
         },

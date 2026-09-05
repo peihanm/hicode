@@ -1,6 +1,6 @@
 import {resolve} from "node:path";
 import type {PermissionResult} from "../../../permissions/index.js";
-import {isShellCommandReadOnly} from "../../../permissions/shellCommand.js";
+import {isShellCommandReadOnly, isShellArgvReadOnly, parseShellCommand} from "../../../permissions/shellCommand.js";
 import {bashTool} from "../../../tools/bash/bash.js";
 import {bashTaskTool} from "../../../tools/bash/bashTask.js";
 import type {Tool} from "../../../tools/types.js";
@@ -22,115 +22,10 @@ const PACKAGE_SCRIPTS = new Set([
 ]);
 
 function parseShell(command: string): ParsedShellCommand {
-    const rawSegments: string[] = [];
-    let current = "";
-    let quote: "single" | "double" | null = null;
-    let escaped = false;
-
-    const push = () => {
-        const value = current.trim();
-        if (value) rawSegments.push(value);
-        current = "";
-    };
-
-    for (let index = 0; index < command.length; index += 1) {
-        const char = command[index]!;
-        const next = command[index + 1];
-        if (escaped) {
-            current += char;
-            escaped = false;
-            continue;
-        }
-        if (char === "\\" && quote !== "single") {
-            current += char;
-            escaped = true;
-            continue;
-        }
-        if (quote === "single") {
-            current += char;
-            if (char === "'") quote = null;
-            continue;
-        }
-        if (quote === "double") {
-            current += char;
-            if (char === '"') {
-                quote = null;
-            } else if (char === "`" || (char === "$" && next === "(")) {
-                return {segments: [], rejectedSyntax: "命令替换"};
-            }
-            continue;
-        }
-        if (char === "'") {
-            quote = "single";
-            current += char;
-            continue;
-        }
-        if (char === '"') {
-            quote = "double";
-            current += char;
-            continue;
-        }
-        if (char === "`" || (char === "$" && next === "(")) {
-            return {segments: [], rejectedSyntax: "命令替换"};
-        }
-        if (char === ">" || char === "<") {
-            return {segments: [], rejectedSyntax: "重定向"};
-        }
-        if (char === "&" && next !== "&") {
-            return {segments: [], rejectedSyntax: "后台进程"};
-        }
-        if (char === ";" || char === "\n" || char === "|") {
-            push();
-            if (char === "|" && next === char) index += 1;
-            continue;
-        }
-        if (char === "&" && next === "&") {
-            push();
-            index += 1;
-            continue;
-        }
-        current += char;
-    }
-    if (quote) return {segments: [], rejectedSyntax: "未闭合引号"};
-    push();
-    return {segments: rawSegments.map(tokenizeSegment)};
-}
-
-function tokenizeSegment(segment: string): string[] {
-    const tokens: string[] = [];
-    let current = "";
-    let quote: "single" | "double" | null = null;
-    let escaped = false;
-    const push = () => {
-        if (current) tokens.push(current);
-        current = "";
-    };
-    for (const char of segment) {
-        if (escaped) {
-            current += char;
-            escaped = false;
-            continue;
-        }
-        if (char === "\\" && quote !== "single") {
-            escaped = true;
-            continue;
-        }
-        if (char === "'" && quote !== "double") {
-            quote = quote === "single" ? null : "single";
-            continue;
-        }
-        if (char === '"' && quote !== "single") {
-            quote = quote === "double" ? null : "double";
-            continue;
-        }
-        if (!quote && /\s/.test(char)) {
-            push();
-            continue;
-        }
-        current += char;
-    }
-    push();
-    return tokens;
+    const parsed = parseShellCommand(command);
+    return parsed.literal
+        ? {segments: parsed.segments.map(segment => segment.tokens)}
+        : {segments: [], rejectedSyntax: "动态展开、重定向或无法静态解析的 Shell 语法"};
 }
 
 function isLocalUrl(value: string): boolean {
@@ -145,77 +40,26 @@ function isLocalUrl(value: string): boolean {
     }
 }
 
-function curlWritesToFile(args: string[]): boolean {
-    const fileOutputFlags = new Set([
-        "-O",
-        "--cookie-jar",
-        "--dump-header",
-        "--output",
-        "--output-dir",
-        "--remote-header-name",
-        "--remote-name",
-        "--trace",
-        "--trace-ascii",
-    ]);
-    return args.some(
-        (value) =>
-            fileOutputFlags.has(value) ||
-            value === "-c" ||
-            value === "-o" ||
-            [...fileOutputFlags].some((flag) => value.startsWith(`${flag}=`))
-    );
-}
-
 function isCurlReachabilityProbe(args: string[]): boolean {
-    const urls = args.filter((value) => /^https?:\/\//i.test(value));
-    if (
-        curlWritesToFile(args) ||
-        urls.length !== 1 ||
-        !urls.every(isLocalUrl)
-    ) {
+    let urls = 0;
+    for (let index = 0; index < args.length; index++) {
+        const arg = args[index]!;
+        if (isLocalUrl(arg)) { urls++; continue; }
+        if (/^-[qfsSIi]+$/.test(arg) || ["--disable", "--fail", "--silent", "--show-error", "--head", "--include"].includes(arg)) continue;
+        const [option, inlineValue] = arg.split("=", 2);
+        if (["--max-time", "--connect-timeout", "-m"].includes(option!)) {
+            const value = inlineValue ?? args[++index];
+            if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) return false;
+            continue;
+        }
+        if (["-X", "--request"].includes(option!)) {
+            const method = inlineValue ?? args[++index];
+            if (method !== "GET" && method !== "HEAD") return false;
+            continue;
+        }
         return false;
     }
-
-    const forbiddenFlags = new Set([
-        "-K",
-        "--config",
-        "-d",
-        "--data",
-        "--data-ascii",
-        "--data-binary",
-        "--data-raw",
-        "--data-urlencode",
-        "-F",
-        "--form",
-        "--form-string",
-        "--json",
-        "-L",
-        "--location",
-        "--connect-to",
-        "--proxy",
-        "--resolve",
-        "-T",
-        "--upload-file",
-        "-x",
-    ]);
-    if (
-        args.some(
-            (value) =>
-                forbiddenFlags.has(value) ||
-                [...forbiddenFlags].some((flag) => value.startsWith(`${flag}=`))
-        )
-    ) {
-        return false;
-    }
-
-    const requestIndex = args.findIndex(
-        (value) => value === "-X" || value === "--request"
-    );
-    const inlineRequest = args.find((value) => value.startsWith("--request="));
-    const method = requestIndex >= 0
-        ? args[requestIndex + 1]
-        : inlineRequest?.slice("--request=".length);
-    return !method || ["GET", "HEAD"].includes(method.toUpperCase());
+    return urls === 1;
 }
 
 function isPackageVerification(tokens: string[]): boolean {
@@ -232,20 +76,14 @@ function isPackageVerification(tokens: string[]): boolean {
     return false;
 }
 
-function normalizedCommand(tokens: string[]): string | undefined {
-    if (tokens[0] === "time") tokens = tokens.slice(1);
-    return tokens[0];
-}
-
 function countCurlProbes(parsed: ParsedShellCommand): number {
     return parsed.segments.reduce(
-        (count, tokens) => count + (normalizedCommand(tokens) === "curl" ? 1 : 0),
+        (count, tokens) => count + (tokens[0] === "curl" ? 1 : 0),
         0
     );
 }
 
 function isVerificationSegment(tokens: string[], cwd: string): boolean {
-    if (tokens[0] === "time") tokens = tokens.slice(1);
     const [command, ...args] = tokens;
     if (!command) return false;
     if (command === "cd") {
@@ -255,7 +93,7 @@ function isVerificationSegment(tokens: string[], cwd: string): boolean {
     if (command === "curl") {
         return isCurlReachabilityProbe(args);
     }
-    if (isShellCommandReadOnly(tokens.join(" "))) return true;
+    if (isShellArgvReadOnly(tokens)) return true;
     if (command === "python" || command === "python3") {
         return args[0] === "-m" && ["json.tool", "pytest"].includes(args[1] ?? "");
     }
@@ -320,6 +158,9 @@ export function createVerificationBashTool(): Tool {
                     behavior: "deny",
                     message: "Verification Agent 不允许脱离 OS Sandbox。",
                 };
+            }
+            if (ctx.collaborationMode === "plan" && !isShellCommandReadOnly(command)) {
+                return {behavior: "deny", message: "父会话处于 Plan；Verification 不能扩大 Shell 写能力。"};
             }
             const permission = checkVerificationShellCommand(command, ctx.cwd);
             if (permission.behavior !== "allow") return permission;

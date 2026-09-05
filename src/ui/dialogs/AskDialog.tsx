@@ -26,8 +26,8 @@ import {DialogFrame} from "./DialogFrame.js";
 //     → checkPermissions 返回 ask
 //     → canUseTool 弹窗（App.tsx 按 toolName 分发到 AskDialog）
 //     → 用户逐个回答
-//     → resolve({ behavior: 'allow', updatedInput: {...input, answers: {Q: A}} })
-//     → executeTool 用 updatedInput 替换 input
+//     → resolve({ behavior: 'allow', answers: {Q: A} })
+//     → executeTool 经 invocation 提供答案，不替换原问题
 //     → tool.execute 返回 "用户回答: ..."
 
 type Option = { label: string; description?: string };
@@ -67,7 +67,7 @@ export function AskDialog({
     const submitAll = (finalAnswers: Record<string, string>) => {
         req.resolve({
             behavior: "allow",
-            updatedInput: {...askInput, answers: finalAnswers},
+            answers: finalAnswers,
         });
         onDone();
     };

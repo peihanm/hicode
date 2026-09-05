@@ -1,6 +1,5 @@
 import {z} from "zod";
-import {mkdir, readFile, stat, writeFile} from "node:fs/promises";
-import {dirname} from "node:path";
+import {readFile, stat} from "node:fs/promises";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {createFileChange} from "../../fileChanges/index.js";
@@ -111,14 +110,12 @@ export const writeFileTool: Tool<
 
         const checkpointWarnings = await runTrackedFileWrite({
             runtime: ctx.fileCheckpoints,
+            coordinator: ctx.fileCommits,
+            signal: ctx.signal,
             path: absPath,
             beforeContent: exists ? oldContent : null,
             afterContent: content,
             toolCallId: invocation.toolCallId,
-            write: async () => {
-                await mkdir(dirname(absPath), {recursive: true});
-                await writeFile(absPath, content, "utf-8");
-            },
         });
         ctx.fileState.recordWrite({
             path: absPath,

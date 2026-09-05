@@ -1,3 +1,5 @@
+import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
+import {FileCommitCoordinator} from "../../src/checkpoints/fileCommit.js";
 import { describe, expect, test } from "bun:test";
 import { createCompactState } from "../../src/context/index.js";
 import type {
@@ -23,7 +25,7 @@ describe("ToolContext builder", () => {
       let promptPolicy: PermissionPromptPolicy = "onRequest";
       const context = createToolContext({
         signal: new AbortController().signal,
-        resources: {
+        resources: {fileCommits: new FileCommitCoordinator(),
           storage,
           cwd,
           model: "glm-test",
@@ -36,7 +38,7 @@ describe("ToolContext builder", () => {
             testChildEnvironment,
           ),
         },
-        session: {
+        session: {fileState: createFileStateTracker(),
           sessionId: "session-live",
           compactState: createCompactState(),
           toolResultStore: createTestToolResultStore(cwd, "session-live", {
@@ -101,6 +103,7 @@ describe("ToolContext builder", () => {
         pillarHome: `${cwd}/results`,
       });
       const resources = {
+        fileCommits: new FileCommitCoordinator(),
         storage,
         cwd,
         model: "glm-test",
@@ -114,6 +117,7 @@ describe("ToolContext builder", () => {
         ),
       };
       const session = {
+        fileState: createFileStateTracker(),
         sessionId: "shared-session",
         compactState,
         toolResultStore,
@@ -149,6 +153,9 @@ describe("ToolContext builder", () => {
       expect(contextA.skills).toBe(skills);
       expect(contextB.compactState).toBe(compactState);
       expect(contextA.toolResultStore).toBe(toolResultStore);
+      expect(contextA.fileState).toBe(session.fileState);
+      expect(contextB.fileState).toBe(contextA.fileState);
+      expect(contextA.fileCommits).toBe(contextB.fileCommits);
       expect(contextA).not.toBe(contextB);
     });
   });

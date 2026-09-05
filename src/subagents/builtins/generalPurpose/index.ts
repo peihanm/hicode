@@ -46,7 +46,7 @@ export const GENERAL_PURPOSE_SUBAGENT: SubagentRegistration = {
                 deny: [...parentContext.permissionRules.deny],
             },
             permissionMode: parentContext.permissionMode,
-            collaborationMode: "build",
+            collaborationMode: parentContext.collaborationMode,
             permissionPromptPolicy: "never",
         };
     },

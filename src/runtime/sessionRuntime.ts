@@ -1,3 +1,4 @@
+import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";
@@ -105,6 +106,7 @@ export function createRootSessionRuntime({
     resumed: boolean;
     allowBackgroundTasks?: boolean;
 }): RootSessionRuntime {
+    const fileState = createFileStateTracker();
     let history = seed.history;
     let compactState = seed.compactState;
     const toolResultStore = createToolResultStore(
@@ -125,7 +127,7 @@ export function createRootSessionRuntime({
         hardBoundary: resources.workspaceBoundary,
         sessionId: seed.sessionId,
         enabled: resources.settings.checkpointing.enabled,
-        fileState: resources.fileState,
+        fileState,
         initialHead: seed.checkpointHead,
     });
     const taskSession = resources.taskRuntime.forSession({
@@ -202,6 +204,7 @@ export function createRootSessionRuntime({
                     compactState,
                     toolResultStore,
                     fileCheckpoints,
+                    fileState,
                     allowBackgroundTasks,
                     hookSession,
                     directoryAccess,

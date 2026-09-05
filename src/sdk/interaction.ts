@@ -8,6 +8,25 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
         };
     }
     if (value.behavior === "allow") {
+        if (Object.keys(value).some(key => !["behavior", "persistence", "directoryScope", "networkScope", "answers"].includes(key))) {
+            return {behavior: "deny", message: "SDK Host 返回了未知 interaction response 字段"};
+        }
+        const rawAnswers = "answers" in value ? value.answers : undefined;
+        let answers: Record<string, string> | undefined;
+        if (rawAnswers !== undefined) {
+            if (typeof rawAnswers !== "object" || rawAnswers === null || Array.isArray(rawAnswers)) {
+                return {behavior: "deny", message: "SDK Host 返回了无效 answers"};
+            }
+            const entries = Object.entries(rawAnswers);
+            if (entries.length < 1 || entries.length > 4 || entries.some(([key, answer]) =>
+                !key.trim() || typeof answer !== "string" || !answer.trim() || answer.length > 16_384)) {
+                return {behavior: "deny", message: "SDK Host 返回了无效 answers"};
+            }
+            answers = {};
+            for (const [key, answer] of entries) {
+                if (typeof answer === "string") Object.defineProperty(answers, key, {value: answer, enumerable: true});
+            }
+        }
         const persistence = "persistence" in value
             ? value.persistence
             : undefined;
@@ -28,7 +47,7 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
         if (networkScope !== undefined && networkScope !== "once" && networkScope !== "session") {
             return {behavior: "deny", message: "SDK Host 返回了无效 networkScope"};
         }
-        if (networkScope !== undefined && (directoryScope !== undefined || persistence === "always")) {
+        if (networkScope !== undefined && (directoryScope !== undefined || persistence === "always" || answers !== undefined)) {
             return {behavior: "deny", message: "网络授权不能混用目录或永久授权"};
         }
         if (
@@ -47,9 +66,7 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
             ...(persistence === undefined ? {} : {persistence}),
             ...(directoryScope === undefined ? {} : {directoryScope}),
             ...(networkScope === undefined ? {} : {networkScope}),
-            ...("updatedInput" in value
-                ? {updatedInput: value.updatedInput}
-                : {}),
+            ...(answers === undefined ? {} : {answers}),
         };
     }
     if (

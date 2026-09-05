@@ -31,15 +31,14 @@ export type PermissionResult =
 
 // 权限决策：canUseTool 的返回值（用户裁决的结果）
 // 当工具 checkPermissions 返回 ask 时，由调用方弹窗让用户决定
-// updatedInput：UI 可以把用户的额外输入注入回来（如 askUser 的答案）
-//   参考 claude-code：AskUserQuestion 的答案通过 PermissionDecision.updatedInput 回流
+// answers 只承载 Host 对原问题的回答，不能替换模型提问或普通工具参数。
 export type PermissionDecision =
     | {
         behavior: "allow";
-        updatedInput?: unknown;
+        answers?: Record<string, string>;
         directoryScope?: "once" | DirectoryGrantScope;
         networkScope?: "once" | "session";
-    } // 用户同意（可携带修改后的 input）
+    } // 用户同意，可携带原问题的答案
     | { behavior: "deny"; message: string }; // 用户拒绝
 
 // ─── 配置规则相关类型 ───

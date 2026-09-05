@@ -17,9 +17,15 @@ const WORKTREE_AGENT_SAFE_TOOLS = new Set([
 ]);
 
 export function hasAgentWriteTools(definition: AgentDefinition): boolean {
-    return definition.allowedTools.includes("edit_file") ||
-        definition.allowedTools.includes("write_file") ||
-        definition.allowedTools.includes("delete_file");
+    // A name alone cannot prove Bash or dynamic MCP arguments are read-only.
+    return definition.allowedTools.some(name => ![
+        "list_files", "glob", "read_file", "grep", "read_tool_result", "web_fetch",
+    ].includes(name));
+}
+
+export function supportsWorkspaceWriteGrant(definition: AgentDefinition): boolean {
+    return hasAgentWriteTools(definition) &&
+        definition.allowedTools.every(name => WORKTREE_AGENT_SAFE_TOOLS.has(name));
 }
 
 export function validateBackgroundAgent(
@@ -53,7 +59,7 @@ export interface SubagentRuntimeConfig {
     toolRuntimeOptions: CreateToolRuntimeOptions;
     contextResources: Omit<
         ToolContextResources,
-        "model" | "provider" | "fastModel" | "fastProvider"
+        "model" | "provider" | "fastModel" | "fastProvider" | "fileCommits"
     >;
     permissionRules: PermissionRules;
     permissionMode: PermissionMode;

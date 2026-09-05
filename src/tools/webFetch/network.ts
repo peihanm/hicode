@@ -1,5 +1,5 @@
 import {lookup} from "node:dns/promises";
-import {request as requestHttp} from "node:http";
+import {request as requestHttp, type ClientRequest, type IncomingMessage} from "node:http";
 import {request as requestHttps} from "node:https";
 import {BlockList, isIP, type LookupFunction} from "node:net";
 
@@ -147,52 +147,108 @@ function createPinnedLookup(
     };
 }
 
+function requestAbortError(signal: AbortSignal): Error {
+    return signal.reason instanceof Error ? signal.reason : new Error("网页请求已取消");
+}
+
+// DNS lookup cannot be cancelled, but its late result must never start a request.
+async function resolveWithAbort(hostname: string, signal: AbortSignal) {
+    if (signal.aborted) throw requestAbortError(signal);
+    return new Promise<Awaited<ReturnType<typeof resolvePublicAddresses>>>((resolve, reject) => {
+        const abort = () => reject(requestAbortError(signal));
+        signal.addEventListener("abort", abort, {once: true});
+        resolvePublicAddresses(hostname).then(resolve, reject).finally(() => {
+            signal.removeEventListener("abort", abort);
+        });
+    });
+}
+
 async function requestOnce(url: URL, signal: AbortSignal): Promise<WebFetchResponse> {
-    const addresses = await resolvePublicAddresses(url.hostname);
+    const addresses = await resolveWithAbort(url.hostname, signal);
+    if (signal.aborted) throw requestAbortError(signal);
     const request = url.protocol === "https:" ? requestHttps : requestHttp;
     return new Promise((resolve, reject) => {
-        const req = request(url, {
-            method: "GET",
-            headers: {
-                Accept: "text/markdown, text/html, text/plain, application/json, application/xml;q=0.9, */*;q=0.1",
-                "User-Agent": "pillar-agent/0.1 web_fetch",
-            },
-            lookup: createPinnedLookup(addresses),
-            signal,
-        }, (response) => {
-            const chunks: Buffer[] = [];
-            let bytes = 0;
-            const declaredLength = Number(response.headers["content-length"] ?? 0);
-            if (Number.isFinite(declaredLength) && declaredLength > WEB_FETCH_MAX_BYTES) {
-                response.destroy(new Error(`响应超过 ${WEB_FETCH_MAX_BYTES} 字节限制`));
-                return;
-            }
-            response.on("data", (chunk: Buffer | string) => {
-                const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-                bytes += buffer.length;
-                if (bytes > WEB_FETCH_MAX_BYTES) {
-                    response.destroy(new Error(`响应超过 ${WEB_FETCH_MAX_BYTES} 字节限制`));
+        let req: ClientRequest | undefined;
+        let response: IncomingMessage | undefined;
+        let settled = false;
+        const chunks: Buffer[] = [];
+        const cleanup = () => {
+            signal.removeEventListener("abort", abort);
+            chunks.length = 0;
+        };
+        const fail = (error: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            // Keep error listeners until disposal: destroy/late transport events can emit again.
+            response?.destroy();
+            req?.destroy();
+            reject(error);
+        };
+        const abort = () => fail(requestAbortError(signal));
+        signal.addEventListener("abort", abort, {once: true});
+        try {
+            req = request(url, {
+                method: "GET",
+                headers: {
+                    Accept: "text/markdown, text/html, text/plain, application/json, application/xml;q=0.9, */*;q=0.1",
+                    "User-Agent": "pillar-agent/0.1 web_fetch",
+                },
+                lookup: createPinnedLookup(addresses),
+                signal,
+            }, (incoming) => {
+                response = incoming;
+                response.on("error", fail);
+                response.on("aborted", () => fail(new Error("网页响应在完成前中断")));
+                response.on("close", () => {
+                    if (!settled) fail(new Error("网页响应在完成前关闭"));
+                });
+                if (settled) { response.destroy(); return; }
+                let bytes = 0;
+                const declaredLength = Number(response.headers["content-length"] ?? 0);
+                if (Number.isFinite(declaredLength) && declaredLength > WEB_FETCH_MAX_BYTES) {
+                    fail(new Error(`响应超过 ${WEB_FETCH_MAX_BYTES} 字节限制`));
                     return;
                 }
-                chunks.push(buffer);
+                response.on("data", (chunk: Buffer | string) => {
+                    if (settled) return;
+                    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                    bytes += buffer.length;
+                    if (bytes > WEB_FETCH_MAX_BYTES) {
+                        fail(new Error(`响应超过 ${WEB_FETCH_MAX_BYTES} 字节限制`));
+                        return;
+                    }
+                    chunks.push(buffer);
+                });
+                response.on("end", () => {
+                    if (settled) return;
+                    try {
+                        const result: WebFetchResponse = {
+                            url: url.toString(),
+                            status: incoming.statusCode ?? 0,
+                            statusText: incoming.statusMessage ?? "",
+                            contentType: String(incoming.headers["content-type"] ?? ""),
+                            body: Buffer.concat(chunks),
+                            ...(incoming.headers.location
+                                ? {redirectUrl: new URL(incoming.headers.location, url).toString()}
+                                : {}),
+                        };
+                        settled = true;
+                        cleanup();
+                        resolve(result);
+                    } catch (error) {
+                        fail(error instanceof Error ? error : new Error(String(error)));
+                    }
+                });
             });
-            response.on("end", () => resolve({
-                url: url.toString(),
-                status: response.statusCode ?? 0,
-                statusText: response.statusMessage ?? "",
-                contentType: String(response.headers["content-type"] ?? ""),
-                body: Buffer.concat(chunks),
-                ...(response.headers.location
-                    ? {redirectUrl: new URL(response.headers.location, url).toString()}
-                    : {}),
-            }));
-            response.on("error", reject);
-        });
-        req.setTimeout(WEB_FETCH_TIMEOUT_MS, () => {
-            req.destroy(new Error(`请求超过 ${WEB_FETCH_TIMEOUT_MS}ms 未完成`));
-        });
-        req.on("error", reject);
-        req.end();
+            req.on("error", fail);
+            req.on("close", () => {
+                if (!response) fail(new Error("网页请求在收到响应前关闭"));
+            });
+            req.end();
+        } catch (error) {
+            fail(error instanceof Error ? error : new Error(String(error)));
+        }
     });
 }
 
@@ -200,17 +256,30 @@ export async function fetchPublicWebUrl(
     value: string,
     signal: AbortSignal
 ): Promise<WebFetchResponse> {
-    let current = parsePublicWebUrl(value);
-    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
-        const response = await requestOnce(current, signal);
-        if (response.status < 300 || response.status >= 400 || !response.redirectUrl) {
-            return response;
+    if (signal.aborted) throw requestAbortError(signal);
+    const controller = new AbortController();
+    const abort = () => controller.abort(requestAbortError(signal));
+    signal.addEventListener("abort", abort, {once: true});
+    const deadline = setTimeout(() => {
+        controller.abort(new Error(`请求超过 ${WEB_FETCH_TIMEOUT_MS}ms 未完成`));
+    }, WEB_FETCH_TIMEOUT_MS);
+    deadline.unref?.();
+    try {
+        let current = parsePublicWebUrl(value);
+        for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+            const response = await requestOnce(current, controller.signal);
+            if (response.status < 300 || response.status >= 400 || !response.redirectUrl) {
+                return response;
+            }
+            const next = parsePublicWebUrl(response.redirectUrl);
+            if (next.origin !== current.origin) {
+                return response;
+            }
+            current = next;
         }
-        const next = parsePublicWebUrl(response.redirectUrl);
-        if (next.origin !== current.origin) {
-            return response;
-        }
-        current = next;
+        throw new Error(`重定向次数超过 ${MAX_REDIRECTS} 次`);
+    } finally {
+        clearTimeout(deadline);
+        signal.removeEventListener("abort", abort);
     }
-    throw new Error(`重定向次数超过 ${MAX_REDIRECTS} 次`);
 }

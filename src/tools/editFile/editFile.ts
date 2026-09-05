@@ -1,5 +1,5 @@
 import {z} from "zod";
-import {readFile, writeFile} from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 import type {Tool, ToolContext} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {countOccurrences, findActualString} from "./strMatch.js";
@@ -201,11 +201,12 @@ export const editFileTool: Tool<
 
         const checkpointWarnings = await runTrackedFileWrite({
             runtime: ctx.fileCheckpoints,
+            coordinator: ctx.fileCommits,
+            signal: ctx.signal,
             path: absPath,
             beforeContent: originalContent,
             afterContent: newContent,
             toolCallId: invocation.toolCallId,
-            write: () => writeFile(absPath, newContent, "utf-8"),
         });
         ctx.fileState.recordWrite({
             path: absPath,

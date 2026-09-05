@@ -1,52 +1,33 @@
 import {z} from "zod";
 import type {Tool} from "../types.js";
 
-// askUser 工具：让 LLM 主动向用户提多选题
-//
-// 设计参考 claude-code src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx
-// 关键：复用权限流程，不另开通道
-//   1. checkPermissions 返回 { behavior: "ask" }
-//   2. UI 层根据 toolName 分发到 AskDialog（而非 ConfirmDialog）
-//   3. 用户回答后，AskDialog 通过 PermissionDecision.updatedInput 回流 answers
-//   4. executeTool 用 updatedInput 替换 input，tool.execute 拿到带 answers 的 input
-//
-// 简化点（相对 claude-code）：
-//   - 不支持 multiSelect（所有问题都是单选）
-//   - 不支持 preview / annotations
-//   - 不支持 metadata
-
-// 单个问题的 schema
+// 问题由模型提供，答案只能由当前 Host interaction 经 invocation 提供。
 const questionSchema = z.object({
-    question: z.string().describe("要问用户的问题"),
+    question: z.string().trim().min(1).describe("要问用户的问题，同批问题文本必须唯一"),
     options: z
         .array(
             z.object({
-                label: z.string().describe("选项显示文本"),
+                label: z.string().trim().min(1).max(16_384).describe("选项显示文本"),
                 description: z.string().optional().describe("选项说明"),
-            })
+            }).strict()
         )
         .min(2)
         .max(4)
         .describe("2-4 个选项"),
-    // answer 由 UI 层注入（用户选择后），LLM 不需要填
-    answer: z.string().optional().describe("用户选择的 label（UI 注入，LLM 不填）"),
-});
+}).strict();
 
 const inputSchema = z.object({
-    // 支持 1-4 个问题：LLM 可以一次问多个问题减少往返
-    // 参考 claude-code AskUserQuestionTool schema: questions.min(1).max(4)
     questions: z
         .array(questionSchema)
         .min(1)
         .max(4)
+        .refine(questions => new Set(questions.map(item => item.question)).size === questions.length,
+            "同批问题文本不能重复")
         .describe("要问用户的问题列表（1-4 个）"),
-    // answers 由 UI 层注入：Record<question_text, answer>
-    // 用 question 文本作 key（跟 claude-code 一致）
-    answers: z
-        .record(z.string(), z.string())
-        .optional()
-        .describe("用户回答（UI 注入，LLM 不填）"),
-});
+}).strict();
+
+const answersSchema = z.record(z.string(), z.string().min(1).max(16_384)
+    .refine(answer => answer.trim().length > 0, "答案不能为空"));
 
 export const askUserTool: Tool<typeof inputSchema> = {
     name: "ask_user",
@@ -55,7 +36,7 @@ export const askUserTool: Tool<typeof inputSchema> = {
     parameters: inputSchema,
     isReadOnly: () => true,
     requiresUserInteraction: () => true,
-    acceptsUpdatedInputFromUser: true,
+    acceptsUserAnswers: true,
     // 声明权限意向：需要问用户（触发权限弹窗流程）
     // App.tsx 根据 toolName === "ask_user" 分发到 AskDialog
     async checkPermissions(input) {
@@ -70,13 +51,15 @@ export const askUserTool: Tool<typeof inputSchema> = {
                     : first.question,
         };
     },
-    // execute 时 input 已经带 answers 字段（由 AskDialog 通过 updatedInput 注入）
-    async execute(input) {
-        const answers = input.answers ?? {};
-        const parts = Object.entries(answers).map(
-            ([q, a]) => `"${q}"="${a}"`
-        );
-        if (parts.length === 0) return "用户未回答任何问题";
+    async execute(input, _ctx, invocation) {
+        const parsed = answersSchema.safeParse(invocation.userAnswers);
+        if (!parsed.success ||
+            Object.keys(parsed.data).length !== input.questions.length ||
+            input.questions.some(item => !Object.hasOwn(parsed.data, item.question))) {
+            return {content: "Host 未提供与原问题逐一对应的有效答案，不能将批准视为用户回答。", outcome: "failed"};
+        }
+        const parts = input.questions.map(({question}) =>
+            `${JSON.stringify(question)}=${JSON.stringify(parsed.data[question])}`);
         return `用户回答: ${parts.join(", ")}`;
     },
 };

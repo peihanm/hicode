@@ -1,3 +1,4 @@
+import type {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import type {CompactState} from "../context/index.js";
 import type {McpManagerLike} from "../mcp/types.js";
 import type {PermissionMode, PermissionPromptPolicy, PermissionRules,} from "../permissions/index.js";
@@ -8,7 +9,7 @@ import type {Todo} from "../todos.js";
 import type {ToolContext} from "../tools/types.js";
 import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
-import {createFileStateTracker, type FileStateTracker,} from "../tools/shared/fileState.js";
+import type {FileStateTracker} from "../tools/shared/fileState.js";
 import {EMPTY_PROJECT_INSTRUCTIONS, type ProjectInstructions,} from "../prompt/instructions.js";
 import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
@@ -22,6 +23,7 @@ import {
 } from "../permissions/index.js";
 
 export interface ToolContextResources {
+    fileCommits: FileCommitCoordinator;
     storage: PillarStorageLayout;
     cwd: string;
     workspaceBoundary?: string;
@@ -35,12 +37,12 @@ export interface ToolContextResources {
     taskRuntime?: TaskRuntimeLike;
     tasks?: TaskSessionLike;
     shellRunner: ShellRunnerLike;
-    fileState?: FileStateTracker;
     gitSession?: GitSessionRuntimeLike;
     memoryFiles?: MemoryFileAccess;
 }
 
 export interface ToolContextSession {
+    fileState: FileStateTracker;
     networkAccess?: ToolContext["networkAccess"];
     sessionId: string;
     compactState: CompactState;
@@ -110,7 +112,8 @@ export function createToolContext({
         compactState: session.compactState,
         sessionId: session.sessionId,
         toolResultStore: session.toolResultStore,
-        fileState: resources.fileState ?? createFileStateTracker(),
+        fileState: session.fileState,
+        fileCommits: resources.fileCommits,
         gitSession: resources.gitSession,
         memoryFiles: resources.memoryFiles,
         fileCheckpoints: session.fileCheckpoints,

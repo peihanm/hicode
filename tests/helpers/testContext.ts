@@ -1,3 +1,4 @@
+import {FileCommitCoordinator} from "../../src/checkpoints/fileCommit.js";
 import { createCompactState } from "../../src/context/index.js";
 import type { PermissionDecision, PermissionMode } from "../../src/permissions/index.js";
 import type {PermissionPromptPolicy} from "../../src/permissions/index.js";
@@ -45,6 +46,7 @@ export function createTestContext(
     tasks?: TaskSessionLike;
     mcpManager?: McpManagerLike;
     fileState?: FileStateTracker;
+    fileCommits?: FileCommitCoordinator;
     instructions?: ProjectInstructions;
     shellRunner?: ShellRunnerLike;
     model?: string;
@@ -73,6 +75,7 @@ export function createTestContext(
   return createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
+      fileCommits: options.fileCommits ?? new FileCommitCoordinator(),
       storage: createTestStorage(cwd),
       cwd,
       workspaceBoundary: options.workspaceBoundary,
@@ -84,7 +87,6 @@ export function createTestContext(
       instructions: options.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
       tasks: options.tasks,
       mcpManager: options.mcpManager,
-      fileState: options.fileState ?? createFileStateTracker(),
       gitSession,
       memoryFiles: options.memoryFiles,
       shellRunner:
@@ -92,6 +94,7 @@ export function createTestContext(
         createShellRunner(createDisabledSandboxRuntime(), testChildEnvironment),
     },
     session: {
+      fileState: options.fileState ?? createFileStateTracker(),
       sessionId,
       compactState: createCompactState(),
       toolResultStore:

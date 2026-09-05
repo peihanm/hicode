@@ -43,6 +43,7 @@ export interface LoadedCustomAgents {
 }
 
 export interface RegisteredSubagentRequest {
+    workspaceWriteApproved?: true;
     kind: "registered";
     agentType: AgentName;
     description: string;

@@ -90,7 +90,7 @@ export type InteractionResponse =
         persistence?: "once" | "always";
         directoryScope?: "once" | "session" | "project";
         networkScope?: "once" | "session";
-        updatedInput?: unknown;
+        answers?: Record<string, string>;
     }
     | {behavior: "deny"; message: string};
 

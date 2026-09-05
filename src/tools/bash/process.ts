@@ -1,4 +1,5 @@
 import {type ChildProcess, spawn, type SpawnOptions,} from "node:child_process";
+import {bashCommand, bashExecutable} from "./command.js";
 import {closeSync, openSync, writeSync} from "node:fs";
 import {StringDecoder} from "node:string_decoder";
 import {normalizeTurnAbortReason, type TurnAbortReason,} from "../../runtime/abort.js";
@@ -199,9 +200,9 @@ function runProcess({
                 ...(env ? {env} : {}),
             };
             if (launch.kind === "shell") {
-                child = spawn(launch.command, {
+                child = spawn(bashExecutable(), ["--noprofile", "--norc", "-c", bashCommand(launch.command)], {
                     ...spawnOptions,
-                    shell: true,
+                    shell: false,
                 });
             } else {
                 const [program, ...args] = launch.argv;

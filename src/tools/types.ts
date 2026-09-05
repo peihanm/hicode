@@ -1,3 +1,4 @@
+import type {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import {z} from "zod";
 import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionPromptPresentation, PermissionResult, PermissionRules,} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
@@ -113,9 +114,10 @@ export interface ToolContext {
     sessionId: string;
     toolResultStore: ToolResultStore;
 
-    // Root Runtime 级的文件观测状态，供 Read/Edit/Write 做 stale
+    // Session 级的文件观测状态，供 Read/Edit/Write 做 stale
     // 和部分读取范围检查。不得使用进程级全局状态代替。
     fileState: FileStateTracker;
+    fileCommits: FileCommitCoordinator;
 
     // 当前 Root Session 的文件 Checkpoint。同步写型 child 可显式继承；
     // 只读和 Worktree child 使用 disabled runtime，Worktree 在 apply 时捕获 Root Preimage。
@@ -145,7 +147,9 @@ export interface ToolContext {
 }
 
 interface ToolInvocation {
+    userApproved?: true;
     toolCallId: string;
+    userAnswers?: Readonly<Record<string, string>>;
 }
 
 // 工具抽象：名字 + 描述 + Zod 参数 schema + 权限声明 + 执行函数
@@ -200,9 +204,8 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     // 例如 ask_user / exit_plan_mode，本质是用户交互而不是普通副作用。
     requiresUserInteraction?(input: z.infer<T>, ctx: ToolContext): boolean;
 
-    // 只有把用户回答作为工具输入一部分的交互工具才能声明此能力。
-    // 普通权限审批只能批准原输入，不能借 updatedInput 改写已完成权限检查的参数。
-    acceptsUpdatedInputFromUser?: boolean;
+    // Host 回答经 invocation 传入，不属于模型参数，也不能改写原提问。
+    acceptsUserAnswers?: boolean;
 
     // Default 只自动批准能证明副作用范围的调用。workspace 路径仍会由
     // permission resolver 做 canonical path 校验；sandboxed 只应由确认

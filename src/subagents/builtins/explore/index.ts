@@ -23,7 +23,7 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
                 deny: [...parentContext.permissionRules.deny],
             },
             permissionMode: "readOnly",
-            collaborationMode: "build",
+            collaborationMode: parentContext.collaborationMode,
             permissionPromptPolicy: "never",
         };
     },

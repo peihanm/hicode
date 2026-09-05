@@ -56,7 +56,7 @@ export const bashTaskTool: Tool<typeof inputSchema> = {
             return {content: "当前 Runtime 不支持后台 Bash 任务", outcome: "failed"};
         }
         const snapshot = action === "stop"
-            ? await ctx.tasks.stop(task_id)
+            ? await ctx.tasks.stop(task_id, "shell")
             : await ctx.tasks.get(task_id);
         if (!snapshot) {
             return {content: `后台任务不存在: ${task_id}`, outcome: "failed"};

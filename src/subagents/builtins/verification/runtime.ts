@@ -65,7 +65,7 @@ export function createVerificationRuntimeConfig(
             deny: [...parentContext.permissionRules.deny],
         },
         permissionMode: "readOnly",
-        collaborationMode: "build",
+        collaborationMode: parentContext.collaborationMode,
         permissionPromptPolicy: "never",
         maxConsecutiveDeniedToolCalls: 3,
     };

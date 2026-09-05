@@ -3,7 +3,7 @@ import type {AgentTaskSnapshot} from "../../tasks/index.js";
 import type {SubagentRegistry} from "../../subagents/registry.js";
 import type {SubagentResult} from "../../subagents/types.js";
 import {formatSubagentModel} from "../../subagents/model.js";
-import {hasAgentWriteTools, validateBackgroundAgent,} from "../../subagents/registration.js";
+import {hasAgentWriteTools, supportsWorkspaceWriteGrant, validateBackgroundAgent,} from "../../subagents/registration.js";
 import type {Tool} from "../types.js";
 
 const agentInputSchema = z.object({
@@ -296,6 +296,8 @@ export function createAgentTool(
                 parentToolCallId: request.parentToolCallId,
                 ...(input.model ? {model: input.model} : {}),
                 runInBackground: false,
+                ...(invocation.userApproved && supportsWorkspaceWriteGrant(registration.definition)
+                    ? {workspaceWriteApproved: true as const} : {}),
             });
             if (launched.kind !== "foreground") {
                 return {content: "Agent 意外进入后台 Task。", outcome: "failed"};

@@ -49,4 +49,24 @@ describe("shell command permissions", () => {
     );
   });
 
+  test("引号、转义与选项语义一致，无法确定时保守拒绝只读", () => {
+    for (const command of [
+      'sort "-o" out input', "sort -rout input", "s''ort -oout input",
+      'sort \\-o out input', 'sort --out=out input', 'tree -aoout',
+      'rg "--pre" ./run term', "rg --hostname-b=./run term", "git grep -Ocat term",
+      'git log "--output=out"', 'uniq input out', 'uniq - out', 'uniq -- input -out', 'file -C -m magic', 'date -s tomorrow',
+      'sort $FLAGS input', 'cat *.txt', 'echo $(touch out)', 'cat <<EOF\ndata\nEOF',
+      'echo "unterminated', 'pwd &&', 'pwd ||', 'pwd &', 'pwd; (echo ok)',
+    ]) expect(isShellCommandReadOnly(command)).toBe(false);
+    for (const command of [
+      'sort -rn input', 'sort "input name"', 'git "status" --short',
+      'echo "a | b && c"', "echo 'literal $HOME > text'", 'echo a\\;b',
+      'pwd &&\n git status', 'sort -r\\\nn input', 'pwd;\n',
+    ]) expect(isShellCommandReadOnly(command)).toBe(true);
+    expect(splitShellSubCommands('echo "a | b" && git status')).toEqual(['echo "a | b"', 'git status']);
+    expect(generateShellAllowPattern('echo $(touch out)')).toBeNull();
+    expect(generateShellAllowPattern('echo ok > out')).toBeNull();
+    expect(generateShellAllowPattern('git "status"')).toBe('git status:*');
+  });
+
 });

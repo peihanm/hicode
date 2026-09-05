@@ -78,7 +78,8 @@ export class SandboxNetworkApproval {
             if ([...this.executions].some((entry) => entry.denied.has(key))) return false;
             const decision = await this.request(access, host, port, signal);
             if (signal.aborted || this.eligible() !== access) return false;
-            if (decision.behavior !== "allow" || decision.updatedInput !== undefined ||
+            if (decision.behavior !== "allow" || decision.answers !== undefined ||
+                Object.keys(decision).some(key => !["behavior", "networkScope"].includes(key)) ||
                 decision.directoryScope !== undefined ||
                 (decision.networkScope !== undefined && decision.networkScope !== "once" &&
                     decision.networkScope !== "session")) {

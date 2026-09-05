@@ -1,3 +1,4 @@
+import {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";
@@ -7,7 +8,6 @@ import {createToolCatalog} from "../tools/catalog.js";
 import {createTaskRuntime, type TaskRuntimeLike,} from "../tasks/index.js";
 import {createShellRunner, type ShellRunnerLike,} from "../tools/bash/shellRunner.js";
 import {createSandboxRuntime, type SandboxRuntimeLike,} from "../sandbox/index.js";
-import {createFileStateTracker, type FileStateTracker,} from "../tools/shared/fileState.js";
 import {loadProjectInstructions, type ProjectInstructions,} from "../prompt/instructions.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
 import {type AgentRuntime, createAgentRuntime} from "./agentRuntime.js";
@@ -62,9 +62,9 @@ export interface RootRuntimeResources {
     readonly hooks: HookRuntime;
     readonly mcpManager?: McpManagerLike;
     readonly taskRuntime: TaskRuntimeLike;
+    readonly fileCommits: FileCommitCoordinator;
     readonly shellRunner: ShellRunnerLike;
     readonly sandbox: SandboxRuntimeLike;
-    readonly fileState: FileStateTracker;
     readonly memory: MemoryRuntimeLike;
     readonly memoryFiles?: MemoryFileAccess;
     readonly gitWorkspace: GitWorkspaceRuntimeLike;
@@ -103,9 +103,6 @@ interface RootRuntimeDependencies {
         createSubagentThread: CreateSubagentThread,
         subagents: SubagentCatalog
     ): TaskRuntimeLike;
-
-    createFileStateTracker(): FileStateTracker;
-
     createAgentRuntime: typeof createAgentRuntime;
 
     createMemoryRuntime: typeof createMemoryRuntime;
@@ -164,8 +161,6 @@ export function createRootRuntimeResourcesFactory(
         createToolRuntime: overrides.createToolRuntime ?? createToolRuntime,
         createHookRuntime: overrides.createHookRuntime ?? createHookRuntime,
         createTaskRuntime: overrides.createTaskRuntime ?? createTaskRuntime,
-        createFileStateTracker:
-            overrides.createFileStateTracker ?? createFileStateTracker,
         createAgentRuntime: overrides.createAgentRuntime ?? createAgentRuntime,
         createMemoryRuntime:
             overrides.createMemoryRuntime ?? createMemoryRuntime,
@@ -220,7 +215,6 @@ export function createRootRuntimeResourcesFactory(
                 settings.models.primary,
                 settings.sources
             );
-            const fileState = dependencies.createFileStateTracker();
             const gitWorkspace = createGitWorkspaceRuntime(
                 cwd,
                 childEnvironment
@@ -359,11 +353,11 @@ export function createRootRuntimeResourcesFactory(
                 taskRuntime: createdTaskRuntime,
                 shellRunner,
                 sandbox,
-                fileState,
                 memory: createdMemory,
                 memoryFiles: createdMemory.enabled
                     ? createdMemory.fileAccess("explicit")
                     : undefined,
+                fileCommits: new FileCommitCoordinator(),
                 gitWorkspace,
                 beginShutdown: closeOwnedResources.beginShutdown,
                 close: closeOwnedResources.close,

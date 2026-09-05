@@ -70,6 +70,8 @@ export async function executeRegisteredTool(
         return inlineToolResult(`参数校验失败: ${parsed.error.message}`, "failed");
     }
     let input = parsed.data;
+    let userAnswers: Readonly<Record<string, string>> | undefined;
+    let userApproved: true | undefined;
     let preHookResult: HookBatchResult | undefined;
 
     if (hooks?.enabled) {
@@ -160,7 +162,7 @@ export async function executeRegisteredTool(
             decision = await ctx.canUseTool(
                 name,
                 permission.message,
-                input,
+                structuredClone(input),
                 {
                     allowPersistent: permission.allowPersistent,
                     presentation: permission.presentation,
@@ -188,6 +190,21 @@ export async function executeRegisteredTool(
                 "PreToolUse",
                 preHookResult
             );
+        }
+        if (decision.behavior !== "allow") {
+            return inlineToolResult("权限交互没有返回有效的 allow/deny 决定", "denied");
+        }
+        if (Object.keys(decision).some(key => !["behavior", "answers", "directoryScope", "networkScope"].includes(key))) {
+            return inlineToolResult("权限交互不能修改工具输入或返回未知字段", "denied");
+        }
+        if (decision.answers !== undefined) {
+            if (tool.acceptsUserAnswers !== true || decision.directoryScope !== undefined || decision.networkScope !== undefined) {
+                return hookDecoratedResult(
+                    inlineToolResult(`工具 ${name} 不接收该请求中的用户答案`, "denied"),
+                    "PreToolUse", preHookResult
+                );
+            }
+            userAnswers = decision.answers;
         }
         if (decision.networkScope !== undefined) {
             return hookDecoratedResult(
@@ -225,31 +242,9 @@ export async function executeRegisteredTool(
                 preHookResult
             );
         }
-        if (decision.updatedInput !== undefined) {
-            if (tool.acceptsUpdatedInputFromUser !== true) {
-                return hookDecoratedResult(
-                    inlineToolResult(
-                        `权限交互不能修改工具 ${name} 的输入`,
-                        "denied"
-                    ),
-                    "PreToolUse",
-                    preHookResult
-                );
-            }
-            const reparsed = tool.parameters.safeParse(decision.updatedInput);
-            if (!reparsed.success) {
-                return hookDecoratedResult(
-                    inlineToolResult(
-                        `用户交互修改后的参数校验失败: ${reparsed.error.message}`,
-                        "failed"
-                    ),
-                    "PreToolUse",
-                    preHookResult
-                );
-            }
-            input = reparsed.data;
-        }
     }
+
+    if (permission.behavior === "ask") userApproved = true;
 
     if (name === "bash") {
         await ctx.fileCheckpoints.markCoverageWarning({
@@ -268,7 +263,7 @@ export async function executeRegisteredTool(
 
     let result;
     try {
-        result = await tool.execute(input, ctx, {toolCallId});
+        result = await tool.execute(input, ctx, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(userApproved ? {userApproved} : {})});
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
             return interruptedToolResult(ctx.signal);
@@ -298,7 +293,10 @@ export async function executeRegisteredTool(
         );
     }
 
-    if (ctx.signal.aborted) {
+    // A completed file commit is a fact even if the Turn was cancelled while
+    // its checkpoint/result was being recorded. Do not erase its FileChange.
+    const committedFile = typeof result !== "string" && result.uiData?.type === "file_change";
+    if (ctx.signal.aborted && !committedFile) {
         return interruptedToolResult(ctx.signal);
     }
     const processed = await processToolOutput({
@@ -331,7 +329,7 @@ export async function executeRegisteredTool(
         result: processed,
         ctx,
     });
-    if (ctx.signal.aborted) {
+    if (ctx.signal.aborted && !committedFile) {
         return interruptedToolResult(ctx.signal);
     }
     return hookDecoratedResult(

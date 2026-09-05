@@ -64,6 +64,30 @@ function createFakeAgentRuntime(
 }
 
 describe("TypeScript SDK", () => {
+    test("sequential Threads sharing Root do not share file observations", async () => {
+        await withTempProject(async (cwd, storage) => {
+            await writeFile(`${cwd}/owned.txt`, "original\n");
+            const fake = createFakeLLM([
+                assistantToolCall("read_file", {path: "owned.txt"}, "read-a"), assistantText("read"),
+                assistantToolCall("write_file", {path: "owned.txt", content: "overwritten"}, "write-b"),
+                assistantText("写入失败，未完成：需要先读取文件，当前没有修改。"),
+                assistantText("写入失败，未完成：尚未读取原文，当前没有修改。"),
+            ]);
+            const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
+            const open = () => createSDKThread({resources,
+                seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+                state: {todos: [], permissionMode: "bypassPermissions", collaborationMode: "build", uiEvents: []},
+                resumed: false, onClose() {},
+            });
+            try {
+                const first = await open();
+                try { await first.run("read"); } finally { await first.close(); }
+                const second = await open();
+                try { await second.run("write without reading"); } finally { await second.close(); }
+                expect(await readFile(`${cwd}/owned.txt`, "utf8")).toBe("original\n");
+            } finally { await resources.close(); }
+        });
+    });
     test("真实 ToolRuntime 网络交互穿过 SDK Host，Session 授权跨 Turn 复用且无 elevated", async () => {
         await withTempProject(async (cwd, storage) => {
             let enabled = false;
@@ -675,10 +699,7 @@ describe("TypeScript SDK", () => {
                         expect(request.kind).toBe("question");
                         return {
                             behavior: "allow",
-                            updatedInput: {
-                                ...questionInput,
-                                answers: {"选择方案": "A"},
-                            },
+                            answers: {"选择方案": "A"},
                         };
                     },
                 },

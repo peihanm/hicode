@@ -1,3 +1,4 @@
+import {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import {randomUUID} from "node:crypto";
 import {createAgentRunner, EMPTY_AGENT_INPUT_CHANNEL} from "../agent/index.js";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
@@ -99,6 +100,7 @@ export function createMemoryExtractor(
             const ctx = createToolContext({
                 signal: input.signal,
                 resources: {
+                    fileCommits: new FileCommitCoordinator(),
                     storage: options.storage,
                     cwd: options.cwd,
                     workspaceBoundary: options.memoryFiles.directory,
@@ -109,10 +111,10 @@ export function createMemoryExtractor(
                     skills: [],
                     instructions: EMPTY_PROJECT_INSTRUCTIONS,
                     shellRunner: options.shellRunner,
-                    fileState: createFileStateTracker(),
                     memoryFiles: options.memoryFiles,
                 },
                 session: {
+                    fileState: createFileStateTracker(),
                     sessionId,
                     compactState: createCompactState(),
                     toolResultStore: createToolResultStore(

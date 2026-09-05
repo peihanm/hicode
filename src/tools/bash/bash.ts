@@ -7,6 +7,7 @@ import {
     hasShellBackgroundOperator,
     isCompoundShellPattern,
     isShellCommandReadOnly,
+    parseShellCommand,
     splitShellSubCommands,
 } from "../../permissions/shellCommand.js";
 import type {ShellExecutionResult} from "./process.js";
@@ -15,7 +16,7 @@ import {displayToolPath} from "../shared/paths.js";
 
 const inputSchema = z.object({
     command: z.string().describe(
-        "要执行的 shell 命令。优先运行项目已有脚本/测试；curl 仅用于少量本地 API/HTML 探测，不要用临时 curl 测试矩阵代替项目测试或浏览器验证。HTTP 检查应有界等待服务 ready，并保证任一端点失败时整个命令返回非零；不要用 `|| echo FAIL` 掩盖失败。若本地监听或访问返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。非 ASCII 文本不要用 head -c/cut -b 按字节截断；不要在末尾添加 &"
+        "要执行的 Bash 命令，默认启用 pipefail（不启用 set -e）：管道任一段失败会保留非零状态，显式 || 可处理预期失败。长输出由工具保存并裁剪，测试不要接 head；上游 SIGPIPE 不会自动当成功。优先运行项目已有脚本/测试；curl 仅用于少量本地 API/HTML 探测，不要用临时 curl 测试矩阵代替项目测试或浏览器验证。HTTP 检查应有界等待服务 ready，并保证任一端点失败时整个命令返回非零；不要用 `|| echo FAIL` 掩盖失败。若本地监听或访问返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。非 ASCII 文本不要用 head -c/cut -b 按字节截断；不要在末尾添加 &"
     ),
     cwd: z
         .string()
@@ -257,24 +258,39 @@ export const bashTool: Tool<typeof inputSchema> = {
     // allow：普通单段规则必须匹配所有子命令；组合规则按顺序匹配每段。
     // 防止 "npm test && rm -rf x" 因 bash(npm:*) 被整条放行。
     async preparePermissionMatcher({command}) {
-        const subCommands = splitShellSubCommands(command);
+        const parsed = parseShellCommand(command);
+        const subCommands = parsed.segments;
+        const matches = (pattern: string, segment: (typeof subCommands)[number]) => {
+            if (pattern.endsWith(":*")) {
+                const prefix = parseShellCommand(pattern.slice(0, -2));
+                const tokens = prefix.segments[0]?.tokens;
+                return prefix.literal && prefix.segments.length === 1 && !!tokens &&
+                    tokens.every((token, index) => token === segment.tokens[index]);
+            }
+            const canonical = segment.tokens.map(token => /^[a-zA-Z0-9_./:@%+=,-]+$/.test(token)
+                ? token : `'${token.replaceAll("'", "'\\''")}'`).join(" ");
+            return matchPattern(pattern, segment.raw) || matchPattern(pattern, canonical);
+        };
         return (pattern, behavior) => {
+            // Unknown syntax cannot prove a content allow, nor prove that a
+            // deny/ask rule is absent inside expansion or control structures.
+            if (!parsed.literal) return behavior !== "allow";
             if (isCompoundShellPattern(pattern)) {
                 const patternParts = splitShellSubCommands(pattern);
                 return (
                     patternParts.length === subCommands.length &&
                     patternParts.every((part, index) =>
-                        matchPattern(part, subCommands[index])
+                        matches(part, subCommands[index]!)
                     )
                 );
             }
             if (behavior === "allow") {
                 return (
                     subCommands.length > 0 &&
-                    subCommands.every((cmd) => matchPattern(pattern, cmd))
+                    subCommands.every((cmd) => matches(pattern, cmd))
                 );
             }
-            return subCommands.some((cmd) => matchPattern(pattern, cmd));
+            return subCommands.some((cmd) => matches(pattern, cmd));
         };
     },
     execute: async ({

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   createVerificationBashTool,
 } from "../../src/subagents/builtins/verification/tools.js";
+import {createTestContext} from "../helpers/testContext.js";
+import {withTempProject} from "../helpers/tempProject.js";
 
 const cwd = "/tmp/project";
 
@@ -46,12 +48,27 @@ describe("Verification Agent shell policy", () => {
       "curl http://localhost:3000 -c /tmp/cookies.txt",
       "curl --config .curlrc http://localhost:3000",
       "curl -K .curlrc http://localhost:3000",
+      "curl -oout http://localhost:3000",
+      "curl -sKconfig http://localhost:3000",
+      "curl -XPOST http://localhost:3000",
+      "sort -oout input",
+      'sort "-o" out input',
+      "echo $DYNAMIC_COMMAND",
       "curl http://localhost:3000 &",
     ]) {
       expect((await check(command))?.behavior).toBe(
         "deny"
       );
     }
+  });
+
+  test("Verification 保留父 Plan，不通过项目测试声明扩大写能力", async () => {
+    await withTempProject(async cwd => {
+      const ctx = createTestContext(cwd, {collaborationMode: "plan", permissionMode: "bypassPermissions"});
+      const tool = createVerificationBashTool();
+      expect((await tool.checkPermissions?.({command: "bun run test"}, ctx))?.behavior).toBe("deny");
+      expect((await tool.checkPermissions?.({command: "pwd"}, ctx))?.behavior).toBe("allow");
+    });
   });
 
   test("每个 Verification Runtime 最多允许两次 curl 探测", async () => {

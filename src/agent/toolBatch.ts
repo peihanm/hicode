@@ -149,7 +149,7 @@ export async function executeToolCallBatch({
             for (let index = 0; index < group.calls.length; index++) {
                 const toolCall = group.calls[index]!;
                 const execution = executions[index]!;
-                const interrupted = ctx.signal.aborted;
+                const interrupted = ctx.signal.aborted && execution.uiData?.type !== "file_change";
                 const interruptedContent = interrupted
                     ? formatInterruptedToolResult(ctx.signal)
                     : undefined;

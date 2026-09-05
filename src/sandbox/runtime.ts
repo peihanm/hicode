@@ -1,3 +1,4 @@
+import {bashCommand, bashExecutable} from "../tools/bash/command.js";
 import {
     SandboxManager,
     type SandboxRuntimeConfig,
@@ -80,7 +81,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         options?: SandboxCommandOptions
     ): Promise<SandboxedCommand> {
         if (this.closed) throw new Error("Sandbox Runtime 已关闭");
-        const shell = process.platform === "win32" ? undefined : "/bin/sh";
+        const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
             .map((path) => resolve(path));
         const writableRoots = [...new Set([
@@ -105,7 +106,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         const approval = this.networkApproval.register(options?.networkAccess, signal);
         try {
             const wrapped = await this.backend.wrapWithSandboxArgv(
-                command,
+                bashCommand(command),
                 shell,
                 customConfig,
                 signal,
