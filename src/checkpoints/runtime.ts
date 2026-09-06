@@ -117,7 +117,7 @@ class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
             let diffBudget = 512 * 1024;
             try {
                 const after = await snapshotShellWorkspace(before.root, this.pillarHome, this.shellSnapshotDeniedReadPaths);
-                if (JSON.stringify(after.excludedPaths) !== JSON.stringify(before.excludedPaths)) throw new Error("Shell 执行改变了快照排除路径，不能确认完整覆盖");
+                if (JSON.stringify(after.deniedWritePaths) !== JSON.stringify(before.deniedWritePaths)) throw new Error("Shell 执行改变了快照排除路径，不能确认完整覆盖");
                 for (const path of new Set([...before.files.keys(), ...after.files.keys()])) {
                     const oldFile = before.files.get(path);
                     const newFile = after.files.get(path);
@@ -146,7 +146,7 @@ class FileCheckpointRuntime implements FileCheckpointRuntimeLike {
                 return {changes, warning};
             } finally {before.files.clear();}
         };
-        return {scope: {root: before.root, denyWrite: before.excludedPaths}, finish: () => finished ??= finish()};
+        return {scope: {root: before.root, denyWrite: before.deniedWritePaths}, finish: () => finished ??= finish()};
     }
 
     async afterWrite(input: CaptureAfterWriteInput): Promise<CaptureResult> {

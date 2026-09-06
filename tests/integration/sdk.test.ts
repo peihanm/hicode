@@ -108,7 +108,7 @@ describe("TypeScript SDK", () => {
                 cleanupAfterCommand() {},
                 async reset() { enabled = false; },
             });
-            const sandbox = await createSandbox({cwd, settings: {
+            const sandbox = await createSandbox({cwd, storage, settings: {
                 enabled: true, filesystem: {denyRead: [], denyWrite: []},
                 network: {allowedDomains: [], allowLocalBinding: false},
             }});

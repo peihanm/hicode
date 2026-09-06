@@ -43,7 +43,9 @@ describe("RewindDialog", () => {
         const frame = view.lastFrame() ?? "";
         expect(frame).toContain("↶ Rewind  恢复代码与对话状态");
         expect(frame).toContain("◇ 暂无可恢复点");
-        expect(frame).toContain("范围 · 仅恢复 Pillar 文件工具捕获的修改");
+        expect(frame).toContain("范围 · 恢复捕获的文件");
+        expect(frame).toContain("Shell 安装的依赖、包缓存和外部服务不回退");
+        expect(frame).toContain("依赖声明变化后需重新安装");
         const lines = frame.split("\n");
         const panelBottom = lines.findIndex((line) => line.startsWith("╰"));
         const controls = lines.findIndex((line) => line.includes("Esc 返回"));

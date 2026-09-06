@@ -181,7 +181,7 @@ test("排除目录进入禁写 scope，Shell 快照不采集其他 Session 的�
         const runtime = createFileCheckpointRuntime({storage, cwd, sessionId: "scope", enabled: true});
         const ctx = createTestContext(cwd, {toolResultStore: createTestToolResultStore(cwd, "shell", {pillarHome: storage.pillarHome}), fileCommits: commits, shellRunner: {
             sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, async run(request) {
-                expect(request.filesystemScope?.denyWrite).toContain(join(request.filesystemScope!.root, "node_modules"));
+                expect(request.filesystemScope?.denyWrite).not.toContain(join(request.filesystemScope!.root, "node_modules"));
                 expect(request.filesystemScope?.denyWrite).toContain(join(request.filesystemScope!.root, ".env"));
                 started(); await release;
                 return runShellCommand(request);
@@ -198,5 +198,31 @@ test("排除目录进入禁写 scope，Shell 快照不采集其他 Session 的�
         await Promise.all([shell, other]);
         expect((await runtime.listCheckpoints())[0]?.mutations).toHaveLength(0);
         expect(await Bun.file(join(cwd, "other")).text()).toBe("other-session");
+    });
+});
+
+test("安装产生的根与嵌套依赖不进入源码回退，源码和锁文件仍可恢复", async () => {
+    await withTempProject(async (cwd, storage) => {
+        await writeFile(join(cwd, "source.ts"), "before");
+        await writeFile(join(cwd, "bun.lock"), "old-lock");
+        const checkpoints = createFileCheckpointRuntime({storage, cwd, sessionId: "dependencies", enabled: true});
+        const ctx = createTestContext(cwd, {toolResultStore: createTestToolResultStore(cwd, "dependencies", {pillarHome: storage.pillarHome}), shellRunner: {sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+            async run(request) {
+                expect(request.filesystemScope?.denyWrite).not.toContain(join(request.filesystemScope!.root, "node_modules"));
+                expect(request.filesystemScope?.denyWrite).toContain(join(request.filesystemScope!.root, ".env"));
+                return runShellCommand(request);
+            }}});
+        ctx.fileCheckpoints = checkpoints;
+        const checkpoint = (await checkpoints.beginTurn({prompt: "install"}))!;
+        const result = await createToolRuntime().executeTool("bash", JSON.stringify({command:
+            "mkdir -p node_modules/dep packages/app/node_modules/dep && printf installed > node_modules/dep/index.js && printf nested > packages/app/node_modules/dep/index.js && printf after > source.ts && printf new-lock > bun.lock"}), ctx, "install");
+        expect(result.outcome).toBe("ok");
+        expect(toolFileChanges(result.uiData).map(change => change.path).sort()).toEqual(["bun.lock", "source.ts"]);
+        await checkpoints.settleTurn();
+        expect((await checkpoints.restoreCode(checkpoint.checkpointId)).status).toBe("complete");
+        expect(await readFile(join(cwd, "source.ts"), "utf8")).toBe("before");
+        expect(await readFile(join(cwd, "bun.lock"), "utf8")).toBe("old-lock");
+        expect(await readFile(join(cwd, "node_modules/dep/index.js"), "utf8")).toBe("installed");
+        expect(await readFile(join(cwd, "packages/app/node_modules/dep/index.js"), "utf8")).toBe("nested");
     });
 });

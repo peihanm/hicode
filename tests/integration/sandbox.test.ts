@@ -33,7 +33,7 @@ async function exists(path: string): Promise<boolean> {
 describe("OS Sandbox integration", () => {
     test("实际代理批准域名后保留文件隔离，重复请求复用 Session 授权", async () => {
         if (!ENABLED) return;
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             let hits = 0;
             const server = createServer((_request, response) => { hits++; response.end("network-ok"); });
             await new Promise<void>((resolve, reject) => {
@@ -44,7 +44,7 @@ describe("OS Sandbox integration", () => {
             if (!address || typeof address === "string") throw new Error("missing test port");
             await mkdir(join(cwd, ".pillar"), {recursive: true});
             const blockedPath = join(cwd, ".pillar", "network-must-not-enable-write.txt");
-            const runtime = await createSandboxRuntime({cwd, settings: {
+            const runtime = await createSandboxRuntime({cwd, storage, settings: {
                 enabled: true, filesystem: {denyRead: [], denyWrite: []},
                 network: {allowedDomains: [], allowLocalBinding: false},
             }});
@@ -108,7 +108,7 @@ describe("OS Sandbox integration", () => {
 
     test("真实 OS 边界限制文件、网络和子进程", async () => {
         if (!ENABLED) return;
-        await withTempProject(async (cwd) => {
+        await withTempProject(async (cwd, storage) => {
             const outside = await mkdtemp(join(tmpdir(), "pillar-sandbox-outside-"));
             const secretPath = join(outside, "secret.txt");
             const blockedPath = join(outside, "blocked.txt");
@@ -135,6 +135,7 @@ describe("OS Sandbox integration", () => {
 
             const runtime = await createSandboxRuntime({
                 cwd,
+                storage,
                 settings: {
                     enabled: true,
                     filesystem: {

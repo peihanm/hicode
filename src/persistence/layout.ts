@@ -96,3 +96,8 @@ export function getProjectDebugDirectory(
 export function getSessionContentDirectory(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "content");
 }
+
+/** Rebuildable package cache, separate from Session/checkpoint data. */
+export function getProjectBunCacheDirectory(storage: PillarStorageLayout, cwd: string): string {
+    return join(getProjectStorageDirectory(storage, cwd), "cache", "bun");
+}

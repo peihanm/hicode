@@ -7,7 +7,7 @@ import {testChildEnvironment} from "../helpers/childEnvironment.js";
 describe("Bash pipeline status", () => {
     for (const mode of ["disabled", "sandbox", "elevated"] as const) {
         test(`${mode}: actual Bash retains failures and explicit control flow`, async () => {
-            await withTempProject(async cwd => {
+            await withTempProject(async (cwd, storage) => {
                 let enabled = false;
                 const wrappedShells: Array<string | undefined> = [];
                 const factory = createSandboxRuntimeFactory({
@@ -23,7 +23,7 @@ describe("Bash pipeline status", () => {
                     cleanupAfterCommand() {},
                     async reset() { enabled = false; },
                 });
-                const sandbox = mode === "disabled" ? createDisabledSandboxRuntime() : await factory({cwd,
+                const sandbox = mode === "disabled" ? createDisabledSandboxRuntime() : await factory({cwd, storage,
                     settings: {enabled: true, filesystem: {denyRead: [], denyWrite: []},
                         network: {allowedDomains: [], allowLocalBinding: false}}});
                 const runner = createShellRunner(sandbox, testChildEnvironment);

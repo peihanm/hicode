@@ -199,6 +199,7 @@ export function createRootRuntimeResourcesFactory(
         let closeOwnedResources: RootResourceCloser | undefined;
         const sandbox = await createSandboxRuntime({
             cwd,
+            storage,
             settings: settings.sandbox,
             writableRoots: settings.permissions.additionalDirectories,
         });

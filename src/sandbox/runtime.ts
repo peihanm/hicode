@@ -6,6 +6,8 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
+import {getProjectBunCacheDirectory, type PillarStorageLayout} from "../persistence/layout.js";
+import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
 import {createSandboxRuntimeConfig} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
 import type {
@@ -72,7 +74,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         private readonly backend: SandboxBackend,
         private readonly release: () => Promise<void>,
         private readonly baseConfig: SandboxRuntimeConfig,
-        private readonly networkApproval: SandboxNetworkApproval
+        private readonly networkApproval: SandboxNetworkApproval,
+        private readonly bunCacheDirectory: string
     ) {}
 
     async wrapCommand(
@@ -117,7 +120,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                 throw new Error("Shell 快照写边界必须收窄已有目录授权");
             }
             customConfig = {...this.baseConfig, filesystem: {...this.baseConfig.filesystem,
-                allowWrite: [root], denyWrite: [...this.baseConfig.filesystem.denyWrite, ...scope.denyWrite]}};
+                allowWrite: [root, this.bunCacheDirectory], denyWrite: [...this.baseConfig.filesystem.denyWrite, ...scope.denyWrite]}};
         }
         const approval = this.networkApproval.register(options?.networkAccess, signal);
         try {
@@ -128,7 +131,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                 signal,
                 cwd
             );
-            return {...wrapped, ...approval};
+            return {...wrapped, env: {...wrapped.env, BUN_INSTALL_CACHE_DIR: this.bunCacheDirectory}, ...approval};
         } catch (error) {
             approval.release();
             throw error;
@@ -160,10 +163,12 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
 
     return async function createSandboxRuntime({
         cwd,
+        storage,
         settings,
         writableRoots = [],
     }: {
         cwd: string;
+        storage: PillarStorageLayout;
         settings: ResolvedSandboxSettings;
         writableRoots?: readonly string[];
     }): Promise<SandboxRuntimeLike> {
@@ -219,7 +224,10 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         };
 
         try {
-            const config = createSandboxRuntimeConfig(cwd, settings, writableRoots);
+            const cachePath = getProjectBunCacheDirectory(storage, cwd);
+            ensurePrivateStorageDirectory(storage, cachePath);
+            const bunCacheDirectory = await realpath(cachePath);
+            const config = createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory]);
             await backend.initialize(config, networkApproval.ask);
             if (!backend.isSandboxingEnabled()) {
                 await release();
@@ -233,7 +241,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 kind: "ready",
                 platform,
                 warnings: dependencies.warnings,
-            }, backend, release, config, networkApproval);
+            }, backend, release, config, networkApproval, bunCacheDirectory);
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

@@ -308,7 +308,7 @@ export function RewindDialog({
 
                 <Box marginTop={1}>
                     <Text color={COLORS.dim}>
-                        范围 · 仅恢复 Pillar 文件工具捕获的修改；外部程序与服务不在恢复范围内。
+                        范围 · 恢复捕获的文件；Shell 安装的依赖、包缓存和外部服务不回退。依赖声明变化后需重新安装。
                     </Text>
                 </Box>
             </Box>
