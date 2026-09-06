@@ -140,9 +140,9 @@ describe("multiline input box", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     instance.stdin.write("前缀 ");
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     instance.stdin.write(content);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     instance.stdin.write(" 后缀");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(instance.lastFrame()).toContain(
@@ -158,6 +158,56 @@ describe("multiline input box", () => {
     instance.stdin.write("\u007f");
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(instance.lastFrame()).not.toContain("[Pasted text #1");
+  });
+
+  for (const chunkDelay of [0, 5]) {
+    test(`长 Prompt 的短尾块全部折叠且立即提交无损（分块间隔 ${chunkDelay}ms）`, async () => {
+      const submissions: string[] = [];
+      const first = "做一个 TypeScript 和 Canvas 霓虹赛车游戏。\n" +
+        "包含 60 秒挑战、驾驶、收集能量、加速、暂停和重新开始。\n" +
+        "程序绘制场景并保存本地最高分。\n" +
+        "直接完成实现，实际启动并验证核心";
+      const tail = "玩法，最后给我启动命令和访问地址。不要提交 Git commit。";
+      const view = render(<InputBox disabled={false} terminalWidth={90}
+        onSubmit={value => submissions.push(value)} />);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      view.stdin.write(first);
+      if (chunkDelay) await new Promise(resolve => setTimeout(resolve, chunkDelay));
+      view.stdin.write(tail.slice(0, -1));
+      view.stdin.write(tail.slice(-1));
+      if (chunkDelay === 0) {
+        view.stdin.write("\r");
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(submissions).toEqual([first + tail]);
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(view.lastFrame()).toContain("[Pasted text #1 +3 lines]");
+      expect(view.lastFrame()).not.toContain("玩法");
+      expect(view.lastFrame()).not.toContain("commit");
+      expect(submissions).toHaveLength(0);
+      view.stdin.write("\r");
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(submissions).toEqual([first + tail]);
+    });
+  }
+
+  test("光标操作结束粘贴批次，回到 Capsule 末尾后的补字仍可见", async () => {
+    const submissions: string[] = [];
+    const pasted = "第一行\n第二行\n第三行\n第四行";
+    const view = render(<InputBox disabled={false} terminalWidth={90}
+      onSubmit={value => submissions.push(value)} />);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    view.stdin.write(pasted);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    view.stdin.write("\u001b[D");
+    view.stdin.write("\u001b[C");
+    view.stdin.write("补充说明");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(view.lastFrame()).toContain("[Pasted text #1 +3 lines]补充说明");
+    view.stdin.write("\r");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(submissions).toEqual([pasted + "补充说明"]);
   });
 
   test("按终端显示宽度折行且保留空行", () => {

@@ -54,18 +54,6 @@ function formatPlaceholder(id: number, content: string): string {
         : `[Pasted text #${id}]`;
 }
 
-function findAdjacentCapsule(
-    value: string,
-    cursorOffset: number,
-    state: PasteCapsuleState
-): PasteCapsule | undefined {
-    return state.capsules.find((capsule) => {
-        const start = cursorOffset - capsule.placeholder.length;
-        return start >= 0 &&
-            value.slice(start, cursorOffset) === capsule.placeholder;
-    });
-}
-
 export function insertPasteCapsule(
     value: string,
     cursorOffset: number,
@@ -82,33 +70,6 @@ export function insertPasteCapsule(
             cursorOffset: cursorOffset + normalized.length,
             state,
             collapsed: false,
-        };
-    }
-
-    // A terminal may split one large paste into multiple stdin chunks. If two
-    // collapsible chunks are adjacent, they are one opaque pasted region from
-    // the editor's perspective, so extend the existing capsule instead of
-    // exposing transport chunk boundaries as separate capsule IDs.
-    const adjacent = findAdjacentCapsule(value, cursorOffset, state);
-    if (adjacent) {
-        const content = adjacent.content + normalized;
-        const placeholder = formatPlaceholder(adjacent.id, content);
-        const start = cursorOffset - adjacent.placeholder.length;
-        return {
-            value:
-                value.slice(0, start) +
-                placeholder +
-                value.slice(cursorOffset),
-            cursorOffset: start + placeholder.length,
-            state: {
-                capsules: state.capsules.map((capsule) =>
-                    capsule.id === adjacent.id
-                        ? {...capsule, content, placeholder}
-                        : capsule
-                ),
-                nextId: state.nextId,
-            },
-            collapsed: true,
         };
     }
 
@@ -135,6 +96,37 @@ export function collapsePromptText(value: string): PasteCapsuleInsertion {
         value,
         EMPTY_PASTE_CAPSULE_STATE
     );
+}
+
+/** Ink exposes chunks, not paste boundaries. Only join an uninterrupted short burst. */
+export class PasteInputBurst {
+    private pending: {
+        at: number;
+        value: string;
+        cursorOffset: number;
+        state: PasteCapsuleState;
+        text: string;
+        result: PasteCapsuleInsertion;
+    } | undefined;
+
+    reset(): void {
+        this.pending = undefined;
+    }
+
+    insert(value: string, cursorOffset: number, text: string, state: PasteCapsuleState): PasteCapsuleInsertion {
+        const now = performance.now();
+        const previous = this.pending;
+        const continuing = previous && now - previous.at <= 80 &&
+            previous.result.value === value && previous.result.cursorOffset === cursorOffset &&
+            previous.result.state === state;
+        const base = continuing ? previous : {value, cursorOffset, state, text: ""};
+        const combined = base.text + text;
+        const result = insertPasteCapsule(base.value, base.cursorOffset, combined, base.state);
+        this.pending = continuing || text.length > 1
+            ? {at: now, value: base.value, cursorOffset: base.cursorOffset, state: base.state, text: combined, result}
+            : undefined;
+        return result;
+    }
 }
 
 export function getPasteCapsuleRanges(

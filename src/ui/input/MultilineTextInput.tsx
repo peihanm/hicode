@@ -120,8 +120,9 @@ function containingAtomicRange(
     includeEnd: boolean
 ): InputAtomicRange | undefined {
     return ranges.find((range) =>
-        cursor > range.start &&
-        (includeEnd ? cursor <= range.end : cursor < range.end)
+        includeEnd
+            ? cursor > range.start && cursor <= range.end
+            : cursor >= range.start && cursor < range.end
     );
 }
 
@@ -137,6 +138,7 @@ export function MultilineTextInput({
                                        atomicRanges = [],
                                        onAtomicRangeDelete,
                                        onInsertText,
+                                       onInputBoundary,
                                    }: {
     value: string;
     onChange: (value: string) => void;
@@ -155,9 +157,15 @@ export function MultilineTextInput({
         text: string,
         state: InputBoundaryState
     ) => InputBoundaryReplacement | undefined;
+    onInputBoundary?: () => void;
 }) {
     const [cursor, setCursor] = useState(value.length);
+    const cursorRef = useRef(value.length);
     const expectedValueRef = useRef(value);
+    const moveCursor = (offset: number) => {
+        cursorRef.current = offset;
+        setCursor(offset);
+    };
     const safeCursor = Math.min(cursor, value.length);
     const contentWidth = Math.max(8, width - 3);
     const rows = useMemo(
@@ -175,7 +183,7 @@ export function MultilineTextInput({
     useEffect(() => {
         if (value !== expectedValueRef.current) {
             expectedValueRef.current = value;
-            setCursor(value.length);
+            moveCursor(value.length);
         }
     }, [value]);
 
@@ -186,12 +194,14 @@ export function MultilineTextInput({
         );
         expectedValueRef.current = replacement.value;
         onChange(replacement.value);
-        setCursor(nextCursor);
+        moveCursor(nextCursor);
     };
 
     const insert = (text: string) => {
+        const value = expectedValueRef.current;
+        const safeCursor = Math.min(cursorRef.current, value.length);
         const normalized = normalizeInsertedText(text);
-        const replacement = onInsertText?.(normalized, {
+        const replacement = onInsertText?.(text, {
             value,
             cursorOffset: safeCursor,
         });
@@ -208,6 +218,12 @@ export function MultilineTextInput({
     };
 
     useInput((input, key) => {
+        // Multiple stdin chunks can arrive before React commits the previous insertion.
+        const value = expectedValueRef.current;
+        const safeCursor = Math.min(cursorRef.current, value.length);
+        if (key.return || key.leftArrow || key.rightArrow || key.upArrow || key.downArrow ||
+            key.backspace || key.delete || key.tab || key.escape || key.ctrl || key.meta ||
+            key.pageDown || key.pageUp || !input) onInputBoundary?.();
         if (key.return) {
             if (key.shift) insert("\n");
             else onSubmit(value);
@@ -215,16 +231,17 @@ export function MultilineTextInput({
         }
         if (key.leftArrow) {
             const range = containingAtomicRange(atomicRanges, safeCursor, true);
-            setCursor(range?.start ?? previousOffset(value, safeCursor));
+            moveCursor(range?.start ?? previousOffset(value, safeCursor));
             return;
         }
         if (key.rightArrow) {
             const range = containingAtomicRange(atomicRanges, safeCursor, false);
-            setCursor(range?.end ?? nextOffset(value, safeCursor));
+            moveCursor(range?.end ?? nextOffset(value, safeCursor));
             return;
         }
         if (key.upArrow || key.downArrow) {
             if (handleVerticalNavigation) {
+                const rows = layoutInputRows(value, contentWidth);
                 const direction = key.upArrow ? -1 : 1;
                 const currentRow = rowForCursor(rows, safeCursor);
                 if (rows[currentRow + direction]) {
@@ -239,7 +256,7 @@ export function MultilineTextInput({
                         nextCursor,
                         false
                     );
-                    setCursor(
+                    moveCursor(
                         range
                             ? direction === -1 ? range.start : range.end
                             : nextCursor

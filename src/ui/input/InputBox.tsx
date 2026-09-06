@@ -12,7 +12,7 @@ import {
     expandPasteCapsuleCursor,
     expandPasteCapsules,
     getPasteCapsuleRanges,
-    insertPasteCapsule,
+    PasteInputBurst,
     type PasteCapsuleState,
     removePasteCapsule,
 } from "./pasteCapsules.js";
@@ -122,6 +122,7 @@ export function createInputBox(
         const [pasteCapsules, setPasteCapsules] = useState<PasteCapsuleState>(
             EMPTY_PASTE_CAPSULE_STATE
         );
+        const [pasteInput] = useState(() => new PasteInputBurst());
         const [history, setHistory] = useState<string[]>([]);
         const [historyIndex, setHistoryIndex] = useState<number | null>(null);
         const valueRef = useRef(value);
@@ -195,6 +196,7 @@ export function createInputBox(
         };
 
         const replaceExpandedValue = (nextValue: string) => {
+            pasteInput.reset();
             const collapsed = collapsePromptText(nextValue);
             replacePasteCapsules(collapsed.state);
             replaceValue(collapsed.value);
@@ -216,6 +218,7 @@ export function createInputBox(
                 return;
             }
             clearRevisionRef.current = clearRevision;
+            pasteInput.reset();
             historyIndexRef.current = null;
             setHistoryIndex(null);
             historyDraftRef.current = "";
@@ -375,6 +378,7 @@ export function createInputBox(
                             })
                         }
                         atomicRanges={atomicRanges}
+                        onInputBoundary={() => pasteInput.reset()}
                         onAtomicRangeDelete={(range) => {
                             replacePasteCapsules(
                                 removePasteCapsule(
@@ -384,7 +388,7 @@ export function createInputBox(
                             );
                         }}
                         onInsertText={(text, state) => {
-                            const insertion = insertPasteCapsule(
+                            const insertion = pasteInput.insert(
                                 state.value,
                                 state.cursorOffset,
                                 text,
