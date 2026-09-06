@@ -1,4 +1,6 @@
 import {describe, expect, test} from "bun:test";
+import {formatMemoryFileGuidance} from "../../src/memory/fileGuidance.js";
+import {parseMemoryFile} from "../../src/memory/parser.js";
 import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestMemoryRuntime} from "../helpers/memory.js";
@@ -46,3 +48,16 @@ describe("Memory context", () => {
         });
     });
 });
+
+for (const source of ["explicit", "automatic"] as const) {
+    test(`Memory ${source} 入口提供与真实 parser 一致的完整新建格式`, () => {
+        const guidance = formatMemoryFileGuidance(source);
+        const raw = /```yaml\n([\s\S]*?)\n```/.exec(guidance)?.[1];
+        expect(raw).toBeDefined();
+        const entry = parseMemoryFile("/memory/example-topic.md", raw!);
+        expect(entry.source).toBe(source);
+        expect(entry.key).toBe("example-topic");
+        expect(guidance).toContain("不照抄示例日期");
+        expect(guidance).toContain("空索引是正常状态");
+    });
+}

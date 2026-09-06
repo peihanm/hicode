@@ -87,8 +87,8 @@ describe("synchronous subagent", () => {
       const child = createFakeLLM([
         assistantToolCall("edit_file", {
           path: "owned-by-parent.ts",
-          old_string: "value = 1",
-          new_string: "value = 2",
+          edits: [{old_string: "value = 1",
+          new_string: "value = 2"}],
         }, "child-edit-without-read"),
         (options) => {
           const result = options.messages.find((message) =>

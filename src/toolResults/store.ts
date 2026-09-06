@@ -214,12 +214,23 @@ export class ToolResultStore {
     ): Promise<PersistedToolResult> {
         const handle = await open(contentPath, "r");
         try {
-            const previewBuffer = Buffer.alloc(Math.max(this.previewChars * 4, 4096));
-            const {bytesRead} = await handle.read(previewBuffer, 0, previewBuffer.length, 0);
-            const preview = createPreview(
-                trimIncompleteUtf8(previewBuffer.subarray(0, bytesRead)).toString("utf8"),
-                this.previewChars
-            );
+            const sampleBytes = Math.min(metadata.byteLength, Math.max(this.previewChars * 4, 4096));
+            const readSample = async (position: number): Promise<Buffer> => {
+                const buffer = Buffer.alloc(sampleBytes);
+                let offset = 0;
+                while (offset < buffer.length) {
+                    const {bytesRead} = await handle.read(buffer, offset, buffer.length - offset, position + offset);
+                    if (bytesRead === 0) throw new ToolResultStoreError("artifact ended before its recorded size");
+                    offset += bytesRead;
+                }
+                return buffer;
+            };
+            const head = trimIncompleteUtf8(await readSample(0)).toString("utf8");
+            // Sample the actual saved tail, never the end of a prefix buffer.
+            const tail = metadata.byteLength > sampleBytes
+                ? selectUtf8Range(await readSample(metadata.byteLength - sampleBytes), sampleBytes).content.toString("utf8")
+                : "";
+            const preview = createPreview(head + tail, this.previewChars);
             return {...metadata, path: contentPath, preview};
         } finally {
             await handle.close();

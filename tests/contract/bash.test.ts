@@ -68,7 +68,7 @@ function createTaskSession(
       },
     })
   );
-  const store = createTestToolResultStore(cwd, "bash-task-session", {
+  const store = createTestToolResultStore(cwd, "test-session", {
     pillarHome: join(cwd, ".pillar-test-results"),
   });
   return {

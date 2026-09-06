@@ -27,7 +27,8 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文
             if (index === 1) {
                 const large = options.messages.find(message => message.role === "tool" && message.tool_call_id === "read-a");
                 expect(large?.content).toContain("persisted-output");
-                expect(large?.content).not.toContain("a899:");
+                expect(large?.content).toContain("a899:");
+                expect(large?.content).not.toContain("a450:");
                 return assistantToolCall("write_file", {path: "a.txt", content: "BLIND"}, "blind");
             }
             if (last?.role === "tool" && last.tool_call_id === "blind") {
@@ -43,7 +44,7 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文
                 return assistantToolCall("read_tool_result", {result_id: "tr_read-a", limit: 65536}, `page-${page++}`);
             }
             if (last?.role === "tool" && last.tool_call_id.startsWith("page-")) {
-                if (mode === "partial") return assistantToolCall("edit_file", {path: "a.txt", old_string: "a899:", new_string: "hidden:"}, "hidden");
+                if (mode === "partial") return assistantToolCall("edit_file", {path: "a.txt", edits: [{old_string: "a899:", new_string: "hidden:"}]}, "hidden");
                 if (mode === "tampered") {
                     expect(last.content).toContain("hash mismatch");
                     return assistantText("证据损坏，未覆盖");
@@ -54,7 +55,7 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文
             }
             if (last?.role === "tool" && last.tool_call_id === "hidden") {
                 expect(last.content).toContain("未展示");
-                return assistantToolCall("edit_file", {path: "a.txt", old_string: "a0:", new_string: "visible:"}, "visible");
+                return assistantToolCall("edit_file", {path: "a.txt", edits: [{old_string: "a0:", new_string: "visible:"}]}, "visible");
             }
             if (last?.role === "tool" && last.tool_call_id === "visible") expect(last.content).toContain("已修改");
             if (last?.role === "tool" && last.tool_call_id === "known") expect(last.content).toContain(mode === "stale-source" ? "前置条件未满足" : "已写入");

@@ -1,3 +1,4 @@
+import {formatMemoryFileGuidance} from "./fileGuidance.js";
 import {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import {randomUUID} from "node:crypto";
 import {createAgentRunner, EMPTY_AGENT_INPUT_CHANNEL} from "../agent/index.js";
@@ -68,7 +69,7 @@ function formatExtractionPrompt(
         "- 保存或更新必须分两步：先用 write_file/edit_file 写主题文件，再用 edit_file 更新 MEMORY.md 的一行指针。",
         "- 删除必须分两步：先完整读取并用 delete_file 删除主题文件，再从 MEMORY.md 删除对应指针。",
         "- 索引行固定为 `- [标题](topic-key.md) — 一行说明`，不得把正文写入索引。",
-        "- 主题文件必须沿用现有 YAML frontmatter。新建时使用 version=1、合法 key、name、description、type、source=automatic，以及 ISO 8601 created_at/updated_at。更新时保留 created_at 并更新 updated_at。",
+        formatMemoryFileGuidance("automatic"),
         "- 按主题合并既有内容，避免重复主题或活动流水。没有值得维护的 Memory 时不要修改任何文件。",
         "- 完成必要文件操作后，用一句简短文本结束；不要继续探索。",
         "",

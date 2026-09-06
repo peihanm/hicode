@@ -1,6 +1,7 @@
 import {z} from "zod";
 import type {TaskSnapshot} from "../../tasks/index.js";
 import type {Tool} from "../types.js";
+import {checkTaskStopPermission} from "./stopPermission.js";
 
 const inputSchema = z.object({
     action: z
@@ -107,10 +108,11 @@ export const taskTool: Tool<typeof inputSchema> = {
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "list" || action === "status",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
-    checkPermissions: async ({action}) => {
+    checkPermissions: async ({action, task_id}, ctx) => {
         if (action === "discard") {
             return {behavior: "ask", message: "永久丢弃 Worktree 及其未应用变更"};
         }
+        if (action === "stop") return checkTaskStopPermission(ctx, task_id);
         return {behavior: "passthrough"};
     },
     requiresUserInteraction: ({action}) => action === "discard",

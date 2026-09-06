@@ -8,10 +8,18 @@ function formatBytes(bytes: number): string {
 
 export function createPreview(content: string, maxChars: number): string {
     if (content.length <= maxChars) return content;
-    const candidate = content.slice(0, maxChars);
-    const newline = candidate.lastIndexOf("\n");
-    const cut = newline > maxChars / 2 ? newline : maxChars;
-    return content.slice(0, cut);
+    if (maxChars <= 0) return "";
+    const marker = maxChars >= 40 ? "\n... [middle omitted] ...\n" : "…";
+    const available = maxChars - marker.length;
+    let headEnd = Math.ceil(available / 2);
+    let tailStart = content.length - Math.floor(available / 2);
+    // Keep both cuts outside UTF-16 surrogate pairs without expanding the budget.
+    const splitsPair = (index: number) =>
+        /[\uD800-\uDBFF]/.test(content.charAt(index - 1)) &&
+        /[\uDC00-\uDFFF]/.test(content.charAt(index));
+    if (splitsPair(headEnd)) headEnd--;
+    if (splitsPair(tailStart)) tailStart++;
+    return content.slice(0, headEnd) + marker + content.slice(tailStart);
 }
 
 function escapeProtocolText(value: string): string {
@@ -35,10 +43,15 @@ export function buildPersistedToolResultMessage(
         `Complete: ${completeness}`,
         `${label} at: ${JSON.stringify(result.path)}`,
         "",
-        `Preview (first ${result.preview.length.toLocaleString()} characters):`,
+        "Preview of saved output (bounded; any omitted middle is marked):",
         escapeProtocolText(result.preview),
         "",
+        ...(result.complete ? [] : ["This preview ends at the saved portion, not necessarily the end of the original output."]),
+        ...(result.byteLength <= 1024 * 1024
+            ? ["To locate details, use grep on the saved file path with a keyword pattern, context=3 and head_limit=20. If path access is denied, use read_tool_result below."]
+            : ["This saved file exceeds grep's 1 MiB file limit; use read_tool_result below."]),
         `Use read_tool_result with result_id=${JSON.stringify(result.resultId)} and offset=0 to read more.`,
+        "Inspect the saved output instead of rerunning the command just to obtain another excerpt.",
         "</persisted-output>",
     ].join("\n");
 }

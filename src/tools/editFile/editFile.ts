@@ -8,12 +8,27 @@ import {normalizeFileText} from "../shared/fileState.js";
 import {createFileChange} from "../../fileChanges/index.js";
 import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
 
+const editSchema = z.object({
+    old_string: z.string().min(1).describe("当前已读版本中要替换的字符串"),
+    new_string: z.string().describe("替换后的新内容"),
+    replace_all: z.boolean().default(false).describe("替换全部匹配；必须完整读取文件"),
+}).strict();
+
+const inputSchema = z.object({
+    path: z.string().describe("要修改的文件路径"),
+    edits: z.array(editSchema).min(1).max(100).describe("基于同一已读版本的替换列表，范围不得重叠；单处修改也传一项"),
+}).strict();
+
+type Edit = z.infer<typeof editSchema>;
+interface Replacement extends MatchSpan {
+    newString: string;
+    editIndex: number;
+}
 interface EditValidation {
     originalContent: string;
     normalizedContent: string;
     lineEnding: "\n" | "\r\n";
-    count: number;
-    spans: MatchSpan[];
+    replacements: Replacement[];
 }
 
 function restoreLineEndings(
@@ -36,16 +51,11 @@ function readStateMessage(
     return `必须先用 read_file 读取 ${path} 后才能修改（防止脏改）`;
 }
 
-async function validateEdit(
+async function validateEdits(
     path: string,
-    oldString: string,
-    replaceAll: boolean,
+    edits: readonly Edit[],
     ctx: ToolContext
 ): Promise<{ ok: true; value: EditValidation } | { ok: false; message: string }> {
-    if (oldString.length === 0) {
-        return {ok: false, message: "old_string 不能为空。"};
-    }
-
     let originalContent: string;
     try {
         originalContent = await readFile(path, "utf-8");
@@ -56,98 +66,87 @@ async function validateEdit(
         };
     }
 
-    const state = ctx.fileState.check(path, originalContent, {
-        replaceAll,
-    });
-    if (!state.ok) {
-        return {ok: false, message: readStateMessage(path, state.reason)};
-    }
+    const state = ctx.fileState.check(path, originalContent);
+    if (!state.ok) return {ok: false, message: readStateMessage(path, state.reason)};
 
     const normalizedContent = normalizeFileText(originalContent);
-    const normalizedOldString = normalizeFileText(oldString);
-
-    const spans = findMatches(normalizedContent, normalizedOldString);
-    const count = spans.length;
-    if (count === 0) {
-        return {
-            ok: false,
-            message: `在 ${path} 中找不到 old_string。请确认字符串是否完全一致（包括空格、缩进、换行）。`,
-        };
+    const replacements: Replacement[] = [];
+    for (const [editIndex, edit] of edits.entries()) {
+        const fail = (message: string) => ({ok: false as const, message: `第 ${editIndex + 1} 项: ${message}`});
+        const spans = findMatches(normalizedContent, normalizeFileText(edit.old_string));
+        if (spans.length === 0) {
+            return fail(`在 ${path} 的原版本中找不到 old_string。请确认字符串及上下文，后项不能匹配前项生成的内容。`);
+        }
+        if (!edit.replace_all && spans.length > 1) {
+            return fail(`old_string 在 ${path} 中匹配到 ${spans.length} 处，但 replace_all=false。请提供唯一上下文，或显式传 replace_all=true。`);
+        }
+        const observed = ctx.fileState.check(path, originalContent, {
+            replaceAll: edit.replace_all,
+            ranges: spans.map(span => [
+                Buffer.byteLength(normalizedContent.slice(0, span.start)),
+                Buffer.byteLength(normalizedContent.slice(0, span.end)),
+            ] as const),
+        });
+        if (!observed.ok) return fail(readStateMessage(path, observed.reason));
+        const newString = normalizeFileText(edit.new_string);
+        for (const span of spans) replacements.push({...span, newString, editIndex});
     }
 
-    const observed = ctx.fileState.check(path, originalContent, {ranges: spans.map(span => [
-        Buffer.byteLength(normalizedContent.slice(0, span.start)),
-        Buffer.byteLength(normalizedContent.slice(0, span.end)),
-    ] as const)});
-    if (!observed.ok) return {ok: false, message: readStateMessage(path, observed.reason)};
-
-    if (!replaceAll && count > 1) {
-        return {
-            ok: false,
-            message:
-                `old_string 在 ${path} 中匹配到 ${count} 处，但 replace_all=false。\n` +
-                `请提供更长的上下文使匹配唯一，或显式传 replace_all=true 替换全部。`,
-        };
+    replacements.sort((a, b) => a.start - b.start);
+    for (let i = 1; i < replacements.length; i++) {
+        const previous = replacements[i - 1]!;
+        const current = replacements[i]!;
+        if (current.start < previous.end) {
+            return {ok: false, message: `第 ${previous.editIndex + 1} 项与第 ${current.editIndex + 1} 项的修改范围重叠。请合并为一项明确的替换。`};
+        }
     }
-
     return {
         ok: true,
         value: {
             originalContent,
             normalizedContent,
             lineEnding: originalContent.includes("\r\n") ? "\r\n" : "\n",
-            count,
-            spans,
+            replacements,
         },
     };
 }
 
-export const editFileTool: Tool<
-    z.ZodObject<{
-        path: z.ZodString;
-        old_string: z.ZodString;
-        new_string: z.ZodString;
-        replace_all: z.ZodDefault<z.ZodBoolean>;
-    }>
-> = {
+export const editFileTool: Tool<typeof inputSchema> = {
     name: "edit_file",
     description:
-        "用 search-and-replace 精确修改文件：找到 old_string 换成 new_string。" +
-        "修改前必须先 read_file 读过当前版本；部分读取只能修改模型实际看到的 old_string。" +
-        "old_string 必须能在文件中唯一匹配；replace_all=true 时必须先完整读取文件。",
-    parameters: z.object({
-        path: z.string().describe("要修改的文件路径"),
-        old_string: z.string().min(1).describe("要被替换的精确字符串"),
-        new_string: z.string().describe("替换后的新内容"),
-        replace_all: z
-            .boolean()
-            .default(false)
-            .describe("是否替换所有匹配。默认 false（要求 old_string 唯一匹配）"),
-    }),
+        "精确修改一个文件，单处或多处替换统一使用 edits 数组。" +
+        "所有 old_string 均在同一已读原版本中定位，后项不能引用前项生成的文本；范围不得重叠。" +
+        "全部匹配校验通过后一次写入，校验失败整次不写。" +
+        "部分读取只能修改实际看到的内容；old_string 须唯一匹配，replace_all=true 则须完整读取。" +
+        "已确定的同文件多处修改合并为一次调用；需要前一步结果才能决定下一步时分开调用。",
+    parameters: inputSchema,
     isReadOnly: () => false,
     getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
-    async checkPermissions({path, old_string, new_string, replace_all}, ctx) {
+    async checkPermissions({path, edits}, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
         if (ctx.memoryFiles?.classify(absPath)) {
             return {behavior: "allow" as const};
         }
 
-        const preview = formatDiff(old_string, new_string);
+        const preview = edits.slice(0, 8).map((edit, index) =>
+            `第 ${index + 1} 项（replace_all=${edit.replace_all}）:\n${formatDiff(edit.old_string, edit.new_string)}`
+        ).join("\n");
+        const remaining = edits.length > 8 ? `\n另有 ${edits.length - 8} 项，完整输入见工具参数。` : "";
         return {
             behavior: "ask" as const,
-            message: `即将修改 ${path}（replace_all=${replace_all}）:\n${preview}\n是否执行?`,
+            message: `即将修改 ${path}（${edits.length} 项）:\n${preview}${remaining}\n是否执行?`,
         };
     },
     execute: async (
-        {path, old_string, new_string, replace_all},
+        {path, edits: requestedEdits},
         ctx,
         invocation
     ) => {
         const absPath = resolveToolPath(ctx.cwd, path);
-        const validation = await validateEdit(absPath, old_string, replace_all, ctx);
+        const validation = await validateEdits(absPath, requestedEdits, ctx);
         if (!validation.ok) {
             return {
-                content: `编辑失败: ${validation.message} 请重新 read_file 后再修改。`,
+                content: `编辑失败: ${validation.message} 本次未写入文件。请按失败位置重新 read_file 核对后再修改。`,
                 outcome: "failed" as const,
             };
         }
@@ -156,19 +155,18 @@ export const editFileTool: Tool<
             originalContent,
             normalizedContent,
             lineEnding,
-            count,
-            spans,
+            replacements,
         } = validation.value;
-        const normalizedNewString = normalizeFileText(new_string);
+        const count = replacements.length;
 
         let normalizedNewContent = normalizedContent;
-        for (const span of [...spans].reverse()) {
+        for (const span of [...replacements].reverse()) {
             normalizedNewContent = normalizedNewContent.slice(0, span.start) +
-                normalizedNewString + normalizedNewContent.slice(span.end);
+                span.newString + normalizedNewContent.slice(span.end);
         }
         const newContent = restoreLineEndings(normalizedNewContent, lineEnding);
-        const edits = spans.map(span => ({start: Buffer.byteLength(normalizedContent.slice(0, span.start)),
-            end: Buffer.byteLength(normalizedContent.slice(0, span.end)), insertedBytes: Buffer.byteLength(normalizedNewString)}));
+        const edits = replacements.map(span => ({start: Buffer.byteLength(normalizedContent.slice(0, span.start)),
+            end: Buffer.byteLength(normalizedContent.slice(0, span.end)), insertedBytes: Buffer.byteLength(span.newString)}));
 
         if (ctx.memoryFiles?.classify(absPath)) {
             ctx.memoryFiles.validateWrite(absPath, newContent);

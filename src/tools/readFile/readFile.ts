@@ -86,7 +86,7 @@ export const readFileTool: Tool<typeof inputSchema> = {
         const header = [
             `文件: ${path}`,
             `行范围: ${startLine}-${endIndex} / ${lines.length}`,
-            "注意: 左侧行号不是文件内容，edit_file.old_string 不要包含这些行号。",
+            "注意: 左侧行号不是文件内容，edit_file.edits[].old_string 不要包含这些行号。",
         ].join("\n");
 
         const more =

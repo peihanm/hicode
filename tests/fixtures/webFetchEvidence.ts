@@ -6,7 +6,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 
 const mode = process.argv[2];
-const body = `${"文档正文\n".repeat(22_000)}TAILAPICONTRACT`;
+const body = `${"文档正文\n".repeat(11_000)}MIDDLEAPICONTRACT${"文档正文\n".repeat(11_000)}TAILAPICONTRACT`;
 let calls = 0;
 mock.module("../../src/tools/webFetch/network.js", () => ({
     ...network,
@@ -26,11 +26,12 @@ await withTempProject(async cwd => {
         url: "https://example.com/docs", ...(mode === "maximum" ? {max_chars: 100_000} : {}),
     }), ctx, "web-call");
     assert.equal(result.outcome, mode === "http-error" ? "failed" : "ok");
-    assert.ok(!result.modelContent.includes("TAILAPICONTRACT"));
+    assert.ok(!result.modelContent.includes("MIDDLEAPICONTRACT"));
     if (mode === "save-failure") {
         assert.equal(result.persisted, undefined);
         assert.match(result.modelContent, /complete result could not be saved/);
     } else {
+        assert.match(result.modelContent, /TAILAPICONTRACT/);
         assert.ok(result.persisted, "long normalized body must be persisted");
         assert.equal(result.persisted.complete, true);
         assert.ok(result.modelContent.length <= store.previewChars + 1000, "persisted references must keep the shared bounded preview");

@@ -14,8 +14,61 @@ import {getArtifactKey} from "../../src/toolResults/paths.js";
 import { getProjectKey } from "../../src/persistence/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
+import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 
 describe("ToolResultStore", () => {
+  test("文本落盘和 capture 都展示真实首尾，Grep 提示指向已有结果", async () => {
+    await withTempProject(async cwd => {
+      const store = createTestToolResultStore(cwd, "preview");
+      const content = `START\n${"你😀pass\n".repeat(6000)}ERR_ASSERTION: final failure\n`;
+      const capture = await store.createCapture();
+      await writeFile(capture, content);
+      const results = [
+        await store.persistText({toolCallId: "text", toolName: "test", content}),
+        await store.promoteFile({toolCallId: "capture", toolName: "bash", sourcePath: capture}),
+      ];
+      for (const result of results) {
+        expect(result.preview.startsWith("START\n")).toBe(true);
+        expect(result.preview.endsWith("ERR_ASSERTION: final failure\n")).toBe(true);
+        expect(result.preview).toContain("[middle omitted]");
+        expect(result.preview.length).toBeLessThanOrEqual(store.previewChars);
+        expect(Buffer.from(result.preview).toString("utf8")).toBe(result.preview);
+        expect(await readFile(result.path, "utf8")).toBe(content);
+        const message = buildPersistedToolResultMessage(result);
+        expect(message).toContain("Complete: yes");
+        expect(message).toContain(JSON.stringify(result.path));
+        expect(message).toContain("use grep on the saved file path");
+        expect(message).toContain("read_tool_result");
+        expect(message).not.toContain("Preview (first");
+      }
+    });
+  });
+
+  test("配额截断仅展示已保存部分的末尾，不伪称原始输出完整", async () => {
+    await withTempProject(async cwd => {
+      const saved = `START\n${"x".repeat(12000)}SAVED-END`;
+      const store = createTestToolResultStore(cwd, "partial-preview", {maxArtifactBytes: saved.length});
+      const capture = await store.createCapture();
+      await writeFile(capture, `${saved}\nUNSAVED-FAILURE`);
+      const result = await store.promoteFile({toolCallId: "partial", toolName: "bash", sourcePath: capture});
+      expect(result.preview.endsWith("SAVED-END")).toBe(true);
+      const message = buildPersistedToolResultMessage(result);
+      expect(message).toContain("Complete: no");
+      expect(message).toContain("not necessarily the end of the original output");
+      expect(message).not.toContain("UNSAVED-FAILURE");
+    });
+  });
+
+  test("超过 Grep 文件上限的结果提示分页读取", async () => {
+    await withTempProject(async cwd => {
+      const store = createTestToolResultStore(cwd, "large-preview");
+      const result = await store.persistText({toolCallId: "large", toolName: "test", content: "x".repeat(1024 * 1024 + 1)});
+      const message = buildPersistedToolResultMessage(result);
+      expect(message).toContain("exceeds grep's 1 MiB file limit");
+      expect(message).not.toContain("use grep on the saved file path");
+      expect(message).toContain("result_id=\"tr_large\"");
+    });
+  });
   test("capture 在单项和剩余 Session 配额的多字节边界截断后能到 EOF", async () => {
     await withTempProject(async (cwd) => {
       for (const char of ["é", "你", "😀"]) {

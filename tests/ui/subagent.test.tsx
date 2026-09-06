@@ -395,7 +395,7 @@ describe("subagent UI", () => {
       result: [
         "文件: /project/README.md",
         "行范围: 1-60 / 60",
-        "注意: 左侧行号不是文件内容，edit_file.old_string 不要包含这些行号。",
+        "注意: 左侧行号不是文件内容，edit_file.edits[].old_string 不要包含这些行号。",
         "",
         "     1\t# README",
       ].join("\n"),

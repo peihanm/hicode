@@ -7,7 +7,6 @@ import {mergeFileChange} from "../../fileChanges/index.js";
 import {limitPersistedUIEvents, type PersistedFileChangeUIEvent, type PersistedUIEvent,} from "../../session/index.js";
 import {isSuccessfulToolActivity} from "../../tools/presentation.js";
 import type {TaskNotification} from "../../tasks/index.js";
-import type {TurnTimingSummary} from "../../runtime/turnTiming.js";
 
 type Listener = () => void;
 
@@ -19,7 +18,6 @@ export interface UITokenInfo {
 }
 
 export interface UITurnEventSnapshot {
-    turnTiming?: TurnTimingSummary;
     threads: UIThread[];
     staticThreads: UIThread[];
     tokenInfo: UITokenInfo;
@@ -103,7 +101,6 @@ export class UITurnEventStore {
                 ...this.persistedUIEvents,
                 {version: 1, ...event, timestamp: new Date().toISOString()},
             ]);
-            this.update({...this.snapshot, turnTiming: event.timing});
             return;
         }
         if (event.type === "assistant_draft") {
@@ -316,7 +313,6 @@ export class UITurnEventStore {
         const thread = createUserThread(input, this.createThreadId);
         const nextSnapshot = {
             ...this.snapshot,
-            turnTiming: undefined,
             threads: [...this.snapshot.threads, thread],
         };
         // 用户提交的文本不会再更新。若先进入 live 区，长 Prompt 已滚入终端

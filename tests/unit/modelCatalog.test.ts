@@ -33,6 +33,12 @@ describe("primary model catalog", () => {
             {
                 source: "qwen",
                 provider: "qwen",
+                model: "qwen3.8-max",
+                label: "Qwen 3.8 Max",
+            },
+            {
+                source: "qwen",
+                provider: "qwen",
                 model: "qwen3.6-plus",
                 label: "Qwen 3.6 Plus",
             },

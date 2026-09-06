@@ -10,9 +10,9 @@ test.each(["\n", "\r\n"])("局部读取后连续修改保留未改区间并映�
         await writeFile(join(cwd, "file.txt"), ["first中文", "second😀", "UNREAD", ""].join(lineEnding));
         const ctx = createTestContext(cwd);
         await executeTool("read_file", JSON.stringify({path: "file.txt", limit: 2}), ctx);
-        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", old_string: "first中文", new_string: "longer中文\nnew line"}), ctx)).toContain("已修改");
-        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", old_string: "second😀", new_string: "changed😀"}), ctx)).toContain("已修改");
-        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", old_string: "UNREAD", new_string: "blind"}), ctx)).toContain("未展示");
+        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "first中文", new_string: "longer中文\nnew line"}]}), ctx)).toContain("已修改");
+        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "second😀", new_string: "changed😀"}]}), ctx)).toContain("已修改");
+        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "UNREAD", new_string: "blind"}]}), ctx)).toContain("未展示");
         expect(await readFile(join(cwd, "file.txt"), "utf8")).toBe(["longer中文", "new line", "changed😀", "UNREAD", ""].join(lineEnding));
     });
 });

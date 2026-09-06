@@ -31,7 +31,7 @@ test("bash_task 拒绝 Agent ID 时不取消、不 ACK，跨 Session 不泄露�
                 prompt: "wait", parentToolCallId: "start-kind",
             }});
             const wrong = await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "wrong-kind");
-            expect(wrong.outcome).toBe("failed");
+            expect(wrong.outcome).toBe("denied");
             expect((await session.get(task.id))?.status).toBe("running");
             const other = createTestContext(cwd, {sessionId: "other"});
             other.tasks = runtime.forSession({sessionId: other.sessionId, toolResultStore: other.toolResultStore});
@@ -46,14 +46,14 @@ test("bash_task 拒绝 Agent ID 时不取消、不 ACK，跨 Session 不泄露�
             await done;
             unsubscribe();
             // Wrong-type calls must not acknowledge even an already finished task.
-            expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "finished-kind")).outcome).toBe("failed");
+            expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "finished-kind")).outcome).toBe("denied");
             await runtime.close();
             const restoredRuntime = createTaskRuntimeForTest(cwd, ctx.shellRunner);
             try {
                 const restored = restoredRuntime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
                 ctx.tasks = restored;
                 await restored.initialize();
-                expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "archived-kind")).outcome).toBe("failed");
+                expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "archived-kind")).outcome).toBe("denied");
                 expect(await restored.pendingNotifications()).toHaveLength(1);
             } finally {
                 await restoredRuntime.close();

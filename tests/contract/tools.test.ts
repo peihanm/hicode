@@ -452,8 +452,8 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "created.txt",
-          old_string: "first",
-          new_string: "middle",
+          edits: [{old_string: "first",
+          new_string: "middle"}],
         }),
         ctx
       );
@@ -503,7 +503,7 @@ describe("tool registry contract", () => {
       await executeTool("read_file", JSON.stringify({path}), ctx);
       const failed = await executeToolResult(
         "edit_file",
-        JSON.stringify({path, old_string: "let history = [];", new_string: "const history = [1];"}),
+        JSON.stringify({path, edits: [{old_string: "let history = [];", new_string: "const history = [1];"}]}),
         ctx,
         "edit-wrong-keyword"
       );
@@ -518,7 +518,7 @@ describe("tool registry contract", () => {
       await executeTool("read_file", JSON.stringify({path}), ctx);
       const recovered = await executeToolResult(
         "edit_file",
-        JSON.stringify({path, old_string: "const history = [];", new_string: "const history = [1];"}),
+        JSON.stringify({path, edits: [{old_string: "const history = [];", new_string: "const history = [1];"}]}),
         ctx,
         "edit-correct-keyword"
       );
@@ -535,7 +535,7 @@ describe("tool registry contract", () => {
       const ctx = createTestContext(cwd);
       await executeTool("read_file", JSON.stringify({path}), ctx);
       const result = await executeToolResult(
-        "edit_file", JSON.stringify({path, old_string: "same", new_string: "changed"}),
+        "edit_file", JSON.stringify({path, edits: [{old_string: "same", new_string: "changed"}]}),
         ctx, "edit-ambiguous"
       );
       expect(result.outcome).toBe("failed");
@@ -561,7 +561,7 @@ describe("tool registry contract", () => {
       });
       await executeTool("read_file", JSON.stringify({path}), ctx);
       const result = await executeToolResult(
-        "edit_file", JSON.stringify({path, old_string: "before", new_string: "after"}),
+        "edit_file", JSON.stringify({path, edits: [{old_string: "before", new_string: "after"}]}),
         ctx, "edit-stale-after-approval"
       );
       expect(approvals).toBe(1);
@@ -581,7 +581,7 @@ describe("tool registry contract", () => {
         canUseTool: async () => ({behavior: "deny", message: "不要修改"}),
       });
       await executeTool("read_file", JSON.stringify({path}), ctx);
-      const args = JSON.stringify({path, old_string: "before", new_string: "after"});
+      const args = JSON.stringify({path, edits: [{old_string: "before", new_string: "after"}]});
       const rejected = await executeToolResult("edit_file", args, ctx, "edit-user-denied");
       expect(rejected.outcome).toBe("denied");
       expect(rejected.modelContent).toContain("不要修改");
@@ -607,8 +607,8 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "edit-me.txt",
-          old_string: "before",
-          new_string: "after",
+          edits: [{old_string: "before",
+          new_string: "after"}],
         }),
         ctx,
         "edit-structured"
@@ -645,8 +645,8 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "partial.txt",
-          old_string: "alpha",
-          new_string: "ALPHA",
+          edits: [{old_string: "alpha",
+          new_string: "ALPHA"}],
         }),
         first,
         "edit-unobserved"
@@ -658,8 +658,8 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "partial.txt",
-          old_string: "beta",
-          new_string: "BETA",
+          edits: [{old_string: "beta",
+          new_string: "BETA"}],
         }),
         first
       );
@@ -669,8 +669,8 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "partial.txt",
-          old_string: "BETA",
-          new_string: "Beta",
+          edits: [{old_string: "BETA",
+          new_string: "Beta"}],
         }),
         second,
         "edit-unread"
@@ -695,9 +695,9 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "crlf.txt",
-          old_string: "two",
+          edits: [{old_string: "two",
           new_string: "TWO",
-          replace_all: true,
+          replace_all: true}],
         }),
         ctx
       );
@@ -712,9 +712,9 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "crlf.txt",
-          old_string: "two",
+          edits: [{old_string: "two",
           new_string: "TWO",
-          replace_all: true,
+          replace_all: true}],
         }),
         ctx
       );
@@ -740,8 +740,8 @@ describe("tool registry contract", () => {
         "edit_file",
         JSON.stringify({
           path: "stale.txt",
-          old_string: "changed elsewhere",
-          new_string: "edited",
+          edits: [{old_string: "changed elsewhere",
+          new_string: "edited"}],
         }),
         ctx
       );

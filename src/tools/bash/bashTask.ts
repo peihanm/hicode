@@ -1,6 +1,7 @@
 import {z} from "zod";
 import type {Tool} from "../types.js";
 import type {ShellTaskSnapshot} from "../../tasks/index.js";
+import {checkTaskStopPermission} from "../task/stopPermission.js";
 
 const inputSchema = z.object({
     task_id: z.string().describe("bash 返回的后台任务 ID"),
@@ -51,6 +52,9 @@ export const bashTaskTool: Tool<typeof inputSchema> = {
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "status",
     isConcurrencySafe: ({action}) => action === "status",
+    checkPermissions: async ({action, task_id}, ctx) => action === "stop"
+        ? checkTaskStopPermission(ctx, task_id, "shell")
+        : {behavior: "passthrough"},
     async execute({task_id, action}, ctx) {
         if (!ctx.tasks) {
             return {content: "当前 Runtime 不支持后台 Bash 任务", outcome: "failed"};

@@ -52,8 +52,8 @@ describe("Checkpoint tool integration", () => {
                 "edit_file",
                 JSON.stringify({
                     path: "existing.txt",
-                    old_string: "before",
-                    new_string: "after",
+                    edits: [{old_string: "before",
+                    new_string: "after"}],
                 }),
                 ctx,
                 "edit-existing"
@@ -88,8 +88,8 @@ describe("Checkpoint tool integration", () => {
                 "edit_file",
                 JSON.stringify({
                     path: "existing.txt",
-                    old_string: "before",
-                    new_string: "again",
+                    edits: [{old_string: "before",
+                    new_string: "again"}],
                 }),
                 ctx,
                 "edit-after-restore"

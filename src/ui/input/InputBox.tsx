@@ -5,7 +5,6 @@ import {getSlashCommandSuggestions} from "../../slash/index.js";
 import {MultilineTextInput, type InputBoundaryReplacement, type InputBoundaryState,} from "./MultilineTextInput.js";
 import type {InputHistoryStore} from "../../session/inputHistory/index.js";
 import {useTerminalWidth} from "../terminalSize.js";
-import type {TurnTimingSummary} from "../../runtime/turnTiming.js";
 import {
     collapsePromptText,
     EMPTY_PASTE_CAPSULE_STATE,
@@ -92,7 +91,6 @@ export function createInputBox(
                                  persistentHistory = defaultPersistentHistory,
                                  startedAt,
                                  elapsedMs,
-                                 turnTiming,
                                  replacement,
                                  clearRevision,
                                  onDraftPresenceChange,
@@ -106,7 +104,6 @@ export function createInputBox(
         persistentHistory?: InputHistoryStore;
         startedAt?: number;
         elapsedMs?: number;
-        turnTiming?: TurnTimingSummary;
         replacement?: {
             value: string;
             revision: number;
@@ -148,15 +145,6 @@ export function createInputBox(
         const durationLabel = duration === undefined
             ? undefined
             : `${startedAt === undefined ? "Worked" : "Working"} for ${formatTurnDuration(duration)}`;
-        const timingDetails = startedAt === undefined && duration !== undefined && turnTiming
-            ? [
-                `模型请求 ${formatTurnDuration(turnTiming.modelMs)}`,
-                `工具执行 ${formatTurnDuration(turnTiming.toolMs)}`,
-                `等待确认 ${formatTurnDuration(turnTiming.approvalMs)}`,
-                ...(turnTiming.overlapMs >= 1000 ? [`重叠活动 ${formatTurnDuration(turnTiming.overlapMs)}`] : []),
-                `其他 ${formatTurnDuration(turnTiming.otherMs + Math.max(0, duration - turnTiming.durationMs))}`,
-            ].join(" · ")
-            : undefined;
         const line = formatInputDivider(width);
         const suggestions = useMemo(
             () => getSlashCommandSuggestions(value),
@@ -356,7 +344,6 @@ export function createInputBox(
                         {startedAt !== undefined ? " (esc to cancel)" : ""}
                     </Text>
                 )}
-                {timingDetails && <Text color={COLORS.dim}>{timingDetails}</Text>}
                 <Box paddingTop={1} flexDirection="column">
                     <MultilineTextInput
                         value={value}

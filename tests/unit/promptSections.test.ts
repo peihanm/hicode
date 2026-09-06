@@ -7,6 +7,17 @@ import {createInitialHistory} from "../../src/prompt/index.js";
 import {VERIFICATION_GUIDANCE} from "../../src/prompt/verification.js";
 
 describe("system prompt task constraints", () => {
+  test("生产 Prompt 承认会话持续授权，且不替代执行层审批", () => {
+    const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
+    expect(content).toContain("当前会话已明确的持续授权在指定范围内有效");
+    expect(content).toContain("一次性批准不扩展为其他任务的长期授权");
+    expect(content).toContain("用户撤回或改变范围时遵循最新指令");
+    expect(content).toContain("不会自动修改工具权限或替代 Runtime 审批");
+    expect(content).toContain("这不授权停止任意系统进程或删除 Worktree");
+    expect(content).toContain("Push 前核对分支、远端和待推送提交均在授权范围内");
+    expect(content).not.toContain("否则总是先确认");
+    expect(content).not.toContain("CLAUDE.md");
+  });
   test("生产 Prompt 约束无依据重写，并要求验证前提与结论直接对应", () => {
     const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
     expect(content).toContain("尚未满足的用户要求、明确的代码缺陷或新的测试/观察证据");
@@ -61,14 +72,15 @@ describe("system prompt task constraints", () => {
     expect(content).toContain("只有已知目标行段或文件超过单次读取上限时");
   });
 
-  test("复杂文件先写可运行骨架并按职责分阶段落盘", () => {
+  test("完整逻辑修改可批量提交，入口验证前置", () => {
     const content = getToolGuidanceSection();
 
-    expect(content).toContain("不要在一个 write_file/edit_file 调用中生成全部实现");
-    expect(content).toContain("先写最小可运行骨架");
-    expect(content).toContain("单次工具调用新增的文件内容不得超过 8000 字符");
-    expect(content).toContain("预计超出时必须继续拆分");
-    expect(content).toContain("不要按任意字节机械切块");
+    expect(content).toContain("一次 edit_file 的 edits 数组");
+    expect(content).toContain("同一已读原版本");
+    expect(content).toContain("先跑通最小入口和关键行为");
+    expect(content).not.toContain("8000 字符");
+    expect(content).toContain("写入顺序执行");
+    expect(content).toContain("不保证整批回滚");
     expect(content).toContain("方案和当前步骤明确后立即调用工具落盘");
     expect(content).toContain("可检查、可恢复的文件状态");
   });
@@ -96,9 +108,9 @@ describe("system prompt task constraints", () => {
     const content = getToolGuidanceSection();
 
     expect(content).toContain("只读的 git status、git diff、git log");
-    expect(content).toContain("只有用户明确要求本地 Git 保存/Commit 时");
+    expect(content).toContain("Commit 和 Push 分别需要用户明确授权");
     expect(content).toContain("git add -- <精确路径...>");
-    expect(content).toContain("不得使用 git add .、git add -A、Amend、Push、跳过 Hook");
+    expect(content).toContain("不得使用 git add .、git add -A、跳过 Hook");
   });
 
   test("Bash 子目录和后台服务使用显式受管生命周期", () => {

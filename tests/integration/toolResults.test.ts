@@ -7,6 +7,34 @@ import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
 
 describe("large tool result integration", () => {
+  test("失败命令执行一次后，模型可通过 Grep 定位预览省略的断言", async () => {
+    await withTempProject(async cwd => {
+      const fake = createFakeLLM([
+        assistantToolCall("bash", {command: "node -e \"console.log('START'); console.log('z'.repeat(20000)); console.log('ERR_ASSERTION at game.test.ts:93'); console.log('z'.repeat(20000)); console.log('FAIL: 1 test'); process.exitCode=1\""}, "failed-test"),
+        options => {
+          const result = options.messages.find(message => message.role === "tool" && message.tool_call_id === "failed-test");
+          const content = result?.content ?? "";
+          expect(content).toContain("exit code 1");
+          expect(content).toContain("START");
+          expect(content).toContain("FAIL: 1 test");
+          expect(content).not.toContain("ERR_ASSERTION");
+          const path = content.match(/^Full output saved at: (.+)$/m)?.[1];
+          expect(path).toBeDefined();
+          return assistantToolCall("grep", {path: JSON.parse(path!), pattern: "ERR_ASSERTION", head_limit: 20}, "find-assertion");
+        },
+        options => {
+          const result = options.messages.find(message => message.role === "tool" && message.tool_call_id === "find-assertion");
+          expect(result?.content).toContain(":3: ERR_ASSERTION at game.test.ts:93");
+          return assistantText("已定位断言");
+        },
+      ]);
+      const history: Message[] = [{role: "system", content: "system"}];
+      const result = await runAgent("定位失败", history, () => {}, createTestContext(cwd), {callLLM: fake.callLLM});
+      expect(result.reply).toBe("已定位断言");
+      const bashCalls = history.flatMap(message => message.role === "assistant" ? message.tool_calls ?? [] : []).filter(call => call.function.name === "bash");
+      expect(bashCalls).toHaveLength(1);
+    });
+  });
   test("模型只收到引用并能通过 read_tool_result 恢复内容", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([

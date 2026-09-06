@@ -3,7 +3,6 @@ import {Box, Text, useInput} from "ink";
 import TextInput from "ink-text-input";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
-import {DialogFrame} from "./DialogFrame.js";
 
 // 多选题对话框：LLM 调 ask_user 工具时弹出
 //
@@ -98,7 +97,7 @@ export function AskDialog({
     };
 
     useInput((_input, key) => {
-        // ���─ 输入模式 ──
+        // ── 输入模式 ──
         if (isTyping) {
             if (focus === "input") {
                 if (key.downArrow || key.tab) {
@@ -178,10 +177,8 @@ export function AskDialog({
     // ── Submit 视图 ──
     if (currentIndex === totalQuestions) {
         return (
-            <DialogFrame
-                title="请确认你的回答"
-                footer="Enter 提交 · Esc 取消"
-            >
+            <Box flexDirection="column" paddingLeft={2} paddingRight={1}>
+                <Text color={COLORS.dim}>确认回答 · {totalQuestions}/{totalQuestions} 已回答</Text>
                 <Box marginTop={1} flexDirection="column">
                     {questions.map((q, i) => (
                         <Box key={i} flexDirection="column" marginTop={i > 0 ? 1 : 0}>
@@ -197,10 +194,13 @@ export function AskDialog({
                 </Box>
                 <Box marginTop={1}>
                     <Text color={COLORS.accent} bold>
-                        ❯ Submit
+                        ❯ 提交回答
                     </Text>
                 </Box>
-            </DialogFrame>
+                <Box marginTop={1}>
+                    <Text color={COLORS.dim}>Enter 提交 · Esc 取消</Text>
+                </Box>
+            </Box>
         );
     }
 
@@ -211,9 +211,9 @@ export function AskDialog({
     // 快捷键提示（根据状态动态显示）
     const hint = isTyping
         ? focus === "input"
-            ? "↓/Tab to Submit · Esc to cancel"
-            : "↑ to edit · Enter to submit · Esc to cancel"
-        : "Enter to select · ↑/↓ to navigate · Esc to cancel";
+            ? "Enter/↓ 下一步 · Esc 返回选项"
+            : "↑ 编辑 · Enter 确认 · Esc 返回选项"
+        : "↑↓ 选择 · Enter 确认 · Esc 取消";
 
     // 进度提示（多问题时显示）
     const progress =
@@ -222,37 +222,27 @@ export function AskDialog({
             : null;
 
     return (
-        <DialogFrame
-            title="Pillar needs your input"
-            subtitle={
-                <Box flexDirection="column">
-                    <Text>{currentQ.question}</Text>
-                    {progress && <Text color={COLORS.dim}>{progress}</Text>}
-                </Box>
-            }
-            footer={hint}
-        >
+        <Box flexDirection="column" paddingLeft={2} paddingRight={1}>
+            <Text color={COLORS.dim}>需要你确认{progress ? ` · ${progress}` : ""}</Text>
+            <Box marginTop={1}>
+                <Text bold>{currentQ.question}</Text>
+            </Box>
             <Box marginTop={1} flexDirection="column">
                 {currentQ.options.map((opt, i) => {
                     const isSelected = i === selectedIndex && !isTyping;
                     return (
-                        <Box key={i} flexDirection="column">
-                            <Box>
+                        <Box key={i} marginTop={i > 0 ? 1 : 0}>
+                            <Box width={5} flexShrink={0}>
                                 <Text color={isSelected ? COLORS.accent : COLORS.dim}>
-                                    {isSelected ? "❯ " : "  "}
-                                </Text>
-                                <Text
-                                    color={isSelected ? COLORS.accent : undefined}
-                                    bold={isSelected}
-                                >
-                                    {i + 1}. {opt.label}
+                                    {isSelected ? "❯" : " "} {i + 1}.{" "}
                                 </Text>
                             </Box>
-                            {opt.description && (
-                                <Box marginLeft={4}>
-                                    <Text color={COLORS.dim}>{opt.description}</Text>
-                                </Box>
-                            )}
+                            <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+                                <Text color={isSelected ? COLORS.accent : undefined} bold={isSelected}>
+                                    {opt.label}
+                                </Text>
+                                {opt.description && <Text color={COLORS.dim}>{opt.description}</Text>}
+                            </Box>
                         </Box>
                     );
                 })}
@@ -277,11 +267,11 @@ export function AskDialog({
                                             )
                                         }
                                         onSubmit={() => setFocus("submit")}
-                                        placeholder="Type something..."
+                                        placeholder="输入你的回答…"
                                     />
                                 ) : (
                                     <Text color={COLORS.dim}>
-                                        {typedValue || "Type something..."}
+                                        {typedValue || "输入你的回答…"}
                                     </Text>
                                 )}
                             </Box>
@@ -293,7 +283,7 @@ export function AskDialog({
                                     color={focus === "submit" ? COLORS.accent : COLORS.dim}
                                     bold={focus === "submit"}
                                 >
-                                    Submit
+                                    确认输入
                                 </Text>
                             </Box>
                         </>
@@ -316,12 +306,15 @@ export function AskDialog({
                                 }
                                 bold={selectedIndex === typeSomethingIndex}
                             >
-                                {typeSomethingIndex + 1}. Type something
+                                {typeSomethingIndex + 1}. 自己填写…
                             </Text>
                         </Box>
                     )}
                 </Box>
             </Box>
-        </DialogFrame>
+            <Box marginTop={1}>
+                <Text color={COLORS.dim}>{hint}</Text>
+            </Box>
+        </Box>
     );
 }

@@ -61,10 +61,10 @@ describe("Persistent Memory", () => {
                 }, "write-topic"),
                 assistantToolCall("edit_file", {
                     path: indexPath,
-                    old_string: "# Pillar Memory",
+                    edits: [{old_string: "# Pillar Memory",
                     new_string:
                         "# Pillar Memory\n\n- [生产 API 边界](feedback-production-api.md) — 测试不能扩张生产 Options",
-                    replace_all: false,
+                    replace_all: false}],
                 }, "edit-index"),
                 assistantToolCall("read_file", {path: topicPath}, "verify-topic"),
                 assistantToolCall("read_file", {path: indexPath}, "verify-index"),

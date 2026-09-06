@@ -47,15 +47,7 @@ export const writeFileTool: Tool<
         const exists = await fileExists(absPath);
 
         if (ctx.memoryFiles?.classify(absPath)) {
-            try {
-                ctx.memoryFiles.validateWrite(absPath, content);
-                return {behavior: "allow" as const};
-            } catch (error) {
-                return {
-                    behavior: "deny" as const,
-                    message: error instanceof Error ? error.message : String(error),
-                };
-            }
+            return {behavior: "allow" as const};
         }
 
         return {
@@ -71,6 +63,9 @@ export const writeFileTool: Tool<
         // 到这里时权限已经通过，直接执行
         // 父目录不存在则创建
         const absPath = resolveToolPath(ctx.cwd, path);
+        if (ctx.memoryFiles?.classify(absPath)) {
+            ctx.memoryFiles.validateWrite(absPath, content);
+        }
         const exists = await fileExists(absPath);
         const oldContent = exists ? await readFile(absPath, "utf-8") : "";
         if (exists) {

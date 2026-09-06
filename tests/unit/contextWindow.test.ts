@@ -23,6 +23,8 @@ describe("context window", () => {
 
   test("Qwen 模型使用各自公开的上下文窗口", () => {
     expect(getAutoCompactThreshold("qwen3.8-flash")).toBe(967_000);
+    expect(getAutoCompactThreshold("qwen3.8-max")).toBe(967_000);
+    expect(getAutoCompactThreshold("qwen3.8-max-0902")).toBe(967_000);
     expect(getAutoCompactThreshold("qwen3.6-plus")).toBe(967_000);
     expect(getAutoCompactThreshold("qwen3.6-flash")).toBe(967_000);
     expect(getAutoCompactThreshold("qwen3-coder-plus")).toBe(967_000);

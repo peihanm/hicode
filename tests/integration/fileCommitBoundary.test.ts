@@ -13,7 +13,7 @@ import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import type {ThreadEventPayload} from "../../src/sdk/protocol.js";
 
 const calls = [
-    {name: "edit_file", input: {path: "file.txt", old_string: "before", new_string: "after"}},
+    {name: "edit_file", input: {path: "file.txt", edits: [{old_string: "before", new_string: "after"}]}},
     {name: "write_file", input: {path: "file.txt", content: "after\n"}},
     {name: "delete_file", input: {path: "file.txt"}},
 ] as const;

@@ -374,7 +374,6 @@ export function App({
                             sessionId={turn.sessionId}
                             startedAt={turn.startedAt}
                             elapsedMs={turn.elapsedMs}
-                            turnTiming={turn.turnTiming}
                             replacement={turn.inputReplacement}
                             clearRevision={inputClearRevision}
                             onDraftPresenceChange={setHasInputDraft}

@@ -541,7 +541,6 @@ export function useTurnController({
             stopping: turnStatus.stopping,
             startedAt: turnStatus.startedAt,
             elapsedMs: turnStatus.elapsedMs,
-            turnTiming: eventSnapshot.turnTiming,
             threads: eventSnapshot.threads,
             staticThreads: eventSnapshot.staticThreads,
             liveThreads: selectLiveThreads(
