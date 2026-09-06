@@ -36,7 +36,7 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
         const running = runAgentForTest("回答", history, event => {events.push(event);}, createTestContext(cwd, {signal: controller.signal}), {
             callLLM: async (_messages, _tools, _storage, _cwd, _model, _kind, _signal, _progress, onText) => {
                 calls++;
-                if (mode === "revision" && calls === 1) return assistantToolCall("check", {}, "failed");
+                if (mode === "revision" && calls === 1) return assistantToolCall("write_file", {path: "app.ts", content: ""}, "write");
                 await onText?.({type: "reset"});
                 await onText?.({type: "delta", text: "正在生成"});
                 expect(events.at(-1)?.type).toBe("assistant_draft");
@@ -47,9 +47,9 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
                     await onText?.({type: "reset"});
                     await onText?.({type: "delta", text: "新的回复"});
                 }
-                return assistantText(mode === "revision" && calls === 2 ? "检查通过" : "最终结论");
+                return assistantText(mode === "revision" && calls === 2 ? "应用已在沙箱运行" : "最终结论");
             },
-            executeTool: async () => ({modelContent: "failed", displayContent: "failed", outcome: "failed"}),
+            executeTool: async () => ({modelContent: "written", displayContent: "written", outcome: "ok"}),
         });
         if (mode === "failure") await expect(running).rejects.toThrow("truncated");
         else await running;

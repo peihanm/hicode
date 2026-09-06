@@ -151,7 +151,24 @@ const fileChangeSchema = z.object({
     diffUnavailableReason: z.enum(["timeout", "too_large", "binary", "error"]).optional(),
 }).strict();
 
+const timingMsSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const turnTimingSchema = z.object({
+    durationMs: timingMsSchema,
+    modelMs: timingMsSchema,
+    toolMs: timingMsSchema,
+    approvalMs: timingMsSchema,
+    overlapMs: timingMsSchema,
+    otherMs: timingMsSchema,
+}).strict().refine(t => t.durationMs === t.modelMs + t.toolMs + t.approvalMs + t.overlapMs + t.otherMs);
+
 const persistedUIEventSchema = z.discriminatedUnion("type", [
+    z.object({
+        version: z.literal(1),
+        type: z.literal("turn_timing"),
+        turnId: idSchema,
+        timestamp: timestampSchema,
+        timing: turnTimingSchema,
+    }).strict(),
     z.object({
         version: z.literal(1),
         type: z.literal("tool_call"),

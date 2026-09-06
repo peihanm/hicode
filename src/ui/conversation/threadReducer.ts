@@ -111,6 +111,7 @@ export function threadsFromHistory(
     }
 
     for (const event of uiEvents) {
+        if (event.type === "turn_timing") continue;
         const target = threads.find(
             (thread) =>
                 thread.role === "tool_call" && thread.toolCallId === event.toolCallId
@@ -191,6 +192,7 @@ export function reduceThreads(
 ): UIThread[] {
     switch (event.type) {
         case "iteration":
+        case "turn_timing":
             return threads;
         case "assistant_draft":
         case "assistant_draft_end":

@@ -13,6 +13,21 @@ import {getSlashCommandSuggestions} from "../../src/slash/registry.js";
 afterEach(() => cleanup());
 
 describe("multiline input box", () => {
+  test("完成后显示互斥耗时分段，窄终端换行，运行中不展示旧摘要", () => {
+    const timing = {durationMs: 120_000, modelMs: 60_000, toolMs: 20_000,
+      approvalMs: 30_000, overlapMs: 10_000, otherMs: 0};
+    const view = render(<InputBox disabled={false} terminalWidth={45}
+      elapsedMs={122_000} turnTiming={timing} onSubmit={() => {}} />);
+    expect(view.lastFrame()).toContain("Worked for 2m 02s");
+    expect(view.lastFrame()).toContain("模型请求 1m 00s");
+    expect(view.lastFrame()).toContain("工具执行 20s");
+    expect(view.lastFrame()?.replace(/\n/g, "")).toContain("等待确认 30s");
+    expect(view.lastFrame()?.replace(/\n/g, "")).toContain("重叠活动 10s");
+    expect(view.lastFrame()).toContain("其他 2s");
+    view.rerender(<InputBox disabled={false} terminalWidth={45}
+      startedAt={Date.now()} turnTiming={timing} onSubmit={() => {}} />);
+    expect(view.lastFrame()).not.toContain("模型请求");
+  });
   test("在输入框上方独立展示运行中和已完成的 turn 总耗时", () => {
     expect(formatTurnDuration(122_999)).toBe("2m 02s");
     expect(formatTurnDuration(3_723_000)).toBe("1h 02m 03s");

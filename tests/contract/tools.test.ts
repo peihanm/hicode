@@ -52,6 +52,8 @@ describe("tool registry contract", () => {
     expect(bash?.function.description).toContain(
       "按共同验证原则选择项目已有检查"
     );
+    expect(bash?.function.description).toContain("不得通过 Bash 补造缺失的浏览器能力");
+    expect(bash?.function.description).toContain("项目既有 E2E 和用户明确要求搭建自动化的任务");
     expect(JSON.stringify(bash?.function.parameters)).toContain(
       "管道任一段失败会保留非零状态"
     );

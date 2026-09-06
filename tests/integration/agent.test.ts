@@ -531,20 +531,15 @@ describe("agent loop", () => {
     });
   });
 
-  test("最后相关工具仍失败时有界阻止一次完成声明", async () => {
+  test("工具失败按原始结果交给模型，可披露后直接收尾", async () => {
     await withTempProject(async (cwd) => {
       const history = initialHistory();
       const fake = createFakeLLM([
         assistantToolCall("bash", {}, "failed-bash"),
-        assistantText("游戏已经启动"),
         (options) => {
-          expect(options.messages.some(
-            (message) =>
-              typeof message.content === "string" &&
-              message.content.includes("本轮存在失败工具记录") &&
-              message.content.includes("bash (failed-bash)") &&
-              message.content.includes("<candidate-reply>\n游戏已经启动\n</candidate-reply>")
-          )).toBe(true);
+          expect(options.messages.find(message => message.role === "tool" &&
+            message.tool_call_id === "failed-bash")?.content).toBe("执行失败 (timeout 30000ms)");
+          expect(JSON.stringify(options.messages)).not.toContain("未解决");
           return assistantText("启动验证失败，程序没有保持运行");
         },
       ]);
@@ -565,10 +560,10 @@ describe("agent loop", () => {
       );
 
       expect(result.reply).toBe("启动验证失败，程序没有保持运行");
-      expect(fake.calls).toHaveLength(3);
+      expect(fake.calls).toHaveLength(2);
       expect(history.some(
-        (message) => message.content === "游戏已经启动"
-      )).toBe(false);
+        (message) => message.role === "tool" && message.content === "执行失败 (timeout 30000ms)"
+      )).toBe(true);
       expect(history.some(
         (message) =>
           typeof message.content === "string" &&
@@ -577,47 +572,35 @@ describe("agent loop", () => {
     });
   });
 
-  test("后台服务仍运行时要求最终回答披露 Runtime 生命周期", async () => {
+  test.each([
+    "运行中的 dev server 由当前 Pillar 会话托管，退出后需用上面的命令重启。",
+    "The dev server is managed by this session; restart it after exiting.",
+    "服务已启动：http://localhost:3000",
+  ])("历史失败与后台服务不会因最终措辞强制返工：%s", async (reply) => {
     await withTempProject(async (cwd) => {
+      const history = initialHistory();
+      const events: AgentEvent[] = [];
+      const lifecycle = "后台任务已启动。\nTask: server-123\nLifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。\nStatus: running";
       const fake = createFakeLLM([
-        assistantToolCall("bash", {
-          command: "node server.js",
-          run_in_background: true,
-        }, "server-bash"),
-        assistantText("服务已启动：http://localhost:3000"),
+        assistantToolCall("edit_file", {}, "old-edit-failure"),
+        assistantToolCall("bash", {command: "node server.js", run_in_background: true}, "server-bash"),
         (options) => {
-          expect(options.messages.some(
-            (message) =>
-              typeof message.content === "string" &&
-              message.content.includes("仍有由 Pillar Runtime 管理的后台 Shell") &&
-              message.content.includes("server-123") &&
-              message.content.includes("退出 Pillar 后会终止") &&
-              message.content.includes("<candidate-reply>\n服务已启动：http://localhost:3000\n</candidate-reply>")
-          )).toBe(true);
-          return assistantText(
-            "服务已启动：http://localhost:3000。服务只在当前 Pillar Runtime 内运行，退出 Pillar 后会终止。"
-          );
+          expect(options.messages.find(message => message.role === "tool" && message.tool_call_id === "old-edit-failure")?.content).toBe("Edit 匹配失败");
+          expect(options.messages.find(message => message.role === "tool" && message.tool_call_id === "server-bash")?.content).toBe(lifecycle);
+          expect(JSON.stringify(options.messages)).not.toContain("当前完成证据");
+          return assistantText(reply);
         },
       ]);
-
-      const result = await runAgent(
-        "启动服务",
-        initialHistory(),
-        () => {},
-        createTestContext(cwd),
-        {
-          callLLM: fake.callLLM,
-          executeTool: async () => [
-            "后台任务已启动。",
-            "Task: server-123",
-            "Status: running",
-            "Lifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。",
-          ].join("\n"),
-        }
-      );
-
-      expect(result.reply).toContain("退出 Pillar 后会终止");
+      const result = await runAgent("启动服务", history, event => {events.push(event);}, createTestContext(cwd), {
+        callLLM: fake.callLLM,
+        executeTool: async (name) => name === "edit_file"
+          ? {modelContent: "Edit 匹配失败", displayContent: "Edit 匹配失败", outcome: "failed"}
+          : {modelContent: lifecycle, displayContent: lifecycle, outcome: "ok"},
+      });
+      expect(result.reply).toBe(reply);
       expect(fake.calls).toHaveLength(3);
+      expect(events.filter(event => event.type === "assistant_text").map(event => event.content)).toEqual([reply]);
+      expect(history.at(-1)?.content).toBe(reply);
     });
   });
 
@@ -777,11 +760,9 @@ describe("agent loop", () => {
       const invoked: string[] = [];
       const fake = createFakeLLM([
         assistantToolCall("mcp__chrome__navigate", {url: "http://localhost:8765"}, "browser-failed"),
-        assistantText(reply),
         (options) => {
-          expect(options.messages.some(message => typeof message.content === "string" &&
-            message.content.includes("CDP 连接失败") &&
-            message.content.includes("明确披露限制"))).toBe(true);
+          expect(options.messages.find(message => message.role === "tool" &&
+            message.tool_call_id === "browser-failed")?.content).toBe("CDP 连接失败");
           return assistantText(reply);
         },
       ]);
@@ -794,22 +775,18 @@ describe("agent loop", () => {
       });
       expect(result.reply).toBe(reply);
       expect(invoked).toEqual(["mcp__chrome__navigate"]);
-      expect(fake.calls).toHaveLength(3);
+      expect(fake.calls).toHaveLength(2);
     });
   });
 
-  test("同名工具后续成功不会凭名称自动抹掉旧失败", async () => {
+  test("失败和后续成功均保留原始结果，不重复注入失败或强制续跑", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall("bash", {}, "bash-failed"),
         assistantToolCall("bash", {}, "bash-passed"),
-        assistantText("重新验证通过"),
         (options) => {
-          expect(options.messages.some(
-            (message) =>
-              typeof message.content === "string" &&
-              message.content.includes("bash (bash-failed)")
-          )).toBe(true);
+          expect(options.messages.filter(message => message.role === "tool").map(message => message.content)).toEqual(["failed", "passed"]);
+          expect(JSON.stringify(options.messages)).not.toContain("本轮存在失败工具记录");
           return assistantText("失败已由后续实际检查替代，重新验证通过");
         },
       ]);
@@ -834,11 +811,11 @@ describe("agent loop", () => {
       );
 
       expect(result.reply).toBe("失败已由后续实际检查替代，重新验证通过");
-      expect(fake.calls).toHaveLength(4);
+      expect(fake.calls).toHaveLength(3);
     });
   });
 
-  test("同一并发批次的同名失败优先于成功", async () => {
+  test("同一并发批次的成功和失败各自配对，不由完成门覆盖模型判断", async () => {
     await withTempProject(async (cwd) => {
       const calls: ToolCall[] = ["failed", "passed"].map((id) => ({
         id,
@@ -847,8 +824,11 @@ describe("agent loop", () => {
       }));
       const fake = createFakeLLM([
         assistantToolCalls(calls),
-        assistantText("检查通过"),
-        assistantText("其中一个并发检查仍然失败"),
+        (options) => {
+          expect(options.messages.filter(message => message.role === "tool").map(message =>
+            [message.tool_call_id, message.content])).toEqual([["failed", "failed"], ["passed", "passed"]]);
+          return assistantText("其中一个并发检查仍然失败");
+        },
       ]);
 
       const result = await runAgent(
@@ -868,7 +848,7 @@ describe("agent loop", () => {
       );
 
       expect(result.reply).toBe("其中一个并发检查仍然失败");
-      expect(fake.calls).toHaveLength(3);
+      expect(fake.calls).toHaveLength(2);
     });
   });
 

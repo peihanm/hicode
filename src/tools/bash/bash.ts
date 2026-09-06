@@ -189,7 +189,7 @@ function formatObservedBackgroundTask(task: ShellTaskSnapshot): string {
 
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。直接启动 macOS .app 可执行文件时，Runtime 会自动申请本次命令的 elevated 授权。已知文件内容使用 read_file，代码定位使用 grep。按共同验证原则选择项目已有检查，不为普通任务收尾搭建浏览器环境。原始任务必需的命令因 Sandbox EPERM 受阻时，保持原命令并申请 require_escalated，不要换端口、语言或重写服务来规避限制；可选验证受阻则披露范围。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
+    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。直接启动 macOS .app 可执行文件时，Runtime 会自动申请本次命令的 elevated 授权。已知文件内容使用 read_file，代码定位使用 grep。按共同验证原则选择项目已有检查；不得通过 Bash 补造缺失的浏览器能力，项目既有 E2E 和用户明确要求搭建自动化的任务按其范围执行。原始任务必需的命令因 Sandbox EPERM 受阻时，保持原命令并申请 require_escalated，不要换端口、语言或重写服务来规避限制；可选验证受阻则披露范围。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
     isReadOnly: ({command, sandbox_permissions}) =>
@@ -383,12 +383,12 @@ export const bashTool: Tool<typeof inputSchema> = {
                     content: [
                         `后台任务已启动。`,
                         `Task: ${task.id}`,
+                        "Lifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。",
                         `Status: ${task.status}`,
                         `Cwd: ${displayToolPath(ctx.cwd, commandCwd) || "."}`,
                         ...(timeout_ms !== undefined
                             ? ["已忽略 timeout_ms：后台任务不会使用前台执行超时。"]
                             : []),
-                        "Lifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。",
                         "使用 bash_task 查询输出、完成状态或停止任务。",
                     ].join("\n"),
                     outcome: "ok" as const,

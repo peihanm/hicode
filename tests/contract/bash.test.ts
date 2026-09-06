@@ -495,6 +495,8 @@ describe("bash tool contract", () => {
         );
         expect(started.outcome).toBe("ok");
         expect(started.modelContent).toContain("已忽略 timeout_ms");
+        expect(started.modelContent.split("\n").slice(0, 3).join("\n")).toContain("退出 Pillar 后会终止");
+        expect(started.displayContent).toContain("退出 Pillar 后会终止");
         const taskId = started.modelContent.match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 

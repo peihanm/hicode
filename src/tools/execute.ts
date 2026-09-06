@@ -259,7 +259,12 @@ export async function executeRegisteredTool(
 
     let result;
     try {
-        result = await tool.execute(input, ctx, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(userApproved ? {userApproved} : {})});
+        ctx.onToolExecution?.("start");
+        try {
+            result = await tool.execute(input, ctx, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(userApproved ? {userApproved} : {})});
+        } finally {
+            ctx.onToolExecution?.("end");
+        }
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
             return interruptedToolResult(ctx.signal);

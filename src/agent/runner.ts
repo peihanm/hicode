@@ -11,11 +11,11 @@ import {
     createTurnCompletionState,
     formatCompletionReminder,
     formatCompletionContext,
-    recordRuntimeInputs,
     recordToolOutcomes,
 } from "./turnCompletion.js";
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../todos.js";
+import {TodoProgress} from "./todoProgress.js";
 
 export interface AgentToolBindings {
     getToolSchemas: ToolSchemaProvider;
@@ -25,7 +25,7 @@ export interface AgentToolBindings {
 
 export interface AgentRunOptions extends AgentToolBindings {
     maxIterations?: number;
-    /** 读取 Session-owned Todo 真相源，供最终回答前校验状态一致性。 */
+    /** 读取 Host-owned Todo 真相源，供进度提醒与最终状态校验。 */
     getTodos?: () => readonly Todo[];
     /** 连续权限拒绝达到该值时停止工具阶段，供无交互子 Runtime 使用。 */
     maxConsecutiveDeniedToolCalls?: number;
@@ -122,6 +122,7 @@ async function runAgentCore(
             ? undefined
             : Math.max(1, Math.floor(options.maxConsecutiveDeniedToolCalls));
     const completionState = createTurnCompletionState();
+    const todoProgress = new TodoProgress();
     let completionGateUsed = false;
     let completionNudge: string | undefined;
     let emptyResponseRetryUsed = false;
@@ -161,7 +162,6 @@ async function runAgentCore(
     };
 
     const appendQueuedInputs = (inputs: readonly QueuedAgentInput[]) => {
-        recordRuntimeInputs(completionState, inputs);
         for (const input of inputs) {
             history.push({role: "user", content: input.content});
         }
@@ -188,17 +188,23 @@ async function runAgentCore(
             const hasNextIteration =
                 maxIterations === undefined || i + 1 < maxIterations;
             await draft.finish("discarded");
-            const evidenceContext = formatCompletionContext(completionState, options.getTodos?.() ?? []);
+            const evidenceContext = formatCompletionContext(completionState);
+            const toolSchemas = getToolSchemasImpl();
+            const todoReminder = todoProgress.takeReminder(
+                options.getTodos?.() ?? [],
+                toolSchemas.some(tool => tool.function.name === "todo_write")
+            );
             const {invokeMessages, tools, estimatedTokens} = await prepareAgentInvoke({
                 history,
                 ctx,
                 onEvent,
-                getToolSchemas: getToolSchemasImpl,
+                getToolSchemas: () => toolSchemas,
                 compactHistory: compactHistoryImpl,
                 contextWindow: providerContextWindow,
                 additionalUserContextBlocks: [
                     ...(options.additionalUserContextBlocks ?? []),
                     ...(evidenceContext ? [evidenceContext] : []),
+                    ...(todoReminder ? [todoReminder] : []),
                     ...(completionNudge ? [completionNudge] : []),
                 ],
             });
@@ -375,6 +381,7 @@ async function runAgentCore(
                 return interruptedResult();
             }
             recordToolOutcomes(completionState, batchResult.outcomes, ctx.cwd);
+            todoProgress.recordToolBatch(batchResult.outcomes, options.getTodos?.() ?? []);
             let denialLimitReached = false;
             for (const outcome of batchResult.outcomes) {
                 if (outcome.outcome === "denied") {

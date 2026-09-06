@@ -223,7 +223,6 @@ describe("headless integration", () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall("broken", {}, "broken-1"),
-        assistantText("尝试完成"),
         assistantText("工具仍然失败，任务未完成"),
       ]);
       const summary = await runHeadless(options(cwd), {
@@ -244,6 +243,7 @@ describe("headless integration", () => {
       expect(summary.toolFailures).toHaveLength(1);
       expect(summary.toolCalls[0]?.outcome).toBe("failed");
       expect(summary.reply).toBe("工具仍然失败，任务未完成");
+      expect(fake.calls).toHaveLength(2);
       expect(formatHeadlessOutput(summary, "text")).toContain(
         "1 tool call(s) failed"
       );

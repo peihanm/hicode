@@ -41,6 +41,8 @@ interface ToolSearchSource {
 // 工具运行时上下文：注入权限裁决、规则、模式等依赖
 // 避免工具直接耦合 UI / 配置加载
 export interface ToolContext {
+    /** Root Turn observes actual execute intervals, excluding permission and batch queues. */
+    onToolExecution?: (phase: "start" | "end") => void;
     storage: PillarStorageLayout;
     // 当前 turn 的取消信号。每轮必须创建新的 signal，不能复用已取消 signal。
     signal: AbortSignal;

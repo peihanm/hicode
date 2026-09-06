@@ -231,9 +231,22 @@ describe("phase-based tool presentation", () => {
         expect(frame).toContain("✓ Syntax checks passed");
         expect(frame).toContain("● Starting service");
         expect(frame).toContain("✓ Service running · task task-123");
+        expect(frame).toContain("退出 Pillar 后停止");
         expect(frame).toContain("✓ Local endpoint checks passed");
         expect(frame).not.toContain("curl -sf");
         expect(frame).not.toContain("node --check");
+    });
+
+    test("普通后台命令默认结果保留生命周期说明", () => {
+        const threads = completeTool([], {
+            id: "background-worker",
+            name: "bash",
+            args: {command: "node worker.js", run_in_background: true},
+            result: "后台任务已启动。\nTask: worker-123\nLifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。\nStatus: running\nCwd: .\n使用 bash_task 查询输出、完成状态或停止任务。",
+        });
+        const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
+        expect(frame).toContain("worker-123");
+        expect(frame).toContain("退出 Pillar 后会终止");
     });
 
     test("curl 批次即使 exit 0 也不会把 000FAIL 包装成验证通过", () => {

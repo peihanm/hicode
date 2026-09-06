@@ -12,6 +12,13 @@ export class SessionUIEventCollector {
     private readonly activeToolCalls = new Set<string>();
 
     handleEvent(event: AgentEvent): void {
+        if (event.type === "turn_timing") {
+            this.currentEvents = limitPersistedUIEvents([
+                ...this.currentEvents,
+                {version: 1, ...event, timestamp: new Date().toISOString()},
+            ]);
+            return;
+        }
         if (event.type === "tool_call_start") {
             this.activeToolCalls.add(event.toolCallId);
             return;

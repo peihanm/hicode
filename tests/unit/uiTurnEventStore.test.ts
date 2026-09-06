@@ -6,6 +6,20 @@ import {
 import { selectLiveThreads } from "../../src/ui/turn/useTurnController.js";
 
 describe("UITurnEventStore", () => {
+  test("耗时摘要保存为 UI 事件，不创建聊天行，并在新输入时清除旧展示", () => {
+    const store = new UITurnEventStore();
+    const timing = {durationMs: 1000, modelMs: 100, toolMs: 200, approvalMs: 700, overlapMs: 0, otherMs: 0};
+    store.handleEvent({type: "turn_timing", turnId: "turn-1", timing});
+    expect(store.getSnapshot().turnTiming).toEqual(timing);
+    expect(store.getSnapshot().threads).toHaveLength(0);
+    expect(store.getPersistedUIEvents()[0]).toMatchObject({type: "turn_timing", timing});
+    const restored = new UITurnEventStore({uiEvents: store.getPersistedUIEvents()});
+    expect(restored.getPersistedUIEvents()).toEqual(store.getPersistedUIEvents());
+    expect(restored.getSnapshot().threads).toHaveLength(0);
+    store.appendUser("下一轮");
+    expect(store.getSnapshot().turnTiming).toBeUndefined();
+    expect(store.getPersistedUIEvents()).toHaveLength(1);
+  });
   test("恢复 history，并分别归约 token、文本和用户输入", () => {
     const store = new UITurnEventStore({
       history: [

@@ -242,7 +242,7 @@ export function summarizePhaseToolCall(input: {
     if (input.name === "bash") {
         if (phase.kind === "service") {
             const taskId = input.result?.match(/^Task:\s*(\S+)$/m)?.[1];
-            return taskId ? `${phase.success} · task ${taskId}` : phase.success;
+            return `${phase.success}${taskId ? ` · task ${taskId}` : ""} · 退出 Pillar 后停止`;
         }
         return phase.success;
     }

@@ -1,18 +1,10 @@
 import {toolFileChanges} from "../fileChanges/index.js";
 import type {ToolCallOutcome} from "./toolBatch.js";
-import type {QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../todos.js";
 import {createHash} from "node:crypto";
 import {isAbsolute, relative, resolve} from "node:path";
 import {isShellCommandReadOnly, parseShellCommand} from "../permissions/shellCommand.js";
 import type {ShellExecutionEvidence} from "../toolResults/types.js";
-
-interface FailedToolRecord {
-    toolCallId: string;
-    name: string;
-    result: string;
-    executionId?: string;
-}
 
 interface CheckEvidence {
     execution: ShellExecutionEvidence;
@@ -21,8 +13,6 @@ interface CheckEvidence {
 }
 
 export interface TurnCompletionState {
-    failedTools: Map<string, FailedToolRecord>;
-    activeBackgroundShells: Map<string, {taskId: string; command: string}>;
     implementationWrites: number;
     projectChecks: Map<string, CheckEvidence>;
     revision: number;
@@ -30,8 +20,6 @@ export interface TurnCompletionState {
 
 export function createTurnCompletionState(): TurnCompletionState {
     return {
-        failedTools: new Map(),
-        activeBackgroundShells: new Map(),
         implementationWrites: 0,
         projectChecks: new Map(),
         revision: 0,
@@ -91,16 +79,6 @@ function invalidateChecks(state: TurnCompletionState, path?: string, directory =
     }
 }
 
-export function recordRuntimeInputs(
-    state: TurnCompletionState,
-    inputs: readonly QueuedAgentInput[]
-): void {
-    for (const input of inputs) {
-        if (input.source !== "task_notification") continue;
-        if (input.taskId) state.activeBackgroundShells.delete(input.taskId);
-    }
-}
-
 export function recordToolOutcomes(
     state: TurnCompletionState,
     outcomes: readonly ToolCallOutcome[],
@@ -109,19 +87,6 @@ export function recordToolOutcomes(
     for (const outcome of outcomes) {
         const execution = outcome.name === "bash" ? outcome.shellExecution : undefined;
         const executionId = execution ? executionIdentity(execution) : undefined;
-        if (executionId && outcome.outcome === "ok" && !outcome.untrackedWorkspaceEffects) {
-            for (const [id, failure] of state.failedTools) {
-                if (failure.executionId === executionId) state.failedTools.delete(id);
-            }
-        }
-        if (outcome.outcome === "failed") {
-            state.failedTools.set(outcome.toolCallId, {
-                toolCallId: outcome.toolCallId,
-                name: outcome.name,
-                result: sanitizeEvidence(outcome.result),
-                ...(executionId ? {executionId} : {}),
-            });
-        }
         for (const change of toolFileChanges(outcome.uiData)) invalidateChecks(state, resolve(cwd, change.path));
         const projectCheck = execution && isProjectCheck(execution.command);
         if (execution && !isShellCommandReadOnly(execution.command) && !projectCheck) {
@@ -151,54 +116,21 @@ export function recordToolOutcomes(
             args.run_in_background === true
         ) {
             invalidateChecks(state);
-            const taskId = outcome.result.match(/(?:^|\n)Task:\s*([^\s]+)/)?.[1];
-            if (taskId) {
-                state.activeBackgroundShells.set(taskId, {
-                    taskId,
-                    command: typeof args.command === "string"
-                        ? args.command
-                        : "background shell",
-                });
-            }
-        }
-        if (outcome.name === "bash_task") {
-            const taskId = typeof args.task_id === "string"
-                ? args.task_id
-                : undefined;
-            if (
-                taskId &&
-                /(?:^|\n)Status:\s*(?:completed|failed|cancelled)(?:\n|$)/.test(
-                    outcome.result
-                )
-            ) {
-                state.activeBackgroundShells.delete(taskId);
-            }
         }
     }
 }
 
 /** Turn evidence is transient context, never a second persistent workspace state. */
-export function formatCompletionContext(state: TurnCompletionState, todos: readonly Todo[] = []): string | undefined {
+export function formatCompletionContext(state: TurnCompletionState): string | undefined {
     const lines = [
-        ...[...state.failedTools.values()].map(failure => `- 未解决 ${failure.name} (${failure.toolCallId}): ${failure.result}`),
         ...[...state.projectChecks.values()].map(check => `- ${check.invalidatedAt === undefined ? "检查通过" : "检查已过期（之后有相关修改）"}: ${check.execution.cwd}: ${check.execution.command.slice(0, 240)} [本轮观察版本 ${check.revision}]`),
-        ...[...state.activeBackgroundShells.values()].map(task => `- 后台任务 ${task.taskId} 由当前 Pillar Runtime 管理，退出 Pillar 后终止。`),
-        ...todos.filter(todo => todo.status === "in_progress").map(todo => `- Todo 尚在进行: ${todo.content}`),
     ];
     if (!lines.length) return undefined;
     return ["<system-reminder>", "当前完成证据（仅本轮实际观察；不是外部改动或完整工作区验证）：",
         ...lines.slice(0, 30).map(sanitizeEvidence),
         ...(lines.length > 30 ? [`另有 ${lines.length - 30} 条证据未展开。`] : []),
-        "结束前解决失败、重跑已过期的相关检查，或准确披露限制；不要宣称未检查的目标已通过。Todo 结束前应更新状态。",
+        "根据实际结果判断是否需要重跑已过期的相关检查，或准确披露限制；不要宣称未检查的目标已通过。",
         "</system-reminder>"].join("\n");
-}
-
-function disclosesBackgroundLifecycle(text: string): boolean {
-    return (
-        /退出\s*Pillar[^。\n]*(?:终止|停止|关闭)/i.test(text) ||
-        /Pillar[^。\n]*(?:退出|关闭)[^。\n]*(?:终止|停止)/i.test(text) ||
-        /当前\s*Pillar\s*Runtime[^。\n]*(?:管理|终止|停止)/i.test(text)
-    );
 }
 
 function relevantSentences(text: string): string[] {
@@ -221,13 +153,6 @@ export function formatCompletionReminder(
     candidateReply: string,
     todos: readonly Todo[] = []
 ): string | undefined {
-    const lines = [...state.failedTools.values()].map(
-        (failure) =>
-            `- ${failure.name} (${failure.toolCallId}): ${failure.result}`
-    );
-    const activeShells = [...state.activeBackgroundShells.values()];
-    const missingLifecycleDisclosure =
-        activeShells.length > 0 && !disclosesBackgroundLifecycle(candidateReply);
     const unsupportedSandboxClaim =
         state.implementationWrites > 0 && claimsSandboxedExecution(candidateReply);
     const inProgressTodos = todos.filter((todo) => todo.status === "in_progress");
@@ -235,8 +160,6 @@ export function formatCompletionReminder(
     const staleValidationClaim = staleChecks.length > 0 && /(?:检查|测试|验证|构建).{0,16}(?:通过|成功|正常)/.test(candidateReply) &&
         !/(?:未重跑|未重新|过期|修改后未|尚未验证)/.test(candidateReply);
     if (
-        lines.length === 0 &&
-        !missingLifecycleDisclosure &&
         !unsupportedSandboxClaim &&
         inProgressTodos.length === 0 && !staleValidationClaim
     ) return undefined;
@@ -244,22 +167,6 @@ export function formatCompletionReminder(
     return [
         "<system-reminder>",
         ...(staleValidationClaim ? ["已有检查通过后发生了相关修改，不能将旧结果当作最终版本验证。请重跑或明确披露修改后未重跑。"] : []),
-        ...(lines.length > 0
-            ? [
-                "本轮存在失败工具记录：",
-                ...lines,
-                "失败记录不一定仍代表当前状态。结束前请根据后续实际证据判断它是否已被替代；若已替代，说明验证证据；若未解决，继续修复或明确披露限制。",
-            ]
-            : []),
-        ...(missingLifecycleDisclosure
-            ? [
-                "本轮仍有由 Pillar Runtime 管理的后台 Shell：",
-                ...activeShells.map(
-                    (task) => `- ${task.taskId}: ${task.command.slice(0, 240)}`
-                ),
-                "最终回答必须明确说明：这些服务只在当前 Pillar Runtime 内运行，退出 Pillar 后会终止。不要暗示它们会在会话外持续运行。",
-            ]
-            : []),
         ...(unsupportedSandboxClaim
             ? [
                 "候选回答声称实现了沙箱执行，但本轮文件修改和普通命令证据不能证明生成的应用具备真实隔离。临时目录、子进程和 timeout 都不是沙箱；除非确实实现并验证了容器、虚拟机、受限 OS 用户或同等级隔离，否则必须改称本机子进程执行并披露文件、网络、凭证和资源风险。",

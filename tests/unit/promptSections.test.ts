@@ -7,6 +7,16 @@ import {createInitialHistory} from "../../src/prompt/index.js";
 import {VERIFICATION_GUIDANCE} from "../../src/prompt/verification.js";
 
 describe("system prompt task constraints", () => {
+  test("生产 Prompt 约束无依据重写，并要求验证前提与结论直接对应", () => {
+    const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
+    expect(content).toContain("尚未满足的用户要求、明确的代码缺陷或新的测试/观察证据");
+    expect(content).toContain("构建通过不等于功能完成");
+    expect(content).toContain("停止依赖该前提的检查并标为未验证；独立检查可以继续");
+    expect(content).toContain("整页截图变化不能证明特定模型旋转");
+    expect(content).toContain("前提失败后撤回依赖它的结论");
+    expect(content).toContain("异常时及时退出并关闭脚本创建的连接");
+    expect(content).toContain("只有用户明确要求建设该基础设施时");
+  });
   test("没有真实隔离时禁止声称沙盒", () => {
     const content = getDoingTasksSection();
 
@@ -28,9 +38,17 @@ describe("system prompt task constraints", () => {
   test("Root 生产 prompt 保留验证边界，能力不足不扩大验收", () => {
     const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
     expect(content.split(VERIFICATION_GUIDANCE)).toHaveLength(2);
-    expect(content).toContain("项目包含前端不代表本次任务必须打开浏览器");
-    expect(content).toContain("项目已有测试可以按其现有流程执行");
-    expect(content).toContain("普通任务的收尾不得临时创建");
+    expect(content).toContain("宿主工具、MCP 或已接入的 Skill");
+    expect(content).toContain("没有浏览器入口或入口不可用时，停止该验证分支");
+    expect(content).toContain("不要自行搜寻本机浏览器");
+    expect(content).toContain("最终说明真实浏览器交互未验证");
+    expect(content).toContain("项目已有 E2E 可按其现有流程执行");
+    expect(content).toContain("只有用户明确要求搭建浏览器自动化或 E2E 基础设施时");
+    expect(content).toContain("『网页项目』『实际运行』『验证核心玩法』均不构成该要求");
+    expect(content).toContain("web_fetch 只读取正文，不提供搜索引擎或浏览器操作");
+    expect(content.indexOf("先按已提供的能力")).toBeLessThan(content.indexOf("只围绕用户原始要求"));
+    expect(content).not.toContain("普通任务的收尾不得");
+    expect(content).not.toContain("仅当该验证是原始目标的必要条件时继续聚焦排查");
     expect(content).toContain("先核对已有结果并修正结论");
     expect(content).not.toContain("Verification");
   });
