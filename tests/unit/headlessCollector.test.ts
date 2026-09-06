@@ -216,26 +216,24 @@ describe("HeadlessEventCollector", () => {
     const collector = new HeadlessEventCollector();
     collector.handleEvent({
       type: "subagent_start",
-      agentId: "verification-1",
-      agentType: "Verification",
+      agentId: "reviewer-1",
+      agentType: "project-reviewer",
       description: "验证",
       parentToolCallId: "call-1",
     });
     collector.handleEvent({
       type: "subagent_end",
-      agentId: "verification-1",
-      agentType: "Verification",
+      agentId: "reviewer-1",
+      agentType: "project-reviewer",
       reason: "permission_denied",
       iterations: 3,
       toolUseCount: 3,
       durationMs: 50,
       report: "权限拒绝",
-      verificationVerdict: "PARTIAL",
     });
     expect(collector.getSnapshot().subagents[0]).toMatchObject({
       status: "failed",
       reason: "permission_denied",
-      verificationVerdict: "PARTIAL",
     });
   });
 

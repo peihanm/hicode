@@ -4,7 +4,7 @@
 // 简化点：claude-code 有 17+ 个内置 skill，用 registerBundledSkill 注册到全局 Map，
 // getPromptForCommand 程序化构造（可以动态拼接 args）。
 // 当前只内置 debug；验证由主 Agent 根据原始任务做最小充分检查，严格
-// Verification 由模型按需调用独立 Agent，不再默认注入 verify 工作流。
+// 日常验证由主 Agent 负责，不默认注入额外 verify 工作流。
 //
 // bundled skill 优先级最低：用户或项目仍可定义自己的同名/额外 Skill。
 

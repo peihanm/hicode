@@ -5,7 +5,7 @@ import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import type {HeadlessCollectorSnapshot} from "./collector.js";
-import type {HeadlessOutputFormat, HeadlessRunSummary, HeadlessSubagent, HeadlessToolCall,} from "./types.js";
+import type {HeadlessOutputFormat, HeadlessRunSummary, HeadlessToolCall,} from "./types.js";
 
 function summarizeArgs(args: string): string {
     try {
@@ -62,28 +62,15 @@ function getHeadlessExitCode({
                                         result,
                                         permissionDenials,
                                         toolFailures,
-                                        subagents = [],
                                     }: {
     result: AgentResult;
     permissionDenials: HeadlessToolCall[];
     toolFailures: HeadlessToolCall[];
-    subagents?: HeadlessSubagent[];
 }): number {
     if (result.reason === "interrupted") return 130;
     if (result.reason === "max_turns") return 3;
     if (result.reason === "permission_denied" || result.reason === "hook_blocked") return 2;
     if (permissionDenials.length > 0 || toolFailures.length > 0) return 2;
-    const latestVerification = [...subagents].reverse().find(
-        (subagent) =>
-            subagent.agentType === "Verification" &&
-            subagent.verificationVerdict !== undefined
-    );
-    if (
-        latestVerification?.verificationVerdict === "FAIL" ||
-        latestVerification?.verificationVerdict === "PARTIAL"
-    ) {
-        return 2;
-    }
     return 0;
 }
 
@@ -112,7 +99,6 @@ export function buildHeadlessRunSummary({
         result,
         permissionDenials,
         toolFailures,
-        subagents: collector.subagents,
     });
     return {
         ok: exitCode === 0,

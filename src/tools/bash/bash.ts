@@ -17,7 +17,7 @@ import {displayToolPath} from "../shared/paths.js";
 
 const inputSchema = z.object({
     command: z.string().describe(
-        "要执行的 Bash 命令，默认启用 pipefail（不启用 set -e）：管道任一段失败会保留非零状态，显式 || 可处理预期失败。长输出由工具保存并裁剪，测试不要接 head；上游 SIGPIPE 不会自动当成功。优先运行项目已有脚本/测试；curl 仅用于少量本地 API/HTML 探测，不要用临时 curl 测试矩阵代替项目测试或浏览器验证。HTTP 检查应有界等待服务 ready，并保证任一端点失败时整个命令返回非零；不要用 `|| echo FAIL` 掩盖失败。若本地监听或访问返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。非 ASCII 文本不要用 head -c/cut -b 按字节截断；不要在末尾添加 &"
+        "要执行的 Bash 命令，默认启用 pipefail（不启用 set -e）：管道任一段失败会保留非零状态，显式 || 可处理预期失败。长输出由工具保存并裁剪，测试不要接 head；上游 SIGPIPE 不会自动当成功。不要用 `|| echo FAIL` 掩盖失败。非 ASCII 文本不要用 head -c/cut -b 按字节截断；不要在末尾添加 &"
     ),
     cwd: z
         .string()
@@ -189,7 +189,7 @@ function formatObservedBackgroundTask(task: ShellTaskSnapshot): string {
 
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。直接启动 macOS .app 可执行文件时，Runtime 会自动申请本次命令的 elevated 授权。已知文件内容使用 read_file，代码定位使用 grep；curl 只适合少量本地 API/HTML GET/HEAD 可达性探测，不用于替代项目测试或浏览器交互验证，且任一失败必须让整个命令返回非零。若本地监听返回 Sandbox EPERM，保持原命令并用 require_escalated 重试，不要换端口、语言或重写服务。不要用 head -c/cut -b 截断可能含非 ASCII 的响应。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
+    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。直接启动 macOS .app 可执行文件时，Runtime 会自动申请本次命令的 elevated 授权。已知文件内容使用 read_file，代码定位使用 grep。按共同验证原则选择项目已有检查，不为普通任务收尾搭建浏览器环境。原始任务必需的命令因 Sandbox EPERM 受阻时，保持原命令并申请 require_escalated，不要换端口、语言或重写服务来规避限制；可选验证受阻则披露范围。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
     isReadOnly: ({command, sandbox_permissions}) =>

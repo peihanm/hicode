@@ -1,6 +1,6 @@
 import type {TurnAbortReason} from "../runtime/abort.js";
 import type {PersistedToolResult} from "../toolResults/index.js";
-import type {AgentType, VerificationVerdict,} from "../subagents/types.js";
+import type {AgentType} from "../subagents/types.js";
 import type {ToolUIData} from "../fileChanges/index.js";
 import type {LLMStreamProgress} from "../llm/types.js";
 import type {MemoryChange} from "../memory/types.js";
@@ -100,7 +100,6 @@ export type AgentEvent =
         durationMs: number;
         report: string;
         transcriptPath?: string;
-        verificationVerdict?: VerificationVerdict;
     }
     | {
         type: "subagent_progress";

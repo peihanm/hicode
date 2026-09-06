@@ -3,7 +3,7 @@ import type {CollaborationMode} from "../collaboration/index.js";
 import type {ToolContextResources} from "../runtime/toolContext.js";
 import type {CreateToolRuntimeOptions} from "../tools/runtime.js";
 import type {ToolContext} from "../tools/types.js";
-import type {AgentDefinition, SubagentResult} from "./types.js";
+import type {AgentDefinition} from "./types.js";
 
 const WORKTREE_AGENT_SAFE_TOOLS = new Set([
     "list_files",
@@ -65,11 +65,6 @@ export interface SubagentRuntimeConfig {
     permissionMode: PermissionMode;
     collaborationMode: CollaborationMode;
     permissionPromptPolicy: PermissionPromptPolicy;
-    maxConsecutiveDeniedToolCalls?: number;
-}
-
-interface SubagentResultMetadata {
-    verificationVerdict?: SubagentResult["verificationVerdict"];
 }
 
 export interface SubagentRegistration {
@@ -77,7 +72,4 @@ export interface SubagentRegistration {
     concurrencySafe: boolean;
 
     createRuntimeConfig(parentContext: ToolContext): SubagentRuntimeConfig;
-
-    finalizePrompt?: string;
-    parseResult?(reply: string): SubagentResultMetadata;
 }

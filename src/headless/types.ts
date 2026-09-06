@@ -1,5 +1,5 @@
 import type {AgentResult} from "../agent/index.js";
-import type {AgentType, VerificationVerdict,} from "../subagents/types.js";
+import type {AgentType} from "../subagents/types.js";
 import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
@@ -40,7 +40,6 @@ export interface HeadlessSubagent {
     durationMs?: number;
     transcriptPath?: string;
     error?: string;
-    verificationVerdict?: VerificationVerdict;
 }
 
 export interface HeadlessRunSummary {

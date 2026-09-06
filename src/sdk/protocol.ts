@@ -4,7 +4,7 @@ import type {FileChange} from "../fileChanges/index.js";
 import type {HookTrustRequest} from "../hooks/index.js";
 import type {MemoryChange} from "../memory/types.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
-import type {AgentType, VerificationVerdict} from "../subagents/types.js";
+import type {AgentType} from "../subagents/types.js";
 import type {Todo} from "../todos.js";
 
 export interface Usage {
@@ -117,7 +117,6 @@ export interface SubagentItem extends ThreadItemBase {
     durationMs?: number;
     reportPreview?: string;
     transcriptPath?: string;
-    verificationVerdict?: VerificationVerdict;
     error?: string;
 }
 

@@ -1,5 +1,5 @@
 import type {PersistedToolResult, ToolOutcome} from "../../toolResults/index.js";
-import type {AgentType, VerificationVerdict} from "../../subagents/types.js";
+import type {AgentType} from "../../subagents/types.js";
 import type {FileChange, ToolUIData} from "../../fileChanges/index.js";
 
 export type UIThread =
@@ -37,7 +37,6 @@ export type UIThread =
         subagentTokenCount?: number;
         subagentTranscriptPath?: string;
         subagentProgress?: SubagentProgressItem[];
-        subagentVerificationVerdict?: VerificationVerdict;
         uiData?: ToolUIData;
         hiddenByFileChange?: boolean;
     }

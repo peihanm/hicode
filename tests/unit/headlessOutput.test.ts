@@ -73,41 +73,10 @@ describe("headless output", () => {
         result: completed,
       })
     ).toBe(0);
-    expect(
-      exitCode({
-        result: completed,
-        subagents: [
-          {
-            agentId: "verification-1",
-            agentType: "Verification",
-            description: "验证",
-            status: "completed",
-            verificationVerdict: "PARTIAL",
-          },
-        ],
-      })
-    ).toBe(2);
-    expect(
-      exitCode({
-        result: completed,
-        subagents: [
-          {
-            agentId: "verification-fail",
-            agentType: "Verification",
-            description: "首次验证",
-            status: "completed",
-            verificationVerdict: "FAIL",
-          },
-          {
-            agentId: "verification-pass",
-            agentType: "Verification",
-            description: "复验",
-            status: "completed",
-            verificationVerdict: "PASS",
-          },
-        ],
-      })
-    ).toBe(0);
+    expect(exitCode({result: completed, subagents: [{
+      agentId: "reviewer-1", agentType: "project-reviewer",
+      description: "检查数据竞争", status: "completed",
+    }]})).toBe(0);
   });
 
   test("summary 分类 tool calls 并保持公开字段", () => {

@@ -93,38 +93,37 @@ describe("subagent UI", () => {
         onEvent({
           type: "tool_call_start",
           turnId: "turn-1",
-          toolCallId: "verify-running",
+          toolCallId: "review-running",
           name: "agent",
           args: JSON.stringify({
-            description: "独立验证本轮实现",
-            subagent_type: "Verification",
+            description: "独立审查本轮实现",
+            subagent_type: "project-reviewer",
           }),
         });
         onEvent({
           type: "subagent_start",
-          agentId: "verification-running",
-          agentType: "Verification",
-          description: "独立验证本轮实现",
-          parentToolCallId: "verify-running",
+          agentId: "reviewer-running",
+          agentType: "project-reviewer",
+          description: "独立审查本轮实现",
+          parentToolCallId: "review-running",
         });
         started();
         await released;
         onEvent({
           type: "subagent_end",
-          agentId: "verification-running",
-          agentType: "Verification",
+          agentId: "reviewer-running",
+          agentType: "project-reviewer",
           reason: "completed",
           iterations: 1,
           toolUseCount: 0,
           durationMs: 10,
-          report: "SUMMARY: 验证完成\nVERDICT: PASS",
-          verificationVerdict: "PASS",
+          report: "审查完成",
         });
         onEvent({
           type: "tool_call_end",
           turnId: "turn-1",
-          toolCallId: "verify-running",
-          result: "VERDICT: PASS",
+          toolCallId: "review-running",
+          result: "审查完成",
           outcome: "ok",
         });
         return { reply: "完成", reason: "completed", iterations: 1 };
@@ -143,10 +142,10 @@ describe("subagent UI", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain("● Verification Agent · 独立验证本轮实现");
-      expect(frame).toContain("正在运行 Verification Agent...");
-      expect(frame).not.toContain("✻ Verification Agent");
-      expect(frame).not.toContain("Verification: 独立验证本轮实现");
+      expect(frame).toContain("● project-reviewer Agent · 独立审查本轮实现");
+      expect(frame).toContain("正在运行 project-reviewer Agent...");
+      expect(frame).not.toContain("✻ project-reviewer Agent");
+      expect(frame).not.toContain("project-reviewer: 独立审查本轮实现");
 
       release();
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -325,77 +324,31 @@ describe("subagent UI", () => {
     });
   });
 
-  test("Verification 区分运行失败和验证结论，并展示折叠摘要", () => {
+  test.each([
+    ["completed", "Done"],
+    ["interrupted", "Stopped"],
+  ] as const)("自定义审查报告按运行状态 %s 展示，正文不变成验收判定", (reason, label) => {
     let threads: UIThread[] = reduceThreads([], {
-      type: "tool_call_start",
-      turnId: "turn-1",
-      toolCallId: "verify-call",
-      name: "agent",
-      args: JSON.stringify({
-        description: "验证页面",
-        prompt: "验证",
-        subagent_type: "Verification",
-      }),
+      type: "tool_call_start", turnId: "turn-1", toolCallId: "review-call", name: "agent",
+      args: JSON.stringify({description: "检查数据竞争", subagent_type: "project-reviewer"}),
     });
     threads = reduceThreads(threads, {
-      type: "subagent_start",
-      agentId: "verify-1",
-      agentType: "Verification",
-      description: "验证页面",
-      parentToolCallId: "verify-call",
+      type: "subagent_start", agentId: "review-1", agentType: "project-reviewer",
+      description: "检查数据竞争", parentToolCallId: "review-call",
     });
     threads = reduceThreads(threads, {
-      type: "subagent_end",
-      agentId: "verify-1",
-      agentType: "Verification",
-      reason: "completed",
-      iterations: 6,
-      toolUseCount: 9,
-      durationMs: 2_000,
-      report: [
-        "后端和 API 已验证。",
-        "",
-        "SUMMARY: 后端和 API 已验证；浏览器渲染与点击运行尚未验证",
-        "VERDICT: PARTIAL",
-      ].join("\n"),
-      verificationVerdict: "PARTIAL",
+      type: "subagent_end", agentId: "review-1", agentType: "project-reviewer", reason,
+      iterations: 4, toolUseCount: 5, durationMs: 1_000,
+      report: "发现并发写入风险，见 store.ts:20。\nVERDICT: FAIL",
     });
-
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
-    expect(frame).toContain("Verified with gaps (9 tool calls · 6 iterations · 2s)");
-    expect(frame).toContain("└ 后端和 API 已验证；浏览器渲染与点击运行尚未验证");
-    expect(frame).not.toContain("Done (");
-    expect(frame).not.toContain("Partial (");
-
-    threads = reduceThreads([], {
-      type: "tool_call_start",
-      turnId: "turn-1",
-      toolCallId: "failed-verify-call",
-      name: "agent",
-      args: JSON.stringify({ subagent_type: "Verification" }),
-    });
-    threads = reduceThreads(threads, {
-      type: "subagent_start",
-      agentId: "verify-2",
-      agentType: "Verification",
-      description: "验证页面",
-      parentToolCallId: "failed-verify-call",
-    });
-    threads = reduceThreads(threads, {
-      type: "subagent_end",
-      agentId: "verify-2",
-      agentType: "Verification",
-      reason: "completed",
-      iterations: 4,
-      toolUseCount: 5,
-      durationMs: 1_000,
-      report: "SUMMARY: 页面加载时发生确定性 TypeError\nVERDICT: FAIL",
-      verificationVerdict: "FAIL",
-    });
-    const issueFrame = render(<MessageList threads={threads} />).lastFrame() ?? "";
-    expect(issueFrame).toContain("Issue found (5 tool calls · 4 iterations · 1s)");
-    expect(issueFrame).toContain("└ 页面加载时发生确定性 TypeError");
-    expect(issueFrame).not.toContain("Failed (");
+    expect(frame).toContain(`${label} (5 tool calls · 4 iterations · 1s)`);
+    expect(frame).not.toContain("Issue found");
+    expect(frame).not.toContain("Verified");
+    const expanded = render(<MessageList threads={threads} transcript />).lastFrame() ?? "";
+    expect(expanded).toContain("project-reviewer response");
+    expect(expanded).toContain("发现并发写入风险，见 store.ts:20。");
+    expect(expanded).toContain("VERDICT: FAIL");
   });
 
   test("已知长 Bash 默认使用阶段摘要，Transcript 保留可见换行和截断", () => {

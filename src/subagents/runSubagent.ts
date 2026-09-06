@@ -366,12 +366,6 @@ export function createSubagentFactories(
                             getToolSchemas: runtime.getToolSchemas,
                             isToolConcurrencySafe: runtime.isConcurrencySafe,
                             executeTool: runtime.executeTool,
-                            ...(runtimeConfig.maxConsecutiveDeniedToolCalls !== undefined
-                                ? {
-                                    maxConsecutiveDeniedToolCalls:
-                                        runtimeConfig.maxConsecutiveDeniedToolCalls,
-                                }
-                                : {}),
                         }
                     );
                     let totalIterations = result.iterations;
@@ -382,7 +376,7 @@ export function createSubagentFactories(
                         totalBudget > 1
                     ) {
                         const finalized = await runChildAgent(
-                            registration.finalizePrompt ?? DEFAULT_FINALIZE_PROMPT,
+                            DEFAULT_FINALIZE_PROMPT,
                             childHistory,
                             recordChildEvent,
                             childContext,
@@ -408,7 +402,6 @@ export function createSubagentFactories(
                         toolUseCount,
                         durationMs: Date.now() - startedAt,
                         ...(transcriptPath ? {transcriptPath} : {}),
-                        ...(registration.parseResult?.(result.reply) ?? {}),
                     };
 
                     if (transcriptPath) {
@@ -436,9 +429,6 @@ export function createSubagentFactories(
                         toolUseCount: subagentResult.toolUseCount,
                         durationMs: subagentResult.durationMs,
                         report: subagentResult.reply,
-                        ...(subagentResult.verificationVerdict
-                            ? {verificationVerdict: subagentResult.verificationVerdict}
-                            : {}),
                         ...(subagentResult.transcriptPath
                             ? {transcriptPath: subagentResult.transcriptPath}
                             : {}),

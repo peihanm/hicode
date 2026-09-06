@@ -13,11 +13,11 @@ describe("ModelStreamStatus", () => {
         modelStream={null}
         progressRef={{ current: null }}
         stopping={false}
-        activityLabel="正在运行 Verification Agent..."
+        activityLabel="正在运行 project-reviewer Agent..."
       />
     ).lastFrame() ?? "";
 
-    expect(frame).toContain("正在运行 Verification Agent...");
+    expect(frame).toContain("正在运行 project-reviewer Agent...");
     expect(frame).not.toContain("思考中");
   });
 

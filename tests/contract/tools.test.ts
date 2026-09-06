@@ -13,6 +13,25 @@ import { createTurnAbortController } from "../../src/runtime/abort.js";
 import { attachSubagentLauncher } from "../helpers/subagentLauncher.js";
 
 describe("tool registry contract", () => {
+  test("内置清单和执行入口均不再提供 Verification", async () => {
+    const schema = getToolSchemas().find(tool => tool.function.name === "agent");
+    expect(JSON.stringify(schema)).not.toContain("Verification");
+    await withTempProject(async cwd => {
+      const ctx = createTestContext(cwd);
+      let launched = false;
+      attachSubagentLauncher(ctx, async () => {
+        launched = true;
+        throw new Error("未注册的 Agent 不得启动");
+      });
+      const result = await executeToolResult("agent", JSON.stringify({
+        subagent_type: "Verification", description: "验证", prompt: "检查项目",
+      }), ctx, "unknown-agent");
+      expect(result.outcome).toBe("failed");
+      expect(result.modelContent).toContain("未知 Agent 类型");
+      expect(launched).toBe(false);
+    });
+  });
+
   test("所有工具都有唯一名称和 object schema", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
@@ -26,15 +45,15 @@ describe("tool registry contract", () => {
     }
   });
 
-  test("bash schema 将 curl 收敛为可达性探测", () => {
+  test("bash schema 引用共同验证原则并保留执行失败语义", () => {
     const bash = getToolSchemas().find(
       (tool) => tool.function.name === "bash"
     );
     expect(bash?.function.description).toContain(
-      "curl 只适合少量本地 API/HTML GET/HEAD 可达性探测"
+      "按共同验证原则选择项目已有检查"
     );
     expect(JSON.stringify(bash?.function.parameters)).toContain(
-      "不要用临时 curl 测试矩阵代替项目测试或浏览器验证"
+      "管道任一段失败会保留非零状态"
     );
     expect(bash?.function.description).toContain("每次调用都是独立进程");
     expect(bash?.function.description).toContain("拒绝 shell 后台操作符 &");

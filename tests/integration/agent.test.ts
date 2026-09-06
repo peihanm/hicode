@@ -495,7 +495,7 @@ describe("agent loop", () => {
     });
   });
 
-  test("Verification 报告交给主模型处理，不由主循环追加固定结论", async () => {
+  test("独立审查报告交给主模型处理，不由主循环追加固定结论", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall(
@@ -503,9 +503,9 @@ describe("agent loop", () => {
           {
             description: "独立验证",
             prompt: "检查当前实现",
-            subagent_type: "Verification",
+            subagent_type: "project-reviewer",
           },
-          "verification-1"
+          "reviewer-1"
         ),
         assistantText("验证未覆盖浏览器交互，我暂时不能确认端到端通过。"),
       ]);
@@ -518,8 +518,8 @@ describe("agent loop", () => {
         {
           callLLM: fake.callLLM,
           executeTool: async () => ({
-            modelContent: "SUMMARY: 浏览器交互未覆盖\nVERDICT: PARTIAL",
-            displayContent: "SUMMARY: 浏览器交互未覆盖\nVERDICT: PARTIAL",
+            modelContent: "浏览器交互未覆盖",
+            displayContent: "浏览器交互未覆盖",
             outcome: "ok",
           }),
         }
@@ -686,7 +686,7 @@ describe("agent loop", () => {
     });
   });
 
-  test("仅有 curl 抽样时纠正全链路和虚假沙箱声明", async () => {
+  test("纠正虚假沙箱声明时不追加浏览器验收要求", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall("write_file", {
@@ -705,8 +705,7 @@ describe("agent loop", () => {
           expect(options.messages.some(
             (message) =>
               typeof message.content === "string" &&
-              message.content.includes("只有 1 次 localhost HTTP 探测") &&
-              message.content.includes("没有 Browser/Playwright 证据") &&
+              !message.content.includes("没有 Browser/Playwright 证据") &&
               message.content.includes("不是沙箱") &&
               message.content.includes(
                 "<candidate-reply>\n完成，全链路验证通过。后端沙箱执行用户代码。\n</candidate-reply>"
@@ -738,6 +737,64 @@ describe("agent loop", () => {
       expect(result.reply).toContain("本机子进程执行");
       expect(result.reply).not.toContain("全链路验证通过");
       expect(fake.calls).toHaveLength(4);
+    });
+  });
+
+  test.each([
+    ["node --test", "五子棋算法全部测试通过，页面交互未验证。"],
+    ["npm run test:e2e", "项目已有端到端测试全部通过。"],
+  ])("已有 %s 证据时可以直接收尾，不因缺少浏览器工具调用追加一轮", async (command, reply) => {
+    await withTempProject(async (cwd) => {
+      const commands = ["curl --fail http://localhost:8765/index.html", command];
+      const executed: string[] = [];
+      const fake = createFakeLLM([
+        ...commands.map((command, i) => assistantToolCall("bash", {command}, `check-${i}`)),
+        (options) => {
+          expect(options.messages.some(message => typeof message.content === "string" &&
+            message.content.includes(`检查通过: ${cwd}: ${command}`))).toBe(true);
+          return assistantText(reply);
+        },
+      ]);
+      const result = await runAgent("验证本次修改", initialHistory(), () => {}, createTestContext(cwd), {
+        callLLM: fake.callLLM,
+        executeTool: async (name, args) => {
+          expect(name).toBe("bash");
+          const input = JSON.parse(args) as {command: string};
+          executed.push(input.command);
+          return {modelContent: "ok", displayContent: "ok", outcome: "ok",
+            shellExecution: {command: input.command, cwd, sandboxPermissions: "use_default"}};
+        },
+      });
+      expect(result.reply).toBe(reply);
+      expect(fake.calls).toHaveLength(3);
+      expect(executed).toEqual(commands);
+    });
+  });
+
+  test("浏览器环境受阻可以披露后收尾，完成提醒不会自动重试或启动其他工具", async () => {
+    await withTempProject(async (cwd) => {
+      const reply = "页面交互未验证：CDP 连接失败，无法判断页面行为。";
+      const invoked: string[] = [];
+      const fake = createFakeLLM([
+        assistantToolCall("mcp__chrome__navigate", {url: "http://localhost:8765"}, "browser-failed"),
+        assistantText(reply),
+        (options) => {
+          expect(options.messages.some(message => typeof message.content === "string" &&
+            message.content.includes("CDP 连接失败") &&
+            message.content.includes("明确披露限制"))).toBe(true);
+          return assistantText(reply);
+        },
+      ]);
+      const result = await runAgent("检查页面交互", initialHistory(), () => {}, createTestContext(cwd), {
+        callLLM: fake.callLLM,
+        executeTool: async (name) => {
+          invoked.push(name);
+          return {modelContent: "CDP 连接失败", displayContent: "CDP 连接失败", outcome: "failed"};
+        },
+      });
+      expect(result.reply).toBe(reply);
+      expect(invoked).toEqual(["mcp__chrome__navigate"]);
+      expect(fake.calls).toHaveLength(3);
     });
   });
 

@@ -262,7 +262,6 @@ export class SDKEventAdapter {
                     durationMs: event.durationMs,
                     reportPreview: boundedText(event.report),
                     transcriptPath: event.transcriptPath,
-                    verificationVerdict: event.verificationVerdict,
                 };
                 this.subagents.delete(event.agentId);
                 await this.emitItem("item.completed", item);

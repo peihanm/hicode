@@ -13,9 +13,9 @@ interface ShellRunnerRequest extends ShellCommandOptions {
 }
 
 const LOCAL_BINDING_HINT =
-    'Pillar Sandbox: 本地端口监听被 OS Sandbox 阻止。请使用完全相同的命令并设置 sandbox_permissions="require_escalated" 重试；不要换端口或重写服务。';
+    'Pillar Sandbox: 本地端口监听被 OS Sandbox 阻止。仅当该命令是原始任务的必要步骤时，才使用完全相同的命令并设置 sandbox_permissions="require_escalated" 申请重试；不要换端口或重写服务来规避限制。可选验证受阻时说明未验证范围，不要为此申请提权。';
 const LOCAL_CONNECTION_HINT =
-    'Pillar Sandbox: 本地端点访问被 OS Sandbox 阻止。请使用完全相同的探测命令并设置 sandbox_permissions="require_escalated" 重试。';
+    'Pillar Sandbox: 本地端点访问被 OS Sandbox 阻止。仅当该探测是原始任务的必要步骤时，才使用完全相同的探测命令并设置 sandbox_permissions="require_escalated" 申请重试。可选验证受阻时说明未验证范围，不要为此申请提权。';
 
 export function annotateSandboxLocalNetworkFailure(output: string): string {
     if (!output || output.includes("Pillar Sandbox:")) return output;

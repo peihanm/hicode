@@ -24,11 +24,8 @@ export interface TurnCompletionState {
     failedTools: Map<string, FailedToolRecord>;
     activeBackgroundShells: Map<string, {taskId: string; command: string}>;
     implementationWrites: number;
-    localHttpProbes: number;
-    localHttpMutationProbes: number;
     projectChecks: Map<string, CheckEvidence>;
     revision: number;
-    browserChecks: number;
 }
 
 export function createTurnCompletionState(): TurnCompletionState {
@@ -36,11 +33,8 @@ export function createTurnCompletionState(): TurnCompletionState {
         failedTools: new Map(),
         activeBackgroundShells: new Map(),
         implementationWrites: 0,
-        localHttpProbes: 0,
-        localHttpMutationProbes: 0,
         projectChecks: new Map(),
         revision: 0,
-        browserChecks: 0,
     };
 }
 
@@ -67,28 +61,16 @@ function parseArgs(argsJson: string): Record<string, unknown> {
     }
 }
 
-function isLocalHttpProbe(command: string): boolean {
-    return (
-        /\bcurl\b/i.test(command) &&
-        /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)(?::\d+)?(?:\/|\b)/i.test(
-            command
-        )
-    );
-}
-
-function isHttpMutationProbe(command: string): boolean {
-    return (
-        /(?:^|\s)(?:-X|--request(?:=|\s))\s*(?:POST|PUT|PATCH|DELETE)\b/i.test(
-            command
-        ) ||
-        /(?:^|\s)(?:-d|--data(?:-raw|-binary|-urlencode)?)(?:=|\s)/i.test(command)
-    );
-}
-
 function isProjectCheck(command: string): boolean {
     const parsed = parseShellCommand(command);
+    if (!parsed.literal || parsed.segments.length !== 1) return false;
+    const tokens = parsed.segments[0]!.tokens;
+    if (tokens[0] === "node") {
+        return tokens[1] === "--test" && !tokens.slice(2).some(token =>
+            ["--help", "-h", "--version", "-v", "--watch"].includes(token));
+    }
     const check = (tokens: readonly string[]) => /^(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|check|verify|typecheck|build)\b|(?:pytest|python\s+-m\s+pytest|vitest|jest|cargo\s+test|go\s+test)\b)/i.test(tokens.join(" "));
-    return parsed.literal && parsed.segments.length === 1 && check(parsed.segments[0]!.tokens);
+    return check(tokens);
 }
 
 function within(directory: string, path: string): boolean {
@@ -107,10 +89,6 @@ function invalidateChecks(state: TurnCompletionState, path?: string, directory =
             evidence.invalidatedAt = state.revision;
         }
     }
-}
-
-function isBrowserTool(name: string): boolean {
-    return /(?:^|__|_)(?:browser|playwright|chrome)(?:$|__|_)/i.test(name);
 }
 
 export function recordRuntimeInputs(
@@ -166,16 +144,6 @@ export function recordToolOutcomes(
             ) {
                 state.implementationWrites += 1;
             }
-            if (outcome.name === "bash") {
-                const command = execution?.command ?? "";
-                if (isLocalHttpProbe(command)) {
-                    state.localHttpProbes += 1;
-                    if (isHttpMutationProbe(command)) {
-                        state.localHttpMutationProbes += 1;
-                    }
-                }
-            }
-            if (isBrowserTool(outcome.name)) state.browserChecks += 1;
         }
         if (
             outcome.name === "bash" &&
@@ -237,17 +205,6 @@ function relevantSentences(text: string): string[] {
     return text.split(/[。！？\n]+/).map((line) => line.trim()).filter(Boolean);
 }
 
-function claimsBroadValidation(text: string): boolean {
-    return relevantSentences(text).some((sentence) =>
-        /(?:全链路|端到端|全部|所有).{0,24}(?:验证|检查|功能)?.{0,12}(?:通过|正常|可用|完成)/i.test(
-            sentence
-        ) &&
-        !/(?:并非|不是|不能|未|没有).{0,12}(?:全链路|端到端|全部|所有)/.test(
-            sentence
-        )
-    );
-}
-
 function claimsSandboxedExecution(text: string): boolean {
     return relevantSentences(text).some((sentence) =>
         /(?:沙箱|sandbox).{0,16}(?:执行|运行)|(?:执行|运行).{0,16}(?:沙箱|sandbox)/i.test(
@@ -271,10 +228,6 @@ export function formatCompletionReminder(
     const activeShells = [...state.activeBackgroundShells.values()];
     const missingLifecycleDisclosure =
         activeShells.length > 0 && !disclosesBackgroundLifecycle(candidateReply);
-    const broadValidationWithoutBrowser =
-        state.localHttpProbes > 0 &&
-        state.browserChecks === 0 &&
-        claimsBroadValidation(candidateReply);
     const unsupportedSandboxClaim =
         state.implementationWrites > 0 && claimsSandboxedExecution(candidateReply);
     const inProgressTodos = todos.filter((todo) => todo.status === "in_progress");
@@ -284,7 +237,6 @@ export function formatCompletionReminder(
     if (
         lines.length === 0 &&
         !missingLifecycleDisclosure &&
-        !broadValidationWithoutBrowser &&
         !unsupportedSandboxClaim &&
         inProgressTodos.length === 0 && !staleValidationClaim
     ) return undefined;
@@ -306,15 +258,6 @@ export function formatCompletionReminder(
                     (task) => `- ${task.taskId}: ${task.command.slice(0, 240)}`
                 ),
                 "最终回答必须明确说明：这些服务只在当前 Pillar Runtime 内运行，退出 Pillar 后会终止。不要暗示它们会在会话外持续运行。",
-            ]
-            : []),
-        ...(broadValidationWithoutBrowser
-            ? [
-                `本轮只有 ${state.localHttpProbes} 次 localhost HTTP 探测，没有 Browser/Playwright 证据${state.localHttpMutationProbes > 0 ? `；其中 ${state.localHttpMutationProbes} 次是抽样写请求` : ""}。`,
-                "这些证据只能支持被实际请求的端点和样例，不能声称页面视觉、浏览器交互、其他语言路径或『全链路验证通过』。请把结论收窄到真实证据，并明确未验证范围。",
-                ...(![...state.projectChecks.values()].some(check => check.invalidatedAt === undefined)
-                    ? ["本轮也没有成功的项目测试/构建检查；不要把临时 curl 请求称为完整业务测试。"]
-                    : []),
             ]
             : []),
         ...(unsupportedSandboxClaim

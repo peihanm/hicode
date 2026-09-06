@@ -43,22 +43,12 @@ describe("agent definitions", () => {
     expect(general.whenToUse).toContain("前台串行 Agent");
     expect(general.whenToUse).toContain("不用于承接整个已批准计划");
     expect(general.model).toBe("inherit");
-
-    const verification = BUILTIN_SUBAGENT_REGISTRY.get("Verification")!.definition;
-    expect(verification.maxIterations).toBe(8);
-    expect(verification.allowedTools).toContain("bash");
-    expect(verification.allowedTools).toContain("bash_task");
-    expect(verification.allowedTools).not.toContain("agent");
-    expect(verification.allowedTools).not.toContain("edit_file");
-    expect(verification.allowedTools).not.toContain("write_file");
-    expect(verification.systemPrompt).toContain("最多允许两次 curl 请求");
-    expect(verification.systemPrompt).toContain("不得用 curl 发送业务数据");
-    expect(verification.model).toBe("inherit");
   });
 
   test("只接受已注册的 Agent 类型", () => {
     expect(BUILTIN_SUBAGENT_REGISTRY.has("Explore")).toBe(true);
-    expect(BUILTIN_SUBAGENT_REGISTRY.has("verification")).toBe(true);
+    expect(BUILTIN_SUBAGENT_REGISTRY.has("verification")).toBe(false);
+    expect(BUILTIN_SUBAGENT_REGISTRY.listDefinitions().map(agent => agent.agentType)).toEqual(["Explore", "GeneralPurpose"]);
     expect(BUILTIN_SUBAGENT_REGISTRY.has("GeneralPurpose")).toBe(true);
   });
 

@@ -140,9 +140,6 @@ function formatTokens(tokens: number): string {
 function subagentCompletionLabel(
     event: Extract<AgentEvent, { type: "subagent_end" }>
 ): string {
-    if (event.verificationVerdict === "PASS") return "Verified";
-    if (event.verificationVerdict === "FAIL") return "Issue found";
-    if (event.verificationVerdict === "PARTIAL") return "Verified with gaps";
     if (
         event.reason === "max_turns" ||
         event.reason === "permission_denied" ||
@@ -258,12 +255,6 @@ export function reduceThreads(
                         subagentDurationMs: event.durationMs,
                         ...(event.transcriptPath
                             ? {subagentTranscriptPath: event.transcriptPath}
-                            : {}),
-                        ...(event.verificationVerdict
-                            ? {
-                                subagentVerificationVerdict:
-                                event.verificationVerdict,
-                            }
                             : {}),
                     }
                     : thread

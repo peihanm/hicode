@@ -53,7 +53,7 @@ describe("/agents slash command", () => {
 
             expect(handled).toBe(true);
             expect(messages).toHaveLength(1);
-            expect(messages[0]).toContain("Agents · 4 个可用");
+            expect(messages[0]).toContain("Agents · 3 个可用");
             expect(messages[0]).toContain("reviewer · project");
             expect(messages[0]).toContain("模型 fast (glm-fast-test) · 最大轮次 7");
             expect(messages[0]).toContain("工具 (2) read_file · grep");

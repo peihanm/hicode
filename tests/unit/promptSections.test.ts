@@ -3,6 +3,8 @@ import {
   getDoingTasksSection,
   getToolGuidanceSection,
 } from "../../src/prompt/sections.js";
+import {createInitialHistory} from "../../src/prompt/index.js";
+import {VERIFICATION_GUIDANCE} from "../../src/prompt/verification.js";
 
 describe("system prompt task constraints", () => {
   test("没有真实隔离时禁止声称沙盒", () => {
@@ -14,13 +16,23 @@ describe("system prompt task constraints", () => {
   });
 
   test("curl 只用于本地 API/HTML 可达性而不是功能测试", () => {
-    const content = getToolGuidanceSection();
+    const content = getDoingTasksSection() + getToolGuidanceSection();
 
     expect(content).toContain("本地 API 或 HTML 是否可访问");
     expect(content).toContain("少量 GET/HEAD 可达性探测");
     expect(content).toContain("不要用一组临时 curl 请求代替项目测试或浏览器验证");
     expect(content).toContain("不要用 `head -c`、`cut -b` 等按字节截断");
     expect(content).toContain("可能切断 UTF-8 字符");
+  });
+
+  test("Root 生产 prompt 保留验证边界，能力不足不扩大验收", () => {
+    const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
+    expect(content.split(VERIFICATION_GUIDANCE)).toHaveLength(2);
+    expect(content).toContain("项目包含前端不代表本次任务必须打开浏览器");
+    expect(content).toContain("项目已有测试可以按其现有流程执行");
+    expect(content).toContain("普通任务的收尾不得临时创建");
+    expect(content).toContain("先核对已有结果并修正结论");
+    expect(content).not.toContain("Verification");
   });
 
   test("普通文件一次完整读取，只有定点或超限读取才分页", () => {
@@ -82,13 +94,13 @@ describe("system prompt task constraints", () => {
     expect(content).toContain("不要用 lsof/kill 按端口接管");
   });
 
-  test("普通修改由主 Agent 验证，独立 Verification 由模型按需决定", () => {
+  test("普通修改由主 Agent 验证，独立复查使用实际可用子 Agent", () => {
     const content = getToolGuidanceSection();
 
-    expect(content).toContain("先由你自己");
-    expect(content).toContain("不要为普通修改启动 Verification");
-    expect(content).toContain("Runtime 不会替你自动调度");
-    expect(content).not.toContain("自动启动独立 Verification Agent");
+    expect(content).toContain("日常验证由你直接完成");
+    expect(content).toContain("当前清单中可用的子 Agent");
+    expect(content).toContain("要求返回发现、证据和未检查范围");
+    expect(content).not.toContain("Verification");
   });
 
   test("主 Agent 按原始成功标准最小验证并停止扩需求", () => {

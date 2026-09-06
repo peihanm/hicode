@@ -45,3 +45,27 @@ test("未知 Shell 副作用和 Command Hook 使证据过期，复合掩盖失�
     recordToolOutcomes(fresh, [shell("masked", "bun test; true", "ok")], "/project");
     expect(fresh.projectChecks.size).toBe(0);
 });
+
+test.each(["node --test", 'node --test "tests/*.test.js"', "npm run test:e2e"])("项目检查 %s 可记录、过期与重跑", (command) => {
+    const state = createTurnCompletionState();
+    recordToolOutcomes(state, [shell("check", command, "ok")], "/project");
+    expect(state.projectChecks.size).toBe(1);
+    expect(formatCompletionContext(state)).toContain(command);
+    recordToolOutcomes(state, [write("a/game.js")], "/project");
+    expect(formatCompletionReminder(state, "测试通过")).toContain("相关修改");
+    recordToolOutcomes(state, [shell("rerun", command, "ok")], "/project");
+    expect(formatCompletionReminder(state, "测试通过")).toBeUndefined();
+    recordToolOutcomes(state, [shell("failed", command, "failed")], "/project");
+    expect(state.projectChecks.size).toBe(0);
+    expect(state.failedTools.size).toBe(1);
+});
+
+test.each([
+    "node script.js --test", '"node --test"', "node --test --help",
+    "node --test; true", "node --test || true", "node --test | tail -20",
+    "node --test $(echo tests/game.test.js)", "node --test tests/*.test.js",
+])("不从不确定或非测试命令推断通过：%s", (command) => {
+    const state = createTurnCompletionState();
+    recordToolOutcomes(state, [shell("check", command, "ok")], "/project");
+    expect(state.projectChecks.size).toBe(0);
+});

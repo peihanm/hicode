@@ -125,6 +125,8 @@ describe("ShellRunner", () => {
             expect(result.stderr).toContain("Pillar Sandbox: 本地端口监听被");
             expect(result.stderr).toContain('sandbox_permissions="require_escalated"');
             expect(result.stderr).toContain("不要换端口或重写服务");
+            expect(result.stderr).toContain("仅当该命令是原始任务的必要步骤时");
+            expect(result.stderr).toContain("可选验证受阻时说明未验证范围");
         });
     });
 
@@ -146,6 +148,7 @@ describe("ShellRunner", () => {
 
             expect(result.stderr).toContain("Immediate connect fail");
             expect(result.stderr).toContain("Pillar Sandbox: 本地端点访问被");
+            expect(result.stderr).toContain("仅当该探测是原始任务的必要步骤时");
             expect(result.stderr).toContain('sandbox_permissions="require_escalated"');
         });
     });

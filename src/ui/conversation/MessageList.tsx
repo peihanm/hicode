@@ -3,7 +3,6 @@ import type {UIThread} from "./types.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {Welcome} from "../bootstrap/Welcome.js";
 import {FileChangeGroup} from "../fileChanges/FileChangeGroup.js";
-import {parseVerificationSummary} from "../../subagents/builtins/verification/index.js";
 import {TerminalMarkdown} from "./TerminalMarkdown.js";
 import {useTerminalWidth} from "../terminalSize.js";
 import {
@@ -209,13 +208,6 @@ function ToolCallView({
     if (thread.hiddenByFileChange && !includeHidden) return null;
     const agent = agentIdentity(thread);
     const presentation = describeToolCall(thread.name, thread.args);
-    const verificationSummary =
-        thread.subagentVerificationVerdict && thread.subagentReport
-            ? parseVerificationSummary(
-                thread.subagentReport,
-                thread.subagentVerificationVerdict
-            )
-            : undefined;
     return (
         <Box flexDirection="column" marginTop={1}>
             <Box>
@@ -237,12 +229,6 @@ function ToolCallView({
             </Box>
             {agent && <AgentProgress thread={thread} transcript={transcript}/>}
             <ToolResultLines thread={thread} transcript={transcript}/>
-            {verificationSummary && (
-                <Box marginLeft={2}>
-                    <Text color={COLORS.dim}>└ </Text>
-                    <Text color={COLORS.toolResult}>{verificationSummary}</Text>
-                </Box>
-            )}
             {transcript && thread.subagentReport && (
                 <Box marginLeft={2} marginTop={1} flexDirection="column">
                     <Text color={COLORS.dim}>

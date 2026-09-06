@@ -3,6 +3,21 @@ import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import type {ThreadEventPayload} from "../../src/sdk/protocol.js";
 
 describe("SDK event adapter", async () => {
+    test.each(["completed", "interrupted"] as const)("子 Agent %s 投影运行状态并原样保留审查结论", async reason => {
+        const events: ThreadEventPayload[] = [];
+        const adapter = new SDKEventAdapter("turn-review", event => {events.push(event);});
+        await adapter.handleAgentEvent({type: "subagent_start", agentId: "reviewer", agentType: "project-reviewer",
+            parentToolCallId: "review-call", description: "检查并发写入"});
+        await adapter.handleAgentEvent({type: "subagent_end", agentId: "reviewer", agentType: "project-reviewer",
+            reason, iterations: 2, toolUseCount: 1, durationMs: 10, report: "发现并发写入风险。\nVERDICT: FAIL"});
+        const event = events.find(event => event.type === "item.completed");
+        expect(event?.type).toBe("item.completed");
+        if (event?.type !== "item.completed") throw new Error("缺少子 Agent 完成事件");
+        expect(event.item).toMatchObject({type: "subagent", status: reason, reason,
+            reportPreview: "发现并发写入风险。\nVERDICT: FAIL"});
+        expect(event.item).not.toHaveProperty("verificationVerdict");
+    });
+
     test("草稿快照及撤销独立于正式 Item，最终正文关联同一响应", async () => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn", event => {events.push(event);});

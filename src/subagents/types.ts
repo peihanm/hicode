@@ -8,7 +8,6 @@ type AgentName = string;
 export type AgentType = AgentName;
 export type AgentSource = "builtin" | "user" | "project" | "host";
 export type AgentFileSource = Exclude<AgentSource, "builtin" | "host">;
-export type VerificationVerdict = "PASS" | "FAIL" | "PARTIAL";
 
 interface AgentDefinitionContent {
     agentType: AgentName;
@@ -76,7 +75,6 @@ export interface SubagentResult {
     toolUseCount: number;
     durationMs: number;
     transcriptPath?: string;
-    verificationVerdict?: VerificationVerdict;
 }
 
 export type SubagentRunner = (

@@ -15,8 +15,8 @@ function initialHistory(): Message[] {
   return [{ role: "system", content: "test system prompt" }];
 }
 
-describe("model-directed verification scheduling", () => {
-  test("运行时文件修改不会由 Root 规则自动启动 Verification", async () => {
+describe("root task ownership", () => {
+  test("运行时文件修改不会由 Root 规则自动启动子 Agent", async () => {
     await withTempProject(async (cwd) => {
       const main = createFakeLLM([
         assistantToolCall(
@@ -33,7 +33,7 @@ describe("model-directed verification scheduling", () => {
       let subagentCalls = 0;
       attachSubagentLauncher(ctx, async () => {
         subagentCalls += 1;
-        throw new Error("Root 不应自动启动 Verification");
+        throw new Error("Root 不应自动启动子 Agent");
       });
       const events: AgentEvent[] = [];
 
@@ -56,7 +56,7 @@ describe("model-directed verification scheduling", () => {
     });
   });
 
-  test("后台服务不会由 Root 规则自动启动 Verification", async () => {
+  test("后台服务不会由 Root 规则自动启动子 Agent", async () => {
     await withTempProject(async (cwd) => {
       const main = createFakeLLM([
         assistantToolCall(
@@ -70,7 +70,7 @@ describe("model-directed verification scheduling", () => {
       let subagentCalls = 0;
       attachSubagentLauncher(ctx, async () => {
         subagentCalls += 1;
-        throw new Error("Root 不应自动启动 Verification");
+        throw new Error("Root 不应自动启动子 Agent");
       });
 
       const result = await runAgent(

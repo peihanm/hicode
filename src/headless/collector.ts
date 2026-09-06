@@ -71,9 +71,6 @@ export class HeadlessEventCollector {
                     subagent.iterations = event.iterations;
                     subagent.toolUseCount = event.toolUseCount;
                     subagent.durationMs = event.durationMs;
-                    if (event.verificationVerdict) {
-                        subagent.verificationVerdict = event.verificationVerdict;
-                    }
                     if (event.transcriptPath) {
                         subagent.transcriptPath = event.transcriptPath;
                     }

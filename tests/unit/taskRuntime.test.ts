@@ -84,7 +84,7 @@ describe("TaskRuntime", () => {
         });
     });
 
-    test("执行层拒绝把 Verification 直接作为后台 Agent 启动", async () => {
+    test("执行层拒绝把 GeneralPurpose 直接作为后台 Agent 启动", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
                 sandboxStatus: {kind: "disabled"},
@@ -104,8 +104,8 @@ describe("TaskRuntime", () => {
             await expect(session.startAgent({
                 request: {
                     kind: "registered",
-                    agentType: "Verification",
-                    description: "不允许的后台验证",
+                    agentType: "GeneralPurpose",
+                    description: "不允许的后台实现",
                     prompt: "验证项目",
                     parentToolCallId: "policy-call",
                 },
