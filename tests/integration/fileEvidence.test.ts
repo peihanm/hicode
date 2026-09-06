@@ -10,7 +10,7 @@ import type {ToolCall} from "../../src/llm/types.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {createTurnAbortController} from "../../src/runtime/abort.js";
 
-test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文件证据经真实请求交付 %s", async mode => {
+test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结果日志不授权源码写入，直接重读源码恢复 %s", async mode => {
     await withTempProject(async cwd => {
         const store = createTestToolResultStore(cwd, "evidence", mode === "save-failure" ? {maxSessionBytes: 0} : {});
         const ctx = createTestContext(cwd, {toolResultStore: store, model: "glm-5.2"});
@@ -19,7 +19,13 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文
         }
         const calls: ToolCall[] = ["a", "b", "c"].map(name => ({id: `read-${name}`, type: "function",
             function: {name: "read_file", arguments: JSON.stringify({path: `${name}.txt`})}}));
-        let page = 0;
+        let nextLine = 1;
+        const readSource = () => {
+            const offset = nextLine;
+            nextLine += 200;
+            return assistantToolCall("read_file", {path: "a.txt", offset, limit: 200}, `source-${offset}`);
+        };
+        const blind = () => assistantToolCall("write_file", {path: "a.txt", content: "BLIND"}, "blind");
         const fake = createFakeLLM(Array.from({length: 16}, () => async (options, index) => {
             if (index === 0) return {message: {role: "assistant" as const, content: null, tool_calls: calls}, toolCalls: calls,
                 usage: {prompt_tokens: 10, completion_tokens: 10, total_tokens: 20}};
@@ -27,38 +33,37 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("文
             if (index === 1) {
                 const large = options.messages.find(message => message.role === "tool" && message.tool_call_id === "read-a");
                 expect(large?.content).toContain("persisted-output");
-                expect(large?.content).toContain("a899:");
                 expect(large?.content).not.toContain("a450:");
-                return assistantToolCall("write_file", {path: "a.txt", content: "BLIND"}, "blind");
-            }
-            if (last?.role === "tool" && last.tool_call_id === "blind") {
-                expect(last.content).toContain("前置条件未满足");
-                if (mode === "save-failure") return assistantText("保存失败，未覆盖");
-                if (mode === "stale-source") await writeFile(join(cwd, "a.txt"), "external");
+                if (mode === "save-failure") return blind();
+                const artifact = await store.persistText({toolCallId: "read-a", toolName: "read_file", content: "ignored"});
                 if (mode === "tampered") {
-                    const artifact = await store.persistText({toolCallId: "read-a", toolName: "read_file", content: "ignored"});
                     const bytes = await readFile(artifact.path);
                     bytes[bytes.length - 1] = 121;
                     await writeFile(artifact.path, bytes);
                 }
-                return assistantToolCall("read_tool_result", {result_id: "tr_read-a", limit: 65536}, `page-${page++}`);
+                return assistantToolCall("read_file", {path: artifact.path, limit: 10}, "saved-log");
             }
-            if (last?.role === "tool" && last.tool_call_id.startsWith("page-")) {
+            if (last?.tool_call_id === "saved-log") {
+                expect(last.content).toContain("Saved output:");
+                return blind();
+            }
+            if (last?.tool_call_id === "blind") {
+                expect(last.content).toContain("前置条件未满足");
+                if (mode === "save-failure" || mode === "tampered") return assistantText("日志不授权覆盖");
+                return readSource();
+            }
+            if (last?.tool_call_id.startsWith("source-")) {
                 if (mode === "partial") return assistantToolCall("edit_file", {path: "a.txt", edits: [{old_string: "a899:", new_string: "hidden:"}]}, "hidden");
-                if (mode === "tampered") {
-                    expect(last.content).toContain("hash mismatch");
-                    return assistantText("证据损坏，未覆盖");
-                }
-                const next = /continue with offset=(\d+)/.exec(last.content);
-                return next ? assistantToolCall("read_tool_result", {result_id: "tr_read-a", offset: Number(next[1]), limit: 65536}, `page-${page++}`)
-                    : assistantToolCall("write_file", {path: "a.txt", content: "KNOWN"}, "known");
+                if (nextLine <= 900) return readSource();
+                if (mode === "stale-source") await writeFile(join(cwd, "a.txt"), "external");
+                return assistantToolCall("write_file", {path: "a.txt", content: "KNOWN"}, "known");
             }
-            if (last?.role === "tool" && last.tool_call_id === "hidden") {
+            if (last?.tool_call_id === "hidden") {
                 expect(last.content).toContain("未展示");
                 return assistantToolCall("edit_file", {path: "a.txt", edits: [{old_string: "a0:", new_string: "visible:"}]}, "visible");
             }
-            if (last?.role === "tool" && last.tool_call_id === "visible") expect(last.content).toContain("已修改");
-            if (last?.role === "tool" && last.tool_call_id === "known") expect(last.content).toContain(mode === "stale-source" ? "前置条件未满足" : "已写入");
+            if (last?.tool_call_id === "visible") expect(last.content).toContain("已修改");
+            if (last?.tool_call_id === "known") expect(last.content).toContain(mode === "stale-source" ? "前置条件未满足" : "已写入");
             return assistantText("证据验证结束");
         }));
         await runAgentForTest("读三个文件，再修改 a", [], () => {}, ctx, {callLLM: fake.callLLM});

@@ -398,7 +398,7 @@ describe("phase-based tool presentation", () => {
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("● Background task failed · node server.js");
         expect(frame).toContain("⎿ exit 1 · Error: listen EADDRINUSE :::3000");
-        expect(frame).toContain("Full output: read_tool_result(task_task-1)");
+        expect(frame).toContain("完整输出见任务详情");
         expect(frame).not.toContain("完整输出可通过");
     });
 });

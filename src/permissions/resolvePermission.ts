@@ -20,6 +20,7 @@ import {matchPattern} from "./matchPattern.js";
 import {toolPathInput, validateWorkspacePath} from "../worktrees/pathGuard.js";
 import {parsePermissionRule} from "./rules.js";
 import {directoryOperationForTool} from "./directoryAccess.js";
+import {resolveToolPath} from "../tools/shared/paths.js";
 
 /**
  * 用当前工具的真实权限 matcher 判断单条规则。Hook `if` 复用该
@@ -62,12 +63,20 @@ async function resolvePermissionInner(
     if (ctx.workspaceBoundary) {
         const path = toolPathInput(tool.name, input);
         if (path !== undefined) {
+            let savedOutput = false;
+            if (tool.name === "read_file" || tool.name === "grep") {
+                try {
+                    savedOutput = (await ctx.toolResultFiles.resolveFile(resolveToolPath(ctx.cwd, path))) !== null;
+                } catch (error) {
+                    return {behavior: "deny", message: `无法验证结果文件: ${error instanceof Error ? error.message : String(error)}`};
+                }
+            }
             const scoped = await validateWorkspacePath(
                 ctx.workspaceBoundary,
                 ctx.cwd,
                 path
             );
-            if (!scoped.ok) {
+            if (!scoped.ok && !savedOutput) {
                 return {behavior: "deny", message: scoped.message};
             }
         }

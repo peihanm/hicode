@@ -359,8 +359,8 @@ describe("headless integration", () => {
 
       const secondFake = createFakeLLM([
         assistantToolCall(
-          "read_tool_result",
-          { result_id: "tr_headless-large", offset: 100, limit: 20 },
+          "read_file",
+          { path: first.toolCalls[0]!.persisted!.path, limit: 1 },
           "headless-read"
         ),
         (call) => {

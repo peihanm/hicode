@@ -5,6 +5,7 @@ import {readFileSnapshot} from "../shared/fileSnapshot.js";
 import type {Tool} from "../types.js";
 import {normalizeFileText} from "../shared/fileState.js";
 import {resolveToolPath} from "../shared/paths.js";
+import {readSavedOutput} from "./savedOutput.js";
 
 const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 2000;
@@ -41,6 +42,7 @@ export const readFileTool: Tool<typeof inputSchema> = {
     name: "read_file",
     description: [
         "读取指定路径文件的内容，返回带行号的文本。",
+        "也可读取工具返回的已保存结果路径，offset/limit 同样使用行号；结果文件按预算展示，超长单行会标记省略。日志不作为源码当前版本的读取记录。",
         "二进制资产和超过 5 MiB 的文本仅返回目标摘要，可用于确认删除，不能授权正文编辑；超过 20 MiB 拒绝读取。",
         "",
         "行号格式为 `     1\\t内容`，仅用于定位，不是文件真实内容；调用 edit_file 时不要把行号复制进 old_string。",
@@ -53,6 +55,8 @@ export const readFileTool: Tool<typeof inputSchema> = {
     isConcurrencySafe: () => true,
     execute: async ({path, offset, limit}: Input, ctx, invocation) => {
         const absPath = resolveToolPath(ctx.cwd, path);
+        const saved = await ctx.toolResultFiles.resolveFile(absPath);
+        if (saved) return readSavedOutput(saved, offset ?? 1, limit ?? DEFAULT_LIMIT, ctx.signal);
         const snapshot = await readFileSnapshot(absPath);
         const binary = !isUtf8(snapshot.content) || snapshot.content.includes(0);
         if (snapshot.content.length > MAX_FILE_SIZE || binary) {

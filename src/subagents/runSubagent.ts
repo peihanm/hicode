@@ -22,7 +22,7 @@ import type {
 } from "./types.js";
 import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
-import {createForkDirective, createForkResultReader} from "./fork.js";
+import {createForkDirective, createForkResultFiles} from "./fork.js";
 import {supportsWorkspaceWriteGrant, type SubagentRegistration} from "./registration.js";
 import {resolveSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
@@ -48,7 +48,6 @@ const READONLY_FORK_TOOLS = [
     "glob",
     "read_file",
     "grep",
-    "read_tool_result",
 ] as const;
 
 const WORKTREE_FORK_TOOLS = [
@@ -59,7 +58,6 @@ const WORKTREE_FORK_TOOLS = [
     "edit_file",
     "write_file",
     "delete_file",
-    "read_tool_result",
 ] as const;
 
 function createForkRegistration(
@@ -185,8 +183,8 @@ export function createSubagentFactories(
             options.storageCwd ?? parentContext.cwd,
             childSessionId
         );
-        const childToolResultReader = request.kind === "fork"
-            ? createForkResultReader(childHistory, parentContext.toolResultReader, childToolResultStore)
+        const childToolResultFiles = request.kind === "fork"
+            ? createForkResultFiles(childHistory, parentContext.toolResultFiles, childToolResultStore)
             : undefined;
         const childFileCheckpoints =
             runtimeConfig.toolRuntimeOptions.allowedToolNames?.some(
@@ -241,7 +239,7 @@ export function createSubagentFactories(
                             sessionId: childSessionId,
                             compactState: childCompactState,
                             toolResultStore: childToolResultStore,
-                            toolResultReader: childToolResultReader,
+                            toolResultFiles: childToolResultFiles,
                             fileCheckpoints: childFileCheckpoints,
                         },
                         host: {

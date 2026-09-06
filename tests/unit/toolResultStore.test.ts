@@ -14,6 +14,7 @@ import {getArtifactKey} from "../../src/toolResults/paths.js";
 import { getProjectKey } from "../../src/persistence/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
+import {readSavedOutput} from "../../src/tools/readFile/savedOutput.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 
 describe("ToolResultStore", () => {
@@ -38,7 +39,7 @@ describe("ToolResultStore", () => {
         expect(message).toContain("Complete: yes");
         expect(message).toContain(JSON.stringify(result.path));
         expect(message).toContain("use grep on the saved file path");
-        expect(message).toContain("read_tool_result");
+        expect(message).toContain("read_file");
         expect(message).not.toContain("Preview (first");
       }
     });
@@ -66,7 +67,7 @@ describe("ToolResultStore", () => {
       const message = buildPersistedToolResultMessage(result);
       expect(message).toContain("exceeds grep's 1 MiB file limit");
       expect(message).not.toContain("use grep on the saved file path");
-      expect(message).toContain("result_id=\"tr_large\"");
+      expect(message).toContain(JSON.stringify(result.path));
     });
   });
   test("capture 在单项和剩余 Session 配额的多字节边界截断后能到 EOF", async () => {
@@ -83,8 +84,7 @@ describe("ToolResultStore", () => {
           await writeFile(sourcePath, char.repeat(2));
           const result = await store.promoteFile({toolCallId: "capture", toolName: "bash", sourcePath});
           expect(result).toMatchObject({byteLength: size, originalByteLength: size * 2, complete: false});
-          const page = await store.readRange({resultId: result.resultId, offset: 0, limit: 1});
-          expect(page).toMatchObject({content: char, nextOffset: size, eof: true, complete: false});
+          expect(await readFile(result.path, "utf8")).toBe(char);
         }
       }
     });
@@ -95,16 +95,7 @@ describe("ToolResultStore", () => {
       const store = createTestToolResultStore(cwd, "damaged-tail");
       const result = await store.persistText({toolCallId: "text", toolName: "test", content: "abcde"});
       await writeFile(result.path, Buffer.from([97, 98, 99, 0xe4, 0xbd]));
-      await expect(store.readRange({resultId: result.resultId, offset: 3, limit: 1})).rejects.toThrow("UTF-8");
-    });
-  });
-
-  test("从四字节字符内部开始且 limit=1 时读到下一个完整字符", async () => {
-    await withTempProject(async (cwd) => {
-      const store = createTestToolResultStore(cwd, "continuation");
-      const result = await store.persistText({toolCallId: "text", toolName: "test", content: "😀😀"});
-      expect(await store.readRange({resultId: result.resultId, offset: 1, limit: 1}))
-        .toMatchObject({content: "😀", offset: 4, nextOffset: 8, eof: true});
+      await expect(readSavedOutput(result, 1, 10, new AbortController().signal)).rejects.toThrow();
     });
   });
 
@@ -123,7 +114,7 @@ describe("ToolResultStore", () => {
     });
   });
 
-  test("持久化文本、限制大小并按 UTF-8 byte 安全分页", async () => {
+  test("持久化文本按大小限制且保留完整 UTF-8 字符", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "session-a", {
         pillarHome: join(cwd, "store"),
@@ -143,19 +134,8 @@ describe("ToolResultStore", () => {
       expect(persisted.path.startsWith(store.sessionDir)).toBe(true);
       expect(persisted.path).not.toContain("unsafe");
 
-      let offset = 0;
-      let reconstructed = "";
-      while (offset < persisted.byteLength) {
-        const chunk = await store.readRange({
-          resultId: persisted.resultId,
-          offset,
-          limit: 5,
-        });
-        reconstructed += chunk.content;
-        expect(chunk.content).not.toContain("�");
-        expect(chunk.nextOffset).toBeGreaterThan(offset);
-        offset = chunk.nextOffset;
-      }
+      const reconstructed = await readFile(persisted.path, "utf8");
+      expect(reconstructed).not.toContain("�");
       expect(Buffer.byteLength(reconstructed)).toBe(persisted.byteLength);
     });
   });
@@ -211,13 +191,7 @@ describe("ToolResultStore", () => {
         toolName: "test",
         content: "private session output",
       });
-      await expect(
-        second.readRange({
-          resultId: persisted.resultId,
-          offset: 0,
-          limit: 10,
-        })
-      ).rejects.toThrow("not found");
+      await expect(second.resolveFile(persisted.path)).rejects.toThrow("无权");
     });
   });
 
@@ -370,8 +344,8 @@ describe("ToolResultStore", () => {
       await symlink(outside, persisted.path);
 
       await expect(
-        store.readRange({ resultId: persisted.resultId, offset: 0, limit: 5 })
-      ).rejects.toThrow("content is invalid");
+        store.resolveFile(persisted.path)
+      ).rejects.toThrow("invalid tool result file");
     });
   });
 
@@ -417,7 +391,7 @@ describe("ToolResultStore", () => {
     });
   });
 
-  test("metadata 存在但 content 丢失时 readRange 返回领域错误", async () => {
+  test("metadata 存在但 content 丢失时 路径解析返回领域错误", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "missing-content", {
         pillarHome: join(cwd, "store"),
@@ -430,10 +404,10 @@ describe("ToolResultStore", () => {
       await rm(persisted.path);
 
       await expect(
-        store.readRange({ resultId: persisted.resultId, offset: 0, limit: 10 })
+        store.resolveFile(persisted.path)
       ).rejects.toMatchObject({
         name: "ToolResultStoreError",
-        message: `tool result content is missing: ${persisted.resultId}`,
+        message: "invalid tool result file",
       });
     });
   });

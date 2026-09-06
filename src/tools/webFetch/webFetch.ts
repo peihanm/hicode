@@ -65,7 +65,7 @@ export const webFetchTool: Tool<typeof inputSchema> = {
         "读取用户提供或已知的公共网页、文档或文本 API，并把 HTML 转成紧凑可读文本。",
         "仅执行 GET；不支持登录态、Cookie、localhost、私网地址或二进制下载。交互式页面和本地 UI 请使用浏览器工具。",
         "首次访问每个域名需要权限确认；跨域重定向不会自动跟随，必须对新域名重新调用。",
-        "长正文保存为固定结果，使用返回的 Result ID 和 read_tool_result 继续读取。",
+        "长正文保存为固定结果，用 read_file 读取返回的保存路径，offset/limit 使用行号。",
     ].join("\n"),
     parameters: inputSchema,
     maxResultSizeChars: Infinity,

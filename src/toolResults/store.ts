@@ -1,7 +1,6 @@
-import {createHash, randomUUID} from "node:crypto";
-import {isUtf8} from "node:buffer";
+import {randomUUID} from "node:crypto";
 import {chmod, link, lstat, mkdir, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
-import {basename, dirname, join, resolve} from "node:path";
+import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
 import {withFileLock} from "../persistence/index.js";
 import {getArtifactKey, getResultId, getToolResultSessionDir,} from "./paths.js";
 import {createPreview} from "./format.js";
@@ -17,7 +16,6 @@ import {
     DEFAULT_PREVIEW_CHARS,
     type PersistedBinaryArtifact,
     type PersistedToolResult,
-    type ToolResultChunk,
     ToolResultStoreError,
     type ToolResultStoreLimits,
 } from "./types.js";
@@ -63,6 +61,7 @@ export class ToolResultStore {
     readonly previewChars: number;
     readonly sessionId: string;
     private temporaryFilesCleaned = false;
+    private readonly projectsRoot: string;
 
     constructor(
         storage: PillarStorageLayout,
@@ -71,6 +70,7 @@ export class ToolResultStore {
         limits: ToolResultStoreLimits
     ) {
         this.sessionId = sessionId;
+        this.projectsRoot = storage.projectsRoot;
         this.sessionDir = getToolResultSessionDir(storage, cwd, sessionId);
         this.maxArtifactBytes = limits.maxArtifactBytes;
         this.maxSessionBytes = limits.maxSessionBytes;
@@ -525,108 +525,29 @@ export class ToolResultStore {
         return path;
     }
 
-    async readRange(input: {
-        resultId: string;
-        offset: number;
-        limit: number;
-        expectedHash?: string;
-    }): Promise<ToolResultChunk> {
-        if (
-            !Number.isSafeInteger(input.offset) || input.offset < 0 ||
-            !Number.isSafeInteger(input.limit) || input.limit <= 0
-        ) {
-            throw new ToolResultStoreError("offset and limit must be positive byte ranges");
+    async resolveFile(path: string): Promise<PersistedToolResult | null> {
+        const target = resolve(path);
+        const storagePath = relative(this.projectsRoot, target);
+        if (!isAbsolute(storagePath) && !storagePath.startsWith("..") &&
+            /(?:^|\/)sessions\/session-[^/]+\/tool-results(?:\/|$)/.test(storagePath) &&
+            dirname(target) !== resolve(this.sessionDir)) {
+            throw new ToolResultStoreError("无权读取未授权的会话结果文件");
         }
-        const paths = this.paths(input.resultId);
-        const metadata = await this.readMetadata(input.resultId);
-        if (!metadata) {
-            throw new ToolResultStoreError(`tool result not found: ${input.resultId}`);
+        if (dirname(target) !== resolve(this.sessionDir) || !/^[a-f0-9]{32}\.txt$/.test(basename(target))) return null;
+        const metadataPath = target.slice(0, -4) + ".meta.json";
+        const info = await lstat(metadataPath);
+        if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_TOOL_RESULT_METADATA_BYTES) {
+            throw new ToolResultStoreError("invalid tool result metadata file");
         }
-        if (input.offset > metadata.byteLength) {
-            throw new ToolResultStoreError(
-                `offset ${input.offset} exceeds result size ${metadata.byteLength}`
-            );
+        const value: unknown = JSON.parse(await readFile(metadataPath, "utf8"));
+        if (!value || typeof value !== "object" || !("resultId" in value) ||
+            typeof value.resultId !== "string" || value.resultId.length > 4096 ||
+            resolve(this.paths(value.resultId).content) !== target) {
+            throw new ToolResultStoreError("tool result path does not match metadata");
         }
-        try {
-            const content = await lstat(paths.content);
-            if (
-                !content.isFile() ||
-                content.isSymbolicLink() ||
-                content.size !== metadata.byteLength
-            ) {
-                throw new ToolResultStoreError(
-                    `tool result content is invalid: ${input.resultId}`
-                );
-            }
-        } catch (error) {
-            if (error instanceof ToolResultStoreError) throw error;
-            throw new ToolResultStoreError(
-                `tool result content is missing: ${input.resultId}`,
-                {cause: error}
-            );
-        }
-        let handle;
-        try {
-            handle = await open(paths.content, "r");
-        } catch (error) {
-            throw new ToolResultStoreError(
-                `tool result content is missing: ${input.resultId}`,
-                {cause: error}
-            );
-        }
-        try {
-            const readLimit = Math.min(
-                // Up to three skipped continuation bytes plus a full next character.
-                input.limit + 6,
-                metadata.byteLength - input.offset
-            );
-            const buffer = Buffer.alloc(readLimit);
-            let bytesRead: number;
-            if (input.expectedHash !== undefined) {
-                if (!/^[a-f0-9]{64}$/.test(input.expectedHash)) throw new ToolResultStoreError("invalid expected artifact hash");
-                const digest = createHash("sha256");
-                const block = Buffer.alloc(64 * 1024);
-                let position = 0;
-                bytesRead = 0;
-                while (position < metadata.byteLength) {
-                    const read = await handle.read(block, 0, Math.min(block.length, metadata.byteLength - position), position);
-                    if (read.bytesRead === 0) break;
-                    digest.update(block.subarray(0, read.bytesRead));
-                    const start = Math.max(position, input.offset);
-                    const end = Math.min(position + read.bytesRead, input.offset + readLimit);
-                    if (end > start) {
-                        block.copy(buffer, start - input.offset, start - position, end - position);
-                        bytesRead += end - start;
-                    }
-                    position += read.bytesRead;
-                }
-                if (position !== metadata.byteLength || digest.digest("hex") !== input.expectedHash) {
-                    throw new ToolResultStoreError("file evidence artifact hash mismatch; read_file again");
-                }
-            } else {
-                ({bytesRead} = await handle.read(buffer, 0, readLimit, input.offset));
-            }
-            const {content: safe, startAdjustment} = selectUtf8Range(
-                buffer.subarray(0, bytesRead),
-                input.limit
-            );
-            const offset = input.offset + startAdjustment;
-            const nextOffset = input.offset + startAdjustment + safe.length;
-            if (!isUtf8(safe) || (nextOffset < metadata.byteLength && safe.length === 0)) {
-                throw new ToolResultStoreError(`tool result contains invalid or incomplete UTF-8: ${input.resultId}`);
-            }
-            return {
-                resultId: input.resultId,
-                content: safe.toString("utf8"),
-                offset,
-                nextOffset,
-                byteLength: metadata.byteLength,
-                eof: nextOffset >= metadata.byteLength,
-                complete: metadata.complete,
-            };
-        } finally {
-            await handle.close();
-        }
+        const result = await this.loadExisting(value.resultId);
+        if (!result || result.byteLength > this.maxArtifactBytes) throw new ToolResultStoreError("invalid tool result file");
+        return result;
     }
 
     async removeTemporaryFile(path: string): Promise<void> {

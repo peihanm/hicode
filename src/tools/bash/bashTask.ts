@@ -38,7 +38,7 @@ function formatSnapshot(snapshot: ShellTaskSnapshot): string {
             : undefined,
         snapshot.output ? `Output:\n${snapshot.output}` : "Output: (无输出)",
         snapshot.outputResult
-            ? `Result ID: ${snapshot.outputResult.resultId}`
+            ? `Saved output: ${JSON.stringify(snapshot.outputResult.path)}`
             : undefined,
         snapshot.outputIssue
             ? `Output persistence warning: ${snapshot.outputIssue}`

@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
 import {resolve} from "node:path";
 import type {Message} from "../../llm/types.js";
-import type {PersistedToolResult, ToolExecutionResult} from "../../toolResults/index.js";
+import type {ToolExecutionResult} from "../../toolResults/index.js";
 
 type ByteRange = readonly [start: number, end: number];
 interface FileEditRange { start: number; end: number; insertedBytes: number }
@@ -36,7 +36,6 @@ type FileStateCheck =
 export class FileStateTracker {
     private readonly states = new Map<string, FileReadState>();
     private readonly pending = new Map<string, Evidence>();
-    private readonly artifacts = new Map<string, {segments: Segment[]; digest: string}>();
 
     stageRead(input: {
         toolCallId: string; path: string; content: string | Buffer; normalizedBytes: number;
@@ -48,40 +47,12 @@ export class FileStateTracker {
             segments: input.segments.map(([start, end, fileStart]) => ({source, start, end, fileStart}))});
     }
 
-    stagePage(toolCallId: string, resultId: string, offset: number, content: string, output: string): void {
-        const source = this.artifacts.get(resultId)?.segments;
-        if (!source) return;
-        const prefixBytes = Buffer.byteLength(output.slice(0, output.indexOf("\n\n") + 2));
-        const end = offset + Buffer.byteLength(content);
-        const segments = source.flatMap(segment => {
-            const start = Math.max(segment.start, offset);
-            const stop = Math.min(segment.end, end);
-            return stop <= start ? [] : [{source: segment.source, start: prefixBytes + start - offset,
-                end: prefixBytes + stop - offset, fileStart: segment.fileStart + start - segment.start}];
-        });
-        this.pending.set(toolCallId, {content: output, segments, targets: segments.map(segment => segment.source)});
-    }
-
     bindOutput(toolCallId: string, original: string, result: Pick<ToolExecutionResult, "modelContent" | "persisted">): void {
         const evidence = this.pending.get(toolCallId);
         if (!evidence || evidence.content !== original) return;
-        if (result.persisted) {
-            this.bindArtifact(result.persisted, evidence.segments, original);
-            // A protocol preview is not a source byte range. Continue through the
-            // artifact pager to receive byte-addressed evidence.
-            this.pending.set(toolCallId, {content: result.modelContent, segments: [], targets: []});
-        } else if (result.modelContent.startsWith(original)) {
-            evidence.content = result.modelContent;
-        } else this.pending.delete(toolCallId);
-    }
-
-    resultDigest(resultId: string): string | undefined { return this.artifacts.get(resultId)?.digest; }
-
-    private bindArtifact(result: PersistedToolResult, segments: Segment[], content: string): void {
-        this.artifacts.set(result.resultId, {digest: hash(Buffer.from(content).subarray(0, result.byteLength)), segments: segments.flatMap(segment => {
-            const end = Math.min(segment.end, result.byteLength);
-            return end <= segment.start ? [] : [{...segment, end}];
-        })});
+        // Saved output is a log, not an observation of the current source file.
+        if (result.persisted || !result.modelContent.startsWith(original)) this.pending.delete(toolCallId);
+        else evidence.content = result.modelContent;
     }
 
     commitVisible(messages: readonly Message[]): void {
@@ -136,7 +107,7 @@ export class FileStateTracker {
     }
 
     forget(path: string): void { this.states.delete(resolve(path)); }
-    clear(): void { this.states.clear(); this.pending.clear(); this.artifacts.clear(); }
+    clear(): void { this.states.clear(); this.pending.clear(); }
 }
 
 export function createFileStateTracker(): FileStateTracker { return new FileStateTracker(); }

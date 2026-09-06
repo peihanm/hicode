@@ -15,7 +15,6 @@ const GENERAL_PURPOSE_AGENT: AgentDefinition = {
         "edit_file",
         "write_file",
         "delete_file",
-        "read_tool_result",
     ],
     model: "inherit",
     maxIterations: 12,

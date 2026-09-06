@@ -13,13 +13,12 @@ const WORKTREE_AGENT_SAFE_TOOLS = new Set([
     "edit_file",
     "write_file",
     "delete_file",
-    "read_tool_result",
 ]);
 
 export function hasAgentWriteTools(definition: AgentDefinition): boolean {
     // A name alone cannot prove Bash or dynamic MCP arguments are read-only.
     return definition.allowedTools.some(name => ![
-        "list_files", "glob", "read_file", "grep", "read_tool_result", "web_fetch",
+        "list_files", "glob", "read_file", "grep", "web_fetch",
     ].includes(name));
 }
 
@@ -49,7 +48,7 @@ export function validateBackgroundAgent(
     ) {
         return [
             "该 Agent 不满足 Worktree 后台安全工具集合。",
-            "第一版只允许 list_files/glob/read_file/grep/edit_file/write_file/delete_file/read_tool_result，且必须包含 edit_file、write_file 或 delete_file。",
+            "第一版只允许 list_files/glob/read_file/grep/edit_file/write_file/delete_file，且必须包含 edit_file、write_file 或 delete_file。",
         ].join("\n");
     }
     return undefined;

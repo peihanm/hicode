@@ -47,7 +47,7 @@ export interface ToolContextSession {
     sessionId: string;
     compactState: CompactState;
     toolResultStore: ToolResultStore;
-    toolResultReader?: ToolContext["toolResultReader"];
+    toolResultFiles?: ToolContext["toolResultFiles"];
     fileCheckpoints: FileCheckpointRuntimeLike;
     allowBackgroundTasks?: boolean;
     hookSession?: HookSessionRuntime;
@@ -113,8 +113,8 @@ export function createToolContext({
         compactState: session.compactState,
         sessionId: session.sessionId,
         toolResultStore: session.toolResultStore,
-        toolResultReader: session.toolResultReader ?? {
-            readRange: input => session.toolResultStore.readRange(input),
+        toolResultFiles: session.toolResultFiles ?? {
+            resolveFile: path => session.toolResultStore.resolveFile(path),
         },
         fileState: session.fileState,
         fileCommits: resources.fileCommits,

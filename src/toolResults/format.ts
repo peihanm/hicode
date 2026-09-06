@@ -1,4 +1,4 @@
-import type {PersistedToolResult, ToolResultChunk} from "./types.js";
+import type {PersistedToolResult} from "./types.js";
 
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -48,9 +48,9 @@ export function buildPersistedToolResultMessage(
         "",
         ...(result.complete ? [] : ["This preview ends at the saved portion, not necessarily the end of the original output."]),
         ...(result.byteLength <= 1024 * 1024
-            ? ["To locate details, use grep on the saved file path with a keyword pattern, context=3 and head_limit=20. If path access is denied, use read_tool_result below."]
-            : ["This saved file exceeds grep's 1 MiB file limit; use read_tool_result below."]),
-        `Use read_tool_result with result_id=${JSON.stringify(result.resultId)} and offset=0 to read more.`,
+            ? ["To locate details, use grep on the saved file path with a keyword pattern, context=3 and head_limit=20. Use read_file on the same path to read surrounding lines."]
+            : ["This saved file exceeds grep's 1 MiB file limit; use read_file on the saved path with line offset/limit."]),
+        `Use read_file with path=${JSON.stringify(result.path)} and line offset/limit to read more.`,
         "Inspect the saved output instead of rerunning the command just to obtain another excerpt.",
         "</persisted-output>",
     ].join("\n");
@@ -70,21 +70,4 @@ export function buildPersistFailureMessage(
         escapeProtocolText(preview),
         "</persisted-output-error>",
     ].join("\n");
-}
-
-export function formatToolResultChunk(chunk: ToolResultChunk): string {
-    const rangeEnd = chunk.nextOffset === chunk.offset
-        ? chunk.offset
-        : chunk.nextOffset - 1;
-    const lines = [
-        `Result: ${chunk.resultId}`,
-        `Bytes: ${chunk.offset}-${rangeEnd} / ${chunk.byteLength}`,
-        `Complete artifact: ${chunk.complete ? "yes" : "no"}`,
-        "",
-        chunk.content,
-    ];
-    if (!chunk.eof) {
-        lines.push("", `... more available; continue with offset=${chunk.nextOffset}`);
-    }
-    return lines.join("\n");
 }

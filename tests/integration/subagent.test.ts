@@ -145,7 +145,6 @@ describe("synchronous subagent", () => {
             "read_file",
             "grep",
             "glob",
-            "read_tool_result",
           ]);
           expect(
             options.messages.some(

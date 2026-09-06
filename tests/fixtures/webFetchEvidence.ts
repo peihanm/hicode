@@ -35,8 +35,8 @@ await withTempProject(async cwd => {
         assert.ok(result.persisted, "long normalized body must be persisted");
         assert.equal(result.persisted.complete, true);
         assert.ok(result.modelContent.length <= store.previewChars + 1000, "persisted references must keep the shared bounded preview");
-        const tail = await executeToolResult("read_tool_result", JSON.stringify({
-            result_id: result.persisted.resultId, offset: result.persisted.byteLength - 64,
+        const tail = await executeToolResult("read_file", JSON.stringify({
+            path: result.persisted.path, offset: 1,
         }), ctx, "read-tail");
         assert.equal(tail.outcome, "ok");
         assert.match(tail.modelContent, /TAILAPICONTRACT/);

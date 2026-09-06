@@ -62,7 +62,7 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
         : `${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType} · ${task.description}`;
     const resultId = task.outputResult?.resultId;
     const output = resultId
-        ? `，完整输出可通过 read_tool_result(${resultId}) 读取`
+        ? `，完整输出见保存文件 ${JSON.stringify(task.outputResult?.path)}，可用 read_file 读取`
         : "";
     const worktree = task.kind === "agent" && task.worktree
         ? task.worktree.state === "changed"

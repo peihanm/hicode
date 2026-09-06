@@ -22,7 +22,7 @@ const inputSchema = z.object({
 
 function formatTask(task: TaskSnapshot): string {
     const result = task.outputResult
-        ? `\nResult ID: ${task.outputResult.resultId}`
+        ? `\nSaved output: ${JSON.stringify(task.outputResult.path)}`
         : "";
     const issue = task.outputIssue ? `\nIssue: ${task.outputIssue}` : "";
     if (task.kind === "shell") {
@@ -73,7 +73,7 @@ function formatTask(task: TaskSnapshot): string {
             task.worktreeDiffStat ? `Diff stat:\n${task.worktreeDiffStat}` : undefined,
             task.worktreeDiffPreview ? `Diff preview:\n${task.worktreeDiffPreview}` : undefined,
             task.worktreeDiffResult
-                ? `Diff Result ID: ${task.worktreeDiffResult.resultId}`
+                ? `Saved diff: ${JSON.stringify(task.worktreeDiffResult.path)}`
                 : undefined,
             task.worktree.state === "changed"
                 ? [

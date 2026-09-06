@@ -196,13 +196,6 @@ export function describeToolPhase(
                 activity: `Reading ${stringArg(args, "path") ?? "file"}`,
                 success: `Read ${stringArg(args, "path") ?? "file"}`,
             };
-        case "read_tool_result":
-            return {
-                kind: "inspect",
-                label: "Inspecting project",
-                activity: "Reading saved tool output",
-                success: "Read saved tool output",
-            };
         case "grep": {
             const target = stringArg(args, "pattern") ?? "pattern";
             return {
@@ -285,10 +278,6 @@ export function describeToolCall(
     switch (name) {
         case "read_file": {
             const target = stringArg(args, "path") ?? "file";
-            return {label: "Read", detail: target};
-        }
-        case "read_tool_result": {
-            const target = stringArg(args, "result_id") ?? "tool result";
             return {label: "Read", detail: target};
         }
         case "grep": {

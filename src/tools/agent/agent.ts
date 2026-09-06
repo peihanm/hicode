@@ -109,7 +109,7 @@ function formatAgentToolDescription(
         "",
         "当前可用 Agent：",
         ...agents,
-        "- fork: 根据当前父对话临时派生具名 worker，不会保存为 Agent 定义 (readonly tools: list_files, read_file, grep, read_tool_result; worktree tools: list_files, read_file, grep, edit_file, write_file, delete_file, read_tool_result)",
+        "- fork: 根据当前父对话临时派生具名 worker，不会保存为 Agent 定义 (readonly tools: list_files, read_file, grep; worktree tools: list_files, read_file, grep, edit_file, write_file, delete_file)",
     ].join("\n");
 }
 

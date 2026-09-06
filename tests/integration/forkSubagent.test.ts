@@ -49,7 +49,7 @@ describe("fork subagent", () => {
     test("Fork 只读 snapshot 引用的父 artifact，缺失结果明确失败", async () => {
         await withTempProject(async cwd => {
             const store = createTestToolResultStore(cwd, "parent");
-            const visible = await store.persistText({toolCallId: "log", toolName: "bash", content: `父${"日志".repeat(10_000)}日志全文尾部`});
+            const visible = await store.persistText({toolCallId: "log", toolName: "bash", content: `父\n${"日志\n".repeat(10_000)}日志全文尾部`});
             const hidden = await store.persistText({toolCallId: "hidden", toolName: "bash", content: "不可继承"});
             const missing = await store.persistText({toolCallId: "missing", toolName: "bash", content: "已丢失"});
             const history: Message[] = [
@@ -64,23 +64,23 @@ describe("fork subagent", () => {
             const snapshot = buildForkContextSnapshot(history, "fork");
             await store.removeArtifact(missing.resultId);
             const child = createFakeLLM([
-                () => assistantToolCall("read_tool_result", {result_id: visible.resultId, limit: 3}, "read-parent"),
+                () => assistantToolCall("read_file", {path: visible.path, limit: 1}, "read-parent"),
                 options => {
                     const result = options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-parent");
                     expect(result?.content).toContain("父");
-                    expect(result?.content).toContain("offset=3");
-                    return assistantToolCall("read_tool_result", {result_id: visible.resultId, offset: visible.byteLength - 18}, "read-tail");
+                    expect(result?.content).toContain("offset=2");
+                    return assistantToolCall("read_file", {path: visible.path, offset: 10002}, "read-tail");
                 },
                 options => {
                     expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-tail")?.content).toContain("日志全文尾部");
-                    return assistantToolCall("read_tool_result", {result_id: hidden.resultId}, "read-hidden");
+                    return assistantToolCall("read_file", {path: hidden.path}, "read-hidden");
                 },
                 options => {
-                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-hidden")?.content).toContain("not found");
-                    return assistantToolCall("read_tool_result", {result_id: missing.resultId}, "read-missing");
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-hidden")?.content).toMatch(/无权|无法验证|ENOENT/);
+                    return assistantToolCall("read_file", {path: missing.path}, "read-missing");
                 },
                 options => {
-                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-missing")?.content).toContain("not found");
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-missing")?.content).toMatch(/无权|无法验证|ENOENT/);
                     return assistantText("evidence checked");
                 },
                 () => assistantText("evidence checked"),
@@ -128,7 +128,6 @@ describe("fork subagent", () => {
                         "read_file",
                         "grep",
                         "glob",
-                        "read_tool_result",
                     ]);
                     return assistantText("frontend 已理解父上下文");
                 },
@@ -221,7 +220,6 @@ describe("fork subagent", () => {
                                 "edit_file",
                                 "write_file",
                                 "delete_file",
-                                "read_tool_result",
                             ].sort());
                         return assistantToolCall(
                             "write_file",

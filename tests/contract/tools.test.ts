@@ -36,7 +36,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(18);
+    expect(schemas).toHaveLength(17);
     expect(new Set(names).size).toBe(names.length);
     for (const tool of schemas) {
       expect(tool.type).toBe("function");
@@ -284,35 +284,6 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("read_tool_result 只能按 result id 分页读取当前 Session 结果", async () => {
-    await withTempProject(async (cwd) => {
-      const ctx = createTestContext(cwd);
-      const persisted = await ctx.toolResultStore.persistText({
-        toolCallId: "stored-call",
-        toolName: "synthetic",
-        content: "abcdefghijklmnopqrstuvwxyz",
-      });
-      const result = await executeToolResult(
-        "read_tool_result",
-        JSON.stringify({ result_id: persisted.resultId, offset: 5, limit: 6 }),
-        ctx,
-        "read-result-call"
-      );
-      expect(result.outcome).toBe("ok");
-      expect(result.modelContent).toContain("fghijk");
-      expect(result.modelContent).toContain("continue with offset=11");
-
-      const missing = await executeToolResult(
-        "read_tool_result",
-        JSON.stringify({ result_id: "tr_other-session" }),
-        ctx,
-        "missing-result-call"
-      );
-      expect(missing.outcome).toBe("failed");
-      expect(missing.modelContent).toContain("not found");
-    });
-  });
-
   test("grep 超过旧 100 条限制后保留完整可恢复结果", async () => {
     await withTempProject(async (cwd) => {
       const lines = Array.from(
@@ -330,17 +301,7 @@ describe("tool registry contract", () => {
       expect(result.persisted?.complete).toBe(true);
       expect(result.modelContent).toContain("共 320 条匹配");
 
-      let offset = 0;
-      let recovered = "";
-      while (offset < result.persisted!.byteLength) {
-        const chunk = await ctx.toolResultStore.readRange({
-          resultId: result.persisted!.resultId,
-          offset,
-          limit: 16 * 1024,
-        });
-        recovered += chunk.content;
-        offset = chunk.nextOffset;
-      }
+      const recovered = await executeTool("read_file", JSON.stringify({path: result.persisted!.path}), ctx);
       expect(recovered).toContain("MATCH-100");
       expect(recovered).toContain("MATCH-319");
     });

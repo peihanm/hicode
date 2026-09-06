@@ -150,7 +150,7 @@ function TaskNotificationView({
                 {thread.resultId && (
                     <ResultLine
                         marker=""
-                        line={`Full output: read_tool_result(${thread.resultId})`}
+                        line="完整输出见任务详情"
                         color={COLORS.dim}
                     />
                 )}

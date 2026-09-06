@@ -13,7 +13,6 @@ describe("agent definitions", () => {
       "glob",
       "read_file",
       "grep",
-      "read_tool_result",
     ]);
     expect(explore.allowedTools).not.toContain("agent");
     expect(explore.allowedTools).not.toContain("bash");
@@ -33,7 +32,6 @@ describe("agent definitions", () => {
       "edit_file",
       "write_file",
       "delete_file",
-      "read_tool_result",
     ]);
     expect(general.allowedTools).not.toContain("bash");
     expect(general.allowedTools).not.toContain("agent");

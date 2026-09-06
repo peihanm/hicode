@@ -10,7 +10,6 @@ export const EXPLORE_AGENT: AgentDefinition = {
         "glob",
         "read_file",
         "grep",
-        "read_tool_result",
     ],
     model: "fast",
     systemPrompt: `你是 Pillar 的只读代码探索子 Agent。你的职责是快速、准确地定位代码、理解调用关系并向父 Agent 返回证据充分的报告。

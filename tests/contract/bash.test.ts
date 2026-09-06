@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { appendFile, mkdir, readdir, realpath } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, realpath } from "node:fs/promises";
 import { executeTool, executeToolResult } from "../helpers/executeTool.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -591,13 +591,9 @@ describe("bash tool contract", () => {
       expect(result.modelContent.length).toBeLessThan(5_000);
       expect(result.shellExecution).toEqual({command: "node -e \"process.stdout.write('x'.repeat(40000))\"", cwd: await realpath(cwd), sandboxPermissions: "use_default"});
       expect(result.persisted?.complete).toBe(true);
-      const chunk = await ctx.toolResultStore.readRange({
-        resultId: result.persisted!.resultId,
-        offset: 0,
-        limit: 4096,
-      });
-      expect(chunk.content).toBe("x".repeat(4096));
-      expect(chunk.byteLength).toBe(40_000);
+      const saved = await readFile(result.persisted!.path, "utf8");
+      expect(saved).toBe("x".repeat(40_000));
+
     });
   });
 

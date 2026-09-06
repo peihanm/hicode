@@ -35,7 +35,7 @@ describe("large tool result integration", () => {
       expect(bashCalls).toHaveLength(1);
     });
   });
-  test("模型只收到引用并能通过 read_tool_result 恢复内容", async () => {
+  test("模型只收到引用并能通过 read_file 恢复内容", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall(
@@ -50,8 +50,8 @@ describe("large tool result integration", () => {
           expect(result?.content).toContain("<persisted-output>");
           expect((result?.content ?? "").length).toBeLessThan(5_000);
           return assistantToolCall(
-            "read_tool_result",
-            { result_id: "tr_large-1", offset: 0, limit: 100 },
+            "read_file",
+            { path: JSON.parse((result?.content ?? "").match(/^Full output saved at: (.+)$/m)![1]!), limit: 1 },
             "read-1"
           );
         },
@@ -60,7 +60,7 @@ describe("large tool result integration", () => {
             (message) => message.role === "tool" && message.tool_call_id === "read-1"
           );
           expect(result?.content).toContain("z".repeat(100));
-          expect(result?.content).toContain("continue with offset=100");
+          expect(result?.content).toContain("Saved output:");
           return assistantText("恢复成功");
         },
       ]);

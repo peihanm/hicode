@@ -13,7 +13,6 @@ import {listFilesTool} from "./listFiles/listFiles.js";
 import {enterPlanModeTool} from "./plan/enterPlanMode.js";
 import {exitPlanModeTool} from "./plan/exitPlanMode.js";
 import {readFileTool} from "./readFile/readFile.js";
-import {readToolResultTool} from "./readToolResult/readToolResult.js";
 import {skillTool} from "./skill/skill.js";
 import {taskTool} from "./task/task.js";
 import {todoWriteTool} from "./todoWrite/todoWrite.js";
@@ -57,7 +56,6 @@ function createBuiltinTools(): Tool[] {
         enterPlanModeTool,
         exitPlanModeTool,
         skillTool,
-        readToolResultTool,
         createAgentTool(BUILTIN_SUBAGENT_REGISTRY),
         taskTool,
         webFetchTool,

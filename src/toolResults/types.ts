@@ -6,8 +6,6 @@ export const DEFAULT_DISPLAY_CHARS = 10_000;
 export const MAX_TOOL_RESULTS_PER_BATCH_CHARS = 200_000;
 export const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_MAX_SESSION_ARTIFACT_BYTES = 512 * 1024 * 1024;
-export const DEFAULT_RESULT_READ_BYTES = 16 * 1024;
-export const MAX_RESULT_READ_BYTES = 64 * 1024;
 
 export interface PersistedToolResult {
     resultId: string;
@@ -31,16 +29,6 @@ export interface PersistedBinaryArtifact {
     complete: boolean;
     encoding: "binary";
     mimeType: string;
-}
-
-export interface ToolResultChunk {
-    resultId: string;
-    content: string;
-    offset: number;
-    nextOffset: number;
-    byteLength: number;
-    eof: boolean;
-    complete: boolean;
 }
 
 export type ToolOutcome = "ok" | "failed" | "denied" | "interrupted";
