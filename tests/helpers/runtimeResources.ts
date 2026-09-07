@@ -145,6 +145,7 @@ export function createTestRuntimeResources(
       getModelTarget: () => primaryModel.target,
       getModelSource: (source) => settings.sources[source],
       shellRunner,
+      environment: testChildEnvironment,
       settings: settings.memory,
     });
   const agentRuntime =

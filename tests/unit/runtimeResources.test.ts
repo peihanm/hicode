@@ -10,7 +10,6 @@ import {
   createTestSettings,
 } from "../helpers/runtimeResources.js";
 import type { AgentDefinition } from "../../src/subagents/index.js";
-import type { MemoryExtractor } from "../../src/memory/index.js";
 import { createTestMemoryRuntime } from "../helpers/memory.js";
 
 const loadNoInstructions = async () => EMPTY_PROJECT_INSTRUCTIONS;
@@ -118,15 +117,8 @@ describe("RootRuntimeResources", () => {
 
   test("Memory 仅装配给 Root，并明确拒绝自定义子 Agent 请求", async () => {
     await withTempProject(async (cwd) => {
-      const extractor: MemoryExtractor = {
-        async extract() {
-        },
-      };
-      const directory = `${cwd}/memory`;
       const memory = createTestMemoryRuntime(cwd, {
-        directory,
         autoExtract: true,
-        extractor,
       });
       const resources = await createRootRuntimeResources(
         {
@@ -156,7 +148,7 @@ describe("RootRuntimeResources", () => {
       );
 
       expect(resources.toolRuntime.toolNames).not.toContain("memory");
-      expect(resources.memoryFiles).toBeDefined();
+      expect(resources.memory.enabled).toBe(true);
       expect(resources.subagents.has("memory-reader")).toBe(false);
       expect(resources.subagents.issues.some((issue) =>
         issue.message.includes("当前 Runtime 不存在工具: memory")

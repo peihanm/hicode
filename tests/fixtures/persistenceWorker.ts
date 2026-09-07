@@ -3,7 +3,7 @@ import { addToAllowList, type PermissionRules } from "../../src/permissions/inde
 import { saveSessionSnapshot } from "../../src/session/index.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { join } from "node:path";
-import { MemoryStore } from "../../src/memory/index.js";
+import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
 const [mode, cwd, prefix, countValue, readyPath, barrierPath] = process.argv.slice(2);
@@ -70,16 +70,10 @@ if (mode === "session") {
   });
   await writeFile(`${readyPath}.result.json`, JSON.stringify(result), "utf8");
 } else if (mode === "memory") {
-  const store = new MemoryStore(join(cwd, "memory"));
-  for (let index = 0; index < count; index += 1) {
-    await store.upsert({
-      key: `${prefix}-topic-${index}`,
-      name: `${prefix} topic ${index}`,
-      description: `memory written by ${prefix}`,
-      type: "project",
-      source: "explicit",
-      content: `${prefix} content ${index}`,
-    });
+  const store = new MemoryPublicationStore(storage, cwd);
+  for (let index = 0; index < count; index++) {
+    await store.acceptNote(`${prefix}-topic-${index}`, {operation:"remember", type:"project", content:`${prefix} content ${index}`},
+      {kind:"explicit", sessionId:prefix, turnId:"turn", toolCallId:`write-${index}`}, null, new AbortController().signal);
   }
 } else {
   throw new Error(`unknown persistence worker mode: ${mode}`);

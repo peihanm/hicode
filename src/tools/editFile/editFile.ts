@@ -177,14 +177,9 @@ export const editFileTool: Tool<typeof inputSchema> = {
         }
 
         if (ctx.memoryFiles?.classify(absPath)) {
-            await ctx.memoryFiles.write(absPath, newContent, originalContent);
-            ctx.fileState.recordWrite({
-                path: absPath,
-                content: newContent,
-                beforeContent: originalContent,
-                edits,
-            });
-            return `Memory 文件已修改: ${path}`;
+            await ctx.memoryFiles.write(absPath, newContent, originalContent, invocation.toolCallId);
+            ctx.fileState.forget(absPath);
+            return `Memory note 已记录，立即参与召回，待整理: ${path}。后续修改前重新读取规范化 note。`;
         }
 
         const change = createFileChange({

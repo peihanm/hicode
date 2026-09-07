@@ -9,7 +9,7 @@ export const memoryCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "memory",
     description: "查看和维护跨 Session 的持久 Memory",
-    argumentHint: "[list [type] | show <key> | forget <key> | rebuild]",
+    argumentHint: "[list [type] | show <key> | forget <key> | maintain]",
     async execute(args, context) {
         const memory = context.memory;
         if (!memory) {
@@ -23,7 +23,7 @@ export const memoryCommand: SlashCommand = {
         if (rest.length > 0) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "用法: /memory [list [type] | show <key> | forget <key> | rebuild]",
+                content: "用法: /memory [list [type] | show <key> | forget <key> | maintain]",
             });
             return;
         }
@@ -35,6 +35,7 @@ export const memoryCommand: SlashCommand = {
                 `Auto extract: ${status.autoExtract ? "enabled" : "disabled"}`,
                 `Directory: ${status.directory}`,
                 `Entries: user ${status.counts.user} · feedback ${status.counts.feedback} · project ${status.counts.project} · reference ${status.counts.reference}`,
+                `Pending notes: ${status.pending} · Published topics: ${status.published} · Maintaining: ${status.maintaining ? "yes" : "no"}`,
             ];
             if (status.issues.length > 0) {
                 lines.push(
@@ -101,7 +102,10 @@ export const memoryCommand: SlashCommand = {
                 await context.onEvent({type: "assistant_text", content: "用法: /memory forget <key>"});
                 return;
             }
-            const change = await memory.forget(value);
+            if (context.ctx.permissionMode === "readOnly" || context.ctx.collaborationMode === "plan") {
+                await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能删除 Memory。"}); return;
+            }
+            const change = await memory.forget(value, context.ctx.signal);
             if (change) {
                 await context.onEvent({
                     type: "memory_update",
@@ -121,18 +125,22 @@ export const memoryCommand: SlashCommand = {
             return;
         }
 
-        if (action === "rebuild") {
-            const scan = await memory.rebuildIndex();
+        if (action === "maintain") {
+            if (context.ctx.permissionMode === "readOnly" || context.ctx.collaborationMode === "plan") {
+                await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能整理 Memory。"}); return;
+            }
+            const result = await memory.maintain({sessionId: context.ctx.sessionId, signal: context.ctx.signal});
             await context.onEvent({
                 type: "assistant_text",
-                content: `Memory index 已重建：${scan.entries.length} entries，${scan.issues.length} issues。`,
+                content: result.status === "published" ? `Memory 已整理发布：${result.topics} 个主题。`
+                    : result.status === "busy" ? "当前已有 Memory 整理任务。" : "没有待整理 Memory；未调用模型。",
             });
             return;
         }
 
         await context.onEvent({
             type: "assistant_text",
-            content: "用法: /memory [list [type] | show <key> | forget <key> | rebuild]",
+            content: "用法: /memory [list [type] | show <key> | forget <key> | maintain]",
         });
     },
 };

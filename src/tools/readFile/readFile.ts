@@ -7,6 +7,7 @@ import {normalizeFileText} from "../shared/fileState.js";
 import {resolveToolPath} from "../shared/paths.js";
 import {readSavedOutput} from "./savedOutput.js";
 import {resolveSessionArchiveFile} from "../../session/archiveAccess.js";
+import {isMemoryStoragePath} from "../../memory/publicationAccess.js";
 
 const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 2000;
@@ -56,6 +57,10 @@ export const readFileTool: Tool<typeof inputSchema> = {
     isConcurrencySafe: () => true,
     execute: async ({path, offset, limit}: Input, ctx, invocation) => {
         const absPath = resolveToolPath(ctx.cwd, path);
+        if (isMemoryStoragePath(ctx.storage, absPath)) {
+            if (!ctx.memoryFiles) throw new Error("当前 Agent 没有 Memory 文件能力");
+            await ctx.memoryFiles.prepare(absPath, "read_file");
+        }
         const archive = await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, absPath);
         if (archive) return readSavedOutput(archive, offset ?? 1, limit ?? DEFAULT_LIMIT, ctx.signal, "archive");
         const saved = await ctx.toolResultFiles.resolveFile(absPath);

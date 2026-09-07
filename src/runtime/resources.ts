@@ -30,7 +30,6 @@ import type {AgentFileSource} from "../subagents/types.js";
 import type {HostAgentContribution} from "./rootContributions.js";
 import {createHookPromptExecutor, createHookRuntime, type HookRuntime, type HookTrustRequest,} from "../hooks/index.js";
 import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
-import type {MemoryFileAccess} from "../memory/types.js";
 import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/index.js";
 import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
@@ -67,7 +66,6 @@ export interface RootRuntimeResources {
     readonly shellRunner: ShellRunnerLike;
     readonly sandbox: SandboxRuntimeLike;
     readonly memory: MemoryRuntimeLike;
-    readonly memoryFiles?: MemoryFileAccess;
     readonly gitWorkspace: GitWorkspaceRuntimeLike;
 
     holdHookConfiguration(): () => void;
@@ -230,6 +228,7 @@ export function createRootRuntimeResourcesFactory(
                 getModelTarget: auxiliaryModelTarget,
                 getModelSource: (source) => settings.sources[source],
                 shellRunner,
+                environment: childEnvironment,
                 settings: settings.memory,
             });
             memory = createdMemory;
@@ -379,9 +378,6 @@ export function createRootRuntimeResourcesFactory(
                 shellRunner,
                 sandbox,
                 memory: createdMemory,
-                memoryFiles: createdMemory.enabled
-                    ? createdMemory.fileAccess("explicit")
-                    : undefined,
                 fileCommits: new FileCommitCoordinator(),
                 gitWorkspace,
                 beginShutdown: closeOwnedResources.beginShutdown,

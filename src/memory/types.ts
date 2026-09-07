@@ -5,13 +5,11 @@ export const MEMORY_TYPES = [
     "reference",
 ] as const;
 
-export const MAX_MEMORY_CONTENT_BYTES = 32 * 1024;
-
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 export type MemorySource = "explicit" | "automatic";
 
 export interface MemoryEntry {
-    version: 1;
+    version: 2;
     key: string;
     name: string;
     description: string;
@@ -33,15 +31,6 @@ export interface MemoryScanResult {
     issues: MemoryIssue[];
 }
 
-export interface MemoryUpsertInput {
-    key: string;
-    name: string;
-    description: string;
-    type: MemoryType;
-    content: string;
-    source: MemorySource;
-}
-
 export interface MemoryChange {
     action: "created" | "updated" | "forgotten";
     key: string;
@@ -53,33 +42,15 @@ export interface MemoryContextResult {
     ignoredForTurn: boolean;
 }
 
-export type MemoryManagedPath =
-    | {kind: "index"; path: string}
-    | {kind: "topic"; path: string; key: string};
-
-/** Root-only capability used by standard file tools for managed Memory paths. */
-export interface MemoryFileAccess {
-    readonly directory: string;
-
-    classify(path: string): MemoryManagedPath | undefined;
-
-    validateWrite(path: string, content: string): void;
-
-    write(
-        path: string,
-        content: string,
-        expectedContent: string | null
-    ): Promise<MemoryChange | undefined>;
-
-    delete(
-        path: string,
-        expectedContent: string
-    ): Promise<MemoryChange | undefined>;
-}
+export type MemoryManagedPath = import("./publicationAccess.js").PublicationPath;
+export type MemoryFileAccess = import("./publicationAccess.js").PublicationFileAccess;
 
 export interface MemoryRuntimeStatus {
     enabled: boolean;
     autoExtract: boolean;
+    pending: number;
+    published: number;
+    maintaining: boolean;
     directory: string;
     counts: Record<MemoryType, number>;
     issues: MemoryIssue[];

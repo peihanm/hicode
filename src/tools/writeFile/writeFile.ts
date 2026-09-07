@@ -86,14 +86,11 @@ export const writeFileTool: Tool<
             await ctx.memoryFiles.write(
                 absPath,
                 content,
-                exists ? oldContent : null
+                exists ? oldContent : null,
+                invocation.toolCallId
             );
-            ctx.fileState.recordWrite({
-                path: absPath,
-                content,
-                modelKnowsWholeFile: true,
-            });
-            return `Memory 文件已写入: ${path}`;
+            ctx.fileState.forget(absPath);
+            return `Memory note 已记录，立即参与召回，待整理: ${path}。后续修改前重新读取规范化 note；无需维护索引。`;
         }
         const change = createFileChange({
             path: displayToolPath(ctx.cwd, absPath),

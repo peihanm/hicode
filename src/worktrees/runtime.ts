@@ -9,6 +9,7 @@ import {
 } from "../git/process.js";
 import {readGitRepositorySnapshot} from "../git/status.js";
 import {getProjectStorageDirectory, type PillarStorageLayout} from "../persistence/index.js";
+import {getMemoryWorkspacePaths, getProjectMemoryDirectory} from "../persistence/layout.js";
 import {loadProjectInstructions} from "../prompt/instructions.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
@@ -189,6 +190,7 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
             compactState: {...parentContext.compactState},
             sessionCompaction: undefined,
             sessionArchives: undefined,
+            memoryFiles: undefined,
             fileState: createFileStateTracker(),
             fileCheckpoints: createDisabledFileCheckpointRuntime(),
             gitSession: undefined,
@@ -336,4 +338,12 @@ export function createWorktreeRuntime(
         manifests,
         createGitCommandRunner(environment)
     );
+}
+
+/** Memory has its own repository and manifest owner; it never impersonates the user's checkout. */
+export function createMemoryWorktreeRuntime(input: {
+    storage: PillarStorageLayout; cwd: string; leaseId: string; runGit: GitCommandRunner;
+}): WorktreeRuntimeLike {
+    const paths = getMemoryWorkspacePaths(getProjectMemoryDirectory(input.storage, input.cwd), input.leaseId);
+    return new WorktreeRuntime(paths.repository, new WorktreeManifestStore(paths.manifests), input.runGit);
 }

@@ -22,6 +22,7 @@ import {parsePermissionRule} from "./rules.js";
 import {directoryOperationForTool} from "./directoryAccess.js";
 import {resolveToolPath} from "../tools/shared/paths.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
+import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
 
 /**
  * 用当前工具的真实权限 matcher 判断单条规则。Hook `if` 复用该
@@ -61,9 +62,17 @@ async function resolvePermissionInner(
 ): Promise<PermissionResult> {
     const mode = ctx.permissionMode;
     let archiveRead = false;
+    let memoryAccess = false;
     const archiveInputPath = toolPathInput(tool.name, input);
     if (archiveInputPath !== undefined) {
         const path = resolveToolPath(ctx.cwd, archiveInputPath);
+        try {
+            if (await checkMemoryStoragePath(ctx.storage, path)) {
+                if (!ctx.memoryFiles) return {behavior: "deny", message: "当前 Agent 没有 Memory 文件能力"};
+                await ctx.memoryFiles.prepare(path, tool.name);
+                memoryAccess = true;
+            }
+        } catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
         let managed: boolean;
         try {managed = await checkSessionArchivePath(ctx.storage, path);}
         catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
@@ -90,7 +99,7 @@ async function resolvePermissionInner(
                 ctx.cwd,
                 path
             );
-            if (!scoped.ok && !savedOutput && !archiveRead) {
+            if (!scoped.ok && !savedOutput && !archiveRead && !memoryAccess) {
                 return {behavior: "deny", message: scoped.message};
             }
         }

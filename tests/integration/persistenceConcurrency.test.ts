@@ -5,7 +5,8 @@ import { listSessionIndex } from "../../src/session/index.js";
 import {getArtifactKey} from "../../src/toolResults/paths.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
-import { MemoryStore } from "../../src/memory/index.js";
+import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
+import {createTestStorage} from "../helpers/tempProject.js";
 
 const workerPath = join(import.meta.dir, "..", "fixtures", "persistenceWorker.ts");
 
@@ -109,19 +110,15 @@ describe("cross-process persistence", () => {
   test("两个进程同时写 Memory 时主题和派生索引不丢条目", async () => {
     await withTempProject(async (cwd) => {
       await runConcurrentWorkers(cwd, "memory", 8);
-      const scan = await new MemoryStore(join(cwd, "memory")).list();
-      expect(scan.issues).toEqual([]);
-      expect(scan.entries.map((entry) => entry.key).sort()).toEqual(
+      const scan = new MemoryPublicationStore(createTestStorage(cwd),cwd).snapshot();
+      expect(scan.sources.map((entry) => entry.key).sort()).toEqual(
         ["a", "b"]
           .flatMap((prefix) =>
             Array.from({ length: 8 }, (_, index) => `${prefix}-topic-${index}`)
           )
           .sort()
       );
-      const index = await readFile(join(cwd, "memory", "MEMORY.md"), "utf8");
-      for (const entry of scan.entries) {
-        expect(index).toContain(`(${entry.key}.md)`);
-      }
+      expect(scan.revision).toBe(16);
     });
   });
 

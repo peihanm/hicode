@@ -265,6 +265,7 @@ export function createRootSessionRuntime({
                 host,
             });
             ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
+            ctx.memoryFiles = resources.memory.enabled ? resources.memory.fileAccess({sessionId: seed.sessionId, turnId: ctx.turnId, signal}) : undefined;
             ctx.sessionCompaction = {
                 prepare: source => prepareSessionArchive(resources.storage, resources.cwd, seed.sessionId, source),
                 async commit(candidate, nextState, draft) {

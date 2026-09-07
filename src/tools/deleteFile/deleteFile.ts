@@ -40,7 +40,7 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
         }
         const memoryPath = ctx.memoryFiles?.classify(absPath);
         if (memoryPath) {
-            return memoryPath.kind === "topic"
+            return memoryPath.kind !== "index"
                 ? {behavior: "allow" as const}
                 : {behavior: "deny" as const, message: "MEMORY.md 是固定入口，不能删除"};
         }
@@ -55,10 +55,10 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
 
         const memoryPath = ctx.memoryFiles?.classify(absPath);
         if (memoryPath) {
-            if (memoryPath.kind !== "topic") return {content: "删除取消: MEMORY.md 不能删除", outcome: "failed" as const};
+            if (memoryPath.kind === "index") return {content: "删除取消: MEMORY.md 不能删除", outcome: "failed" as const};
             await ctx.memoryFiles!.delete(absPath, snapshot.content.toString("utf8"));
             ctx.fileState.forget(absPath);
-            return `Memory 主题已删除: ${path}`;
+            return `Memory 内容已撤销: ${path}`;
         }
 
         const change = createByteFileChange({

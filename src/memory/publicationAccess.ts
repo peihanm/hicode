@@ -1,0 +1,110 @@
+import {basename, dirname, relative, resolve} from "node:path";
+import {realpath} from "node:fs/promises";
+import {parse as parseYaml} from "yaml";
+import type {PillarStorageLayout} from "../persistence/layout.js";
+import {memoryKeySchema} from "./schema.js";
+import {memoryNoteSchema, type MemoryNote} from "./publicationSchema.js";
+import type {MemoryPublicationStore} from "./publicationStore.js";
+import type {MemoryChange} from "./types.js";
+
+export type PublicationPath = {kind: "index"; path: string} | {kind: "topic" | "note"; key: string; path: string};
+
+export interface PublicationFileAccess {
+    readonly directory: string;
+    classify(path: string): PublicationPath | undefined;
+    prepare(path: string, toolName: string): Promise<void>;
+    validateWrite(path: string, content: string): void;
+    write(path: string, content: string, expectedContent: string | null, toolCallId: string): Promise<MemoryChange>;
+    delete(path: string, expectedContent: string): Promise<MemoryChange | undefined>;
+}
+
+export function classifyPublicationPath(directory: string, inputPath: string): PublicationPath | undefined {
+    const path = resolve(inputPath);
+    const rel = relative(resolve(directory), path);
+    if (rel === "views/MEMORY.md") return {kind: "index", path};
+    const match = /^(views|inbox)\/([^/]+)\.md$/.exec(rel);
+    const key = memoryKeySchema.safeParse(match?.[2]);
+    return match && key.success ? {kind: match[1] === "inbox" ? "note" : "topic", key: key.data, path} : undefined;
+}
+
+export function parseMemoryNote(raw: string): MemoryNote {
+    if (Buffer.byteLength(raw) > 9000) throw new Error("Memory note 超过 9000 bytes");
+    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(raw);
+    if (!match) throw new Error("Memory note 需要 YAML 头 operation: remember 或 correct、type: user/feedback/project/reference，以及头部之后的正文");
+    let header: unknown;
+    try {header = parseYaml(match[1]!);} catch {throw new Error("Memory note YAML 无效");}
+    if (!header || typeof header !== "object" || Array.isArray(header)) throw new Error("Memory note 头必须是对象");
+    const result = memoryNoteSchema.safeParse({...header, content: match[2]});
+    if (!result.success) throw new Error(`Memory note 格式无效: ${result.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ")}。不需要身份、时间或索引字段。`);
+    return result.data;
+}
+
+export function isMemoryStoragePath(storage: PillarStorageLayout, path: string): boolean {
+    const rel = relative(storage.projectsRoot, resolve(path));
+    return !rel.startsWith("..") && /^[^/]+\/memory(?:\/|$)/.test(rel);
+}
+
+export async function checkMemoryStoragePath(storage: PillarStorageLayout, path: string): Promise<boolean> {
+    if (isMemoryStoragePath(storage, path)) return true;
+    let probe = resolve(path);
+    const missing: string[] = [];
+    for (;;) {
+        try {
+            const canonical = resolve(await realpath(probe), ...missing);
+            if (!/\/memory(?:\/|$)/.test(canonical)) return false;
+            const root = await realpath(storage.projectsRoot).catch(error => {
+                if (error?.code === "ENOENT") return null;
+                throw error;
+            });
+            if (root === null) return false;
+            const rel = relative(root, canonical);
+            if (!rel.startsWith("..") && /^[^/]+\/memory(?:\/|$)/.test(rel)) throw new Error("Memory 禁止路径别名访问，请使用框架提供的路径");
+            return false;
+        } catch (error) {
+            if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+            const parent = dirname(probe);
+            if (parent === probe || missing.length >= 256) throw new Error("无法验证 Memory 路径");
+            missing.unshift(basename(probe)); probe = parent;
+        }
+    }
+}
+
+export function createPublicationFileAccess(store: MemoryPublicationStore, owner: {sessionId: string; turnId: string; signal: AbortSignal}): PublicationFileAccess {
+    const requirePath = (path: string) => {
+        const managed = classifyPublicationPath(store.directory, path);
+        if (!managed) throw new Error("Memory 路径不属于当前项目的公开 note/主题视图");
+        return managed;
+    };
+    return {
+        directory: store.directory,
+        classify: path => classifyPublicationPath(store.directory, path),
+        async prepare(path, toolName) {
+            const managed = requirePath(path);
+            const reading = toolName === "read_file" || toolName === "grep";
+            const writingNote = managed.kind === "note" && (toolName === "write_file" || toolName === "edit_file");
+            const forgetting = managed.kind !== "index" && toolName === "delete_file";
+            if (!reading && !writingNote && !forgetting) throw new Error("Memory 正式内容只读；记住/纠正写 inbox note，忘记可删除已读取主题");
+            const view = await store.prepareView(managed);
+            if (!view && !writingNote) throw new Error("Memory 内容不存在或已撤销");
+        },
+        validateWrite(path, content) {
+            if (requirePath(path).kind !== "note") throw new Error("请通过 inbox note 提交 Memory，不直接修改正式主题或索引");
+            parseMemoryNote(content);
+        },
+        async write(path, content, expectedContent, toolCallId) {
+            const managed = requirePath(path);
+            if (managed.kind !== "note") throw new Error("只能写 Memory note");
+            const note = parseMemoryNote(content);
+            await store.acceptNote(managed.key, note, {kind: "explicit", sessionId: owner.sessionId, turnId: owner.turnId, toolCallId}, expectedContent, owner.signal);
+            return {action: expectedContent === null ? "created" : "updated", key: managed.key, memoryType: note.type};
+        },
+        async delete(path, expectedContent) {
+            const managed = requirePath(path);
+            if (managed.kind === "index") throw new Error("不能删除 Memory 索引");
+            const snapshot = store.snapshot();
+            const type = snapshot.sources.findLast(source => source.key === managed.key)?.type ?? snapshot.topics.find(topic => topic.key === managed.key)?.type;
+            const removed = await store.forget(managed.key, owner.signal, {kind: managed.kind, content: expectedContent});
+            return removed && type ? {action: "forgotten", key: managed.key, memoryType: type} : undefined;
+        },
+    };
+}

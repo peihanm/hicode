@@ -1,24 +1,15 @@
 import {describe, expect, test} from "bun:test";
-import {join} from "node:path";
 import {createSlashCommandProcessor} from "../../src/slash/process.js";
 import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import {createTestMemoryRuntime} from "../helpers/memory.js";
+import {createTestMemoryRuntime, remember} from "../helpers/memory.js";
 
 describe("/memory slash command", () => {
     test("显示状态、读取并精确遗忘主题", async () => {
         await withTempProject(async (cwd) => {
-            const directory = join(cwd, "memory");
-            const memory = createTestMemoryRuntime(cwd, {directory});
-            await memory.upsert({
-                key: "user-response-style",
-                name: "回答风格",
-                description: "用户喜欢简洁回答",
-                type: "user",
-                source: "explicit",
-                content: "直接回答，不重复总结。",
-            });
+            const memory = createTestMemoryRuntime(cwd);
+            await remember(memory, "user-response-style", "直接回答，不重复总结。");
             const processSlashCommand = createSlashCommandProcessor({
                 compactHistory: async ({preTokenCount}) => ({
                     compacted: false,
@@ -52,17 +43,8 @@ describe("/memory slash command", () => {
 
     test("超长 Slash 文本结果在进入 UI 前被截断", async () => {
         await withTempProject(async (cwd) => {
-            const memory = createTestMemoryRuntime(cwd, {
-                directory: join(cwd, "memory"),
-            });
-            await memory.upsert({
-                key: "project-large-note",
-                name: "大笔记",
-                description: "输出边界",
-                type: "project",
-                source: "explicit",
-                content: "短正文",
-            });
+            const memory = createTestMemoryRuntime(cwd);
+            await remember(memory, "project-large-note", "短正文");
             const entry = await memory.read("project-large-note");
             if (!entry) throw new Error("fixture memory missing");
             memory.read = async () => ({

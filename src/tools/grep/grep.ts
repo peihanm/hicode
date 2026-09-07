@@ -1,3 +1,4 @@
+import {checkMemoryStoragePath} from "../../memory/publicationAccess.js";
 import {z} from "zod";
 import {appendFile, open} from "node:fs/promises";
 import {constants} from "node:fs";
@@ -189,6 +190,10 @@ export const grepTool: Tool<typeof inputSchema> = {
 
         const searchRoot = resolveToolPath(ctx.cwd, path);
         await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, searchRoot);
+        if (await checkMemoryStoragePath(ctx.storage, searchRoot)) {
+            if (!ctx.memoryFiles) throw new Error("当前 Agent 无 Memory 读取能力");
+            await ctx.memoryFiles.prepare(searchRoot, "grep");
+        }
         const matcher = glob ? createPathMatcher(glob, true) : undefined;
         const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
             includeHidden: include_hidden, includeIgnored: include_ignored,
@@ -260,6 +265,10 @@ export const grepTool: Tool<typeof inputSchema> = {
             for await (const file of discovery.files) {
                 throwIfTurnAborted(ctx.signal);
                 await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, file);
+                if (await checkMemoryStoragePath(ctx.storage, file)) {
+                    if (!ctx.memoryFiles?.classify(file)) { skippedCount++; continue; }
+                    await ctx.memoryFiles.prepare(file, "grep");
+                }
                 if (matcher && !matcher(relative(searchRoot, file) || basename(file))) continue;
                 if (!matchesFileType(file, type)) continue;
                 if (scannedFiles >= fileLimit || scannedBytes >= byteLimit) { searchIncomplete = true; break; }

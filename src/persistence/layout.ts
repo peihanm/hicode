@@ -113,3 +113,29 @@ export function getSessionRestorePath(storage: PillarStorageLayout, cwd: string,
 export function getHookTrustPath(storage: PillarStorageLayout): string {
     return join(storage.pillarHome, "trusted-projects.json");
 }
+
+export function getProjectMemoryDirectory(storage: PillarStorageLayout, cwd: string): string {
+    return join(getProjectStorageDirectory(storage, cwd), "memory");
+}
+
+export function getMemoryPublicationPath(directory: string): string {
+    return join(directory, "publication.json");
+}
+
+export function getMemoryViewsDirectory(directory: string): string {
+    return join(directory, "views");
+}
+
+export function getMemoryInboxDirectory(directory: string): string {
+    return join(directory, "inbox");
+}
+
+export function getMemoryWorkspacesDirectory(directory: string): string {
+    return join(directory, "workspaces");
+}
+
+export function getMemoryWorkspacePaths(directory: string, leaseId: string): {root: string; repository: string; manifests: string; runtime: string} {
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(leaseId)) throw new Error("Memory workspace ID 无效");
+    const root = join(getMemoryWorkspacesDirectory(directory), leaseId);
+    return {root, repository: join(root, "repository"), manifests: join(root, "manifests"), runtime: join(root, "runtime")};
+}
