@@ -54,9 +54,9 @@ export function createToolRuntime(
             return discovery.getVisibleSchemas();
         },
         isConcurrencySafe(name, argsJson) {
-            // Hooks can change arguments or produce their own side effects. Keep the
-            // whole invocation serial without running hooks twice during preparation.
-            if (options.hooks?.enabled) return false;
+            // Candidate hooks may rewrite input or change files. Match names only:
+            // evaluating conditions here would race rewrites and consume once twice.
+            if (options.hooks?.hasToolHooks(name)) return false;
             if (!discovery.isExposed(name)) return false;
             return isToolConcurrencySafe(runtimeMap, name, argsJson);
         },

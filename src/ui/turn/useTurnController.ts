@@ -157,7 +157,8 @@ export function useTurnController({
         const startSessionHooks = (): Promise<HookBatchResult> => {
             sessionStartPromiseRef.current ??= rootSession.runSessionStart(
                 initialSession ? "resume" : "startup",
-                sessionHookControllerRef.current!.signal
+                sessionHookControllerRef.current!.signal,
+                eventStore.handleEvent
             ).then((result) => {
                 recordHookIssues(result);
                 sessionStartContextsRef.current = formatHookContext(
@@ -400,7 +401,7 @@ export function useTurnController({
                 await turnController.waitForSettled();
                 sessionHookControllerRef.current?.abort("shutdown");
                 await sessionStartPromiseRef.current?.catch(() => undefined);
-                await rootSession.runSessionEnd("shutdown")
+                await rootSession.runSessionEnd("shutdown", eventStore.handleEvent)
                     .catch(() => undefined);
                 await persistSnapshot();
                 await sessionQueue.drain();

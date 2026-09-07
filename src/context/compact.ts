@@ -1,3 +1,4 @@
+import {formatHookContext} from "../hooks/index.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {ToolContext} from "../tools/types.js";
 import {getAutoCompactThreshold} from "./window.js";
@@ -114,6 +115,9 @@ async function compactHistoryCore({
         };
     }
 
+    const releaseHookConfiguration = ctx.holdHookConfiguration?.();
+    let attempted = false;
+    let postDispatched = false;
     try {
         const contextBlocks = [...getUserContextBlocks(ctx.skills, ctx.instructions), ...additionalUserContextBlocks];
         const fixedTokens = tokenCountWithEstimation(buildInvokeMessages([system, {role: "user", content: ""}], contextBlocks), tools);
@@ -124,6 +128,10 @@ async function compactHistoryCore({
             throw new Error("固定上下文与最新用户任务无法容纳压缩摘要；请缩短输入、指令或工具范围，原历史已保留");
         }
         const actualPreTokens = tokenCountWithEstimation(buildInvokeMessages(history, contextBlocks), tools);
+        attempted = true;
+        const preHook = await ctx.runHook?.({hook_event_name: "PreCompact", session_id: ctx.sessionId,
+            turn_id: ctx.turnId, trigger, token_count: actualPreTokens, instructions: customInstructions});
+        throwIfTurnAborted(ctx.signal);
         const summary = await generateSummary({
             system,
             conversation: history.slice(1),
@@ -131,7 +139,8 @@ async function compactHistoryCore({
             storage: ctx.storage,
             cwd: ctx.cwd,
             model: ctx.model,
-            customInstructions,
+            customInstructions: [customInstructions, ...formatHookContext("PreCompact", preHook?.additionalContexts ?? [])]
+                .filter(Boolean).join("\n") || undefined,
             contextWindow,
         });
         throwIfTurnAborted(ctx.signal);
@@ -166,6 +175,20 @@ async function compactHistoryCore({
         state.consecutiveFailures = 0;
         state.compactCount += 1;
         state.lastCompactAt = new Date().toISOString();
+        postDispatched = true;
+        const postHook = await ctx.runHook?.({hook_event_name: "PostCompact", session_id: ctx.sessionId,
+            turn_id: ctx.turnId, trigger, status: "success", pre_token_count: actualPreTokens, post_token_count: postTokenCount});
+        if (postHook?.additionalContexts.length && !ctx.signal.aborted) {
+            // Keep the context attached to this summary, without pinning it across future compactions.
+            const context = formatHookContext("PostCompact", postHook.additionalContexts).join("\n");
+            const candidate = [...history];
+            candidate[1] = {...summaryMessage, content: `${summaryMessage.content}\n${context}`};
+            const tokens = tokenCountWithEstimation(buildInvokeMessages(candidate, contextBlocks), tools);
+            if (tokens < threshold && tokens < actualPreTokens) {
+                history.splice(0, history.length, ...candidate);
+                postTokenCount = tokens;
+            }
+        }
 
         return {
             compacted: true,
@@ -174,6 +197,14 @@ async function compactHistoryCore({
             threshold,
         };
     } catch (error) {
+        if (postDispatched) throw error;
+        if (attempted && !postDispatched) {
+            postDispatched = true;
+            await ctx.runHook?.({hook_event_name: "PostCompact", session_id: ctx.sessionId,
+                turn_id: ctx.turnId, trigger, status: ctx.signal.aborted ? "cancelled" : "failed",
+                pre_token_count: preTokenCount, post_token_count: preTokenCount,
+                reason: ctx.signal.aborted ? "cancelled" : "summary_failed"});
+        }
         if (isTurnInterruptedError(error, ctx.signal)) throw error;
         if (trigger === "auto") state.consecutiveFailures += 1;
         return {
@@ -182,5 +213,5 @@ async function compactHistoryCore({
             threshold,
             message: error instanceof Error ? error.message : String(error),
         };
-    }
+    } finally {releaseHookConfiguration?.();}
 }

@@ -1,8 +1,11 @@
+import type {HookExecution} from "../../hooks/types.js";
 import type {PersistedToolResult, ToolOutcome} from "../../toolResults/index.js";
 import type {AgentType} from "../../subagents/types.js";
 import type {FileChange, ToolUIData} from "../../fileChanges/index.js";
 
 export type UIThread =
+    | {id: string; role: "hook"; status: "running" | "done";
+        execution: Omit<HookExecution, "outcome" | "durationMs"> & {outcome?: HookExecution["outcome"]; durationMs?: number}}
     | {id: string; role: "user"; text: string}
     | {id: string; role: "assistant"; text: string}
     | {

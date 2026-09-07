@@ -4,7 +4,7 @@ import {
     type AgentInputChannel,
     type AgentRunOptions,
 } from "../agent/index.js";
-import {formatHookContext, type HookBatchResult} from "../hooks/index.js";
+import {formatHookContext, type HookBatchResult, type HookInput} from "../hooks/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import {
@@ -33,6 +33,7 @@ export interface RootTurnLifecycleIssue {
 }
 
 export interface RunRootTurnOptions {
+    turnId?: string;
     resources: RootRuntimeResources;
     session: RootSessionRuntime;
     prompt: string;
@@ -78,7 +79,8 @@ export function createRootTurnRunnerFactory(
             maxIterations,
         } = options;
         const timing = new TurnTiming();
-        const timingTurnId = randomUUID();
+        const turnId = options.turnId ?? randomUUID();
+        const releaseHookTurn = resources.holdHookConfiguration();
         let timingEmitted = false;
         const agentOptions: AgentRunOptions = {
             getToolSchemas: resources.toolRuntime.getToolSchemas,
@@ -92,6 +94,7 @@ export function createRootTurnRunnerFactory(
         let hostSettled = false;
         let result: AgentResult | undefined;
         let interruptionEmitted = false;
+        let failed = false;
 
         const emitEvent = (event: AgentEvent): void | Promise<void> => {
             if (event.type === "turn_interrupted") interruptionEmitted = true;
@@ -104,7 +107,7 @@ export function createRootTurnRunnerFactory(
             if (timingEmitted) return;
             timingEmitted = true;
             try {
-                await emitEvent({type: "turn_timing", turnId: timingTurnId, timing: timing.finish()});
+                await emitEvent({type: "turn_timing", turnId, timing: timing.finish()});
             } catch (error) {
                 try {
                     await onLifecycleIssue({scope: "host", message: "Turn 耗时投影失败", error});
@@ -135,17 +138,15 @@ export function createRootTurnRunnerFactory(
         try {
             const initialState = getSnapshotState();
             await session.beginCheckpoint(prompt, initialState);
-            const ctx = session.createContext({signal, host, onEvent: emitEvent});
+            const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId});
             ctx.canUseTool = (...args) => timing.measure("approval", () => host.canUseTool(...args));
             ctx.onToolExecution = phase => timing.change("tool", phase);
-            const promptHooks = await session.runUserPromptHooks(
-                prompt,
-                initialState.permissionMode,
-                signal
-            );
+            const promptHooks = await ctx.runHook!({hook_event_name: "UserPromptSubmit", session_id: session.sessionId,
+                turn_id: turnId, prompt, permission_mode: initialState.permissionMode});
             await onHookResult(promptHooks);
 
-            result = promptHooks.blocked
+            result = promptHooks.error ? {reply: `UserPromptSubmit Hook 故障: ${promptHooks.error}`, reason: "hook_error", iterations: 0}
+                : promptHooks.blocked
                 ? {
                     reply: `UserPromptSubmit Hook 阻止了请求: ${promptHooks.blockReason ?? "未提供原因"}`,
                     reason: "hook_blocked",
@@ -168,13 +169,13 @@ export function createRootTurnRunnerFactory(
                         ],
                     }
                 );
-            if (promptHooks.blocked) {
+            if (promptHooks.blocked || promptHooks.error) {
                 await emitEvent({type: "assistant_text", content: result.reply});
             }
 
             await settleHost();
             await session.settleCheckpoint(
-                promptHooks.blocked ? "no_agent_run" : "settled"
+                (promptHooks.blocked || promptHooks.error) ? "no_agent_run" : "settled"
             );
             checkpointSettled = true;
             await finishTiming();
@@ -185,6 +186,7 @@ export function createRootTurnRunnerFactory(
             sessionSaved = true;
             return result;
         } catch (error) {
+            failed = true;
             if (signal.aborted && !interruptionEmitted) {
                 await emitEvent({
                     type: "turn_interrupted",
@@ -197,6 +199,7 @@ export function createRootTurnRunnerFactory(
             if (!checkpointSettled) {
                 try {
                     await session.settleCheckpoint("settled");
+                    checkpointSettled = true;
                 } catch (error) {
                     try {
                         await onLifecycleIssue({
@@ -220,6 +223,7 @@ export function createRootTurnRunnerFactory(
                             summaryHint: prompt,
                         })
                     );
+                    sessionSaved = true;
                 } catch (error) {
                     try {
                         await onLifecycleIssue({
@@ -232,6 +236,25 @@ export function createRootTurnRunnerFactory(
                     }
                 }
             }
+            try {
+                const input: Extract<HookInput, {hook_event_name: "TurnEnd"}> = {
+                    hook_event_name: "TurnEnd", session_id: session.sessionId, turn_id: turnId,
+                    status: signal.aborted || result?.reason === "interrupted" ? "cancelled"
+                        : failed || !result || result.reason === "hook_error" || result.reason === "no_tool_calls" ? "failed"
+                        : result.reason === "hook_blocked" || result.reason === "permission_denied" ? "blocked"
+                        : result.reason === "max_turns" || result.reason === "hook_limit" ? "limit" : "completed",
+                    reason: signal.aborted ? normalizeTurnAbortReason(signal.reason) : failed ? "error" : result?.reason ?? "error",
+                    persistence_status: sessionSaved ? "saved" : "failed", checkpoint_status: checkpointSettled ? "settled" : "failed",
+                };
+                await emitEvent({type: "turn_end", input});
+                // Cancellation reports a fact only; never create a fresh signal for notifications.
+                if (!signal.aborted) {
+                    const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId});
+                    await onHookResult(await ctx.runHook!(input));
+                }
+            } catch (error) {
+                try {await onLifecycleIssue({scope: "host", message: "TurnEnd Hook 诊断失败", error});} catch {}
+            } finally {releaseHookTurn();}
         }
     };
 }

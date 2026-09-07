@@ -330,7 +330,7 @@ describe("Unified Settings", () => {
                 hooks: {
                     PreToolUse: [{
                         matcher: "read_file",
-                        hooks: [{type: "command", command: "user-hook"}],
+                        hooks: [{type: "command", purpose: "observe", command: "user-hook"}],
                     }],
                 },
             }),
@@ -338,14 +338,14 @@ describe("Unified Settings", () => {
                 hooks: {
                     PreToolUse: [{
                         matcher: "grep",
-                        hooks: [{type: "command", command: "project-hook"}],
+                        hooks: [{type: "command", purpose: "observe", command: "project-hook"}],
                     }],
                 },
             }),
             document("local", {
                 hooks: {
                     SessionEnd: [{
-                        hooks: [{type: "command", command: "local-hook"}],
+                        hooks: [{type: "command", purpose: "observe", command: "local-hook"}],
                     }],
                 },
             }),

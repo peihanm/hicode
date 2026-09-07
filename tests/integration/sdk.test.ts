@@ -208,7 +208,7 @@ describe("TypeScript SDK", () => {
                     SessionStart: [{
                         source: "project",
                         path: join(cwd, ".pillar", "settings.json"),
-                        hooks: [{type: "command", command: "true"}],
+                        hooks: [{type: "command", purpose: "observe", command: "true"}],
                     }],
                 },
             });

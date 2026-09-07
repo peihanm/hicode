@@ -181,6 +181,8 @@ export function createTestRuntimeResources(
       .catch(() => undefined);
   };
   const base: RootRuntimeResources = {
+    holdHookConfiguration: () => () => {},
+    reloadHooks: async () => {},
     storage,
     inputHistory: createInputHistoryStore(storage),
     cwd,
@@ -254,6 +256,7 @@ function createStaticTestCatalog(registry: SubagentRegistry): SubagentCatalog {
 function createDisabledTestHookRuntime(): HookRuntime {
   return {
     enabled: false,
+    hasToolHooks: () => false, inspect: () => [], reload: async () => {},
     issues: [],
     async execute() {
       return {blocked: false, additionalContexts: [], executions: []};

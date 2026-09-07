@@ -257,7 +257,7 @@ describe("file commit boundary", () => {
                 await writeFile(`${cwd}/file.txt`, "external\n");
                 return {behavior: "allow"};
             }});
-            const rt = createToolRuntime({hooks: {enabled: true, issues: [], async execute(input) {
+            const rt = createToolRuntime({hooks: {enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {}, issues: [], async execute(input) {
                 events.push(input.hook_event_name);
                 return {blocked: false, additionalContexts: [], executions: []};
             }}});

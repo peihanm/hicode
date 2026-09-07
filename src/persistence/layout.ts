@@ -105,3 +105,7 @@ export function getProjectBunCacheDirectory(storage: PillarStorageLayout, cwd: s
 export function getSessionRestorePath(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "checkpoints", "restore.json");
 }
+
+export function getHookTrustPath(storage: PillarStorageLayout): string {
+    return join(storage.pillarHome, "trusted-projects.json");
+}

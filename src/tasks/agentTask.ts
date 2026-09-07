@@ -95,6 +95,7 @@ export async function runAgentTask(
         let nextPrompt = prompt;
         while (true) {
             const result = await task.thread.run({
+                taskId: task.id,
                 prompt: nextPrompt,
                 signal: task.controller.signal,
                 inputChannel: task.messageQueue.createAgentInputChannel(() => {}),

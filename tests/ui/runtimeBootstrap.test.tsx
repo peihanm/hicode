@@ -9,10 +9,40 @@ import {
 } from "../helpers/runtimeResources.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import {saveSessionSnapshot, type LoadedSession} from "../../src/session/index.js";
+import type {HookTrustRequest, HookTrustDecision} from "../../src/hooks/types.js";
 
 afterEach(() => cleanup());
 
 describe("RuntimeBootstrap lifecycle", () => {
+  test("运行中重新批准 Hook 保留 App 和 Session，不触发 SessionEnd", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const resources = createTestRuntimeResources(cwd);
+      let sessionEnds = 0;
+      resources.hooks.execute = async input => {
+        if (input.hook_event_name === "SessionEnd") sessionEnds++;
+        return {blocked: false, additionalContexts: [], executions: []};
+      };
+      let requestTrust: ((request: HookTrustRequest) => Promise<HookTrustDecision>) | undefined;
+      const RuntimeBootstrap = createRuntimeBootstrap({createResources: async options => {
+        requestTrust = options.requestHookTrust;
+        return resources;
+      }});
+      const instance = render(<RuntimeBootstrap configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).toContain("❯");
+      const approval = requestTrust!({projectPath: cwd, hooks: [{event: "Stop", hookId: "a".repeat(64),
+        purpose: "control", type: "command", command: "review", source: "project", path: `${cwd}/.pillar/settings.json`}]});
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).toContain("Stop · command: review");
+      expect(sessionEnds).toBe(0);
+      instance.stdin.write("1");
+      expect(await approval).toBe("once");
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).toContain("❯");
+      expect(sessionEnds).toBe(0);
+      instance.unmount();
+    });
+  });
   test("把 MCP approval callback 映射到对话框后进入 App", async () => {
     await withTempProject(async (cwd, storage) => {
       const resources = createTestRuntimeResources(cwd);
@@ -81,7 +111,7 @@ describe("RuntimeBootstrap lifecycle", () => {
             projectPath: cwd,
             hooks: [
               {
-                event: "PreToolUse",
+                event: "PreToolUse", hookId: "a".repeat(64), purpose: "control",
                 type: "command",
                 matcher: "bash",
                 command: "./hooks/check.sh",
@@ -89,7 +119,7 @@ describe("RuntimeBootstrap lifecycle", () => {
                 path: `${cwd}/.pillar/settings.json`,
               },
               {
-                event: "UserPromptSubmit",
+                event: "UserPromptSubmit", hookId: "b".repeat(64), purpose: "control",
                 type: "prompt",
                 prompt: "Reject requests for production secrets",
                 source: "project",

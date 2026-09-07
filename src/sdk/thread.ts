@@ -258,6 +258,7 @@ class SDKThreadImpl implements Thread {
 
         try {
             const result = await this.options.dependencies.runTurn({
+                turnId,
                 resources: this.options.resources,
                 session: this.options.session,
                 prompt,
@@ -591,6 +592,14 @@ async function reportHookIssues(
     host: PillarHost | undefined,
     result: Parameters<typeof getHookExecutionIssues>[0]
 ): Promise<void> {
+    for (const execution of result.executions) {
+        if (!execution.userMessage) continue;
+        try {
+            await host?.onDiagnostic?.({severity: "info", scope: "hook", message: execution.userMessage});
+        } catch {
+            // Session notifications are independent of the Host diagnostic sink.
+        }
+    }
     for (const issue of getHookExecutionIssues(result)) {
         try {
             await host?.onDiagnostic?.({

@@ -82,6 +82,7 @@ export type SubagentRunner = (
 ) => Promise<SubagentResult>;
 
 export interface SubagentThreadRunInput {
+    taskId?: string;
     prompt: string;
     signal: AbortSignal;
     inputChannel: AgentInputChannel;

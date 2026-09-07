@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import type {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import type {CompactState} from "../context/index.js";
 import type {McpManagerLike} from "../mcp/types.js";
@@ -74,17 +75,20 @@ export interface ToolContextHost {
 
 export function createToolContext({
                                       signal,
+                                      turnId,
                                       resources,
                                       session,
                                       host,
                                   }: {
     signal: AbortSignal;
+    turnId?: string;
     resources: ToolContextResources;
     session: ToolContextSession;
     host: ToolContextHost;
 }): ToolContext {
     return {
         signal,
+        turnId: turnId ?? randomUUID(),
         canUseTool: host.canUseTool,
         get permissionRules() {
             return host.getPermissionRules();

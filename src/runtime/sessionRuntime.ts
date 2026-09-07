@@ -6,7 +6,7 @@ import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";
-import {createHookSessionRuntime, didRunCommandHook, type HookBatchResult,} from "../hooks/index.js";
+import {createHookSessionRuntime, didRunCommandHook, type HookBatchResult, type HookExecutionContext} from "../hooks/index.js";
 import type {Message} from "../llm/types.js";
 import {
     createDirectoryAccessRuntime,
@@ -76,6 +76,7 @@ export interface RootSessionRuntime {
     replaceConversation(history: Message[], compactState: CompactState): void;
 
     createContext(input: {
+        turnId?: string;
         signal: AbortSignal;
         host: ToolContextHost;
         onEvent: (event: AgentEvent) => void | Promise<void>;
@@ -92,16 +93,11 @@ export interface RootSessionRuntime {
 
     runSessionStart(
         source: "startup" | "resume",
-        signal: AbortSignal
+        signal: AbortSignal,
+        onEvent?: HookExecutionContext["onEvent"]
     ): Promise<HookBatchResult>;
 
-    runUserPromptHooks(
-        prompt: string,
-        permissionMode: PermissionMode,
-        signal: AbortSignal
-    ): Promise<HookBatchResult>;
-
-    runSessionEnd(reason: string): Promise<HookBatchResult>;
+    runSessionEnd(reason: string, onEvent?: HookExecutionContext["onEvent"]): Promise<HookBatchResult>;
 }
 
 export function createRootSessionRuntime({
@@ -248,9 +244,9 @@ export function createRootSessionRuntime({
             history = nextHistory;
             compactState = nextCompactState;
         },
-        createContext({signal, host, onEvent}) {
+        createContext({signal, host, onEvent, turnId}) {
             const ctx = createToolContext({
-                signal,
+                signal, turnId,
                 resources: {...resources, gitSession, tasks: taskSession},
                 session: {
                     sessionId: seed.sessionId,
@@ -265,6 +261,20 @@ export function createRootSessionRuntime({
                 },
                 host,
             });
+            ctx.holdHookConfiguration = resources.holdHookConfiguration;
+            ctx.onHookEvent = onEvent;
+            ctx.runHook = async (input, hookSignal = signal) => {
+                const result = await resources.hooks.execute({...input, session_id: seed.sessionId, turn_id: ctx.turnId},
+                    hookSignal, {session: hookSession, store: toolResultStore, onEvent});
+                if (turnActive && didRunCommandHook(result)) await fileCheckpoints.markCoverageWarning({
+                    code: "hook_side_effects", message: `${input.hook_event_name} Command Hook 可能产生未被 File Checkpoint 捕获的文件副作用`,
+                });
+                return result;
+            };
+            ctx.hookControl = {inspect: () => resources.hooks.inspect(), reload: async hookSignal => {
+                if (turnActive) throw new Error("本轮尚未结束，不能重载 Hooks");
+                await resources.reloadHooks(hookSignal);
+            }};
             const runSubagent = resources.agentRuntime.createSubagentRunner({
                 parentContext: ctx,
                 onEvent,
@@ -311,30 +321,15 @@ export function createRootSessionRuntime({
         async settleCheckpoint(status = "settled") {
             try {await fileCheckpoints.settleTurn(status);} finally {turnActive = false;}
         },
-        runSessionStart(source, signal) {
+        runSessionStart(source, signal, onEvent) {
             return resources.hooks.execute({
                 hook_event_name: "SessionStart",
                 session_id: seed.sessionId,
                 source,
                 model: resources.model,
-            }, signal, {session: hookSession});
+            }, signal, {session: hookSession, store: toolResultStore, onEvent});
         },
-        async runUserPromptHooks(prompt, permissionMode, signal) {
-            const result = await resources.hooks.execute({
-                hook_event_name: "UserPromptSubmit",
-                session_id: seed.sessionId,
-                permission_mode: permissionMode,
-                prompt,
-            }, signal, {session: hookSession});
-            if (didRunCommandHook(result)) {
-                await fileCheckpoints.markCoverageWarning({
-                    code: "hook_side_effects",
-                    message: "UserPromptSubmit Hook 可能产生未被 File Checkpoint 捕获的文件副作用",
-                });
-            }
-            return result;
-        },
-        async runSessionEnd(reason) {
+        async runSessionEnd(reason, onEvent) {
             const controller = new AbortController();
             const timer = setTimeout(
                 () => controller.abort("session-end-timeout"),
@@ -346,7 +341,7 @@ export function createRootSessionRuntime({
                     hook_event_name: "SessionEnd",
                     session_id: seed.sessionId,
                     reason,
-                }, controller.signal, {session: hookSession});
+                }, controller.signal, {session: hookSession, store: toolResultStore, onEvent});
             } finally {
                 clearTimeout(timer);
             }

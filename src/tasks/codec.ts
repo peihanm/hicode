@@ -32,7 +32,7 @@ const TASK_STATUSES = new Set<TaskStatus>([
     "running", "completed", "failed", "cancelled",
 ]);
 const STOP_REASONS = new Set<StopReason>([
-    "completed", "max_turns", "permission_denied", "hook_blocked",
+    "completed", "max_turns", "permission_denied", "hook_blocked", "hook_error", "hook_limit",
     "no_tool_calls", "interrupted",
 ]);
 const ABORT_REASONS = new Set([

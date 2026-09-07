@@ -12,7 +12,7 @@ describe("RootSessionRuntime", () => {
       const hookEvents: string[] = [];
       const hookSessions: unknown[] = [];
       const hooks: HookRuntime = {
-        enabled: true,
+        enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {},
         issues: [],
         async execute(input, _signal, context) {
           hookEvents.push(input.hook_event_name);
@@ -100,7 +100,7 @@ describe("RootSessionRuntime", () => {
 
       const signal = new AbortController().signal;
       await runtime.runSessionStart("resume", signal);
-      await runtime.runUserPromptHooks("继续", "default", signal);
+      await ctx.runHook!({hook_event_name: "UserPromptSubmit", session_id: runtime.sessionId, prompt: "继续", permission_mode: "default"});
       await runtime.runSessionEnd("completed");
       expect(hookEvents).toEqual([
         "SessionStart",

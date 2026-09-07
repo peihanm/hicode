@@ -1,5 +1,5 @@
+import {HookControlError, formatHookContext} from "../hooks/index.js";
 import {ResponseDraft} from "./draft.js";
-import {randomUUID} from "node:crypto";
 import type {ToolContext} from "../tools/types.js";
 import type {LLMCaller, Message} from "../llm/types.js";
 import {getTokenWarningState} from "../context/index.js";
@@ -109,7 +109,7 @@ async function runAgentCore(
     const executeToolImpl = options.executeTool;
     const isToolConcurrencySafeImpl = options.isToolConcurrencySafe;
     const compactHistoryImpl = dependencies.compactHistory;
-    const turnId = randomUUID();
+    const turnId = ctx.turnId;
     const draft = new ResponseDraft(emitEvent);
     const onEvent = async (event: AgentEvent): Promise<void> => {
         if (event.type === "assistant_text") {
@@ -124,6 +124,7 @@ async function runAgentCore(
     const completionState = createTurnCompletionState();
     const todoProgress = new TodoProgress();
     let completionGateUsed = false;
+    let hookContinuationUsed = false;
     let completionNudge: string | undefined;
     let emptyResponseRetryUsed = false;
     let consecutiveDeniedToolCalls = 0;
@@ -330,12 +331,26 @@ async function runAgentCore(
                         continue;
                     }
                 }
+                if (textContent && ctx.runHook) {
+                    const hook = await ctx.runHook({hook_event_name: "Stop", session_id: ctx.sessionId,
+                        turn_id: turnId, candidate: textContent, continuation_used: hookContinuationUsed});
+                    if (ctx.signal.aborted) return interruptedResult();
+                    if (hook.error || hook.continueReason) {
+                        if (!hook.error && !hookContinuationUsed && hasNextIteration) {
+                            history.pop();
+                            hookContinuationUsed = true;
+                            completionNudge = formatHookContext("Stop", [hook.continueReason!, ...hook.additionalContexts]).join("\n");
+                            continue;
+                        }
+                        const reply = `${textContent}\n\nHook ${hook.error ? "检查失败" : "续跑上限已到"}: ${hook.error ?? hook.continueReason}`;
+                        // Keep the candidate as evidence, with the failed acceptance explicitly attached.
+                        history[history.length - 1] = {role: "assistant", content: reply};
+                        await onEvent({type: "assistant_text", content: reply, phase: "final"});
+                        return {reply, reason: hook.error ? "hook_error" : "hook_limit", iterations: i + 1, ...resultUsage()};
+                    }
+                }
                 if (textContent) {
-                    await onEvent({
-                        type: "assistant_text",
-                        content: textContent,
-                        phase: "final",
-                    });
+                    await onEvent({type: "assistant_text", content: textContent, phase: "final"});
                 }
                 let reply = textContent || "模型连续两次未返回有效正文或工具调用，已停止本轮。";
                 if (!textContent) {
@@ -377,7 +392,7 @@ async function runAgentCore(
                 executeTool: executeToolImpl,
                 isToolConcurrencySafe: isToolConcurrencySafeImpl,
             });
-            if (batchResult.status === "interrupted") {
+            if (batchResult.status === "interrupted" || ctx.signal.aborted) {
                 return interruptedResult();
             }
             recordToolOutcomes(completionState, batchResult.outcomes, ctx.cwd);
@@ -423,6 +438,11 @@ async function runAgentCore(
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
             return interruptedResult();
+        }
+        if (error instanceof HookControlError) {
+            const reply = `Hook 检查故障，已停止本轮: ${error.message}`;
+            await onEvent({type: "assistant_text", content: reply, phase: "final"});
+            return {reply, reason: "hook_error", iterations, ...resultUsage()};
         }
         throw error;
     } finally {

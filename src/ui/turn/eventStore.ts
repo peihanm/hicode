@@ -258,7 +258,9 @@ export class UITurnEventStore {
                 event.type === "turn_interrupted"
                 ? threads.at(-1)?.id
                 : undefined;
-            if (completedAssistantId) {
+            if (event.type === "hook_completed") {
+                this.update(this.archiveThroughSettledThread(nextSnapshot, `hook:${event.execution.executionId}`));
+            } else if (completedAssistantId) {
                 // Slash 等快速命令可能在用户输入尚未进入 Static 时立即返回。
                 // 最终回答必须连同它之前尚未归档的已完成消息一起固化，否则
                 // Static 会先写回答、Turn settle 时再写用户命令，时间顺序反转。
@@ -397,7 +399,7 @@ export class UITurnEventStore {
         const nextSnapshot = this.archiveMatchingThreads(
             this.snapshot,
             (thread) =>
-                !(thread.role === "tool_call" && thread.status === "running")
+                !((thread.role === "tool_call" || thread.role === "hook") && thread.status === "running")
         );
         if (nextSnapshot !== this.snapshot) this.update(nextSnapshot);
     }
@@ -433,7 +435,7 @@ export class UITurnEventStore {
             this.snapshot,
             (thread) =>
                 !trailingIds.has(thread.id) &&
-                !(thread.role === "tool_call" && thread.status === "running")
+                !((thread.role === "tool_call" || thread.role === "hook") && thread.status === "running")
         );
         if (nextSnapshot !== this.snapshot) this.update(nextSnapshot);
     }
@@ -467,7 +469,7 @@ export class UITurnEventStore {
         const hasRunningPredecessor = prefix.some(
             (thread) =>
                 !this.archivedThreadIds.has(thread.id) &&
-                thread.role === "tool_call" &&
+                (thread.role === "tool_call" || thread.role === "hook") &&
                 thread.status === "running"
         );
         if (hasRunningPredecessor) return snapshot;

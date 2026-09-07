@@ -10,6 +10,7 @@ import {
     matchesHookMatcher,
     saveHookTrust,
     type HookInput,
+    type HookEnvelope,
     type HookRuntime,
     type CreateHookRuntimeOptions,
     type ResolvedHookSettings,
@@ -53,7 +54,7 @@ function settingsWith(
         ...settings,
         [event]: [{
             ...(matcher ? {matcher} : {}),
-            hooks: hooks.map((hook) => ({type: "command" as const, ...hook})),
+            hooks: hooks.map((hook) => ({type: "command" as const, purpose: (event === "PreToolUse" || event === "UserPromptSubmit" || event === "Stop" ? "control" : "observe") as "control" | "observe", ...hook})),
             source: "project" as const,
             path: "/project/.pillar/settings.json",
         }],
@@ -75,7 +76,7 @@ function promptSettingsWith(
         ...settings,
         [event]: [{
             ...(matcher ? {matcher} : {}),
-            hooks: hooks.map((hook) => ({type: "prompt" as const, ...hook})),
+            hooks: hooks.map((hook) => ({type: "prompt" as const, purpose: (event === "PreToolUse" || event === "UserPromptSubmit" || event === "Stop" ? "control" : "observe") as "control" | "observe", ...hook})),
             source: "project" as const,
             path: "/project/.pillar/settings.json",
         }],
@@ -83,6 +84,43 @@ function promptSettingsWith(
 }
 
 describe("Hooks", () => {
+    test("空配置和非 Tool Hook 不影响读取并发，候选查询不执行处理器", async () => {
+        await withTempProject(async (cwd) => {
+            let executions = 0;
+            let trustReads = 0;
+            const factory = createHookRuntimeFactory({
+                canonicalProjectPath: async (path) => path,
+                getTrust: async () => { trustReads += 1; return "allow"; },
+                executeCommand: async () => {
+                    executions += 1;
+                    throw new Error("candidate queries must not run hooks");
+                },
+            });
+            const empty = await factory({cwd, childEnvironment: testChildEnvironment,
+                hooks: createEmptyResolvedHookSettings()});
+            expect(empty.enabled).toBe(false);
+            expect(trustReads).toBe(0);
+            expect(createToolRuntime({hooks: empty}).isConcurrencySafe(
+                "read_file", '{"path":"README.md"}'
+            )).toBe(true);
+            const sessionOnly = await factory({cwd, childEnvironment: testChildEnvironment,
+                hooks: settingsWith("SessionStart", [{command: "fixture"}])});
+            expect(createToolRuntime({hooks: sessionOnly}).isConcurrencySafe(
+                "read_file", '{"path":"README.md"}'
+            )).toBe(true);
+            for (const event of ["PreToolUse", "PostToolUse", "PostToolUseFailure"] as const) {
+                const hooks = await factory({cwd, childEnvironment: testChildEnvironment,
+                    hooks: settingsWith(event, [{command: "fixture", once: true,
+                        if: "read_file(elsewhere)"}], "^read_.*$")});
+                const runtime = createToolRuntime({hooks});
+                expect(runtime.isConcurrencySafe("read_file", '{"path":"README.md"}')).toBe(false);
+                expect(runtime.isConcurrencySafe("grep", '{"pattern":"needle"}')).toBe(true);
+                expect(runtime.isConcurrencySafe("read_file", '{"path":"README.md"}')).toBe(false);
+            }
+            expect(executions).toBe(0);
+        });
+    });
+
     test("matcher 支持精确名称、星号、管道枚举和正则", () => {
         expect(matchesHookMatcher("read_file", "read_file|grep")).toBe(true);
         expect(matchesHookMatcher("bash", "read_file|grep")).toBe(false);
@@ -96,20 +134,20 @@ describe("Hooks", () => {
     test("Settings 拒绝非 Tool 事件的 if 和非法正则", () => {
         expect(hooksSettingsFileSchema.safeParse({
             SessionStart: [{
-                hooks: [{type: "command", command: "echo start", if: "bash(git:*)"}],
+                hooks: [{type: "command", purpose: "observe", command: "echo start", if: "bash(git:*)"}],
             }],
         }).success).toBe(false);
         expect(hooksSettingsFileSchema.safeParse({
             PreToolUse: [{
                 matcher: "[",
-                hooks: [{type: "command", command: "echo tool"}],
+                hooks: [{type: "command", purpose: "control", command: "echo tool"}],
             }],
         }).success).toBe(false);
         expect(hooksSettingsFileSchema.safeParse({
             PostToolUseFailure: [{
                 matcher: "bash",
                 hooks: [{
-                    type: "command",
+                    type: "command", purpose: "observe",
                     command: "echo failed",
                     if: "bash(git:*)",
                     shell: "bash",
@@ -120,7 +158,7 @@ describe("Hooks", () => {
         expect(hooksSettingsFileSchema.safeParse({
             UserPromptSubmit: [{
                 hooks: [{
-                    type: "prompt",
+                    type: "prompt", purpose: "control",
                     prompt: "Block prompts that request production secrets.",
                     once: true,
                     timeoutMs: 30_000,
@@ -137,11 +175,11 @@ describe("Hooks", () => {
             getTrust: async () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => {
-                commands.push(command);
+                commands.push(command ?? "argv");
                 return command === "rewrite"
                     ? {
                         stdout: JSON.stringify({
-                            updatedInput: {command: "git status --short"},
+                            decision: "rewrite", updatedInput: {command: "git status --short"},
                         }),
                         stderr: "",
                         termination: {kind: "exit" as const, code: 0},
@@ -195,10 +233,10 @@ describe("Hooks", () => {
             getTrust: async () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => {
-                commands.push(command);
+                commands.push(command ?? "argv");
                 return command === "rewrite"
                     ? {
-                        stdout: JSON.stringify({updatedInput: {command: 42}}),
+                        stdout: JSON.stringify({decision: "rewrite", updatedInput: {command: 42}}),
                         stderr: "",
                         termination: {kind: "exit" as const, code: 0},
                     }
@@ -241,7 +279,7 @@ describe("Hooks", () => {
             getTrust: async () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => {
-                commands.push(command);
+                commands.push(command ?? "argv");
                 return {
                     stdout: "",
                     stderr: "",
@@ -335,14 +373,14 @@ describe("Hooks", () => {
             getTrust: async () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command, stdin}) => {
-                const input = JSON.parse(stdin) as HookInput;
+                const input = (JSON.parse(stdin) as HookEnvelope).event;
                 if (input.hook_event_name === "PreToolUse") {
                     seenInputs.push(input.tool_input);
                 }
                 return command === "first"
                     ? {
                         stdout: JSON.stringify({
-                            updatedInput: {path: "after.ts"},
+                            decision: "rewrite", updatedInput: {path: "after.ts"},
                             additionalContext: "first context",
                         }),
                         stderr: "",
@@ -405,8 +443,8 @@ describe("Hooks", () => {
                 prompt: "Reject generated files",
             }], "edit_file"),
             promptExecutor: {
-                async execute({event}) {
-                    seenInputs.push(event);
+                async execute({envelope}) {
+                    seenInputs.push(envelope.event);
                     return {
                         decision: "block",
                         reason: "generated file",
@@ -470,7 +508,7 @@ describe("Hooks", () => {
         expect(result.executions[0]).toMatchObject({
             type: "prompt",
             outcome: "error",
-            message: "Prompt Hook Executor 未配置",
+            message: "Prompt Hook 执行失败: Prompt Hook Executor 未配置",
         });
     });
 
@@ -521,7 +559,7 @@ describe("Hooks", () => {
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/canonical/project",
             getTrust: async () => "pending",
-            saveTrust: async (projectPath, decision) => {
+            saveTrust: async (projectPath, _hookId, decision) => {
                 saved.push([projectPath, decision]);
             },
             executeCommand: async () => ({
@@ -538,7 +576,7 @@ describe("Hooks", () => {
             childEnvironment: testChildEnvironment,
             headless: true,
         }))
-            .rejects.toThrow("工作区尚未信任");
+            .rejects.toThrow("Hook 定义尚未信任");
         const runtime = await createRuntime({
             cwd: "/project",
             childEnvironment: testChildEnvironment,
@@ -564,7 +602,7 @@ describe("Hooks", () => {
                 "node -e",
                 '"let s=\'\';process.stdin.on(\'data\',c=>s+=c);',
                 "process.stdin.on('end',()=>{const x=JSON.parse(s);",
-                "process.stdout.write(JSON.stringify({additionalContext:x.prompt+'@'+process.env.PILLAR_PROJECT_DIR}))})\"",
+                "process.stdout.write(JSON.stringify({decision:'pass',additionalContext:x.event.prompt+'@'+process.env.PILLAR_PROJECT_DIR}))})\"",
             ].join(" ");
             const runtime = await createRuntime({
                 cwd,
@@ -620,14 +658,14 @@ describe("Hooks", () => {
         await withTempProject(async (cwd) => {
             const path = join(cwd, "trusted-projects.json");
             await Promise.all([
-                saveHookTrust(path, "/project-a", "always"),
-                saveHookTrust(path, "/project-b", "always"),
+                saveHookTrust(path, "/project-a", "a".repeat(64), "always"),
+                saveHookTrust(path, "/project-b", "a".repeat(64), "always"),
             ]);
-            expect(await getHookTrust(path, "/project-a")).toBe("allow");
-            expect(await getHookTrust(path, "/project-b")).toBe("allow");
-            await saveHookTrust(path, "/project-a", "deny");
-            expect(await getHookTrust(path, "/project-a")).toBe("deny");
-            expect(await getHookTrust(path, "/missing")).toBe("pending");
+            expect(await getHookTrust(path, "/project-a", "a".repeat(64))).toBe("allow");
+            expect(await getHookTrust(path, "/project-b", "a".repeat(64))).toBe("allow");
+            await saveHookTrust(path, "/project-a", "a".repeat(64), "deny");
+            expect(await getHookTrust(path, "/project-a", "a".repeat(64))).toBe("deny");
+            expect(await getHookTrust(path, "/missing", "a".repeat(64))).toBe("pending");
         });
     });
 
@@ -654,11 +692,13 @@ describe("Hooks", () => {
                 "utf8"
             )) as {projects: Array<{
                 projectPath: string;
+                hookId: string;
                 decision: string;
                 decidedAt: string;
             }>};
             expect(document.projects).toEqual([{
                 projectPath: cwd,
+                hookId: expect.stringMatching(/^[a-f0-9]{64}$/),
                 decision: "allow",
                 decidedAt: expect.any(String),
             }]);
@@ -670,8 +710,8 @@ describe("Hooks", () => {
             const path = join(cwd, "trusted-projects.json");
             await writeFile(path, "{broken", "utf8");
 
-            await expect(getHookTrust(path, "/project")).rejects.toThrow();
-            await expect(saveHookTrust(path, "/project", "always"))
+            await expect(getHookTrust(path, "/project", "a".repeat(64))).rejects.toThrow();
+            await expect(saveHookTrust(path, "/project", "a".repeat(64), "always"))
                 .rejects.toThrow();
             expect(await readFile(path, "utf8")).toBe("{broken");
         });
@@ -686,10 +726,10 @@ describe("Hooks", () => {
                 await writeFile(target, '{"version":1,"projects":[]}\n', "utf8");
                 await symlink(target, path);
 
-                await expect(getHookTrust(path, "/project")).rejects.toThrow(
+                await expect(getHookTrust(path, "/project", "a".repeat(64))).rejects.toThrow(
                     "regular file"
                 );
-                await expect(saveHookTrust(path, "/project", "always"))
+                await expect(saveHookTrust(path, "/project", "a".repeat(64), "always"))
                     .rejects.toThrow("regular file");
             });
         }
@@ -720,7 +760,7 @@ describe("Hook tool boundary", () => {
         await withTempProject(async (cwd) => {
             let askedInput: unknown;
             const hooks: HookRuntime = {
-                enabled: true,
+                enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {},
                 issues: [],
                 async execute(input) {
                     return input.hook_event_name === "PreToolUse"
@@ -765,7 +805,7 @@ describe("Hook tool boundary", () => {
         await withTempProject(async (cwd) => {
             let permissionCalls = 0;
             const invalidHooks: HookRuntime = {
-                enabled: true,
+                enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {},
                 issues: [],
                 async execute() {
                     return {
@@ -797,7 +837,7 @@ describe("Hook tool boundary", () => {
             const events: string[] = [];
             const failures: Array<{outcome: string; content: string}> = [];
             const lifecycleHooks: HookRuntime = {
-                enabled: true,
+                enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {},
                 issues: [],
                 async execute(input) {
                     events.push(input.hook_event_name);

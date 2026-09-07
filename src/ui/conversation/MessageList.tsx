@@ -382,6 +382,19 @@ function ThreadView({
             </Box>
         );
     }
+    if (thread.role === "hook") {
+        const {execution} = thread;
+        const failed = execution.outcome === "error" || execution.outcome === "skipped_budget";
+        return <Box marginTop={1} flexDirection="column">
+            <Text color={failed ? COLORS.error : COLORS.dim}>
+                {thread.status === "running" ? "…" : failed ? "!" : "✓"} Hook {execution.event} · {execution.handler}
+                {execution.durationMs === undefined ? "" : ` · ${Math.round(execution.durationMs)}ms`}
+            </Text>
+            {(execution.userMessage || execution.message) && <Text color={failed ? COLORS.error : COLORS.dim}>
+                {execution.userMessage ?? execution.message}
+            </Text>}
+        </Box>;
+    }
     if (thread.role === "task_notification") {
         return <TaskNotificationView thread={thread}/>;
     }

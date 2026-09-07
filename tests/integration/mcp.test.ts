@@ -111,7 +111,7 @@ describe("MCP stdio integration", () => {
           expect((await runtime.executeTool(name, JSON.stringify(args), ctx, "invalid")).outcome).toBe("failed");
         }
         expect((await runtime.executeTool(stats, "{}", ctx, "stats-before")).modelContent).toContain("calls:0");
-        const hookRuntime = createToolRuntime({additionalTools: manager.getTools(), hooks: {enabled: true, issues: [], async execute(event) {
+        const hookRuntime = createToolRuntime({additionalTools: manager.getTools(), hooks: {enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {}, issues: [], async execute(event) {
           return {blocked: false, additionalContexts: [], executions: [], ...(event.hook_event_name === "PreToolUse" && event.tool_name === name ? {updatedInput: {payload: {count: 0, mode: "safe"}}} : {})};
         }}});
         await exposeDeferredTools(hookRuntime, cwd, name);

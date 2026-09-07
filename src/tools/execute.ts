@@ -1,5 +1,5 @@
 import {toolFileChanges} from "../fileChanges/index.js";
-import {didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
+import {HookControlError, didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
 import {
@@ -79,7 +79,7 @@ export async function executeRegisteredTool(
         preHookResult = await hooks.execute(
             {
                 hook_event_name: "PreToolUse",
-                session_id: ctx.sessionId,
+                session_id: ctx.sessionId, turn_id: ctx.turnId,
                 permission_mode: ctx.permissionMode,
                 tool_name: name,
                 tool_input: input as Record<string, unknown>,
@@ -89,7 +89,7 @@ export async function executeRegisteredTool(
             {
                 matchesToolCondition: (condition, toolInput) =>
                     matchesToolPermissionRule(tool, toolInput, condition),
-                session: ctx.hookSession,
+                session: ctx.hookSession, store: ctx.toolResultStore, onEvent: ctx.onHookEvent,
             }
         );
         if (didRunCommandHook(preHookResult)) {
@@ -101,6 +101,7 @@ export async function executeRegisteredTool(
         if (ctx.signal.aborted) {
             return interruptedToolResult(ctx.signal);
         }
+        if (preHookResult.error) throw new HookControlError(preHookResult.error);
         if (preHookResult.blocked) {
             return hookDecoratedResult(
                 inlineToolResult(
@@ -367,7 +368,7 @@ async function executePostToolHooks({
         }
         : undefined;
     const common = {
-        session_id: ctx.sessionId,
+        session_id: ctx.sessionId, turn_id: ctx.turnId,
         permission_mode: ctx.permissionMode,
         tool_name: name,
         tool_input: input,
@@ -387,7 +388,7 @@ async function executePostToolHooks({
             hook_event_name: "PostToolUseFailure" as const,
             ...common,
             tool_response: {
-                outcome: result.outcome === "ok" ? "failed" as const : result.outcome,
+                outcome: "failed" as const,
                 content: result.modelContent,
                 ...(persisted ? {persisted} : {}),
             },
@@ -395,7 +396,7 @@ async function executePostToolHooks({
     const hookResult = await hooks.execute(hookInput, ctx.signal, {
         matchesToolCondition: (condition, toolInput) =>
             matchesToolPermissionRule(tool, toolInput, condition),
-        session: ctx.hookSession,
+        session: ctx.hookSession, store: ctx.toolResultStore, onEvent: ctx.onHookEvent,
     });
     if (didRunCommandHook(hookResult)) {
         await ctx.fileCheckpoints.markCoverageWarning({

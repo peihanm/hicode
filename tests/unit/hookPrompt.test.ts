@@ -1,8 +1,13 @@
+import type {HookInput, HookEnvelope} from "../../src/hooks/types.js";
 import {describe, expect, test} from "bun:test";
 import {createHookPromptExecutorFactory} from "../../src/hooks/prompt.js";
 import type {LLMCaller} from "../../src/llm/types.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
+function envelope(event: HookInput): HookEnvelope {
+    return {version: 2, cwd: "/project", hook_id: "id", execution_id: "execution", dispatch_id: "dispatch",
+        source: {source: "host", id: "fixture"}, purpose: event.hook_event_name === "PreToolUse" || event.hook_event_name === "UserPromptSubmit" ? "control" : "observe", event};
+}
 const storage = createPillarStorageLayout({pillarHome: "/tmp/pillar-hook-test"});
 
 const usage = {
@@ -26,7 +31,6 @@ describe("Prompt Hook executor", () => {
                         arguments: JSON.stringify({
                             decision: "block",
                             reason: "policy blocked",
-                            updatedInput: {path: "safe.ts"},
                             additionalContext: "Use safe.ts instead.",
                         }),
                     },
@@ -41,14 +45,14 @@ describe("Prompt Hook executor", () => {
         });
         const result = await executor.execute({
             prompt: "Reject unsafe paths",
-            event: {
+            envelope: envelope({
                 hook_event_name: "PreToolUse",
                 session_id: "session",
                 permission_mode: "default",
                 tool_name: "edit_file",
                 tool_input: {path: ".env"},
                 tool_call_id: "call",
-            },
+            }),
             signal: new AbortController().signal,
             timeoutMs: 1_000,
         });
@@ -56,7 +60,6 @@ describe("Prompt Hook executor", () => {
         expect(result).toEqual({
             decision: "block",
             reason: "policy blocked",
-            updatedInput: {path: "safe.ts"},
             additionalContext: "Use safe.ts instead.",
         });
         expect(calls).toHaveLength(1);
@@ -97,12 +100,12 @@ describe("Prompt Hook executor", () => {
             })({storage, cwd: "/project", model: "fast-model"});
             await expect(executor.execute({
                 prompt: "Review",
-                event: {
+                envelope: envelope({
                     hook_event_name: "UserPromptSubmit",
                     session_id: "session",
                     permission_mode: "default",
                     prompt: "hello",
-                },
+                }),
                 signal: new AbortController().signal,
                 timeoutMs: 1_000,
             })).rejects.toBeInstanceOf(Error);
@@ -131,12 +134,12 @@ describe("Prompt Hook executor", () => {
 
         await expect(executor.execute({
             prompt: "Review",
-            event: {
+            envelope: envelope({
                 hook_event_name: "SessionStart",
                 session_id: "session",
                 source: "startup",
                 model: "primary-model",
-            },
+            }),
             signal: new AbortController().signal,
             timeoutMs: 5,
         })).rejects.toThrow("Prompt Hook 超时 (5ms)");
@@ -144,11 +147,11 @@ describe("Prompt Hook executor", () => {
         const parent = new AbortController();
         const pending = executor.execute({
             prompt: "Review",
-            event: {
+            envelope: envelope({
                 hook_event_name: "SessionEnd",
                 session_id: "session",
                 reason: "cancelled",
-            },
+            }),
             signal: parent.signal,
             timeoutMs: 1_000,
         });

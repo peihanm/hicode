@@ -168,7 +168,7 @@ export function createRuntimeBootstrap(
                 />
             );
         }
-        if (pendingHook) {
+        if (pendingHook && !ready) {
             return (
                 <HookApprovalDialog
                     request={pendingHook.request}
@@ -201,6 +201,9 @@ export function createRuntimeBootstrap(
             <App
                 key={sessionKey}
                 resources={ready.resources}
+                runtimeApproval={pendingHook ? <HookApprovalDialog request={pendingHook.request} onDecision={decision => {
+                    pendingHook.resolve(decision); pendingHookRef.current = null; setPendingHook(null);
+                }}/> : undefined}
                 rootSession={ready.session.rootSession}
                 resumedDraft={ready.session.resumedDraft}
                 initialPermissionMode={initialPermissionMode}

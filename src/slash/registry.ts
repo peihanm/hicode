@@ -1,3 +1,4 @@
+import {hooksCommand} from "./commands/hooks.js";
 import {compactCommand} from "./commands/compact.js";
 import {permissionsCommand} from "./commands/permissions.js";
 import {mcpCommand} from "./commands/mcp.js";
@@ -13,6 +14,7 @@ import {addDirCommand} from "./commands/addDir.js";
 import type {SlashCommand} from "./types.js";
 
 const COMMANDS: readonly SlashCommand[] = [
+    hooksCommand,
     compactCommand,
     modelCommand,
     resumeCommand,

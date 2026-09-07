@@ -1,5 +1,5 @@
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useState, type ReactNode} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
@@ -38,6 +38,8 @@ function runningActivityLabel(
     threads: UIThread[],
     subagents: SubagentRegistry
 ): string | undefined {
+    const hook = [...threads].reverse().find(thread => thread.role === "hook" && thread.status === "running");
+    if (hook?.role === "hook") return `正在执行 Hook ${hook.execution.event}...`;
     const running = [...threads].reverse().find(
         (thread): thread is Extract<UIThread, { role: "tool_call" }> =>
             thread.role === "tool_call" && thread.status === "running"
@@ -73,6 +75,7 @@ function runningActivityLabel(
 
 export function App({
                             resources,
+                            runtimeApproval,
                             initialPermissionMode,
                             initialCollaborationMode,
                             initialSession,
@@ -82,6 +85,7 @@ export function App({
                             requestSessionSwitch,
                         }: {
         resources: RootRuntimeResources;
+        runtimeApproval?: ReactNode;
         initialPermissionMode?: PermissionMode;
         initialCollaborationMode?: CollaborationMode;
         initialSession?: LoadedSession;
@@ -190,6 +194,7 @@ export function App({
         );
 
         useInput((input, key) => {
+            if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
             if (showResume || showRewind || showAgents || showGitDiff || showModel || showPermissions) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
@@ -266,7 +271,7 @@ export function App({
                     </>
                 )}
 
-                {showResume && requestSessionSwitch ? (
+                {runtimeApproval ? runtimeApproval : showResume && requestSessionSwitch ? (
                     <ResumeDialog
                         sessions={resumeSessions}
                         currentSessionId={turn.sessionId}

@@ -267,6 +267,16 @@ export function reduceThreads(
                     ? {...thread, result: `${event.agentType} failed: ${event.message}`}
                     : thread
             );
+        case "turn_end":
+            return threads;
+        case "hook_started":
+        case "hook_completed": {
+            const item: UIThread = {id: `hook:${event.execution.executionId}`, role: "hook",
+                status: event.type === "hook_started" ? "running" : "done",
+                execution: {...event.execution, handler: event.execution.handler.slice(0, 180)}};
+            return threads.some(thread => thread.id === item.id)
+                ? threads.map(thread => thread.id === item.id ? item : thread) : [...threads, item];
+        }
         case "assistant_text":
             return [
                 ...threads,

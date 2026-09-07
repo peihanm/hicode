@@ -1,4 +1,6 @@
 import {toolFileChanges} from "../fileChanges/index.js";
+import {randomUUID} from "node:crypto";
+import {formatHookContext} from "../hooks/index.js";
 import {
     applyBatchToolResultBudget,
     type BatchToolResultEntry,
@@ -40,6 +42,7 @@ export interface ToolCallOutcome {
     argsJson: string;
     outcome: ToolOutcome;
     result: string;
+    persisted?: ToolExecutionResult["persisted"];
     uiData?: ToolUIData;
     shellExecution?: ToolExecutionResult["shellExecution"];
     untrackedWorkspaceEffects?: boolean;
@@ -58,6 +61,7 @@ export async function executeToolCallBatch({
     const outcomes: ToolCallOutcome[] = [];
     const startedToolCallIds = new Set<string>();
     let budgetEntries: BatchToolResultEntry[] = [];
+    let status: "completed" | "interrupted" | "failed" = "failed";
 
     const finalizeBudget = async (): Promise<void> => {
         if (budgetEntries.length === 0) return;
@@ -69,6 +73,11 @@ export async function executeToolCallBatch({
         });
         for (const [index, entry] of budgetEntries.entries()) {
             const content = history[entry.messageIndex]?.content;
+            const outcome = outcomes.find(item => item.toolCallId === entry.toolCallId);
+            if (outcome) {
+                if (typeof content === "string") outcome.result = content;
+                outcome.persisted = replacements.find(item => item.toolCallId === entry.toolCallId)?.persisted ?? entry.persisted;
+            }
             if (typeof content === "string" && typeof before[index] === "string" && content !== before[index]) {
                 ctx.fileState.bindOutput(entry.toolCallId, before[index]!, {modelContent: content,
                     persisted: replacements.find(item => item.toolCallId === entry.toolCallId)?.persisted});
@@ -113,6 +122,8 @@ export async function executeToolCallBatch({
                 await emitStart(toolCall);
             }
             history.push({role: "tool", content, tool_call_id: toolCall.id});
+            outcomes.push({toolCallId: toolCall.id, name: toolCall.function.name,
+                argsJson: toolCall.function.arguments, outcome, result: content});
             await onEvent({
                 type: "tool_call_end",
                 turnId,
@@ -146,6 +157,7 @@ export async function executeToolCallBatch({
             if (ctx.signal.aborted) {
                 await appendSyntheticResults(nextToolIndex, "interrupted");
                 await finalizeBudget();
+                status = "interrupted";
                 return {status: "interrupted", outcomes};
             }
 
@@ -207,20 +219,43 @@ export async function executeToolCallBatch({
             if (ctx.signal.aborted) {
                 await appendSyntheticResults(nextToolIndex, "interrupted");
                 await finalizeBudget();
+                status = "interrupted";
                 return {status: "interrupted", outcomes};
             }
         }
 
         await finalizeBudget();
+        status = "completed";
         return {status: "completed", outcomes};
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
             await appendSyntheticResults(nextToolIndex, "interrupted");
             await finalizeBudget();
+            status = "interrupted";
             return {status: "interrupted", outcomes};
         }
         await appendSyntheticResults(nextToolIndex, "failed", error);
         await finalizeBudget();
         throw error;
+    } finally {
+        if (ctx.runHook) {
+            // Exceptional batches report skipped execution facts without starting new work.
+            const signal = status === "completed" ? ctx.signal
+                : ctx.signal.aborted ? ctx.signal : AbortSignal.abort("batch-failed");
+            try {
+                const hook = await ctx.runHook({hook_event_name: "PostToolBatch", session_id: ctx.sessionId,
+                    turn_id: turnId, batch_id: randomUUID(), status,
+                    tools: outcomes.map(item => ({tool_call_id: item.toolCallId, name: item.name,
+                        outcome: item.outcome, summary: item.result.slice(0, 2000),
+                        ...(item.persisted ? {result_id: item.persisted.resultId} : {}),
+                        changes: toolFileChanges(item.uiData).map(change => ({path: change.path, kind: change.kind}))}))}, signal);
+                if (status === "completed" && !signal.aborted && hook.additionalContexts.length) {
+                    history.push({role: "user", content: formatHookContext("PostToolBatch", hook.additionalContexts).join("\n")});
+                }
+            } catch (error) {
+                if (status === "completed") throw error;
+                // A notification failure must not replace the original batch failure/cancellation.
+            }
+        }
     }
 }

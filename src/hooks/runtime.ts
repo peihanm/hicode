@@ -1,453 +1,258 @@
-import type {HookJSONOutput} from "./schema.js";
-import {executePromptHook, type HookPromptExecutor,} from "./prompt.js";
-import {defaultExecuteHookCommand, executeCommandHook, type ExecuteHookCommand,} from "./command.js";
-import {boundedHookMessage} from "./handler.js";
+import {randomUUID} from "node:crypto";
+import {hooksSettingsFileSchema} from "./schema.js";
+import {executePromptHook, type HookPromptExecutor} from "./prompt.js";
+import {defaultExecuteHookCommand, executeCommandHook, type ExecuteHookCommand} from "./command.js";
+import {boundedHookMessage, type HookHandlerResult} from "./handler.js";
+import {hookDefinition, hookDefinitions, hookHandler} from "./identity.js";
 import {matchesHookMatcher} from "./matcher.js";
-import {canonicalHookProjectPath, getHookTrust, getHookTrustPath, saveHookTrust,} from "./approval.js";
-import {mergeChildProcessEnvironment, type ChildProcessEnvironment,} from "../runtime/childEnvironment.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
-import {
-    countResolvedHooks,
-    type HookBatchResult,
-    type HookExecution,
-    type HookExecutionContext,
-    type HookInput,
-    type HookRuntime,
-    type HookRuntimeIssue,
-    type HookSettings,
-    type HookTrustRequest,
-    type ResolvedHookSettings,
-} from "./types.js";
-
-const MAX_DIAGNOSTIC_COMMAND_LENGTH = 180;
-const MAX_TOTAL_CONTEXT_CHARS = 20_000;
+import {canonicalHookProjectPath, getHookTrust, saveHookTrust} from "./approval.js";
+import {getHookTrustPath, type PillarStorageLayout} from "../persistence/layout.js";
+import {mergeChildProcessEnvironment, type ChildProcessEnvironment} from "../runtime/childEnvironment.js";
+import {HOOK_EVENTS, type HookBatchResult, type HookExecution,
+    type HookExecutionContext, type HookInput, type HookRuntime, type HookRuntimeIssue,
+     type HookTrustRequest, type HookTrustSummary, type ResolvedHookSettings,
+    type HookEnvelope, type HookLifecycleEvent} from "./types.js";
 
 interface HookRuntimeDependencies {
     executeCommand: ExecuteHookCommand;
     canonicalProjectPath(cwd: string): Promise<string>;
-    getTrust?(projectPath: string): Promise<"allow" | "deny" | "pending">;
-    saveTrust?(
-        projectPath: string,
-        decision: "always" | "deny"
-    ): Promise<void>;
+    getTrust?(projectPath: string, hookId: string): Promise<"allow" | "deny" | "pending">;
+    saveTrust?(projectPath: string, hookId: string, decision: "always" | "deny"): Promise<void>;
 }
-
 export interface CreateHookRuntimeOptions {
-    storage: PillarStorageLayout;
-    cwd: string;
-    hooks: ResolvedHookSettings;
-    childEnvironment: ChildProcessEnvironment;
-    headless?: boolean;
-    signal?: AbortSignal;
+    storage: PillarStorageLayout; cwd: string; hooks: ResolvedHookSettings;
+    childEnvironment: ChildProcessEnvironment; headless?: boolean; signal?: AbortSignal;
     promptExecutor?: HookPromptExecutor;
     requestTrust?: (request: HookTrustRequest) => Promise<"once" | "always" | "deny">;
 }
-
-class HookWorkspaceNotTrustedError extends Error {
-    constructor(projectPath: string) {
-        super(
-            `工作区尚未信任，不能在 Headless 模式执行 Hooks: ${projectPath}。请先在该目录交互启动 pillar 并确认信任。`
-        );
-        this.name = "HookWorkspaceNotTrustedError";
-    }
+export class HookControlError extends Error {
+    constructor(message: string) {super(message); this.name = "HookControlError";}
 }
-
-function boundedCommand(command: string): string {
-    const oneLine = command.replace(/\s+/g, " ").trim();
-    return oneLine.length <= MAX_DIAGNOSTIC_COMMAND_LENGTH
-        ? oneLine
-        : `${oneLine.slice(0, MAX_DIAGNOSTIC_COMMAND_LENGTH - 1)}…`;
-}
-
 function queryForHook(input: HookInput): string | undefined {
     switch (input.hook_event_name) {
-        case "PreToolUse":
-        case "PostToolUse":
-        case "PostToolUseFailure":
-            return input.tool_name;
-        case "SessionStart":
-            return input.source;
-        case "SessionEnd":
-            return input.reason;
-        case "UserPromptSubmit":
-            return undefined;
+        case "PreToolUse": case "PostToolUse": case "PostToolUseFailure": return input.tool_name;
+        case "SessionStart": return input.source;
+        case "SessionEnd": return input.reason;
+        case "PreCompact": case "PostCompact": return input.trigger;
+        case "SubagentStart": case "SubagentStop": return input.agent_type;
+        case "TurnEnd": return input.status;
+        default: return undefined;
     }
 }
-
-function validateOutputForEvent(
-    event: HookInput["hook_event_name"],
-    output: HookJSONOutput
-): string | undefined {
-    if (output.updatedInput !== undefined && event !== "PreToolUse") {
-        return `updatedInput 只允许用于 PreToolUse，当前事件为 ${event}`;
+function summarize(input: HookInput): HookInput {
+    switch (input.hook_event_name) {
+        case "PreToolUse": return {...input, tool_input: {}};
+        case "PostToolUse": return {...input, tool_input: {},
+            tool_response: {...input.tool_response, content: input.tool_response.content.slice(0, 8000)}};
+        case "PostToolUseFailure": return {...input, tool_input: {},
+            tool_response: {...input.tool_response, content: input.tool_response.content.slice(0, 8000)}};
+        case "UserPromptSubmit": return {...input, prompt: input.prompt.slice(0, 8000)};
+        case "Stop": return {...input, candidate: input.candidate.slice(0, 8000)};
+        case "PreCompact": return {...input, instructions: input.instructions?.slice(0, 4000)};
+        case "PostToolBatch": return {...input, tools: input.tools.slice(0, 30).map(tool => ({...tool,
+            summary: tool.summary.slice(0, 200), changes: tool.changes.slice(0, 5)}))};
+        default: return input;
     }
-    if (
-        output.decision === "block" &&
-        event !== "PreToolUse" &&
-        event !== "UserPromptSubmit"
-    ) {
-        return `decision=block 只允许用于 PreToolUse/UserPromptSubmit，当前事件为 ${event}`;
-    }
-    if (output.additionalContext !== undefined && event === "SessionEnd") {
-        return "SessionEnd 不接受 additionalContext";
-    }
-    return undefined;
 }
-
-function hookTrustSummaries(hooks: ResolvedHookSettings) {
-    return Object.entries(hooks).flatMap(([event, matchers]) =>
-        matchers.flatMap((matcher) =>
-            matcher.hooks.map((hook) => ({
-                event: event as HookInput["hook_event_name"],
-                type: hook.type,
-                ...(matcher.matcher ? {matcher: matcher.matcher} : {}),
-                ...(hook.if ? {condition: hook.if} : {}),
-                ...(hook.once ? {once: true} : {}),
-                ...(hook.type === "command"
-                    ? {
-                        command: hook.command,
-                        ...(hook.shell ? {shell: hook.shell} : {}),
-                    }
-                    : {prompt: hook.prompt}),
-                ...(matcher.source === "host"
-                    ? {source: "host" as const, id: matcher.id}
-                    : {
-                        source: matcher.source,
-                        path: matcher.path,
-                    }),
-            }))
-        )
-    );
+function validatedSettings(settings: ResolvedHookSettings): ResolvedHookSettings {
+    const declared = Object.fromEntries(HOOK_EVENTS.map(event => [event, settings[event].map(({hooks, matcher, timeoutMs}) => ({hooks, matcher, timeoutMs}))]));
+    hooksSettingsFileSchema.parse(declared);
+    return structuredClone(settings);
 }
-
-function disabledRuntime(issues: HookRuntimeIssue[]): HookRuntime {
-    return {
-        enabled: false,
-        issues,
-        async execute() {
-            return {
-                blocked: false,
-                additionalContexts: [],
-                executions: [],
-            };
-        },
-    };
-}
-
-function hookHandler(hook: HookSettings): string {
-    return hook.type === "command" ? hook.command : `prompt: ${hook.prompt}`;
-}
-
 class ConfiguredHookRuntime implements HookRuntime {
-    readonly enabled = true;
-    readonly issues: readonly HookRuntimeIssue[] = [];
-
-    constructor(
-        private readonly cwd: string,
-        private readonly hooks: ResolvedHookSettings,
-        private readonly executeCommand: ExecuteHookCommand,
-        private readonly childEnvironment: ChildProcessEnvironment,
-        private readonly promptExecutor?: HookPromptExecutor
-    ) {}
-
-    async execute(
-        input: HookInput,
-        signal: AbortSignal,
-        context?: HookExecutionContext
-    ): Promise<HookBatchResult> {
-        const executions: HookExecution[] = [];
-        const additionalContexts: string[] = [];
-        let blocked = false;
-        let blockReason: string | undefined;
-        let updatedInput = input.hook_event_name === "PreToolUse"
-            ? input.tool_input
-            : undefined;
-        const query = queryForHook(input);
-        const matchers = this.hooks[input.hook_event_name]
-            .map((matcher, index) => ({matcher, index}))
-            .filter(({matcher}) => matchesHookMatcher(query, matcher.matcher));
-        const finish = (): HookBatchResult => ({
-            blocked,
-            ...(blockReason ? {blockReason} : {}),
-            ...(updatedInput ? {updatedInput} : {}),
-            additionalContexts,
-            executions,
-        });
-
-        for (const {matcher, index: matcherIndex} of matchers) {
-            for (let hookIndex = 0; hookIndex < matcher.hooks.length; hookIndex += 1) {
-                const hook = matcher.hooks[hookIndex]!;
-                const onceKey = `${input.hook_event_name}:${matcherIndex}:${hookIndex}`;
-                const identity = {
-                    event: input.hook_event_name,
-                    source: matcher.source,
-                    type: hook.type,
-                    handler: hookHandler(hook),
-                } as const;
-                if (signal.aborted) {
-                    executions.push({
-                        ...identity,
-                        outcome: "interrupted",
-                        durationMs: 0,
-                        message: "Hook 执行已取消",
-                    });
-                    return finish();
+    private settings: ResolvedHookSettings;
+    private approved = new Set<string>();
+    private definitions: HookTrustSummary[] = [];
+    private runtimeIssues: HookRuntimeIssue[] = [];
+    private active = 0;
+    private reloading = false;
+    constructor(private readonly options: CreateHookRuntimeOptions, private readonly dependencies: HookRuntimeDependencies) {
+        this.settings = options.hooks;
+    }
+    get enabled(): boolean {return this.approved.size > 0;}
+    get issues(): readonly HookRuntimeIssue[] {return this.runtimeIssues;}
+    inspect() {return this.definitions.map(item => ({...structuredClone(item), approved: this.approved.has(item.hookId)}));}
+    hasToolHooks(toolName: string): boolean {
+        return this.definitions.some(item => this.approved.has(item.hookId) && (
+            (toolName === "agent" && (item.event === "SubagentStart" || item.event === "SubagentStop")) ||
+            (["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(item.event) && matchesHookMatcher(toolName, item.matcher))
+        ));
+    }
+    async reload(settings: ResolvedHookSettings, signal: AbortSignal): Promise<void> {
+        if (this.active || this.reloading) throw new Error("Hook 正在执行或重载，不能更换配置");
+        this.reloading = true;
+        try {
+            const next = validatedSettings(settings);
+            const definitions = hookDefinitions(next);
+            const approved = new Set<string>();
+            const pending: HookTrustSummary[] = [];
+            const issues: HookRuntimeIssue[] = [];
+            if (definitions.length) {
+                const project = await this.dependencies.canonicalProjectPath(this.options.cwd);
+                const path = getHookTrustPath(this.options.storage);
+                for (const definition of definitions) {
+                    if (this.approved.has(definition.hookId)) {approved.add(definition.hookId); continue;}
+                    const decision = await (this.dependencies.getTrust?.(project, definition.hookId)
+                        ?? getHookTrust(path, project, definition.hookId));
+                    if (decision === "allow") approved.add(definition.hookId);
+                    else if (decision === "pending") pending.push(definition);
                 }
-
-                const effectiveInput = input.hook_event_name === "PreToolUse"
-                    ? {...input, tool_input: updatedInput ?? input.tool_input}
-                    : input;
+                if (signal.aborted) throw new Error("Hook 配置批准已取消");
+                if (this.options.headless && definitions.some(item => !approved.has(item.hookId)))
+                    throw new Error(`工作区 Hook 定义尚未信任，不能在 Headless 模式执行: ${project}`);
+                if (pending.length && this.options.requestTrust) {
+                    const decision = await this.options.requestTrust({projectPath: project, hooks: pending});
+                    if (signal.aborted) throw new Error("Hook 配置批准已取消");
+                    for (const item of pending) {
+                        if (decision !== "deny") approved.add(item.hookId);
+                        if (decision !== "once") await (this.dependencies.saveTrust?.(project, item.hookId, decision)
+                            ?? saveHookTrust(path, project, item.hookId, decision));
+                    }
+                }
+                for (const item of definitions) if (!approved.has(item.hookId)) {
+                    if (item.purpose === "control") throw new HookControlError(`Control Hook 未获批准: ${item.event} ${item.hookId.slice(0, 12)}`);
+                    issues.push({severity: "warning", message: `Observe Hook 未获批准，已禁用: ${item.event} ${item.hookId.slice(0, 12)}`});
+                }
+            }
+            if (signal.aborted) throw new Error("Hook 配置重载已取消");
+            this.settings = next; this.definitions = definitions; this.approved = approved; this.runtimeIssues = issues;
+        } finally {this.reloading = false;}
+    }
+    async execute(input: HookInput, signal: AbortSignal, context?: HookExecutionContext): Promise<HookBatchResult> {
+        if (this.reloading) throw new HookControlError("Hook 正在重载，拒绝开始新的执行");
+        this.active++;
+        try {return await this.dispatch(input, signal, context);} finally {this.active--;}
+    }
+    private async dispatch(input: HookInput, signal: AbortSignal, context?: HookExecutionContext): Promise<HookBatchResult> {
+        const result: HookBatchResult = {blocked: false, additionalContexts: [], executions: []};
+        const matchers = this.settings[input.hook_event_name].filter(matcher => matchesHookMatcher(queryForHook(input), matcher.matcher));
+        if (!matchers.length) return result;
+        const defaultBudget = input.hook_event_name === "TurnEnd" ? 2000 : input.hook_event_name === "SessionEnd" ? 1500 : 10000;
+        const maxBudget = input.hook_event_name === "TurnEnd" ? 5000 : input.hook_event_name === "SessionEnd" ? 1500 : 30000;
+        const budget = Math.min(maxBudget, Math.max(...matchers.map(item => item.timeoutMs ?? defaultBudget)));
+        const deadline = performance.now() + budget;
+        const dispatchId = randomUUID();
+        const controller = new AbortController();
+        const onAbort = () => controller.abort(signal.reason);
+        if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, {once: true});
+        const timer = setTimeout(() => controller.abort("hook-budget"), budget);
+        timer.unref?.();
+        const expired = () => {
+            if (!controller.signal.aborted && performance.now() >= deadline) controller.abort("hook-budget");
+            return controller.signal.aborted;
+        };
+        const emit = async (event: HookLifecycleEvent) => {
+            context?.session?.record(event);
+            try {await context?.onEvent?.(event);} catch { /* Host projection cannot change policy or prevent cleanup. */ }
+        };
+        try {
+            for (const matcher of matchers) for (const hook of matcher.hooks) {
+                const definition = hookDefinition(input.hook_event_name, matcher, hook);
+                if (!this.approved.has(definition.hookId)) continue;
+                const started = performance.now();
+                const identity = {hookId: definition.hookId, dispatchId, executionId: randomUUID(),
+                    startedAt: new Date().toISOString(), purpose: hook.purpose, event: input.hook_event_name,
+                    source: matcher.source, type: hook.type, handler: hookHandler(hook)};
+                const finish = async (handled: HookHandlerResult) => {
+                    let execution: HookExecution = {...identity, ...handled.execution};
+                    if (expired()) {
+                        handled.output = undefined;
+                        execution = {...execution, outcome: signal.aborted ? "interrupted" : execution.outcome === "skipped_budget" ? "skipped_budget" : "error",
+                            message: signal.aborted ? "Hook 执行已取消" : `Hook dispatch 超时 (${budget}ms)`};
+                    }
+                    if (handled.diagnostic && context?.store) {
+                        try {execution.artifact = await context.store.persistText({toolCallId: `hook:${identity.executionId}`,
+                            toolName: `hook:${input.hook_event_name}`, content: handled.diagnostic.slice(0, 65536)});}
+                        catch {execution = {...execution, outcome: "error", message: "Hook 诊断保存失败"}; handled.output = undefined;}
+                    }
+                    if (execution.outcome === "error" || execution.outcome === "skipped_budget") {
+                        if (hook.purpose === "control") result.error ??= execution.message ?? "Control Hook 执行失败";
+                    }
+                    result.executions.push(execution);
+                    await emit({type: "hook_completed", execution});
+                    return handled.output;
+                };
+                const fail = async (message: string, outcome: HookExecution["outcome"] = "error") => finish({execution: {
+                    ...identity, outcome, durationMs: performance.now() - started, message}});
+                if (expired()) {
+                    await fail(signal.aborted ? "Hook 执行已取消" : "Hook dispatch 期限已耗尽", signal.aborted ? "interrupted" : "skipped_budget");
+                    continue;
+                }
+                const effectiveInput: HookInput = input.hook_event_name === "PreToolUse"
+                    ? {...input, tool_input: result.updatedInput ?? input.tool_input} : input;
                 if (hook.if) {
-                    if (
-                        effectiveInput.hook_event_name !== "PreToolUse" &&
-                        effectiveInput.hook_event_name !== "PostToolUse" &&
-                        effectiveInput.hook_event_name !== "PostToolUseFailure"
-                    ) {
-                        executions.push({
-                            ...identity,
-                            outcome: "error",
-                            durationMs: 0,
-                            message: "Hook if 只允许用于 Tool 事件",
-                        });
-                        continue;
-                    }
-                    if (!context?.matchesToolCondition) {
-                        executions.push({
-                            ...identity,
-                            outcome: "error",
-                            durationMs: 0,
-                            message: "Tool Hook 缺少 if 匹配上下文，已安全跳过",
-                        });
-                        continue;
-                    }
-                    let matches = false;
                     try {
-                        matches = await context.matchesToolCondition(
-                            hook.if,
-                            effectiveInput.tool_input
-                        );
+                        if (!("tool_input" in effectiveInput) || !context?.matchesToolCondition)
+                            throw new Error("Tool Hook 缺少 if 匹配上下文");
+                        if (!await context.matchesToolCondition(hook.if, effectiveInput.tool_input)) continue;
                     } catch (error) {
-                        executions.push({
-                            ...identity,
-                            outcome: "error",
-                            durationMs: 0,
-                            message: boundedHookMessage(
-                                `Hook if 匹配失败: ${error instanceof Error ? error.message : String(error)}`
-                            ),
-                        });
+                        await fail(boundedHookMessage(`Hook if 匹配失败: ${error instanceof Error ? error.message : String(error)}`));
+                        if (result.error) return result;
                         continue;
                     }
-                    if (!matches) continue;
                 }
-                if (signal.aborted) {
-                    executions.push({
-                        ...identity,
-                        outcome: "interrupted",
-                        durationMs: 0,
-                        message: "Hook 执行已取消",
-                    });
-                    return finish();
+                if (expired()) {await fail(signal.aborted ? "Hook 已取消" : "Hook dispatch 期限已耗尽"); continue;}
+                let envelope: HookEnvelope = {version: 2, cwd: this.options.cwd, hook_id: identity.hookId,
+                    dispatch_id: dispatchId, execution_id: identity.executionId, purpose: hook.purpose,
+                    source: matcher.source === "host" ? {source: "host", id: matcher.id} : {source: matcher.source, path: matcher.path},
+                    event: effectiveInput};
+                const serialized = JSON.stringify(envelope);
+                const bytes = Buffer.byteLength(serialized);
+                if (bytes > 65536) {
+                    if (hook.purpose === "control") {await fail("Control Hook 输入超过 65536 bytes，未裁剪后判定"); return result;}
+                    envelope = {...envelope, event: summarize(effectiveInput), truncated: true, original_bytes: bytes};
+                    if (context?.store) {
+                        try {const saved = await context.store.persistText({toolCallId: `hook-input:${identity.executionId}`,
+                            toolName: `hook:${input.hook_event_name}`, content: serialized}); envelope.input_result_id = saved.resultId;}
+                        catch {await fail("Hook 输入归档失败"); continue;}
+                    }
+                    if (Buffer.byteLength(JSON.stringify(envelope)) > 65536) {await fail("Hook 事件元数据仍超过输入预算"); continue;}
                 }
                 if (hook.once) {
-                    // `if` 匹配可能 yield；并发 Tool Hook 在恢复后必须再做一次
-                    // 原子的 check-and-set，否则两个调用都会消耗同一 once。
-                    if (!context?.session) {
-                        executions.push({
-                            ...identity,
-                            outcome: "error",
-                            durationMs: 0,
-                            message: "once Hook 缺少 Session Runtime，已安全跳过",
-                        });
-                        continue;
-                    }
-                    if (!context.session.claimOnce(onceKey)) continue;
+                    if (!context?.session) {await fail("once Hook 缺少 Session Runtime"); if (result.error) return result; continue;}
+                    if (!context.session.claimOnce(definition.hookId)) continue;
                 }
-                const handled = hook.type === "command"
-                    ? await executeCommandHook({
-                        event: input.hook_event_name,
-                        source: matcher.source,
-                        hook,
-                        cwd: this.cwd,
-                        input: effectiveInput,
-                        signal,
-                        executeCommand: this.executeCommand,
-                        environment: mergeChildProcessEnvironment(
-                            this.childEnvironment,
-                            {PILLAR_PROJECT_DIR: this.cwd}
-                        ),
-                    })
-                    : await executePromptHook({
-                        event: input.hook_event_name,
-                        source: matcher.source,
-                        hook,
-                        input: effectiveInput,
-                        signal,
-                        executor: this.promptExecutor,
-                    });
-                if (handled.interrupted) {
-                    executions.push(handled.execution);
-                    return finish();
+                await emit({type: "hook_started", execution: identity});
+                if (expired()) {await fail(signal.aborted ? "Hook 已取消" : "Hook dispatch 期限已耗尽"); continue;}
+                const timeoutMs = Math.max(1, Math.min(hook.timeoutMs ?? 10000, deadline - performance.now()));
+                const handled = hook.type === "command" ? await executeCommandHook({hook, envelope,
+                    signal: controller.signal, timeoutMs, executeCommand: this.dependencies.executeCommand,
+                    environment: mergeChildProcessEnvironment(this.options.childEnvironment, {PILLAR_PROJECT_DIR: this.options.cwd})})
+                    : await executePromptHook({hook, envelope, signal: controller.signal, timeoutMs, executor: this.options.promptExecutor});
+                const output = await finish(handled);
+                if (result.error || signal.aborted) return result;
+                if (!output) continue;
+                if (output.decision === "block") {result.blocked = true; result.blockReason = output.reason;}
+                if (output.decision === "continue") result.continueReason ??= output.reason;
+                if (output.decision === "rewrite") result.updatedInput = output.updatedInput;
+                if (output.additionalContext) {
+                    const remaining = 20000 - result.additionalContexts.reduce((sum, item) => sum + item.length, 0);
+                    if (remaining > 0) result.additionalContexts.push(output.additionalContext.slice(0, remaining));
                 }
-                if (!handled.output) {
-                    executions.push(handled.execution);
-                    continue;
-                }
-                const semanticError = validateOutputForEvent(
-                    input.hook_event_name,
-                    handled.output
-                );
-                if (semanticError) {
-                    executions.push({
-                        ...handled.execution,
-                        outcome: "error",
-                        message: semanticError,
-                    });
-                    continue;
-                }
-                if (handled.output.decision === "block") {
-                    const reason = handled.output.reason ?? "Hook 阻止了操作";
-                    blocked = true;
-                    blockReason ??= reason;
-                }
-                if (handled.output.updatedInput) {
-                    updatedInput = handled.output.updatedInput;
-                }
-                if (handled.output.additionalContext) {
-                    const used = additionalContexts.reduce(
-                        (total, context) => total + context.length,
-                        0
-                    );
-                    const remaining = MAX_TOTAL_CONTEXT_CHARS - used;
-                    if (remaining > 0) {
-                        additionalContexts.push(
-                            handled.output.additionalContext.slice(0, remaining)
-                        );
-                    }
-                }
-                executions.push(handled.execution);
+                if (result.blocked) return result;
             }
-        }
-
-        return finish();
+            return result;
+        } finally {clearTimeout(timer); signal.removeEventListener("abort", onAbort);}
     }
 }
-
-export function createHookRuntimeFactory(
-    overrides: Partial<HookRuntimeDependencies> = {}
-) {
-    const dependencies: HookRuntimeDependencies = {
-        executeCommand: overrides.executeCommand ?? defaultExecuteHookCommand,
-        canonicalProjectPath:
-            overrides.canonicalProjectPath ?? canonicalHookProjectPath,
-        getTrust: overrides.getTrust,
-        saveTrust: overrides.saveTrust,
-    };
-
-    return async function createHookRuntime(
-        options: CreateHookRuntimeOptions
-    ): Promise<HookRuntime> {
-        if (countResolvedHooks(options.hooks) === 0) {
-            return new ConfiguredHookRuntime(
-                options.cwd,
-                options.hooks,
-                dependencies.executeCommand,
-                options.childEnvironment,
-                options.promptExecutor
-            );
-        }
-        const trustPath = getHookTrustPath(options.storage);
-        const readTrust = dependencies.getTrust ??
-            ((projectPath: string) => getHookTrust(trustPath, projectPath));
-        const writeTrust = dependencies.saveTrust ??
-            ((projectPath: string, decision: "always" | "deny") =>
-                saveHookTrust(trustPath, projectPath, decision));
-        const projectPath = await dependencies.canonicalProjectPath(options.cwd);
-        const stored = await readTrust(projectPath);
-        if (stored === "allow") {
-            return new ConfiguredHookRuntime(
-                options.cwd,
-                options.hooks,
-                dependencies.executeCommand,
-                options.childEnvironment,
-                options.promptExecutor
-            );
-        }
-        if (options.headless) {
-            throw new HookWorkspaceNotTrustedError(projectPath);
-        }
-        if (stored === "deny") {
-            return disabledRuntime([{
-                severity: "warning",
-                message: `工作区未受信任，Hooks 已禁用: ${projectPath}`,
-            }]);
-        }
-        if (options.signal?.aborted) {
-            return disabledRuntime([{
-                severity: "warning",
-                message: "运行时初始化已取消，Hooks 未启用",
-            }]);
-        }
-        if (!options.requestTrust) {
-            return disabledRuntime([{
-                severity: "warning",
-                message: `没有可用的工作区信任确认器，Hooks 已禁用: ${projectPath}`,
-            }]);
-        }
-        const decision = await options.requestTrust({
-            projectPath,
-            hooks: hookTrustSummaries(options.hooks),
-        });
-        if (decision === "always" || decision === "deny") {
-            await writeTrust(projectPath, decision);
-        }
-        if (decision === "deny") {
-            return disabledRuntime([{
-                severity: "warning",
-                message: `用户未信任当前工作区，Hooks 已禁用: ${projectPath}`,
-            }]);
-        }
-        return new ConfiguredHookRuntime(
-            options.cwd,
-            options.hooks,
-            dependencies.executeCommand,
-            options.childEnvironment,
-            options.promptExecutor
-        );
+export function createHookRuntimeFactory(overrides: Partial<HookRuntimeDependencies> = {}) {
+    const dependencies = {executeCommand: overrides.executeCommand ?? defaultExecuteHookCommand,
+        canonicalProjectPath: overrides.canonicalProjectPath ?? canonicalHookProjectPath,
+        getTrust: overrides.getTrust, saveTrust: overrides.saveTrust};
+    return async (options: CreateHookRuntimeOptions): Promise<HookRuntime> => {
+        const runtime = new ConfiguredHookRuntime(options, dependencies);
+        await runtime.reload(options.hooks, options.signal ?? new AbortController().signal);
+        return runtime;
     };
 }
-
 export const createHookRuntime = createHookRuntimeFactory();
-
-function formatHookExecutionIssue(execution: HookExecution): string {
-    const detail = execution.message
-        ? `: ${boundedHookMessage(execution.message)}`
-        : "";
-    return `${execution.event} ${execution.type} Hook [${boundedCommand(execution.handler)}] ${execution.outcome}${detail}`;
+export function getHookExecutionIssues(result: HookBatchResult): string[] {
+    return result.executions.filter(item => item.outcome === "error" || item.outcome === "skipped_budget")
+        .map(item => `${item.event} ${item.type} Hook [${item.handler.replace(/\s+/g, " ").slice(0, 180)}] ${item.outcome}: ${boundedHookMessage(item.message ?? "")}`);
 }
-
-export function getHookExecutionIssues(
-    result: HookBatchResult
-): string[] {
-    return result.executions
-        .filter((execution) => execution.outcome === "error")
-        .map(formatHookExecutionIssue);
-}
-
 export function didRunCommandHook(result: HookBatchResult): boolean {
-    return result.executions.some(
-        (execution) => execution.type === "command" && execution.commandInvoked === true
-    );
+    return result.executions.some(item => item.type === "command" && item.commandInvoked === true);
 }
-
-export function formatHookContext(
-    event: HookInput["hook_event_name"],
-    contexts: readonly string[]
-): string[] {
-    return contexts.map(
-        (context) =>
-            `<system-reminder>\n` +
-            `Hook ${event} provided the following additional context:\n` +
-            `${context}\n` +
-            `</system-reminder>`
-    );
+export function formatHookContext(event: HookInput["hook_event_name"], contexts: readonly string[]): string[] {
+    return contexts.map(context => `<system-reminder>\nHook ${event} provided the following additional context:\n${context}\n</system-reminder>`);
 }

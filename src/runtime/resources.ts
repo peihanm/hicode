@@ -1,3 +1,4 @@
+import {loadPillarSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
@@ -69,6 +70,8 @@ export interface RootRuntimeResources {
     readonly memoryFiles?: MemoryFileAccess;
     readonly gitWorkspace: GitWorkspaceRuntimeLike;
 
+    holdHookConfiguration(): () => void;
+    reloadHooks(signal: AbortSignal): Promise<void>;
     beginShutdown(): void;
     close(): Promise<void>;
 }
@@ -327,7 +330,28 @@ export function createRootRuntimeResourcesFactory(
                 sandbox
             );
 
+            let hookUsers = 0;
+            let hooksReloading = false;
             return {
+                holdHookConfiguration() {
+                    if (hooksReloading) throw new Error("Hooks 正在重载，不能开始 Turn");
+                    hookUsers++;
+                    let released = false;
+                    return () => {if (!released) {released = true; hookUsers--;}};
+                },
+                async reloadHooks(signal) {
+                    if (hookUsers || hooksReloading || createdTaskRuntime.hasRunning()) throw new Error("Turn、后台任务或 Hook 重载尚未结束");
+                    hooksReloading = true;
+                    try {
+                        const loaded = loadPillarSettings({storage, cwd, sources: options.configuration.fileSources.settings});
+                        if (loaded.issues.length) throw new Error(loaded.issues.map(issue => issue.message).join("\n"));
+                        // Host declarations are immutable contributions and are not re-read from disk.
+                        for (const event of Object.keys(loaded.values.hooks) as (keyof typeof settings.hooks)[]) {
+                            loaded.values.hooks[event] = [...loaded.values.hooks[event], ...settings.hooks[event].filter(item => item.source === "host")];
+                        }
+                        await hooks.reload(loaded.values.hooks, signal);
+                    } finally {hooksReloading = false;}
+                },
                 storage,
                 inputHistory: createInputHistoryStore(storage),
                 cwd,

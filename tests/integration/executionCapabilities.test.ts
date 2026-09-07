@@ -181,7 +181,7 @@ describe("effective execution capabilities", () => {
     ])("Hook serializes full executions: %j", async ({original, replacement}) => {
         await withTempProject(async cwd => {
             const sequence: string[] = [];
-            const rt = createToolRuntime({hooks: {enabled: true, issues: [], async execute(input) {
+            const rt = createToolRuntime({hooks: {enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {}, issues: [], async execute(input) {
                 if (input.hook_event_name === "PreToolUse") {
                     sequence.push(`pre:${input.tool_call_id}`);
                     return {blocked: false, executions: [], additionalContexts: [],
@@ -209,7 +209,7 @@ describe("effective execution capabilities", () => {
             const controller = new AbortController();
             let hookCalls = 0;
             let approvals = 0;
-            const rt = createToolRuntime({hooks: {enabled: true, issues: [], async execute() {
+            const rt = createToolRuntime({hooks: {enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {}, issues: [], async execute() {
                 hookCalls++;
                 controller.abort();
                 return {blocked: false, additionalContexts: [], executions: [], updatedInput: {command: "printf wrong > wrong.txt"}};

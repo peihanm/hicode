@@ -1,3 +1,4 @@
+import type {HookExecution, HookInput} from "../hooks/types.js";
 import type {StopReason} from "../agent/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
 import type {FileChange} from "../fileChanges/index.js";
@@ -147,7 +148,13 @@ export interface DiagnosticItem extends ThreadItemBase {
     message: string;
 }
 
+export interface HookItem extends ThreadItemBase {
+    type: "hook";
+    execution: Omit<HookExecution, "outcome" | "durationMs"> & {outcome?: HookExecution["outcome"]; durationMs?: number};
+}
+
 export type ThreadItem =
+    | HookItem
     | AgentMessageItem
     | ToolCallItem
     | FileChangeItem
@@ -175,6 +182,7 @@ export type TurnProgressPhase =
     | "stalled";
 
 export type ThreadEventPayload =
+    | {type: "turn.settled"; turnId: string; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}
     | {type: "turn.draft"; turnId: string; responseId: string; text: string; truncated: boolean}
     | {type: "turn.draft_end"; turnId: string; responseId: string; disposition: "committed" | "discarded"}
     | {type: "thread.started"}

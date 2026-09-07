@@ -1,3 +1,4 @@
+import type {HookInput} from "../hooks/types.js";
 import {randomUUID} from "node:crypto";
 import {DEFAULT_SUBAGENT_MAX_ITERATIONS} from "../agent/constants.js";
 import type {AgentRunner} from "../agent/runner.js";
@@ -213,6 +214,9 @@ export function createSubagentFactories(
                     throw new Error(`Agent Thread 正在运行: ${agentId}`);
                 }
                 running = true;
+                let hookStart: Extract<HookInput, {hook_event_name: "SubagentStart"}> | undefined;
+                let hookStatus: "completed" | "failed" | "cancelled" = "failed";
+                let hookReason = "error";
                 try {
                     if (approvedWorkspace) {
                         for (const boundary of [parentContext.cwd, parentContext.workspaceBoundary ?? parentContext.cwd]) {
@@ -286,6 +290,11 @@ export function createSubagentFactories(
                         }
                     }
 
+                    hookStart = {hook_event_name: "SubagentStart", session_id: parentContext.sessionId,
+                        turn_id: parentContext.turnId, parent_turn_id: parentContext.turnId, agent_id: agentId,
+                        agent_type: definition.agentType, run_count: runCount, child_cwd: childContext.cwd,
+                        ...(input.taskId ? {task_id: input.taskId} : {})};
+                    await parentContext.runHook?.(hookStart, input.signal);
                     await emit(onEvent, {
                         type: "subagent_start",
                         agentId,
@@ -431,6 +440,9 @@ export function createSubagentFactories(
                             ? {transcriptPath: subagentResult.transcriptPath}
                             : {}),
                     });
+                    hookReason = subagentResult.reason;
+                    hookStatus = subagentResult.reason === "interrupted" ? "cancelled"
+                        : subagentResult.reason === "completed" || subagentResult.reason === "no_tool_calls" ? "completed" : "failed";
                     return subagentResult;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
@@ -459,7 +471,11 @@ export function createSubagentFactories(
                     });
                     throw error;
                 } finally {
-                    running = false;
+                    try {
+                        if (hookStart) await parentContext.runHook?.({...hookStart, hook_event_name: "SubagentStop",
+                            status: input.signal.aborted ? "cancelled" : hookStatus,
+                            reason: input.signal.aborted ? "cancelled" : hookReason}, input.signal);
+                    } finally {running = false;}
                 }
             },
         };

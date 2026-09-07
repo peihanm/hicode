@@ -1,11 +1,12 @@
-import type {HookExecution} from "./types.js";
+import type {HookHandlerExecution} from "./types.js";
 import type {HookJSONOutput} from "./schema.js";
 
 const MAX_HOOK_MESSAGE_LENGTH = 2_000;
 
 export interface HookHandlerResult {
-    execution: HookExecution;
+    execution: HookHandlerExecution;
     output?: HookJSONOutput;
+    diagnostic?: string;
     interrupted?: boolean;
 }
 

@@ -5,6 +5,7 @@ import type {
     CompactItem,
     DiagnosticItem,
     FileChangeItem,
+    HookItem,
     InteractionItem,
     InteractionRequest,
     InteractionResponse,
@@ -66,6 +67,7 @@ export class SDKEventAdapter {
     private readonly uiEvents = new SessionUIEventCollector();
     private readonly tools = new Map<string, ToolCallItem>();
     private readonly endedTools = new Set<string>();
+    private readonly activeHooks = new Set<string>();
     private readonly fileChanges = new Map<string, FileChangeItem[]>();
     private readonly subagents = new Map<string, SubagentItem>();
     private activeCompact: CompactItem | undefined;
@@ -82,6 +84,29 @@ export class SDKEventAdapter {
     handleAgentEvent = async (event: AgentEvent): Promise<void> => {
         this.uiEvents.handleEvent(event);
         switch (event.type) {
+            case "hook_started":
+            case "hook_completed": {
+                const execution = {...event.execution, handler: boundedText(event.execution.handler)};
+                const item: HookItem = {
+                    id: `hook:${execution.executionId}`, type: "hook",
+                    status: event.type === "hook_started" ? "in_progress" : event.execution.outcome === "interrupted" ? "interrupted"
+                        : event.execution.outcome === "error" || event.execution.outcome === "skipped_budget" ? "failed" : "completed",
+                    execution,
+                };
+                if (event.type === "hook_started") {
+                    this.activeHooks.add(item.id);
+                    await this.emitItem("item.started", item);
+                } else if (this.activeHooks.delete(item.id)) {
+                    await this.emitItem("item.completed", item);
+                } else {
+                    // Skipped handlers have a terminal fact but never started execution.
+                    await this.emitInstant(item);
+                }
+                break;
+            }
+            case "turn_end":
+                await this.emit({type: "turn.settled", turnId: this.turnId, input: event.input});
+                break;
             case "assistant_draft":
                 await this.emit({type: "turn.draft", turnId: this.turnId, responseId: event.responseId, text: event.text, truncated: event.truncated});
                 break;

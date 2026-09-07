@@ -71,7 +71,7 @@ export function createHeadlessRunner(
             await rootSession.initialize();
             const eventHandler = async (event: AgentEvent): Promise<void> => {
                 collector.handleEvent(event);
-                if (options.outputFormat !== "text") return;
+                if (options.outputFormat !== "text" && event.type !== "hook_completed") return;
                 const line = formatHeadlessProgress(event);
                 if (line !== null) await dependencies.writeDiagnostic(line);
             };
@@ -144,7 +144,8 @@ export function createHeadlessRunner(
                 }
                 const sessionStart = await rootSession.runSessionStart(
                     options.resumeMode.kind === "none" ? "startup" : "resume",
-                    activeSignal
+                    activeSignal,
+                    eventHandler
                 );
                 await writeHookIssues(sessionStart);
                 turnInvoked = true;
@@ -213,7 +214,8 @@ export function createHeadlessRunner(
                 }
                 try {
                     const endResult = await rootSession.runSessionEnd(
-                        sessionEndReason
+                        sessionEndReason,
+                        eventHandler
                     );
                     await writeHookIssues(endResult);
                 } catch (error) {

@@ -127,7 +127,7 @@ describe("headless integration", () => {
     await withTempProject(async (cwd) => {
       const events: string[] = [];
       const hooks: HookRuntime = {
-        enabled: true,
+        enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {},
         issues: [],
         async execute(input) {
           events.push(input.hook_event_name);
@@ -161,6 +161,7 @@ describe("headless integration", () => {
       expect(events).toEqual([
         "SessionStart",
         "UserPromptSubmit",
+        "TurnEnd",
         "SessionEnd",
       ]);
       expect(summary).toMatchObject({
@@ -496,7 +497,7 @@ describe("headless integration", () => {
     await withTempProject(async (cwd) => {
       let closeCount = 0;
       const hooks: HookRuntime = {
-        enabled: true,
+        enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {},
         issues: [],
         async execute(input) {
           if (input.hook_event_name === "SessionEnd") {

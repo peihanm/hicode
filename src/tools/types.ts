@@ -14,7 +14,7 @@ import type {FileStateTracker} from "./shared/fileState.js";
 import type {ProjectInstructions} from "../prompt/instructions.js";
 import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
-import type {HookSessionRuntime} from "../hooks/index.js";
+import type {HookSessionRuntime, HookInput, HookBatchResult, HookLifecycleEvent, HookRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
@@ -143,6 +143,11 @@ export interface ToolContext {
     // 当前 Session 的 Hook 生命周期状态，用于 once 原子 claim。
     // 状态归 Session Runtime，不得放入 Root Hook Runtime。
     hookSession?: HookSessionRuntime;
+    turnId: string;
+    holdHookConfiguration?: () => () => void;
+    onHookEvent?: (event: HookLifecycleEvent) => void | Promise<void>;
+    runHook?: (input: HookInput, signal?: AbortSignal) => Promise<HookBatchResult>;
+    hookControl?: {inspect: HookRuntime["inspect"]; reload(signal: AbortSignal): Promise<void>};
 
     // Root Runtime 统一持有的 Shell 执行边界。前台、后台和子 Agent
     // 通过同一 Runner 获得一致的 Sandbox、取消和输出语义。

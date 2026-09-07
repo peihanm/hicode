@@ -31,6 +31,10 @@ function summarizeResult(result: string): string {
 
 export function formatHeadlessProgress(event: AgentEvent): string | null {
     switch (event.type) {
+        case "hook_started":
+            return `● Hook ${event.execution.event}: ${summarizeResult(event.execution.handler)}`;
+        case "hook_completed":
+            return event.execution.userMessage ? `  Hook: ${summarizeResult(event.execution.userMessage)}` : null;
         case "assistant_text":
             return event.phase === "commentary"
                 ? `● ${summarizeResult(event.content)}`
@@ -69,7 +73,7 @@ function getHeadlessExitCode({
 }): number {
     if (result.reason === "interrupted") return 130;
     if (result.reason === "max_turns") return 3;
-    if (result.reason === "permission_denied" || result.reason === "hook_blocked") return 2;
+    if (result.reason === "permission_denied" || result.reason === "hook_blocked" || result.reason === "hook_error" || result.reason === "hook_limit") return 2;
     if (permissionDenials.length > 0 || toolFailures.length > 0) return 2;
     return 0;
 }

@@ -163,6 +163,7 @@ function mergeHooks(
         PostToolUse: [],
         PostToolUseFailure: [],
         SessionEnd: [],
+    PostToolBatch: [], Stop: [], TurnEnd: [], PreCompact: [], PostCompact: [], SubagentStart: [], SubagentStop: [],
     };
     for (const document of documents) {
         for (const [event, matchers] of Object.entries(document.value.hooks ?? {})) {

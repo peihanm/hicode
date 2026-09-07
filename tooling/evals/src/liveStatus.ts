@@ -53,6 +53,8 @@ export function reduceEvalLiveStatus(
                 phase: "item",
                 detail: `updating ${event.item.type}`,
             };
+        case "turn.settled":
+            return {...base, phase: "item", detail: `settled ${event.input.status}; session ${event.input.persistence_status}`};
         case "turn.draft":
         case "turn.draft_end":
         case "item.updated":

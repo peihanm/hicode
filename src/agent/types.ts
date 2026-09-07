@@ -1,3 +1,4 @@
+import type {HookLifecycleEvent, HookInput} from "../hooks/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
 import type {PersistedToolResult} from "../toolResults/index.js";
 import type {AgentType} from "../subagents/types.js";
@@ -11,6 +12,8 @@ export type StopReason =
     | "max_turns"
     | "permission_denied"
     | "hook_blocked"
+    | "hook_error"
+    | "hook_limit"
     | "no_tool_calls"
     | "interrupted";
 
@@ -31,6 +34,8 @@ export interface AgentUsage {
 
 /** Agent 主循环向宿主发布的运行事件。 */
 export type AgentEvent =
+    | HookLifecycleEvent
+    | {type: "turn_end"; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}
     | {type: "turn_timing"; turnId: string; timing: TurnTimingSummary}
     | {
         type: "assistant_text";
