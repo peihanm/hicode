@@ -50,6 +50,7 @@ describe("File Checkpoint Store", () => {
             const checkpoint = await runtime.beginTurn({prompt: "创建外部文件"});
 
             expect((await runtime.beforeWrite({
+                afterContent: "created\n",
                 path: aliasPath,
                 content: null,
                 toolCallId: "external-create",
@@ -86,6 +87,7 @@ describe("File Checkpoint Store", () => {
             const checkpoint = await runtime.beginTurn({prompt: "修改外部文件"});
 
             expect((await runtime.beforeWrite({
+                afterContent: "after\n",
                 path,
                 content: "before\n",
                 toolCallId: "external-edit",
@@ -128,6 +130,7 @@ describe("File Checkpoint Store", () => {
             expect(checkpoint).not.toBeNull();
 
             expect((await runtime.beforeWrite({
+                afterContent: "const value = 2;\n",
                 path,
                 content: "const value = 1;\n",
                 toolCallId: "call-1",
@@ -140,6 +143,7 @@ describe("File Checkpoint Store", () => {
             });
 
             await runtime.beforeWrite({
+                afterContent: "const value = 3;\n",
                 path,
                 content: "const value = 2;\n",
                 toolCallId: "call-2",
@@ -170,6 +174,7 @@ describe("File Checkpoint Store", () => {
             const runtime = createRuntime(cwd);
             const checkpoint = await runtime.beginTurn({prompt: "新建文件"});
             await runtime.beforeWrite({
+                afterContent: "created\n",
                 path,
                 content: null,
                 toolCallId: "create-1",
@@ -199,6 +204,7 @@ describe("File Checkpoint Store", () => {
             const runtime = createRuntime(cwd);
             const checkpoint = await runtime.beginTurn({prompt: "修改配置"});
             await runtime.beforeWrite({
+                afterContent: "agent\n",
                 path,
                 content: "old\n",
                 toolCallId: "edit-1",
@@ -226,6 +232,7 @@ describe("File Checkpoint Store", () => {
             const runtime = createRuntime(cwd);
             const checkpoint = await runtime.beginTurn({prompt: "修改受保护文件"});
             await runtime.beforeWrite({
+                afterContent: "after\n",
                 path,
                 content: "before\n",
                 toolCallId: "guarded-edit",
@@ -272,6 +279,7 @@ describe("File Checkpoint Store", () => {
             const runtime = createRuntime(cwd);
             const checkpoint = await runtime.beginTurn({prompt: "修改 safe"});
             await runtime.beforeWrite({
+                afterContent: "after\n",
                 path,
                 content: "before\n",
                 toolCallId: "edit-safe",
@@ -306,10 +314,12 @@ describe("File Checkpoint Store", () => {
             const runtime = createRuntime(cwd);
             await runtime.beginTurn({prompt: "第一次修改"});
             await runtime.beforeWrite({
+                afterContent: "before\n",
                 path,
                 content: "before\n",
                 toolCallId: "first",
             });
+            await runtime.afterWrite({path, content: "before\n", toolCallId: "first"});
             await runtime.settleTurn();
 
             const store = createTestFileCheckpointStore(cwd, "checkpoint-session");
@@ -321,6 +331,7 @@ describe("File Checkpoint Store", () => {
 
             await runtime.beginTurn({prompt: "第二次修改"});
             await runtime.beforeWrite({
+                afterContent: "before\n",
                 path,
                 content: "before\n",
                 toolCallId: "second",
@@ -387,6 +398,7 @@ describe("File Checkpoint Store", () => {
             await writeFile(redirectedMutation, "", "utf8");
             await symlink(redirectedMutation, mutationPath);
             await expect(store.captureBefore(checkpoint.checkpointId, {
+                afterContent: null,
                 path: join(cwd, "safe.txt"),
                 content: null,
                 toolCallId: "must-not-follow",
@@ -395,7 +407,7 @@ describe("File Checkpoint Store", () => {
         });
     });
 
-    test("Bash 等未捕获副作用进入 partial coverage", async () => {
+    test("Bash 范围外说明不等于受控文件捕获失败", async () => {
         await withTempProject(async (cwd) => {
             const runtime = createRuntime(cwd);
             await runtime.beginTurn({prompt: "运行脚本"});
@@ -409,11 +421,11 @@ describe("File Checkpoint Store", () => {
                 code: "bash_side_effects",
                 message: "Bash 可能修改文件",
             }]);
-            expect(listed[0]?.fileCoverage).toBe("incomplete");
+            expect(listed[0]?.fileCoverage).toBe("complete");
             const preview = await runtime.previewRestore(
                 listed[0]!.checkpointId
             );
-            expect(preview.conflicts[0]?.reason).toBe("incomplete_checkpoint");
+            expect(preview.conflicts).toEqual([]);
         });
     });
 
@@ -424,6 +436,7 @@ describe("File Checkpoint Store", () => {
             for (let index = 0; index < 600; index++) {
                 const path = join(cwd, `generated-${index}.txt`);
                 expect((await runtime.beforeWrite({
+                    afterContent: `${index}\n`,
                     path,
                     content: null,
                     toolCallId: `write-${index}`,
@@ -470,6 +483,7 @@ describe("File Checkpoint Store", () => {
             const runtime = createRuntime(cwd);
             const checkpoint = await runtime.beginTurn({prompt: "修改多个文件"});
             await runtime.beforeWrite({
+                afterContent: "after\n",
                 path,
                 content: "before\n",
                 toolCallId: "edit-safe",
@@ -508,6 +522,7 @@ describe("File Checkpoint Store", () => {
                 const before = `v${index}\n`;
                 const after = `v${index + 1}\n`;
                 await runtime.beforeWrite({
+                    afterContent: after,
                     path,
                     content: before,
                     toolCallId: `write-${index}`,

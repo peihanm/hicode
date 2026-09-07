@@ -30,7 +30,6 @@ export interface SandboxedCommand {
 export interface SandboxCommandOptions {
     writableRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
-    filesystemScope?: {root: string; denyWrite: readonly string[]};
 }
 
 export interface SandboxRuntimeLike {

@@ -1,3 +1,4 @@
+import {recoverSessionBeforeStart} from "../../checkpoints/rewind.js";
 import {useEffect, useRef, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import type {PermissionMode} from "../../permissions/index.js";
@@ -65,6 +66,7 @@ export function createRuntimeBootstrap(
             resources: RootRuntimeResources;
             session: UITurnSessionRuntime;
             sessionKey: string;
+            initialSession?: LoadedSession;
         } | null>(null);
         const [error, setError] = useState<string | null>(null);
         const sessionShutdownRef = useRef<(() => Promise<void>) | null>(null);
@@ -114,10 +116,8 @@ export function createRuntimeBootstrap(
                     },
                 });
                 ownedResources = resources;
-                const turnSession = createUITurnSessionRuntime(
-                    resources,
-                    session
-                );
+                const initialSession = session ? (await recoverSessionBeforeStart(resources, session.sessionId)) ?? session : undefined;
+                const turnSession = createUITurnSessionRuntime(resources, initialSession);
                 await turnSession.rootSession.initialize();
                 if (disposed) {
                     await closeResources(resources);
@@ -126,6 +126,7 @@ export function createRuntimeBootstrap(
                 setReady({
                     resources,
                     session: turnSession,
+                    initialSession,
                     sessionKey: session?.sessionId ?? "new",
                 });
             })().catch(async (reason) => {
@@ -204,7 +205,7 @@ export function createRuntimeBootstrap(
                 resumedDraft={ready.session.resumedDraft}
                 initialPermissionMode={initialPermissionMode}
                 initialCollaborationMode={initialCollaborationMode}
-                initialSession={session}
+                initialSession={ready.initialSession}
                 registerSessionShutdown={(shutdown) => {
                     sessionShutdownRef.current = shutdown;
                 }}

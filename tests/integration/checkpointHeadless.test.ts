@@ -42,6 +42,14 @@ describe("Checkpoint Headless CLI", () => {
                 checkpointId: string;
             };
 
+            const forked = await run([process.execPath, join(repositoryRoot, "src/index.tsx"),
+                "-r", identity.sessionId, "--fork-from", identity.checkpointId, "--output-format", "json"], {cwd, env});
+            expect(forked.exitCode).toBe(0);
+            expect(forked.stderr).toBe("");
+            expect(JSON.parse(forked.stdout)).toMatchObject({status: "complete", filesChanged: false});
+            expect(JSON.parse(forked.stdout).sessionId).not.toBe(identity.sessionId);
+            expect(await readFile(join(cwd, "headless.txt"), "utf8")).toBe("after\n");
+
             const restored = await run([
                 process.execPath,
                 join(repositoryRoot, "src/index.tsx"),

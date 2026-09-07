@@ -33,6 +33,7 @@ await saveSessionTurnCheckpoint(storage, {
         collaborationMode: "build",
 });
 await runtime.beforeWrite({
+    afterContent: "after\n",
     path,
     content: "before\n",
     toolCallId: "headless-write",

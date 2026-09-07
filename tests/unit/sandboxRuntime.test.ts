@@ -18,32 +18,30 @@ const settings = {
 };
 
 describe("Sandbox Runtime lease", () => {
-    test("快照 scope 只收窄 allowWrite，保留 denyRead 并禁写排除路径，下一命令不继承", async () => {
-        await withTempProject(async (cwd, storage) => {
-            const root = await realpath(cwd);
-            const shared = join(root, "shared");
-            const project = join(root, "project");
-            await mkdir(shared); await mkdir(project);
+    test("安全路径保护与 Checkpoint 无关，额外目录授权不移除 denyRead/denyWrite", async () => {
+        await withTempProject(async (root, storage) => {
+            const project = join(root, "project"); await mkdir(project);
             const configs: Array<Partial<SandboxRuntimeConfig> | undefined> = [];
-            let enabled = false;
-            const factory = createSandboxRuntimeFactory({isSupportedPlatform: () => true, isSandboxingEnabled: () => enabled,
-                checkDependencies: () => ({errors: [], warnings: []}), async initialize() {enabled = true;},
-                async wrapWithSandboxArgv(command, _shell, config) {configs.push(config); return {argv: ["sh", "-c", command], env: {}};},
-                annotateStderrWithSandboxFailures: (_command, stderr) => stderr, cleanupAfterCommand() {}, async reset() {}});
+            let active = false;
+            const factory = createSandboxRuntimeFactory({
+                isSupportedPlatform: () => true, isSandboxingEnabled: () => active,
+                checkDependencies: () => ({errors: [], warnings: []}),
+                async initialize() {active = true;},
+                async wrapWithSandboxArgv(_command, _shell, config) {configs.push(config); return {argv: ["true"], env: {}};},
+                annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
+                cleanupAfterCommand() {}, async reset() {active = false;},
+            });
             const runtime = await factory({cwd: project, storage, settings: {...settings, filesystem: {denyRead: [join(project, "secret")], denyWrite: []}}});
             try {
-                const wrapped = await runtime.wrapCommand("bun test", project, new AbortController().signal, {writableRoots: [shared],
-                    filesystemScope: {root: project, denyWrite: [join(project, "node_modules")]}});
-                expect(wrapped.env.BUN_INSTALL_CACHE_DIR).toContain("/cache/bun");
-                expect(configs[0]?.filesystem?.allowWrite).toEqual([project, expect.stringContaining("/cache/bun")]);
-                expect(configs[0]?.filesystem?.denyRead).toEqual([join(project, "secret")]);
-                expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, "node_modules"));
-                await runtime.wrapCommand("next", project, new AbortController().signal, {writableRoots: [shared]});
-                expect(configs[1]?.filesystem?.allowWrite).toEqual([project, expect.stringContaining("/cache/bun"), shared]);
-                await expect(runtime.wrapCommand("bad", project, new AbortController().signal, {filesystemScope: {root, denyWrite: []}})).rejects.toThrow("收窄");
+                await runtime.wrapCommand("test", project, new AbortController().signal, {writableRoots: [root]});
+                expect(configs[0]?.filesystem?.allowWrite).toContain(root);
+                expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, ".git"));
+                expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, "secret"));
+                expect(configs[0]?.filesystem?.denyRead).toContain(join(project, "secret"));
             } finally {await runtime.close();}
         });
     });
+
     test("每条命令只获得当前 Session 提供的 writable roots", async () => {
       await withTempProject(async (_cwd, storage) => {
         let enabled = false;

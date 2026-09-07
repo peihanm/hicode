@@ -1,3 +1,4 @@
+import {constants} from "node:fs";
 import {randomUUID} from "node:crypto";
 import {chmod, link, lstat, mkdir, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
@@ -548,6 +549,74 @@ export class ToolResultStore {
         const result = await this.loadExisting(value.resultId);
         if (!result || result.byteLength > this.maxArtifactBytes) throw new ToolResultStoreError("invalid tool result file");
         return result;
+    }
+
+    private async resolveBinaryReference(path: string): Promise<PersistedBinaryArtifact> {
+        const resolved = resolve(path);
+        if (dirname(resolved) !== resolve(this.sessionDir) || !/^[a-f0-9]{32}\.bin$/.test(basename(resolved))) {
+            throw new ToolResultStoreError("无权复制其他 Session 的二进制结果");
+        }
+        const metadataPath = resolved.slice(0, -4) + ".binary.json";
+        const handle = await open(metadataPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+            const info = await handle.stat();
+            if (!info.isFile() || info.size > MAX_TOOL_RESULT_METADATA_BYTES) throw new ToolResultStoreError("二进制结果元数据无效");
+            const content = Buffer.alloc(info.size);
+            const {bytesRead} = await handle.read(content, 0, content.length, 0);
+            if (bytesRead !== content.length) throw new ToolResultStoreError("二进制结果元数据不完整");
+            const value: unknown = JSON.parse(content.toString("utf8"));
+            if (!value || typeof value !== "object" || !("artifactId" in value) || typeof value.artifactId !== "string" ||
+                value.artifactId.length > 4096 || basename(resolved) !== `${getArtifactKey(this.sessionId, value.artifactId)}.bin`) {
+                throw new ToolResultStoreError("二进制结果路径与元数据不匹配");
+            }
+            const result = parseBinaryArtifactMetadata(content.toString("utf8"), value.artifactId);
+            if (!result || result.byteLength > this.maxArtifactBytes) throw new ToolResultStoreError("二进制结果元数据无效");
+            return {...result, path: resolved};
+        } finally {await handle.close();}
+    }
+
+    async copyReferenceTo(path: string, target: ToolResultStore): Promise<PersistedToolResult | PersistedBinaryArtifact> {
+        await this.ensureDir();
+        const result = path.endsWith(".bin") ? await this.resolveBinaryReference(path) : await this.resolveFile(path);
+        if (!result) throw new ToolResultStoreError("对话引用不是本 Session 的结果");
+        const handle = await open(result.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+            const before = await handle.stat();
+            if (!before.isFile() || before.size !== result.byteLength || before.size > this.maxArtifactBytes) throw new ToolResultStoreError("结果在复制前发生变化");
+            const bytes = Buffer.alloc(before.size);
+            let offset = 0;
+            while (offset < bytes.length) {
+                const read = await handle.read(bytes, offset, bytes.length - offset, offset);
+                if (!read.bytesRead) throw new ToolResultStoreError("结果复制不完整");
+                offset += read.bytesRead;
+            }
+            const after = await handle.stat();
+            if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new ToolResultStoreError("结果在复制期间发生变化");
+            return await target.withMutation(async () => {
+                if (bytes.length > target.maxArtifactBytes || await target.currentUsage() + bytes.length > target.maxSessionBytes) {
+                    throw new ToolResultStoreError("分支存储额度不足，无法完整复制已保存结果");
+                }
+                const key = getArtifactKey(target.sessionId, result.encoding === "binary" ? result.artifactId : result.resultId);
+                const contentPath = join(target.sessionDir, `${key}.${result.encoding === "binary" ? "bin" : "txt"}`);
+                const metadataPath = join(target.sessionDir, `${key}.${result.encoding === "binary" ? "binary" : "meta"}.json`);
+                for (const path of [contentPath, metadataPath]) {
+                    try {await lstat(path);} catch (error) {if (isCode(error, "ENOENT")) continue; throw error;}
+                    throw new ToolResultStoreError("分支结果目标已存在");
+                }
+                const copied = {...result, path: contentPath};
+                const tempContent = join(target.sessionDir, `.tmp-${randomUUID()}`);
+                const tempMetadata = join(target.sessionDir, `.tmp-${randomUUID()}`);
+                try {
+                    await writeFile(tempContent, bytes, {flag: "wx", mode: 0o600});
+                    await writeFile(tempMetadata, JSON.stringify(copied), {flag: "wx", mode: 0o600});
+                    await target.publishPair(tempContent, tempMetadata, contentPath, metadataPath);
+                    return copied;
+                } finally {
+                    await rm(tempContent, {force: true});
+                    await rm(tempMetadata, {force: true});
+                }
+            });
+        } finally {await handle.close();}
     }
 
     async removeTemporaryFile(path: string): Promise<void> {

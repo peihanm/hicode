@@ -2,14 +2,12 @@ import {normalizeTurnAbortReason} from "../../runtime/abort.js";
 import type {NetworkAccessExecution} from "../../permissions/networkAccess.js";
 import {mergeChildProcessEnvironment, type ChildProcessEnvironment,} from "../../runtime/childEnvironment.js";
 import type {SandboxExecutionPreference, SandboxRuntimeLike, SandboxStatus,} from "../../sandbox/index.js";
-import type {SandboxCommandOptions} from "../../sandbox/types.js";
 import {runShellArgv, runShellCommand, type ShellCommandOptions, type ShellExecutionResult,} from "./process.js";
 
 interface ShellRunnerRequest extends ShellCommandOptions {
     sandboxPermissions?: SandboxExecutionPreference;
     writableRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
-    filesystemScope?: SandboxCommandOptions["filesystemScope"];
 }
 
 const LOCAL_BINDING_HINT =
@@ -77,14 +75,10 @@ export function createShellRunner(
                 sandboxPermissions = "use_default",
                 writableRoots,
                 networkAccess,
-                filesystemScope,
                 command,
                 env,
                 ...processOptions
             } = request;
-            if (filesystemScope && (sandboxPermissions === "require_escalated" || sandbox.status.kind !== "ready")) {
-                return sandboxFailure(request.signal, new Error("Shell 快照写边界要求活动 OS Sandbox"));
-            }
             if (
                 sandboxPermissions === "require_escalated" ||
                 sandbox.status.kind === "disabled"
@@ -108,7 +102,7 @@ export function createShellRunner(
                     command,
                     request.cwd,
                     request.signal,
-                    {writableRoots, networkAccess, filesystemScope}
+                    {writableRoots, networkAccess}
                 );
             } catch (error) {
                 return sandboxFailure(request.signal, error);

@@ -311,6 +311,10 @@ export function App({
                         listCheckpoints={turn.listCheckpoints}
                         previewCheckpoint={turn.previewCheckpoint}
                         restoreCheckpoint={turn.restoreCheckpoint}
+                        forkConversation={requestSessionSwitch ? async (checkpointId) => {
+                            const fork = await turn.forkConversation(checkpointId);
+                            await requestSessionSwitch(fork.sessionId);
+                        } : undefined}
                         onClose={() => setShowRewind(false)}
                     />
                 ) : turn.confirmRequest ? (

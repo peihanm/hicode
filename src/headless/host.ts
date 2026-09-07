@@ -1,3 +1,4 @@
+import {recoverSessionBeforeStart} from "../checkpoints/rewind.js";
 import type {AgentEvent} from "../agent/types.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../hooks/index.js";
 import type {PermissionDecision} from "../permissions/index.js";
@@ -42,7 +43,7 @@ export function createHeadlessRunner(
         options: HeadlessOptions,
         signal?: AbortSignal
     ): Promise<HeadlessRunSummary> {
-        const state = loadHeadlessSession(options);
+        let state = loadHeadlessSession(options);
         const permissionRules = options.configuration.settings.permissions.rules;
         const collector = new HeadlessEventCollector();
         const fallbackController = createTurnAbortController();
@@ -53,6 +54,7 @@ export function createHeadlessRunner(
             headless: true,
         });
         try {
+            if (await recoverSessionBeforeStart(resources, state.sessionId)) state = loadHeadlessSession({...options, resumeMode: {kind: "session", sessionId: state.sessionId}});
             const rootSession = createRootSessionRuntime({
                 resources,
                 seed: {

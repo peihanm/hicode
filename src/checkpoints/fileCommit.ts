@@ -60,7 +60,7 @@ export class FileCommitCoordinator {
         return this.exclusive(signal, () => operation(canonical));
     }
 
-    /** A Shell snapshot and its process must not overlap another Root-owned file writer. */
+    /** Root-owned foreground Shell and file commits share a write ordering boundary. */
     async exclusive<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
         while (this.active) {
             const pending = this.active;
@@ -82,7 +82,7 @@ export class FileCommitCoordinator {
 
 }
 
-export function prepareFileCommit(path: string, canonical: string, expected: string | Buffer | null) {
+export function prepareFileCommit(path: string, canonical: string, expected: string | Buffer | null, targetMode?: number) {
     if (canonicalPath(path) !== canonical) throw new Error(`文件路径在等待期间发生变化: ${path}`);
     const version = readVersion(path);
     assertContent(version, expected, path);
@@ -95,10 +95,10 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
                 // Stage on the same filesystem; final rename cannot expose a partial file.
                 await mkdir(dirname(canonical), {recursive: true});
                 temporary = join(dirname(canonical), `.pillar-write-${randomUUID()}.tmp`);
-                const file = await open(temporary, "wx", version.mode ?? 0o666);
+                const file = await open(temporary, "wx", targetMode ?? version.mode ?? 0o666);
                 try {
                     await file.writeFile(content, "utf8");
-                    if (version.mode !== undefined) await file.chmod(version.mode);
+                    if (targetMode !== undefined || version.mode !== undefined) await file.chmod(targetMode ?? version.mode!);
                     await file.sync();
                 } finally { await file.close(); }
             }

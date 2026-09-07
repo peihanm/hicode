@@ -37,6 +37,7 @@ describe("Checkpoint path and disabled runtime", () => {
             });
             expect(await runtime.beginTurn({prompt: "不会保存"})).toBeNull();
             expect((await runtime.beforeWrite({
+                afterContent: null,
                 path: join(cwd, "a.txt"),
                 content: null,
                 toolCallId: "write-a",

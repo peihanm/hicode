@@ -101,3 +101,7 @@ export function getSessionContentDirectory(storage: PillarStorageLayout, cwd: st
 export function getProjectBunCacheDirectory(storage: PillarStorageLayout, cwd: string): string {
     return join(getProjectStorageDirectory(storage, cwd), "cache", "bun");
 }
+
+export function getSessionRestorePath(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "checkpoints", "restore.json");
+}

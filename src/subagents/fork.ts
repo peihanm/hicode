@@ -1,3 +1,4 @@
+import {referencedResultPaths} from "../toolResults/references.js";
 import {resolve} from "node:path";
 import type {Message} from "../llm/types.js";
 import type {ToolResultStore} from "../toolResults/index.js";
@@ -13,28 +14,7 @@ export function createForkResultFiles(
     parent: Pick<ToolResultStore, "resolveFile">,
     local: ToolResultStore
 ): Pick<ToolResultStore, "resolveFile"> {
-    const paths = new Set<string>();
-    const toolNames = new Map<string, string>();
-    for (const message of history) {
-        if (message.role === "assistant") {
-            for (const call of message.tool_calls ?? []) toolNames.set(call.id, call.function.name);
-        }
-        if (message.role !== "tool") continue;
-        const references = [...message.content.matchAll(/^<persisted-output>\n[\s\S]*?^<\/persisted-output>$/gm)]
-            .flatMap(block => [...block[0].matchAll(/^(?:Full output saved|Only a partial output could be saved) at: ("(?:[^"\\\n]|\\.)*")$/gm)]);
-        const name = toolNames.get(message.tool_call_id);
-        if (name === "task" || name === "bash_task") {
-            references.push(...message.content.matchAll(/^Saved (?:output|diff): ("(?:[^"\\\n]|\\.)*")$/gm));
-        } else if (name === "read_file") {
-            references.push(...message.content.matchAll(/^Saved output: ("(?:[^"\\\n]|\\.)*")\n/g));
-        }
-        for (const match of references) {
-            try {
-                const path: unknown = JSON.parse(match[1]!);
-                if (typeof path === "string" && path.length > 0 && path.length <= 16384) paths.add(resolve(path));
-            } catch { /* Malformed references grant no capability. */ }
-        }
-    }
+    const paths = referencedResultPaths(history);
     return Object.freeze({
         resolveFile: (path: string) => paths.has(resolve(path)) ? parent.resolveFile(path) : local.resolveFile(path),
     });

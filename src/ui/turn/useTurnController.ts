@@ -521,6 +521,7 @@ export function useTurnController({
             }));
         }, [eventStore, resources, toolRuntime]);
         const checkpointActions = useMemo(() => createUICheckpointActions({
+            getPermissionMode: () => permissionModeRef.current,
             resources,
             rootSession,
             eventStore,

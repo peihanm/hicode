@@ -112,3 +112,12 @@ describe("parseCliArgs", () => {
     ).toThrow("必须和 -r <sessionId>");
   });
 });
+
+test("对话分支参数要求显式 Session 且不与执行或文件恢复混用", () => {
+    expect(parseCliArgs(["-r", "source", "--fork-from=point", "--output-format=json"]))
+        .toMatchObject({forkCheckpointId: "point", resumeMode: {kind: "session", sessionId: "source"}, outputFormat: "json"});
+    for (const args of [["--fork-from", "point"], ["-r", "source", "--fork-from="],
+        ["-r", "source", "--fork-from", "point", "--rewind", "other"], ["-r", "source", "--fork-from", "point", "-p", "run"]]) {
+        expect(() => parseCliArgs(args)).toThrow();
+    }
+});

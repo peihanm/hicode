@@ -75,7 +75,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         private readonly release: () => Promise<void>,
         private readonly baseConfig: SandboxRuntimeConfig,
         private readonly networkApproval: SandboxNetworkApproval,
-        private readonly bunCacheDirectory: string
+        private readonly bunCacheDirectory: string,
+        private readonly pillarHome: string
     ) {}
 
     async wrapCommand(
@@ -98,7 +99,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         ) {
             throw new Error("Windows Sandbox 不支持在 Session 中动态增加 writable root");
         }
-        let customConfig = writableRoots.length === 0
+        const customConfig = writableRoots.length === 0
             ? undefined
             : {
                 ...this.baseConfig,
@@ -107,20 +108,13 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                     allowWrite: writableRoots,
                 },
             };
-        if (options?.filesystemScope) {
-            if (this.status.platform === "windows") throw new Error("Windows 不支持逐命令工作区快照写边界");
-            const scope = options.filesystemScope;
-            const root = await realpath(scope.root);
-            const allowed = await Promise.all(writableRoots.map(path => realpath(path)));
-            const within = (parent: string, path: string) => {
-                const part = relative(parent, path);
-                return part === "" || (!isAbsolute(part) && part !== ".." && !part.startsWith("../") && !part.startsWith("..\\"));
-            };
-            if (!allowed.some(parent => within(parent, root)) || scope.denyWrite.some(path => !isAbsolute(path) || !within(root, resolve(path)))) {
-                throw new Error("Shell 快照写边界必须收窄已有目录授权");
-            }
-            customConfig = {...this.baseConfig, filesystem: {...this.baseConfig.filesystem,
-                allowWrite: [root, this.bunCacheDirectory], denyWrite: [...this.baseConfig.filesystem.denyWrite, ...scope.denyWrite]}};
+        // The private store cannot become writable through a broad workspace grant.
+        const within = (parent: string, path: string) => {
+            const part = relative(parent, path);
+            return part === "" || (!isAbsolute(part) && part !== ".." && !part.startsWith("../") && !part.startsWith("..\\"));
+        };
+        if (customConfig && writableRoots.some(root => within(root, this.pillarHome))) {
+            customConfig.filesystem.denyWrite = [...customConfig.filesystem.denyWrite, this.pillarHome];
         }
         const approval = this.networkApproval.register(options?.networkAccess, signal);
         try {
@@ -241,7 +235,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 kind: "ready",
                 platform,
                 warnings: dependencies.warnings,
-            }, backend, release, config, networkApproval, bunCacheDirectory);
+            }, backend, release, config, networkApproval, bunCacheDirectory, await realpath(storage.pillarHome));
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

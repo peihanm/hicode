@@ -1,8 +1,9 @@
+import type {RewindPoint} from "../../session/fork.js";
 import {useEffect, useMemo, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import SelectInput, {type IndicatorProps, type ItemProps,} from "ink-select-input";
 import stringWidth from "string-width";
-import type {CheckpointRestorePlan, CheckpointRestoreResult, FileCheckpointRecord,} from "../../checkpoints/index.js";
+import type {CheckpointRestorePlan, CheckpointRestoreResult,} from "../../checkpoints/index.js";
 import {COLORS} from "../theme.js";
 import {useTerminalWidth} from "../terminalSize.js";
 
@@ -54,16 +55,14 @@ function RewindItem({isSelected, label}: ItemProps) {
 }
 
 function formatCheckpointLabel(
-    checkpoint: FileCheckpointRecord,
+    checkpoint: RewindPoint,
     index: number,
     panelWidth = 96
 ): string {
-    const coverage = checkpoint.fileCoverage === "incomplete"
-        ? "文件捕获不完整"
-        : checkpoint.coverageWarnings.length === 0
-            ? "文件覆盖完整"
-            : "存在外部副作用";
-    const prefix = `${index + 1}  ${relativeTime(checkpoint.createdAt)} · ${checkpoint.mutations.length} 个文件 · ${coverage} · `;
+    const coverage = checkpoint.capture.kind === "unavailable" ? "文件记录不可用" :
+        checkpoint.capture.status === "incomplete" ? "文件捕获不完整" : checkpoint.capture.status === "external" ? "含范围外操作" : "受控文件已保存";
+    const count = checkpoint.capture.kind === "available" ? `${checkpoint.capture.count} 个文件` : "可重新对话";
+    const prefix = `${index + 1}  ${relativeTime(checkpoint.createdAt)} · ${count} · ${coverage} · `;
     const previewWidth = Math.max(10, panelWidth - stringWidth(prefix) - 6);
     return `${prefix}${truncateDisplay(checkpoint.promptPreview, previewWidth)}`;
 }
@@ -91,19 +90,21 @@ export function RewindDialog({
                                  listCheckpoints,
                                  previewCheckpoint,
                                  restoreCheckpoint,
+                                 forkConversation,
                                  onClose,
                              }: {
-    listCheckpoints: () => Promise<FileCheckpointRecord[]>;
+    listCheckpoints: () => Promise<RewindPoint[]>;
     previewCheckpoint: (checkpointId: string) => Promise<CheckpointRestorePlan>;
     restoreCheckpoint: (checkpointId: string) => Promise<CheckpointRestoreResult>;
+    forkConversation?: (checkpointId: string) => Promise<void>;
     onClose: () => void;
 }) {
     const panelWidth = Math.min(96, useTerminalWidth());
-    const [checkpoints, setCheckpoints] = useState<FileCheckpointRecord[]>();
-    const [selected, setSelected] = useState<FileCheckpointRecord>();
+    const [checkpoints, setCheckpoints] = useState<RewindPoint[]>();
+    const [selected, setSelected] = useState<RewindPoint>();
     const [plan, setPlan] = useState<CheckpointRestorePlan>();
     const [stage, setStage] = useState<
-        "loading" | "checkpoint" | "preview" | "restoring" | "result" | "error"
+        "loading" | "checkpoint" | "action" | "preview" | "restoring" | "result" | "error"
     >("loading");
     const [result, setResult] = useState<CheckpointRestoreResult>();
     const [error, setError] = useState<string>();
@@ -136,7 +137,7 @@ export function RewindDialog({
         [checkpoints, panelWidth]
     );
 
-    const beginPreview = async (checkpoint: FileCheckpointRecord) => {
+    const beginPreview = async (checkpoint: RewindPoint) => {
         setSelected(checkpoint);
         setStage("loading");
         try {
@@ -164,8 +165,8 @@ export function RewindDialog({
     const controls = stage === "restoring"
         ? undefined
         : stage === "checkpoint" && checkpointItems.length > 0
-            ? "↑↓ 选择  ·  Enter 预览  ·  Esc 关闭"
-                : stage === "preview" && (plan?.conflicts.length ?? 0) === 0
+            ? "↑↓ 选择  ·  Enter 继续  ·  Esc 关闭"
+                : (stage === "action" || (stage === "preview" && (plan?.conflicts.length ?? 0) === 0))
                     ? "↑↓ 选择  ·  Enter 确认  ·  Esc 关闭"
                     : stage === "result"
                         ? "Enter 完成  ·  Esc 关闭"
@@ -182,7 +183,7 @@ export function RewindDialog({
             >
                 <Box>
                     <Text bold color={COLORS.accent}>↶ Rewind</Text>
-                    <Text color={COLORS.dim}>  恢复代码与对话状态</Text>
+                    <Text color={COLORS.dim}>  选择对话恢复点</Text>
                 </Box>
 
                 {stage === "loading" && (
@@ -202,9 +203,9 @@ export function RewindDialog({
 
                 {stage === "checkpoint" && checkpointItems.length > 0 && (
                     <Box flexDirection="column" marginTop={1}>
-                        <Text bold>选择要撤销的任务</Text>
+                        <Text bold>选择历史问题</Text>
                         <Text color={COLORS.dim}>
-                            代码与对话将恢复到该问题提交前。
+                            从该问题提交前重新对话，或同时恢复已记录文件。
                         </Text>
                         <SelectInput
                             items={checkpointItems}
@@ -214,12 +215,38 @@ export function RewindDialog({
                                 const checkpoint = checkpoints!.find(
                                     (candidate) => candidate.checkpointId === item.value
                                 );
-                                if (checkpoint) void beginPreview(checkpoint);
+                                if (checkpoint) {setSelected(checkpoint); setStage("action");}
                             }}
                         />
                         <Text color={COLORS.dim}>
-                            文件捕获不完整时禁止恢复；Bash、MCP 或 Hook 的外部副作用无法撤销
+                            捕获不完整时仍可重新对话；Bash、MCP 或 Hook 的外部副作用无法撤销
                         </Text>
+                    </Box>
+                )}
+
+                {stage === "action" && selected && (
+                    <Box flexDirection="column" marginTop={1}>
+                        <Text bold>{selected.promptPreview}</Text>
+                        <Text color={COLORS.dim}>选择恢复方式</Text>
+                        <SelectInput
+                            items={[
+                                ...(selected.capture.kind === "available" ? [{label: "恢复对话及已记录文件（先预览）", value: "restore"}] : []),
+                                ...(forkConversation ? [{label: "从这里重新对话，保留当前文件", value: "fork"}] : []),
+                                {label: "取消", value: "cancel"},
+                            ]}
+                            indicatorComponent={RewindIndicator}
+                            itemComponent={RewindItem}
+                            onSelect={(item: SelectItem<string>) => {
+                                if (item.value === "restore") void beginPreview(selected);
+                                else if (item.value === "fork" && forkConversation) {
+                                    setStage("restoring");
+                                    void forkConversation(selected.checkpointId).then(onClose).catch(reason => {
+                                        setError(reason instanceof Error ? reason.message : String(reason)); setStage("error");
+                                    });
+                                } else onClose();
+                            }}
+                        />
+                        <Text color={COLORS.dim}>重新对话会创建新会话，保留原会话；历史 Task 不会重新启动。</Text>
                     </Box>
                 )}
 
@@ -228,7 +255,7 @@ export function RewindDialog({
                         <Text bold>恢复预览</Text>
                         {selected && (
                             <Text color={COLORS.dim}>
-                                目标 · 恢复代码与对话到“{selected.promptPreview}”提交前
+                                目标 · 恢复对话及已记录文件到“{selected.promptPreview}”提交前
                             </Text>
                         )}
                         {planSummary(plan).map((line) => (
@@ -279,7 +306,7 @@ export function RewindDialog({
                         </Text>
                         <Text>
                             {result.status === "complete"
-                                ? "代码与对话已恢复。"
+                                ? "对话及已记录文件已恢复。"
                                 : "恢复未完整完成；对话只会在代码恢复成功后回退。"}
                         </Text>
                         <Text>
@@ -308,7 +335,7 @@ export function RewindDialog({
 
                 <Box marginTop={1}>
                     <Text color={COLORS.dim}>
-                        范围 · 恢复捕获的文件；Shell 安装的依赖、包缓存和外部服务不回退。依赖声明变化后需重新安装。
+                        范围 · 仅恢复文件工具记录的修改；Bash 生成的源码、锁文件、依赖、缓存及外部服务不回退。
                     </Text>
                 </Box>
             </Box>

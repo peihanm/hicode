@@ -1,4 +1,7 @@
-import {resolveSandboxPaths} from "../sandbox/config.js";
+import {forkSessionConversation} from "../session/fork.js";
+import {restoreSessionCheckpointWithRuntime} from "../checkpoints/rewind.js";
+import type {CheckpointRestoreResult} from "../checkpoints/types.js";
+import {loadSession} from "../session/index.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
@@ -66,6 +69,10 @@ export interface RootSessionRuntime {
 
     initialize(): Promise<void>;
 
+    restoreCheckpoint(checkpointId: string, permissionMode?: PermissionMode): Promise<CheckpointRestoreResult>;
+
+    forkConversation(checkpointId: string, permissionMode: PermissionMode): Promise<{sessionId: string}>;
+
     replaceConversation(history: Message[], compactState: CompactState): void;
 
     createContext(input: {
@@ -129,7 +136,6 @@ export function createRootSessionRuntime({
         hardBoundary: resources.workspaceBoundary,
         sessionId: seed.sessionId,
         enabled: resources.settings.checkpointing.enabled,
-        shellSnapshotDeniedReadPaths: resolveSandboxPaths(resources.cwd, resources.settings.sandbox.filesystem.denyRead),
         fileState,
         initialHead: seed.checkpointHead,
     });
@@ -153,6 +159,8 @@ export function createRootSessionRuntime({
     });
     let initializePromise: Promise<void> | undefined;
     let checkpointStartFailed = false;
+    let turnActive = false;
+    let restoring = false;
 
     const snapshot = (
         state: RootSessionSnapshotState
@@ -213,6 +221,29 @@ export function createRootSessionRuntime({
             })();
             return initializePromise;
         },
+        async forkConversation(checkpointId, permissionMode) {
+            if (turnActive || restoring) throw new Error("请等待当前 Turn 或恢复完成");
+            return forkSessionConversation({storage: resources.storage, cwd: resources.cwd, model: resources.model,
+                sessionId: seed.sessionId, checkpointId, permissionMode});
+        },
+        async restoreCheckpoint(checkpointId, permissionMode) {
+            if (turnActive || restoring || resources.taskRuntime.hasRunningThatBlocksRewind()) throw new Error("仍有活动 Turn 或工作区任务，不能恢复");
+            restoring = true;
+            try {
+                return await resources.fileCommits.exclusive(new AbortController().signal, async () => {
+                    const result = await restoreSessionCheckpointWithRuntime({storage: resources.storage, cwd: resources.cwd,
+                        model: resources.model, sessionId: seed.sessionId, checkpointId, permissionMode, runtime: fileCheckpoints, gitSession});
+                    if (result.status === "complete") {
+                        const loaded = loadSession(resources.storage, resources.cwd, seed.sessionId, resources.model);
+                        if (!loaded) throw new Error("恢复后的 Session 不可读取");
+                        history = loaded.history;
+                        compactState = loaded.compactState ?? compactState;
+                        resources.toolRuntime.restoreToolDiscovery(loaded.toolDiscovery);
+                    }
+                    return result;
+                });
+            } finally {restoring = false;}
+        },
         replaceConversation(nextHistory, nextCompactState) {
             history = nextHistory;
             compactState = nextCompactState;
@@ -248,7 +279,9 @@ export function createRootSessionRuntime({
         createSnapshot: snapshot,
         async beginCheckpoint(prompt, state) {
             await this.initialize();
+            if (restoring || turnActive) throw new Error("当前 Session 已在运行或恢复中");
             if (checkpointStartFailed) throw new Error("Checkpoint 启动未完整提交，必须重新恢复 Session");
+            turnActive = true;
             try {
                 const checkpoint = await fileCheckpoints.beginTurn({prompt});
                 if (!checkpoint) return;
@@ -270,12 +303,13 @@ export function createRootSessionRuntime({
                         resources.toolRuntime.getToolDiscoverySnapshot(),
                 });
             } catch (error) {
+                turnActive = false;
                 checkpointStartFailed = true;
                 throw error;
             }
         },
-        settleCheckpoint(status = "settled") {
-            return fileCheckpoints.settleTurn(status);
+        async settleCheckpoint(status = "settled") {
+            try {await fileCheckpoints.settleTurn(status);} finally {turnActive = false;}
         },
         runSessionStart(source, signal) {
             return resources.hooks.execute({

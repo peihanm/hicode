@@ -7,7 +7,7 @@ function formatTextResult(result: CheckpointRestoreResult): string {
     const lines = [
         `Rewind ${result.status}: ${result.checkpointId}`,
         result.status === "complete"
-            ? `代码与对话恢复完成；恢复 ${result.restoredFiles.length} 个文件，删除 ${result.deletedFiles.length} 个新建文件。`
+            ? `对话及已记录文件恢复完成；恢复 ${result.restoredFiles.length} 个文件，删除 ${result.deletedFiles.length} 个新建文件。`
             : `恢复未完整完成；已恢复 ${result.restoredFiles.length} 个文件，删除 ${result.deletedFiles.length} 个新建文件。`,
     ];
     for (const conflict of result.conflicts) {

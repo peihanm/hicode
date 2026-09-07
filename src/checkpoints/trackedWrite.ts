@@ -16,14 +16,21 @@ export async function runTrackedFileWrite(input: {
         const before = await input.runtime.beforeWrite({
             path: input.path,
             content: input.beforeContent,
+            afterContent: input.afterContent,
             toolCallId: input.toolCallId,
         });
         if (before.warning) warnings.push(before.warning);
-        if (input.afterContent === null && input.runtime.enabled && !before.captured) {
-            throw new Error(`未能保存删除前的 Checkpoint，已取消删除: ${before.warning?.message ?? input.path}`);
+        if (input.runtime.enabled && !before.captured) {
+            throw new Error(`未能保存写入前的 Checkpoint，本次未写入: ${before.warning?.message ?? input.path}`);
         }
 
-        const identity = await commit(input.afterContent, input.signal);
+        let identity: string | undefined;
+        try {
+            identity = await commit(input.afterContent, input.signal);
+        } catch (error) {
+            if (before.captured) await input.runtime.cancelWrite({path: canonical, toolCallId: input.toolCallId});
+            throw error;
+        }
 
         if (before.captured) {
             try {
@@ -32,7 +39,7 @@ export async function runTrackedFileWrite(input: {
                     content: input.afterContent,
                     toolCallId: input.toolCallId,
                 });
-                if (after.warning) warnings.push(after.warning);
+                if (after.warning) warnings.push({...after.warning, message: `文件已写入，回退记录未完成；不要重复该编辑。${after.warning.message}`});
             } catch (error) {
                 warnings.push({
                     code: "checkpoint_after_write_failed",

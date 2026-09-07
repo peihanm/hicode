@@ -1,3 +1,5 @@
+import {recoverSessionBeforeStart} from "../checkpoints/rewind.js";
+import {createCompactState} from "../context/index.js";
 import {randomUUID} from "node:crypto";
 import {getHookExecutionIssues, formatHookContext} from "../hooks/index.js";
 import {isPermissionMode, type PermissionDecision, type PermissionMode,} from "../permissions/index.js";
@@ -73,6 +75,12 @@ function createSDKThreadFactory(
     return async function createSDKThread(
         options: CreateSDKThreadOptions
     ): Promise<Thread> {
+        const recovered = options.resumed ? await recoverSessionBeforeStart(options.resources, options.seed.sessionId) : undefined;
+        if (recovered) options = {...options, seed: {...options.seed, history: recovered.history,
+            compactState: recovered.compactState ?? createCompactState(), checkpointHead: recovered.checkpointHead,
+            toolDiscovery: recovered.toolDiscovery, gitSession: recovered.gitSession, queuedInputs: recovered.queuedInputs,
+            taskNotificationReceipts: recovered.taskNotificationReceipts},
+            state: {todos: recovered.todos, permissionMode: options.state.permissionMode, collaborationMode: recovered.collaborationMode, uiEvents: recovered.uiEvents}};
         const session = createRootSessionRuntime({
             resources: options.resources,
             seed: options.seed,

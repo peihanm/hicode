@@ -1,7 +1,6 @@
 import type {FileChange} from "../fileChanges/index.js";
-import type {SandboxCommandOptions} from "../sandbox/types.js";
 
-export const CHECKPOINT_MANIFEST_VERSION = 3;
+export const CHECKPOINT_MANIFEST_VERSION = 4;
 
 type CheckpointWarningCode =
     | "bash_side_effects"
@@ -33,12 +32,14 @@ export interface CheckpointFileMutation {
     before: FileFingerprint;
     beforeBlobId?: string;
     after?: FileFingerprint;
+    pending?: {toolCallId: string; before: FileFingerprint; intendedAfter: FileFingerprint};
+    discontinuous?: true;
     firstToolCallId: string;
     lastToolCallId: string;
 }
 
 export interface FileCheckpointRecord {
-    version: 3;
+    version: 4;
     checkpointId: string;
     sessionId: string;
     branchId: string;
@@ -71,7 +72,7 @@ export interface CheckpointSessionLink {
 }
 
 export interface FileCheckpointManifest {
-    version: 3;
+    version: 4;
     cwd: string;
     sessionId: string;
     sequence: number;
@@ -139,11 +140,7 @@ export interface CaptureBeforeWriteInput {
     content: string | Buffer | null;
     toolCallId: string;
     mode?: number;
-}
-
-export interface ShellCheckpointCapture {
-    scope: NonNullable<SandboxCommandOptions["filesystemScope"]>;
-    finish(): Promise<{changes: FileChange[]; warning?: string}>;
+    afterContent: string | Buffer | null;
 }
 
 export interface CaptureAfterWriteInput {
@@ -170,7 +167,7 @@ export interface FileCheckpointRuntimeLike {
 
     afterWrite(input: CaptureAfterWriteInput): Promise<CaptureResult>;
 
-    beginShell(input: {cwd: string; toolCallId: string}): Promise<ShellCheckpointCapture | null>;
+    cancelWrite(input: {path: string; toolCallId: string}): Promise<void>;
 
     markCoverageWarning(warning: CheckpointCoverageWarning): Promise<void>;
 
@@ -180,5 +177,13 @@ export interface FileCheckpointRuntimeLike {
 
     restoreCode(checkpointId: string): Promise<CheckpointRestoreResult>;
 
+    getPendingRestore(): Promise<string | undefined>;
+
+    completeRestore(checkpointId: string): Promise<void>;
+
     getHead(): CheckpointHead;
+}
+
+export function isCheckpointScopeWarning(warning: CheckpointCoverageWarning): boolean {
+    return ["bash_side_effects", "hook_side_effects", "mcp_side_effects", "host_tool_side_effects"].includes(warning.code);
 }

@@ -88,7 +88,7 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
     return {...entry, conversation, uiEvents};
 }
 
-async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionEntry): Promise<void> {
+async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionEntry, requiredCheckpointId?: string): Promise<void> {
     const normalized = decodeSessionEntry(entry);
     if (!normalized || Buffer.byteLength(JSON.stringify(normalized)) > MAX_SESSION_ENTRY_BYTES) throw new Error("Refusing to persist invalid or oversized session entry");
     const blocks = new SessionContentStore(storage, cwd, sessionId);
@@ -130,6 +130,8 @@ async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId:
             Buffer.byteLength(content) <= MAX_SESSION_LOG_BYTES && bytes <= MAX_SESSION_CONTENT_BYTES && ids.size <= 131_072) break;
         const oldest = entries.findIndex(entry => entry.type === "turn_checkpoint" && entry !== stored);
         if (oldest < 0) throw new Error("Session current state exceeds storage budget");
+        const removed = entries[oldest]!;
+        if (removed.type === "turn_checkpoint" && removed.checkpointId === requiredCheckpointId) throw new Error("Session budget cannot evict the pending restore target");
         entries.splice(oldest, 1);
     }
     const path = getSessionLogPath(storage, cwd, sessionId);
@@ -146,8 +148,8 @@ export function appendSessionEntry(storage: PillarStorageLayout, cwd: string, se
     return commitEntry(storage, cwd, sessionId, entry);
 }
 
-export function replaceLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionSnapshotEntry): Promise<void> {
-    return commitEntry(storage, cwd, sessionId, entry);
+export function replaceLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionSnapshotEntry, requiredCheckpointId?: string): Promise<void> {
+    return commitEntry(storage, cwd, sessionId, entry, requiredCheckpointId);
 }
 
 export function readSessionEntries(storage: PillarStorageLayout, cwd: string, sessionId: string): SessionEntry[] {

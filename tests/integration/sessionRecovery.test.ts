@@ -69,10 +69,12 @@ describe("Session recovery and storage boundaries", () => {
                 await session.settleCheckpoint();
                 await saveSessionSnapshot(storage, session.createSnapshot({...state, allowEmpty: true}));
                 const stale = loadSession(storage, cwd, "rewind", resources.model)!;
-                await session.fileCheckpoints.restoreCode(session.fileCheckpoints.getHead().checkpointId!);
+                const rewindId = session.fileCheckpoints.getHead().checkpointId!;
+                await session.fileCheckpoints.restoreCode(rewindId);
                 const invalid = createRootSessionRuntime({resources, resumed: true, seed: {...stale, compactState: createCompactState()}});
                 await expect(invalid.initialize()).rejects.toThrow();
                 await saveSessionSnapshot(storage, session.createSnapshot({...state, allowEmpty: true}));
+                await session.fileCheckpoints.completeRestore(rewindId);
                 const loaded = loadSession(storage, cwd, "rewind", resources.model)!;
                 const valid = createRootSessionRuntime({resources, resumed: true, seed: {...loaded, compactState: createCompactState()}});
                 await valid.initialize();
@@ -96,7 +98,7 @@ describe("Session recovery and storage boundaries", () => {
                 await saveSessionSnapshot(storage, session.createSnapshot(state));
                 await session.beginCheckpoint("B", state);
                 const b = session.fileCheckpoints.getHead().checkpointId!;
-                await session.fileCheckpoints.beforeWrite({path: join(cwd, "b.txt"), content: null, toolCallId: "b-write"});
+                await session.fileCheckpoints.beforeWrite({afterContent: "B committed", path: join(cwd, "b.txt"), content: null, toolCallId: "b-write"});
                 await writeFile(join(cwd, "b.txt"), "B committed");
                 await session.fileCheckpoints.afterWrite({path: join(cwd, "b.txt"), content: "B committed", toolCallId: "b-write"});
                 if (settled) await session.settleCheckpoint();
@@ -137,7 +139,7 @@ describe("Session recovery and storage boundaries", () => {
                 await session.beginCheckpoint("interrupted commit", state);
                 const checkpointId = session.fileCheckpoints.getHead().checkpointId!;
                 const path = join(cwd, "uncertain.txt");
-                await session.fileCheckpoints.beforeWrite({path, content: null, toolCallId: "uncertain-write"});
+                await session.fileCheckpoints.beforeWrite({afterContent: null, path, content: null, toolCallId: "uncertain-write"});
                 await writeFile(path, "possibly committed");
                 for (let n = 0; n < 3; n++) {
                     const loaded = loadSession(storage, cwd, "before-only", resources.model)!;

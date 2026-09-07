@@ -54,7 +54,8 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
         try {
             const checkpoint = (await checkpoints.beginTurn({prompt: "install"}))!;
             const tools = createToolRuntime();
-            const command = `${quote(process.execPath)} install --ignore-scripts && printf after > source.ts`;
+            expect((await tools.executeTool("write_file", JSON.stringify({path: "tracked.ts", content: "tracked"}), ctx, "write")).outcome).toBe("ok");
+            const command = `${quote(process.execPath)} install --ignore-scripts`;
             for (let index = 0; index < 2; index++) {
                 const result = await tools.executeTool("bash", JSON.stringify({command}), ctx, `install-${index}`);
                 expect(result.modelContent).not.toContain("EPERM");
@@ -69,7 +70,8 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
             await checkpoints.settleTurn();
             expect((await checkpoints.restoreCode(checkpoint.checkpointId)).status).toBe("complete");
             expect(await readFile(join(cwd, "source.ts"), "utf8")).toBe("before");
-            expect(await Bun.file(join(cwd, "bun.lock")).exists()).toBe(false);
+            expect(await Bun.file(join(cwd, "bun.lock")).exists()).toBe(true);
+            expect(await Bun.file(join(cwd, "tracked.ts")).exists()).toBe(false);
             expect(await Bun.file(join(cwd, "node_modules/pillar-install-fixture/package.json")).exists()).toBe(true);
         } finally {await sandbox.close();}
     });

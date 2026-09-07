@@ -23,7 +23,7 @@ export async function processToolOutput(input: {
         ? {content: input.output}
         : input.output;
     const outcome = normalized.outcome ?? input.outcome ?? "ok";
-    const uiData = outcome === "ok" || (input.toolName === "bash" && normalized.uiData?.type === "file_changes") ? normalized.uiData : undefined;
+    const uiData = outcome === "ok" ? normalized.uiData : undefined;
     const shellExecution = input.toolName === "bash" ? normalized.shellExecution : undefined;
     const displayContent = normalized.displayContent ?? normalized.content;
     if (normalized.persisted) {

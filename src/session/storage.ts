@@ -85,7 +85,8 @@ export async function saveSessionSnapshot(
             storage,
             input.cwd,
             input.sessionId,
-            entry
+            entry,
+            await createFileCheckpointStore(storage, input.cwd, input.sessionId).getPendingRestore()
         );
         await synchronizeCheckpointWindow(storage, input.cwd, input.sessionId);
         await upsertSessionIndex(storage, {
