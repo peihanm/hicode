@@ -6,6 +6,7 @@ import type {Tool} from "../types.js";
 import {normalizeFileText} from "../shared/fileState.js";
 import {resolveToolPath} from "../shared/paths.js";
 import {readSavedOutput} from "./savedOutput.js";
+import {resolveSessionArchiveFile} from "../../session/archiveAccess.js";
 
 const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 2000;
@@ -55,6 +56,8 @@ export const readFileTool: Tool<typeof inputSchema> = {
     isConcurrencySafe: () => true,
     execute: async ({path, offset, limit}: Input, ctx, invocation) => {
         const absPath = resolveToolPath(ctx.cwd, path);
+        const archive = await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, absPath);
+        if (archive) return readSavedOutput(archive, offset ?? 1, limit ?? DEFAULT_LIMIT, ctx.signal, "archive");
         const saved = await ctx.toolResultFiles.resolveFile(absPath);
         if (saved) return readSavedOutput(saved, offset ?? 1, limit ?? DEFAULT_LIMIT, ctx.signal);
         const snapshot = await readFileSnapshot(absPath);

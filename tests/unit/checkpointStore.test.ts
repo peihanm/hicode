@@ -474,7 +474,7 @@ describe("File Checkpoint Store", () => {
             await expect(readFile(join(cwd, "generated-599.txt"), "utf8"))
                 .rejects.toMatchObject({code: "ENOENT"});
         });
-    });
+    }, 15_000); // 600 durable writes and restores exceed the default 5s on temporary APFS storage.
 
     test("文件 Preimage 捕获失败后禁止把恢复描述成完整成功", async () => {
         await withTempProject(async (cwd) => {

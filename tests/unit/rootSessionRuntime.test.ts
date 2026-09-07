@@ -54,7 +54,7 @@ describe("RootSessionRuntime", () => {
       expect(runtime.taskSession.sessionId).toBe("session-runtime-test");
 
       let permissionMode: PermissionMode = "default";
-      const ctx = runtime.createContext({
+      const ctx = runtime.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"}),
         signal: new AbortController().signal,
         onEvent: () => {},
         host: {

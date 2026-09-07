@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";
 import {normalizeGitSessionState} from "../git/index.js";
 import {isPermissionMode} from "../permissions/index.js";
@@ -8,7 +9,7 @@ import {normalizeRuntimeQueuedMessages} from "../runtime/messageQueue.js";
 import {
     MAX_LOADED_DEFERRED_TOOLS,
     type ToolDiscoverySnapshot,
-} from "../tools/registry.js";
+} from "../tools/discoveryState.js";
 import {limitPersistedUIEvents, type PersistedUIEvent,} from "./uiEvents.js";
 import {
     SESSION_ENTRY_VERSION,
@@ -191,6 +192,9 @@ const compactStateSchema = z.object({
     consecutiveFailures: nonNegativeIntegerSchema,
     compactCount: nonNegativeIntegerSchema,
     lastCompactAt: timestampSchema.optional(),
+    archives: z.array(archiveRecordSchema).max(128).refine(records =>
+        new Set(records.map(record => record.id)).size === records.length &&
+        records.reduce((sum, record) => sum + record.messages.length, 0) <= 100_000).optional(),
 }).strict();
 
 const contentBlockSchema = z.discriminatedUnion("kind", [

@@ -6,6 +6,7 @@ import {createFileDiscovery, createPathMatcher} from "../shared/fileDiscovery.js
 import {basename, extname, relative} from "node:path";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
+import {resolveSessionArchiveFile} from "../../session/archiveAccess.js";
 
 const INLINE_RESULT_CHARS = 20_000;
 const MAX_FILE_SIZE = 1024 * 1024; // 跳过 1MB 以上的文件
@@ -187,6 +188,7 @@ export const grepTool: Tool<typeof inputSchema> = {
         }
 
         const searchRoot = resolveToolPath(ctx.cwd, path);
+        await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, searchRoot);
         const matcher = glob ? createPathMatcher(glob, true) : undefined;
         const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
             includeHidden: include_hidden, includeIgnored: include_ignored,
@@ -257,6 +259,7 @@ export const grepTool: Tool<typeof inputSchema> = {
         try {
             for await (const file of discovery.files) {
                 throwIfTurnAborted(ctx.signal);
+                await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, file);
                 if (matcher && !matcher(relative(searchRoot, file) || basename(file))) continue;
                 if (!matchesFileType(file, type)) continue;
                 if (scannedFiles >= fileLimit || scannedBytes >= byteLimit) { searchIncomplete = true; break; }

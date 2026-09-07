@@ -1,15 +1,11 @@
+import {MAX_LOADED_DEFERRED_TOOLS, type ToolDiscoverySnapshot} from "./discoveryState.js";
+export {MAX_LOADED_DEFERRED_TOOLS, type ToolDiscoverySnapshot} from "./discoveryState.js";
 import type {OpenAITool} from "../llm/types.js";
 import type {ToolRegistration} from "./catalog.js";
 import {schemaForTool} from "./catalog.js";
 import {buildToolSearchDocument, createToolSearchIndex,} from "./toolSearch/searchIndex.js";
 import {createToolSearchTool, TOOL_SEARCH_NAME,} from "./toolSearch/toolSearch.js";
 import type {Tool} from "./types.js";
-
-export interface ToolDiscoverySnapshot {
-    version: 2;
-    /** Oldest to newest, so restore preserves the eviction order. */
-    loadedNames: string[];
-}
 
 export interface ToolDiscovery {
     readonly searchTool?: Tool;
@@ -29,7 +25,6 @@ export interface ToolDiscovery {
     restore(snapshot?: ToolDiscoverySnapshot): void;
 }
 
-export const MAX_LOADED_DEFERRED_TOOLS = 24;
 const MAX_LOADED_SCHEMA_CHARS = 128 * 1024;
 
 interface PendingDiscovery {

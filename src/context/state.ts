@@ -1,7 +1,10 @@
+import type {SessionArchiveRecord} from "../session/archiveSchema.js";
+
 export interface CompactState {
     consecutiveFailures: number;
     compactCount: number;
     lastCompactAt?: string;
+    archives?: SessionArchiveRecord[];
 }
 
 export function createCompactState(): CompactState {

@@ -1,4 +1,6 @@
 import {forkSessionConversation} from "../session/fork.js";
+import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
+import {saveSessionCompaction} from "../session/storage.js";
 import {restoreSessionCheckpointWithRuntime} from "../checkpoints/rewind.js";
 import type {CheckpointRestoreResult} from "../checkpoints/types.js";
 import {loadSession} from "../session/index.js";
@@ -80,6 +82,7 @@ export interface RootSessionRuntime {
         signal: AbortSignal;
         host: ToolContextHost;
         onEvent: (event: AgentEvent) => void | Promise<void>;
+        getSnapshotState(): RootSessionSnapshotState;
     }): ToolContext;
 
     createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
@@ -244,7 +247,7 @@ export function createRootSessionRuntime({
             history = nextHistory;
             compactState = nextCompactState;
         },
-        createContext({signal, host, onEvent, turnId}) {
+        createContext({signal, host, onEvent, turnId, getSnapshotState}) {
             const ctx = createToolContext({
                 signal, turnId,
                 resources: {...resources, gitSession, tasks: taskSession},
@@ -261,6 +264,14 @@ export function createRootSessionRuntime({
                 },
                 host,
             });
+            ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
+            ctx.sessionCompaction = {
+                prepare: source => prepareSessionArchive(resources.storage, resources.cwd, seed.sessionId, source),
+                async commit(candidate, nextState, draft) {
+                    await saveSessionCompaction(resources.storage, {...snapshot(getSnapshotState()),
+                        history: candidate, compactState: nextState}, draft, signal);
+                },
+            };
             ctx.holdHookConfiguration = resources.holdHookConfiguration;
             ctx.onHookEvent = onEvent;
             ctx.runHook = async (input, hookSignal = signal) => {

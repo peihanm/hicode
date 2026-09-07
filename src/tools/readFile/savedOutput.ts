@@ -6,7 +6,8 @@ import {throwIfTurnAborted} from "../../runtime/abort.js";
 
 /** Read log lines without loading a potentially 64 MiB artifact into memory. */
 export async function readSavedOutput(
-    file: PersistedToolResult, startLine: number, limit: number, signal: AbortSignal
+    file: Pick<PersistedToolResult, "path" | "byteLength" | "complete">, startLine: number, limit: number, signal: AbortSignal,
+    kind: "tool" | "archive" = "tool"
 ): Promise<string> {
     const handle = await open(file.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
@@ -72,7 +73,7 @@ export async function readSavedOutput(
             throw new Error("结果文件在读取期间发生变化");
         }
         return [
-            `Saved output: ${JSON.stringify(file.path)}`,
+            `${kind === "archive" ? "Session archive" : "Saved output"}: ${JSON.stringify(file.path)}`,
             `Complete artifact: ${file.complete ? "yes" : "no (only the saved portion is available)"}`,
             "保存结果仅是历史日志；编辑源码前请 read_file 原文件确认当前版本。",
             "",

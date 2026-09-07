@@ -1,3 +1,4 @@
+import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
 import {createFileCheckpointStore} from "../checkpoints/store.js";
 import {createInitialHistory} from "../prompt/index.js";
@@ -21,6 +22,7 @@ import {
     readSessionEntries,
     readSessionCheckpointLinks,
     withSessionPersistenceLock,
+    hasNewerSessionCompaction,
 } from "./snapshotStore.js";
 import {
     type LoadedSession,
@@ -40,10 +42,21 @@ export async function saveSessionSnapshot(
     storage: PillarStorageLayout,
     input: SaveSessionSnapshotInput
 ): Promise<void> {
+    return saveSnapshot(storage, input);
+}
+
+export function saveSessionCompaction(storage: PillarStorageLayout, input: SaveSessionSnapshotInput, draft: SessionArchiveDraft, signal: AbortSignal): Promise<void> {
+    return saveSnapshot(storage, input, {draft, signal});
+}
+
+async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnapshotInput, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
     const conversation = stripSystemMessage(input.history);
     // Todo/permission callbacks may request a snapshot while a tool batch is
     // still running. Keep the previous restorable state until results exist.
-    if (!hasCompleteToolPairs(conversation)) return;
+    if (!hasCompleteToolPairs(conversation)) {
+        if (compaction) throw new Error("Refusing unpaired Session compaction");
+        return;
+    }
     const summarized = summarizeSessionHistory(conversation);
     const hint = input.summaryHint
         ? normalizeSessionSummaryHint(input.summaryHint)
@@ -51,9 +64,12 @@ export async function saveSessionSnapshot(
     const summary = summarized.summary
         ? summarized
         : {firstPrompt: hint, lastPrompt: hint, summary: hint};
-    if (!summary.summary && !input.allowEmpty) return;
+    if (!summary.summary && !input.allowEmpty && !compaction) return;
 
     await withSessionPersistenceLock(storage, input.cwd, async () => {
+        // A queued pre-compaction UI snapshot must not undo a committed archive/History.
+        if (!compaction && hasNewerSessionCompaction(storage, input.cwd, input.sessionId,
+            input.compactState?.compactCount ?? 0, input.checkpointHead?.branchId)) return;
         const timestamp = new Date().toISOString();
         const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
         const gitSession = normalizeGitSessionState(input.gitSession);
@@ -86,17 +102,23 @@ export async function saveSessionSnapshot(
             input.cwd,
             input.sessionId,
             entry,
-            await createFileCheckpointStore(storage, input.cwd, input.sessionId).getPendingRestore()
+            await createFileCheckpointStore(storage, input.cwd, input.sessionId).getPendingRestore(),
+            compaction
         );
-        await synchronizeCheckpointWindow(storage, input.cwd, input.sessionId);
-        await upsertSessionIndex(storage, {
-            cwd: input.cwd,
-            sessionId: input.sessionId,
-            model: input.model,
-            timestamp,
-            messageCount: countSessionConversationMessages(conversation),
-            ...summary,
-        });
+        const updateProjections = async () => {
+            await synchronizeCheckpointWindow(storage, input.cwd, input.sessionId);
+            await upsertSessionIndex(storage, {
+                cwd: input.cwd,
+                sessionId: input.sessionId,
+                model: input.model,
+                timestamp,
+                messageCount: countSessionConversationMessages(conversation),
+                ...summary,
+            });
+        };
+        // A committed compaction cannot be reported as failed because an index projection failed.
+        if (compaction) await updateProjections().catch(() => undefined);
+        else await updateProjections();
     });
 }
 

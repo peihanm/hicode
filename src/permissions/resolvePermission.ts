@@ -21,6 +21,7 @@ import {toolPathInput, validateWorkspacePath} from "../worktrees/pathGuard.js";
 import {parsePermissionRule} from "./rules.js";
 import {directoryOperationForTool} from "./directoryAccess.js";
 import {resolveToolPath} from "../tools/shared/paths.js";
+import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
 
 /**
  * 用当前工具的真实权限 matcher 判断单条规则。Hook `if` 复用该
@@ -59,6 +60,19 @@ async function resolvePermissionInner(
     ctx: ToolContext
 ): Promise<PermissionResult> {
     const mode = ctx.permissionMode;
+    let archiveRead = false;
+    const archiveInputPath = toolPathInput(tool.name, input);
+    if (archiveInputPath !== undefined) {
+        const path = resolveToolPath(ctx.cwd, archiveInputPath);
+        let managed: boolean;
+        try {managed = await checkSessionArchivePath(ctx.storage, path);}
+        catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
+        if (managed) {
+            if (tool.name !== "read_file" && tool.name !== "grep") return {behavior: "deny", message: "Session 压缩档案仅允许精确 read_file/grep 读取"};
+            try {archiveRead = !!await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, path);}
+            catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
+        }
+    }
 
     if (ctx.workspaceBoundary) {
         const path = toolPathInput(tool.name, input);
@@ -76,7 +90,7 @@ async function resolvePermissionInner(
                 ctx.cwd,
                 path
             );
-            if (!scoped.ok && !savedOutput) {
+            if (!scoped.ok && !savedOutput && !archiveRead) {
                 return {behavior: "deny", message: scoped.message};
             }
         }

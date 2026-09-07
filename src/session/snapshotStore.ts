@@ -7,6 +7,8 @@ import {decodeSessionEntry, hasCompleteToolPairs} from "./codec.js";
 import {ensureSessionsDirectory, getSessionLogPath, getSessionPersistenceLockPath} from "./paths.js";
 import {SessionContentStore, isSessionContentId, MAX_SESSION_CONTENT_BYTES} from "./contentStore.js";
 import type {SessionEntry, SessionSnapshotEntry, SessionTurnCheckpointEntry} from "./types.js";
+import {collectArchiveViews, readArchiveMessages, type SessionArchiveDraft} from "./archive.js";
+import {throwIfTurnAborted} from "../runtime/abort.js";
 
 const MAX_SESSION_LOG_BYTES = 16 * 1024 * 1024;
 const MAX_SESSION_ENTRY_BYTES = 72 * 1024 * 1024;
@@ -20,7 +22,8 @@ export function withSessionPersistenceLock<T>(storage: PillarStorageLayout, cwd:
 }
 
 function references(entries: readonly StoredEntry[]): Set<string> {
-    return new Set(entries.flatMap(entry => [...entry.conversation, ...entry.uiEvents]));
+    return new Set(entries.flatMap(entry => [...entry.conversation, ...entry.uiEvents,
+        ...(entry.compactState?.archives ?? []).flatMap(record => record.messages)]));
 }
 
 function decodeReferenceEntry(value: unknown): StoredEntry {
@@ -69,6 +72,7 @@ function readReferences(storage: PillarStorageLayout, cwd: string, sessionId: st
 }
 
 function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry {
+    for (const archive of entry.compactState?.archives ?? []) readArchiveMessages(archive, blocks);
     const conversation = entry.conversation.map(id => {
         const block = blocks.read(id);
         if (block.kind !== "message") throw new Error("Session message reference has wrong kind");
@@ -88,13 +92,24 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
     return {...entry, conversation, uiEvents};
 }
 
-async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionEntry, requiredCheckpointId?: string): Promise<void> {
+async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionEntry, requiredCheckpointId?: string,
+    compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
     const normalized = decodeSessionEntry(entry);
     if (!normalized || Buffer.byteLength(JSON.stringify(normalized)) > MAX_SESSION_ENTRY_BYTES) throw new Error("Refusing to persist invalid or oversized session entry");
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     const previous = readReferences(storage, cwd, sessionId);
     for (const old of previous) hydrate(old, blocks);
     const oldRefs = references(previous);
+    if (compaction) {
+        const prior = previous.findLast(item => item.type === "snapshot");
+        const archives = normalized.compactState?.archives ?? [];
+        if (archives.at(-1)?.id !== compaction.draft.record.id ||
+            JSON.stringify(archives.slice(0, -1)) !== JSON.stringify(prior?.compactState?.archives ?? [])) {
+            throw new Error("Session archive base changed before compaction commit");
+        }
+        for (const value of compaction.draft.messages) blocks.stage({kind: "message", value});
+    }
+    for (const archive of normalized.compactState?.archives ?? []) readArchiveMessages(archive, blocks);
     const stored: StoredEntry = {...normalized,
         conversation: normalized.conversation.map(value => {
             if (value.role === "system") throw new Error("Session cannot persist system messages");
@@ -136,11 +151,16 @@ async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId:
     }
     const path = getSessionLogPath(storage, cwd, sessionId);
     ensurePrivateStorageDirectory(storage, dirname(path));
-    await blocks.collect(oldRefs);
+    await blocks.collect(new Set([...oldRefs, ...ids]));
     await blocks.persist(ids);
+    if (compaction) throwIfTurnAborted(compaction.signal);
     await writeFileAtomically(path, content, 0o600);
     // Reference commit is the truth; failed reclamation must not invalidate an already committed snapshot.
     await blocks.collect(ids).catch(() => undefined);
+    if ([...previous, ...entries].some(item => item.compactState?.archives?.length)) {
+        await collectArchiveViews(storage, cwd, sessionId, new Set(entries.flatMap(item =>
+            item.compactState?.archives?.map(record => record.id) ?? []))).catch(() => undefined);
+    }
 }
 
 /** Caller holds the project Session persistence lock. */
@@ -148,13 +168,19 @@ export function appendSessionEntry(storage: PillarStorageLayout, cwd: string, se
     return commitEntry(storage, cwd, sessionId, entry);
 }
 
-export function replaceLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionSnapshotEntry, requiredCheckpointId?: string): Promise<void> {
-    return commitEntry(storage, cwd, sessionId, entry, requiredCheckpointId);
+export function replaceLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionSnapshotEntry, requiredCheckpointId?: string,
+    compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
+    return commitEntry(storage, cwd, sessionId, entry, requiredCheckpointId, compaction);
 }
 
 export function readSessionEntries(storage: PillarStorageLayout, cwd: string, sessionId: string): SessionEntry[] {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     return readReferences(storage, cwd, sessionId).map(entry => hydrate(entry, blocks));
+}
+
+export function hasNewerSessionCompaction(storage: PillarStorageLayout, cwd: string, sessionId: string, count: number, branchId?: string): boolean {
+    const previous = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
+    return previous?.checkpointHead?.branchId === branchId && (previous?.compactState?.compactCount ?? 0) > count;
 }
 
 export function readLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string): SessionSnapshotEntry | null {

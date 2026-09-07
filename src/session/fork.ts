@@ -6,6 +6,10 @@ import {referencedResultPaths} from "../toolResults/references.js";
 import {createSessionId, loadSessionTurnCheckpoint, saveSessionSnapshot} from "./storage.js";
 import {readSessionEntries} from "./snapshotStore.js";
 import type {FileCheckpointRuntimeLike} from "../checkpoints/types.js";
+import {SessionContentStore} from "./contentStore.js";
+import {archiveIndexPath} from "./archiveAccess.js";
+import {prepareSessionArchive, readArchiveMessages} from "./archive.js";
+import type {SessionArchiveRecord} from "./archiveSchema.js";
 
 export interface RewindPoint {
     checkpointId: string;
@@ -35,7 +39,9 @@ export async function forkSessionConversation(input: {
     const source = createToolResultStore(input.storage, input.cwd, input.sessionId);
     const target = createToolResultStore(input.storage, input.cwd, sessionId);
     const replacements = new Map<string, string>();
-    for (const path of referencedResultPaths(checkpoint.conversation)) {
+    const sourceBlocks = new SessionContentStore(input.storage, input.cwd, input.sessionId);
+    const archiveMessages = (checkpoint.compactState?.archives ?? []).map(record => readArchiveMessages(record, sourceBlocks));
+    for (const path of new Set([referencedResultPaths(checkpoint.conversation), ...archiveMessages.map(referencedResultPaths)].flatMap(paths => [...paths]))) {
         const copied = await source.copyReferenceTo(path, target);
         replacements.set(path, copied.path);
     }
@@ -45,16 +51,29 @@ export async function forkSessionConversation(input: {
         }
         return text;
     };
-    const history = checkpoint.conversation.map(message => {
+    const replaceMessagePaths = (message: typeof checkpoint.conversation[number]) => {
         const cloned = structuredClone(message);
         if (cloned.content) cloned.content = replacePaths(cloned.content);
         if (cloned.role === "assistant") for (const call of cloned.tool_calls ?? []) call.function.arguments = replacePaths(call.function.arguments);
         return cloned;
-    });
+    };
+    const archives: SessionArchiveRecord[] = [];
+    const targetBlocks = new SessionContentStore(input.storage, input.cwd, sessionId);
+    const ids = new Set<string>();
+    for (const [index, record] of (checkpoint.compactState?.archives ?? []).entries()) {
+        const draft = prepareSessionArchive(input.storage, input.cwd, sessionId, archiveMessages[index]!.map(replaceMessagePaths));
+        for (const value of draft.messages) ids.add(targetBlocks.stage({kind: "message", value}));
+        archives.push(draft.record);
+        const oldIndex = archiveIndexPath(input.storage, input.cwd, input.sessionId, record.id);
+        const newIndex = archiveIndexPath(input.storage, input.cwd, sessionId, draft.record.id);
+        replacements.set(oldIndex.replace(/-index\.txt$/, "-"), newIndex.replace(/-index\.txt$/, "-"));
+    }
+    if (ids.size) await targetBlocks.persist(ids);
+    const history = checkpoint.conversation.map(replaceMessagePaths);
     history.push({role: "user", content: "<system-reminder>此会话从过去的对话位置分支，磁盘保留分支时的当前文件。历史中的文件内容、Todo 和 Task 状态可能已不适用；继续修改前重新读取。旧会话的运行中任务不属于本会话。</system-reminder>"});
     await saveSessionSnapshot(input.storage, {cwd: input.cwd, model: input.model, sessionId, history,
         todos: [], permissionMode: input.permissionMode, collaborationMode: checkpoint.collaborationMode,
-        compactState: createCompactState(), uiEvents: [], toolDiscovery: checkpoint.toolDiscovery,
+        compactState: {...createCompactState(), ...(archives.length ? {archives} : {})}, uiEvents: [], toolDiscovery: checkpoint.toolDiscovery,
         queuedInputs: Buffer.byteLength(checkpoint.prompt) <= 32 * 1024
             ? [{id: createSessionId(), type: "user_input", content: checkpoint.prompt, priority: "next", createdAt: new Date().toISOString()}] : [],
         allowEmpty: true, summaryHint: checkpoint.prompt});

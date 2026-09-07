@@ -187,6 +187,8 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
             skills: [],
             instructions,
             compactState: {...parentContext.compactState},
+            sessionCompaction: undefined,
+            sessionArchives: undefined,
             fileState: createFileStateTracker(),
             fileCheckpoints: createDisabledFileCheckpointRuntime(),
             gitSession: undefined,

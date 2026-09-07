@@ -311,6 +311,7 @@ export function useTurnController({
                     signal,
                     onEvent: eventStore.handleEvent,
                     host: toolContextHost,
+                    getSnapshotState: () => { const state = createSnapshot(); return {...state, uiEvents: state.uiEvents ?? []}; },
                 }),
                 onUserInput: (input) => eventStore.appendUser(input),
                 onEvent: eventStore.handleEvent,

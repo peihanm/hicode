@@ -16,6 +16,8 @@ import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime, HookInput, HookBatchResult, HookLifecycleEvent, HookRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
+import type {SessionArchiveAccess} from "../session/archiveAccess.js";
+import type {SessionCompaction} from "../session/archive.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js";
@@ -116,6 +118,8 @@ export interface ToolContext {
     sessionId: string;
     toolResultStore: ToolResultStore;
     toolResultFiles: Pick<ToolResultStore, "resolveFile">;
+    sessionArchives?: SessionArchiveAccess;
+    sessionCompaction?: SessionCompaction;
 
     // Session 级的文件观测状态，供 Read/Edit/Write 做 stale
     // 和部分读取范围检查。不得使用进程级全局状态代替。

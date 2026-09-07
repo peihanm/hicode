@@ -138,7 +138,7 @@ export function createRootTurnRunnerFactory(
         try {
             const initialState = getSnapshotState();
             await session.beginCheckpoint(prompt, initialState);
-            const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId});
+            const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId, getSnapshotState});
             ctx.canUseTool = (...args) => timing.measure("approval", () => host.canUseTool(...args));
             ctx.onToolExecution = phase => timing.change("tool", phase);
             const promptHooks = await ctx.runHook!({hook_event_name: "UserPromptSubmit", session_id: session.sessionId,
@@ -249,7 +249,7 @@ export function createRootTurnRunnerFactory(
                 await emitEvent({type: "turn_end", input});
                 // Cancellation reports a fact only; never create a fresh signal for notifications.
                 if (!signal.aborted) {
-                    const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId});
+                    const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId, getSnapshotState});
                     await onHookResult(await ctx.runHook!(input));
                 }
             } catch (error) {

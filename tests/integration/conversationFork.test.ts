@@ -60,7 +60,7 @@ for (const brokenFiles of [false, true]) test(`分支保留当前文件和原 Se
             const session = createRootSessionRuntime({resources, resumed: true, seed: {...loaded, compactState: createCompactState()}});
             await session.initialize();
             const fixture = createTestContext(cwd);
-            const context = session.createContext({signal: fixture.signal, host: {canUseTool: fixture.canUseTool, getPermissionRules: () => fixture.permissionRules,
+            const context = session.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"}),signal: fixture.signal, host: {canUseTool: fixture.canUseTool, getPermissionRules: () => fixture.permissionRules,
                 getPermissionMode: () => fixture.permissionMode, getCollaborationMode: () => fixture.collaborationMode,
                 getPermissionPromptPolicy: () => fixture.permissionPromptPolicy, setPermissionMode: fixture.setPermissionMode,
                 setCollaborationMode: fixture.setCollaborationMode, setTodos: fixture.setTodos}, onEvent() {}});
