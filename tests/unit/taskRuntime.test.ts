@@ -78,7 +78,7 @@ describe("TaskRuntime", () => {
             expect(session.getRunningSummary()).toEqual({
                 total: 4,
                 shell: 0,
-                agent: 4,
+                agent: 4, memory: 0,
             });
             await runtime.close();
         });
@@ -165,17 +165,17 @@ describe("TaskRuntime", () => {
             expect(first.getRunningSummary()).toEqual({
                 total: 1,
                 shell: 1,
-                agent: 0,
+                agent: 0, memory: 0,
             });
             expect(second.getRunningSummary()).toEqual({
                 total: 0,
                 shell: 0,
-                agent: 0,
+                agent: 0, memory: 0,
             });
             expect(runtime.getRunningSummary()).toEqual({
                 total: 1,
                 shell: 1,
-                agent: 0,
+                agent: 0, memory: 0,
             });
 
             release();
@@ -183,7 +183,7 @@ describe("TaskRuntime", () => {
             expect(first.getRunningSummary()).toEqual({
                 total: 0,
                 shell: 0,
-                agent: 0,
+                agent: 0, memory: 0,
             });
             await runtime.close();
         });

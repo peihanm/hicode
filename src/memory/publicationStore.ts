@@ -1,10 +1,12 @@
+import type {ExtractedMemoryFact} from "./sourceExtractor.js";
+import {memoryFrameSchema,type MemoryFrame} from "./publicationSchema.js";
 import {createHash, randomUUID} from "node:crypto";
-import {lstat, readdir, unlink} from "node:fs/promises";
+import {lstat, readdir, unlink, rm} from "node:fs/promises";
 import {join} from "node:path";
 import {stringify as stringifyYaml} from "yaml";
 import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically,
     type PillarStorageLayout} from "../persistence/index.js";
-import {getMemoryInboxDirectory, getMemoryPublicationPath, getMemoryViewsDirectory, getProjectMemoryDirectory} from "../persistence/layout.js";
+import {getMemoryWorkspacesDirectory, getMemoryWorkspacePaths, getMemoryInboxDirectory, getMemoryPublicationPath, getMemoryViewsDirectory, getProjectMemoryDirectory} from "../persistence/layout.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import {memoryDraftTopicSchema, memoryNoteSchema, memoryPublicationSchema, memorySourceRecordSchema,
     type MemoryDraftTopic, type MemoryLease, type MemoryNote, type MemoryPublication, type MemorySourceRecord} from "./publicationSchema.js";
@@ -18,7 +20,7 @@ function originHash(origin: MemorySourceRecord["origin"]): string {
 }
 
 function emptyPublication(): MemoryPublication {
-    return {version: 2, revision: 0, epoch: 0, summary: "", topics: [], sources: [], revoked: []};
+    return {version: 2, revision: 0, epoch: 0, summary: "", topics: [], sources: [], frames: [], revoked: []};
 }
 
 export function serializeDraftTopic(topic: MemoryDraftTopic): string {
@@ -76,7 +78,8 @@ export class MemoryPublicationStore {
         await this.transaction(state => {
             if (state.sources.some(item => originHash(item.origin) === originHash(origin))) return {result: undefined, changed: false};
             if (this.noteContent(state, key) !== expectedContent) throw new Error("Memory note 已变化，请重新读取后修改");
-            if (parsed.operation === "correct") this.revokeKey(state, key);
+            if (state.revoked.includes(originHash(origin))) throw new Error("Memory 来源已撤销");
+            if (parsed.operation === "correct" && !this.revokeKey(state, key)) state.epoch++;
             delete state.lease;
             state.sources.push(source);
             delete state.lastIssue;
@@ -113,6 +116,48 @@ export class MemoryPublicationStore {
         return removed;
     }
 
+    async offerFrame(frame: Omit<MemoryFrame,"epoch"|"status"|"createdAt">, signal:AbortSignal):Promise<void> {
+        await this.transaction(state=>{
+            if(state.frames.some(item=>item.id===frame.id))return {result:undefined,changed:false};
+            state.frames.push(memoryFrameSchema.parse({...frame,epoch:state.epoch,status:"pending",createdAt:new Date().toISOString()}));
+            return {result:undefined,changed:true};
+        },signal);
+    }
+
+    async claimExtraction(signal:AbortSignal):Promise<{lease:MemoryLease;frames:MemoryFrame[]}|undefined> {
+        return this.transaction(state=>{
+            if(state.lease&&Date.parse(state.lease.expiresAt)>Date.now())return {result:undefined,changed:false};
+            let changed=false;
+            for(const frame of state.frames) if(frame.status==="pending"&&frame.epoch!==state.epoch){frame.status="no_output";changed=true;}
+            const frames=state.frames.filter(frame=>frame.status==="pending").slice(0,4);
+            if(!frames.length)return {result:undefined,changed};
+            state.lease={id:randomUUID(),phase:"extract",frameIds:frames.map(frame=>frame.id),sourceIds:[],revision:state.revision+1,epoch:state.epoch,expiresAt:new Date(Date.now()+LEASE_MS).toISOString()};
+            return {result:{lease:structuredClone(state.lease),frames:structuredClone(frames)},changed:true};
+        },signal);
+    }
+
+    async finishExtraction(lease:MemoryLease,results:readonly {frame:MemoryFrame;facts:readonly ExtractedMemoryFact[]}[],signal:AbortSignal):Promise<void> {
+        await this.transaction(state=>{
+            if(lease.phase!=="extract"||state.lease?.id!==lease.id||state.revision!==lease.revision||state.epoch!==lease.epoch||Date.parse(state.lease.expiresAt)<=Date.now())throw new Error("Memory 提取租约已过期");
+            if(results.length!==lease.frameIds.length||new Set(results.map(result=>result.frame.id)).size!==results.length||results.some(result=>!lease.frameIds.includes(result.frame.id)))throw new Error("Memory 提取消费集合不匹配");
+            for(const {frame,facts} of results){
+                const current=state.frames.find(item=>item.id===frame.id)!;
+                if(JSON.stringify(current)!==JSON.stringify(frame))throw new Error("Memory frame 已变化");
+                if(facts.length>8)throw new Error("Memory facts 超量");
+                for(const fact of facts){
+                    if(fact.sources.some(hash=>!frame.messageHashes.includes(hash)))throw new Error("Memory fact 引用越界");
+                    const source=memorySourceRecordSchema.parse({id:randomUUID(),key:fact.key,type:fact.type,content:fact.content,consumed:false,createdAt:new Date().toISOString(),
+                        origin:{kind:"session",sessionId:frame.sessionId,messageHashes:fact.sources,contentHash:frame.id,basis:fact.basis}});
+                    if(!state.revoked.includes(originHash(source.origin)))state.sources.push(source);
+                }
+                current.status=facts.length?"extracted":"no_output";
+            }
+            delete state.lease;delete state.lastIssue;
+            return {result:undefined,changed:true};
+        },signal);
+        await this.invalidateViews();
+    }
+
     async claim(signal: AbortSignal): Promise<{lease: MemoryLease; baseline: MemoryPublication} | undefined> {
         return this.transaction(state => {
             if (state.lease && Date.parse(state.lease.expiresAt) > Date.now()) return {result: undefined, changed: false};
@@ -124,7 +169,7 @@ export class MemoryPublicationStore {
                 bytes += Buffer.byteLength(source.content);
             }
             if (!pending.length) return {result: undefined, changed: false};
-            state.lease = {id: randomUUID(), revision: state.revision + 1, epoch: state.epoch,
+            state.lease = {id: randomUUID(), phase:"consolidate", frameIds:[], revision: state.revision + 1, epoch: state.epoch,
                 sourceIds: pending, expiresAt: new Date(Date.now() + LEASE_MS).toISOString()};
             return {result: {lease: structuredClone(state.lease), baseline: structuredClone(state)}, changed: true};
         }, signal);
@@ -134,7 +179,7 @@ export class MemoryPublicationStore {
         const drafts = topics.map(topic => memoryDraftTopicSchema.parse(topic));
         if (summary.length > 4000) throw new Error("Memory 摘要超过 4000 字符");
         await this.transaction(state => {
-            if (!state.lease || state.lease.id !== lease.id || state.revision !== lease.revision ||
+            if (lease.phase !== "consolidate" || !state.lease || state.lease.id !== lease.id || state.revision !== lease.revision ||
                 state.epoch !== lease.epoch || Date.parse(state.lease.expiresAt) <= Date.now()) {
                 throw new Error("Memory 整理版本或租约已过期，未发布");
             }
@@ -197,6 +242,26 @@ export class MemoryPublicationStore {
             if (Buffer.byteLength(content) > 128 * 1024) throw new Error("Memory 读取视图超过 128 KiB");
             if (existing !== content) await writeFileAtomically(path, content, 0o600);
             return path;
+        });
+    }
+
+    async recoverWorkspaces(signal:AbortSignal):Promise<void> {
+        ensurePrivateStorageDirectory(this.storage,this.directory);
+        await withFileLock(join(this.directory,".memory.lock"),async()=>{
+            throwIfTurnAborted(signal);
+            const state=this.snapshot();
+            const root=getMemoryWorkspacesDirectory(this.directory);
+            ensurePrivateStorageDirectory(this.storage,root);
+            const entries=await readdir(root,{withFileTypes:true});
+            if(entries.length>1000)throw new Error("Memory 工作区数量异常");
+            for(const entry of entries){
+                if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(entry.name))continue;
+                if(state.lease?.id===entry.name&&Date.parse(state.lease.expiresAt)>Date.now())continue;
+                if(!entry.isDirectory()||entry.isSymbolicLink())throw new Error("Memory 工作区不是普通目录");
+                const paths=getMemoryWorkspacePaths(this.directory,entry.name);
+                ensurePrivateStorageDirectory(this.storage,paths.root);throwIfTurnAborted(signal);
+                await rm(paths.root,{recursive:true,force:true});
+            }
         });
     }
 

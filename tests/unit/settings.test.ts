@@ -215,10 +215,10 @@ describe("Unified Settings", () => {
         });
     });
 
-    test("Memory 默认开启，任意来源关闭后不能被其他来源重新开启", () => {
+    test("Memory 召回默认开启、自动生成默认关闭，显式关闭不能被覆盖", () => {
         expect(resolvePillarSettings([]).values.memory).toEqual({
             enabled: true,
-            autoExtract: true,
+            autoExtract: false,
         });
         const resolved = resolvePillarSettings([
             document("user", {

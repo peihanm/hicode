@@ -64,12 +64,18 @@ export interface AgentTaskSnapshot {
     worktreeDiffResult?: PersistedToolResult;
 }
 
-export type TaskSnapshot = ShellTaskSnapshot | AgentTaskSnapshot;
+export interface MemoryTaskSnapshot {
+    id:string;kind:"memory";owner:{sessionId:string;turnId:string};status:TaskStatus;startedAt:string;completedAt?:string;
+    resultPreview?:string;outputIssue?:string;
+}
+export interface StartMemoryTaskInput {signal:AbortSignal;turnId:string;background:boolean;baseline?:readonly string[];}
+export type TaskSnapshot = ShellTaskSnapshot | AgentTaskSnapshot | MemoryTaskSnapshot;
 
 export interface RunningTaskSummary {
     total: number;
     shell: number;
     agent: number;
+    memory: number;
 }
 
 export interface StartShellTaskInput {
@@ -92,8 +98,8 @@ export interface TaskNotification {
     notificationId: string;
     taskId: string;
     sessionId: string;
-    ownerToolCallId: string;
-    kind: "shell" | "agent";
+    ownerToolCallId?: string;
+    kind: "shell" | "agent" | "memory";
     label: string;
     status: Extract<TaskStatus, "completed" | "failed" | "cancelled">;
     summary: string;
@@ -117,6 +123,8 @@ export interface TaskSessionLike {
     startShell(input: StartShellTaskInput): Promise<ShellTaskSnapshot>;
 
     startAgent(input: StartAgentTaskInput): Promise<AgentTaskSnapshot>;
+
+    startMemory(input:StartMemoryTaskInput):Promise<MemoryTaskSnapshot|undefined>;
 
     get(id: string): Promise<TaskSnapshot | undefined>;
 

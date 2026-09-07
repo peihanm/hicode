@@ -53,16 +53,17 @@ function notificationSummary(task: TaskSnapshot): string {
     if (task.status === "completed" && task.resultPreview) {
         return compactLine(task.resultPreview);
     }
-    return task.reason ?? task.status;
+    return task.kind==="agent"?task.reason ?? task.status:task.status;
 }
 
 function notificationFor(task: TaskSnapshot): TaskNotification {
-    const label = task.kind === "shell"
+    const label = task.kind === "memory"?"Memory 维护":task.kind === "shell"
         ? task.command
         : `${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType} · ${task.description}`;
-    const resultId = task.outputResult?.resultId;
+    const result = task.kind==="memory"?undefined:task.outputResult;
+    const resultId = result?.resultId;
     const output = resultId
-        ? `，完整输出见保存文件 ${JSON.stringify(task.outputResult?.path)}，可用 read_file 读取`
+        ? `，完整输出见保存文件 ${JSON.stringify(result?.path)}，可用 read_file 读取`
         : "";
     const worktree = task.kind === "agent" && task.worktree
         ? task.worktree.state === "changed"
@@ -76,7 +77,7 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
         notificationId: taskNotificationId(task.id, task.kind === "agent" ? task.progress.runCount : 1),
         taskId: task.id,
         sessionId: task.owner.sessionId,
-        ownerToolCallId: task.owner.toolCallId,
+        ...(task.kind!=="memory"?{ownerToolCallId:task.owner.toolCallId}:{}),
         kind: task.kind,
         label,
         status: task.status as TaskNotification["status"],

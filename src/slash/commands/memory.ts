@@ -129,12 +129,9 @@ export const memoryCommand: SlashCommand = {
             if (context.ctx.permissionMode === "readOnly" || context.ctx.collaborationMode === "plan") {
                 await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能整理 Memory。"}); return;
             }
-            const result = await memory.maintain({sessionId: context.ctx.sessionId, signal: context.ctx.signal});
-            await context.onEvent({
-                type: "assistant_text",
-                content: result.status === "published" ? `Memory 已整理发布：${result.topics} 个主题。`
-                    : result.status === "busy" ? "当前已有 Memory 整理任务。" : "没有待整理 Memory；未调用模型。",
-            });
+            if(!context.ctx.tasks) {await context.onEvent({type:"assistant_text",content:"当前 Runtime 未提供 Memory 维护任务能力。"});return;}
+            const task=await context.ctx.tasks.startMemory({turnId:context.ctx.turnId,signal:context.ctx.signal,background:false});
+            await context.onEvent({type:"assistant_text",content:task?task.resultPreview??task.outputIssue??`Memory 任务 ${task.status}`:"没有待处理来源或当前已在整理；未启动新的模型调用。"});
             return;
         }
 

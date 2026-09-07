@@ -1,3 +1,5 @@
+import type {MemoryRuntimeLike} from "../../src/memory/runtime.js";
+import {createTestMemoryRuntime} from "./memory.js";
 import type {TaskRuntimeLike} from "../../src/tasks/index.js";
 import {createTaskRuntime} from "../../src/tasks/runtime.js";
 import {
@@ -20,7 +22,8 @@ export function createTaskRuntimeForTest(
         },
     }),
     pillarHome = join(cwd, ".test-task-storage"),
-    subagents: SubagentRegistry = BUILTIN_SUBAGENT_REGISTRY
+    subagents: SubagentRegistry = BUILTIN_SUBAGENT_REGISTRY,
+    memory:MemoryRuntimeLike = createTestMemoryRuntime(cwd,{enabled:false})
 ): TaskRuntimeLike {
     const storage = createPillarStorageLayout({pillarHome});
     return createTaskRuntime(
@@ -29,6 +32,7 @@ export function createTaskRuntimeForTest(
         testChildEnvironment,
         shellRunner,
         createSubagentThread,
-        subagents
+        subagents,
+        memory
     );
 }

@@ -16,6 +16,7 @@ function getBackgroundTaskLabel(
     if (summary.shell === summary.total) {
         return summary.shell === 1 ? "Service 1" : `Services ${summary.shell}`;
     }
+    if (summary.memory === summary.total) return "Memory maintenance";
     if (summary.agent === summary.total) {
         return summary.agent === 1
             ? "Background agent 1"

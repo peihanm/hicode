@@ -197,3 +197,24 @@ export function readSessionCheckpointLinks(storage: PillarStorageLayout, cwd: st
         ? [{checkpointId: entry.checkpointId, branchId: entry.branchId, parentCheckpointId: entry.parentCheckpointId}]
         : []);
 }
+
+/** Current-branch evidence only; checkpoints from other branches are not Memory sources. */
+export function readSessionSourceIds(storage: PillarStorageLayout, cwd: string, sessionId: string): string[] {
+    const entry = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
+    return entry ? [...new Set([...(entry.compactState?.archives ?? []).flatMap(archive => archive.messages), ...entry.conversation])] : [];
+}
+
+export function readSessionSourceMessages(storage: PillarStorageLayout, cwd: string, sessionId: string, hashes: readonly string[]) {
+    if (!hashes.length || hashes.length > 64 || hashes.some(hash => !isSessionContentId(hash))) throw new Error("Memory 来源数量或 hash 无效");
+    const allowed = new Set(readSessionSourceIds(storage, cwd, sessionId));
+    if (hashes.some(hash => !allowed.has(hash))) throw new Error("Memory 来源不在当前 Session 分支");
+    const blocks = new SessionContentStore(storage, cwd, sessionId);
+    const result = hashes.map(hash => {
+        const block = blocks.read(hash);
+        if (block.kind !== "message") throw new Error("Memory 来源不是消息");
+        const value = block.value;
+        return {id: hash, role: value.role, content: value.content};
+    });
+    if (Buffer.byteLength(JSON.stringify(result)) > 32 * 1024) throw new Error("Memory 来源超过 32 KiB，未送入模型");
+    return result;
+}

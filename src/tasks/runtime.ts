@@ -1,3 +1,6 @@
+import type {MemoryRuntimeLike} from "../memory/runtime.js";
+import {isMemoryTask,isAgentTask,snapshotMemory,type ManagedMemoryTask} from "./managed.js";
+import type {StartMemoryTaskInput,MemoryTaskSnapshot} from "./types.js";
 import {randomUUID} from "node:crypto";
 import {createTurnAbortController} from "../runtime/abort.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
@@ -94,6 +97,11 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.startAgent(this.binding, input);
     }
 
+    async startMemory(input:StartMemoryTaskInput):Promise<MemoryTaskSnapshot|undefined> {
+        if(input.background&&this.binding.allowBackgroundTasks===false)return undefined;
+        await this.ready;return this.runtime.startMemory(this.binding,input);
+    }
+
     async get(id: string): Promise<TaskSnapshot | undefined> {
         await this.ready;
         return this.runtime.get(this.binding, id);
@@ -163,7 +171,8 @@ class TaskRuntime implements TaskRuntimeLike {
         private readonly createSubagentThread: CreateSubagentThread,
         private readonly journal: TaskJournalLike,
         worktrees: WorktreeRuntimeLike,
-        private readonly subagents: SubagentRegistry
+        private readonly subagents: SubagentRegistry,
+        private readonly memory:MemoryRuntimeLike
     ) {
         this.worktreeTasks = new TaskWorktreeManager(worktrees);
     }
@@ -178,6 +187,37 @@ class TaskRuntime implements TaskRuntimeLike {
 
     forSession(binding: TaskSessionBinding): TaskSessionLike {
         return new TaskSession(this, binding);
+    }
+
+    async startMemory(binding:TaskSessionBinding,input:StartMemoryTaskInput):Promise<MemoryTaskSnapshot|undefined> {
+        this.assertOpen();
+        if(!this.memory.enabled)return undefined;
+        if(input.baseline)await this.memory.captureSource(binding.sessionId,input.baseline,input.signal);
+        if([...this.tasks.values()].some(task=>isMemoryTask(task)&&task.status==="running"))return undefined;
+        if((await this.memory.status()).pending===0)return undefined;
+        this.assertOpen();
+        if([...this.tasks.values()].some(task=>isMemoryTask(task)&&task.status==="running"))return undefined;
+        const release=this.reserveTaskSlot();
+        try{
+            const task:ManagedMemoryTask={id:randomUUID(),kind:"memory",owner:{sessionId:binding.sessionId,turnId:input.turnId},status:"running",startedAt:new Date().toISOString(),
+                store:binding.toolResultStore,controller:createTurnAbortController(),notificationPending:false,suppressTerminalNotification:!input.background,completion:Promise.resolve()};
+            this.tasks.set(task.id,task);
+            try{await this.publish("task_started",task,true);}catch(error){this.tasks.delete(task.id);throw error;}
+            if(this.closed)task.controller.abort("shutdown");
+            const signal=input.background?task.controller.signal:AbortSignal.any([task.controller.signal,input.signal]);
+            task.completion=(async()=>{
+                try{const result=await this.memory.maintain({sessionId:binding.sessionId,signal});task.status="completed";task.resultPreview=result.status==="published"?`Memory 已发布 ${result.topics} 个主题`:result.status==="busy"?"已有其他进程整理":"来源已处理，无待整理内容";}
+                catch{task.status=signal.aborted?"cancelled":"failed";task.outputIssue="Memory 维护未完成，未消费的来源保留；用 /memory 查看状态";}
+                finally{task.completedAt=new Date().toISOString();task.notificationPending=!task.suppressTerminalNotification;await this.publish("task_finished",task);}
+            })();
+            // All failures stay attached to this owned Task, including a terminal journal failure.
+            void task.completion.catch(()=>{});
+            if(!input.background){
+                await task.completion;
+                await this.markNotificationClaimed(binding.sessionId,task.id,taskNotificationId(task.id,1));
+            }
+            return snapshotMemory(task);
+        }finally{release();}
     }
 
     async startShell(
@@ -294,7 +334,7 @@ class TaskRuntime implements TaskRuntimeLike {
             }
             throw new Error(`Agent Task 不存在: ${id}`);
         }
-        if (isShellTask(task)) throw new Error(`Task ${id} 不是 Agent`);
+        if (!isAgentTask(task)) throw new Error(`Task ${id} 不是 Agent`);
         if (task.worktree) {
             throw new Error("Worktree Agent 暂不支持发送消息或继续");
         }
@@ -309,7 +349,7 @@ class TaskRuntime implements TaskRuntimeLike {
 
         await task.completion;
         task = this.ownedTask(binding.sessionId, id);
-        if (!task || isShellTask(task)) {
+        if (!task || !isAgentTask(task)) {
             throw new Error(`Agent Task 不存在: ${id}`);
         }
         if (task.status === "running") {
@@ -394,7 +434,7 @@ class TaskRuntime implements TaskRuntimeLike {
     async get(binding: TaskSessionBinding, id: string): Promise<TaskSnapshot | undefined> {
         const task = this.ownedTask(binding.sessionId, id);
         if (task) {
-            if (!isShellTask(task)) await this.refreshManagedWorktree(task);
+            if (isAgentTask(task)) await this.refreshManagedWorktree(task);
             return snapshotTask(task);
         }
         const archived = this.archived.get(id);
@@ -427,7 +467,7 @@ class TaskRuntime implements TaskRuntimeLike {
                 notificationId: taskNotificationId(id, archived.kind === "agent" ? archived.progress.runCount : 1)});
             return archived;
         }
-        const kind = isShellTask(task) ? "shell" : "agent";
+        const kind = isMemoryTask(task)?"memory":isShellTask(task) ? "shell" : "agent";
         if (expectedKind !== undefined && kind !== expectedKind) {
             throw new Error(`任务类型不匹配: 预期 ${expectedKind}，实际 ${kind}`);
         }
@@ -439,7 +479,7 @@ class TaskRuntime implements TaskRuntimeLike {
             await task.completion;
         }
         if (shouldAcknowledge) {
-            await this.markNotificationClaimed(sessionId, id, taskNotificationId(id, isShellTask(task) ? 1 : task.runCount));
+            await this.markNotificationClaimed(sessionId, id, taskNotificationId(id, isAgentTask(task) ? task.runCount : 1));
         }
         task.notificationPending = false;
         return snapshotTask(task);
@@ -466,6 +506,7 @@ class TaskRuntime implements TaskRuntimeLike {
     getRunningSummary(sessionId?: string): RunningTaskSummary {
         let shell = 0;
         let agent = 0;
+        let memory = 0;
         for (const task of this.tasks.values()) {
             if (
                 task.status !== "running" ||
@@ -473,17 +514,18 @@ class TaskRuntime implements TaskRuntimeLike {
             ) {
                 continue;
             }
-            if (isShellTask(task)) shell += 1;
+            if (isMemoryTask(task)) memory += 1;
+            else if (isShellTask(task)) shell += 1;
             else agent += 1;
         }
-        return {total: shell + agent, shell, agent};
+        return {total: shell + agent + memory, shell, agent, memory};
     }
 
     hasRunningThatBlocksRewind(): boolean {
         return [...this.tasks.values()].some(
             (task) =>
                 task.status === "running" &&
-                (isShellTask(task) || task.worktree === undefined)
+                (isShellTask(task) || (isAgentTask(task) && task.worktree === undefined))
         );
     }
 
@@ -505,12 +547,12 @@ class TaskRuntime implements TaskRuntimeLike {
         const task = this.ownedTask(sessionId, notification.taskId);
         const archived = this.archived.get(notification.taskId);
         if (!task && archived?.owner.sessionId !== sessionId) return;
-        const runCount = task ? (isShellTask(task) ? 1 : task.runCount) : archived!.kind === "agent" ? archived!.progress.runCount : 1;
+        const runCount = task ? (isAgentTask(task) ? task.runCount : 1) : archived!.kind === "agent" ? archived!.progress.runCount : 1;
         if (taskNotificationId(notification.taskId, runCount) !== notification.notificationId) return;
         if (task ? !task.notificationPending : !this.notifications.hasArchivedPending(notification.taskId)) return;
         await this.markNotificationClaimed(sessionId, notification.taskId, notification.notificationId);
         if (task) {
-            if (taskNotificationId(task.id, isShellTask(task) ? 1 : task.runCount) === notification.notificationId) task.notificationPending = false;
+            if (taskNotificationId(task.id, isAgentTask(task) ? task.runCount : 1) === notification.notificationId) task.notificationPending = false;
         } else this.notifications.acknowledgeArchived(notification.taskId);
     }
 
@@ -565,7 +607,7 @@ class TaskRuntime implements TaskRuntimeLike {
     private hasActiveWorktree(sessionId: string): boolean {
         return [...this.tasks.values()].some(
             (task) =>
-                !isShellTask(task) &&
+                isAgentTask(task) &&
                 task.owner.sessionId === sessionId &&
                 task.status === "running" &&
                 task.worktree?.state === "active"
@@ -575,7 +617,7 @@ class TaskRuntime implements TaskRuntimeLike {
     private runningAgentCount(sessionId: string): number {
         return [...this.tasks.values()].filter(
             (task) =>
-                !isShellTask(task) &&
+                isAgentTask(task) &&
                 task.owner.sessionId === sessionId &&
                 task.status === "running"
         ).length;
@@ -642,7 +684,7 @@ class TaskRuntime implements TaskRuntimeLike {
         taskId: string
     ): Promise<AgentWorktreeRecord> {
         const managed = this.ownedTask(sessionId, taskId);
-        const agentTask = managed && !isShellTask(managed) ? managed : undefined;
+        const agentTask = managed && isAgentTask(managed) ? managed : undefined;
         const archived = this.archived.get(taskId);
         const archivedAgent = archived?.kind === "agent" ? archived : undefined;
         return this.worktreeTasks.loadRecord(
@@ -736,7 +778,7 @@ class TaskRuntime implements TaskRuntimeLike {
         inspection?: Awaited<ReturnType<TaskWorktreeManager["refresh"]>>
     ): Promise<AgentTaskSnapshot> {
         const managed = this.ownedTask(sessionId, taskId);
-        if (managed && !isShellTask(managed)) {
+        if (managed && isAgentTask(managed)) {
             managed.worktree = record;
             managed.worktreeInspection = inspection;
             await this.publish("task_progress", managed);
@@ -875,13 +917,15 @@ export function createTaskRuntime(
     childEnvironment: ChildProcessEnvironment,
     shellRunner: ShellRunnerLike,
     createSubagentThread: CreateSubagentThread,
-    subagents: SubagentRegistry
+    subagents: SubagentRegistry,
+    memory:MemoryRuntimeLike
 ): TaskRuntimeLike {
     return new TaskRuntime(
         shellRunner,
         createSubagentThread,
         createTaskJournal(storage, cwd),
         createWorktreeRuntime(storage, cwd, childEnvironment),
-        subagents
+        subagents,
+        memory
     );
 }

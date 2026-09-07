@@ -33,13 +33,20 @@ export const memoryDraftTopicSchema = z.object({
 
 const topicSchema = memoryDraftTopicSchema.extend({createdAt: z.string().datetime(), updatedAt: z.string().datetime()}).strict();
 
+export const memoryFrameSchema = z.object({id:z.string().regex(/^[a-f0-9]{64}$/),sessionId:text(200),
+    messageHashes:z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(64),epoch:z.number().int().nonnegative(),
+    status:z.enum(["pending","no_output","extracted"]),createdAt:z.string().datetime()}).strict();
+export type MemoryFrame=z.infer<typeof memoryFrameSchema>;
+
 export const memoryPublicationSchema = z.object({
     version: z.literal(2), revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
     summary: z.string().max(4000), topics: z.array(topicSchema).max(200),
     sources: z.array(memorySourceRecordSchema).max(1000),
+    frames: z.array(memoryFrameSchema).max(1000),
     revoked: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(10_000),
     lease: z.object({id, revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
-        sourceIds: z.array(id).min(1).max(16), expiresAt: z.string().datetime()}).strict().optional(),
+        phase:z.enum(["extract","consolidate"]), frameIds:z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4),
+        sourceIds: z.array(id).max(16), expiresAt: z.string().datetime()}).strict().optional(),
     lastIssue: z.string().max(1000).optional(),
 }).strict().superRefine((value, ctx) => {
     const keys = new Set(value.topics.map(topic => topic.key));
@@ -50,7 +57,8 @@ export const memoryPublicationSchema = z.object({
     for (const topic of value.topics) if (topic.sources.some(source => !sourceIds.has(source))) {
         ctx.addIssue({code: "custom", message: "Memory 主题引用不存在的来源", path: ["topics", topic.key]});
     }
-    if (value.lease && (value.lease.epoch !== value.epoch || value.lease.sourceIds.some(source => !sourceIds.has(source)))) {
+    if (new Set(value.frames.map(frame=>frame.id)).size!==value.frames.length) ctx.addIssue({code:"custom",message:"重复 Memory frame"});
+    if (value.lease && (value.lease.frameIds.some(id=>!value.frames.some(frame=>frame.id===id)) || value.lease.epoch !== value.epoch || value.lease.sourceIds.some(source => !sourceIds.has(source)))) {
         ctx.addIssue({code: "custom", message: "Memory lease 与当前来源/epoch 不一致"});
     }
 });

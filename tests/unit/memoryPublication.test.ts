@@ -69,3 +69,13 @@ test("过期观察、取消、伪造引用与 publication symlink 均保留原�
         expect(before.sources).toHaveLength(1);
     });
 });
+
+test("恢复只清理私有失效 UUID 工作区，不删除当前租约或旧 Markdown",async()=>withTempProject(async(cwd,storage)=>{
+ const store=new MemoryPublicationStore(storage,cwd);const signal=new AbortController().signal;
+ await store.acceptNote("brief",{operation:"remember",type:"feedback",content:"简洁"},{kind:"explicit",sessionId:"s",turnId:"t",toolCallId:"w"},null,signal);
+ const current=(await store.claim(signal))!;
+ const {getMemoryWorkspacePaths}=await import("../../src/persistence/layout.js");
+ const {mkdir,writeFile,access}=await import("node:fs/promises");
+ const active=getMemoryWorkspacePaths(store.directory,current.lease.id).root;const stale=getMemoryWorkspacePaths(store.directory,"00000000-0000-0000-0000-000000000000").root;
+ await mkdir(active,{recursive:true});await mkdir(stale,{recursive:true});await writeFile(join(store.directory,"legacy.md"),"old");await store.recoverWorkspaces(signal);await access(active);await access(join(store.directory,"legacy.md"));await expect(access(stale)).rejects.toThrow();
+}));

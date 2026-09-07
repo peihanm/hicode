@@ -21,6 +21,7 @@ const inputSchema = z.object({
 });
 
 function formatTask(task: TaskSnapshot): string {
+    if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"正在提取与整理 Memory"}`;
     const result = task.outputResult
         ? `\nSaved output: ${JSON.stringify(task.outputResult.path)}`
         : "";

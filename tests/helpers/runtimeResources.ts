@@ -160,7 +160,10 @@ export function createTestRuntimeResources(
   const taskRuntime = createTaskRuntimeForTest(
     cwd,
     shellRunner,
-    agentRuntime.createSubagentThread
+    agentRuntime.createSubagentThread,
+    undefined,
+    subagents,
+    memory
   );
   const hooks = overrides.hooks ?? createDisabledTestHookRuntime();
   const toolRuntime = overrides.toolRuntime ?? createToolRuntime({hooks});

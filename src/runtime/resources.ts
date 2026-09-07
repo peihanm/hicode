@@ -102,7 +102,8 @@ interface RootRuntimeDependencies {
         childEnvironment: ChildProcessEnvironment,
         shellRunner: ShellRunnerLike,
         createSubagentThread: CreateSubagentThread,
-        subagents: SubagentCatalog
+        subagents: SubagentCatalog,
+        memory:MemoryRuntimeLike
     ): TaskRuntimeLike;
     createAgentRuntime: typeof createAgentRuntime;
 
@@ -319,7 +320,8 @@ export function createRootRuntimeResourcesFactory(
                 childEnvironment,
                 shellRunner,
                 agentRuntime.createSubagentThread,
-                subagents
+                subagents,
+                createdMemory
             );
             taskRuntime = createdTaskRuntime;
             closeOwnedResources = createResourceCloser(

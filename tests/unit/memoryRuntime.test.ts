@@ -12,8 +12,8 @@ test("无增量与关闭不启动模型，显式维护一次发布并消费",asy
  expect((await memory.status()).pending).toBe(0);
  await memory.maintain(memoryOwner());await memory.close();expect(calls).toBe(1);
 }));
-test("关闭取消当前整理，不发布半成品或继续 drain",async()=>withTempProject(async cwd=>{
+test("调用方取消当前整理，不发布半成品",async()=>withTempProject(async cwd=>{
  let started!:()=>void;const ready=new Promise<void>(r=>started=r);
  const memory=createTestMemoryRuntime(cwd,{consolidator:{async consolidate({signal}){started();await new Promise<void>((_,reject)=>signal.addEventListener("abort",()=>reject(new Error("cancelled")),{once:true}));throw new Error("unreachable");}}});
- await remember(memory,"brief","保持简洁");const job=memory.maintain(memoryOwner());const failed=job.catch(error => error);await ready;await memory.close();expect(await failed).toBeInstanceOf(Error);expect((await memory.status()).pending).toBe(1);expect((await memory.status()).published).toBe(0);
+ await remember(memory,"brief","保持简洁");const controller=new AbortController();const job=memory.maintain({sessionId:"test",signal:controller.signal});const failed=job.catch(error => error);await ready;controller.abort();await memory.close();expect(await failed).toBeInstanceOf(Error);expect((await memory.status()).pending).toBe(1);expect((await memory.status()).published).toBe(0);
 }));

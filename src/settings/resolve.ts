@@ -193,7 +193,7 @@ export function resolvePillarSettings(
     let fastSource = DEFAULT_LLM_PROVIDER;
     let permissionMode: PermissionMode = "default";
     let memoryEnabled = true;
-    let memoryAutoExtract = true;
+    let memoryAutoExtract = false;
     let memoryDisabled = false;
     let autoExtractDisabled = false;
     let checkpointingEnabled = true;

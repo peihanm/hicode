@@ -1,3 +1,9 @@
+import {createHash} from "node:crypto";
+import {rm} from "node:fs/promises";
+import {readSessionSourceIds,readSessionSourceMessages,withSessionPersistenceLock} from "../session/snapshotStore.js";
+import {createPillarStorageLayout,ensurePrivateStorageDirectory} from "../persistence/index.js";
+import {getMemoryWorkspacePaths} from "../persistence/layout.js";
+import {createMemorySourceExtractor,type MemorySourceExtractor} from "./sourceExtractor.js";
 import type {AgentRunner} from "../agent/index.js";
 import type {ResolvedPillarSettings} from "../settings/index.js";
 import type {ModelTargetSettings} from "../settings/types.js";
@@ -35,21 +41,23 @@ export interface MemoryRuntimeLike {
     getRevision(): number;
     explicitChangesSince(revision: number): MemoryChange[];
     maintain(input: {sessionId: string; signal: AbortSignal}): Promise<MemoryMaintenanceResult>;
+    captureBaseline(sessionId:string,prompt:string):Promise<string[]|undefined>;
+    captureSource(sessionId:string,baseline:readonly string[],signal:AbortSignal):Promise<void>;
     close(): Promise<void>;
 }
 
 class MemoryRuntime implements MemoryRuntimeLike {
     private notificationRevision = 0;
     private readonly changes: Array<{revision: number; change: MemoryChange}> = [];
-    private readonly controller = new AbortController();
-    private readonly active = new Set<Promise<MemoryMaintenanceResult>>();
+    private closed = false;
     readonly directory: string;
     constructor(readonly enabled: boolean, readonly autoExtract: boolean, private readonly store: MemoryPublicationStore,
-        private readonly createConsolidator: () => MemoryConsolidator) {this.directory = store.directory;}
+        private readonly createConsolidator: () => MemoryConsolidator, private readonly storage:PillarStorageLayout, private readonly cwd:string,
+        private readonly createExtractor:(storage:PillarStorageLayout)=>MemorySourceExtractor) {this.directory = store.directory;}
 
     private requireOpen(): void {
         if (!this.enabled) throw new Error("Memory 已关闭");
-        throwIfTurnAborted(this.controller.signal);
+        if(this.closed) throw new Error("Memory 已关闭");
     }
     private record(change: MemoryChange): MemoryChange {
         this.changes.push({revision: ++this.notificationRevision, change});
@@ -87,7 +95,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
         const counts: MemoryRuntimeStatus["counts"] = {user: 0, feedback: 0, project: 0, reference: 0};
         for (const entry of scan.entries) counts[entry.type]++;
         return {enabled: this.enabled, autoExtract: this.enabled && this.autoExtract, directory: this.directory, counts, issues: scan.issues,
-            pending: state?.sources.filter(source => !source.consumed).length ?? 0, published: state?.topics.length ?? 0,
+            pending: (state?.sources.filter(source => !source.consumed).length ?? 0)+(state?.frames.filter(frame=>frame.status==="pending").length??0), published: state?.topics.length ?? 0,
             maintaining: Boolean(state?.lease && Date.parse(state.lease.expiresAt) > Date.now())};
     }
     async contextForTurn(userInput: string): Promise<MemoryContextResult> {
@@ -107,34 +115,66 @@ class MemoryRuntime implements MemoryRuntimeLike {
             write: async (...args) => {this.requireOpen(); return this.record(await access.write(...args));},
             delete: async (...args) => {this.requireOpen(); const change = await access.delete(...args); return change ? this.record(change) : undefined;}};
     }
-    maintain(input: {sessionId: string; signal: AbortSignal}): Promise<MemoryMaintenanceResult> {
-        this.requireOpen();
-        const signal = AbortSignal.any([input.signal, this.controller.signal]);
-        const pending = (async (): Promise<MemoryMaintenanceResult> => {
-            const job = await this.store.claim(signal);
-            if (!job) return {status: this.store.snapshot().lease ? "busy" : "empty", topics: this.store.snapshot().topics.length};
-            try {
-                const draft = await this.createConsolidator().consolidate({...job, sessionId: input.sessionId, signal});
-                await this.store.publish(job.lease, draft.topics, draft.summary, signal);
-                return {status: "published", topics: draft.topics.length};
-            } catch (error) {
-                await this.store.fail(job.lease, signal.aborted ? "Memory 整理已取消，note 保留待处理" : "Memory 整理失败，正式内容未替换，note 保留待处理");
-                throw error;
-            }
-        })();
-        this.active.add(pending);
-        void pending.finally(() => this.active.delete(pending)).catch(() => {});
-        return pending;
+    async captureBaseline(sessionId:string,prompt:string):Promise<string[]|undefined> {
+        if(!this.enabled||!this.autoExtract||this.closed||SUPPRESS_MEMORY.some(pattern=>pattern.test(prompt)))return undefined;
+        try {this.store.snapshot();return await withSessionPersistenceLock(this.storage,this.cwd,async()=>readSessionSourceIds(this.storage,this.cwd,sessionId));}
+        catch {return undefined;}
     }
-    async close(): Promise<void> {
-        this.controller.abort("shutdown");
-        await Promise.allSettled([...this.active]);
+    async captureSource(sessionId:string,baseline:readonly string[],signal:AbortSignal):Promise<void> {
+        this.requireOpen();if(!this.autoExtract)return;
+        await withSessionPersistenceLock(this.storage,this.cwd,async()=>{
+            const previous=new Set(baseline);
+            const hashes=readSessionSourceIds(this.storage,this.cwd,sessionId).filter(hash=>!previous.has(hash)).slice(-64);
+            if(!hashes.length)return;
+            const messages=readSessionSourceMessages(this.storage,this.cwd,sessionId,hashes);
+            if(messages.some(message=>message.role==="user"&&SUPPRESS_MEMORY.some(pattern=>pattern.test(message.content??""))))return;
+            const id=createHash("sha256").update(JSON.stringify(["memory-extraction-v1",sessionId,hashes])).digest("hex");
+            await this.store.offerFrame({id,sessionId,messageHashes:hashes},signal);
+        });
     }
+    async maintain(input: {sessionId: string; signal: AbortSignal}): Promise<MemoryMaintenanceResult> {
+        this.requireOpen();const signal=AbortSignal.any([input.signal,AbortSignal.timeout(5*60_000)]);throwIfTurnAborted(signal);
+        await this.store.recoverWorkspaces(signal);
+        const extraction=await this.store.claimExtraction(signal);
+        if(extraction){
+            const paths=getMemoryWorkspacePaths(this.directory,extraction.lease.id);
+            try{
+                const temporary=createPillarStorageLayout({pillarHome:paths.runtime});
+                ensurePrivateStorageDirectory(this.storage,paths.runtime);
+                const extractor=this.createExtractor(temporary);
+                const results:Array<{frame:import("./publicationSchema.js").MemoryFrame;facts:import("./sourceExtractor.js").ExtractedMemoryFact[]}>=[];
+                for(const frame of extraction.frames){
+                    const messages=await withSessionPersistenceLock(this.storage,this.cwd,async()=>readSessionSourceMessages(this.storage,this.cwd,frame.sessionId,frame.messageHashes));
+                    const facts=await extractor.extract(messages,signal);results.push({frame,facts});
+                }
+                await withSessionPersistenceLock(this.storage,this.cwd,async()=>{
+                    for(const {frame} of results)readSessionSourceMessages(this.storage,this.cwd,frame.sessionId,frame.messageHashes);
+                    await this.store.finishExtraction(extraction.lease,results,signal);
+                });
+            }catch(error){await this.store.fail(extraction.lease,"Memory 来源提取失败或取消，未消费来源");throw error;}
+            finally{ensurePrivateStorageDirectory(this.storage,paths.root);await rm(paths.root,{recursive:true,force:true});}
+        }
+        const job=await this.store.claim(signal);
+        if(!job)return {status:this.store.snapshot().lease?"busy":"empty",topics:this.store.snapshot().topics.length};
+        try{
+            const draft=await this.createConsolidator().consolidate({...job,sessionId:input.sessionId,signal});
+            await withSessionPersistenceLock(this.storage,this.cwd,async()=>{
+                for(const source of job.baseline.sources.filter(source=>draft.topics.some(topic=>topic.sources.includes(source.id)))){
+                    if(source.origin.kind==="session")readSessionSourceMessages(this.storage,this.cwd,source.origin.sessionId,source.origin.messageHashes);
+                }
+                await this.store.publish(job.lease,draft.topics,draft.summary,signal);
+            });
+            return {status:"published",topics:draft.topics.length};
+        }catch(error){await this.store.fail(job.lease,signal.aborted?"Memory 整理已取消，note 保留待处理":"Memory 整理失败，正式内容未替换，note 保留待处理");throw error;}
+    }
+    async close(): Promise<void> {this.closed=true;}
+
 }
 
 export interface MemoryRuntimeFactoryDependencies {
     createStore(storage: PillarStorageLayout, cwd: string): MemoryPublicationStore;
     createConsolidator: typeof createMemoryConsolidator;
+    createExtractor: typeof createMemorySourceExtractor;
 }
 export function createMemoryRuntimeFactory(overrides: Partial<MemoryRuntimeFactoryDependencies> = {}) {
     return (options: {storage: PillarStorageLayout; cwd: string; environment: ChildProcessEnvironment; shellRunner: ShellRunnerLike;
@@ -144,6 +184,9 @@ export function createMemoryRuntimeFactory(overrides: Partial<MemoryRuntimeFacto
         return new MemoryRuntime(options.settings.enabled, options.settings.autoExtract, store, () => {
             const target = options.getModelTarget();
             return (overrides.createConsolidator ?? createMemoryConsolidator)({...options, target, source: options.getModelSource(target.source)});
+        },options.storage,options.cwd,(storage)=>{
+            const target=options.getModelTarget();
+            return (overrides.createExtractor??createMemorySourceExtractor)({storage,cwd:options.cwd,target,source:options.getModelSource(target.source)});
         });
     };
 }

@@ -1,3 +1,4 @@
+import {z} from "zod";
 import type {StopReason} from "../agent/types.js";
 import type {PersistedToolResult} from "../toolResults/index.js";
 import type {ShellTermination} from "../tools/bash/process.js";
@@ -355,8 +356,13 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
     };
 }
 
+const memoryTaskSchema=z.object({id:z.string().min(1).max(512),kind:z.literal("memory"),owner:z.object({sessionId:z.string().min(1).max(512),turnId:z.string().min(1).max(512)}).strict(),
+ status:z.enum(["running","completed","failed","cancelled"]),startedAt:z.string().datetime(),completedAt:z.string().datetime().optional(),resultPreview:z.string().max(1000).optional(),outputIssue:z.string().max(128*1024).optional()}).strict()
+ .refine(task=>task.status==="running"?task.completedAt===undefined:task.completedAt!==undefined);
+
 function decodeTask(value: unknown): TaskSnapshot | undefined {
     if (!isRecord(value)) return undefined;
+    if(value.kind==="memory"){const parsed=memoryTaskSchema.safeParse(value);return parsed.success?parsed.data:undefined;}
     return value.kind === "shell"
         ? decodeShellTask(value)
         : value.kind === "agent"

@@ -2,6 +2,7 @@ import type {TaskSnapshot} from "../../tasks/index.js";
 import type {SlashCommand} from "../types.js";
 
 function formatTask(task: TaskSnapshot): string {
+    if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"正在提取与整理 Memory"}`;
     const result = task.outputResult?.resultId
         ? ` · result ${task.outputResult.resultId}`
         : "";

@@ -1,3 +1,4 @@
+import type {MemoryTaskSnapshot} from "./types.js";
 import {type FileHandle, open} from "node:fs/promises";
 import type {StopReason} from "../agent/types.js";
 import {selectUtf8Range} from "../toolResults/utf8.js";
@@ -57,7 +58,13 @@ export interface ManagedAgentTask extends ManagedTaskBase {
     worktreeDiffResult?: AgentTaskSnapshot["worktreeDiffResult"];
 }
 
-export type ManagedTask = ManagedShellTask | ManagedAgentTask;
+export interface ManagedMemoryTask extends Omit<ManagedTaskBase,"owner"> {kind:"memory";owner:{sessionId:string;turnId:string};resultPreview?:string;}
+export type ManagedTask = ManagedShellTask | ManagedAgentTask | ManagedMemoryTask;
+export function isMemoryTask(task:ManagedTask):task is ManagedMemoryTask{return "kind" in task && task.kind==="memory";}
+export function isAgentTask(task:ManagedTask):task is ManagedAgentTask{return "thread" in task;}
+export function snapshotMemory(task:ManagedMemoryTask):MemoryTaskSnapshot {
+ return {id:task.id,kind:"memory",owner:task.owner,status:task.status,startedAt:task.startedAt,...(task.completedAt?{completedAt:task.completedAt}:{}),...(task.outputIssue?{outputIssue:task.outputIssue}:{}),...(task.resultPreview?{resultPreview:task.resultPreview}:{})};
+}
 
 export function isShellTask(task: ManagedTask): task is ManagedShellTask {
     return "command" in task;
@@ -179,7 +186,7 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
 }
 
 export function snapshotTask(task: ManagedTask): Promise<TaskSnapshot> {
-    return isShellTask(task)
+    return isMemoryTask(task) ? Promise.resolve(snapshotMemory(task)) : isShellTask(task)
         ? snapshotShell(task)
         : Promise.resolve(snapshotAgent(task));
 }
