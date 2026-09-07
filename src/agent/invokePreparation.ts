@@ -8,6 +8,8 @@ import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "./types.js";
 import type {Message, OpenAITool} from "../llm/types.js";
+import type {Todo} from "../todos.js";
+import {buildLiveStateContext} from "../context/liveState.js";
 
 export type ToolSchemaProvider = () => OpenAITool[];
 export type {CompactHistoryRunner} from "../context/compact.js";
@@ -20,6 +22,7 @@ export interface PrepareAgentInvokeInput {
     compactHistory: CompactHistoryRunner;
     contextWindow?: number;
     additionalUserContextBlocks?: readonly string[];
+    getTodos?: () => readonly Todo[];
 }
 
 export interface PreparedAgentInvoke {
@@ -36,12 +39,15 @@ export async function prepareAgentInvoke({
                                              compactHistory,
                                              contextWindow,
                                              additionalUserContextBlocks = [],
+                                             getTodos,
                                          }: PrepareAgentInvokeInput): Promise<PreparedAgentInvoke> {
     throwIfTurnAborted(ctx.signal);
 
+    const getRuntimeBlocks = () => [...additionalUserContextBlocks, ...buildLiveStateContext(getTodos?.(), ctx.tasks)];
+    let runtimeBlocks = getRuntimeBlocks();
     let userContextBlocks = [
         ...getUserContextBlocks(ctx.skills, ctx.instructions),
-        ...additionalUserContextBlocks,
+        ...runtimeBlocks,
     ];
     let invokeMessages = buildInvokeMessages(history, userContextBlocks);
     const tools = getToolSchemas();
@@ -73,14 +79,15 @@ export async function prepareAgentInvoke({
             tools,
             preTokenCount: estimatedTokens,
             contextWindow,
-            additionalUserContextBlocks,
+            additionalUserContextBlocks: runtimeBlocks,
         });
         throwIfTurnAborted(ctx.signal);
 
         if (compactResult.compacted) {
+            runtimeBlocks = getRuntimeBlocks();
             userContextBlocks = [
                 ...getUserContextBlocks(ctx.skills, ctx.instructions),
-                ...additionalUserContextBlocks,
+                ...runtimeBlocks,
             ];
             invokeMessages = buildInvokeMessages(history, userContextBlocks);
             estimatedTokens = tokenCountWithEstimation(invokeMessages, tools);

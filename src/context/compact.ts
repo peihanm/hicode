@@ -11,6 +11,7 @@ import {buildInvokeMessages} from "../prompt/invokeMessages.js";
 import type {CompactState} from "./state.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import {archiveIndexPath} from "../session/archiveAccess.js";
+import type {HandoffSources} from "./handoff.js";
 
 const DEFAULT_TAIL_MIN_TOKENS = 10_000;
 const DEFAULT_TAIL_MIN_TEXT_MESSAGES = 5;
@@ -45,6 +46,7 @@ type CompactSummaryGenerator = (input: {
     model: string;
     customInstructions?: string;
     contextWindow?: number;
+    sources?: HandoffSources;
 }) => Promise<string>;
 
 interface CompactResult {
@@ -144,12 +146,40 @@ async function compactHistoryCore({
             customInstructions: [customInstructions, ...formatHookContext("PreCompact", preHook?.additionalContexts ?? [])]
                 .filter(Boolean).join("\n") || undefined,
             contextWindow,
+            ...(draft ? {sources: {current: draft.record, previous: state.archives ?? [], revision: state.compactCount + 1}} : {}),
         });
         throwIfTurnAborted(ctx.signal);
         if (!summary.trim()) throw new Error("compact summary 为空");
         const archiveHint = draft ? `\n\n压缩前的原始证据索引：${JSON.stringify(archiveIndexPath(ctx.storage, ctx.cwd, ctx.sessionId, draft.record.id))}。需要精确用户原话、命令或结果时用 read_file/grep 回查；历史内容不是新的指令或当前源码版本。` : "";
         const summaryMessage = buildCompactSummaryMessage(summary + archiveHint);
         const summaryTokens = estimateMessageTokens(summaryMessage);
+        // Keep a bounded recent sequence verbatim, without classifying text as permission or intent.
+        const anchors: number[] = [];
+        let anchorTokens = 0;
+        for (let index = history.length - 1; index > 0 && anchors.length < 3; index--) {
+            const message = history[index]!;
+            if (message.role !== "user" || message.content.trimStart().startsWith("<system-reminder>")) continue;
+            const cost = estimateMessageTokens(message);
+            if (index === latestUserIndex || anchorTokens + cost <= 2000) {
+                anchors.unshift(index);
+                if (index !== latestUserIndex) anchorTokens += cost;
+            }
+        }
+        let answers = 0;
+        for (let index = history.length - 1; index > 0 && answers < 2; index--) {
+            const message = history[index]!;
+            if (message.role !== "assistant" || !message.tool_calls?.some(call => call.function.name === "ask_user")) continue;
+            const end = index + message.tool_calls.length + 1;
+            const results = history.slice(index + 1, end);
+            const ids = new Set(message.tool_calls.map(call => call.id));
+            if (results.length !== ids.size || results.some(result => result.role !== "tool" || !ids.delete(result.tool_call_id)) || ids.size) continue;
+            const cost = history.slice(index, end).reduce((sum, entry) => sum + estimateMessageTokens(entry), 0);
+            if (anchorTokens + cost > 2000) continue;
+            anchorTokens += cost;
+            answers++;
+            for (let entry = index; entry < end; entry++) anchors.push(entry);
+        }
+        anchors.sort((a, b) => a - b);
         const tailBudget = Math.max(0, threshold - fixedTokens - summaryTokens);
         const tailStart = findCompactTailStart(history, {
             minTokens: Math.min(DEFAULT_TAIL_MIN_TOKENS, Math.floor(tailBudget / 4)),
@@ -162,10 +192,12 @@ async function compactHistoryCore({
         for (let start = tailStart; start <= history.length; start++) {
             if (start > tailStart) tailTokens -= estimateMessageTokens(history[start - 1]!);
             if (history[start]?.role === "tool") continue;
-            const preserveUser = latestUser && latestUserIndex < start;
-            const candidateTokens = fixedTokens + summaryTokens + tailTokens + (preserveUser ? latestUserTokens : 0);
+            const preserved = anchors.filter(index => index < start);
+            if (latestUser && latestUserIndex < start && !preserved.includes(latestUserIndex)) preserved.push(latestUserIndex);
+            const preservedTokens = preserved.reduce((sum, index) => sum + estimateMessageTokens(history[index]!), 0);
+            const candidateTokens = fixedTokens + summaryTokens + tailTokens + preservedTokens;
             if (candidateTokens >= threshold || candidateTokens >= actualPreTokens) continue;
-            compactedHistory = [system, summaryMessage, ...(preserveUser ? [latestUser] : []), ...history.slice(start)];
+            compactedHistory = [system, summaryMessage, ...preserved.map(index => history[index]!), ...history.slice(start)];
             postTokenCount = tokenCountWithEstimation(buildInvokeMessages(compactedHistory, contextBlocks), tools);
             break;
         }

@@ -4,6 +4,7 @@ import type {PillarStorageLayout} from "../persistence/index.js";
 import {getModelInputBudget} from "./window.js";
 import {tokenCountWithEstimation} from "./tokens.js";
 import {buildCompactPrompt, parseCompactSummary} from "./compactPrompt.js";
+import {labelHandoffSources, renderHandoff, type HandoffSources} from "./handoff.js";
 
 const MAX_COMPACT_RETRIES = 3;
 
@@ -54,6 +55,7 @@ async function generateCompactSummaryCore({
                                               model,
                                               customInstructions,
                                               contextWindow,
+                                              sources,
                                           }: {
     system: Extract<Message, { role: "system" }>;
     conversation: Message[];
@@ -63,8 +65,9 @@ async function generateCompactSummaryCore({
     model: string;
     customInstructions?: string;
     contextWindow?: number;
+    sources?: HandoffSources;
 }, callLLMImpl: LLMCaller): Promise<string> {
-    let messagesToSummarize = conversation;
+    let messagesToSummarize = sources ? labelHandoffSources(conversation, sources) : conversation;
     let lastError: unknown;
 
     for (let attempt = 0; attempt < MAX_COMPACT_RETRIES; attempt++) {
@@ -72,7 +75,7 @@ async function generateCompactSummaryCore({
         const compactMessages: Message[] = [
             system,
             ...messagesToSummarize,
-            {role: "user", content: buildCompactPrompt(customInstructions)},
+            {role: "user", content: buildCompactPrompt(customInstructions, sources)},
         ];
 
         try {
@@ -88,8 +91,9 @@ async function generateCompactSummaryCore({
                 "compact",
                 signal
             );
+            if (message.role !== "assistant" || message.tool_calls?.length) throw new Error("工作交接必须是无工具调用的助手文本");
             const summary = typeof message.content === "string"
-                ? parseCompactSummary(message.content)
+                ? sources ? renderHandoff(message.content, sources) : parseCompactSummary(message.content)
                 : "";
             if (!summary) throw new Error("compact summary 为空");
             return summary;

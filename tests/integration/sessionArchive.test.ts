@@ -215,3 +215,55 @@ test("档案数量超限及竞争提交均拒绝发布；长 Unicode 原文分�
         } finally {await f.resources.close();}
     });
 });
+
+import {createCompactSummaryGenerator} from "../../src/context/compactSummary.js";
+import {assistantText, createFakeLLM} from "../helpers/fakeLLM.js";
+
+test("生产交接链校验引用、保留纠正原话，Resume 与 Fork 保持可回查来源", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd, storage, "handoff-session");
+        try {
+            const correction = "允许显式丢弃，但默认不能丢弃";
+            f.session.history.push({role: "user", content: correction}, {role: "assistant", content: "资料\n".repeat(10_000)},
+                {role: "user", content: "继续实现"});
+            let originalRef = "";
+            const fake = createFakeLLM([options => {
+                const match = options.messages[1]!.content?.match(/\[source ([a-f0-9]{64}\/1); role=user\]/);
+                expect(match).not.toBeNull();
+                originalRef = match![1]!;
+                expect(JSON.stringify(options.messages)).not.toContain("hidden-reasoning");
+                return assistantText(JSON.stringify({version: 1,
+                    objective: [{text: "完成删除列", sources: [originalRef], basis: "reported"}],
+                    constraints: [{text: correction, sources: [originalRef.replace(/\/1$/, "/4")], basis: "reported"}],
+                    decisions: [], files: [], verification: [], next: [{text: "读取删除弹窗后实现", sources: [], basis: "inferred"}]}));
+            }]);
+            const compact = createCompactHistoryRunner({generateSummary: createCompactSummaryGenerator({callLLM: fake.callLLM})});
+            expect((await compact({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true})).compacted).toBe(true);
+            expect(f.session.history.filter(message => message.role === "user" && message.content === correction)).toHaveLength(1);
+            expect(f.session.history[1]!.content).toContain(`[[${originalRef}]]`);
+            const loaded = loadSession(storage, cwd, f.session.sessionId, "glm-test")!;
+            expect(loaded.history.slice(1)).toEqual(f.session.history.slice(1));
+            await f.session.beginCheckpoint("fork", state());
+            const point = listSessionTurnCheckpoints(storage, cwd, f.session.sessionId).at(-1)!;
+            await f.session.settleCheckpoint();
+            const fork = await forkSessionConversation({storage, cwd, model: "glm-test", sessionId: f.session.sessionId,
+                checkpointId: point.checkpointId, permissionMode: "default"});
+            const forked = loadSession(storage, cwd, fork.sessionId, "glm-test")!;
+            expect(JSON.stringify(forked.history)).not.toContain(`[[${originalRef}]]`);
+            expect(JSON.stringify(forked.history)).toContain(`[[${forked.compactState!.archives![0]!.id}/1]]`);
+            const before = structuredClone(f.session.history);
+            f.session.history.push({role: "assistant", content: "资料\n".repeat(10_000)});
+            const beforeFailure = structuredClone(f.session.history);
+            const bad = createCompactHistoryRunner({generateSummary: createCompactSummaryGenerator({callLLM: createFakeLLM([
+                assistantText(JSON.stringify({version: 1, objective: [{text: "伪造", sources: [`${"f".repeat(64)}/1`], basis: "reported"}],
+                    constraints: [], decisions: [], files: [], verification: [], next: []})),
+            ]).callLLM})});
+            const result = await bad({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true});
+            expect(result.compacted).toBe(false);
+            expect(result.message).toContain("不属于当前来源");
+            expect(f.session.history).toEqual(beforeFailure);
+            expect(f.session.compactState.archives).toHaveLength(1);
+            expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")!.history.slice(1)).toEqual(before.slice(1));
+        } finally {await f.resources.close();}
+    });
+});

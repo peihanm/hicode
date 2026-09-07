@@ -91,3 +91,37 @@ test("Summary 本身也不会发送已知超限请求", async () => {
         expect(requests).toBe(0);
     });
 });
+
+test("压缩后从 Host 重新装配当前 Todo，不把运行时状态写入 History", async () => {
+    await withTempProject(async cwd => {
+        const ctx = createTestContext(cwd);
+        const history = largeHistory();
+        let phase: "pending" | "completed" = "pending";
+        const prepared = await prepareAgentInvoke({history, ctx, onEvent() {}, getToolSchemas: () => [],
+            getTodos: () => [{content: "CURRENT_TODO_DATA", status: phase, activeForm: "执行任务"}],
+            compactHistory: async () => {
+                history.splice(1, history.length - 1, {role: "user", content: "恢复工作"});
+                phase = "completed";
+                return {compacted: true, preTokenCount: 100_000, postTokenCount: 1, threshold: 50_000};
+            }});
+        expect(JSON.stringify(prepared.invokeMessages)).toContain("completed");
+        expect(JSON.stringify(prepared.invokeMessages)).toContain("CURRENT_TODO_DATA");
+        expect(JSON.stringify(history)).not.toContain("CURRENT_TODO_DATA");
+    });
+});
+
+test("近期 ask_user 回答以完整工具组保留，旧源码观察不会随交接复活", async () => {
+    await withTempProject(async cwd => {
+        const history: Message[] = [{role: "system", content: "system"}, {role: "user", content: "原始目标"},
+            {role: "assistant", content: null, tool_calls: [{id: "question", type: "function", function: {name: "ask_user", arguments: '{"questions":[{"question":"删除策略"}]}'}}]},
+            {role: "tool", tool_call_id: "question", content: "允许显式丢弃，默认不丢弃"},
+            {role: "assistant", content: "旧源码\n".repeat(25_000)}, {role: "user", content: "继续"}];
+        const ctx = createTestContext(cwd);
+        const compact = createCompactHistoryRunner({async generateSummary() {return "交接";}});
+        expect((await compact({history, ctx, tools: [], preTokenCount: 100_000, force: true})).compacted).toBe(true);
+        const call = history.findIndex(message => message.role === "assistant" && message.tool_calls?.[0]?.id === "question");
+        expect(call).toBeGreaterThan(0);
+        expect(history[call + 1]).toEqual({role: "tool", tool_call_id: "question", content: "允许显式丢弃，默认不丢弃"});
+        expect(JSON.stringify(history)).not.toContain("旧源码");
+    });
+});

@@ -67,6 +67,7 @@ export async function forkSessionConversation(input: {
         const oldIndex = archiveIndexPath(input.storage, input.cwd, input.sessionId, record.id);
         const newIndex = archiveIndexPath(input.storage, input.cwd, sessionId, draft.record.id);
         replacements.set(oldIndex.replace(/-index\.txt$/, "-"), newIndex.replace(/-index\.txt$/, "-"));
+        replacements.set(`[[${record.id}/`, `[[${draft.record.id}/`);
     }
     if (ids.size) await targetBlocks.persist(ids);
     const history = checkpoint.conversation.map(replaceMessagePaths);

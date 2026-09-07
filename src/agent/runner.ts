@@ -202,6 +202,7 @@ async function runAgentCore(
                 getToolSchemas: () => toolSchemas,
                 compactHistory: compactHistoryImpl,
                 contextWindow: providerContextWindow,
+                getTodos: options.getTodos,
                 additionalUserContextBlocks: [
                     ...(options.additionalUserContextBlocks ?? []),
                     ...(evidenceContext ? [evidenceContext] : []),
