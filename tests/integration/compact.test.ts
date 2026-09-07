@@ -69,28 +69,16 @@ describe("compact integration", () => {
     });
   });
 
-  test("prompt-too-long 时裁剪旧对话并重试 summary", async () => {
-    await withTempProject(async (cwd) => {
+  test("Provider 超长拒绝保留原 History，不按比例丢弃重试", async () => {
+    await withTempProject(async cwd => {
       const history = historyWithToolPair();
-      const fake = createFakeLLM([
-        () => {
-          throw new Error("prompt too long: context length limit");
-        },
-        assistantText("<summary>重试后的摘要</summary>"),
-      ]);
-
-      const result = await compactHistory({
-        history,
-        ctx: createTestContext(cwd),
-        tools: [],
-        preTokenCount: 100_000,
-        force: true,
-        callLLM: fake.callLLM,
-      });
-
-      expect(result.compacted).toBe(true);
-      expect(fake.calls).toHaveLength(2);
-      expect(history[1]?.content).toContain("重试后的摘要");
+      const before = structuredClone(history);
+      const fake = createFakeLLM([() => {throw new Error("prompt too long: context length limit");}]);
+      const result = await compactHistory({history, ctx: createTestContext(cwd), tools: [],
+        preTokenCount: 100_000, force: true, callLLM: fake.callLLM});
+      expect(result.compacted).toBe(false);
+      expect(fake.calls).toHaveLength(1);
+      expect(history).toEqual(before);
     });
   });
 

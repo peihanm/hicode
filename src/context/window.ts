@@ -63,6 +63,11 @@ export function getAutoCompactThreshold(
     );
 }
 
+/** Leave working room instead of compacting to just below the next trigger. */
+export function getCompactTarget(model: string, reportedWindow?: number): number {
+    return Math.max(1, Math.floor(getModelInputBudget(model, reportedWindow) * 0.65));
+}
+
 function getTokenWarningThreshold(model: string, reportedWindow?: number): number {
     return Math.max(
         1,

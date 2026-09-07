@@ -797,3 +797,52 @@ async function* replay(
 ): AsyncGenerator<ThreadEvent> {
     yield* events;
 }
+
+import {createAgentRunner} from "../../src/agent/runner.js";
+import {createCompactHistoryRunner} from "../../src/context/compact.js";
+import {createCompactSummaryGenerator} from "../../src/context/compactSummary.js";
+import {archiveIndexPath} from "../../src/session/archiveAccess.js";
+
+test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回查原始来源", async () => {
+    await withTempProject(async (cwd, storage) => {
+        let indexPath = "";
+        const fake = createFakeLLM([
+            options => {
+                expect(options.kind).toBe("compact");
+                expect(options.tools).toEqual([]);
+                expect(JSON.stringify(options.messages)).toContain("交接覆盖限制");
+                return assistantText(JSON.stringify({version: 1,
+                    objective: [{text: "继续当前任务，原始细节待回查", sources: [], basis: "inferred"}],
+                    constraints: [], decisions: [], files: [], verification: [], next: []}));
+            },
+            assistantText("本轮完成"),
+            () => assistantToolCall("read_file", {path: indexPath}, "read-archive"),
+            options => {
+                expect(options.messages.some(message => message.role === "tool" && message.content.includes("Session archive"))).toBe(true);
+                return assistantText("找到原始来源索引");
+            },
+        ]);
+        const compactHistory = createCompactHistoryRunner({generateSummary: createCompactSummaryGenerator({callLLM: fake.callLLM})});
+        const runtime = {...createFakeAgentRuntime(fake), compactHistory,
+            runAgent: createAgentRunner({callLLM: fake.callLLM, compactHistory})};
+        const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: runtime});
+        const sessionId = createSessionId();
+        const first = await createSDKThread({resources, seed: {sessionId,
+            history: [...createInitialHistory(cwd, resources.model), {role: "user", content: "原始目标\n" + "x".repeat(250_000)},
+                {role: "assistant", content: "已检查"}], compactState: createCompactState()},
+            state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+        try {
+            expect((await first.run("继续实现")).finalResponse).toBe("本轮完成");
+            await first.close();
+            const loaded = loadSession(storage, cwd, sessionId, resources.model)!;
+            expect(loaded.compactState!.archives).toHaveLength(1);
+            expect(JSON.stringify(loaded.history)).toContain("交接覆盖限制");
+            indexPath = archiveIndexPath(storage, cwd, sessionId, loaded.compactState!.archives![0]!.id);
+            const second = await createSDKThread({resources, seed: {...loaded, compactState: loaded.compactState!},
+                state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: loaded.uiEvents}, resumed: true, onClose() {}});
+            try {expect((await second.run("回查原始来源")).finalResponse).toBe("找到原始来源索引");}
+            finally {await second.close();}
+            expect(fake.calls).toHaveLength(4);
+        } finally {await first.close(); await resources.close();}
+    });
+});

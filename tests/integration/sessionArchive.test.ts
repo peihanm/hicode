@@ -267,3 +267,50 @@ test("生产交接链校验引用、保留纠正原话，Resume 与 Fork 保持�
         } finally {await f.resources.close();}
     });
 });
+
+import {getCompactTarget} from "../../src/context/window.js";
+
+test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果不会触发历史命令回放", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd, storage, "handoff-five");
+        try {
+            const artifact = await f.session.toolResultStore.persistText({toolCallId: "historical-test", toolName: "bash", content: "past assertion details"});
+            f.session.history.push({role: "assistant", content: null, tool_calls: [{id: "historical-test", type: "function",
+                function: {name: "bash", arguments: '{"command":"bun test"}'}}]},
+                {role: "tool", tool_call_id: "historical-test", content: buildPersistedToolResultMessage(artifact)});
+            const initial = structuredClone(f.session.history.filter(message => message.role !== "system")).map(message => {
+                if (message.role !== "assistant") return message;
+                const {reasoning_content: _reasoning, ...visible} = message;
+                return visible;
+            });
+            let firstSource = "";
+            const fake = createFakeLLM(Array.from({length: 5}, (_, round) => options => {
+                if (!round) firstSource = options.messages[1]!.content!.match(/\[source ([a-f0-9]{64}\/1);/)![1]!;
+                const correction = options.messages.find(message => message.role === "user" && message.content.includes(`纠正_${round}`))!;
+                const ref = correction.content!.match(/\[source ([a-f0-9]{64}\/[0-9]+);/)![1]!;
+                return assistantText(JSON.stringify({version: 1,
+                    objective: [{text: "继续完成删除列", sources: [firstSource], basis: "reported"}],
+                    constraints: [{text: `采用纠正_${round}`, sources: [ref], basis: "reported"}],
+                    decisions: [], files: [], verification: [], next: []}));
+            }));
+            const compact = createCompactHistoryRunner({generateSummary: createCompactSummaryGenerator({callLLM: fake.callLLM})});
+            for (let round = 0; round < 5; round++) {
+                f.session.history.push({role: "assistant", content: "中间证据\n".repeat(4000)}, {role: "user", content: `纠正_${round}：允许显式丢弃，默认仍不丢弃`});
+                const result = await compact({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true});
+                expect(result.compacted).toBe(true);
+                expect(result.postTokenCount!).toBeLessThan(getCompactTarget(f.ctx.model));
+                expect(f.session.history[1]!.content).toContain(`[[${firstSource}]]`);
+                expect(f.session.history[1]!.content).toContain(`采用纠正_${round}`);
+            }
+            const loaded = loadSession(storage, cwd, f.session.sessionId, "glm-test")!;
+            expect(loaded.compactState!.archives).toHaveLength(5);
+            const earliest = readArchiveMessages(loaded.compactState!.archives![0]!, new SessionContentStore(storage, cwd, f.session.sessionId));
+            expect(earliest.slice(0, initial.length)).toEqual(initial);
+            await unlink(artifact.path);
+            const unavailable = await f.tool("read_file", {path: artifact.path});
+            expect(unavailable.outcome).not.toBe("ok");
+            expect(fake.calls).toHaveLength(5);
+            expect(fake.calls.every(call => call.kind === "compact" && call.tools.length === 0)).toBe(true);
+        } finally {await f.resources.close();}
+    });
+});

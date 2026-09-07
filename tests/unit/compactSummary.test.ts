@@ -21,32 +21,15 @@ function conversation(): Message[] {
 }
 
 describe("Compact summary runner", () => {
-  test("prompt-too-long 时从 user boundary 裁剪并重试", async () => {
-    const fake = createFakeLLM([
-      () => {
-        throw new Error("prompt too long: context length limit");
-      },
-      assistantText("<analysis>draft</analysis><summary>recovered</summary>"),
-    ]);
-    const summary = await generateCompactSummary({
-      system,
-      conversation: conversation(),
-      signal: new AbortController().signal,
-      cwd: "/tmp/project",
-      model: "glm-test",
-      callLLM: fake.callLLM,
-    });
-
-    expect(summary).toBe("recovered");
-    expect(fake.calls).toHaveLength(2);
-    expect(fake.calls[1]?.messages[1]).toEqual({
-      role: "user",
-      content: "[为了重试压缩，较早对话已被截断]",
-    });
-    expect(fake.calls[1]?.messages[2]).toEqual({
-      role: "user",
-      content: "recent-user",
-    });
+  test("Provider 超长失败不裁剪原对话或进行第二次请求", async () => {
+    const fake = createFakeLLM([() => {throw new Error("prompt too long: context length limit");}]);
+    const messages = conversation();
+    const before = structuredClone(messages);
+    await expect(generateCompactSummary({system, conversation: messages, signal: new AbortController().signal,
+      cwd: "/tmp/project", model: "glm-test", callLLM: fake.callLLM})).rejects.toThrow("prompt too long");
+    expect(fake.calls).toHaveLength(1);
+    expect(messages).toEqual(before);
+    expect(fake.calls[0]?.messages[1]).toEqual(messages[0]);
   });
 
   test("普通错误不重试，空 summary 明确失败", async () => {
