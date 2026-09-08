@@ -22,6 +22,7 @@ export interface PrepareAgentInvokeInput {
     compactHistory: CompactHistoryRunner;
     contextWindow?: number;
     additionalUserContextBlocks?: readonly string[];
+    getAdditionalUserContextBlocks?: () => Promise<readonly string[]>;
     getTodos?: () => readonly Todo[];
 }
 
@@ -40,11 +41,12 @@ export async function prepareAgentInvoke({
                                              contextWindow,
                                              additionalUserContextBlocks = [],
                                              getTodos,
+                                             getAdditionalUserContextBlocks,
                                          }: PrepareAgentInvokeInput): Promise<PreparedAgentInvoke> {
     throwIfTurnAborted(ctx.signal);
 
-    const getRuntimeBlocks = () => [...additionalUserContextBlocks, ...buildLiveStateContext(getTodos?.(), ctx.tasks)];
-    let runtimeBlocks = getRuntimeBlocks();
+    const getRuntimeBlocks = async () => [...additionalUserContextBlocks,...(await getAdditionalUserContextBlocks?.()??[]), ...buildLiveStateContext(getTodos?.(), ctx.tasks)];
+    let runtimeBlocks = await getRuntimeBlocks();
     let userContextBlocks = [
         ...getUserContextBlocks(ctx.skills, ctx.instructions),
         ...runtimeBlocks,
@@ -84,7 +86,7 @@ export async function prepareAgentInvoke({
         throwIfTurnAborted(ctx.signal);
 
         if (compactResult.compacted) {
-            runtimeBlocks = getRuntimeBlocks();
+            runtimeBlocks = await getRuntimeBlocks();
             userContextBlocks = [
                 ...getUserContextBlocks(ctx.skills, ctx.instructions),
                 ...runtimeBlocks,

@@ -2,7 +2,7 @@ import type {MemorySourceExtractor} from "../../src/memory/sourceExtractor.js";
 import {join} from "node:path";
 import {createMemoryRuntimeFactory, type MemoryRuntimeLike} from "../../src/memory/runtime.js";
 import type {MemoryConsolidator} from "../../src/memory/consolidator.js";
-import {serializeMemoryNote} from "../../src/memory/publicationStore.js";
+import {serializeMemoryNote} from "../../src/memory/note.js";
 import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createTestStorage} from "./tempProject.js";

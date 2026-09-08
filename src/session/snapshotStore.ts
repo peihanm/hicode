@@ -218,3 +218,23 @@ export function readSessionSourceMessages(storage: PillarStorageLayout, cwd: str
     if (Buffer.byteLength(JSON.stringify(result)) > 32 * 1024) throw new Error("Memory 来源超过 32 KiB，未送入模型");
     return result;
 }
+
+/** Select complete message bodies; skipped bytes are a declared coverage gap, never a guessed fact. */
+export function selectSessionMemorySource(storage:PillarStorageLayout,cwd:string,sessionId:string,baseline:readonly string[]) {
+    const seen=new Set(baseline);
+    const fresh=readSessionSourceIds(storage,cwd,sessionId).filter(id=>!seen.has(id));
+    const candidates=[...new Set([...fresh.slice(0,1),...fresh.slice(-63)])];
+    const blocks=new SessionContentStore(storage,cwd,sessionId);
+    const selected:string[]=[];let bytes=2;
+    for(const id of candidates.toReversed()){
+        const block=blocks.read(id);
+        if(block.kind!=="message")throw new Error("Memory 来源不是消息");
+        const message=block.value;
+        if(!message.content||(message.role==="user"&&message.content.startsWith("<system-reminder>\n本会话已压缩。")))continue;
+        const cost=Buffer.byteLength(JSON.stringify({id,role:message.role,content:message.content}))+1;
+        if(bytes+cost>32*1024)continue;
+        selected.push(id);bytes+=cost;
+    }
+    selected.reverse();
+    return {hashes:selected,omitted:fresh.length-selected.length};
+}

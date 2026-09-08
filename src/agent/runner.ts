@@ -31,6 +31,7 @@ export interface AgentRunOptions extends AgentToolBindings {
     maxConsecutiveDeniedToolCalls?: number;
     /** 当前 turn 的宿主上下文，不写入持久 history。 */
     additionalUserContextBlocks?: readonly string[];
+    getAdditionalUserContextBlocks?: () => Promise<readonly string[]>;
 }
 
 interface AgentRunnerDependencies {
@@ -203,6 +204,7 @@ async function runAgentCore(
                 compactHistory: compactHistoryImpl,
                 contextWindow: providerContextWindow,
                 getTodos: options.getTodos,
+                getAdditionalUserContextBlocks:options.getAdditionalUserContextBlocks,
                 additionalUserContextBlocks: [
                     ...(options.additionalUserContextBlocks ?? []),
                     ...(evidenceContext ? [evidenceContext] : []),

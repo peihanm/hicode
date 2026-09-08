@@ -91,7 +91,7 @@ export const memoryCommand: SlashCommand = {
             await context.onEvent({
                 type: "assistant_text",
                 content: entry
-                    ? `# ${entry.name}\n\n${entry.description}\n\n${entry.content}\n\nPath: ${entry.path}`
+                    ? `# ${entry.name}\n\n${entry.description}\n\n${entry.content}\n\n来源: ${JSON.stringify(entry.evidence)}\n\nPath: ${entry.path}`
                     : `Memory 不存在: ${value}`,
             });
             return;

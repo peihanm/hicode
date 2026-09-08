@@ -1,7 +1,8 @@
 import {expect, test} from "bun:test";
 import {readFile, writeFile, symlink, unlink} from "node:fs/promises";
 import {join} from "node:path";
-import {MemoryPublicationStore, serializeMemoryNote} from "../../src/memory/publicationStore.js";
+import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
+import {serializeMemoryNote} from "../../src/memory/note.js";
 import {getMemoryPublicationPath} from "../../src/persistence/layout.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
@@ -78,4 +79,11 @@ test("恢复只清理私有失效 UUID 工作区，不删除当前租约或旧 M
  const {mkdir,writeFile,access}=await import("node:fs/promises");
  const active=getMemoryWorkspacePaths(store.directory,current.lease.id).root;const stale=getMemoryWorkspacePaths(store.directory,"00000000-0000-0000-0000-000000000000").root;
  await mkdir(active,{recursive:true});await mkdir(stale,{recursive:true});await writeFile(join(store.directory,"legacy.md"),"old");await store.recoverWorkspaces(signal);await access(active);await access(join(store.directory,"legacy.md"));await expect(access(stale)).rejects.toThrow();
+}));
+
+test("持有 lease ID 也不能更改领取的来源集合或时限",async()=>withTempProject(async(cwd,storage)=>{
+ const store=new MemoryPublicationStore(storage,cwd);await store.acceptNote("brief",note,origin("claim"),null,signal());const job=(await store.claim(signal()))!;
+ await expect(store.publish({...job.lease,sourceIds:[]},[],"伪造消费",signal())).rejects.toThrow("来源集合");
+ await expect(store.publish({...job.lease,expiresAt:"2099-01-01T00:00:00.000Z"},[],"延长期限",signal())).rejects.toThrow("租约");
+ expect(store.snapshot().sources[0]?.consumed).toBe(false);expect(store.snapshot().lease?.id).toBe(job.lease.id);
 }));
