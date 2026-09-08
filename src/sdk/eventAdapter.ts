@@ -143,6 +143,7 @@ export class SDKEventAdapter {
                     estimatedOutputTokens: event.estimatedOutputTokens,
                     toolName: event.toolName,
                     idleMilliseconds: event.idleMilliseconds,
+                    ...(event.retry ? {retry: event.retry} : {}),
                 });
                 break;
             case "assistant_text":

@@ -1,3 +1,4 @@
+import {contentText} from "../../images/content.js";
 import {toolFileChanges} from "../../fileChanges/index.js";
 import {randomUUID} from "node:crypto";
 import {mergeFileChange} from "../../fileChanges/index.js";
@@ -47,7 +48,7 @@ export function createTaskNotificationThread(
 }
 
 function textFromUserMessage(message: Extract<Message, { role: "user" }>): string {
-    return message.content;
+    return contentText(message.content);
 }
 
 function shouldShowUserText(text: string): boolean {
@@ -102,9 +103,9 @@ export function threadsFromHistory(
                 target.status = "done";
                 if (target.name === "agent") {
                     target.result = "Done (resumed session)";
-                    target.subagentReport = message.content;
+                    target.subagentReport = contentText(message.content);
                 } else {
-                    target.result = message.content;
+                    target.result = contentText(message.content);
                 }
             }
         }

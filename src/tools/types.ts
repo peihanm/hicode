@@ -1,3 +1,4 @@
+import type {ImageAccess} from "../images/access.js";
 import type {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
 import {z} from "zod";
 import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionPromptPresentation, PermissionResult, PermissionRules,} from "../permissions/index.js";
@@ -43,6 +44,8 @@ interface ToolSearchSource {
 // 工具运行时上下文：注入权限裁决、规则、模式等依赖
 // 避免工具直接耦合 UI / 配置加载
 export interface ToolContext {
+    imageModelSupported?: boolean;
+    imageAccess?: ImageAccess;
     /** Root Turn observes actual execute intervals, excluding permission and batch queues. */
     onToolExecution?: (phase: "start" | "end") => void;
     storage: PillarStorageLayout;

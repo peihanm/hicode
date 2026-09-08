@@ -1,4 +1,5 @@
 import type {ToolUIData} from "../fileChanges/index.js";
+import type {ImageDescriptor, MessageContent} from "../images/content.js";
 
 export const DEFAULT_MAX_RESULT_CHARS = 50_000;
 export const DEFAULT_PREVIEW_CHARS = 2_000;
@@ -19,16 +20,20 @@ export interface PersistedToolResult {
     encoding: "utf-8";
 }
 
+export type BinaryArtifactOrigin =
+    | {kind: "tool"; toolCallId: string; toolName: string}
+    | {kind: "user"; inputId: string};
+
 export interface PersistedBinaryArtifact {
     artifactId: string;
-    toolCallId: string;
-    toolName: string;
+    origin: BinaryArtifactOrigin;
     path: string;
     byteLength: number;
     originalByteLength: number;
     complete: boolean;
     encoding: "binary";
     mimeType: string;
+    image?: ImageDescriptor;
 }
 
 export type ToolOutcome = "ok" | "failed" | "denied" | "interrupted";
@@ -42,7 +47,7 @@ export interface ShellExecutionEvidence {
 export type ToolOutput =
     | string
     | {
-    content: string;
+    content: MessageContent;
     displayContent?: string;
     persisted?: PersistedToolResult;
     outcome?: ToolOutcome;
@@ -51,7 +56,7 @@ export type ToolOutput =
 };
 
 export interface ToolExecutionResult {
-    modelContent: string;
+    modelContent: MessageContent;
     displayContent: string;
     outcome: ToolOutcome;
     persisted?: PersistedToolResult;

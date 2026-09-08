@@ -1,3 +1,4 @@
+import type {TurnInput} from "../images/input.js";
 import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
@@ -117,9 +118,9 @@ export interface Thread {
 
     getInfo(): ThreadInfo;
 
-    run(input: string, options?: TurnOptions): Promise<TurnResult>;
+    run(input: TurnInput, options?: TurnOptions): Promise<TurnResult>;
 
-    runStreamed(input: string, options?: TurnOptions): Promise<StreamedTurn>;
+    runStreamed(input: TurnInput, options?: TurnOptions): Promise<StreamedTurn>;
 
     close(): Promise<void>;
 }

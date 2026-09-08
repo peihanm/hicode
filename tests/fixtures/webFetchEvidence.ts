@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import assert from "node:assert/strict";
 import {mock} from "bun:test";
 import * as network from "../../src/tools/webFetch/network.js";
@@ -26,12 +27,12 @@ await withTempProject(async cwd => {
         url: "https://example.com/docs", ...(mode === "maximum" ? {max_chars: 100_000} : {}),
     }), ctx, "web-call");
     assert.equal(result.outcome, mode === "http-error" ? "failed" : "ok");
-    assert.ok(!result.modelContent.includes("MIDDLEAPICONTRACT"));
+    assert.ok(!contentText(result.modelContent).includes("MIDDLEAPICONTRACT"));
     if (mode === "save-failure") {
         assert.equal(result.persisted, undefined);
-        assert.match(result.modelContent, /complete result could not be saved/);
+        assert.match(contentText(result.modelContent), /complete result could not be saved/);
     } else {
-        assert.match(result.modelContent, /TAILAPICONTRACT/);
+        assert.match(contentText(result.modelContent), /TAILAPICONTRACT/);
         assert.ok(result.persisted, "long normalized body must be persisted");
         assert.equal(result.persisted.complete, true);
         assert.ok(result.modelContent.length <= store.previewChars + 1000, "persisted references must keep the shared bounded preview");
@@ -39,7 +40,7 @@ await withTempProject(async cwd => {
             path: result.persisted.path, offset: 1,
         }), ctx, "read-tail");
         assert.equal(tail.outcome, "ok");
-        assert.match(tail.modelContent, /TAILAPICONTRACT/);
+        assert.match(contentText(tail.modelContent), /TAILAPICONTRACT/);
     }
     assert.equal(calls, 1);
 });

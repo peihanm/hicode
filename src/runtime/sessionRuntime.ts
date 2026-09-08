@@ -1,3 +1,4 @@
+import {contentText, type MessageContent} from "../images/content.js";
 import {forkSessionConversation} from "../session/fork.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {saveSessionCompaction} from "../session/storage.js";
@@ -88,7 +89,7 @@ export interface RootSessionRuntime {
     createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
 
     beginCheckpoint(
-        prompt: string,
+        prompt: MessageContent,
         state: Omit<RootSessionSnapshotState, "allowEmpty" | "summaryHint">
     ): Promise<void>;
 
@@ -235,6 +236,7 @@ export function createRootSessionRuntime({
                     if (result.status === "complete") {
                         const loaded = loadSession(resources.storage, resources.cwd, seed.sessionId, resources.model);
                         if (!loaded) throw new Error("恢复后的 Session 不可读取");
+                        messageQueue.takeEditableInputs();
                         history = loaded.history;
                         compactState = loaded.compactState ?? compactState;
                         resources.toolRuntime.restoreToolDiscovery(loaded.toolDiscovery);
@@ -305,7 +307,7 @@ export function createRootSessionRuntime({
             if (checkpointStartFailed) throw new Error("Checkpoint 启动未完整提交，必须重新恢复 Session");
             turnActive = true;
             try {
-                const checkpoint = await fileCheckpoints.beginTurn({prompt});
+                const checkpoint = await fileCheckpoints.beginTurn({prompt: contentText(prompt)});
                 if (!checkpoint) return;
                 await saveSessionTurnCheckpoint(resources.storage, {
                     cwd: resources.cwd,

@@ -2,7 +2,7 @@ import {toolFileChanges} from "../../fileChanges/index.js";
 import {createAssistantThread, createTaskNotificationThread, createUserThread, reduceThreads, threadsFromHistory,} from "../conversation/threadReducer.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {UIThread} from "../conversation/types.js";
-import type {Message} from "../../llm/types.js";
+import type {LLMRetryInfo, Message} from "../../llm/types.js";
 import {mergeFileChange} from "../../fileChanges/index.js";
 import {limitPersistedUIEvents, type PersistedFileChangeUIEvent, type PersistedUIEvent,} from "../../session/index.js";
 import {isSuccessfulToolActivity} from "../../tools/presentation.js";
@@ -36,6 +36,7 @@ export interface UIModelStreamInfo {
     estimatedOutputTokens: number;
     toolName?: string;
     idleMilliseconds?: number;
+    retry?: LLMRetryInfo;
 }
 
 export interface UIModelStreamProgressRef {
@@ -136,6 +137,7 @@ export class UITurnEventStore {
                 phase: event.phase,
                 outputCharacters: event.outputCharacters,
                 estimatedOutputTokens: event.estimatedOutputTokens,
+                ...(event.retry ? {retry: event.retry} : {}),
                 ...(event.toolName ? {toolName: event.toolName} : {}),
                 ...(event.idleMilliseconds !== undefined
                     ? {idleMilliseconds: event.idleMilliseconds}
@@ -148,6 +150,7 @@ export class UITurnEventStore {
             const toolChanged = current?.toolName !== event.toolName;
             if (
                 event.phase !== "stalled" &&
+                event.phase !== "retrying" &&
                 !phaseChanged &&
                 !toolChanged
             ) {

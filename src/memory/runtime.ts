@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { selectSessionMemorySource, readSessionSourceIds, readSessionSourceMessages, withSessionPersistenceLock } from "../session/snapshotStore.js";
@@ -148,7 +149,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             if (!hashes.length)
                 return;
             const messages = readSessionSourceMessages(this.storage, this.cwd, sessionId, hashes);
-            if (messages.some(message => message.role === "user" && SUPPRESS_MEMORY.some(pattern => pattern.test(message.content ?? ""))))
+            if (messages.some(message => message.role === "user" && SUPPRESS_MEMORY.some(pattern => pattern.test(contentText(message.content)))))
                 return;
             const id = createHash("sha256").update(JSON.stringify(["memory-extraction-v1", sessionId, hashes])).digest("hex");
             await this.store.offerFrame({ id, sessionId, messageHashes: hashes, omitted }, signal);
@@ -180,7 +181,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
                         results.push({ frame, facts: [], unavailable: true });
                         continue;
                     }
-                    const facts = await extractor.extract(messages, signal, frame.omitted);
+                    const facts = await extractor.extract(messages.map(message => ({...message, content: contentText(message.content)})), signal, frame.omitted);
                     results.push({ frame, facts, unavailable: false });
                 }
                 await withSessionPersistenceLock(this.storage, this.cwd, async () => {
@@ -260,11 +261,11 @@ export function createMemoryAwareAgentRunner(baseRunAgent: AgentRunner, memory: 
         if (!memory.enabled)
             return baseRunAgent(userInput, history, onEvent, ctx, channel, options);
         const revision = memory.getRevision();
-        const recalled = await memory.contextForTurn(userInput);
+        const recalled = await memory.contextForTurn(contentText(userInput));
         const scoped = { ...ctx, memoryFiles: recalled.ignoredForTurn ? undefined : ctx.memoryFiles };
         const result = await baseRunAgent(userInput, history, onEvent, scoped, channel, { ...options,
             getAdditionalUserContextBlocks: async () => {
-                const current = recalled.ignoredForTurn ? recalled : await memory.contextForTurn(userInput);
+                const current = recalled.ignoredForTurn ? recalled : await memory.contextForTurn(contentText(userInput));
                 if (current.ignoredForTurn)
                     scoped.memoryFiles = undefined;
                 return [...(current.block ? [current.block] : []), ...(await options.getAdditionalUserContextBlocks?.() ?? [])];

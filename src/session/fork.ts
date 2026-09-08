@@ -1,3 +1,4 @@
+import {contentText, imageReferences} from "../images/content.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import {createCompactState} from "../context/index.js";
@@ -24,7 +25,7 @@ export async function listRewindPoints(input: {storage: PillarStorageLayout; cwd
     const byId = new Map(records.map(record => [record.checkpointId, record]));
     return entries.reverse().map(entry => {
         const file = byId.get(entry.checkpointId);
-        return {checkpointId: entry.checkpointId, promptPreview: entry.prompt.replace(/\s+/g, " ").slice(0, 200), createdAt: entry.timestamp,
+        return {checkpointId: entry.checkpointId, promptPreview: contentText(entry.prompt).replace(/\s+/g, " ").slice(0, 200), createdAt: entry.timestamp,
             capture: file ? {kind: "available", count: file.mutations.length,
                 status: file.fileCoverage === "incomplete" ? "incomplete" : file.coverageWarnings.length ? "external" : "saved"} : {kind: "unavailable"}};
     });
@@ -45,6 +46,10 @@ export async function forkSessionConversation(input: {
         const copied = await source.copyReferenceTo(path, target);
         replacements.set(path, copied.path);
     }
+    for (const reference of [checkpoint.conversation, [{role: "user", content: checkpoint.prompt}], ...archiveMessages].flat().flatMap(message => imageReferences(message.content))) {
+        const path = source.imagePath(reference.imageId);
+        if (!replacements.has(path)) {const copied = await source.copyReferenceTo(path, target); replacements.set(path, copied.path);}
+    }
     const replacePaths = (text: string) => {
         for (const [from, to] of replacements) {
             text = text.replaceAll(JSON.stringify(from).slice(1, -1), JSON.stringify(to).slice(1, -1)).replaceAll(from, to);
@@ -53,7 +58,8 @@ export async function forkSessionConversation(input: {
     };
     const replaceMessagePaths = (message: typeof checkpoint.conversation[number]) => {
         const cloned = structuredClone(message);
-        if (cloned.content) cloned.content = replacePaths(cloned.content);
+        if (typeof cloned.content === "string") cloned.content = replacePaths(cloned.content);
+        else if (Array.isArray(cloned.content)) cloned.content = cloned.content.map(part => part.type === "text" ? {...part, text: replacePaths(part.text)} : part);
         if (cloned.role === "assistant") for (const call of cloned.tool_calls ?? []) call.function.arguments = replacePaths(call.function.arguments);
         return cloned;
     };
@@ -75,8 +81,8 @@ export async function forkSessionConversation(input: {
     await saveSessionSnapshot(input.storage, {cwd: input.cwd, model: input.model, sessionId, history,
         todos: [], permissionMode: input.permissionMode, collaborationMode: checkpoint.collaborationMode,
         compactState: {...createCompactState(), ...(archives.length ? {archives} : {})}, uiEvents: [], toolDiscovery: checkpoint.toolDiscovery,
-        queuedInputs: Buffer.byteLength(checkpoint.prompt) <= 32 * 1024
+        queuedInputs: Buffer.byteLength(JSON.stringify(checkpoint.prompt)) <= 32 * 1024
             ? [{id: createSessionId(), type: "user_input", content: checkpoint.prompt, priority: "next", createdAt: new Date().toISOString()}] : [],
-        allowEmpty: true, summaryHint: checkpoint.prompt});
+        allowEmpty: true, summaryHint: contentText(checkpoint.prompt)});
     return {sessionId};
 }

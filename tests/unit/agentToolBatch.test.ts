@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { executeToolCallBatch } from "../../src/agent/toolBatch.js";
 import { abortableDelay, createTurnAbortController } from "../../src/runtime/abort.js";
@@ -215,7 +216,7 @@ describe("Agent tool-call batch", () => {
         "one",
         "two",
       ]);
-      expect(toolMessages(history).every((message) => message.content.includes("user-cancel")))
+      expect(toolMessages(history).every((message) => contentText(message.content).includes("user-cancel")))
         .toBe(true);
       expect(events.filter((event) => event.type === "tool_call_start")).toHaveLength(2);
       expect(events.filter((event) => event.type === "tool_call_end")).toHaveLength(2);
@@ -285,7 +286,7 @@ describe("Agent tool-call batch", () => {
         "safe-2",
         "unsafe-tail",
       ]);
-      expect(toolMessages(history).every((message) => message.content.includes("已取消")))
+      expect(toolMessages(history).every((message) => contentText(message.content).includes("已取消")))
         .toBe(true);
     });
   });
@@ -319,7 +320,7 @@ describe("Agent tool-call batch", () => {
         "broken",
         "tail",
       ]);
-      expect(toolMessages(history).every((message) => message.content.includes("executor exploded")))
+      expect(toolMessages(history).every((message) => contentText(message.content).includes("executor exploded")))
         .toBe(true);
       expect(events.filter((event) => event.type === "tool_call_start")).toHaveLength(2);
       expect(events.filter((event) => event.type === "tool_call_end")).toHaveLength(2);
@@ -357,7 +358,7 @@ describe("Agent tool-call batch", () => {
         "safe-ok",
         "unsafe-tail",
       ]);
-      expect(toolMessages(history).every((message) => message.content.includes("parallel exploded")))
+      expect(toolMessages(history).every((message) => contentText(message.content).includes("parallel exploded")))
         .toBe(true);
     });
   });
@@ -412,7 +413,7 @@ describe("Agent tool-call batch", () => {
       expect(result).toMatchObject({ status: "completed" });
       expect(
         toolMessages(history).filter((message) =>
-          message.content.includes("<persisted-output>")
+          contentText(message.content).includes("<persisted-output>")
         )
       ).toHaveLength(1);
       expect(

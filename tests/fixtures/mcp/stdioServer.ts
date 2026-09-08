@@ -56,14 +56,13 @@ server.registerTool("slow", {
 });
 
 server.registerTool("binary", {
-  description: "Return a tiny image block",
+  description: "Return a tiny binary resource",
   inputSchema: {},
   annotations: { readOnlyHint: true, destructiveHint: false },
 }, async () => ({
   content: [{
-    type: "image",
-    data: Buffer.from("fixture-image").toString("base64"),
-    mimeType: "image/png",
+    type: "resource",
+    resource: {uri: "fixture://binary", blob: Buffer.from("fixture-binary").toString("base64"), mimeType: "application/octet-stream"},
   }],
 }));
 

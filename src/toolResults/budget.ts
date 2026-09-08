@@ -1,3 +1,4 @@
+import {contentText, replaceContentText} from "../images/content.js";
 import type {Message} from "../llm/types.js";
 import {buildPersistedToolResultMessage, buildPersistFailureMessage, createPreview,} from "./format.js";
 import {ToolResultStore} from "./store.js";
@@ -19,9 +20,10 @@ export async function processToolOutput(input: {
     maxResultSizeChars?: number;
     store: ToolResultStore;
 }): Promise<ToolExecutionResult> {
-    const normalized = typeof input.output === "string"
+    const original = typeof input.output === "string"
         ? {content: input.output}
         : input.output;
+    const normalized = {...original, content: contentText(original.content)};
     const outcome = normalized.outcome ?? input.outcome ?? "ok";
     const uiData = outcome === "ok" ? normalized.uiData : undefined;
     const shellExecution = input.toolName === "bash" ? normalized.shellExecution : undefined;
@@ -29,9 +31,7 @@ export async function processToolOutput(input: {
     if (normalized.persisted) {
         const reference = buildPersistedToolResultMessage(normalized.persisted);
         return {
-            modelContent: normalized.content.trim()
-                ? `${normalized.content}\n\n${reference}`
-                : reference,
+            modelContent: replaceContentText(original.content, normalized.content.trim() ? `${normalized.content}\n\n${reference}` : reference),
             displayContent: createPreview(displayContent, DEFAULT_DISPLAY_CHARS),
             outcome,
             persisted: normalized.persisted,
@@ -45,7 +45,7 @@ export async function processToolOutput(input: {
     const threshold = input.maxResultSizeChars ?? DEFAULT_MAX_RESULT_CHARS;
     if (!Number.isFinite(threshold) || content.length <= threshold) {
         return {
-            modelContent: content,
+            modelContent: typeof original.content === "string" ? content : original.content,
             displayContent: createPreview(displayContent, DEFAULT_DISPLAY_CHARS),
             outcome,
             ...(uiData ? {uiData} : {}),
@@ -60,7 +60,7 @@ export async function processToolOutput(input: {
             content,
         });
         return {
-            modelContent: buildPersistedToolResultMessage(persisted),
+            modelContent: replaceContentText(original.content, buildPersistedToolResultMessage(persisted)),
             displayContent: preview,
             outcome,
             persisted,
@@ -69,7 +69,7 @@ export async function processToolOutput(input: {
         };
     } catch (error) {
         return {
-            modelContent: buildPersistFailureMessage(input.toolName, preview, error),
+            modelContent: replaceContentText(original.content, buildPersistFailureMessage(input.toolName, preview, error)),
             displayContent: `${preview}\n\n（完整结果保存失败）`,
             outcome,
             ...(uiData ? {uiData} : {}),
@@ -95,11 +95,11 @@ export async function applyBatchToolResultBudget(input: {
     const candidates = input.entries.flatMap((entry) => {
         const message = input.history[entry.messageIndex];
         if (entry.persisted || message?.role !== "tool") return [];
-        return [{...entry, content: message.content}];
+        return [{...entry, content: contentText(message.content)}];
     });
     let total = input.entries.reduce((sum, entry) => {
         const message = input.history[entry.messageIndex];
-        return sum + (message?.role === "tool" ? message.content.length : 0);
+        return sum + (message?.role === "tool" ? contentText(message.content).length : 0);
     }, 0);
     if (total <= maxChars) return [];
 
@@ -118,18 +118,18 @@ export async function applyBatchToolResultBudget(input: {
                 content: candidate.content,
             });
             const replacement = buildPersistedToolResultMessage(persisted);
-            if (replacement.length >= message.content.length) {
+            if (replacement.length >= contentText(message.content).length) {
                 await input.store.removeArtifact(persisted.resultId);
                 continue;
             }
-            total += replacement.length - message.content.length;
-            message.content = replacement;
+            total += replacement.length - contentText(message.content).length;
+            message.content = replaceContentText(message.content, replacement);
             replacements.push({toolCallId: candidate.toolCallId, persisted});
         } catch (error) {
             const preview = createPreview(candidate.content, input.store.previewChars);
             const replacement = buildPersistFailureMessage(candidate.toolName, preview, error);
-            total += replacement.length - message.content.length;
-            message.content = replacement;
+            total += replacement.length - contentText(message.content).length;
+            message.content = replaceContentText(message.content, replacement);
         }
     }
     return replacements;

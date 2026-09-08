@@ -1,3 +1,5 @@
+import type {MessageContent} from "../images/content.js";
+import {createImageAccess} from "../images/access.js";
 import {HookControlError, formatHookContext} from "../hooks/index.js";
 import {ResponseDraft} from "./draft.js";
 import type {ToolContext} from "../tools/types.js";
@@ -43,7 +45,7 @@ export function createAgentRunner(
     dependencies: AgentRunnerDependencies
 ): AgentRunner {
     return (
-        userInput: string,
+        userInput: MessageContent,
         history: Message[],
         onEvent: (event: AgentEvent) => void | Promise<void>,
         ctx: ToolContext,
@@ -61,7 +63,7 @@ export function createAgentRunner(
 }
 
 export type AgentRunner = (
-    userInput: string,
+    userInput: MessageContent,
     history: Message[],
     onEvent: (event: AgentEvent) => void | Promise<void>,
     ctx: ToolContext,
@@ -94,7 +96,7 @@ function assertFreshToolCallIds(
 // ctx：注入 confirm 等依赖，避免工具直接耦合 readline / Ink
 
 async function runAgentCore(
-    userInput: string,
+    userInput: MessageContent,
     history: Message[],
     emitEvent: (event: AgentEvent) => void | Promise<void>,
     ctx: ToolContext,
@@ -105,6 +107,7 @@ async function runAgentCore(
     const maxIterations = options.maxIterations === undefined
         ? undefined
         : Math.max(1, Math.floor(options.maxIterations));
+    ctx.imageAccess = createImageAccess({storage: ctx.storage, store: ctx.toolResultStore, history: () => history, state: () => ctx.compactState});
     const callLLMImpl = dependencies.callLLM;
     const getToolSchemasImpl = options.getToolSchemas;
     const executeToolImpl = options.executeTool;
@@ -232,7 +235,8 @@ async function runAgentCore(
                             ...progress,
                         });
                     },
-                    draft.update
+                    draft.update,
+                    reference => ctx.imageAccess!.read(reference)
                 );
             } finally {
                 await onEvent({type: "model_stream_end"});

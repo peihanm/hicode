@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -26,7 +27,7 @@ test("真实 Bash 失败、文件修复、同一检查通过后直接收尾", as
         expect(result.reply).toBe("修复完成，同一检查已通过");
         expect(fake.calls).toHaveLength(4);
         expect(history.filter(m => m.role === "tool").map(m => m.content).join("\n")).toContain("1 pass");
-        expect(history.some(m => m.content?.includes("当前完成证据"))).toBe(false);
+        expect(history.some(m => contentText(m.content).includes("当前完成证据"))).toBe(false);
     });
 });
 

@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -68,7 +69,7 @@ test("240 个依赖文件不占用项目候选预算，搜索记录真实扫描�
         expect(result.modelContent).toContain("搜了 2 个文件");
         expect(result.modelContent).toContain("发现 2 个候选文件");
         const glob = await executeToolResult("glob", JSON.stringify({pattern: "**/*.ts"}), ctx, "glob-candidates");
-        expect(glob.modelContent.split("\n")).toEqual(["src/a.ts", "src/build/b.ts"]);
+        expect(contentText(glob.modelContent).split("\n")).toEqual(["src/a.ts", "src/build/b.ts"]);
     });
 });
 

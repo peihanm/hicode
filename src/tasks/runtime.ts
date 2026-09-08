@@ -422,6 +422,7 @@ class TaskRuntime implements TaskRuntimeLike {
         }
         const queued = task.messageQueue.dequeueNextUserInput();
         if (!queued) throw new Error("Agent continuation 消息意外丢失");
+        if (typeof queued.content !== "string") throw new Error("后台 Agent steering 只接受文本");
         task.completion = runAgentTask(
             task,
             queued.content,

@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -228,7 +229,7 @@ describe("MCP stdio integration", () => {
             `many-${category}`
           );
           expect(result.outcome).toBe("ok");
-          expect(result.modelContent.split("\n")[1]).toContain(
+          expect(contentText(result.modelContent).split("\n")[1]).toContain(
             `mcp__fixture__${category}_`
           );
           runtime.getToolSchemas();
@@ -445,10 +446,10 @@ describe("MCP stdio integration", () => {
           createTestContext(cwd),
           "mcp-binary"
         );
-        const base64 = Buffer.from("fixture-image").toString("base64");
+        const base64 = Buffer.from("fixture-binary").toString("base64");
         expect(result.outcome).toBe("ok");
         expect(result.modelContent).toContain("saved to");
-        expect(result.modelContent).toContain("image/png");
+        expect(result.modelContent).toContain("application/octet-stream");
         expect(result.modelContent).not.toContain(base64);
       } finally {
         await manager.closeAll();

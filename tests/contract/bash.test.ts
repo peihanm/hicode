@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { appendFile, mkdir, readFile, readdir, realpath } from "node:fs/promises";
 import { executeTool, executeToolResult } from "../helpers/executeTool.js";
@@ -414,7 +415,7 @@ describe("bash tool contract", () => {
         );
         expect(started.outcome).toBe("ok");
         expect(started.modelContent).toContain("启动观察期内已完成");
-        const taskId = started.modelContent.match(/Task: ([0-9a-f-]+)/)?.[1];
+        const taskId = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -495,9 +496,9 @@ describe("bash tool contract", () => {
         );
         expect(started.outcome).toBe("ok");
         expect(started.modelContent).toContain("已忽略 timeout_ms");
-        expect(started.modelContent.split("\n").slice(0, 3).join("\n")).toContain("退出 Pillar 后会终止");
+        expect(contentText(started.modelContent).split("\n").slice(0, 3).join("\n")).toContain("退出 Pillar 后会终止");
         expect(started.displayContent).toContain("退出 Pillar 后会终止");
-        const taskId = started.modelContent.match(/Task: ([0-9a-f-]+)/)?.[1];
+        const taskId = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 
         await new Promise((resolve) => setTimeout(resolve, 180));
@@ -556,7 +557,7 @@ describe("bash tool contract", () => {
           ctx,
           "first-background"
         );
-        const taskId = started.modelContent.match(/Task: ([0-9a-f-]+)/)?.[1];
+        const taskId = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 
         const duplicate = await executeToolResult(

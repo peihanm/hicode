@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { runAgentForTest as runAgent } from "../helpers/agent.js";
 import type { AgentEvent } from "../../src/agent/types.js";
@@ -13,7 +14,7 @@ describe("large tool result integration", () => {
         assistantToolCall("bash", {command: "node -e \"console.log('START'); console.log('z'.repeat(20000)); console.log('ERR_ASSERTION at game.test.ts:93'); console.log('z'.repeat(20000)); console.log('FAIL: 1 test'); process.exitCode=1\""}, "failed-test"),
         options => {
           const result = options.messages.find(message => message.role === "tool" && message.tool_call_id === "failed-test");
-          const content = result?.content ?? "";
+          const content = contentText(result?.content);
           expect(content).toContain("exit code 1");
           expect(content).toContain("START");
           expect(content).toContain("FAIL: 1 test");
@@ -51,7 +52,7 @@ describe("large tool result integration", () => {
           expect((result?.content ?? "").length).toBeLessThan(5_000);
           return assistantToolCall(
             "read_file",
-            { path: JSON.parse((result?.content ?? "").match(/^Full output saved at: (.+)$/m)![1]!), limit: 1 },
+            { path: JSON.parse((contentText(result?.content) ?? "").match(/^Full output saved at: (.+)$/m)![1]!), limit: 1 },
             "read-1"
           );
         },
@@ -110,7 +111,7 @@ describe("large tool result integration", () => {
           expect(results).toHaveLength(2);
           expect(
             results.filter((message) =>
-              message.content.includes("<persisted-output>")
+              contentText(message.content).includes("<persisted-output>")
             )
           ).toHaveLength(1);
           expect(results.reduce((sum, message) => sum + message.content.length, 0))

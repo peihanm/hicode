@@ -18,6 +18,7 @@ export interface CliOptions {
     collaborationMode?: CollaborationMode;
     resumeMode: ResumeMode;
     printPrompt?: string;
+    images?: string[];
     outputFormat: CliOutputFormat;
     rewindCheckpointId?: string;
     forkCheckpointId?: string;
@@ -31,6 +32,7 @@ Usage:
 
 Options:
   -p, --print <prompt>           Run one prompt in headless mode and print the final reply
+  -i, --image <path>             Attach a local PNG/JPEG/WebP; repeat for multiple images
   --output-format <format>       Headless output format: text | json
   --rewind <checkpointId>        Restore conversation and tracked files from -r <sessionId>
   --fork-from <checkpointId>     Create a conversation branch; keep current files
@@ -97,6 +99,14 @@ export function parseCliArgs(args: string[]): CliOptions {
         const arg = args[i];
         if (arg === "-h" || arg === "--help") {
             options.help = true;
+            continue;
+        }
+        if (arg === "-i" || arg === "--image" || arg.startsWith("--image=")) {
+            const path = arg.startsWith("--image=") ? arg.slice(8) : args[++i];
+            if (!path?.trim() || path.startsWith("-")) throw new Error("--image 需要提供本地图片路径");
+            options.images ??= [];
+            if (options.images.length >= 8) throw new Error("--image 最多 8 张图片");
+            options.images.push(path);
             continue;
         }
         if (arg === "-p" || arg === "--print") {
@@ -241,6 +251,7 @@ export function parseCliArgs(args: string[]): CliOptions {
         throw new Error(`未知参数: ${arg}`);
     }
 
+    if (options.images?.length && (options.forkCheckpointId || options.rewindCheckpointId)) throw new Error("--image 不能与 --fork-from/--rewind 同时使用");
     if (options.forkCheckpointId) {
         if (options.rewindCheckpointId || options.printPrompt !== undefined) throw new Error("--fork-from 不能与 --rewind 或 -p 同时使用");
         if (options.resumeMode.kind !== "session") throw new Error("--fork-from 必须和 -r <sessionId> 一起使用");

@@ -1,11 +1,13 @@
 import {constants} from "node:fs";
-import {randomUUID} from "node:crypto";
-import {chmod, link, lstat, mkdir, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
+import {createHash, randomUUID} from "node:crypto";
+import {imageDescriptorSchema, imageReferenceSchema, type ImageDescriptor, type ImageReference} from "../images/content.js";
+import {chmod, link, lstat, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
-import {withFileLock} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock} from "../persistence/index.js";
 import {getArtifactKey, getResultId, getToolResultSessionDir,} from "./paths.js";
 import {createPreview} from "./format.js";
 import {
+    binaryOriginSchema,
     parseBinaryArtifactMetadata,
     parseTextArtifactMetadata,
     type TextArtifactMetadata,
@@ -65,7 +67,7 @@ export class ToolResultStore {
     private readonly projectsRoot: string;
 
     constructor(
-        storage: PillarStorageLayout,
+        private readonly storage: PillarStorageLayout,
         readonly cwd: string,
         sessionId: string,
         limits: ToolResultStoreLimits
@@ -106,7 +108,7 @@ export class ToolResultStore {
     }
 
     private async ensureDir(): Promise<void> {
-        await mkdir(this.sessionDir, {recursive: true, mode: 0o700});
+        ensurePrivateStorageDirectory(this.storage, this.sessionDir);
         const directory = await lstat(this.sessionDir);
         if (!directory.isDirectory() || directory.isSymbolicLink()) {
             throw new ToolResultStoreError("tool result session directory is not safe");
@@ -364,15 +366,16 @@ export class ToolResultStore {
     }
 
     async persistBinary(input: {
-        toolCallId: string;
-        toolName: string;
+        origin: PersistedBinaryArtifact["origin"];
         data: Buffer;
         mimeType: string;
         artifactId?: string;
+        image?: ImageDescriptor;
     }): Promise<PersistedBinaryArtifact> {
+        const origin = binaryOriginSchema.parse(input.origin);
         return this.withMutation(async () => {
             const artifactId = input.artifactId ??
-                `${this.resultIdFor(input.toolCallId)}-binary`;
+                `${this.resultIdFor(origin.kind === "tool" ? origin.toolCallId : origin.inputId)}-binary`;
             const key = getArtifactKey(this.sessionId, artifactId);
             const contentPath = join(this.sessionDir, `${key}.bin`);
             const metadataPath = join(this.sessionDir, `${key}.binary.json`);
@@ -381,7 +384,10 @@ export class ToolResultStore {
                 contentPath,
                 metadataPath
             );
-            if (existing) return existing;
+            if (existing) {
+                if (input.image && JSON.stringify(existing.image) !== JSON.stringify(input.image)) throw new ToolResultStoreError("图片 ID 冲突");
+                return existing;
+            }
             await this.removePair(contentPath, metadataPath);
 
             const usage = await this.currentUsage();
@@ -390,17 +396,23 @@ export class ToolResultStore {
             if (allowed <= 0) {
                 throw new ToolResultStoreError("tool result session quota exceeded");
             }
+            if (input.image) {
+                const image = imageDescriptorSchema.parse(input.image);
+                if (image.byteLength !== input.data.length || image.mimeType !== input.mimeType ||
+                    image.sha256 !== createHash("sha256").update(input.data).digest("hex")) throw new ToolResultStoreError("图片内容与元数据不匹配");
+                if (input.data.length > allowed) throw new ToolResultStoreError("图片存储额度不足，未截断或提交图片");
+            }
             const stored = input.data.subarray(0, allowed);
             const metadata: PersistedBinaryArtifact = {
                 artifactId,
-                toolCallId: input.toolCallId,
-                toolName: input.toolName,
+                origin,
                 path: contentPath,
                 byteLength: stored.byteLength,
                 originalByteLength: input.data.byteLength,
                 complete: stored.byteLength === input.data.byteLength,
                 encoding: "binary",
                 mimeType: input.mimeType,
+                ...(input.image ? {image: input.image} : {}),
             };
             const tempContent = join(this.sessionDir, `.tmp-${randomUUID()}`);
             const tempMetadata = join(this.sessionDir, `.tmp-${randomUUID()}`);
@@ -592,6 +604,7 @@ export class ToolResultStore {
             }
             const after = await handle.stat();
             if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new ToolResultStoreError("结果在复制期间发生变化");
+            if (result.encoding === "binary" && result.image && createHash("sha256").update(bytes).digest("hex") !== result.image.sha256) throw new ToolResultStoreError("图片完整性校验失败");
             return await target.withMutation(async () => {
                 if (bytes.length > target.maxArtifactBytes || await target.currentUsage() + bytes.length > target.maxSessionBytes) {
                     throw new ToolResultStoreError("分支存储额度不足，无法完整复制已保存结果");
@@ -627,6 +640,36 @@ export class ToolResultStore {
         ) {
             await rm(resolvedPath, {force: true});
         }
+    }
+
+    imagePath(imageId: string): string {
+        if (!/^image-[a-f0-9]{64}$/.test(imageId)) throw new ToolResultStoreError("图片 ID 无效");
+        return join(this.sessionDir, `${getArtifactKey(this.sessionId, imageId)}.bin`);
+    }
+
+    /** Caller must supply a reference reachable from its own active History/archive. */
+    async readImage(reference: ImageReference): Promise<Buffer> {
+        imageReferenceSchema.parse(reference);
+        const path = this.imagePath(reference.imageId);
+        const raw = readPrivateStorageTextFile(this.storage, path.slice(0, -4) + ".binary.json", MAX_TOOL_RESULT_METADATA_BYTES);
+        const metadata = raw ? parseBinaryArtifactMetadata(raw, reference.imageId) : null;
+        if (!metadata?.image || JSON.stringify(metadata.image) !== JSON.stringify(reference.image)) throw new ToolResultStoreError("图片引用与存储不一致");
+        const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        const content = Buffer.alloc(reference.image.byteLength);
+        try {
+            const before = await handle.stat({bigint: true});
+            if (!before.isFile() || before.size !== BigInt(content.length)) throw new ToolResultStoreError("图片文件类型或大小无效");
+            let offset = 0;
+            while (offset < content.length) {
+                const {bytesRead} = await handle.read(content, offset, content.length - offset, offset);
+                if (!bytesRead) throw new ToolResultStoreError("图片内容不完整");
+                offset += bytesRead;
+            }
+            const after = await handle.stat({bigint: true});
+            if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new ToolResultStoreError("图片在读取期间发生变化");
+        } finally {await handle.close();}
+        if (content.length !== reference.image.byteLength || createHash("sha256").update(content).digest("hex") !== reference.image.sha256) throw new ToolResultStoreError("图片缺失或完整性校验失败");
+        return content;
     }
 
     async removeArtifact(resultId: string): Promise<void> {

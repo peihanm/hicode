@@ -1,5 +1,6 @@
 import type {LLMProviderName} from "./providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
+import type {ImageReference, MessageContent} from "../images/content.js";
 
 // OpenAI-compatible chat message and Function Calling protocols belong to the
 // LLM boundary. Agent/UI application types live in their owning modules.
@@ -15,7 +16,7 @@ export interface ToolCall {
 
 export type Message =
     | { role: "system"; content: string }
-    | { role: "user"; content: string }
+    | { role: "user"; content: MessageContent }
     | {
         role: "assistant";
         content: string | null;
@@ -23,7 +24,7 @@ export type Message =
         /** DeepSeek thinking tool turns must send this back on later requests. */
         reasoning_content?: string;
     }
-    | { role: "tool"; content: string; tool_call_id: string };
+    | { role: "tool"; content: MessageContent; tool_call_id: string };
 
 export interface TokenUsage {
     prompt_tokens: number;
@@ -60,12 +61,19 @@ type LLMStreamPhase =
     | "retrying"
     | "stalled";
 
+export interface LLMRetryInfo {
+    reason: "connection" | "http" | "empty_response" | "output_stall" | "stream_disconnected" | "empty_stream" | "invalid_json" | "protocol";
+    attempt: number;
+    maxAttempts: number;
+}
+
 export interface LLMStreamProgress {
     phase: LLMStreamPhase;
     outputCharacters: number;
     estimatedOutputTokens: number;
     toolName?: string;
     idleMilliseconds?: number;
+    retry?: LLMRetryInfo;
 }
 
 export type LLMTextUpdate = {type: "reset"} | {type: "delta"; text: string};
@@ -81,6 +89,7 @@ export interface LLMCallOptions {
     /** 收到文本、推理或 Function Calling 参数增量时报告累计进度。 */
     onStreamProgress?: (progress: LLMStreamProgress) => void;
     onText?: (update: LLMTextUpdate) => void | Promise<void>;
+    readImage?: (reference: ImageReference) => Promise<Buffer>;
 }
 
 export interface LLMCallResult {
@@ -106,7 +115,8 @@ export type LLMCaller = (
     kind: LLMCallKind,
     signal?: AbortSignal,
     onStreamProgress?: (progress: LLMStreamProgress) => void,
-    onText?: (update: LLMTextUpdate) => void | Promise<void>
+    onText?: (update: LLMTextUpdate) => void | Promise<void>,
+    readImage?: (reference: ImageReference) => Promise<Buffer>
 ) => Promise<LLMCallResult>;
 
 export interface LLMProvider {

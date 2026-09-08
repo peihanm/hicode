@@ -1,8 +1,7 @@
+import {QWEN_DEFAULT_BASE_URL} from "../providerRegistry.js";
+import {supportsToolImages} from "../../images/capability.js";
 import type {LLMProvider} from "../types.js";
 import {callOpenAICompatible} from "./openAICompatible.js";
-
-const DEFAULT_QWEN_BASE_URL =
-    "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
 
 function supportsThinking(model: string): boolean {
     const normalized = model.toLowerCase();
@@ -38,7 +37,8 @@ export const qwenProvider: LLMProvider = {
 
         return callOpenAICompatible(options, {
             displayName: source.label,
-            baseUrl: source.baseUrl || DEFAULT_QWEN_BASE_URL,
+            toolImages: supportsToolImages(source, options.model),
+            baseUrl: source.baseUrl || QWEN_DEFAULT_BASE_URL,
             apiKey,
             requestFields: createQwenRequestFields(
                 options.model,

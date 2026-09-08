@@ -1,3 +1,9 @@
+import {createHash} from "node:crypto";
+import {prepareImage} from "../images/prepare.js";
+import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart} from "../images/content.js";
+import {throwIfTurnAborted} from "../runtime/abort.js";
+import type {ToolResultStore} from "../toolResults/store.js";
+import type {BinaryArtifactOrigin, ToolOutput} from "../toolResults/types.js";
 import {stableJson} from "./json.js";
 
 const MAX_CONTENT_BLOCKS = 256;
@@ -81,32 +87,63 @@ function normalizeMcpResult(result: unknown): string {
 
 export async function normalizeMcpResultWithArtifacts(
     result: unknown,
-    persistBinary: (input: {
-        data: Buffer;
-        mimeType: string;
-        index: number;
-        label: string;
-    }) => Promise<{ path: string; byteLength: number; complete: boolean }>
-): Promise<string> {
+    input: {
+        store: ToolResultStore;
+        origin: Extract<BinaryArtifactOrigin, {kind: "tool"}>;
+        imageModelSupported: boolean;
+        signal: AbortSignal;
+    }
+): Promise<ToolOutput> {
+    throwIfTurnAborted(input.signal);
     if (!result || typeof result !== "object") return normalizeMcpResult(result);
     const record = result as Record<string, unknown>;
-    if (!Array.isArray(record.content)) return normalizeMcpResult(result);
-    const content: unknown[] = [];
-    for (
-        let index = 0;
-        index < Math.min(record.content.length, MAX_CONTENT_BLOCKS);
-        index++
-    ) {
-        const raw = record.content[index];
-        if (!raw || typeof raw !== "object") {
-            content.push(raw);
+    if (!Array.isArray(record.content) || record.isError === true) return normalizeMcpResult(result);
+    const imageCount = record.content.filter((raw: unknown) => raw && typeof raw === "object" && "type" in raw && raw.type === "image").length;
+    if (imageCount && !input.imageModelSupported) throw new McpToolResultError("当前模型/接口不支持 MCP 图片；图片未送模，不要尝试其他工具绕过");
+    if (imageCount > IMAGE_MAX_COUNT || (imageCount && record.content.length > MAX_CONTENT_BLOCKS)) {
+        throw new McpToolResultError("MCP 图片结果超过 8 张或 256 个内容块上限");
+    }
+    const parts: ContentPart[] = [];
+    let textChars = 0;
+    let rawImageBytes = 0;
+    let preparedBytes = 0;
+    function appendText(text: string) {
+        textChars += text.length;
+        if (textChars > MAX_TOTAL_TEXT_CHARS) throw new McpToolResultError("MCP 文本结果超过安全上限");
+        const last = parts.at(-1);
+        if (last?.type === "text") last.text += "\n" + text;
+        else parts.push({type: "text", text});
+    }
+    for (let index = 0; index < Math.min(record.content.length, MAX_CONTENT_BLOCKS); index++) {
+        throwIfTurnAborted(input.signal);
+        const raw: unknown = record.content[index];
+        if (!raw || typeof raw !== "object") continue;
+        const block = raw as Record<string, unknown>;
+        if (block.type === "image") {
+            // Validate before decoding: Buffer.from(base64) alone silently accepts malformed input.
+            const data = decodeImageBlock(block);
+            rawImageBytes += data.length;
+            if (rawImageBytes > 40 * 1024 * 1024) throw new McpToolResultError("MCP 图片输入合计超过 40 MiB");
+            let prepared;
+            try {prepared = await prepareImage(data, input.signal);}
+            catch {
+                throwIfTurnAborted(input.signal);
+                throw new McpToolResultError("MCP 图片解码失败：需要静态 PNG/JPEG/WebP，最多 20 MiB/40 MP，归一化后最多 2 MiB");
+            }
+            preparedBytes += prepared.data.length;
+            if (preparedBytes > IMAGE_REQUEST_BYTES) throw new McpToolResultError("MCP 图片归一化后合计超过 10 MiB");
+            const imageId = `image-${createHash("sha256").update(JSON.stringify(prepared.image)).digest("hex")}`;
+            await input.store.persistBinary({origin: input.origin, artifactId: imageId,
+                data: prepared.data, mimeType: prepared.image.mimeType, image: prepared.image});
+            const reference = {type: "image" as const, imageId, image: prepared.image};
+            await input.store.readImage(reference);
+            parts.push(reference);
             continue;
         }
-        const block = raw as Record<string, unknown>;
         let data: string | undefined;
         let mimeType = "application/octet-stream";
-        let label = String(block.type ?? "binary");
-        if ((block.type === "image" || block.type === "audio") && typeof block.data === "string") {
+        let label = String(block.type ?? "binary").slice(0, MAX_METADATA_CHARS);
+        if (block.type === "audio" && typeof block.data === "string") {
             data = block.data;
             mimeType = typeof block.mimeType === "string" ? block.mimeType : mimeType;
         } else if (block.type === "resource" && block.resource && typeof block.resource === "object") {
@@ -114,43 +151,46 @@ export async function normalizeMcpResultWithArtifacts(
             if (typeof resource.blob === "string") {
                 data = resource.blob;
                 mimeType = typeof resource.mimeType === "string" ? resource.mimeType : mimeType;
-                label = `resource ${String(resource.uri ?? "unknown")}`;
+                label = `resource ${String(resource.uri ?? "unknown")}`.slice(0, MAX_METADATA_CHARS);
             }
         }
-        if (!data) {
-            content.push(raw);
+        if (data === undefined) {
+            appendText(normalizeMcpResult({content: [raw]}));
             continue;
         }
+        mimeType = mimeType.slice(0, MAX_METADATA_CHARS);
         if (data.length > MAX_BINARY_BASE64_CHARS) {
-            content.push({
-                type: "text",
-                text: `[${label.slice(0, MAX_METADATA_CHARS)} omitted because its binary payload exceeds the safe limit]`,
-            });
+            appendText(`[${label} omitted because its binary payload exceeds the safe limit]`);
             continue;
         }
         try {
-            const artifact = await persistBinary({
-                data: Buffer.from(data, "base64"),
-                mimeType: mimeType.slice(0, MAX_METADATA_CHARS),
-                index,
-                label: label.slice(0, MAX_METADATA_CHARS),
-            });
-            content.push({
-                type: "text",
-                text: `[${label} saved to ${artifact.path}; ${mimeType}; ${artifact.byteLength} bytes${artifact.complete ? "" : "; truncated"}]`,
-            });
-        } catch (error) {
-            content.push({
-                type: "text",
-                text: `[${label} omitted because its binary artifact could not be saved: ${error instanceof Error ? error.message : String(error)}]`,
-            });
+            const artifact = await input.store.persistBinary({origin: input.origin,
+                data: Buffer.from(data, "base64"), mimeType,
+                artifactId: `${input.store.resultIdFor(input.origin.toolCallId)}-mcp-${index}`});
+            appendText(`[${label} saved to ${artifact.path}; ${mimeType}; ${artifact.byteLength} bytes${artifact.complete ? "" : "; truncated"}]`);
+        } catch {
+            throwIfTurnAborted(input.signal);
+            appendText(`[${label} omitted because its binary artifact could not be saved]`);
         }
     }
-    if (record.content.length > MAX_CONTENT_BLOCKS) {
-        content.push({
-            type: "text",
-            text: `[${record.content.length - MAX_CONTENT_BLOCKS} MCP content blocks omitted]`,
-        });
+    if (record.content.length > MAX_CONTENT_BLOCKS) appendText(`[${record.content.length - MAX_CONTENT_BLOCKS} MCP content blocks omitted]`);
+    if (record.structuredContent && typeof record.structuredContent === "object") appendText(stableJson(record.structuredContent));
+    throwIfTurnAborted(input.signal);
+    return imageCount ? {content: parts} : parts.map(part => part.type === "text" ? part.text : "").join("\n") || "(MCP 工具返回空结果)";
+}
+
+function decodeImageBlock(block: Record<string, unknown>): Buffer {
+    const data = block.data;
+    if (typeof data !== "string" || data.length === 0 || data.length > 4 * Math.ceil(20 * 1024 * 1024 / 3) ||
+        data.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(data)) {
+        throw new McpToolResultError("MCP 图片必须是合法 base64，最多 20 MiB；不支持 URL 图片");
     }
-    return normalizeMcpResult({...record, content});
+    const bytes = Buffer.from(data, "base64");
+    if (bytes.length > 20 * 1024 * 1024 || bytes.toString("base64") !== data) throw new McpToolResultError("MCP 图片 base64 无效或超过 20 MiB");
+    const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+    const webp = bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+    const actual = png ? "image/png" : jpeg ? "image/jpeg" : webp ? "image/webp" : undefined;
+    if (!actual || block.mimeType !== actual) throw new McpToolResultError("MCP 图片 MIME 与实际 PNG/JPEG/WebP 格式不一致");
+    return bytes;
 }

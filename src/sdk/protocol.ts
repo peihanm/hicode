@@ -1,3 +1,4 @@
+import type {ImageReference} from "../images/content.js";
 import type {HookExecution, HookInput} from "../hooks/types.js";
 import type {StopReason} from "../agent/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
@@ -7,6 +8,7 @@ import type {MemoryChange} from "../memory/types.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
 import type {AgentType} from "../subagents/types.js";
 import type {Todo} from "../todos.js";
+import type {LLMRetryInfo} from "../llm/types.js";
 
 export interface Usage {
     inputTokens: number;
@@ -186,7 +188,7 @@ export type ThreadEventPayload =
     | {type: "turn.draft"; turnId: string; responseId: string; text: string; truncated: boolean}
     | {type: "turn.draft_end"; turnId: string; responseId: string; disposition: "committed" | "discarded"}
     | {type: "thread.started"}
-    | {type: "turn.started"; turnId: string; inputSummary: string}
+    | {type: "turn.started"; turnId: string; inputSummary: string; images?: readonly ImageReference[]}
     | {
         type: "turn.progress";
         turnId: string;
@@ -195,6 +197,7 @@ export type ThreadEventPayload =
         estimatedOutputTokens: number;
         toolName?: string;
         idleMilliseconds?: number;
+        retry?: LLMRetryInfo;
     }
     | {type: "item.started"; turnId: string; item: ThreadItem}
     | {type: "item.updated"; turnId: string; item: ThreadItem}

@@ -2,6 +2,18 @@ import {memo, useEffect, useState} from "react";
 import {Box, Text} from "ink";
 import type {UIModelStreamInfo, UIModelStreamProgressRef,} from "../turn/eventStore.js";
 import {COLORS} from "../theme.js";
+import type {LLMRetryInfo} from "../../llm/types.js";
+
+const RETRY_REASONS: Record<LLMRetryInfo["reason"], string> = {
+    connection: "连接失败",
+    http: "服务暂时不可用",
+    empty_response: "模型返回空回复",
+    output_stall: "生成停滞",
+    stream_disconnected: "响应连接中断",
+    empty_stream: "未收到响应数据",
+    invalid_json: "响应数据损坏",
+    protocol: "响应格式不完整",
+};
 
 const DEFAULT_ANIMATION_INTERVAL_MS = 120;
 const PROGRESS_SAMPLE_EVERY_TICKS = 2;
@@ -35,7 +47,9 @@ function streamLabel(
         case "stalled":
             return "模型暂无流数据，可能仍在服务端处理...";
         case "retrying":
-            return "生成停滞，正在重新请求模型...";
+            return modelStream.retry
+                ? `${RETRY_REASONS[modelStream.retry.reason]}，正在重新请求模型（${modelStream.retry.attempt}/${modelStream.retry.maxAttempts}）...`
+                : "正在重新请求模型...";
         case "reasoning":
             return "正在生成推理...";
         case "tool_input":

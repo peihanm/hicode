@@ -77,6 +77,7 @@ describe("ModelStreamStatus", () => {
       phase: "retrying",
       outputCharacters: 0,
       estimatedOutputTokens: 0,
+      retry: {reason: "output_stall", attempt: 2, maxAttempts: 3},
     };
     const frame = render(
       <ModelStreamStatus
@@ -87,5 +88,19 @@ describe("ModelStreamStatus", () => {
     ).lastFrame() ?? "";
 
     expect(frame).toContain("生成停滞，正在重新请求模型");
+    expect(frame).toContain("2/3");
+  });
+
+  test("流损坏重试展示真实原因而不是生成停滞", () => {
+    const modelStream: UIModelStreamInfo = {
+      phase: "retrying", outputCharacters: 0, estimatedOutputTokens: 0,
+      retry: {reason: "invalid_json", attempt: 3, maxAttempts: 3},
+    };
+    const instance = render(<ModelStreamStatus modelStream={modelStream}
+      progressRef={{current: modelStream}} stopping={false} />);
+    expect(instance.lastFrame()).toContain("响应数据损坏");
+    expect(instance.lastFrame()).toContain("3/3");
+    expect(instance.lastFrame()).not.toContain("生成停滞");
+    instance.unmount();
   });
 });

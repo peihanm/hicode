@@ -1,4 +1,6 @@
+import {z} from "zod";
 import type {PersistedBinaryArtifact} from "./types.js";
+import {imageDescriptorSchema} from "../images/content.js";
 
 export interface TextArtifactMetadata {
     resultId: string;
@@ -18,18 +20,20 @@ function isValidLength(value: unknown): value is number {
     return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 
+export const binaryOriginSchema = z.discriminatedUnion("kind", [
+    z.object({kind: z.literal("tool"), toolCallId: z.string().min(1).max(512), toolName: z.string().min(1).max(256)}).strict(),
+    z.object({kind: z.literal("user"), inputId: z.string().uuid()}).strict(),
+]);
+
+function hasValidLengths(value: Record<string, unknown>): boolean {
+    return isValidLength(value.byteLength) && isValidLength(value.originalByteLength) &&
+        value.originalByteLength >= value.byteLength && typeof value.complete === "boolean" &&
+        (!value.complete || value.originalByteLength === value.byteLength);
+}
+
 function hasValidCommonMetadata(value: Record<string, unknown>): boolean {
-    return (
-        typeof value.toolCallId === "string" &&
-        value.toolCallId.length > 0 && value.toolCallId.length <= 512 &&
-        typeof value.toolName === "string" &&
-        value.toolName.length > 0 && value.toolName.length <= 256 &&
-        isValidLength(value.byteLength) &&
-        isValidLength(value.originalByteLength) &&
-        value.originalByteLength >= value.byteLength &&
-        typeof value.complete === "boolean" &&
-        (!value.complete || value.originalByteLength === value.byteLength)
-    );
+    return typeof value.toolCallId === "string" && value.toolCallId.length > 0 && value.toolCallId.length <= 512 &&
+        typeof value.toolName === "string" && value.toolName.length > 0 && value.toolName.length <= 256 && hasValidLengths(value);
 }
 
 export function parseTextArtifactMetadata(
@@ -73,20 +77,23 @@ export function parseBinaryArtifactMetadata(
             typeof value.path !== "string" || value.path.length > 16_384 ||
             typeof value.mimeType !== "string" ||
             value.mimeType.length === 0 || value.mimeType.length > 256 ||
-            !hasValidCommonMetadata(value)
+            !hasValidLengths(value)
         ) {
             return null;
         }
+        const origin = binaryOriginSchema.parse(value.origin);
+        const image = value.image === undefined ? undefined : imageDescriptorSchema.parse(value.image);
+        if (image && (!value.complete || image.byteLength !== value.byteLength || image.mimeType !== value.mimeType)) return null;
         return {
             artifactId: expectedArtifactId,
-            toolCallId: value.toolCallId as string,
-            toolName: value.toolName as string,
+            origin,
             path: value.path,
             byteLength: value.byteLength as number,
             originalByteLength: value.originalByteLength as number,
             complete: value.complete as boolean,
             encoding: "binary",
             mimeType: value.mimeType,
+            ...(image ? {image} : {}),
         };
     } catch {
         return null;

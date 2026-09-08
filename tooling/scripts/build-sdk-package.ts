@@ -8,6 +8,7 @@ const packageJsonPath = resolve(repositoryRoot, "package.json");
 const SDK_PACKAGE_NAME = "pillar-core-sdk";
 
 const runtimeDependencies = [
+    "sharp",
     "@anthropic-ai/sandbox-runtime",
     "@modelcontextprotocol/sdk",
     "ajv",

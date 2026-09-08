@@ -62,3 +62,5 @@ export type {
     HostAgentContribution,
     HostMcpServerContribution,
 } from "../runtime/rootConfiguration.js";
+
+export type {TurnInput} from "../images/input.js";

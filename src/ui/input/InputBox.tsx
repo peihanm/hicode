@@ -85,6 +85,7 @@ export function createInputBox(
     return function InputBox({
                                  onSubmit,
                                  disabled,
+                                 allowEmpty = false,
                                  terminalWidth,
                                  cwd,
                                  sessionId,
@@ -98,6 +99,7 @@ export function createInputBox(
                              }: {
         onSubmit: (input: string) => void;
         disabled: boolean;
+        allowEmpty?: boolean;
         terminalWidth?: number;
         cwd?: string;
         sessionId?: string;
@@ -399,7 +401,7 @@ export function createInputBox(
                                     v,
                                     pasteCapsulesRef.current
                                 ).trim();
-                            if (submitted) {
+                            if (submitted || allowEmpty) {
                                 onSubmit(submitted);
                                 const isDuplicate = historyRef.current.at(-1) === submitted;
                                 const nextHistory = isDuplicate

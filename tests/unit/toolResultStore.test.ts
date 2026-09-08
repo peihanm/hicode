@@ -165,8 +165,7 @@ describe("ToolResultStore", () => {
         maxSessionBytes: 8,
       });
       const artifact = await store.persistBinary({
-        toolCallId: "binary-call",
-        toolName: "mcp__fixture__binary",
+        origin: {kind: "tool", toolCallId: "binary-call", toolName: "mcp__fixture__binary"},
         data: Buffer.from([0, 255, 1, 254, 2, 253, 3, 252, 4]),
         mimeType: "application/octet-stream",
       });
@@ -235,15 +234,13 @@ describe("ToolResultStore", () => {
       });
       const results = await Promise.all([
         store.persistBinary({
-          toolCallId: "binary-a",
-          toolName: "mcp",
+          origin: {kind: "tool", toolCallId: "binary-a", toolName: "mcp"},
           artifactId: "shared-binary",
           data: Buffer.alloc(10, 1),
           mimeType: "a/type",
         }),
         store.persistBinary({
-          toolCallId: "binary-b",
-          toolName: "mcp",
+          origin: {kind: "tool", toolCallId: "binary-b", toolName: "mcp"},
           artifactId: "shared-binary",
           data: Buffer.alloc(20, 2),
           mimeType: "b/type",
@@ -259,8 +256,7 @@ describe("ToolResultStore", () => {
       for (const result of results) {
         expect(result).toMatchObject({
           artifactId: metadata.artifactId,
-          toolCallId: metadata.toolCallId,
-          toolName: metadata.toolName,
+          origin: metadata.origin,
           byteLength: metadata.byteLength,
           originalByteLength: metadata.originalByteLength,
           complete: metadata.complete,
@@ -376,13 +372,12 @@ describe("ToolResultStore", () => {
 
       const artifact = await store.persistBinary({
         artifactId,
-        toolCallId: "new-call",
-        toolName: "mcp",
+        origin: {kind: "tool", toolCallId: "new-call", toolName: "mcp"},
         data: Buffer.from([1, 2, 3]),
         mimeType: "application/octet-stream",
       });
       expect(artifact).toMatchObject({
-        toolCallId: "new-call",
+        origin: {kind: "tool", toolCallId: "new-call", toolName: "mcp"},
         byteLength: 3,
         mimeType: "application/octet-stream",
       });

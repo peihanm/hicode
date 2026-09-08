@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { runAgentForTest as runAgent } from "../helpers/agent.js";
@@ -137,7 +138,7 @@ describe("synchronous subagent", () => {
           expect(
             options.messages.some((message) =>
               typeof message.content === "string" &&
-              message.content.includes("root-only CODE instruction")
+              contentText(message.content).includes("root-only CODE instruction")
             )
           ).toBe(false);
           expect(options.tools.map((tool) => tool.function.name)).toEqual([
@@ -213,7 +214,7 @@ describe("synchronous subagent", () => {
       );
 
       expect(result.reply).toBe("父 Agent 已收到调查结果");
-      expect(history.some((message) => message.role === "system" && message.content.includes("只读代码探索"))).toBe(false);
+      expect(history.some((message) => message.role === "system" && contentText(message.content).includes("只读代码探索"))).toBe(false);
       expect(events.map((event) => event.type)).toEqual([
         "subagent_start",
         "subagent_progress",
@@ -335,7 +336,7 @@ describe("synchronous subagent", () => {
               options.messages.some(
                 (message) =>
                   message.role === "user" &&
-                  message.content.includes("工具调查阶段已经结束")
+                  contentText(message.content).includes("工具调查阶段已经结束")
               )
             ).toBe(true);
             return assistantText("根据已有证据完成最终报告");

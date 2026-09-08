@@ -395,11 +395,12 @@ describe("GLM cancellation", () => {
       const first = JSON.parse(
         await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8")
       ) as { response: { error?: string } };
-      expect(first.response.error).toContain("API 返回空响应 (attempt 1/3");
+      expect(first.response.error).toContain("LLM 返回空响应");
+      expect(first.response.error).toContain("已尝试 1/3 次");
     });
   });
 
-  test("只有空白文本和空白推理时也按空响应重试", async () => {
+  test.each([" \t", "我将创建项目，然后运行测试并启动。"])("没有正文时推理 %j 不能替代正文，应重试", async (reasoning) => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
       const encoder = new TextEncoder();
@@ -410,7 +411,7 @@ describe("GLM cancellation", () => {
         const event = fetchCalls === 1
           ? {
               choices: [{
-                delta: { content: "  \n", reasoning_content: " \t" },
+                delta: { content: "  \n", reasoning_content: reasoning },
                 finish_reason: "stop",
               }],
             }
@@ -444,10 +445,16 @@ describe("GLM cancellation", () => {
 
       expect(fetchCalls).toBe(2);
       expect(result.message.content).toBe("恢复成功");
+      const logs = (await readdir(promptLogDirectory(cwd))).sort();
+      const first = JSON.parse(await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8"));
+      expect(first.response.rawResponse).toMatchObject({
+        finishReason: "stop", contentLength: 3,
+        reasoningContentLength: reasoning.length, toolCallCount: 0,
+      });
     });
   });
 
-  test("空响应重试耗尽后明确失败", async () => {
+  test.each([{}, { reasoning_content: "准备开始创建项目" }])("无有效响应 %j 重试耗尽后明确失败", async (delta) => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
       const encoder = new TextEncoder();
@@ -460,7 +467,7 @@ describe("GLM cancellation", () => {
               start(controller) {
                 controller.enqueue(
                   encoder.encode(
-                    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`
+                    `data: ${JSON.stringify({ choices: [{ delta, finish_reason: "stop" }] })}\n\n`
                   )
                 );
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -482,7 +489,7 @@ describe("GLM cancellation", () => {
           kind: "main",
         })
       ).rejects.toThrow(
-        "LLM 返回空响应（已尝试 3 次）：没有正文、推理内容或工具调用"
+        /LLM 返回空响应.*已尝试 3\/3 次.*本次响应的工具未执行，重试额度已耗尽/
       );
       expect(fetchCalls).toBe(3);
       expect(
@@ -634,7 +641,7 @@ describe("GLM cancellation", () => {
         };
       };
       expect(logged.response.error).toContain(
-        "模型输出连续 20ms 没有新增量，将按原参数安全重试一次"
+        "LLM 输出连续 20ms 没有新增量，将按原参数安全重试一次"
       );
       expect(logged.response).not.toHaveProperty("streamDiagnostics");
     });
@@ -740,7 +747,7 @@ describe("GLM cancellation", () => {
           kind: "main",
         })
       ).rejects.toThrow(
-        "LLM 输出连续 20ms 没有新增量，关闭深度推理重试后仍无进展"
+        /LLM 输出连续 20ms 没有新增量.*已尝试 3\/3 次.*本次响应的工具未执行，重试额度已耗尽/
       );
       expect(fetchCalls).toBe(3);
       expect(requestBodies[0]?.thinking).toEqual({ type: "enabled" });

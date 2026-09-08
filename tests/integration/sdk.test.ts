@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {describe, expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
@@ -818,7 +819,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
             assistantText("本轮完成"),
             () => assistantToolCall("read_file", {path: indexPath}, "read-archive"),
             options => {
-                expect(options.messages.some(message => message.role === "tool" && message.content.includes("Session archive"))).toBe(true);
+                expect(options.messages.some(message => message.role === "tool" && contentText(message.content).includes("Session archive"))).toBe(true);
                 return assistantText("找到原始来源索引");
             },
         ]);

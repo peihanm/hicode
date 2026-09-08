@@ -121,3 +121,11 @@ test("对话分支参数要求显式 Session 且不与执行或文件恢复混�
         expect(() => parseCliArgs(args)).toThrow();
     }
 });
+
+test("--image accepts repeated explicit paths, keeps spaces and rejects overflow/rewind", () => {
+    expect(parseCliArgs(["--image", "截图 with space.png", "-i", "b.jpg", "--image=c.webp"]).images).toEqual(["截图 with space.png", "b.jpg", "c.webp"]);
+    expect(parseCliArgs(["-p", "compare", "--image", "x.png"]).printPrompt).toBe("compare");
+    expect(() => parseCliArgs(["--image"])).toThrow("路径");
+    expect(() => parseCliArgs(Array.from({length: 9}, () => "--image=x.png"))).toThrow("8 张");
+    expect(() => parseCliArgs(["--image=x.png", "-r", "s", "--rewind", "c"])).toThrow("不能");
+});

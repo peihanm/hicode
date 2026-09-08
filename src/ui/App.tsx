@@ -1,5 +1,7 @@
+import type {MessageContent} from "../images/content.js";
+import {ImageAttachments} from "./input/ImageAttachments.js";
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
-import {useCallback, useEffect, useState, type ReactNode} from "react";
+import {useRef, useCallback, useEffect, useState, type ReactNode} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
@@ -78,6 +80,7 @@ export function App({
                             runtimeApproval,
                             initialPermissionMode,
                             initialCollaborationMode,
+        initialImages,
                             initialSession,
                             rootSession,
                             resumedDraft,
@@ -88,9 +91,10 @@ export function App({
         runtimeApproval?: ReactNode;
         initialPermissionMode?: PermissionMode;
         initialCollaborationMode?: CollaborationMode;
+    initialImages?: readonly string[];
         initialSession?: LoadedSession;
         rootSession: RootSessionRuntime;
-        resumedDraft?: string;
+        resumedDraft?: MessageContent;
         registerSessionShutdown?: (shutdown: () => Promise<void>) => void;
         requestSessionSwitch?: (sessionId: string) => Promise<void>;
     }) {
@@ -165,6 +169,12 @@ export function App({
             openModel,
             openPermissions,
         });
+        const initialImagesLoaded = useRef(false);
+        useEffect(() => {
+            if (initialImagesLoaded.current || !initialImages?.length) return;
+            initialImagesLoaded.current = true;
+            void turn.addImages(initialImages);
+        }, [initialImages, turn]);
         const [showTodos, setShowTodos] = useState(true);
         const [showTranscript, setShowTranscript] = useState(false);
         const [hasInputDraft, setHasInputDraft] = useState(false);
@@ -184,6 +194,7 @@ export function App({
                     requestExit();
                     return;
                 }
+                if (await turn.attachmentCommand(input)) return;
                 if (turn.busy) {
                     turn.enqueue(input);
                     return;
@@ -203,7 +214,7 @@ export function App({
                 !isCtrlC &&
                 (key.escape || input === "\u001B");
             if (
-                turn.busy &&
+                (turn.busy || turn.attachmentState.preparing) &&
                 isCancel &&
                 !planDialogHandlesEscape
             ) {
@@ -375,10 +386,12 @@ export function App({
                             </Text>
                         )}
                         <QueuedInputPreview messages={turn.queuedMessages}/>
+                        <ImageAttachments images={turn.attachmentState.images} preparing={turn.attachmentState.preparing}/>
                         <InputBox
                             persistentHistory={resources.inputHistory}
                             onSubmit={handleSubmit}
-                            disabled={turn.stopping}
+                            disabled={turn.stopping || turn.attachmentState.preparing}
+                            allowEmpty={turn.attachmentState.images.length > 0}
                             cwd={resources.cwd}
                             sessionId={turn.sessionId}
                             startedAt={turn.startedAt}

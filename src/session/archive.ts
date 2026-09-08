@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import {createHash} from "node:crypto";
 import {lstat, readdir, unlink} from "node:fs/promises";
 import {basename, dirname, resolve} from "node:path";
@@ -57,7 +58,7 @@ function renderParts(record: SessionArchiveRecord, blocks: SessionContentStore):
         const identity = `${record.id}/${index + 1} ${message.role}`;
         const calls = message.role === "assistant" ? (message.tool_calls ?? []).map(call =>
             `Tool call ${call.id}: ${call.function.name}\n${call.function.arguments}`).join("\n") : "";
-        return `\n--- ${identity}${message.role === "tool" ? ` ${message.tool_call_id}` : ""} ---\n${message.content ?? ""}\n${calls}`;
+        return `\n--- ${identity}${message.role === "tool" ? ` ${message.tool_call_id}` : ""} ---\n${contentText(message.content)}\n${calls}`;
     }).join("\n");
     const bytes = Buffer.from(text);
     const parts: string[] = [];

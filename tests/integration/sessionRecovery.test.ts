@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {describe, expect, test} from "bun:test";
 import {readFile, readdir, stat, writeFile, unlink, symlink} from "node:fs/promises";
 import {join} from "node:path";
@@ -110,7 +111,7 @@ describe("Session recovery and storage boundaries", () => {
                 expect(records.map(record => record.checkpointId)).toContain(b);
                 expect(records.find(record => record.checkpointId === b)?.status).toBe("interrupted");
                 expect(records[0]?.parentCheckpointId).toBe(b);
-                expect(recovered.history.some(message => message.content?.includes("恢复"))).toBe(true);
+                expect(recovered.history.some(message => contentText(message.content).includes("恢复"))).toBe(true);
                 expect((await recovered.fileCheckpoints.previewRestore(a)).files.map(file => file.relativePath)).toContain("b.txt");
             } finally { await resources.close(); }
         });
@@ -196,7 +197,7 @@ describe("Session recovery and storage boundaries", () => {
                 const files = await session.fileCheckpoints.listCheckpoints();
                 expect(conversations.length).toBeLessThan(18);
                 expect(conversations.map(record => record.checkpointId)).toEqual(files.map(record => record.checkpointId).reverse());
-                expect(loadSession(storage, cwd, "capacity", resources.model)?.history.at(-1)?.content?.startsWith("17:")).toBe(true);
+                expect(contentText(loadSession(storage, cwd, "capacity", resources.model)?.history.at(-1)?.content).startsWith("17:")).toBe(true);
                 expect(await directoryBytes(getSessionContentDirectory(storage, cwd, "capacity"))).toBeLessThan(128 * 1024 * 1024);
             } finally { await resources.close(); }
         });
@@ -212,7 +213,7 @@ describe("Session recovery and storage boundaries", () => {
                 await saveSessionTurnCheckpoint(storage, {...input, history, checkpointId: `large-${turn}`,
                     branchId: "branch", prompt: "large"});
                 await saveSessionSnapshot(storage, {...input, history});
-                expect(loadSession(storage, cwd, input.sessionId, input.model)?.history.at(-1)?.content?.startsWith(`${turn}:7:`)).toBe(true);
+                expect(contentText(loadSession(storage, cwd, input.sessionId, input.model)?.history.at(-1)?.content).startsWith(`${turn}:7:`)).toBe(true);
             }
             expect(listSessionTurnCheckpoints(storage, cwd, input.sessionId)).toHaveLength(1);
         });

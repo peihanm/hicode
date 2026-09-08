@@ -3,6 +3,19 @@ import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import type {ThreadEventPayload} from "../../src/sdk/protocol.js";
 
 describe("SDK event adapter", async () => {
+    test("连续恢复进度保留原因和请求次数，不被同阶段节流吞掉", async () => {
+        const events: ThreadEventPayload[] = [];
+        const adapter = new SDKEventAdapter("turn-retry", event => {events.push(event);});
+        for (const attempt of [2, 3]) {
+            await adapter.handleAgentEvent({type: "model_stream_progress", phase: "retrying",
+                outputCharacters: 0, estimatedOutputTokens: 0,
+                retry: {reason: "http", attempt, maxAttempts: 3}});
+        }
+        expect(events).toHaveLength(2);
+        expect(events).toEqual([2, 3].map(attempt => expect.objectContaining({
+            type: "turn.progress", retry: {reason: "http", attempt, maxAttempts: 3},
+        })));
+    });
     test.each(["completed", "interrupted"] as const)("子 Agent %s 投影运行状态并原样保留审查结论", async reason => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn-review", event => {events.push(event);});

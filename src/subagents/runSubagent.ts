@@ -1,3 +1,4 @@
+import {imageReferences} from "../images/content.js";
 import type {HookInput} from "../hooks/types.js";
 import {randomUUID} from "node:crypto";
 import {DEFAULT_SUBAGENT_MAX_ITERATIONS} from "../agent/constants.js";
@@ -222,6 +223,16 @@ export function createSubagentFactories(
                         for (const boundary of [parentContext.cwd, parentContext.workspaceBoundary ?? parentContext.cwd]) {
                             const validation = await validateWorkspacePath(boundary, parentContext.cwd, approvedWorkspace);
                             if (!validation.ok) throw new Error(validation.message);
+                        }
+                    }
+                    if (runCount === 0 && request.kind === "fork") {
+                        const copied = new Set<string>();
+                        for (const ref of childHistory.flatMap(message => imageReferences(message.content))) {
+                            if (copied.has(ref.imageId)) continue;
+                            if (!parentContext.imageAccess) throw new Error("父线程没有图片读取能力");
+                            const data = await parentContext.imageAccess.read(ref);
+                            await childToolResultStore.persistBinary({origin: {kind: "tool", toolCallId: request.parentToolCallId, toolName: "agent"}, artifactId: ref.imageId, data, mimeType: ref.image.mimeType, image: ref.image});
+                            copied.add(ref.imageId);
                         }
                     }
                     const firstRun = runCount === 0;

@@ -1,3 +1,4 @@
+import type {MessageContent, ContentPart} from "../../images/content.js";
 import {createCompactState} from "../../context/index.js";
 import {createInitialHistory} from "../../prompt/index.js";
 import {createRootSessionRuntime, type RootSessionRuntime} from "../../runtime/sessionRuntime.js";
@@ -6,7 +7,7 @@ import type {RootRuntimeResources} from "../../runtime/resources.js";
 
 export interface UITurnSessionRuntime {
     rootSession: RootSessionRuntime;
-    resumedDraft?: string;
+    resumedDraft?: MessageContent;
 }
 
 /** Compose Session-owned resources outside the interactive App render path. */
@@ -41,9 +42,8 @@ export function createUITurnSessionRuntime(
         rootSession,
         ...(userInputs.length > 0
             ? {
-                resumedDraft: userInputs
-                    .map((message) => message.content)
-                    .join("\n"),
+                resumedDraft: userInputs.every(message => typeof message.content === "string") ? userInputs.map(message => message.content).join("\n")
+                    : userInputs.flatMap<ContentPart>(message => typeof message.content === "string" ? [{type: "text", text: message.content}] : message.content),
             }
             : {}),
     };

@@ -129,6 +129,7 @@ export function runHeadlessForTest(
   return runner({
     configuration,
     prompt: options.prompt,
+    images: options.images,
     permissionMode: options.permissionMode,
     collaborationMode: options.collaborationMode,
     resumeMode: options.resumeMode,

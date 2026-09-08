@@ -9,6 +9,35 @@ const MAX_SSE_EVENT_CHARACTERS = 8 * 1024 * 1024;
 const MAX_STREAM_OUTPUT_CHARACTERS = 64 * 1024 * 1024;
 const MAX_DATA_EVENTS = 200_000;
 
+type ProtocolFailureCode = "missing_completion" | "inconsistent_completion" | "missing_tool_identity" | "duplicate_tool_id"
+    | "stream_disconnected" | "empty_stream" | "invalid_json";
+interface ToolFragmentDiagnostic {
+    event: number;
+    index: number;
+    indexProvided: boolean;
+    hasId: boolean;
+    hasName: boolean;
+    argumentCharacters: number;
+}
+interface StreamFailureDiagnostic {
+    code: ProtocolFailureCode;
+    dataEventCount: number;
+    finishReason: "stop" | "tool_calls" | null;
+    done: boolean;
+    contentLength: number;
+    reasoningContentLength: number;
+    tools: Array<{index: number; hasId: boolean; hasName: boolean; argumentCharacters: number}>;
+    recentToolFragments: ToolFragmentDiagnostic[];
+}
+
+/** Only receive/assembly failures are retryable; schema, size and callback failures are not. */
+export class OpenAICompatibleProtocolError extends Error {
+    constructor(message: string, readonly diagnostic: StreamFailureDiagnostic, readonly usage: TokenUsage) {
+        super(message);
+        this.name = "OpenAICompatibleProtocolError";
+    }
+}
+
 export interface OpenAICompatibleStreamResult {
     content: string;
     reasoningContent: string;
@@ -75,6 +104,16 @@ export async function consumeOpenAICompatibleSSE({
     let completionSignaled = false;
     let dataEventCount = 0;
     let completionTailTimer: ReturnType<typeof setTimeout> | undefined;
+    const recentToolFragments: ToolFragmentDiagnostic[] = [];
+    const protocolError = (code: ProtocolFailureCode, message: string) => new OpenAICompatibleProtocolError(message, {
+        code, dataEventCount, done,
+        finishReason: finishReason === "stop" || finishReason === "tool_calls" ? finishReason : null,
+        contentLength: content.length,
+        reasoningContentLength: reasoningContent.length,
+        tools: [...tools].map(([index, tool]) => ({index, hasId: !!tool.id,
+            hasName: !!tool.function.name, argumentCharacters: tool.function.arguments.length})),
+        recentToolFragments: [...recentToolFragments],
+    }, {...usage});
 
     const clearCompletionTailTimer = () => {
         if (completionTailTimer !== undefined) {
@@ -130,16 +169,14 @@ export async function consumeOpenAICompatibleSSE({
             );
         }
 
-        let chunk: OpenAICompatibleStreamChunk;
+        let value: unknown;
         try {
-            chunk = decodeOpenAICompatibleStreamChunk(
-                JSON.parse(data) as unknown
-            );
-        } catch (error) {
-            throw new Error(
-                `OpenAI-compatible stream 返回无效数据: ${error instanceof Error ? error.message : String(error)}`
-            );
+            value = JSON.parse(data);
+        } catch {
+            // JSON parser messages can include raw model output or secrets.
+            throw protocolError("invalid_json", "OpenAI-compatible stream 数据事件不是合法 JSON");
         }
+        const chunk: OpenAICompatibleStreamChunk = decodeOpenAICompatibleStreamChunk(value);
 
         if (chunk.usage) usage = chunk.usage;
         const choice = chunk.choices?.[0];
@@ -164,6 +201,10 @@ export async function consumeOpenAICompatibleSSE({
             }
             for (const streamed of delta.tool_calls ?? []) {
                 const index = streamed.index ?? 0;
+                recentToolFragments.push({event: dataEventCount, index, indexProvided: streamed.index !== undefined,
+                    hasId: !!streamed.id, hasName: !!streamed.function?.name,
+                    argumentCharacters: streamed.function?.arguments?.length ?? 0});
+                if (recentToolFragments.length > 16) recentToolFragments.shift();
                 const existing = tools.get(index) ?? {
                     id: "",
                     type: "function" as const,
@@ -199,7 +240,13 @@ export async function consumeOpenAICompatibleSSE({
 
     try {
         while (!done) {
-            const part = await reader.read();
+            let part: Awaited<ReturnType<typeof reader.read>>;
+            try {
+                part = await reader.read();
+            } catch (error) {
+                if (signal.aborted) throw error;
+                throw protocolError("stream_disconnected", "OpenAI-compatible stream 读取响应时连接中断");
+            }
             if (part.done) break;
             // Transport activity and model progress are separate signals.
             // SSE comments/heartbeats keep the connection alive, but only
@@ -226,9 +273,8 @@ export async function consumeOpenAICompatibleSSE({
     } finally {
         clearCompletionTailTimer();
         signal.removeEventListener("abort", cancelReader);
-        if (completionSignaled && !done) {
-            await reader.cancel("finish_reason received").catch(() => undefined);
-        }
+        // releaseLock alone does not stop an HTTP body after a parse/callback failure.
+        await reader.cancel("stream consumption ended").catch(() => undefined);
         reader.releaseLock();
     }
 
@@ -238,14 +284,14 @@ export async function consumeOpenAICompatibleSSE({
             : new Error(`OpenAI-compatible stream 已中止: ${JSON.stringify(signal.reason)}`);
     }
     if (dataEventCount === 0) {
-        throw new Error("OpenAI-compatible stream 已结束，但没有收到任何数据事件");
+        throw protocolError("empty_stream", "OpenAI-compatible stream 已结束，但没有收到任何数据事件");
     }
 
     const toolCalls = [...tools.entries()]
         .sort(([left], [right]) => left - right)
         .map(([, toolCall]) => toolCall);
     if (!finishReason) {
-        throw new Error(
+        throw protocolError("missing_completion",
             "OpenAI-compatible stream 在明确完成前已结束，拒绝使用可能截断的响应"
         );
     }
@@ -253,6 +299,9 @@ export async function consumeOpenAICompatibleSSE({
         (toolCalls.length > 0 && finishReason !== "tool_calls") ||
         (toolCalls.length === 0 && finishReason !== "stop")
     ) {
+        if (finishReason === "stop" || finishReason === "tool_calls") {
+            throw protocolError("inconsistent_completion", "OpenAI-compatible stream 完成原因与工具调用不一致");
+        }
         throw new Error(
             `OpenAI-compatible stream 以 ${finishReason} 结束，响应不完整或与工具调用不一致`
         );
@@ -260,10 +309,10 @@ export async function consumeOpenAICompatibleSSE({
     const toolCallIds = new Set<string>();
     for (const toolCall of toolCalls) {
         if (!toolCall.id || !toolCall.function.name) {
-            throw new Error("OpenAI-compatible stream 返回了缺少 id 或函数名的 tool call");
+            throw protocolError("missing_tool_identity", "OpenAI-compatible stream 返回了缺少 id 或函数名的 tool call");
         }
         if (toolCallIds.has(toolCall.id)) {
-            throw new Error("OpenAI-compatible stream 返回了重复 id 的 tool call");
+            throw protocolError("duplicate_tool_id", "OpenAI-compatible stream 返回了重复 id 的 tool call");
         }
         toolCallIds.add(toolCall.id);
     }

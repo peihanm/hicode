@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {access, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -22,7 +23,7 @@ test("Memory 整理复用真实标准工具和隔离 Worktree，发布前不修�
             assistantToolCall("read_file", {path: "INPUTS.json"}, "input"),
             options => {
                 expect(options.tools.some(tool => ["bash", "agent", "task", "web_fetch"].includes(tool.function.name))).toBe(false);
-                expect(options.messages.some(message => message.role === "tool" && message.content.includes(job.lease.sourceIds[0]!))).toBe(true);
+                expect(options.messages.some(message => message.role === "tool" && contentText(message.content).includes(job.lease.sourceIds[0]!))).toBe(true);
                 return assistantToolCall("write_file", {path: "topics/structure.md", content: serializeDraftTopic({key: "structure", name: "结构偏好",
                     description: "用户的文件组织偏好", type: "feedback", content: "文件结构保持简洁", sources: job.lease.sourceIds})}, "topic");
             },

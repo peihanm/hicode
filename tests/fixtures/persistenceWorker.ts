@@ -63,8 +63,7 @@ if (mode === "session") {
   const size = prefix === "a" ? 10 : 20;
   const result = await store.persistBinary({
     artifactId: "shared-artifact",
-    toolCallId: `binary-${prefix}`,
-    toolName: "worker",
+    origin: {kind: "tool", toolCallId: `binary-${prefix}`, toolName: "worker"},
     data: Buffer.alloc(size, prefix === "a" ? 1 : 2),
     mimeType: `${prefix}/type`,
   });

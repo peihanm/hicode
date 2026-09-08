@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import {toolFileChanges} from "../fileChanges/index.js";
 import {randomUUID} from "node:crypto";
 import {formatHookContext} from "../hooks/index.js";
@@ -198,7 +199,7 @@ export async function executeToolCallBatch({
                     name: toolCall.function.name,
                     argsJson: toolCall.function.arguments,
                     outcome: interrupted ? "interrupted" : execution.outcome,
-                    result: interruptedContent ?? execution.modelContent,
+                    result: interruptedContent ?? contentText(execution.modelContent),
                     ...(!interrupted && execution.shellExecution ? {shellExecution: execution.shellExecution} : {}),
                     ...(execution.untrackedWorkspaceEffects ? {untrackedWorkspaceEffects: true} : {}),
                     ...(!interrupted && execution.uiData

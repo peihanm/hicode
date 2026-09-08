@@ -1,3 +1,4 @@
+import {contentText, messageContentSchema, type MessageContent} from "../images/content.js";
 import {randomUUID} from "node:crypto";
 import type {AgentInputChannel, QueuedAgentInput,} from "../agent/inputChannel.js";
 import type {TaskNotification} from "../tasks/index.js";
@@ -7,7 +8,7 @@ export type MessagePriority = "next" | "later";
 interface RuntimeQueuedMessageBase {
     id: string;
     priority: MessagePriority;
-    content: string;
+    content: MessageContent;
     createdAt: string;
 }
 
@@ -28,8 +29,8 @@ const EMPTY_SNAPSHOT: RuntimeMessageQueueSnapshot = {
     messages: [],
 };
 
-function byteLength(value: string): number {
-    return Buffer.byteLength(value, "utf8");
+function byteLength(value: MessageContent): number {
+    return Buffer.byteLength(typeof value === "string" ? value : JSON.stringify(value), "utf8");
 }
 
 function isTimestamp(value: string): boolean {
@@ -55,12 +56,14 @@ export function normalizeRuntimeQueuedMessages(
             (message.type !== "user_input" &&
                 message.type !== "task_notification") ||
             (message.priority !== "next" && message.priority !== "later") ||
-            typeof message.content !== "string" ||
-            message.content.trim().length === 0 ||
+            !messageContentSchema.safeParse(message.content).success ||
+            contentText(messageContentSchema.parse(message.content)).trim().length === 0 ||
             typeof message.createdAt !== "string" ||
             !isTimestamp(message.createdAt)
         ) return undefined;
-        const contentBytes = byteLength(message.content);
+        const content = messageContentSchema.parse(message.content);
+        if (message.type === "task_notification" && typeof content !== "string") return undefined;
+        const contentBytes = byteLength(content);
         totalBytes += contentBytes;
         if (contentBytes > MAX_MESSAGE_BYTES || totalBytes > MAX_TOTAL_BYTES) {
             return undefined;
@@ -77,7 +80,7 @@ export function normalizeRuntimeQueuedMessages(
                 id: message.id,
                 type: message.type,
                 priority: message.priority,
-                content: message.content,
+                content,
                 createdAt: message.createdAt,
                 taskId: message.taskId,
             });
@@ -87,7 +90,7 @@ export function normalizeRuntimeQueuedMessages(
                 id: message.id,
                 type: message.type,
                 priority: message.priority,
-                content: message.content,
+                content,
                 createdAt: message.createdAt,
             });
         }
@@ -133,7 +136,7 @@ export class RuntimeMessageQueue {
         this.publish();
     }
 
-    enqueueUser(content: string, priority: MessagePriority = "next"): RuntimeQueuedMessage {
+    enqueueUser(content: MessageContent, priority: MessagePriority = "next"): RuntimeQueuedMessage {
         return this.enqueue({type: "user_input", content, priority});
     }
 
@@ -209,7 +212,7 @@ export class RuntimeMessageQueue {
         if (changed) this.publish();
     }
 
-    takeEditableInputs(): readonly string[] {
+    takeEditableInputs(): readonly MessageContent[] {
         const restored = this.messages.filter(
             (message) => message.type === "user_input"
         );
@@ -234,16 +237,17 @@ export class RuntimeMessageQueue {
     private enqueue(input: {
         type: "user_input";
         priority: MessagePriority;
-        content: string;
+        content: MessageContent;
     } | {
         type: "task_notification";
         priority: MessagePriority;
-        content: string;
+        content: MessageContent;
         taskId: string;
         notificationId: string;
     }): RuntimeQueuedMessage {
-        const content = input.content.trim();
-        if (!content) throw new Error("不能排入空消息");
+        const parsed = messageContentSchema.parse(input.content);
+        const content = typeof parsed === "string" ? parsed.trim() : structuredClone(parsed);
+        if (!contentText(content).trim()) throw new Error("不能排入空消息");
         if (byteLength(content) > MAX_MESSAGE_BYTES) {
             throw new Error(`单条运行中消息不能超过 ${MAX_MESSAGE_BYTES} 字节`);
         }
@@ -285,7 +289,7 @@ export class RuntimeMessageQueue {
 
     private publish(): void {
         this.snapshot = {
-            messages: this.messages.map((message) => ({...message})),
+            messages: structuredClone(this.messages),
         };
         for (const listener of this.listeners) {
             try {

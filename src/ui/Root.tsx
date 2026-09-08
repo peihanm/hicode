@@ -56,11 +56,13 @@ export function Root({
                          configuration,
                          initialPermissionMode,
                          initialCollaborationMode,
+        initialImages,
                          resumeMode,
                      }: {
     configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;
+    initialImages?: readonly string[];
     resumeMode: ResumeMode;
 }) {
     const {exit} = useApp();
@@ -141,6 +143,7 @@ export function Root({
             configuration={configuration}
             initialPermissionMode={initialPermissionMode}
             initialCollaborationMode={initialCollaborationMode}
+                initialImages={initialImages}
             session={state.session}
             onSessionSwitch={(session) => setState({view: "app", session})}
         />

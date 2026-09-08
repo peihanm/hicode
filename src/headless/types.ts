@@ -13,6 +13,7 @@ export type HeadlessOutputFormat = "text" | "json";
 export interface HeadlessOptions {
     configuration: PillarRootConfiguration;
     prompt: string;
+    images?: readonly string[];
     permissionMode?: PermissionMode;
     collaborationMode?: CollaborationMode;
     resumeMode: ResumeMode;

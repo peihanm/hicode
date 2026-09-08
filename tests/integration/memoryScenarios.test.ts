@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {expect,test} from "bun:test";
 import {readFile} from "node:fs/promises";
 import {z} from "zod";
@@ -22,8 +23,8 @@ for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全
  const session=createRootSessionRuntime({resources,resumed:false,seed:{sessionId:scenario.id,history:[{role:"system",content:"test"},{role:"user",content:scenario.goal}],compactState:createCompactState()}});
  const ctx=session.createContext({signal:new AbortController().signal,onEvent(){},getSnapshotState:state,host:{canUseTool:async()=>({behavior:"deny",message:"offline"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"default",getCollaborationMode:()=>"build",getPermissionPromptPolicy:()=>"never",setPermissionMode(){},setCollaborationMode(){},setTodos(){}}});
  const fake=createFakeLLM(scenario.stages.map(stage=>input=>{
-  const message=input.messages.findLast(message=>message.role==="user"&&message.content.includes(stage.request));
-  const source=message?.content?.match(/\[source ([a-f0-9]{64}\/\d+);/)?.[1];if(!source)throw new Error("fixture source missing");
+  const message=input.messages.findLast(message=>message.role==="user"&&contentText(message.content).includes(stage.request));
+  const source=contentText(message?.content).match(/\[source ([a-f0-9]{64}\/\d+);/)?.[1];if(!source)throw new Error("fixture source missing");
   return assistantText(JSON.stringify({version:1,objective:[],constraints:[{text:stage.constraint,sources:[source],basis:"reported"}],decisions:[],files:[],verification:[],next:[]}));
  }));
  const compact=createCompactHistoryRunner({generateSummary:createCompactSummaryGenerator({callLLM:fake.callLLM})});

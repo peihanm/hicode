@@ -1,3 +1,4 @@
+import {readFile} from "node:fs/promises";
 import {writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import {definePillarTool, loadPillarHostConfig, Pillar} from "pillar-core-sdk";
@@ -11,18 +12,21 @@ if (!workspace || !pillarHome) {
 let requestCount = 0;
 let sawHostToolResult = false;
 let sawGlobResult = false;
+let sawImageResult = false;
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
-    if (request.url !== "https://sdk-package.invalid/v1/chat/completions" || request.method !== "POST") {
+    if (request.url !== "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" || request.method !== "POST") {
         throw new Error(`unexpected fixture request: ${request.method} ${request.url}`);
     }
     const body = await request.text();
     requestCount += 1;
+    if (requestCount === 1 && !body.includes("data:image/png;base64,")) throw new Error("SDK user attachment pixels missing");
     if (requestCount === 2) {
         sawHostToolResult = body.includes("HOST_TOOL_SENTINEL:package-smoke");
     }
     if (requestCount === 3) sawGlobResult = body.includes("fixture.ts");
+    if (requestCount === 4) sawImageResult = body.includes("data:image/png;base64,") && body.includes('"tool_call_id":"sdk-package-image"');
 
     const event = requestCount === 1
         ? {
@@ -73,10 +77,13 @@ globalThis.fetch = async (input, init) => {
                 total_tokens: 14,
             },
         }
+        : requestCount === 3
+        ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-image", type: "function",
+            function: {name: "view_image", arguments: JSON.stringify({path: "image.png"})}}]}, finish_reason: "tool_calls"}]}
         : {
             choices: [{
                 delta: {
-                    content: sawHostToolResult && sawGlobResult
+                    content: sawHostToolResult && sawGlobResult && sawImageResult
                         ? "SDK_PACKAGE_AGENT_OK"
                         : "SDK_PACKAGE_TOOL_RESULT_MISSING",
                 },
@@ -95,6 +102,7 @@ globalThis.fetch = async (input, init) => {
 
 process.env.PILLAR_SDK_SMOKE_KEY = "offline-fixture-key";
 await writeFile(resolve(workspace, "fixture.ts"), "export const fixture = true;\n");
+await writeFile(resolve(workspace, "image.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAIAAAA8r+mnAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWP4z8CAFWEXJUsCAFpeH+EjhPzsAAAAAElFTkSuQmCC", "base64"));
 let pillar;
 let hostToolCalls = 0;
 try {
@@ -114,13 +122,13 @@ try {
                 qwen: {
                     label: "SDK package fixture",
                     apiKeyEnv: "PILLAR_SDK_SMOKE_KEY",
-                    baseUrl: "https://sdk-package.invalid/v1",
-                    models: [{id: "qwen3.6-flash", label: "Fixture model"}],
+                    baseUrl: "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+                    models: [{id: "qwen3.8-flash", label: "Fixture model"}],
                 },
             },
             models: {
-                primary: {source: "qwen", model: "qwen3.6-flash"},
-                fast: {source: "qwen", model: "qwen3.6-flash"},
+                primary: {source: "qwen", model: "qwen3.8-flash"},
+                fast: {source: "qwen", model: "qwen3.8-flash"},
             },
             sandbox: {enabled: false},
             memory: {enabled: false},
@@ -155,8 +163,9 @@ try {
         },
     });
     const thread = await pillar.startThread();
-    const result = await thread.run("Use host_lookup, then glob TypeScript files.", {
-        maxIterations: 4,
+    const result = await thread.run([{type: "text", text: "Use host_lookup, then glob TypeScript files, then view image.png."},
+        {type: "image", data: await readFile(resolve(workspace, "image.png"))}], {
+        maxIterations: 5,
     });
     const hostLookup = result.items.find((item) =>
         item.type === "tool_call" && item.name === "host_lookup"
@@ -166,10 +175,11 @@ try {
     );
     if (
         result.finalResponse !== "SDK_PACKAGE_AGENT_OK" ||
-        requestCount !== 3 ||
+        requestCount !== 4 ||
         hostToolCalls !== 1 ||
         !sawHostToolResult ||
         !sawGlobResult ||
+        !sawImageResult ||
         !hostLookup ||
         hostLookup.status !== "completed" ||
         hostLookup.outcome !== "ok" ||
@@ -189,6 +199,8 @@ try {
             glob,
         })}`);
     }
+    const image = result.items.find(item => item.type === "tool_call" && item.name === "view_image");
+    if (image?.outcome !== "ok" || JSON.stringify(result).includes("base64,")) throw new Error("SDK image result missing or contains pixels in events");
     const runtime = typeof globalThis.Bun === "undefined" ? "node" : "bun";
     console.log(`SDK_PACKAGE_RUN_OK:${runtime}`);
 } finally {

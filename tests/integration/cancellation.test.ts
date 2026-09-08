@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { runAgentForTest as runAgent } from "../helpers/agent.js";
 import { compactHistoryForTest as compactHistory } from "../helpers/compact.js";
@@ -127,7 +128,7 @@ describe("runtime cancellation", () => {
         "cancel-1",
         "cancel-2",
       ]);
-      expect(toolMessages.every((message) => message.content.includes("已取消"))).toBe(
+      expect(toolMessages.every((message) => contentText(message.content).includes("已取消"))).toBe(
         true
       );
     });
@@ -183,7 +184,7 @@ describe("runtime cancellation", () => {
         "safe-2",
         "unsafe-tail",
       ]);
-      expect(toolMessages.every((message) => message.content.includes("已取消"))).toBe(
+      expect(toolMessages.every((message) => contentText(message.content).includes("已取消"))).toBe(
         true
       );
     });
@@ -308,7 +309,7 @@ describe("runtime cancellation", () => {
         "failed-2",
       ]);
       expect(
-        toolMessages.every((message) => message.content.includes("runner exploded"))
+        toolMessages.every((message) => contentText(message.content).includes("runner exploded"))
       ).toBe(true);
     });
   });

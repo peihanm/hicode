@@ -1,3 +1,6 @@
+import {importSelectedImages} from "../../runtime/imageInput.js";
+import {supportsToolImages} from "../../images/capability.js";
+import {contentText, imageReferences, type MessageContent} from "../../images/content.js";
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,} from "react";
 import {updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
@@ -33,7 +36,7 @@ export interface UseTurnControllerOptions {
     initialCollaborationMode?: CollaborationMode;
     initialSession?: LoadedSession;
     rootSession: RootSessionRuntime;
-    resumedDraft?: string;
+    resumedDraft?: MessageContent;
     openResume?: () => void;
     openRewind?: () => void;
     openAgents?: () => void;
@@ -114,7 +117,7 @@ export function useTurnController({
             revision: number;
             appendCurrent?: boolean;
         } | undefined>(() => resumedDraft
-            ? {value: resumedDraft, revision: 1}
+            ? {value: typeof resumedDraft === "string" ? resumedDraft : resumedDraft.filter(part => part.type === "text").map(part => part.text).join("\n"), revision: 1}
             : undefined);
 
         const eventStoreRef = useRef<UITurnEventStore | null>(null);
@@ -361,17 +364,27 @@ export function useTurnController({
                         inputChannel: messageQueue.createAgentInputChannel(
                             (message) => {
                                 if (message.type === "user_input") {
-                                    eventStore.appendUser(message.content);
+                                    eventStore.appendUser(contentText(message.content));
                                 }
                             }
                         ),
                     });
                 },
+                importImages: (paths, signal) => importSelectedImages(paths, resources, rootSession.createContext({signal, host: toolContextHost,
+                    onEvent: eventStore.handleEvent, getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()})})),
+                validateImages: content => {
+                    const target = resources.primaryModel.target;
+                    if (imageReferences(content).length && !supportsToolImages(resources.settings.sources[target.source], target.model))
+                        throw new Error("当前模型不支持图片；附件与输入已保留，请先切换模型");
+                },
+                restoreDraft: value => setInputReplacement(current => ({value, revision: (current?.revision ?? 0) + 1, appendCurrent: true})),
                 messageQueue,
                 now: Date.now,
             });
         }
         const turnController = turnControllerRef.current;
+        useEffect(() => {if (resumedDraft) turnController.restoreAttachments(resumedDraft);}, [turnController, resumedDraft]);
+        const attachmentState = useSyncExternalStore(turnController.subscribe, turnController.getAttachmentSnapshot, turnController.getAttachmentSnapshot);
 
         const turnStatus = useSyncExternalStore(
             turnController.subscribe,
@@ -451,7 +464,7 @@ export function useTurnController({
         }, [createSnapshot, eventStore, messageQueue, sessionQueue, taskSession]);
 
         useEffect(() => {
-            if (turnStatus.busy || messageQueueSnapshot.messages.length === 0) {
+            if (messageQueueSnapshot.messages.length === 0) {
                 return;
             }
             void persistSnapshot();
@@ -498,7 +511,7 @@ export function useTurnController({
             permissionMode: PermissionMode;
             collaborationMode: CollaborationMode;
             uiEvents: Parameters<typeof eventStore.restore>[0]["uiEvents"];
-            prompt: string;
+            prompt: MessageContent;
         }) => {
             todosRef.current = [...restored.todos];
             setTodosState([...restored.todos]);
@@ -517,8 +530,9 @@ export function useTurnController({
                     resources.model
                 ),
             });
+            const restoredDraft = turnController.restoreAttachments(restored.prompt);
             setInputReplacement((current) => ({
-                value: restored.prompt,
+                value: restoredDraft,
                 revision: (current?.revision ?? 0) + 1,
             }));
         }, [eventStore, resources, toolRuntime]);
@@ -560,6 +574,9 @@ export function useTurnController({
             primaryModel,
             availableModels: resources.primaryModel.available,
             confirmRequest,
+            attachmentState,
+            attachmentCommand: turnController.attachmentCommand.bind(turnController),
+            addImages: turnController.addImages.bind(turnController),
             submit: turnController.submit.bind(turnController),
             enqueue: turnController.enqueue.bind(turnController),
             cancel: turnController.cancel.bind(turnController),

@@ -20,7 +20,7 @@ for (const brokenFiles of [false, true]) test(`分支保留当前文件和原 Se
     await withTempProject(async (cwd, storage) => {
         const source = createToolResultStore(storage, cwd, "source");
         const artifact = await source.persistText({toolCallId: "check", toolName: "bash", content: "assertion detail\n".repeat(5000)});
-        const binary = await source.persistBinary({toolCallId: "image", toolName: "mcp__image", data: Buffer.from([0, 255, 1]), mimeType: "image/png"});
+        const binary = await source.persistBinary({origin: {kind: "tool", toolCallId: "image", toolName: "mcp__image"}, data: Buffer.from([0, 255, 1]), mimeType: "image/png"});
         const history: Message[] = [
             {role: "user", content: "previous"},
             {role: "assistant", content: null, tool_calls: [{id: "check", type: "function", function: {name: "bash", arguments: "{}"}}]},

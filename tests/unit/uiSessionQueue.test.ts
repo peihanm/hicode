@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { createCompactState } from "../../src/context/index.js";
 import type { SaveSessionSnapshotInput } from "../../src/session/index.js";
@@ -27,7 +28,7 @@ describe("SessionSnapshotQueue", () => {
     let attempt = 0;
     const queue = new SessionSnapshotQueue(async (input) => {
       attempt += 1;
-      calls.push(input.history[0]?.content ?? "");
+      calls.push(contentText(input.history[0]?.content) ?? "");
       if (attempt === 1) {
         await gate;
         throw new Error("disk failed");
@@ -52,7 +53,7 @@ describe("SessionSnapshotQueue", () => {
     const queue = new SessionSnapshotQueue(async (input) => {
       await gate;
       observed.push({
-        content: input.history[0]?.content ?? "",
+        content: contentText(input.history[0]?.content) ?? "",
         discovered: input.toolDiscovery?.loadedNames[0],
       });
     });

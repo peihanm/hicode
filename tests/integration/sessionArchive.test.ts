@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {readFile, symlink, unlink, writeFile} from "node:fs/promises";
 import {dirname, basename, join} from "node:path";
@@ -228,7 +229,7 @@ test("生产交接链校验引用、保留纠正原话，Resume 与 Fork 保持�
                 {role: "user", content: "继续实现"});
             let originalRef = "";
             const fake = createFakeLLM([options => {
-                const match = options.messages[1]!.content?.match(/\[source ([a-f0-9]{64}\/1); role=user\]/);
+                const match = contentText(options.messages[1]!.content).match(/\[source ([a-f0-9]{64}\/1); role=user\]/);
                 expect(match).not.toBeNull();
                 originalRef = match![1]!;
                 expect(JSON.stringify(options.messages)).not.toContain("hidden-reasoning");
@@ -285,9 +286,9 @@ test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果�
             });
             let firstSource = "";
             const fake = createFakeLLM(Array.from({length: 5}, (_, round) => options => {
-                if (!round) firstSource = options.messages[1]!.content!.match(/\[source ([a-f0-9]{64}\/1);/)![1]!;
-                const correction = options.messages.find(message => message.role === "user" && message.content.includes(`纠正_${round}`))!;
-                const ref = correction.content!.match(/\[source ([a-f0-9]{64}\/[0-9]+);/)![1]!;
+                if (!round) firstSource = contentText(options.messages[1]!.content)!.match(/\[source ([a-f0-9]{64}\/1);/)![1]!;
+                const correction = options.messages.find(message => message.role === "user" && contentText(message.content).includes(`纠正_${round}`))!;
+                const ref = contentText(correction.content)!.match(/\[source ([a-f0-9]{64}\/[0-9]+);/)![1]!;
                 return assistantText(JSON.stringify({version: 1,
                     objective: [{text: "继续完成删除列", sources: [firstSource], basis: "reported"}],
                     constraints: [{text: `采用纠正_${round}`, sources: [ref], basis: "reported"}],

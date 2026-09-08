@@ -1,3 +1,6 @@
+import {snapshotTurnInput, importUserInput, type TurnInput} from "../images/input.js";
+import {contentText, imageReferences, type MessageContent} from "../images/content.js";
+import {supportsToolImages} from "../images/capability.js";
 import {recoverSessionBeforeStart} from "../checkpoints/rewind.js";
 import {createCompactState} from "../context/index.js";
 import {randomUUID} from "node:crypto";
@@ -32,7 +35,6 @@ import {
     type TurnResult,
 } from "./types.js";
 
-const MAX_INPUT_CHARACTERS = 1_000_000;
 const MAX_SDK_ITERATIONS = 100;
 
 interface SDKSessionState {
@@ -118,6 +120,7 @@ class SDKThreadImpl implements Thread {
     private emittedThreadStarted: boolean;
     private closePromise: Promise<void> | undefined;
     private closed = false;
+    private preparing: {controller: AbortController; settled: Promise<MessageContent>} | undefined;
     private lastEndReason = "shutdown";
 
     constructor(private readonly options: SDKThreadImplOptions) {
@@ -141,7 +144,7 @@ class SDKThreadImpl implements Thread {
     }
 
     async run(
-        input: string,
+        input: TurnInput,
         options: TurnOptions = {}
     ): Promise<TurnResult> {
         const streamed = await this.runStreamed(input, options);
@@ -149,12 +152,31 @@ class SDKThreadImpl implements Thread {
     }
 
     async runStreamed(
-        input: string,
+        input: TurnInput,
         options: TurnOptions = {}
     ): Promise<StreamedTurn> {
-        const prompt = validateInput(input);
         validateTurnOptions(options);
-        return {events: this.streamTurn(prompt, options)};
+        if (this.closed) throw new PillarSDKError("thread_closed", `Thread 已关闭: ${this.id}`);
+        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread 已有 Turn 正在运行: ${this.id}`);
+        let copied: TurnInput;
+        try {copied = snapshotTurnInput(input);} catch (error) {throw new PillarSDKError("invalid_input", error instanceof Error ? error.message : String(error));}
+        if (typeof copied === "string") return {events: this.streamTurn(copied, options)};
+        const controller = new AbortController();
+        const unlink = linkAbortSignal(options.signal, controller);
+        const resources = this.options.resources;
+        const target = resources.primaryModel.target;
+        const settled = importUserInput(copied, this.options.session.toolResultStore,
+            supportsToolImages(resources.settings.sources[target.source], target.model), controller.signal);
+        const preparing = {controller, settled};
+        this.preparing = preparing;
+        try {
+            const prompt = await settled;
+            if (this.closed || controller.signal.aborted) throw new PillarSDKError("interrupted", "图片输入已取消");
+            return {events: this.streamTurn(prompt, options)};
+        } catch (error) {
+            throw new PillarSDKError(controller.signal.aborted ? "interrupted" : "invalid_image",
+                controller.signal.aborted ? "图片输入已取消" : error instanceof Error ? error.message : String(error));
+        } finally {unlink(); if (this.preparing === preparing) this.preparing = undefined;}
     }
 
     close(): Promise<void> {
@@ -163,7 +185,7 @@ class SDKThreadImpl implements Thread {
     }
 
     private async *streamTurn(
-        prompt: string,
+        prompt: MessageContent,
         turnOptions: TurnOptions
     ): AsyncGenerator<ThreadEvent> {
         if (this.closed) {
@@ -223,7 +245,7 @@ class SDKThreadImpl implements Thread {
     }
 
     private async executeTurn(
-        prompt: string,
+        prompt: MessageContent,
         turnId: string,
         turnOptions: TurnOptions,
         controller: AbortController,
@@ -246,7 +268,8 @@ class SDKThreadImpl implements Thread {
         await emit({
             type: "turn.started",
             turnId,
-            inputSummary: boundedInputSummary(prompt),
+            inputSummary: boundedInputSummary(contentText(prompt)),
+            ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
         if (turnOptions.permissionMode !== undefined) {
@@ -448,6 +471,9 @@ class SDKThreadImpl implements Thread {
     private async closeInternal(): Promise<void> {
         if (this.closed) return;
         this.closed = true;
+        const preparing = this.preparing;
+        preparing?.controller.abort("shutdown");
+        await preparing?.settled.catch(() => undefined);
         const active = this.activeRun;
         if (active && !active.controller.signal.aborted) {
             active.controller.abort("shutdown");
@@ -482,23 +508,6 @@ class SDKThreadImpl implements Thread {
 }
 
 export const createSDKThread = createSDKThreadFactory();
-
-function validateInput(input: string): string {
-    if (typeof input !== "string") {
-        throw new PillarSDKError("invalid_input", "SDK Turn input 必须是字符串");
-    }
-    const trimmed = input.trim();
-    if (!trimmed) {
-        throw new PillarSDKError("invalid_input", "SDK Turn input 不能为空");
-    }
-    if (input.length > MAX_INPUT_CHARACTERS) {
-        throw new PillarSDKError(
-            "input_too_large",
-            `SDK Turn input 超过 ${MAX_INPUT_CHARACTERS} 字符上限`
-        );
-    }
-    return input;
-}
 
 function validateTurnOptions(options: TurnOptions): void {
     if (

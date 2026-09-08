@@ -51,7 +51,7 @@ export class FileStateTracker {
         const evidence = this.pending.get(toolCallId);
         if (!evidence || evidence.content !== original) return;
         // Saved output is a log, not an observation of the current source file.
-        if (result.persisted || !result.modelContent.startsWith(original)) this.pending.delete(toolCallId);
+        if (result.persisted || typeof result.modelContent !== "string" || !result.modelContent.startsWith(original)) this.pending.delete(toolCallId);
         else evidence.content = result.modelContent;
     }
 

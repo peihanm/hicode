@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import {
   EMPTY_AGENT_INPUT_CHANNEL,
@@ -11,6 +12,9 @@ import type {SlashCommandProcessor} from "../../src/slash/types.js";
 import type {Todo} from "../../src/todos.js";
 
 function createHarness(overrides: {
+  importImages?: ConstructorParameters<typeof UITurnController>[0]["importImages"];
+  validateImages?: ConstructorParameters<typeof UITurnController>[0]["validateImages"];
+  restoreDraft?: ConstructorParameters<typeof UITurnController>[0]["restoreDraft"];
     runAgent?: AgentRunner;
   processSlashCommand?: SlashCommandProcessor["process"];
   getSlashBusyBehavior?: SlashCommandProcessor["getBusyBehavior"];
@@ -61,14 +65,14 @@ function createHarness(overrides: {
     runTurn: overrides.runTurn ?? (async (input, signal) => {
       signals.push(signal);
       try {
-        await (overrides.beginCheckpoint ?? (async () => {}))(input);
+        await (overrides.beginCheckpoint ?? (async () => {}))(contentText(input));
         const hookResult = await (
           overrides.runUserPromptHooks ??
           (async () => ({
             blocked: false,
             additionalUserContextBlocks: [],
           }))
-        )(input, {signal} as ToolContext);
+        )(contentText(input), {signal} as ToolContext);
         if (signal.aborted) throw new Error("aborted");
         if (hookResult.blocked) {
           events.push({
@@ -105,6 +109,9 @@ function createHarness(overrides: {
         }
       }
     }),
+    importImages: overrides.importImages ?? (async () => []),
+    validateImages: overrides.validateImages ?? (() => {}),
+    restoreDraft: overrides.restoreDraft ?? (() => {}),
     messageQueue,
     now: overrides.now ?? Date.now,
   });
@@ -541,4 +548,61 @@ describe("UITurnController", () => {
     await shutdown;
     expect(calls).toEqual(["settle", "persist-start", "persist-end"]);
   });
+});
+
+const imageReference = {
+    type: "image" as const, imageId: `image-${"a".repeat(64)}`, label: "截图.png",
+    image: {version: 1 as const, sha256: "b".repeat(64), mimeType: "image/png" as const, byteLength: 100, width: 10, height: 5, sourceWidth: 10, sourceHeight: 5},
+};
+
+test("attachments import explicitly, survive queue editing and removal, and plain pasted paths stay text", async () => {
+    const paths: string[][] = [], inputs: unknown[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const h = createHarness({importImages: async selected => {paths.push([...selected]); return [imageReference];},
+        runTurn: async input => {inputs.push(input); await gate;}});
+    const active = h.controller.submit("original");
+    await h.controller.attachmentCommand('/attach "some folder/截图.png"');
+    expect(paths).toEqual([["some folder/截图.png"]]);
+    expect(h.controller.enqueue("fix screenshot")).toBe(true);
+    expect(h.controller.getAttachmentSnapshot().images).toHaveLength(0);
+    expect(h.controller.takeQueuedInputsForEditing("draft", 3)?.value).toBe("fix screenshot\ndraft");
+    expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
+    await h.controller.attachmentCommand("/detach 1");
+    expect(h.controller.getAttachmentSnapshot().images).toHaveLength(0);
+    release(); await active;
+    await h.controller.submit("some folder/截图.png");
+    expect(inputs.at(-1)).toBe("some folder/截图.png");
+    expect(paths).toHaveLength(1);
+});
+
+test("cancel attachment preparation does not cancel the running task or publish late images", async () => {
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => {finish = resolve;});
+    const h = createHarness({importImages: async (_paths, signal) => {
+        await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), {once: true}));
+        return [imageReference];
+    }, runTurn: async () => gate});
+    const turn = h.controller.submit("run");
+    const attachment = h.controller.attachmentCommand("/attach screen.png");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(h.controller.cancel()).toBe(true);
+    await attachment;
+    expect(h.controller.getAttachmentSnapshot()).toEqual({images: [], preparing: false});
+    expect(h.controller.getSnapshot().busy).toBe(true);
+    finish(); await turn;
+});
+
+test("unsupported model preserves attachment draft and text, pure image input reaches runTurn", async () => {
+    const drafts: string[] = [], inputs: unknown[] = [];
+    let supported = false;
+    const h = createHarness({importImages: async () => [imageReference], restoreDraft: text => drafts.push(text),
+        validateImages: () => {if (!supported) throw new Error("unsupported");}, runTurn: async input => {inputs.push(input);}});
+    await h.controller.attachmentCommand("/attach screen.png");
+    expect(await h.controller.submit("inspect")).toBe(false);
+    expect(drafts).toEqual(["inspect"]);
+    expect(h.controller.getAttachmentSnapshot().images).toHaveLength(1);
+    supported = true;
+    expect(await h.controller.submit("")).toBe(true);
+    expect(inputs).toEqual([[{type: "text", text: ""}, imageReference]]);
 });

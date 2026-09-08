@@ -28,8 +28,7 @@ describe("tool result metadata", () => {
   test("解析 binary metadata，path 仅作为兼容字段验证类型", () => {
     const valid = {
       artifactId: "binary-a",
-      toolCallId: "a",
-      toolName: "mcp",
+      origin: {kind: "tool" as const, toolCallId: "a", toolName: "mcp"},
       path: "/legacy/path.bin",
       byteLength: 2,
       originalByteLength: 4,

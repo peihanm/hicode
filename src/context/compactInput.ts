@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import type {Message} from "../llm/types.js";
 import {findCompactTailStart} from "./compactTail.js";
 import {estimateMessageTokens, tokenCountWithEstimation} from "./tokens.js";
@@ -12,7 +13,7 @@ export function selectCompactInput(input: {
 }): {messages: Message[]; coverage: string} {
     const {system, conversation, prompt, budget, sources} = input;
     const labelled = sources ? labelHandoffSources(conversation, sources) : conversation.map(message => {
-        if (message.role !== "assistant") return message;
+        if (message.role !== "assistant") return {...message, content: contentText(message.content)};
         const {reasoning_content: _reasoning, ...visible} = message;
         return visible;
     });
@@ -22,7 +23,7 @@ export function selectCompactInput(input: {
 
     const mandatory = new Set<number>();
     // The prior handoff is part of History, not a second mutable state object.
-    if (conversation[0]?.role === "user" && conversation[0].content.startsWith("<system-reminder>\n本会话已压缩。")) mandatory.add(0);
+    if (conversation[0]?.role === "user" && contentText(conversation[0].content).startsWith("<system-reminder>\n本会话已压缩。")) mandatory.add(0);
     const latest = conversation.findLastIndex(message => message.role === "user");
     if (latest >= 0) mandatory.add(latest);
     const fixed = tokenCountWithEstimation([system, {role: "user", content: prompt}]) +

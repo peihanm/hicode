@@ -63,6 +63,7 @@ export function toolPathInput(
     }
     if (
         toolName === "read_file" ||
+        toolName === "view_image" ||
         toolName === "glob" ||
         toolName === "grep" ||
         toolName === "edit_file" ||

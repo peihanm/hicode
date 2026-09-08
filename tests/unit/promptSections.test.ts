@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import {
   getDoingTasksSection,
@@ -8,7 +9,7 @@ import {VERIFICATION_GUIDANCE} from "../../src/prompt/verification.js";
 
 describe("system prompt task constraints", () => {
   test("生产 Prompt 承认会话持续授权，且不替代执行层审批", () => {
-    const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
+    const content = contentText(createInitialHistory("/project", "test-model")[0]!.content);
     expect(content).toContain("当前会话已明确的持续授权在指定范围内有效");
     expect(content).toContain("一次性批准不扩展为其他任务的长期授权");
     expect(content).toContain("用户撤回或改变范围时遵循最新指令");
@@ -19,7 +20,7 @@ describe("system prompt task constraints", () => {
     expect(content).not.toContain("CLAUDE.md");
   });
   test("生产 Prompt 约束无依据重写，并要求验证前提与结论直接对应", () => {
-    const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
+    const content = contentText(createInitialHistory("/project", "test-model")[0]!.content);
     expect(content).toContain("尚未满足的用户要求、明确的代码缺陷或新的测试/观察证据");
     expect(content).toContain("构建通过不等于功能完成");
     expect(content).toContain("停止依赖该前提的检查并标为未验证；独立检查可以继续");
@@ -47,7 +48,7 @@ describe("system prompt task constraints", () => {
   });
 
   test("Root 生产 prompt 保留验证边界，能力不足不扩大验收", () => {
-    const content = createInitialHistory("/project", "test-model")[0]!.content ?? "";
+    const content = contentText(createInitialHistory("/project", "test-model")[0]!.content);
     expect(content.split(VERIFICATION_GUIDANCE)).toHaveLength(2);
     expect(content).toContain("宿主工具、MCP 或已接入的 Skill");
     expect(content).toContain("没有浏览器入口或入口不可用时，停止该验证分支");

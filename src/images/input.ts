@@ -1,0 +1,50 @@
+import {randomUUID, createHash} from "node:crypto";
+import {z} from "zod";
+import {prepareImage} from "./prepare.js";
+import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart, type MessageContent, type ImageReference} from "./content.js";
+import type {ToolResultStore} from "../toolResults/store.js";
+import {throwIfTurnAborted} from "../runtime/abort.js";
+
+/** Host uploads bytes explicitly. Local paths are handled by the CLI selection boundary. */
+export type TurnInput = string | readonly ({type: "text"; text: string} | {type: "image"; data: Uint8Array})[];
+const inputSchema = z.union([
+    z.string().min(1).max(1_000_000).refine(value => value.trim().length > 0),
+    z.array(z.discriminatedUnion("type", [
+        z.object({type: z.literal("text"), text: z.string().max(1_000_000)}).strict(),
+        z.object({type: z.literal("image"), data: z.instanceof(Uint8Array).refine(value => value.byteLength > 0 && value.byteLength <= 20 * 1024 * 1024)}).strict(),
+    ])).min(1).max(32).refine(parts => parts.some(part => part.type === "image" || part.text.trim().length > 0))
+        .refine(parts => parts.filter(part => part.type === "image").length <= IMAGE_MAX_COUNT)
+        .refine(parts => parts.reduce((sum, part) => sum + (part.type === "text" ? part.text.length : 0), 0) <= 1_000_000)
+        .refine(parts => parts.reduce((sum, part) => sum + (part.type === "image" ? part.data.byteLength : 0), 0) <= 40 * 1024 * 1024),
+]);
+
+/** Copy synchronously before the first await, so callers cannot mutate deferred input. */
+export function snapshotTurnInput(input: TurnInput): TurnInput {
+    const parsed = inputSchema.safeParse(input);
+    if (!parsed.success) throw new Error("无效图文输入：需要非空文本或静态图片 bytes；最多 8 张、单图 20 MiB、输入总图片 40 MiB、文字 100 万字符");
+    return typeof parsed.data === "string" ? parsed.data : parsed.data.map(part => part.type === "text" ? {...part} : {type: "image", data: Buffer.from(part.data)});
+}
+
+export async function importUserInput(input: TurnInput, store: ToolResultStore, supported: boolean, signal: AbortSignal): Promise<MessageContent> {
+    throwIfTurnAborted(signal);
+    if (typeof input === "string") return input;
+    if (input.some(part => part.type === "image") && !supported) throw new Error("当前模型/接口不支持图片输入；请选择已支持的 Qwen 3.8 Flash trial 接口");
+    const inputId = randomUUID();
+    const parts: ContentPart[] = [];
+    let bytes = 0;
+    for (const part of input) {
+        throwIfTurnAborted(signal);
+        if (part.type === "text") {parts.push({...part}); continue;}
+        const prepared = await prepareImage(Buffer.from(part.data), signal);
+        bytes += prepared.data.length;
+        if (bytes > IMAGE_REQUEST_BYTES) throw new Error("归一化图片超过 10 MiB 输入预算");
+        const imageId = `image-${createHash("sha256").update(JSON.stringify(prepared.image)).digest("hex")}`;
+        await store.persistBinary({origin: {kind: "user", inputId}, artifactId: imageId,
+            data: prepared.data, mimeType: prepared.image.mimeType, image: prepared.image});
+        const reference: ImageReference = {type: "image", imageId, image: prepared.image};
+        await store.readImage(reference);
+        parts.push(reference);
+    }
+    throwIfTurnAborted(signal);
+    return parts;
+}

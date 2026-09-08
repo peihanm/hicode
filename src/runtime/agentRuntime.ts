@@ -1,3 +1,4 @@
+import {supportsToolImages} from "../images/capability.js";
 import {type AgentRunner, createAgentRunner} from "../agent/index.js";
 import {type CompactHistoryRunner, createCompactHistoryRunner,} from "../context/compact.js";
 import {createCompactSummaryGenerator} from "../context/compactSummary.js";
@@ -28,8 +29,12 @@ function createProviderRunner(
     const callLLM = createLLMCaller(source);
     const generateSummary = createCompactSummaryGenerator({callLLM});
     const compactHistory = createCompactHistoryRunner({generateSummary});
+    const runner = createAgentRunner({callLLM, compactHistory});
     return {
-        runAgent: createAgentRunner({callLLM, compactHistory}),
+        runAgent: ((userInput, history, onEvent, ctx, inputChannel, options) => {
+            ctx.imageModelSupported = supportsToolImages(source, ctx.model);
+            return runner(userInput, history, onEvent, ctx, inputChannel, options);
+        }) satisfies AgentRunner,
         compactHistory,
     };
 }

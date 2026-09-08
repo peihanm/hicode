@@ -1,3 +1,4 @@
+import type {MessageContent} from "../../images/content.js";
 import {listRewindPoints} from "../../session/fork.js";
 import {type CompactState} from "../../context/index.js";
 import type {PermissionMode} from "../../permissions/index.js";
@@ -20,7 +21,7 @@ interface RestoredCheckpointState {
     permissionMode: PermissionMode;
     collaborationMode: CollaborationMode;
     uiEvents: PersistedUIEvent[];
-    prompt: string;
+    prompt: MessageContent;
 }
 
 export function createUICheckpointActions({

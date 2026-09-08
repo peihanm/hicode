@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {describe, expect, test} from "bun:test";
 import {access, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
@@ -121,7 +122,7 @@ describe("fork subagent", () => {
                 (options) => {
                     expect(options.messages.some((message) =>
                         message.role === "user" &&
-                        message.content.includes("主题为白色")
+                        contentText(message.content).includes("主题为白色")
                     )).toBe(true);
                     expect(options.tools.map((tool) => tool.function.name)).toEqual([
                         "list_files",

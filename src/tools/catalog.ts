@@ -1,3 +1,4 @@
+import {viewImageTool} from "./viewImage/viewImage.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import type {OpenAITool} from "../llm/types.js";
 import {BUILTIN_SUBAGENT_REGISTRY} from "../subagents/registry.js";
@@ -44,6 +45,7 @@ function createBuiltinTools(): Tool[] {
     return [
         listFilesTool,
         readFileTool,
+        viewImageTool,
         writeFileTool,
         editFileTool,
         deleteFileTool,

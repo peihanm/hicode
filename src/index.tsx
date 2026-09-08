@@ -104,6 +104,7 @@ if (cliOptions.forkCheckpointId && cliOptions.resumeMode.kind === "session") {
     await runHeadlessFromCli({
         configuration,
         prompt: cliOptions.printPrompt,
+        images: cliOptions.images,
         permissionMode: cliOptions.permissionMode,
         collaborationMode: cliOptions.collaborationMode,
         resumeMode: cliOptions.resumeMode,
@@ -116,6 +117,7 @@ if (cliOptions.forkCheckpointId && cliOptions.resumeMode.kind === "session") {
             <TerminalCursorAnchorProvider enabled>
                 <Root
                     configuration={configuration}
+                    initialImages={cliOptions.images}
                     initialPermissionMode={cliOptions.permissionMode}
                     initialCollaborationMode={cliOptions.collaborationMode}
                     resumeMode={cliOptions.resumeMode}

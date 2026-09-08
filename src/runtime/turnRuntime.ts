@@ -1,3 +1,4 @@
+import {contentText, type MessageContent} from "../images/content.js";
 import type {AgentEvent, AgentResult} from "../agent/types.js";
 import {
     EMPTY_AGENT_INPUT_CHANNEL,
@@ -36,7 +37,7 @@ export interface RunRootTurnOptions {
     turnId?: string;
     resources: RootRuntimeResources;
     session: RootSessionRuntime;
-    prompt: string;
+    prompt: MessageContent;
     signal: AbortSignal;
     host: ToolContextHost;
     onEvent(event: AgentEvent): void | Promise<void>;
@@ -82,7 +83,7 @@ export function createRootTurnRunnerFactory(
         const turnId = options.turnId ?? randomUUID();
         const releaseHookTurn = resources.holdHookConfiguration();
         let timingEmitted = false;
-        const memoryBaseline=host.getPermissionMode()==="readOnly"||host.getCollaborationMode()==="plan"?undefined:await resources.memory.captureBaseline(session.sessionId,prompt);
+        const memoryBaseline=host.getPermissionMode()==="readOnly"||host.getCollaborationMode()==="plan"?undefined:await resources.memory.captureBaseline(session.sessionId,contentText(prompt));
         const agentOptions: AgentRunOptions = {
             getToolSchemas: resources.toolRuntime.getToolSchemas,
             executeTool: resources.toolRuntime.executeTool,
@@ -143,7 +144,7 @@ export function createRootTurnRunnerFactory(
             ctx.canUseTool = (...args) => timing.measure("approval", () => host.canUseTool(...args));
             ctx.onToolExecution = phase => timing.change("tool", phase);
             const promptHooks = await ctx.runHook!({hook_event_name: "UserPromptSubmit", session_id: session.sessionId,
-                turn_id: turnId, prompt, permission_mode: initialState.permissionMode});
+                turn_id: turnId, prompt: contentText(prompt), permission_mode: initialState.permissionMode});
             await onHookResult(promptHooks);
 
             result = promptHooks.error ? {reply: `UserPromptSubmit Hook 故障: ${promptHooks.error}`, reason: "hook_error", iterations: 0}
@@ -225,7 +226,7 @@ export function createRootTurnRunnerFactory(
                         session.createSnapshot({
                             ...getSnapshotState(),
                             allowEmpty: true,
-                            summaryHint: prompt,
+                            summaryHint: contentText(prompt),
                         })
                     );
                     sessionSaved = true;

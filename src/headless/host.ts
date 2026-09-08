@@ -1,3 +1,5 @@
+import {importSelectedImages} from "../runtime/imageInput.js";
+import type {MessageContent} from "../images/content.js";
 import {recoverSessionBeforeStart} from "../checkpoints/rewind.js";
 import type {AgentEvent} from "../agent/types.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../hooks/index.js";
@@ -148,11 +150,15 @@ export function createHeadlessRunner(
                     eventHandler
                 );
                 await writeHookIssues(sessionStart);
+                const images = options.images?.length ? await importSelectedImages(options.images, resources, rootSession.createContext({
+                    signal: activeSignal, host: toolContextHost, onEvent: eventHandler, getSnapshotState,
+                })) : [];
+                const prompt: MessageContent = images.length ? [{type: "text", text: options.prompt}, ...images] : options.prompt;
                 turnInvoked = true;
                 const result = await runRootTurn({
                     resources,
                     session: rootSession,
-                    prompt: options.prompt,
+                    prompt,
                     signal: activeSignal,
                     host: toolContextHost,
                     onEvent: eventHandler,

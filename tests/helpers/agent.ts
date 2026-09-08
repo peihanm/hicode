@@ -1,3 +1,4 @@
+import type {MessageContent} from "../../src/images/content.js";
 import {
   createAgentRunner,
   type AgentRunOptions,
@@ -21,7 +22,7 @@ export interface AgentTestOptions
 }
 
 export function runAgentForTest(
-  userInput: string,
+  userInput: MessageContent,
   history: Message[],
   onEvent: (event: AgentEvent) => void,
   ctx: ToolContext,

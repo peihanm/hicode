@@ -1,3 +1,4 @@
+import {contentText, imageReferences, IMAGE_ESTIMATED_TOKENS} from "../images/content.js";
 // Token 估算工具
 // 参考 claude-code src/services/tokenEstimation.ts:203-208 的 roughTokenCountEstimation
 // 和 src/utils/tokens.ts:230-265 的 tokenCountWithEstimation
@@ -29,6 +30,8 @@ export function estimateMessageTokens(msg: Message): number {
     if (typeof msg.content === "string") {
         total += roughTokenCountEstimation(msg.content);
     }
+
+    if (Array.isArray(msg.content)) total += roughTokenCountEstimation(contentText(msg.content)) + imageReferences(msg.content).length * IMAGE_ESTIMATED_TOKENS;
 
     // assistant 的 tool_calls 也要算（JSON 序列化后估算）
     if (msg.role === "assistant" && msg.tool_calls) {

@@ -1,9 +1,10 @@
+import type {MessageContent} from "../images/content.js";
 type AgentInputSource = "user_input" | "task_notification";
 
 export interface QueuedAgentInput {
     id: string;
     source: AgentInputSource;
-    content: string;
+    content: MessageContent;
     /** 仅 task_notification 携带，用于消费任务终态而不解析展示文案。 */
     taskId?: string;
 }

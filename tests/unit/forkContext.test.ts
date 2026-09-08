@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {describe, expect, test} from "bun:test";
 import {buildForkContextSnapshot, createForkResultFiles} from "../../src/subagents/fork.js";
 import type {Message} from "../../src/llm/types.js";
@@ -59,7 +60,7 @@ describe("fork context snapshot", () => {
             message.role === "tool" ? message.tool_call_id : ""
         )).toEqual(["fork-frontend", "fork-backend"]);
         expect(results.every((message) =>
-            message.role === "tool" && message.content.includes("父线程继续处理")
+            message.role === "tool" && contentText(message.content).includes("父线程继续处理")
         )).toBe(true);
         expect(history).toHaveLength(3);
     });

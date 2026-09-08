@@ -1,3 +1,4 @@
+import type {MessageContent} from "../images/content.js";
 import type {CompactState} from "../context/index.js";
 import type {CheckpointHead} from "../checkpoints/index.js";
 import type {PersistedUIEvent} from "./uiEvents.js";
@@ -60,7 +61,7 @@ export interface SessionTurnCheckpointEntry {
     cwd: string;
     model: string;
     timestamp: string;
-    prompt: string;
+    prompt: MessageContent;
     conversation: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;
@@ -118,7 +119,7 @@ export interface SaveSessionTurnCheckpointInput {
     checkpointId: string;
     branchId: string;
     parentCheckpointId?: string;
-    prompt: string;
+    prompt: MessageContent;
     history: Message[];
     todos: Todo[];
     permissionMode: PermissionMode;

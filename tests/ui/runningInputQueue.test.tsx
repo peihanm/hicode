@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import {AppForTest} from "../helpers/AppForTest.js";
@@ -26,7 +27,7 @@ describe("running input queue UI", () => {
             ) => {
                 await gate;
                 queued = inputChannel.drainSafeBoundary()
-                    .map((message) => message.content);
+                    .map((message) => contentText(message.content));
                 return {reply: "ok", reason: "completed", iterations: 1};
             }) as AgentRunner;
             const resources = createTestRuntimeResources(cwd);
@@ -69,7 +70,7 @@ describe("running input queue UI", () => {
             ) => {
                 await gate;
                 injected = inputChannel.drainSafeBoundary()
-                    .map((message) => message.content);
+                    .map((message) => contentText(message.content));
                 return {reply: "ok", reason: "completed", iterations: 1};
             }) as AgentRunner;
             const resources = createTestRuntimeResources(cwd);
@@ -140,7 +141,7 @@ describe("running input queue UI", () => {
                     resources={resources}
                     initialSession={initialSession}
                     runAgentImpl={(async (input) => {
-                        inputs.push(input);
+                        inputs.push(contentText(input));
                         return {reply: "ok", reason: "completed", iterations: 1};
                     }) as AgentRunner}
                 />

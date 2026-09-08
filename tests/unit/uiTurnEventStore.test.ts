@@ -424,6 +424,22 @@ describe("UITurnEventStore", () => {
     expect(store.getSnapshot().modelStream?.phase).toBe("content");
   });
 
+  test("连续重试更新根 UI 的原因和次数，恢复输出后清除重试信息", () => {
+    const store = new UITurnEventStore();
+    let notifications = 0;
+    store.subscribe(() => notifications++);
+    for (const attempt of [2, 3]) {
+      store.handleEvent({type: "model_stream_progress", phase: "retrying",
+        outputCharacters: 0, estimatedOutputTokens: 0,
+        retry: {reason: "http", attempt, maxAttempts: 3}});
+      expect(store.getSnapshot().modelStream?.retry?.attempt).toBe(attempt);
+    }
+    expect(notifications).toBe(2);
+    store.handleEvent({type: "model_stream_progress", phase: "content",
+      outputCharacters: 4, estimatedOutputTokens: 1});
+    expect(store.getSnapshot().modelStream?.retry).toBeUndefined();
+  });
+
   test("只持久化成功的 file change", () => {
     const store = new UITurnEventStore();
     const change = createFileChange({

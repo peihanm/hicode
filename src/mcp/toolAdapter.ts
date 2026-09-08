@@ -92,17 +92,12 @@ export function adaptMcpTools(server: McpConnectedServer): {
             isConcurrencySafe: () => annotationReadOnly,
             async execute(args, ctx, invocation) {
                 const result = await server.callTool(originalName, args, ctx.signal);
-                return normalizeMcpResultWithArtifacts(result, async ({
-                                                                          data,
-                                                                          mimeType,
-                                                                          index,
-                                                                      }) => ctx.toolResultStore.persistBinary({
-                    toolCallId: invocation.toolCallId,
-                    toolName: qualifiedName,
-                    data,
-                    mimeType,
-                    artifactId: `${ctx.toolResultStore.resultIdFor(invocation.toolCallId)}-mcp-${index}`,
-                }));
+                return normalizeMcpResultWithArtifacts(result, {
+                    store: ctx.toolResultStore,
+                    origin: {kind: "tool", toolCallId: invocation.toolCallId, toolName: qualifiedName},
+                    imageModelSupported: ctx.imageModelSupported === true,
+                    signal: ctx.signal,
+                });
             },
         };
         tools.push(tool);

@@ -1,3 +1,4 @@
+import {appendContentText, contentText} from "../images/content.js";
 import {toolFileChanges} from "../fileChanges/index.js";
 import {HookControlError, didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
@@ -332,7 +333,7 @@ export async function executeRegisteredTool(
         postEvent,
         postHookResult
     );
-    ctx.fileState.bindOutput(toolCallId, typeof result === "string" ? result : result.content, decorated);
+    ctx.fileState.bindOutput(toolCallId, typeof result === "string" ? result : contentText(result.content), {...decorated, modelContent: contentText(decorated.modelContent)});
     return {
         ...decorated,
         ...(((preHookResult && didRunCommandHook(preHookResult)) || (postHookResult && didRunCommandHook(postHookResult)))
@@ -380,7 +381,7 @@ async function executePostToolHooks({
             ...common,
             tool_response: {
                 outcome: "ok" as const,
-                content: result.modelContent,
+                content: contentText(result.modelContent),
                 ...(persisted ? {persisted} : {}),
             },
         }
@@ -389,7 +390,7 @@ async function executePostToolHooks({
             ...common,
             tool_response: {
                 outcome: "failed" as const,
-                content: result.modelContent,
+                content: contentText(result.modelContent),
                 ...(persisted ? {persisted} : {}),
             },
         };
@@ -419,7 +420,7 @@ function hookDecoratedResult(
     return {
         ...result,
         modelContent: contexts.length > 0
-            ? `${result.modelContent}\n\n${contexts.join("\n\n")}`
+            ? appendContentText(result.modelContent, contexts.join("\n\n"))
             : result.modelContent,
         displayContent: issues.length > 0
             ? `${result.displayContent}\n\nHook 警告:\n${issues.map((issue) => `- ${issue}`).join("\n")}`

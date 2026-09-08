@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import type {PermissionMode} from "../permissions/index.js";
 import {createCompactState} from "../context/index.js";
 import {createInitialHistory} from "../prompt/index.js";
@@ -68,7 +69,7 @@ async function saveConversationState(input: {
         checkpointHead: input.runtime.getHead(),
         gitSession: input.gitSession,
         allowEmpty: true,
-        summaryHint: input.checkpoint.prompt,
+        summaryHint: contentText(input.checkpoint.prompt),
     });
 }
 

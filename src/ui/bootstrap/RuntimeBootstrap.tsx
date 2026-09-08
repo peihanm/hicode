@@ -35,6 +35,7 @@ interface RuntimeBootstrapProps {
     configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;
+    initialImages?: readonly string[];
     session?: LoadedSession;
     onSessionSwitch?: (session: LoadedSession) => void;
 }
@@ -53,10 +54,12 @@ export function createRuntimeBootstrap(
         configuration,
         initialPermissionMode,
         initialCollaborationMode,
+        initialImages,
         session,
         onSessionSwitch,
     }: RuntimeBootstrapProps) {
         const {cwd, settings, storage} = configuration;
+        const initialImageSession = useRef(session?.sessionId ?? "new");
         const {exit} = useApp();
         const pendingRef = useRef<PendingMcpApproval | null>(null);
         const [pending, setPending] = useState<PendingMcpApproval | null>(null);
@@ -208,6 +211,7 @@ export function createRuntimeBootstrap(
                 resumedDraft={ready.session.resumedDraft}
                 initialPermissionMode={initialPermissionMode}
                 initialCollaborationMode={initialCollaborationMode}
+                initialImages={sessionKey === initialImageSession.current ? initialImages : undefined}
                 initialSession={ready.initialSession}
                 registerSessionShutdown={(shutdown) => {
                     sessionShutdownRef.current = shutdown;

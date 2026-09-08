@@ -1,3 +1,4 @@
+import {contentText} from "../../src/images/content.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
@@ -25,7 +26,7 @@ export async function executeTool(
   argsJson: string,
   ctx: ToolContext
 ): Promise<string> {
-  return (
+  return contentText((
     await executeToolResult(name, argsJson, ctx, nextToolCallId())
-  ).modelContent;
+  ).modelContent);
 }

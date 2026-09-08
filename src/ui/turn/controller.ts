@@ -1,3 +1,4 @@
+import {contentText, imageReferences, IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ImageReference, type MessageContent} from "../../images/content.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {Message} from "../../llm/types.js";
 import type {ToolContext} from "../../tools/types.js";
@@ -45,8 +46,11 @@ export interface UITurnControllerDependencies {
     openModel?(): void;
     openPermissions?(): void;
 
-    runTurn(input: string, signal: AbortSignal): Promise<void>;
+    runTurn(input: MessageContent, signal: AbortSignal): Promise<void>;
 
+    importImages(paths: readonly string[], signal: AbortSignal): Promise<ImageReference[]>;
+    validateImages(content: MessageContent): void;
+    restoreDraft(text: string): void;
     messageQueue: RuntimeMessageQueue;
 
     now(): number;
@@ -64,6 +68,79 @@ export class UITurnController {
     private immediateSlashSettled: Promise<void> | null = null;
     private snapshot: UITurnStatus = IDLE_STATUS;
     private disposed = false;
+    private attachmentState: {images: readonly ImageReference[]; preparing: boolean} = {images: [], preparing: false};
+    private imageImport: {controller: AbortController; settled: Promise<void>} | undefined;
+    getAttachmentSnapshot = () => this.attachmentState;
+
+    private setAttachments(images: readonly ImageReference[], preparing = false): void {
+        this.attachmentState = {images: structuredClone(images), preparing};
+        for (const listener of this.listeners) {try {listener();} catch {}}
+    }
+
+    restoreAttachments(content: MessageContent): string {
+        this.setAttachments(imageReferences(content));
+        return typeof content === "string" ? content : content.filter(part => part.type === "text").map(part => part.text).join("\n");
+    }
+
+    async attachmentCommand(input: string): Promise<boolean> {
+        const match = /^\/(attach|detach|attachments)(?:\s+([\s\S]*))?$/.exec(input.trim());
+        if (!match) return false;
+        if (this.disposed) return true;
+        if (this.imageImport) {this.dependencies.onUnexpectedError(new Error("图片仍在准备，请稍后或按 Esc 取消")); return true;}
+        const argument = match[2]?.trim();
+        if (match[1] === "attachments") return true;
+        if (match[1] === "detach") {
+            if (argument === "all") this.setAttachments([]);
+            else if (argument && /^[1-9][0-9]{0,2}$/.test(argument) && Number(argument) <= this.attachmentState.images.length)
+                this.setAttachments(this.attachmentState.images.filter((_, index) => index !== Number(argument) - 1));
+            else this.dependencies.onUnexpectedError(new Error("用 /detach <编号> 或 /detach all 移除附件"));
+            return true;
+        }
+        if (!argument) {this.dependencies.onUnexpectedError(new Error("用 /attach <本地图片路径> 添加附件；路径可包含空格")); return true;}
+        await this.addImages([argument.replace(/^(?:"([\s\S]*)"|'([\s\S]*)')$/, (_, double: string | undefined, single: string | undefined) => double ?? single ?? "")]);
+        return true;
+    }
+
+    async addImages(paths: readonly string[]): Promise<void> {
+        if (this.disposed || this.imageImport) return;
+        if (paths.length + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("最多添加 8 张图片")); return;}
+        const controller = createTurnAbortController();
+        this.setAttachments(this.attachmentState.images, true);
+        const settled = (async () => {
+            try {
+                await this.dependencies.initialize();
+                const images = await this.dependencies.importImages(paths, controller.signal);
+                if (controller.signal.aborted || this.disposed) return;
+                const all = [...this.attachmentState.images, ...images];
+                if (all.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 10 MiB 预算");
+                this.setAttachments(all);
+            } catch (error) {if (!controller.signal.aborted) this.dependencies.onUnexpectedError(error);}
+            finally {this.setAttachments(this.attachmentState.images); this.imageImport = undefined;}
+        })();
+        this.imageImport = {controller, settled};
+        await settled;
+    }
+
+    private withAttachments(input: string): MessageContent {
+        return this.attachmentState.images.length ? [{type: "text", text: input}, ...this.attachmentState.images] : input;
+    }
+
+    async submit(input: string): Promise<boolean> {
+        if (/^\/(attach|detach|attachments)(?:\s|$)/.test(input.trim())) return this.attachmentCommand(input);
+        if (this.imageImport) return false;
+        // Slash commands do not consume the pending prompt's attachments.
+        const content = input.trim().startsWith("/") ? input : this.withAttachments(input);
+        try {
+            const images = imageReferences(content);
+            if (images.length > IMAGE_MAX_COUNT || images.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 8 张或 10 MiB，请用 /detach 移除部分图片");
+            this.dependencies.validateImages(content);
+        } catch (error) {
+            this.dependencies.restoreDraft(input); this.dependencies.onUnexpectedError(error); return false;
+        }
+        if (this.disposed || this.snapshot.busy) return false;
+        if (Array.isArray(content)) this.setAttachments([]);
+        return this.submitPrepared(content);
+    }
 
     constructor(private readonly dependencies: UITurnControllerDependencies) {
     }
@@ -72,7 +149,7 @@ export class UITurnController {
         return this.dependencies.now();
     }
 
-    async submit(input: string): Promise<boolean> {
+    private async submitPrepared(input: MessageContent): Promise<boolean> {
         if (this.disposed || !this.guard.reserve()) return false;
         this.publish({busy: true, stopping: false, startedAt: this.now()});
 
@@ -89,11 +166,11 @@ export class UITurnController {
         });
 
         try {
-            this.dependencies.onUserInput(input);
+            this.dependencies.onUserInput(contentText(input));
             await this.dependencies.initialize();
             const history = this.dependencies.getHistory();
 
-            if (input.trim().startsWith("/")) {
+            if (typeof input === "string" && input.trim().startsWith("/")) {
                 const ctx = this.dependencies.createContext(controller.signal);
                 const handled = await this.dependencies.slashCommands.process(input, {
                     history,
@@ -131,7 +208,7 @@ export class UITurnController {
                     const next = this.dependencies.messageQueue.dequeueDeferredTurnInput();
                     if (next && !this.disposed) {
                         queueMicrotask(() => {
-                            void this.submit(next.content);
+                            void this.submitPrepared(next.content);
                         });
                     }
                 }
@@ -157,18 +234,23 @@ export class UITurnController {
             return true;
         }
         try {
+            const content = trimmed.startsWith("/") ? trimmed : this.withAttachments(trimmed);
+            this.dependencies.validateImages(content);
             this.dependencies.messageQueue.enqueueUser(
-                trimmed,
+                content,
                 trimmed.startsWith("/") ? "later" : "next"
             );
+            if (Array.isArray(content)) this.setAttachments([]);
             return true;
         } catch (error) {
+            this.dependencies.restoreDraft(input);
             this.dependencies.onUnexpectedError(error);
             return false;
         }
     }
 
     cancel(reason: TurnAbortReason = "user-cancel"): boolean {
+        if (this.imageImport) {this.imageImport.controller.abort(reason); return true;}
         const active = this.active;
         if (!active || active.controller.signal.aborted) return false;
         this.publish({...this.snapshot, busy: true, stopping: true});
@@ -183,7 +265,9 @@ export class UITurnController {
     ): RestoredQueuedDraft | undefined {
         const queuedInputs = this.dependencies.messageQueue.takeEditableInputs();
         if (queuedInputs.length === 0) return undefined;
-        const queuedText = queuedInputs.join("\n");
+        const images = [...queuedInputs.flatMap(imageReferences), ...this.attachmentState.images];
+        this.setAttachments(images);
+        const queuedText = queuedInputs.map(content => typeof content === "string" ? content : content.filter(part => part.type === "text").map(part => part.text).join("\n")).join("\n");
         const separator = currentInput.length > 0 ? "\n" : "";
         return {
             value: `${queuedText}${separator}${currentInput}`,
@@ -195,6 +279,7 @@ export class UITurnController {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.imageImport?.controller.abort("shutdown");
         const active = this.active;
         if (active && !active.controller.signal.aborted) {
             active.controller.abort("shutdown");
@@ -206,8 +291,9 @@ export class UITurnController {
     }
 
     async waitForSettled(): Promise<void> {
-        while (this.activeTurnSettled || this.immediateSlashSettled) {
+        while (this.activeTurnSettled || this.immediateSlashSettled || this.imageImport) {
             const pending = [
+                this.imageImport?.settled ?? null,
                 this.activeTurnSettled,
                 this.immediateSlashSettled,
             ].filter((item): item is Promise<void> => item !== null);

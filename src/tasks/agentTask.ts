@@ -126,6 +126,7 @@ export async function runAgentTask(
             if (finalStatus === "cancelled") break;
             const queued = task.messageQueue.dequeueNextUserInput();
             if (!queued) break;
+            if (typeof queued.content !== "string") throw new Error("后台 Agent steering 只接受文本");
             nextPrompt = queued.content;
             resetAgentRun(task, task.runCount + 1);
         }

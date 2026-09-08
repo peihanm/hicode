@@ -1,3 +1,4 @@
+import type {ImageReference} from "../images/content.js";
 import {deepseekProvider} from "./providers/deepseek.js";
 import {glmProvider} from "./providers/glm.js";
 import {qwenProvider} from "./providers/qwen.js";
@@ -45,7 +46,8 @@ export function createLLMCaller(
         kind: LLMCallKind,
         signal?: AbortSignal,
         onStreamProgress?: (progress: LLMStreamProgress) => void,
-        onText?: (update: LLMTextUpdate) => void | Promise<void>
+        onText?: (update: LLMTextUpdate) => void | Promise<void>,
+        readImage?: (reference: ImageReference) => Promise<Buffer>
     ): Promise<LLMCallResult> {
         if (!provider.supports(model)) {
             throw new Error(
@@ -62,6 +64,7 @@ export function createLLMCaller(
             signal,
             onStreamProgress,
             onText,
+            readImage,
         }, source);
     };
 }

@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import {dirname} from "node:path";
 import {
     ensurePrivateStorageDirectory, getProjectKey, readPrivateStorageTextFile,
@@ -230,7 +231,7 @@ export function selectSessionMemorySource(storage:PillarStorageLayout,cwd:string
         const block=blocks.read(id);
         if(block.kind!=="message")throw new Error("Memory 来源不是消息");
         const message=block.value;
-        if(!message.content||(message.role==="user"&&message.content.startsWith("<system-reminder>\n本会话已压缩。")))continue;
+        if(!message.content||(message.role==="user"&&contentText(message.content).startsWith("<system-reminder>\n本会话已压缩。")))continue;
         const cost=Buffer.byteLength(JSON.stringify({id,role:message.role,content:message.content}))+1;
         if(bytes+cost>32*1024)continue;
         selected.push(id);bytes+=cost;

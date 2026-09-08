@@ -1,0 +1,51 @@
+import {createHash} from "node:crypto";
+import sharp from "sharp";
+import {throwIfTurnAborted} from "../runtime/abort.js";
+import {IMAGE_MAX_BYTES, imageDescriptorSchema, type ImageDescriptor} from "./content.js";
+
+// libvips exposes pages for WebP, but can treat APNG as its first PNG frame.
+function rejectAnimatedPng(input: Buffer): void {
+    if (!input.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return;
+    let offset = 8;
+    let chunks = 0;
+    while (offset + 12 <= input.length) {
+        if (++chunks > 100_000) throw new Error("PNG chunk 数量超过安全上限");
+        const size = input.readUInt32BE(offset);
+        if (offset + size + 12 > input.length) throw new Error("PNG chunk 不完整");
+        const type = input.toString("ascii", offset + 4, offset + 8);
+        if (type === "acTL") throw new Error("仅支持静态 PNG，不支持 APNG 动画");
+        offset += size + 12;
+        if (type === "IEND") break;
+    }
+}
+
+/** Each invocation owns its decoder; no global cache or sharp settings are changed. */
+export async function prepareImage(input: Buffer, signal: AbortSignal): Promise<{data: Buffer; image: ImageDescriptor}> {
+    throwIfTurnAborted(signal);
+    if (input.length === 0 || input.length > 20 * 1024 * 1024) throw new Error("图片必须为 1 byte–20 MiB");
+    rejectAnimatedPng(input);
+    const decoder = sharp(input, {limitInputPixels: 40_000_000, failOn: "warning"}).timeout({seconds: 10});
+    const cancel = () => decoder.destroy();
+    signal.addEventListener("abort", cancel, {once: true});
+    try {
+        const metadata = await decoder.metadata();
+        if (!metadata.format || !["png", "jpeg", "webp"].includes(metadata.format) || (metadata.pages ?? 1) !== 1) {
+            throw new Error("仅支持静态 PNG/JPEG/WebP；动画、GIF、SVG、HEIC、PDF 不支持");
+        }
+        if (!metadata.width || !metadata.height) throw new Error("无法确定图片尺寸");
+        throwIfTurnAborted(signal);
+        const pipeline = decoder.autoOrient().resize({width: 2048, height: 2048, fit: "inside", withoutEnlargement: true});
+        // Preserve alpha and screenshot text losslessly. JPEG input stays JPEG.
+        const jpeg = metadata.format === "jpeg" && !metadata.hasAlpha;
+        const {data, info} = await (jpeg ? pipeline.jpeg({quality: 90}) : pipeline.png()).toBuffer({resolveWithObject: true});
+        throwIfTurnAborted(signal);
+        if (data.length > IMAGE_MAX_BYTES) throw new Error("归一化图片超过 2 MiB，请提供尺寸更小的图片");
+        const image = imageDescriptorSchema.parse({version: 1, sha256: createHash("sha256").update(data).digest("hex"),
+            mimeType: jpeg ? "image/jpeg" : "image/png", byteLength: data.length, width: info.width, height: info.height,
+            sourceWidth: metadata.width, sourceHeight: metadata.height});
+        return {data, image};
+    } finally {
+        signal.removeEventListener("abort", cancel);
+        decoder.destroy();
+    }
+}

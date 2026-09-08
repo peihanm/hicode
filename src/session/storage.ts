@@ -1,3 +1,4 @@
+import {contentText} from "../images/content.js";
 import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
 import {createFileCheckpointStore} from "../checkpoints/store.js";
@@ -159,7 +160,7 @@ export async function saveSessionTurnCheckpoint(
             model: input.model,
             timestamp: entry.timestamp,
             messageCount: countSessionConversationMessages(conversation),
-            ...(summary.summary ? summary : {summary: normalizeSessionSummaryHint(input.prompt)}),
+            ...(summary.summary ? summary : {summary: normalizeSessionSummaryHint(contentText(input.prompt))}),
         });
     });
 }

@@ -1,3 +1,4 @@
+import {contentText, imageReferenceSchema, messageContentSchema} from "../images/content.js";
 import {z} from "zod";
 import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";
@@ -75,7 +76,7 @@ const toolCallSchema = z.object({
 const messageSchema = z.discriminatedUnion("role", [
     z.object({
         role: z.literal("user"),
-        content: boundedString(MAX_MESSAGE_CONTENT_BYTES),
+        content: z.union([boundedString(MAX_MESSAGE_CONTENT_BYTES), z.array(z.union([z.object({type: z.literal("text"), text: boundedString(MAX_MESSAGE_CONTENT_BYTES)}).strict(), imageReferenceSchema])).min(1).max(32)]),
     }).strict(),
     z.object({
         role: z.literal("assistant"),
@@ -85,7 +86,7 @@ const messageSchema = z.discriminatedUnion("role", [
     }).strict(),
     z.object({
         role: z.literal("tool"),
-        content: boundedString(MAX_MESSAGE_CONTENT_BYTES),
+        content: z.union([boundedString(MAX_MESSAGE_CONTENT_BYTES), z.array(z.union([z.object({type: z.literal("text"), text: boundedString(MAX_MESSAGE_CONTENT_BYTES)}).strict(), imageReferenceSchema])).min(1).max(32)]),
         tool_call_id: idSchema,
     }).strict(),
 ]);
@@ -243,7 +244,7 @@ const sessionTurnCheckpointSchema = z.object({
     checkpointId: idSchema,
     branchId: idSchema,
     parentCheckpointId: idSchema.optional(),
-    prompt: boundedString(MAX_MESSAGE_CONTENT_BYTES),
+    prompt: messageContentSchema,
 }).strict();
 
 const sessionIndexEntrySchema = z.object({
@@ -374,7 +375,7 @@ export function stripSystemMessage(history: Message[]): Message[] {
 
 function getUserText(message: Message): string | null {
     if (message.role !== "user") return null;
-    return normalizeText(message.content);
+    return normalizeText(contentText(message.content));
 }
 
 function isMeaningfulUserText(text: string): boolean {
