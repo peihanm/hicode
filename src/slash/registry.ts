@@ -59,6 +59,11 @@ export function getSlashCommandSuggestions(input: string): SlashCommandSuggestio
             description: cmd.description,
             argumentHint: cmd.argumentHint,
         })),
+        // Attachment commands are consumed by the TUI controller before Slash execution.
+        {name: "attach", description: "添加本地图片附件", argumentHint: "<路径>"},
+        {name: "paste-image", description: "添加本机 macOS 剪贴板图片"},
+        {name: "attachments", description: "查看图片附件"},
+        {name: "detach", description: "移除图片附件", argumentHint: "<编号|all>"},
     ];
 
     return commands.filter((cmd) => cmd.name.toLowerCase().startsWith(query));

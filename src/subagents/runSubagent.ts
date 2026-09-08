@@ -1,3 +1,4 @@
+import {persistPreparedImage} from "../images/persist.js";
 import {imageReferences} from "../images/content.js";
 import type {HookInput} from "../hooks/types.js";
 import {randomUUID} from "node:crypto";
@@ -231,7 +232,9 @@ export function createSubagentFactories(
                             if (copied.has(ref.imageId)) continue;
                             if (!parentContext.imageAccess) throw new Error("父线程没有图片读取能力");
                             const data = await parentContext.imageAccess.read(ref);
-                            await childToolResultStore.persistBinary({origin: {kind: "tool", toolCallId: request.parentToolCallId, toolName: "agent"}, artifactId: ref.imageId, data, mimeType: ref.image.mimeType, image: ref.image});
+                            const sourceData = await parentContext.imageAccess.readSource(ref);
+                            await persistPreparedImage({store: childToolResultStore, origin: {kind: "tool", toolCallId: request.parentToolCallId, toolName: "agent"},
+                                prepared: {data, image: ref.image}, sourceData, signal: parentContext.signal});
                             copied.add(ref.imageId);
                         }
                     }

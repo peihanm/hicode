@@ -49,6 +49,7 @@ export interface UITurnControllerDependencies {
     runTurn(input: MessageContent, signal: AbortSignal): Promise<void>;
 
     importImages(paths: readonly string[], signal: AbortSignal): Promise<ImageReference[]>;
+    importClipboard(signal: AbortSignal): Promise<ImageReference[]>;
     validateImages(content: MessageContent): void;
     restoreDraft(text: string): void;
     messageQueue: RuntimeMessageQueue;
@@ -83,12 +84,17 @@ export class UITurnController {
     }
 
     async attachmentCommand(input: string): Promise<boolean> {
-        const match = /^\/(attach|detach|attachments)(?:\s+([\s\S]*))?$/.exec(input.trim());
+        const match = /^\/(attach|detach|attachments|paste-image)(?:\s+([\s\S]*))?$/.exec(input.trim());
         if (!match) return false;
         if (this.disposed) return true;
         if (this.imageImport) {this.dependencies.onUnexpectedError(new Error("图片仍在准备，请稍后或按 Esc 取消")); return true;}
         const argument = match[2]?.trim();
         if (match[1] === "attachments") return true;
+        if (match[1] === "paste-image") {
+            if (argument) this.dependencies.onUnexpectedError(new Error("/paste-image 不接受参数，只读取本机图片剪贴板"));
+            else await this.prepareImages(1, signal => this.dependencies.importClipboard(signal));
+            return true;
+        }
         if (match[1] === "detach") {
             if (argument === "all") this.setAttachments([]);
             else if (argument && /^[1-9][0-9]{0,2}$/.test(argument) && Number(argument) <= this.attachmentState.images.length)
@@ -102,14 +108,18 @@ export class UITurnController {
     }
 
     async addImages(paths: readonly string[]): Promise<void> {
+        await this.prepareImages(paths.length, signal => this.dependencies.importImages(paths, signal));
+    }
+
+    private async prepareImages(count: number, prepare: (signal: AbortSignal) => Promise<ImageReference[]>): Promise<void> {
         if (this.disposed || this.imageImport) return;
-        if (paths.length + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("最多添加 8 张图片")); return;}
+        if (count + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("最多添加 8 张图片")); return;}
         const controller = createTurnAbortController();
         this.setAttachments(this.attachmentState.images, true);
         const settled = (async () => {
             try {
                 await this.dependencies.initialize();
-                const images = await this.dependencies.importImages(paths, controller.signal);
+                const images = await prepare(controller.signal);
                 if (controller.signal.aborted || this.disposed) return;
                 const all = [...this.attachmentState.images, ...images];
                 if (all.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 10 MiB 预算");
@@ -126,7 +136,7 @@ export class UITurnController {
     }
 
     async submit(input: string): Promise<boolean> {
-        if (/^\/(attach|detach|attachments)(?:\s|$)/.test(input.trim())) return this.attachmentCommand(input);
+        if (/^\/(attach|detach|attachments|paste-image)(?:\s|$)/.test(input.trim())) return this.attachmentCommand(input);
         if (this.imageImport) return false;
         // Slash commands do not consume the pending prompt's attachments.
         const content = input.trim().startsWith("/") ? input : this.withAttachments(input);

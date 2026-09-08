@@ -1,6 +1,7 @@
+import {imageAssetId} from "../images/identity.js";
 import {constants} from "node:fs";
 import {createHash, randomUUID} from "node:crypto";
-import {imageDescriptorSchema, imageReferenceSchema, type ImageDescriptor, type ImageReference} from "../images/content.js";
+import {storedImageSchema, imageReferenceSchema, type StoredImage, type ImageReference} from "../images/content.js";
 import {chmod, link, lstat, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
 import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock} from "../persistence/index.js";
@@ -370,7 +371,7 @@ export class ToolResultStore {
         data: Buffer;
         mimeType: string;
         artifactId?: string;
-        image?: ImageDescriptor;
+        image?: StoredImage;
     }): Promise<PersistedBinaryArtifact> {
         const origin = binaryOriginSchema.parse(input.origin);
         return this.withMutation(async () => {
@@ -397,7 +398,7 @@ export class ToolResultStore {
                 throw new ToolResultStoreError("tool result session quota exceeded");
             }
             if (input.image) {
-                const image = imageDescriptorSchema.parse(input.image);
+                const image = storedImageSchema.parse(input.image);
                 if (image.byteLength !== input.data.length || image.mimeType !== input.mimeType ||
                     image.sha256 !== createHash("sha256").update(input.data).digest("hex")) throw new ToolResultStoreError("图片内容与元数据不匹配");
                 if (input.data.length > allowed) throw new ToolResultStoreError("图片存储额度不足，未截断或提交图片");
@@ -650,12 +651,21 @@ export class ToolResultStore {
     /** Caller must supply a reference reachable from its own active History/archive. */
     async readImage(reference: ImageReference): Promise<Buffer> {
         imageReferenceSchema.parse(reference);
-        const path = this.imagePath(reference.imageId);
+        return this.readImageAsset(reference.imageId, reference.image);
+    }
+
+    async readImageSource(reference: ImageReference): Promise<Buffer> {
+        imageReferenceSchema.parse(reference);
+        return this.readImageAsset(imageAssetId(reference.image.source), reference.image.source);
+    }
+
+    private async readImageAsset(imageId: string, image: StoredImage): Promise<Buffer> {
+        const path = this.imagePath(imageId);
         const raw = readPrivateStorageTextFile(this.storage, path.slice(0, -4) + ".binary.json", MAX_TOOL_RESULT_METADATA_BYTES);
-        const metadata = raw ? parseBinaryArtifactMetadata(raw, reference.imageId) : null;
-        if (!metadata?.image || JSON.stringify(metadata.image) !== JSON.stringify(reference.image)) throw new ToolResultStoreError("图片引用与存储不一致");
+        const metadata = raw ? parseBinaryArtifactMetadata(raw, imageId) : null;
+        if (!metadata?.image || JSON.stringify(metadata.image) !== JSON.stringify(image)) throw new ToolResultStoreError("图片引用与存储不一致");
         const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-        const content = Buffer.alloc(reference.image.byteLength);
+        const content = Buffer.alloc(image.byteLength);
         try {
             const before = await handle.stat({bigint: true});
             if (!before.isFile() || before.size !== BigInt(content.length)) throw new ToolResultStoreError("图片文件类型或大小无效");
@@ -668,7 +678,7 @@ export class ToolResultStore {
             const after = await handle.stat({bigint: true});
             if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new ToolResultStoreError("图片在读取期间发生变化");
         } finally {await handle.close();}
-        if (content.length !== reference.image.byteLength || createHash("sha256").update(content).digest("hex") !== reference.image.sha256) throw new ToolResultStoreError("图片缺失或完整性校验失败");
+        if (content.length !== image.byteLength || createHash("sha256").update(content).digest("hex") !== image.sha256) throw new ToolResultStoreError("图片缺失或完整性校验失败");
         return content;
     }
 

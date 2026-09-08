@@ -1,3 +1,4 @@
+import {imageAssetId} from "../../src/images/identity.js";
 import {expect, test} from "bun:test";
 import {readdir, readFile, symlink, unlink, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -101,10 +102,14 @@ test("image access follows active archives and rollback, Fork copies assets inde
         const target = createToolResultStore(storage, cwd, fork.sessionId);
         await unlink(f.ctx.toolResultStore.imagePath(ref!.imageId));
         const access = createImageAccess({storage, store: target, history: () => loaded.history, state: () => loaded.compactState!});
+        const original = await f.ctx.toolResultStore.readImageSource(ref!);
+        await unlink(f.ctx.toolResultStore.imagePath(imageAssetId(ref!.image.source)));
         expect(await access.read(ref!)).toBeInstanceOf(Buffer);
+        expect(await access.readSource(ref!)).toEqual(original);
         // Rewinding to a state without that archive revokes ID access even though bytes exist.
         loaded.compactState = createCompactState();
         expect(() => access.find(ref!.imageId)).toThrow("可达引用");
+        await expect(access.readSource(ref!)).rejects.toThrow("可达引用");
         const foreign = createImageAccess({storage, store: target, history: () => [], state: createCompactState});
         expect(() => foreign.find(ref!.imageId)).toThrow();
     });
@@ -279,6 +284,7 @@ test("real Session checkpoint restore revokes future image access while keeping 
             expect((await session.restoreCheckpoint(point.checkpointId)).status).toBe("complete");
             expect(session.messageQueue.list()).toHaveLength(0);
             expect(() => access.find(ref!.imageId)).toThrow("可达引用");
+        await expect(access.readSource(ref!)).rejects.toThrow("可达引用");
             expect((await readFile(session.toolResultStore.imagePath(ref!.imageId))).length).toBe(ref!.image.byteLength);
         } finally {await resources.close();}
     });

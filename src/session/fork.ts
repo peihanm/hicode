@@ -1,3 +1,4 @@
+import {imageAssetId} from "../images/identity.js";
 import {contentText, imageReferences} from "../images/content.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {PermissionMode} from "../permissions/index.js";
@@ -47,8 +48,12 @@ export async function forkSessionConversation(input: {
         replacements.set(path, copied.path);
     }
     for (const reference of [checkpoint.conversation, [{role: "user", content: checkpoint.prompt}], ...archiveMessages].flat().flatMap(message => imageReferences(message.content))) {
-        const path = source.imagePath(reference.imageId);
-        if (!replacements.has(path)) {const copied = await source.copyReferenceTo(path, target); replacements.set(path, copied.path);}
+        await source.readImage(reference);
+        await source.readImageSource(reference);
+        for (const id of [imageAssetId(reference.image.source), reference.imageId]) {
+            const path = source.imagePath(id);
+            if (!replacements.has(path)) {const copied = await source.copyReferenceTo(path, target); replacements.set(path, copied.path);}
+        }
     }
     const replacePaths = (text: string) => {
         for (const [from, to] of replacements) {

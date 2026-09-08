@@ -1,3 +1,5 @@
+import {readClipboardImage} from "../../cli/clipboard.js";
+import {importUserInput} from "../../images/input.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/capability.js";
 import {contentText, imageReferences, type MessageContent} from "../../images/content.js";
@@ -372,6 +374,14 @@ export function useTurnController({
                 },
                 importImages: (paths, signal) => importSelectedImages(paths, resources, rootSession.createContext({signal, host: toolContextHost,
                     onEvent: eventStore.handleEvent, getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()})})),
+                importClipboard: async signal => {
+                    const target = resources.primaryModel.target;
+                    const supported = supportsToolImages(resources.settings.sources[target.source], target.model);
+                    if (!supported) throw new Error("当前模型不支持图片，请先切换模型再读取剪贴板");
+                    const data = await readClipboardImage(signal);
+                    const content = await importUserInput([{type: "image", data}], rootSession.toolResultStore, supported, signal);
+                    return imageReferences(content).map(reference => ({...reference, label: "剪贴板图片"}));
+                },
                 validateImages: content => {
                     const target = resources.primaryModel.target;
                     if (imageReferences(content).length && !supportsToolImages(resources.settings.sources[target.source], target.model))

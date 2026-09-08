@@ -9,6 +9,7 @@ import {imageReferences, type ImageReference} from "./content.js";
 export interface ImageAccess {
     find(imageId: string): ImageReference;
     read(reference: ImageReference): Promise<Buffer>;
+    readSource(reference: ImageReference): Promise<Buffer>;
 }
 
 /** References come from the active branch, never by scanning the asset directory. */
@@ -26,9 +27,13 @@ export function createImageAccess(input: {
         }
         throw new Error("图片 ID 不属于当前会话/恢复分支的可达引用");
     };
-    return {find, async read(reference) {
+    function authorized(reference: ImageReference): ImageReference {
         const allowed = find(reference.imageId);
         if (JSON.stringify(allowed.image) !== JSON.stringify(reference.image)) throw new Error("图片引用元数据不一致");
-        return input.store.readImage(allowed);
-    }};
+        return allowed;
+    }
+    return {find,
+        read: async reference => input.store.readImage(authorized(reference)),
+        readSource: async reference => input.store.readImageSource(authorized(reference)),
+    };
 }

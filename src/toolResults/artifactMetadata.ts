@@ -1,6 +1,6 @@
 import {z} from "zod";
 import type {PersistedBinaryArtifact} from "./types.js";
-import {imageDescriptorSchema} from "../images/content.js";
+import {storedImageSchema} from "../images/content.js";
 
 export interface TextArtifactMetadata {
     resultId: string;
@@ -82,7 +82,7 @@ export function parseBinaryArtifactMetadata(
             return null;
         }
         const origin = binaryOriginSchema.parse(value.origin);
-        const image = value.image === undefined ? undefined : imageDescriptorSchema.parse(value.image);
+        const image = value.image === undefined ? undefined : storedImageSchema.parse(value.image);
         if (image && (!value.complete || image.byteLength !== value.byteLength || image.mimeType !== value.mimeType)) return null;
         return {
             artifactId: expectedArtifactId,

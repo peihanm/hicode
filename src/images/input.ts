@@ -1,7 +1,8 @@
-import {randomUUID, createHash} from "node:crypto";
+import {persistPreparedImage} from "./persist.js";
+import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {prepareImage} from "./prepare.js";
-import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart, type MessageContent, type ImageReference} from "./content.js";
+import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart, type MessageContent} from "./content.js";
 import type {ToolResultStore} from "../toolResults/store.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 
@@ -38,11 +39,8 @@ export async function importUserInput(input: TurnInput, store: ToolResultStore, 
         const prepared = await prepareImage(Buffer.from(part.data), signal);
         bytes += prepared.data.length;
         if (bytes > IMAGE_REQUEST_BYTES) throw new Error("归一化图片超过 10 MiB 输入预算");
-        const imageId = `image-${createHash("sha256").update(JSON.stringify(prepared.image)).digest("hex")}`;
-        await store.persistBinary({origin: {kind: "user", inputId}, artifactId: imageId,
-            data: prepared.data, mimeType: prepared.image.mimeType, image: prepared.image});
-        const reference: ImageReference = {type: "image", imageId, image: prepared.image};
-        await store.readImage(reference);
+        const reference = await persistPreparedImage({store, origin: {kind: "user", inputId},
+            sourceData: Buffer.from(part.data), prepared, signal});
         parts.push(reference);
     }
     throwIfTurnAborted(signal);

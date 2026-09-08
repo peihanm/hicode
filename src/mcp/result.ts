@@ -1,4 +1,4 @@
-import {createHash} from "node:crypto";
+import {persistPreparedImage} from "../images/persist.js";
 import {prepareImage} from "../images/prepare.js";
 import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart} from "../images/content.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
@@ -132,11 +132,8 @@ export async function normalizeMcpResultWithArtifacts(
             }
             preparedBytes += prepared.data.length;
             if (preparedBytes > IMAGE_REQUEST_BYTES) throw new McpToolResultError("MCP 图片归一化后合计超过 10 MiB");
-            const imageId = `image-${createHash("sha256").update(JSON.stringify(prepared.image)).digest("hex")}`;
-            await input.store.persistBinary({origin: input.origin, artifactId: imageId,
-                data: prepared.data, mimeType: prepared.image.mimeType, image: prepared.image});
-            const reference = {type: "image" as const, imageId, image: prepared.image};
-            await input.store.readImage(reference);
+            const reference = await persistPreparedImage({store: input.store, origin: input.origin,
+                sourceData: data, prepared, signal: input.signal});
             parts.push(reference);
             continue;
         }

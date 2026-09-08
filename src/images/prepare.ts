@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
 import sharp from "sharp";
 import {throwIfTurnAborted} from "../runtime/abort.js";
-import {IMAGE_MAX_BYTES, imageDescriptorSchema, type ImageDescriptor} from "./content.js";
+import {IMAGE_MAX_BYTES, imageDescriptorSchema, imageSourceSchema, imageRegionSchema, type ImageDescriptor, type ImageRegion} from "./content.js";
 
 // libvips exposes pages for WebP, but can treat APNG as its first PNG frame.
 function rejectAnimatedPng(input: Buffer): void {
@@ -20,7 +20,7 @@ function rejectAnimatedPng(input: Buffer): void {
 }
 
 /** Each invocation owns its decoder; no global cache or sharp settings are changed. */
-export async function prepareImage(input: Buffer, signal: AbortSignal): Promise<{data: Buffer; image: ImageDescriptor}> {
+export async function prepareImage(input: Buffer, signal: AbortSignal, region?: ImageRegion): Promise<{data: Buffer; image: ImageDescriptor}> {
     throwIfTurnAborted(signal);
     if (input.length === 0 || input.length > 20 * 1024 * 1024) throw new Error("图片必须为 1 byte–20 MiB");
     rejectAnimatedPng(input);
@@ -34,15 +34,24 @@ export async function prepareImage(input: Buffer, signal: AbortSignal): Promise<
         }
         if (!metadata.width || !metadata.height) throw new Error("无法确定图片尺寸");
         throwIfTurnAborted(signal);
-        const pipeline = decoder.autoOrient().resize({width: 2048, height: 2048, fit: "inside", withoutEnlargement: true});
+        const orientation = metadata.orientation ?? 1;
+        const swapped = orientation >= 5;
+        const source = imageSourceSchema.parse({kind: "source", version: 1,
+            sha256: createHash("sha256").update(input).digest("hex"), byteLength: input.length,
+            mimeType: metadata.format === "jpeg" ? "image/jpeg" : metadata.format === "webp" ? "image/webp" : "image/png",
+            width: swapped ? metadata.height : metadata.width, height: swapped ? metadata.width : metadata.height, orientation});
+        const selected = imageRegionSchema.parse(region ?? {x: 0, y: 0, width: source.width, height: source.height});
+        if (selected.x + selected.width > source.width || selected.y + selected.height > source.height)
+            throw new Error("裁剪区域超出方向纠正后的原图尺寸");
+        const pipeline = decoder.autoOrient().extract({left: selected.x, top: selected.y, width: selected.width, height: selected.height}).resize({width: 2048, height: 2048, fit: "inside", withoutEnlargement: true});
         // Preserve alpha and screenshot text losslessly. JPEG input stays JPEG.
         const jpeg = metadata.format === "jpeg" && !metadata.hasAlpha;
         const {data, info} = await (jpeg ? pipeline.jpeg({quality: 90}) : pipeline.png()).toBuffer({resolveWithObject: true});
         throwIfTurnAborted(signal);
         if (data.length > IMAGE_MAX_BYTES) throw new Error("归一化图片超过 2 MiB，请提供尺寸更小的图片");
-        const image = imageDescriptorSchema.parse({version: 1, sha256: createHash("sha256").update(data).digest("hex"),
+        const image = imageDescriptorSchema.parse({kind: "view", version: 2, sha256: createHash("sha256").update(data).digest("hex"),
             mimeType: jpeg ? "image/jpeg" : "image/png", byteLength: data.length, width: info.width, height: info.height,
-            sourceWidth: metadata.width, sourceHeight: metadata.height});
+            sourceWidth: source.width, sourceHeight: source.height, source, region: selected});
         return {data, image};
     } finally {
         signal.removeEventListener("abort", cancel);

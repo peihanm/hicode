@@ -6,17 +6,35 @@ export const IMAGE_REQUEST_BYTES = 10 * 1024 * 1024;
 // Conservative local estimate; not a supplier token formula or billable usage.
 export const IMAGE_ESTIMATED_TOKENS = 8192;
 
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+export const imageRegionSchema = z.object({
+    x: z.number().int().nonnegative(), y: z.number().int().nonnegative(),
+    width: z.number().int().positive(), height: z.number().int().positive(),
+}).strict();
+export type ImageRegion = z.infer<typeof imageRegionSchema>;
+export const imageSourceSchema = z.object({
+    kind: z.literal("source"), version: z.literal(1), sha256: hash,
+    mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
+    byteLength: z.number().int().positive().max(20 * 1024 * 1024),
+    width: z.number().int().positive().max(40_000_000),
+    height: z.number().int().positive().max(40_000_000),
+    orientation: z.number().int().min(1).max(8),
+}).strict().refine(value => value.width * value.height <= 40_000_000);
 export const imageDescriptorSchema = z.object({
-    version: z.literal(1),
-    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    kind: z.literal("view"), version: z.literal(2), sha256: hash,
     mimeType: z.enum(["image/png", "image/jpeg"]),
     byteLength: z.number().int().positive().max(IMAGE_MAX_BYTES),
     width: z.number().int().positive().max(2048),
     height: z.number().int().positive().max(2048),
     sourceWidth: z.number().int().positive().max(40_000_000),
     sourceHeight: z.number().int().positive().max(40_000_000),
-}).strict().refine(value => value.sourceWidth * value.sourceHeight <= 40_000_000);
+    source: imageSourceSchema,
+    region: imageRegionSchema,
+}).strict().refine(value => value.sourceWidth === value.source.width && value.sourceHeight === value.source.height &&
+    value.region.x + value.region.width <= value.source.width && value.region.y + value.region.height <= value.source.height);
 export type ImageDescriptor = z.infer<typeof imageDescriptorSchema>;
+export const storedImageSchema = z.union([imageDescriptorSchema, imageSourceSchema]);
+export type StoredImage = z.infer<typeof storedImageSchema>;
 export const imageReferenceSchema = z.object({
     type: z.literal("image"),
     imageId: z.string().regex(/^image-[a-f0-9]{64}$/),
@@ -35,7 +53,7 @@ export function contentText(content: MessageContent | null | undefined): string 
     if (content == null) return "";
     if (typeof content === "string") return content;
     return content.map(part => part.type === "text" ? part.text
-        : `[图片 ${part.imageId}; ${part.image.mimeType}; ${part.image.width}×${part.image.height}; ${part.image.byteLength} bytes；此文字投影不含像素，需要 view_image(image_id) 重看]`).join("\n");
+        : `[图片 ${part.imageId}; ${part.image.mimeType}; ${part.image.width}×${part.image.height}; ${part.image.byteLength} bytes; 原图 ${part.image.sourceWidth}×${part.image.sourceHeight}; 区域 x=${part.image.region.x},y=${part.image.region.y},w=${part.image.region.width},h=${part.image.region.height}；此文字投影不含像素，需要 view_image(image_id) 重看]`).join("\n");
 }
 
 export function imageReferences(content: MessageContent | null): ImageReference[] {

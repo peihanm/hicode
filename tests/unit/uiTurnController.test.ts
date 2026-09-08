@@ -12,6 +12,7 @@ import type {SlashCommandProcessor} from "../../src/slash/types.js";
 import type {Todo} from "../../src/todos.js";
 
 function createHarness(overrides: {
+  importClipboard?: ConstructorParameters<typeof UITurnController>[0]["importClipboard"];
   importImages?: ConstructorParameters<typeof UITurnController>[0]["importImages"];
   validateImages?: ConstructorParameters<typeof UITurnController>[0]["validateImages"];
   restoreDraft?: ConstructorParameters<typeof UITurnController>[0]["restoreDraft"];
@@ -109,6 +110,7 @@ function createHarness(overrides: {
         }
       }
     }),
+    importClipboard: overrides.importClipboard ?? (async () => []),
     importImages: overrides.importImages ?? (async () => []),
     validateImages: overrides.validateImages ?? (() => {}),
     restoreDraft: overrides.restoreDraft ?? (() => {}),
@@ -552,7 +554,7 @@ describe("UITurnController", () => {
 
 const imageReference = {
     type: "image" as const, imageId: `image-${"a".repeat(64)}`, label: "截图.png",
-    image: {version: 1 as const, sha256: "b".repeat(64), mimeType: "image/png" as const, byteLength: 100, width: 10, height: 5, sourceWidth: 10, sourceHeight: 5},
+    image: {kind: "view" as const, version: 2 as const, source: {kind: "source" as const, version: 1 as const, sha256: "c".repeat(64), mimeType: "image/png" as const, byteLength: 100, width: 10, height: 5, orientation: 1}, region: {x: 0, y: 0, width: 10, height: 5}, sha256: "b".repeat(64), mimeType: "image/png" as const, byteLength: 100, width: 10, height: 5, sourceWidth: 10, sourceHeight: 5},
 };
 
 test("attachments import explicitly, survive queue editing and removal, and plain pasted paths stay text", async () => {
@@ -605,4 +607,39 @@ test("unsupported model preserves attachment draft and text, pure image input re
     supported = true;
     expect(await h.controller.submit("")).toBe(true);
     expect(inputs).toEqual([[{type: "text", text: ""}, imageReference]]);
+});
+
+
+test("explicit clipboard attachment uses the existing queue and ordinary text paste never reads it", async () => {
+    let reads = 0;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const h = createHarness({importClipboard: async () => {reads++; return [imageReference];}, runTurn: async () => gate});
+    const active = h.controller.submit("working");
+    expect(await h.controller.attachmentCommand("a pasted file path.png")).toBe(false);
+    expect(reads).toBe(0);
+    expect(await h.controller.attachmentCommand("/paste-image unexpected")).toBe(true);
+    expect(reads).toBe(0);
+    await h.controller.attachmentCommand("/paste-image");
+    expect(reads).toBe(1); expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
+    await h.controller.attachmentCommand("/detach all");
+    expect(h.controller.getAttachmentSnapshot().images).toEqual([]);
+    await h.controller.attachmentCommand("/paste-image");
+    expect(h.controller.enqueue("查看剪贴板图片")).toBe(true);
+    expect(h.controller.getAttachmentSnapshot().images).toEqual([]);
+    expect(h.controller.takeQueuedInputsForEditing("", 0)?.value).toContain("查看剪贴板图片");
+    expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
+    release(); await active;
+});
+
+test("cancelled clipboard preparation cannot publish an attachment", async () => {
+    const h = createHarness({importClipboard: async signal => {
+        await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), {once: true}));
+        return [imageReference];
+    }});
+    const pending = h.controller.attachmentCommand("/paste-image");
+    await Promise.resolve(); await Promise.resolve();
+    expect(h.controller.getAttachmentSnapshot().preparing).toBe(true);
+    h.controller.cancel(); await pending;
+    expect(h.controller.getAttachmentSnapshot()).toEqual({images: [], preparing: false});
 });
