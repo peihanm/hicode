@@ -1,0 +1,24 @@
+[
+  {
+    "id": "board-deletion-correction",
+    "goal": "实现任务看板的跨列移动、删除列与 undo/redo，不能默认丢弃任务。",
+    "stages": [
+      {"request": "只修改 reducer、删除对话框和相关集成，保留现有数据结构。", "evidence": "首次安装失败：临时缓存不可写", "constraint": "默认不丢弃任务"},
+      {"request": "纠正：允许用户显式选择丢弃；默认仍然必须选择移动去向。", "evidence": "安装后来已成功；不是当前阻塞项", "constraint": "允许显式丢弃，默认必须选择移动去向"},
+      {"request": "重开与 undo/redo 应恢复删除前的任务和列顺序。", "evidence": "reducer 删除/移动/撤销 7/7 通过", "constraint": "撤销恢复列和任务原顺序"},
+      {"request": "过滤只影响展示，不应改变存储顺序和历史。", "evidence": "过滤集成 4/4 通过", "constraint": "过滤不得修改持久状态"},
+      {"request": "核心已验证，修完文案就交付，不重复运行全部检查。", "evidence": "typecheck 和生产构建通过；当前无新代码修改", "constraint": "交付前不无故重复全量验证"}
+    ]
+  },
+  {
+    "id": "runtime-pause-investigation",
+    "goal": "排查切换标签页后的异常跳帧，保留暂停与重新开始行为。",
+    "stages": [
+      {"request": "先查已有代码和失败断言，不启动浏览器。", "evidence": "旧 Chrome 脚本失败：CDP unavailable", "constraint": "没有浏览器工具，不自行启动 Chrome"},
+      {"request": "纠正：掉帧 dt 钳制只限制物理步长，暂停不应推进计时。", "evidence": "发现 pause 分支仍累计 elapsed", "constraint": "暂停时计时和物理都冻结"},
+      {"request": "修正后只跑受影响检查，旧 CDP 错误作为历史保留。", "evidence": "暂停/恢复/visibilitychange 9/9 通过", "constraint": "旧环境失败不作为当前未解决任务"},
+      {"request": "重开时清空能量、碰撞冷却、输入键与临时粒子。", "evidence": "reset 状态清理 10/10 通过", "constraint": "重开不保留任何临时输入状态"},
+      {"request": "报告已验证的核心行为和服务地址，不追加像素探针。", "evidence": "HTTP /、styles.css、game.js 均 200；服务由当前会话托管", "constraint": "如实说明未做浏览器视觉检查"}
+    ]
+  }
+]
