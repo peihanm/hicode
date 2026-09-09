@@ -132,6 +132,8 @@ export function MultilineTextInput({
                                        onSubmit,
                                        width,
                                        placeholder,
+                                       leadingContent = "",
+                                       onBackspaceAtStart,
                                        maxRows = 10,
                                        handleVerticalNavigation = true,
                                        onVerticalBoundary,
@@ -145,6 +147,8 @@ export function MultilineTextInput({
     onSubmit: (value: string) => void;
     width: number;
     placeholder?: string;
+    leadingContent?: string;
+    onBackspaceAtStart?: () => void;
     maxRows?: number;
     handleVerticalNavigation?: boolean;
     onVerticalBoundary?: (
@@ -167,12 +171,15 @@ export function MultilineTextInput({
         setCursor(offset);
     };
     const safeCursor = Math.min(cursor, value.length);
+    // Attachments are a display prefix. Text offsets and submitted values never contain their labels.
+    const displayedValue = leadingContent + value;
+    const displayedCursor = leadingContent.length + safeCursor;
     const contentWidth = Math.max(8, width - 3);
     const rows = useMemo(
-        () => layoutInputRows(value, contentWidth),
-        [contentWidth, value]
+        () => layoutInputRows(displayedValue, contentWidth),
+        [contentWidth, displayedValue]
     );
-    const cursorRow = rowForCursor(rows, safeCursor);
+    const cursorRow = rowForCursor(rows, displayedCursor);
     const firstVisible = Math.max(
         0,
         Math.min(cursorRow - maxRows + 1, rows.length - maxRows)
@@ -241,16 +248,19 @@ export function MultilineTextInput({
         }
         if (key.upArrow || key.downArrow) {
             if (handleVerticalNavigation) {
-                const rows = layoutInputRows(value, contentWidth);
+                const visualValue = leadingContent + value;
+                const visualCursor = leadingContent.length + safeCursor;
+                const rows = layoutInputRows(visualValue, contentWidth);
                 const direction = key.upArrow ? -1 : 1;
-                const currentRow = rowForCursor(rows, safeCursor);
-                if (rows[currentRow + direction]) {
-                    const nextCursor = moveVertically(
-                        value,
-                        safeCursor,
+                const currentRow = rowForCursor(rows, visualCursor);
+                const targetRow = rows[currentRow + direction];
+                if (targetRow && targetRow.end >= leadingContent.length) {
+                    const nextCursor = Math.max(0, moveVertically(
+                        visualValue,
+                        visualCursor,
                         rows,
                         direction
-                    );
+                    ) - leadingContent.length);
                     const range = containingAtomicRange(
                         atomicRanges,
                         nextCursor,
@@ -274,6 +284,7 @@ export function MultilineTextInput({
             return;
         }
         if (key.backspace || key.delete) {
+            if (safeCursor === 0) onBackspaceAtStart?.();
             if (safeCursor > 0) {
                 const atomicRange = containingAtomicRange(
                     atomicRanges,
@@ -316,17 +327,17 @@ export function MultilineTextInput({
             {visibleRows.map((row, visibleIndex) => {
                 const actualIndex = firstVisible + visibleIndex;
                 const hasCursor = actualIndex === cursorRow;
-                const cursorInRow = Math.min(Math.max(safeCursor, row.start), row.end);
-                const before = hasCursor ? value.slice(row.start, cursorInRow) : row.text;
+                const cursorInRow = Math.min(Math.max(displayedCursor, row.start), row.end);
+                const before = hasCursor ? displayedValue.slice(row.start, cursorInRow) : row.text;
                 const cursorEnd = hasCursor
-                    ? nextOffset(value, cursorInRow)
+                    ? nextOffset(displayedValue, cursorInRow)
                     : cursorInRow;
                 const cursorText =
                     hasCursor && cursorInRow < row.end
-                        ? value.slice(cursorInRow, Math.min(cursorEnd, row.end))
+                        ? displayedValue.slice(cursorInRow, Math.min(cursorEnd, row.end))
                         : " ";
                 const after = hasCursor
-                    ? value.slice(Math.min(cursorEnd, row.end), row.end)
+                    ? displayedValue.slice(Math.min(cursorEnd, row.end), row.end)
                     : "";
                 return (
                     <Box key={`${row.start}-${actualIndex}`}>
@@ -341,7 +352,7 @@ export function MultilineTextInput({
                             </Text>
                         )}
                         <Text>{after}</Text>
-                        {hasCursor && !value && placeholder && (
+                        {hasCursor && !displayedValue && placeholder && (
                             <Text color={COLORS.dim}>{placeholder}</Text>
                         )}
                     </Box>

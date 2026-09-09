@@ -1,5 +1,4 @@
 import type {MessageContent} from "../images/content.js";
-import {ImageAttachments} from "./input/ImageAttachments.js";
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
 import {useRef, useCallback, useEffect, useState, type ReactNode} from "react";
 import {Box, Text, useApp, useInput} from "ink";
@@ -223,6 +222,7 @@ export function App({
             }
             if (!turn.busy && isCtrlC) {
                 if (hasInputDraft) {
+                    turn.removeAttachment("all");
                     setInputClearRevision((revision) => revision + 1);
                     return;
                 }
@@ -386,10 +386,13 @@ export function App({
                             </Text>
                         )}
                         <QueuedInputPreview messages={turn.queuedMessages}/>
-                        <ImageAttachments images={turn.attachmentState.images} preparing={turn.attachmentState.preparing}/>
                         <InputBox
                             persistentHistory={resources.inputHistory}
                             onSubmit={handleSubmit}
+                            onPasteImage={turn.pasteImage}
+                            imageCount={turn.attachmentState.images.length}
+                            imagePreparing={turn.attachmentState.preparing}
+                            onRemoveImage={() => turn.removeAttachment("last")}
                             disabled={turn.stopping || turn.attachmentState.preparing}
                             allowEmpty={turn.attachmentState.images.length > 0}
                             cwd={resources.cwd}

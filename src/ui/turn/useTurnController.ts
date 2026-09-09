@@ -2,7 +2,7 @@ import {readClipboardImage} from "../../cli/clipboard.js";
 import {importUserInput} from "../../images/input.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/capability.js";
-import {contentText, imageReferences, type MessageContent} from "../../images/content.js";
+import {imageReferences, type MessageContent} from "../../images/content.js";
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,} from "react";
 import {updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
@@ -366,7 +366,7 @@ export function useTurnController({
                         inputChannel: messageQueue.createAgentInputChannel(
                             (message) => {
                                 if (message.type === "user_input") {
-                                    eventStore.appendUser(contentText(message.content));
+                                    eventStore.appendUser(message.content);
                                 }
                             }
                         ),
@@ -587,6 +587,8 @@ export function useTurnController({
             attachmentState,
             attachmentCommand: turnController.attachmentCommand.bind(turnController),
             addImages: turnController.addImages.bind(turnController),
+            pasteImage: turnController.pasteImage.bind(turnController),
+            removeAttachment: turnController.removeAttachment.bind(turnController),
             submit: turnController.submit.bind(turnController),
             enqueue: turnController.enqueue.bind(turnController),
             cancel: turnController.cancel.bind(turnController),

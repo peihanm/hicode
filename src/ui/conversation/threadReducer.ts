@@ -1,4 +1,5 @@
-import {contentText} from "../../images/content.js";
+import {contentText, type MessageContent} from "../../images/content.js";
+import {userContentText} from "./userContent.js";
 import {toolFileChanges} from "../../fileChanges/index.js";
 import {randomUUID} from "node:crypto";
 import {mergeFileChange} from "../../fileChanges/index.js";
@@ -17,10 +18,10 @@ function randomThreadId(): string {
 // 构造单条 UI 线程（user 输入 / assistant 文本 / 错误信息）
 // ID 生成封装在内部，调用方不直接接触 nextId
 export function createUserThread(
-    text: string,
+    content: MessageContent,
     createId: ThreadIdFactory = randomThreadId
 ): UIThread {
-    return {id: createId(), role: "user", text};
+    return {id: createId(), role: "user", text: userContentText(content)};
 }
 
 export function createAssistantThread(
@@ -48,7 +49,7 @@ export function createTaskNotificationThread(
 }
 
 function textFromUserMessage(message: Extract<Message, { role: "user" }>): string {
-    return contentText(message.content);
+    return userContentText(message.content);
 }
 
 function shouldShowUserText(text: string): boolean {

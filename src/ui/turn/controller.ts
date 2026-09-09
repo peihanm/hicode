@@ -1,4 +1,4 @@
-import {contentText, imageReferences, IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ImageReference, type MessageContent} from "../../images/content.js";
+import {imageReferences, IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ImageReference, type MessageContent} from "../../images/content.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {Message} from "../../llm/types.js";
 import type {ToolContext} from "../../tools/types.js";
@@ -26,7 +26,7 @@ export interface UITurnControllerDependencies {
 
     createContext(signal: AbortSignal): ToolContext;
 
-    onUserInput(input: string): void;
+    onUserInput(input: MessageContent): void;
 
     onEvent(event: AgentEvent): void;
 
@@ -83,6 +83,16 @@ export class UITurnController {
         return typeof content === "string" ? content : content.filter(part => part.type === "text").map(part => part.text).join("\n");
     }
 
+    removeAttachment(target: number | "last" | "all"): void {
+        if (this.disposed || this.imageImport) return;
+        if (target === "all") this.setAttachments([]);
+        else {
+            const index = target === "last" ? this.attachmentState.images.length - 1 : target;
+            if (!Number.isInteger(index) || index < 0 || index >= this.attachmentState.images.length) return;
+            this.setAttachments(this.attachmentState.images.filter((_, position) => position !== index));
+        }
+    }
+
     async attachmentCommand(input: string): Promise<boolean> {
         const match = /^\/(attach|detach|attachments|paste-image)(?:\s+([\s\S]*))?$/.exec(input.trim());
         if (!match) return false;
@@ -96,9 +106,9 @@ export class UITurnController {
             return true;
         }
         if (match[1] === "detach") {
-            if (argument === "all") this.setAttachments([]);
+            if (argument === "all") this.removeAttachment("all");
             else if (argument && /^[1-9][0-9]{0,2}$/.test(argument) && Number(argument) <= this.attachmentState.images.length)
-                this.setAttachments(this.attachmentState.images.filter((_, index) => index !== Number(argument) - 1));
+                this.removeAttachment(Number(argument) - 1);
             else this.dependencies.onUnexpectedError(new Error("用 /detach <编号> 或 /detach all 移除附件"));
             return true;
         }
@@ -111,24 +121,33 @@ export class UITurnController {
         await this.prepareImages(paths.length, signal => this.dependencies.importImages(paths, signal));
     }
 
-    private async prepareImages(count: number, prepare: (signal: AbortSignal) => Promise<ImageReference[]>): Promise<void> {
-        if (this.disposed || this.imageImport) return;
-        if (count + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("最多添加 8 张图片")); return;}
+    pasteImage(path: string, originalText: string): boolean {
+        if (this.disposed || this.imageImport) return false;
+        void this.prepareImages(1, signal => this.dependencies.importImages([path], signal)).then(imported => {
+            if (!imported && !this.disposed) this.dependencies.restoreDraft(originalText);
+        });
+        return true;
+    }
+
+    private async prepareImages(count: number, prepare: (signal: AbortSignal) => Promise<ImageReference[]>): Promise<boolean> {
+        if (this.disposed || this.imageImport) return false;
+        if (count + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("最多添加 8 张图片")); return false;}
         const controller = createTurnAbortController();
         this.setAttachments(this.attachmentState.images, true);
         const settled = (async () => {
             try {
                 await this.dependencies.initialize();
                 const images = await prepare(controller.signal);
-                if (controller.signal.aborted || this.disposed) return;
+                if (controller.signal.aborted || this.disposed) return false;
                 const all = [...this.attachmentState.images, ...images];
                 if (all.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 10 MiB 预算");
                 this.setAttachments(all);
-            } catch (error) {if (!controller.signal.aborted) this.dependencies.onUnexpectedError(error);}
+                return true;
+            } catch (error) {if (!controller.signal.aborted) this.dependencies.onUnexpectedError(error); return false;}
             finally {this.setAttachments(this.attachmentState.images); this.imageImport = undefined;}
         })();
-        this.imageImport = {controller, settled};
-        await settled;
+        this.imageImport = {controller, settled: settled.then(() => {})};
+        return await settled;
     }
 
     private withAttachments(input: string): MessageContent {
@@ -176,7 +195,7 @@ export class UITurnController {
         });
 
         try {
-            this.dependencies.onUserInput(contentText(input));
+            this.dependencies.onUserInput(input);
             await this.dependencies.initialize();
             const history = this.dependencies.getHistory();
 

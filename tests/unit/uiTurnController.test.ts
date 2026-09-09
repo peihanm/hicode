@@ -1,4 +1,4 @@
-import {contentText} from "../../src/images/content.js";
+import {contentText, type MessageContent} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import {
   EMPTY_AGENT_INPUT_CHANNEL,
@@ -36,7 +36,7 @@ function createHarness(overrides: {
   runTurn?: ConstructorParameters<typeof UITurnController>[0]["runTurn"];
 } = {}) {
   const events: AgentEvent[] = [];
-  const users: string[] = [];
+  const users: MessageContent[] = [];
   const errors: unknown[] = [];
   const signals: AbortSignal[] = [];
   const messageQueue = new RuntimeMessageQueue();
@@ -596,7 +596,7 @@ test("cancel attachment preparation does not cancel the running task or publish 
 });
 
 test("unsupported model preserves attachment draft and text, pure image input reaches runTurn", async () => {
-    const drafts: string[] = [], inputs: unknown[] = [];
+    const drafts: string[] = [], inputs: MessageContent[] = [];
     let supported = false;
     const h = createHarness({importImages: async () => [imageReference], restoreDraft: text => drafts.push(text),
         validateImages: () => {if (!supported) throw new Error("unsupported");}, runTurn: async input => {inputs.push(input);}});
@@ -607,6 +607,7 @@ test("unsupported model preserves attachment draft and text, pure image input re
     supported = true;
     expect(await h.controller.submit("")).toBe(true);
     expect(inputs).toEqual([[{type: "text", text: ""}, imageReference]]);
+    expect(h.users).toEqual(inputs);
 });
 
 
@@ -642,4 +643,32 @@ test("cancelled clipboard preparation cannot publish an attachment", async () =>
     expect(h.controller.getAttachmentSnapshot().preparing).toBe(true);
     h.controller.cancel(); await pending;
     expect(h.controller.getAttachmentSnapshot()).toEqual({images: [], preparing: false});
+});
+
+test("pasted image failures and cancellation restore text, preserve attachments, and never read clipboard", async () => {
+    const drafts: string[] = [];
+    let clipboardReads = 0;
+    const h = createHarness({restoreDraft: text => drafts.push(text), importImages: async (paths, signal) => {
+        if (paths[0] === "good.png") return [imageReference];
+        if (paths[0] === "cancel.png") {
+            await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), {once: true}));
+            return [imageReference];
+        }
+        throw new Error("permission denied");
+    }, importClipboard: async () => {clipboardReads++; return [];}});
+    await h.controller.addImages(["good.png"]);
+    expect(h.controller.pasteImage("denied.png", '"denied.png"')).toBe(true);
+    await h.controller.waitForSettled();
+    expect(drafts).toEqual(['"denied.png"']);
+    expect(h.errors).toHaveLength(1);
+    expect(h.controller.pasteImage("cancel.png", "cancel.png")).toBe(true);
+    expect(h.controller.pasteImage("busy.png", "busy.png")).toBe(false);
+    await Promise.resolve(); await Promise.resolve();
+    h.controller.cancel();
+    await h.controller.waitForSettled();
+    expect(drafts).toEqual(['"denied.png"', "cancel.png"]);
+    expect(h.controller.getAttachmentSnapshot()).toEqual({images: [imageReference], preparing: false});
+    expect(clipboardReads).toBe(0);
+    h.controller.dispose();
+    expect(h.controller.pasteImage("after-close.png", "after-close.png")).toBe(false);
 });

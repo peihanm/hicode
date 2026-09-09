@@ -1,4 +1,4 @@
-import {contentText} from "../../images/content.js";
+import {userContentText} from "../conversation/userContent.js";
 import {Box, Text} from "ink";
 import type {RuntimeQueuedMessage} from "../../runtime/messageQueue.js";
 import {layoutInputRows} from "./MultilineTextInput.js";
@@ -31,7 +31,7 @@ export function QueuedInputPreview({
         <Box flexDirection="column">
             {visible.map((message) => {
                 const rows = layoutInputRows(
-                    sanitizePreview(contentText(message.content)),
+                    sanitizePreview(userContentText(message.content)),
                     contentWidth
                 );
                 const shown = rows.slice(0, MAX_VISUAL_LINES_PER_INPUT);

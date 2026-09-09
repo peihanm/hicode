@@ -13,6 +13,65 @@ import {getSlashCommandSuggestions} from "../../src/slash/registry.js";
 afterEach(() => cleanup());
 
 describe("multiline input box", () => {
+  test("图片标签位于输入框内，参与换行但不会写入提交正文或输入历史", async () => {
+    const submitted: string[] = [], saved: string[] = [];
+    let removed = 0;
+    const props = {disabled: false, imageCount: 2, onSubmit: (value: string) => submitted.push(value),
+      onRemoveImage: () => {removed++;}, cwd: "/project", sessionId: "inline-images",
+      persistentHistory: {load: async () => [], append: async (_cwd: string, _session: string, text: string) => {saved.push(text);}}};
+    const instance = render(<InputBox {...props} terminalWidth={60}/>);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(instance.lastFrame()).toContain("❯ [Image #1] [Image #2]");
+    expect(instance.lastFrame()).not.toContain("Ask Pillar");
+    instance.stdin.write("问题 [Image #1]");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    instance.rerender(<InputBox {...props} terminalWidth={24}/>);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    for (const line of (instance.lastFrame() ?? "").split("\n")) expect(line.length).toBeLessThanOrEqual(24);
+    instance.stdin.write("\u001B[A");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    instance.stdin.write("\u001B[B");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    instance.stdin.write("\r");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(submitted).toEqual(["问题 [Image #1]"]);
+    expect(saved).toEqual(submitted);
+    instance.stdin.write("\u007f");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(removed).toBe(1);
+  });
+
+  test("图片自动导入只处理独立路径输入，保留命令参数、正文、历史和被拒绝的输入", async () => {
+    const selected: string[] = [];
+    const submitted: string[] = [];
+    const instance = render(<InputBox disabled={false} onSubmit={value => submitted.push(value)}
+      onPasteImage={path => {selected.push(path); return false;}}/>);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    for (const text of ["请分析 /tmp/a.png", "/attach /tmp/a.png", "/tmp/a.png"]) {
+      instance.stdin.write(text);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      instance.stdin.write("\r");
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(selected).toEqual(["/tmp/a.png"]);
+    expect(submitted).toEqual(["请分析 /tmp/a.png", "/attach /tmp/a.png", "/tmp/a.png"]);
+    instance.stdin.write("\u001B[A");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(selected).toHaveLength(1);
+    expect(instance.lastFrame()).toContain("/tmp/a.png");
+    instance.unmount();
+
+    const command = render(<InputBox disabled={false} onSubmit={() => {}}
+      onPasteImage={path => {selected.push(path); return true;}}/>);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    command.stdin.write("/attach ");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    command.stdin.write("/tmp/b.png");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(selected).toHaveLength(1);
+    expect(command.lastFrame()).toContain("/attach /tmp/b.png");
+  });
+
   test("在输入框上方独立展示运行中和已完成的 turn 总耗时", () => {
     expect(formatTurnDuration(122_999)).toBe("2m 02s");
     expect(formatTurnDuration(3_723_000)).toBe("1h 02m 03s");

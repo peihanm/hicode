@@ -5,6 +5,7 @@ import {getSlashCommandSuggestions} from "../../slash/index.js";
 import {MultilineTextInput, type InputBoundaryReplacement, type InputBoundaryState,} from "./MultilineTextInput.js";
 import type {InputHistoryStore} from "../../session/inputHistory/index.js";
 import {useTerminalWidth} from "../terminalSize.js";
+import {pastedImagePath} from "./pastedImage.js";
 import {
     collapsePromptText,
     EMPTY_PASTE_CAPSULE_STATE,
@@ -84,6 +85,10 @@ export function createInputBox(
 
     return function InputBox({
                                  onSubmit,
+                                 onPasteImage,
+                                 imageCount = 0,
+                                 imagePreparing = false,
+                                 onRemoveImage,
                                  disabled,
                                  allowEmpty = false,
                                  terminalWidth,
@@ -98,6 +103,10 @@ export function createInputBox(
                                  takeQueuedInputsForEditing,
                              }: {
         onSubmit: (input: string) => void;
+        onPasteImage?: (path: string, originalText: string) => boolean;
+        imageCount?: number;
+        imagePreparing?: boolean;
+        onRemoveImage?: () => void;
         disabled: boolean;
         allowEmpty?: boolean;
         terminalWidth?: number;
@@ -194,7 +203,9 @@ export function createInputBox(
 
         const expandedValue = () =>
             expandPasteCapsules(valueRef.current, pasteCapsulesRef.current);
-        const hasDraft = value.length > 0;
+        const hasDraft = value.length > 0 || imageCount > 0;
+        const imageLabels = Array.from({length: imageCount}, (_, index) => `[Image #${index + 1}]`).join(" ");
+        const leadingContent = imageLabels ? `${imageLabels} ` : "";
 
         useEffect(() => {
             onDraftPresenceChange?.(hasDraft);
@@ -331,7 +342,7 @@ export function createInputBox(
                         </Text>
                     )}
                     <Box paddingTop={1}>
-                        <Text color={COLORS.dim}>...</Text>
+                        <Text color={COLORS.dim}>{imagePreparing ? `${SYMBOLS.prompt} ${leadingContent}正在读取图片…` : "..."}</Text>
                     </Box>
                     <Text color={COLORS.dim}>{line}</Text>
                 </Box>
@@ -352,6 +363,8 @@ export function createInputBox(
                         onChange={replaceValue}
                         width={width}
                         placeholder="Ask Pillar to build, inspect, or fix something"
+                        leadingContent={leadingContent}
+                        onBackspaceAtStart={onRemoveImage}
                         handleVerticalNavigation={!showSuggestions}
                         onVerticalBoundary={(direction, state) =>
                             navigateHistory(direction, {
@@ -377,6 +390,12 @@ export function createInputBox(
                             );
                         }}
                         onInsertText={(text, state) => {
+                            const path = text.length > 1 && !state.value.trimStart().startsWith("/")
+                                ? pastedImagePath(text) : undefined;
+                            if (path && onPasteImage?.(path, text)) {
+                                pasteInput.reset();
+                                return state;
+                            }
                             const insertion = pasteInput.insert(
                                 state.value,
                                 state.cursorOffset,

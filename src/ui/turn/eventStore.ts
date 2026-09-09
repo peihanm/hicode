@@ -1,4 +1,5 @@
 import {toolFileChanges} from "../../fileChanges/index.js";
+import type {MessageContent} from "../../images/content.js";
 import {createAssistantThread, createTaskNotificationThread, createUserThread, reduceThreads, threadsFromHistory,} from "../conversation/threadReducer.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {UIThread} from "../conversation/types.js";
@@ -313,7 +314,7 @@ export class UITurnEventStore {
         }
     };
 
-    appendUser(input: string): void {
+    appendUser(input: MessageContent): void {
         this.archiveSettledThreads();
         const thread = createUserThread(input, this.createThreadId);
         const nextSnapshot = {
