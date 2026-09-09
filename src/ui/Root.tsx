@@ -15,6 +15,7 @@ import {COLORS} from "./theme.js";
 import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
+import type {InteractiveShutdown} from "../cli/interactiveShutdown.js";
 
 type RootState =
     | { view: "loading" }
@@ -54,12 +55,14 @@ function createRootState(
 
 export function Root({
                          configuration,
+                         shutdown,
                          initialPermissionMode,
                          initialCollaborationMode,
         initialImages,
                          resumeMode,
                      }: {
     configuration: PillarRootConfiguration;
+    shutdown: InteractiveShutdown;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;
     initialImages?: readonly string[];
@@ -140,6 +143,7 @@ export function Root({
 
     return (
         <RuntimeBootstrap
+            shutdown={shutdown}
             configuration={configuration}
             initialPermissionMode={initialPermissionMode}
             initialCollaborationMode={initialCollaborationMode}

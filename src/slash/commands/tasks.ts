@@ -29,7 +29,7 @@ export const tasksCommand: SlashCommand = {
     busyBehavior: "immediate",
     name: "tasks",
     description: "查看当前 Session 的后台任务",
-    async execute(args, {ctx, onEvent}) {
+    async execute(args, {ctx, onEvent, openTasks}) {
         if (args) {
             await onEvent({
                 type: "assistant_text",
@@ -44,6 +44,7 @@ export const tasksCommand: SlashCommand = {
             });
             return;
         }
+        if (openTasks) {openTasks(); return;}
         const tasks = await ctx.tasks.list();
         await onEvent({
             type: "assistant_text",

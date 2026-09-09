@@ -79,6 +79,45 @@ function createTaskSession(
 }
 
 describe("bash tool contract", () => {
+  test("yield 等待结束只转交同一进程，显式执行超时仍有效", async () => {
+    await withTempProject(async cwd => {
+      const {runtime, tasks} = createTaskSession(cwd);
+      const controller = createTurnAbortController();
+      const ctx = createTestContext(cwd, {tasks, signal: controller.signal});
+      try {
+        const result = await executeToolResult("bash", JSON.stringify({command: "echo once >> marker; sleep 30", yield_time_ms: 100, timeout_ms: 500}), ctx, "yield-call");
+        expect(result.outcome).toBe("ok");
+        expect(contentText(result.modelContent)).toContain("同一进程");
+        const task = (await tasks.list())[0]!;
+        expect(task.status).toBe("running");
+        controller.abort("user-cancel");
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect((await tasks.get(task.id))?.status).toBe("running");
+        for (let i = 0; i < 60 && (await tasks.get(task.id))?.status === "running"; i++) await new Promise(resolve => setTimeout(resolve, 20));
+        expect(await tasks.get(task.id)).toMatchObject({status: "failed", termination: {kind: "timeout", timeoutMs: 500}});
+        expect(await readFile(join(cwd, "marker"), "utf8")).toBe("once\n");
+      } finally {await runtime.close();}
+    });
+  });
+
+  test("yield 短命令直接收集结果，等待期间取消不会遗留任务", async () => {
+    await withTempProject(async cwd => {
+      const {runtime, tasks} = createTaskSession(cwd);
+      try {
+        const ctx = createTestContext(cwd, {tasks});
+        const done = await executeToolResult("bash", JSON.stringify({command: "printf fast", yield_time_ms: 1000}), ctx, "fast-yield");
+        expect(done.outcome).toBe("ok"); expect(contentText(done.modelContent)).toContain("fast");
+        expect(await tasks.pendingNotifications()).toHaveLength(0);
+        const controller = createTurnAbortController();
+        const pending = executeToolResult("bash", JSON.stringify({command: "sleep 30", yield_time_ms: 1000}), {...ctx, signal: controller.signal}, "cancel-yield");
+        await new Promise(resolve => setTimeout(resolve, 40)); controller.abort("user-cancel");
+        expect((await pending).outcome).toBe("interrupted");
+        expect(tasks.hasRunning()).toBe(false);
+        const invalid = await executeToolResult("bash", JSON.stringify({command: "echo bad", run_in_background: true, yield_time_ms: 100}), ctx, "bad-yield");
+        expect(invalid.outcome).toBe("failed");
+      } finally {await runtime.close();}
+    });
+  });
   test("default 自动执行 ready Sandbox 内的普通 Bash", async () => {
     await withTempProject(async (cwd) => {
       const result = await executeToolResult(

@@ -16,6 +16,7 @@ interface SlashCommandContext {
     openResume?: () => void;
     openRewind?: () => void;
     openAgents?: () => void;
+    openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
     openPermissions?: () => void;

@@ -28,6 +28,7 @@ import type {UIThread} from "./conversation/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import {RewindDialog} from "./rewind/RewindDialog.js";
 import {GitDiffDialog} from "./git/GitDiffDialog.js";
+import {TasksDialog} from "./tasks/TasksDialog.js";
 import {AgentsDialog} from "./agents/AgentsDialog.js";
 import {QueuedInputPreview} from "./input/QueuedInputPreview.js";
 import {ModelDialog} from "./model/ModelDialog.js";
@@ -101,12 +102,14 @@ export function App({
         const [showResume, setShowResume] = useState(false);
         const [resumeSessions, setResumeSessions] = useState<SessionIndexEntry[]>([]);
         const [showRewind, setShowRewind] = useState(false);
+        const [showTasks, setShowTasks] = useState(false);
         const [showAgents, setShowAgents] = useState(false);
         const [showGitDiff, setShowGitDiff] = useState(false);
         const [showModel, setShowModel] = useState(false);
         const [showPermissions, setShowPermissions] = useState(false);
         const openResume = useCallback(() => {
             setShowRewind(false);
+            setShowTasks(false);
             setShowAgents(false);
             setShowGitDiff(false);
             setShowModel(false);
@@ -116,6 +119,7 @@ export function App({
         }, [resources.cwd, resources.storage]);
         const openRewind = useCallback(() => {
             setShowResume(false);
+            setShowTasks(false);
             setShowAgents(false);
             setShowGitDiff(false);
             setShowModel(false);
@@ -133,6 +137,7 @@ export function App({
         const openGitDiff = useCallback(() => {
             setShowResume(false);
             setShowRewind(false);
+            setShowTasks(false);
             setShowAgents(false);
             setShowModel(false);
             setShowPermissions(false);
@@ -141,6 +146,7 @@ export function App({
         const openModel = useCallback(() => {
             setShowResume(false);
             setShowRewind(false);
+            setShowTasks(false);
             setShowAgents(false);
             setShowGitDiff(false);
             setShowPermissions(false);
@@ -149,10 +155,15 @@ export function App({
         const openPermissions = useCallback(() => {
             setShowResume(false);
             setShowRewind(false);
+            setShowTasks(false);
             setShowAgents(false);
             setShowGitDiff(false);
             setShowModel(false);
             setShowPermissions(true);
+        }, []);
+        const openTasks = useCallback(() => {
+            setShowResume(false); setShowRewind(false); setShowAgents(false); setShowGitDiff(false);
+            setShowModel(false); setShowPermissions(false); setShowTasks(true);
         }, []);
         const turn = useTurnController({
             resources,
@@ -164,6 +175,7 @@ export function App({
             openResume: requestSessionSwitch ? openResume : undefined,
             openRewind,
             openAgents,
+            openTasks,
             openGitDiff,
             openModel,
             openPermissions,
@@ -206,7 +218,7 @@ export function App({
         useInput((input, key) => {
             if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showResume || showRewind || showAgents || showGitDiff || showModel || showPermissions) return;
+            if (showResume || showRewind || showTasks || showAgents || showGitDiff || showModel || showPermissions) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             const planDialogHandlesEscape =
                 turn.confirmRequest?.toolName === "exit_plan_mode" &&
@@ -263,14 +275,14 @@ export function App({
                     <TranscriptDetails threads={turn.threads}/>
                 )}
 
-                {showTodos && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && !showPermissions && (
+                {showTodos && !showResume && !showRewind && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showResume && !showRewind && !showAgents && !showGitDiff && !showModel && !showPermissions && (
+                {turn.busy && !turn.confirmRequest && !showResume && !showRewind && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <>
                         <AssistantDraftView store={turn.draftStore}/>
                         <ModelStreamStatus
@@ -308,6 +320,8 @@ export function App({
                         }}
                         onClose={() => setShowPermissions(false)}
                     />
+                ) : showTasks && !turn.confirmRequest ? (
+                    <TasksDialog tasks={rootSession.taskSession} stopTask={turn.stopTask} onClose={() => setShowTasks(false)}/>
                 ) : showAgents ? (
                     <AgentsDialog
                         manager={resources.agentDefinitions}

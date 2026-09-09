@@ -132,7 +132,7 @@ describe("Session recovery and storage boundaries", () => {
         });
     });
 
-    test("before-only recovery stays incomplete across repeated restarts", async () => {
+    test("uncertain before-only recovery rejects initialization across repeated restarts", async () => {
         await withTempProject(async (cwd, storage) => {
             const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({checkpointing: {enabled: true}})});
             try {
@@ -145,14 +145,37 @@ describe("Session recovery and storage boundaries", () => {
                 for (let n = 0; n < 3; n++) {
                     const loaded = loadSession(storage, cwd, "before-only", resources.model)!;
                     const resumed = createRootSessionRuntime({resources, resumed: true, seed: {...loaded, compactState: createCompactState()}});
-                    await resumed.initialize();
+                    await expect(resumed.initialize()).rejects.toThrow("写入对账失败");
                     const records = await resumed.fileCheckpoints.listCheckpoints();
-                    expect(records[0]).toMatchObject({status: "interrupted", fileCoverage: "incomplete"});
+                    expect(records[0]).toMatchObject({fileCoverage: "incomplete"});
                     expect(records[0]?.coverageWarnings).toHaveLength(1);
                     expect((await resumed.fileCheckpoints.previewRestore(checkpointId)).conflicts[0]?.reason).toBe("incomplete_checkpoint");
                 }
                 expect(await readFile(path, "utf8")).toBe("possibly committed");
             } finally { await resources.close(); }
+        });
+    });
+
+    test("Session resume reconciles a committed pending file before allowing the next Turn", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({checkpointing: {enabled: true}})});
+            try {
+                const session = createRootSessionRuntime({resources, resumed: false, seed: {sessionId: "committed-pending", history: [], compactState: createCompactState()}});
+                await session.beginCheckpoint("interrupted commit", state);
+                const path = join(cwd, "committed.txt");
+                await session.fileCheckpoints.beforeWrite({afterContent: "committed", path, content: null, toolCallId: "write"});
+                await writeFile(path, "committed");
+                const loaded = loadSession(storage, cwd, "committed-pending", resources.model)!;
+                const resumed = createRootSessionRuntime({resources, resumed: true, seed: {...loaded, compactState: createCompactState()}});
+                await resumed.initialize();
+                expect((await resumed.fileCheckpoints.listCheckpoints())[0]).toMatchObject({status: "interrupted", fileCoverage: "complete"});
+                await resumed.beginCheckpoint("continue", state);
+                expect((await resumed.fileCheckpoints.beforeWrite({path: join(cwd, "next.txt"), content: null, afterContent: "next", toolCallId: "next"})).captured).toBe(true);
+                await writeFile(join(cwd, "next.txt"), "next");
+                expect((await resumed.fileCheckpoints.afterWrite({path: join(cwd, "next.txt"), content: "next", toolCallId: "next"})).captured).toBe(true);
+                await resumed.settleCheckpoint();
+                expect(await readFile(path, "utf8")).toBe("committed");
+            } finally {await resources.close();}
         });
     });
 

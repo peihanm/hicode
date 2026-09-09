@@ -79,6 +79,9 @@ export interface RunningTaskSummary {
 }
 
 export interface StartShellTaskInput {
+    waitMs?: number;
+    timeoutMs?: number;
+    signal?: AbortSignal;
     networkAccess?: NetworkAccessExecution;
     command: string;
     cwd: string;

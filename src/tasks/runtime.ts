@@ -51,13 +51,13 @@ const MAX_TRACKED_TASKS = 32;
 const MAX_RUNNING_AGENT_TASKS_PER_SESSION = 4;
 const SHELL_STARTUP_OBSERVATION_MS = 600;
 
-async function observeShellStartup(completion: Promise<void>): Promise<boolean> {
+async function observeShellStartup(completion: Promise<void>, waitMs = SHELL_STARTUP_OBSERVATION_MS): Promise<boolean> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         return await Promise.race([
             completion.then(() => true),
             new Promise<boolean>((resolve) => {
-                timer = setTimeout(() => resolve(false), SHELL_STARTUP_OBSERVATION_MS);
+                timer = setTimeout(() => resolve(false), waitMs);
             }),
         ]);
     } finally {
@@ -225,6 +225,9 @@ class TaskRuntime implements TaskRuntimeLike {
         input: StartShellTaskInput
     ): Promise<ShellTaskSnapshot> {
         this.assertOpen();
+        if (input.waitMs !== undefined && (!Number.isInteger(input.waitMs) || input.waitMs < 100 || input.waitMs > 30_000)) throw new Error("等待时间必须在 100–30000ms 内");
+        if (input.timeoutMs !== undefined && (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 100 || input.timeoutMs > 600_000)) throw new Error("执行超时必须在 100–600000ms 内");
+        input.signal?.throwIfAborted();
         const releaseSlot = this.reserveTaskSlot();
         try {
             const task = await createShellTask(binding, input);
@@ -240,14 +243,19 @@ class TaskRuntime implements TaskRuntimeLike {
                 await task.store.removeTemporaryFile(task.outputPath).catch(() => undefined);
                 throw error;
             }
+            const onAbort = () => task.controller.abort(input.signal?.reason);
+            input.signal?.addEventListener("abort", onAbort, {once: true});
+            if (input.signal?.aborted) onAbort();
+            task.suppressTerminalNotification = true;
             task.completion = runShellTask(
                 task,
                 input,
                 this.shellRunner,
                 (finished) => this.publish("task_finished", finished)
             );
-            task.suppressTerminalNotification = true;
-            const finishedDuringStartup = await observeShellStartup(task.completion);
+            let finishedDuringStartup: boolean;
+            try {finishedDuringStartup = await observeShellStartup(task.completion, input.waitMs);}
+            finally {input.signal?.removeEventListener("abort", onAbort);}
             if (!finishedDuringStartup) task.suppressTerminalNotification = false;
             let snapshot = await snapshotShell(task);
             if (snapshot.status !== "running") {

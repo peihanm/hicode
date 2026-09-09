@@ -29,11 +29,13 @@ const inputSchema = z.object({
         .min(100)
         .max(600_000)
         .optional()
-        .describe("仅用于前台命令的执行超时，单位毫秒，最大 600000；run_in_background=true 时必须省略，误传会被安全忽略"),
+        .describe("执行超时，单位毫秒，最大 600000。默认前台命令以及使用 yield_time_ms 的命令到期会终止进程；run_in_background=true 时必须省略，误传会被安全忽略"),
     run_in_background: z
         .boolean()
         .optional()
         .describe("长运行服务、GUI 或 watcher 设为 true；立即返回 task ID，之后用 bash_task 查询或停止。timeout_ms 不是启动等待时间，后台任务必须省略；任务会持续到自然退出、显式停止或 Pillar Runtime 关闭"),
+    yield_time_ms: z.number().int().min(100).max(30_000).optional()
+        .describe("可选等待窗口：等待 100–30000ms，已结束直接返回结果，未结束返回 Task ID 并让同一进程继续后台运行。仅交互式或支持后台任务的 Host 可用；timeout_ms 仍是整个进程的执行上限，省略则不设上限。不要同时设置 run_in_background=true"),
     sandbox_permissions: z
         .enum(["use_default", "require_escalated"])
         .optional()
@@ -168,14 +170,14 @@ function shellTaskTermination(task: ShellTaskSnapshot): string {
     return `spawn error: ${termination.error.message}`;
 }
 
-function formatObservedBackgroundTask(task: ShellTaskSnapshot): string {
+function formatObservedBackgroundTask(task: ShellTaskSnapshot, yielded = false): string {
     const heading = task.status === "completed"
         ? "后台命令在启动观察期内已完成。"
         : task.status === "cancelled"
             ? "后台任务在启动观察期内已取消。"
             : "后台任务在启动观察期内已失败。";
     return [
-        heading,
+        yielded ? `命令已结束：${task.status}。` : heading,
         `Task: ${task.id}`,
         `Status: ${task.status}`,
         `Termination: ${shellTaskTermination(task)}`,
@@ -298,8 +300,10 @@ export const bashTool: Tool<typeof inputSchema> = {
                         cwd,
                         timeout_ms,
                         run_in_background,
+                        yield_time_ms,
                         sandbox_permissions,
                     }, ctx, invocation) => {
+        if (run_in_background && yield_time_ms !== undefined) return {content: "yield_time_ms 与 run_in_background=true 不能同时设置", outcome: "failed" as const};
         if (hasShellBackgroundOperator(command)) {
             return {
                 content: backgroundSyntaxMessage(),
@@ -325,7 +329,7 @@ export const bashTool: Tool<typeof inputSchema> = {
             canPrompt: () => ctx.permissionPromptPolicy === "onRequest",
         } : undefined;
         await ctx.fileCheckpoints.markCoverageWarning({code: "bash_side_effects", message: "Bash 的文件变化、依赖安装和外部副作用不由 Checkpoint 保存或撤销"});
-        if (run_in_background) {
+        if (run_in_background || yield_time_ms !== undefined) {
             if (
                 effectiveSandboxPermissions !== "require_escalated" &&
                 ctx.shellRunner.sandboxStatus.kind === "unavailable"
@@ -365,10 +369,11 @@ export const bashTool: Tool<typeof inputSchema> = {
                     sandboxPermissions: effectiveSandboxPermissions,
                     writableRoots: ctx.directoryAccess.listDirectories(),
                     networkAccess,
+                    ...(yield_time_ms !== undefined ? {waitMs: yield_time_ms, timeoutMs: timeout_ms, signal: ctx.signal} : {}),
                 });
                 if (task.status !== "running") {
                     return {
-                        content: formatObservedBackgroundTask(task),
+                        content: formatObservedBackgroundTask(task, yield_time_ms !== undefined),
                         outcome: task.status === "completed"
                             ? "ok" as const
                             : task.status === "cancelled"
@@ -378,12 +383,12 @@ export const bashTool: Tool<typeof inputSchema> = {
                 }
                 return {
                     content: [
-                        `后台任务已启动。`,
+                        yield_time_ms !== undefined ? "命令仍在运行，已转入后台（同一进程）。" : "后台任务已启动。",
                         `Task: ${task.id}`,
                         "Lifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。",
                         `Status: ${task.status}`,
                         `Cwd: ${displayToolPath(ctx.cwd, commandCwd) || "."}`,
-                        ...(timeout_ms !== undefined
+                        ...(timeout_ms !== undefined && yield_time_ms === undefined
                             ? ["已忽略 timeout_ms：后台任务不会使用前台执行超时。"]
                             : []),
                         "使用 bash_task 查询输出、完成状态或停止任务。",

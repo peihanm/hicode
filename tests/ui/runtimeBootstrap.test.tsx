@@ -1,3 +1,4 @@
+import {InteractiveShutdown} from "../../src/cli/interactiveShutdown.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import {useState} from "react";
@@ -27,7 +28,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         requestTrust = options.requestHookTrust;
         return resources;
       }});
-      const instance = render(<RuntimeBootstrap configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
+      const instance = render(<RuntimeBootstrap shutdown={new InteractiveShutdown()} configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
       await new Promise(resolve => setTimeout(resolve, 40));
       expect(instance.lastFrame()).toContain("❯");
       const approval = requestTrust!({projectPath: cwd, hooks: [{event: "Stop", hookId: "a".repeat(64),
@@ -60,7 +61,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         },
       });
       const instance = render(
-        <RuntimeBootstrap
+        <RuntimeBootstrap shutdown={new InteractiveShutdown()}
           configuration={createTestRootConfiguration(
             cwd,
             createTestSettings(),
@@ -86,7 +87,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         },
       });
       const instance = render(
-        <RuntimeBootstrap
+        <RuntimeBootstrap shutdown={new InteractiveShutdown()}
           configuration={createTestRootConfiguration(
             cwd,
             createTestSettings(),
@@ -131,7 +132,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         },
       });
       const instance = render(
-        <RuntimeBootstrap
+        <RuntimeBootstrap shutdown={new InteractiveShutdown()}
           configuration={createTestRootConfiguration(
             cwd,
             createTestSettings(),
@@ -169,7 +170,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         },
       });
       const instance = render(
-        <RuntimeBootstrap
+        <RuntimeBootstrap shutdown={new InteractiveShutdown()}
           configuration={createTestRootConfiguration(
             cwd,
             createTestSettings(),
@@ -193,7 +194,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         createResources: async () => resources,
       });
       const instance = render(
-        <RuntimeBootstrap
+        <RuntimeBootstrap shutdown={new InteractiveShutdown()}
           configuration={createTestRootConfiguration(
             cwd,
             createTestSettings(),
@@ -250,7 +251,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       function SwitchHarness() {
         const [session, setSession] = useState<LoadedSession>();
         return (
-          <RuntimeBootstrap
+          <RuntimeBootstrap shutdown={new InteractiveShutdown()}
             configuration={createTestRootConfiguration(
               cwd,
               settings,
@@ -305,7 +306,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         },
       });
       const instance = render(
-        <RuntimeBootstrap
+        <RuntimeBootstrap shutdown={new InteractiveShutdown()}
           configuration={createTestRootConfiguration(
             cwd,
             createTestSettings(),

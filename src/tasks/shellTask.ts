@@ -51,7 +51,7 @@ export async function runShellTask(
             command: input.command,
             cwd: input.cwd,
             signal: task.controller.signal,
-            timeoutMs: null,
+            timeoutMs: input.timeoutMs ?? null,
             outputFilePath: task.outputPath,
             maxOutputBytes: input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
             previewChars: 0,

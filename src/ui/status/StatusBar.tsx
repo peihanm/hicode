@@ -13,16 +13,7 @@ function getBackgroundTaskLabel(
     summary: RunningTaskSummary | undefined
 ): string | undefined {
     if (!summary || summary.total === 0) return undefined;
-    if (summary.shell === summary.total) {
-        return summary.shell === 1 ? "Service 1" : `Services ${summary.shell}`;
-    }
-    if (summary.memory === summary.total) return "Memory maintenance";
-    if (summary.agent === summary.total) {
-        return summary.agent === 1
-            ? "Background agent 1"
-            : `Background agents ${summary.agent}`;
-    }
-    return `Background ${summary.total}`;
+    return `后台 ${summary.total} · /tasks`;
 }
 
 // 两行底部 chrome：第一行保留完整运行上下文，第二行保留常用快捷键说明。
@@ -77,8 +68,8 @@ export function StatusBar({
     const backgroundTaskLabel = getBackgroundTaskLabel(backgroundTasks);
     const runtimeDetails = [
         ...(mcpTotal > 0 ? [`MCP ${mcpConnected}/${mcpTotal}`] : []),
-        ...(sandboxStatus && sandboxStatus.kind !== "disabled"
-            ? [sandboxStatus.kind === "ready" ? "Sandbox" : "Sandbox unavailable"]
+        ...(sandboxStatus?.kind === "unavailable"
+            ? ["Sandbox unavailable · /sandbox"]
             : []),
         ...(backgroundTaskLabel ? [backgroundTaskLabel] : []),
     ];
@@ -124,9 +115,9 @@ export function StatusBar({
                         {` | MCP ${mcpConnected}/${mcpTotal}`}
                     </Text>
                 )}
-                {sandboxStatus && sandboxStatus.kind !== "disabled" && (
-                    <Text color={sandboxStatus.kind === "ready" ? COLORS.surfaceText : COLORS.error}>
-                        {sandboxStatus.kind === "ready" ? " | Sandbox" : " | Sandbox unavailable"}
+                {sandboxStatus?.kind === "unavailable" && (
+                    <Text color={COLORS.error}>
+                        {" | Sandbox unavailable · /sandbox"}
                     </Text>
                 )}
                 {backgroundTaskLabel && (

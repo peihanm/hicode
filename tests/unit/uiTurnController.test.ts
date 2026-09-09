@@ -1,3 +1,4 @@
+import {createToolRuntime} from "../../src/tools/runtime.js";
 import {contentText, type MessageContent} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import {
@@ -48,6 +49,7 @@ function createHarness(overrides: {
       return { reply: "ok", reason: "completed", iterations: 1 };
     });
   const controller = new UITurnController({
+    toolRuntime: createToolRuntime(),
     getHistory: () => [{ role: "system", content: "system" }],
     createContext: (signal) => {
       signals.push(signal);

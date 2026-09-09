@@ -6,6 +6,8 @@ import type {SlashCommandProcessor} from "../../slash/types.js";
 import {createTurnAbortController, type TurnAbortReason,} from "../../runtime/abort.js";
 import {QueryGuard} from "./queryGuard.js";
 import {RuntimeMessageQueue} from "../../runtime/messageQueue.js";
+import type {ToolRuntime} from "../../tools/runtime.js";
+import {randomUUID} from "node:crypto";
 
 type Listener = () => void;
 
@@ -41,6 +43,8 @@ export interface UITurnControllerDependencies {
     openResume?(): void;
     openRewind?(): void;
     openAgents?(): void;
+    openTasks?(): void;
+    toolRuntime: Pick<ToolRuntime, "executeTool">;
 
     openGitDiff?(): void;
     openModel?(): void;
@@ -60,6 +64,21 @@ export interface UITurnControllerDependencies {
 const IDLE_STATUS: UITurnStatus = {busy: false, stopping: false};
 
 export class UITurnController {
+    private readonly taskActions = new Map<AbortController, Promise<void>>();
+
+    async stopTask(id: string): Promise<void> {
+        if (this.disposed) throw new Error("会话正在关闭");
+        if (this.taskActions.size) throw new Error("正在处理另一项任务操作");
+        const controller = createTurnAbortController();
+        const operation = (async () => {
+            await this.dependencies.initialize();
+            const result = await this.dependencies.toolRuntime.executeTool("task", JSON.stringify({action: "stop", task_id: id}),
+                this.dependencies.createContext(controller.signal), `ui-task-${randomUUID()}`);
+            if (result.outcome !== "ok") throw new Error(result.displayContent);
+        })();
+        this.taskActions.set(controller, operation);
+        try {await operation;} finally {this.taskActions.delete(controller);}
+    }
     private readonly guard = new QueryGuard();
     private readonly listeners = new Set<Listener>();
     private active: { generation: number; controller: AbortController } | null = null;
@@ -208,6 +227,7 @@ export class UITurnController {
                     openResume: this.dependencies.openResume,
                     openRewind: this.dependencies.openRewind,
                     openAgents: this.dependencies.openAgents,
+                    openTasks: this.dependencies.openTasks,
                     openGitDiff: this.dependencies.openGitDiff,
                     openModel: this.dependencies.openModel,
                     openPermissions: this.dependencies.openPermissions,
@@ -308,6 +328,7 @@ export class UITurnController {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        for (const controller of this.taskActions.keys()) controller.abort("shutdown");
         this.imageImport?.controller.abort("shutdown");
         const active = this.active;
         if (active && !active.controller.signal.aborted) {
@@ -320,13 +341,13 @@ export class UITurnController {
     }
 
     async waitForSettled(): Promise<void> {
-        while (this.activeTurnSettled || this.immediateSlashSettled || this.imageImport) {
+        while (this.activeTurnSettled || this.immediateSlashSettled || this.imageImport || this.taskActions.size) {
             const pending = [
                 this.imageImport?.settled ?? null,
                 this.activeTurnSettled,
                 this.immediateSlashSettled,
             ].filter((item): item is Promise<void> => item !== null);
-            await Promise.all(pending);
+            await Promise.allSettled([...pending, ...this.taskActions.values()]);
         }
     }
 
@@ -350,6 +371,7 @@ export class UITurnController {
             openResume: this.dependencies.openResume,
             openRewind: this.dependencies.openRewind,
             openAgents: this.dependencies.openAgents,
+            openTasks: this.dependencies.openTasks,
             openGitDiff: this.dependencies.openGitDiff,
             openModel: this.dependencies.openModel,
             openPermissions: this.dependencies.openPermissions,

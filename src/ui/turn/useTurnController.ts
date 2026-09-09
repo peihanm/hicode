@@ -42,6 +42,7 @@ export interface UseTurnControllerOptions {
     openResume?: () => void;
     openRewind?: () => void;
     openAgents?: () => void;
+    openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
     openPermissions?: () => void;
@@ -75,6 +76,7 @@ export function useTurnController({
                                           openResume,
                                           openRewind,
                                           openAgents,
+                                          openTasks,
                                           openGitDiff,
                                           openModel,
                                           openPermissions,
@@ -334,6 +336,8 @@ export function useTurnController({
                 openResume,
                 openRewind,
                 openAgents,
+                openTasks,
+                toolRuntime,
                 openGitDiff,
                 openModel,
                 openPermissions,
@@ -585,6 +589,7 @@ export function useTurnController({
             availableModels: resources.primaryModel.available,
             confirmRequest,
             attachmentState,
+            stopTask: turnController.stopTask.bind(turnController),
             attachmentCommand: turnController.attachmentCommand.bind(turnController),
             addImages: turnController.addImages.bind(turnController),
             pasteImage: turnController.pasteImage.bind(turnController),

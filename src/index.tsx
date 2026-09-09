@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import {forkSessionConversation} from "./session/fork.js";
 import {render} from "ink";
+import {InteractiveShutdown, bindInteractiveSignals} from "./cli/interactiveShutdown.js";
 import {Root} from "./ui/Root.js";
 import {type CliOptions, loadEnv, parseCliArgs, printHelp} from "./cli/index.js";
 import {runHeadlessFromCli} from "./headless/cli.js";
@@ -111,11 +112,19 @@ if (cliOptions.forkCheckpointId && cliOptions.resumeMode.kind === "session") {
         outputFormat: cliOptions.outputFormat,
     });
 } else {
+    const shutdown = new InteractiveShutdown();
+    let unmount: (() => void) | undefined;
+    let exitRequested = false;
+    const removeSignals = bindInteractiveSignals(shutdown, () => {
+        exitRequested = true;
+        unmount?.();
+    });
     const stdout = createTerminalCursorOutput(process.stdout);
     const app = render(
         <TerminalSizeProvider>
             <TerminalCursorAnchorProvider enabled>
                 <Root
+                    shutdown={shutdown}
                     configuration={configuration}
                     initialImages={cliOptions.images}
                     initialPermissionMode={cliOptions.permissionMode}
@@ -126,12 +135,21 @@ if (cliOptions.forkCheckpointId && cliOptions.resumeMode.kind === "session") {
         </TerminalSizeProvider>,
         {patchConsole: false, exitOnCtrlC: false, stdout}
     );
+    unmount = app.unmount;
+    if (exitRequested) app.unmount();
     try {
         await app.waitUntilExit();
     } finally {
+        const timeout = setTimeout(() => {
+            process.stderr.write("Pillar 退出清理超时，正在结束进程。\n");
+            process.exit(process.exitCode || 1);
+        }, 10_000);
+        await shutdown.close();
+        clearTimeout(timeout);
+        removeSignals();
         stdout.disposeCursorOutput();
     }
-    // 正常卸载会异步收尾；残留 Provider/Hook 句柄不得无限阻塞 Shell。
-    const forceExit = setTimeout(() => process.exit(0), 1_000);
+    // Resource cleanup has completed; unrelated handles must not keep the CLI alive indefinitely.
+    const forceExit = setTimeout(() => process.exit(process.exitCode || 0), 1_000);
     forceExit.unref();
 }

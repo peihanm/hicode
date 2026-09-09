@@ -113,7 +113,11 @@ interface CancelMutationEvent {
 type MutationEvent = BeforeMutationEvent | AfterMutationEvent | CancelMutationEvent;
 
 function mutationKey(root: string, path: string): string {
-    return `${root}\u0000${path}`;
+    return resolve(root, path);
+}
+
+function pendingWriteError(mutation: CheckpointFileMutation): Error {
+    return new Error(`Checkpoint 存在未完成写入: ${resolve(mutation.root, mutation.path)}；请重新加载会话进行对账，重复 Read/Edit 无法解除`);
 }
 
 function isWithin(root: string, target: string): boolean {
@@ -792,12 +796,53 @@ export class FileCheckpointStore {
                 }
                 if (n > anchor || record.status === "active") interrupted.push({...record, status: "interrupted"});
             }
+            // Only reconcile after all Session lineage links have been authenticated.
+            for (const item of lineage) await this.reconcilePendingWrites(item.checkpointId);
             for (const record of interrupted) {
                 const metadata = await this.readRecordMetadata(record.checkpointId);
                 await this.writeRecordMetadata({...metadata, status: "interrupted"});
             }
-            return {head: manifest.head, interrupted};
+            return {head: manifest.head, interrupted: await Promise.all(interrupted.map(record => this.readCheckpointRecord(record.checkpointId)))};
         });
+    }
+
+    private async reconcilePendingWrites(checkpointId: string): Promise<void> {
+        const mutations = await this.readMutations(checkpointId);
+        for (const mutation of mutations) {
+            const pending = mutation.pending;
+            if (!pending) continue;
+            const path = resolve(mutation.root, mutation.path);
+            try {
+                const root = await this.validateStoredRoot(mutation.root);
+                const validated = await validateCheckpointPath(root, path);
+                if (validated.absolutePath !== path) throw new Error("文件父目录已被重定向");
+                const {fingerprint} = await fingerprintFile(path);
+                const committed = fingerprintsEqual(fingerprint, pending.intendedAfter);
+                if (!committed && !fingerprintsEqual(fingerprint, pending.before)) {
+                    throw new Error("当前文件既不匹配写入前内容，也不匹配预期写入结果；已保留文件和待对账记录");
+                }
+                const metadata = await this.readRecordMetadata(checkpointId);
+                const coverageWarnings: CheckpointCoverageWarning[] = [];
+                for (const warning of metadata.coverageWarnings) {
+                    if (warning.code === "checkpoint_after_write_failed" && warning.path) {
+                        if (resolve(warning.path) === path) continue;
+                        try {
+                            const target = await resolveCheckpointPath(this.pathCwd, this.hardBoundary, warning.path);
+                            if (target.absolutePath === path) continue;
+                        } catch { /* An unresolvable warning is not evidence of recovery. */ }
+                    }
+                    coverageWarnings.push(warning);
+                }
+                // Pending itself still blocks restore if this metadata update is interrupted before the journal append.
+                await this.writeRecordMetadata({...metadata, coverageWarnings,
+                    fileCoverage: coverageWarnings.some(warning => !isCheckpointScopeWarning(warning)) ? "incomplete" : "complete"});
+                await this.appendMutationEvent(checkpointId, committed
+                    ? {version: 3, type: "after", root: mutation.root, path: mutation.path, after: fingerprint, toolCallId: pending.toolCallId}
+                    : {version: 3, type: "cancel", root: mutation.root, path: mutation.path, toolCallId: pending.toolCallId});
+            } catch (error) {
+                throw new Error(`Checkpoint 写入对账失败: ${path}；${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
     }
 
     async retainSessionCheckpoints(ids: readonly string[]): Promise<void> {
@@ -830,9 +875,8 @@ export class FileCheckpointStore {
                 throw new Error("Checkpoint head 已变化，必须重新恢复 Session 后才能继续写入");
             }
             for (const item of activeLineage(manifest)) {
-                if ((await this.readMutations(item.checkpointId)).some(mutation => mutation.pending)) {
-                    throw new Error("Checkpoint 存在未完成写入，必须先完成对账");
-                }
+                const pending = (await this.readMutations(item.checkpointId)).find(mutation => mutation.pending);
+                if (pending) throw pendingWriteError(pending);
             }
             const checkpointId = input.checkpointId ?? randomUUID();
             if (manifest.checkpoints.some((item) => item.checkpointId === checkpointId)) {
@@ -925,8 +969,9 @@ export class FileCheckpointStore {
             const manifest = await this.readManifest();
             if (manifest.head.checkpointId !== checkpointId) throw new Error("Checkpoint 不是当前 head");
             const mutations = await this.readMutations(checkpointId);
-            if (mutations.some(mutation => mutation.pending)) throw new Error("Checkpoint 存在未完成写入，必须先完成对账");
-            const previous = mutations.find(mutation => mutation.root === validated.root && mutation.path === validated.relativePath);
+            const pending = mutations.find(mutation => mutation.pending);
+            if (pending) throw pendingWriteError(pending);
+            const previous = mutations.find(mutation => mutationKey(mutation.root, mutation.path) === validated.absolutePath);
             if (!previous && mutations.length >= MAX_CHECKPOINT_MUTATIONS) throw new Error("Checkpoint mutation 数量超过上限");
             const before = input.content === null ? missingFingerprint() : fingerprintContent(input.content, input.mode ?? validated.mode);
             const intendedAfter = input.afterContent === null ? missingFingerprint() : fingerprintContent(input.afterContent, input.mode ?? validated.mode);
@@ -955,7 +1000,7 @@ export class FileCheckpointStore {
         const after = input.content === null ? missingFingerprint() : fingerprintContent(input.content, validated.mode);
         await this.withLock(async () => {
             const mutations = await this.readMutations(checkpointId);
-            const mutation = mutations.find(item => item.root === validated.root && item.path === validated.relativePath);
+            const mutation = mutations.find(item => mutationKey(item.root, item.path) === validated.absolutePath);
             if (mutation?.pending?.toolCallId !== input.toolCallId || !fingerprintsEqual(mutation.pending.intendedAfter, after)) {
                 throw new Error("Checkpoint 完成记录与准备记录不匹配");
             }

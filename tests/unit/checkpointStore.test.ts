@@ -65,8 +65,8 @@ describe("File Checkpoint Store", () => {
 
             const listed = await runtime.listCheckpoints();
             expect(listed[0]?.mutations[0]).toMatchObject({
-                root: canonicalExternalDirectory,
-                path: "new.txt",
+                root: await realpath(root),
+                path: "external/new.txt",
             });
             const restored = await runtime.restoreCode(checkpoint!.checkpointId);
             expect(restored.status).toBe("complete");
@@ -102,14 +102,14 @@ describe("File Checkpoint Store", () => {
 
             const listed = await runtime.listCheckpoints();
             expect(listed[0]?.mutations[0]).toMatchObject({
-                root: canonicalExternalDirectory,
-                path: "shared.txt",
+                root: await realpath(root),
+                path: "external/shared.txt",
             });
             const preview = await runtime.previewRestore(checkpoint!.checkpointId);
             expect(preview.files[0]).toMatchObject({
                 path: join(canonicalExternalDirectory, "shared.txt"),
-                root: canonicalExternalDirectory,
-                relativePath: "shared.txt",
+                root: await realpath(root),
+                relativePath: "external/shared.txt",
                 action: "update",
             });
             const restored = await runtime.restoreCode(checkpoint!.checkpointId);

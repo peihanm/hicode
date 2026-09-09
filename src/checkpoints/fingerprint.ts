@@ -130,9 +130,10 @@ export async function validateCheckpointPath(
         ) {
             throw new Error("Checkpoint 新文件的父目录解析到项目外路径");
         }
+        const canonicalTarget = resolve(canonicalParent, relative(parent, absolutePath));
         return {
-            absolutePath,
-            relativePath: lexicalRelative.split(sep).join("/"),
+            absolutePath: canonicalTarget,
+            relativePath: relative(canonicalCwd, canonicalTarget).split(sep).join("/"),
             exists: false,
         };
     }
@@ -159,19 +160,8 @@ export async function resolveCheckpointPath(
         }
     }
 
-    const existingParent = await nearestExistingParent(
-        resolve(withinBoundary.absolutePath, "..")
-    );
-    const root = await realpath(existingParent);
-    const unresolvedSuffix = relative(existingParent, withinBoundary.absolutePath);
-    if (!isRelativeInside(unresolvedSuffix)) {
-        throw new Error("Checkpoint 无法解析项目外文件路径");
-    }
-    const external = await validateCheckpointPath(
-        root,
-        resolve(root, unresolvedSuffix)
-    );
-    return {...external, root};
+    // A newly created parent must not change the before/after journal identity.
+    return {...withinBoundary, root: await realpath(hardBoundary)};
 }
 
 export async function fingerprintFile(path: string): Promise<{

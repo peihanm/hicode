@@ -1,4 +1,5 @@
 import {recoverSessionBeforeStart} from "../../checkpoints/rewind.js";
+import type {InteractiveShutdown} from "../../cli/interactiveShutdown.js";
 import {useEffect, useRef, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import type {PermissionMode} from "../../permissions/index.js";
@@ -32,6 +33,7 @@ interface PendingHookApproval {
 }
 
 interface RuntimeBootstrapProps {
+    shutdown: InteractiveShutdown;
     configuration: PillarRootConfiguration;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;
@@ -52,6 +54,7 @@ export function createRuntimeBootstrap(
 
     return function RuntimeBootstrap({
         configuration,
+        shutdown,
         initialPermissionMode,
         initialCollaborationMode,
         initialImages,
@@ -73,11 +76,12 @@ export function createRuntimeBootstrap(
         } | null>(null);
         const [error, setError] = useState<string | null>(null);
         const sessionShutdownRef = useRef<(() => Promise<void>) | null>(null);
-        const closedResourcesRef = useRef(new WeakSet<RootRuntimeResources>());
+        const closedResourcesRef = useRef(new WeakMap<RootRuntimeResources, Promise<void>>());
         const closeResources = async (resources?: RootRuntimeResources) => {
-            if (!resources || closedResourcesRef.current.has(resources)) return;
-            closedResourcesRef.current.add(resources);
-            await resources.close();
+            if (!resources) return;
+            let closing = closedResourcesRef.current.get(resources);
+            if (!closing) {closing = resources.close(); closedResourcesRef.current.set(resources, closing);}
+            await closing;
         };
 
         useInput((input, key) => {
@@ -94,10 +98,13 @@ export function createRuntimeBootstrap(
             let disposed = false;
             const controller = new AbortController();
             let ownedResources: RootRuntimeResources | undefined;
+            const abortInitialization = () => controller.abort("shutdown");
+            shutdown.signal.addEventListener("abort", abortInitialization, {once: true});
+            if (shutdown.signal.aborted) abortInitialization();
             sessionShutdownRef.current = null;
             setReady(null);
             setError(null);
-            void (async () => {
+            const initialization = (async () => {
                 const resources = await createResources({
                     configuration,
                     signal: controller.signal,
@@ -143,21 +150,21 @@ export function createRuntimeBootstrap(
                     setError(message.slice(0, 1000));
                 }
             });
-            return () => {
+            const dispose = shutdown.register(async () => {
                 disposed = true;
+                shutdown.signal.removeEventListener("abort", abortInitialization);
                 controller.abort("shutdown");
                 pendingRef.current?.resolve("deny");
                 pendingRef.current = null;
                 pendingHookRef.current?.resolve("deny");
                 pendingHookRef.current = null;
-                const resourcesToClose = ownedResources;
                 const shutdownSession = sessionShutdownRef.current;
-                void (async () => {
-                    await shutdownSession?.();
-                    await closeResources(resourcesToClose);
-                })();
-            };
-        }, [configuration, cwd, session, settings, storage]);
+                ownedResources?.beginShutdown();
+                try {await shutdownSession?.();}
+                finally {await initialization; await closeResources(ownedResources);}
+            });
+            return dispose;
+        }, [configuration, cwd, session, settings, storage, shutdown]);
 
         if (pending) {
             return (
