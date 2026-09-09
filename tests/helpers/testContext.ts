@@ -1,4 +1,4 @@
-import {FileCommitCoordinator} from "../../src/checkpoints/fileCommit.js";
+import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import { createCompactState } from "../../src/context/index.js";
 import type { PermissionDecision, PermissionMode } from "../../src/permissions/index.js";
 import type {PermissionPromptPolicy} from "../../src/permissions/index.js";
@@ -18,7 +18,6 @@ import {
   EMPTY_PROJECT_INSTRUCTIONS,
   type ProjectInstructions,
 } from "../../src/prompt/instructions.js";
-import { createDisabledFileCheckpointRuntime } from "../../src/checkpoints/index.js";
 import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import {
   createShellRunner,
@@ -100,7 +99,6 @@ export function createTestContext(
       toolResultStore:
         options.toolResultStore ??
         createTestToolResultStore(cwd, sessionId),
-      fileCheckpoints: createDisabledFileCheckpointRuntime(),
       directoryAccess: options.directoryAccess,
     },
     host: {

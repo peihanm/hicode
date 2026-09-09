@@ -30,8 +30,8 @@ function createHarness(overrides: {
     additionalUserContextBlocks: readonly string[];
   }>;
   now?: () => number;
-  beginCheckpoint?: (input: string) => Promise<void>;
-  settleCheckpoint?: () => Promise<void>;
+  beginTurn?: (input: string) => Promise<void>;
+  endTurn?: () => Promise<void>;
   initialize?: () => Promise<void>;
   getTodos?: () => readonly Todo[];
   runTurn?: ConstructorParameters<typeof UITurnController>[0]["runTurn"];
@@ -68,7 +68,7 @@ function createHarness(overrides: {
     runTurn: overrides.runTurn ?? (async (input, signal) => {
       signals.push(signal);
       try {
-        await (overrides.beginCheckpoint ?? (async () => {}))(contentText(input));
+        await (overrides.beginTurn ?? (async () => {}))(contentText(input));
         const hookResult = await (
           overrides.runUserPromptHooks ??
           (async () => ({
@@ -106,7 +106,7 @@ function createHarness(overrides: {
         throw error;
       } finally {
         try {
-          await (overrides.settleCheckpoint ?? (async () => {}))();
+          await (overrides.endTurn ?? (async () => {}))();
         } finally {
           await (overrides.persistSnapshot ?? (async () => {}))();
         }
@@ -286,26 +286,26 @@ describe("UITurnController", () => {
 
   test("Slash handled 跳过主 Agent", async () => {
     let slashCalls = 0;
-    let checkpointCalls = 0;
+    let beginCalls = 0;
     const harness = createHarness({
       processSlashCommand: async () => {
         slashCalls += 1;
         return true;
       },
-      beginCheckpoint: async () => {
-        checkpointCalls += 1;
+      beginTurn: async () => {
+        beginCalls += 1;
       },
     });
     await harness.controller.submit("/help");
     expect(slashCalls).toBe(1);
     expect(harness.agentCalls).toBe(0);
-    expect(checkpointCalls).toBe(0);
+    expect(beginCalls).toBe(0);
   });
 
-  test("普通 Prompt 在 Hook 和 Agent 前建立 Checkpoint，结束后先收尾再保存", async () => {
+  test("Controller 等待宿主完成 Hook、Agent 和保存流程", async () => {
     const calls: string[] = [];
     const harness = createHarness({
-      beginCheckpoint: async () => {
+      beginTurn: async () => {
         calls.push("begin");
       },
       runUserPromptHooks: async () => {
@@ -316,7 +316,7 @@ describe("UITurnController", () => {
         calls.push("agent");
         return {reply: "ok", reason: "completed", iterations: 1};
       }) as AgentRunner,
-      settleCheckpoint: async () => {
+      endTurn: async () => {
         calls.push("settle");
       },
       persistSnapshot: async () => {
@@ -342,14 +342,14 @@ describe("UITurnController", () => {
     expect(harness.errors).toHaveLength(1);
   });
 
-  test("Checkpoint 创建失败时 fail closed，仍尝试收尾和保存", async () => {
+  test("Session 输入保存失败时 fail closed，仍尝试收尾和保存", async () => {
     const calls: string[] = [];
     const harness = createHarness({
-      beginCheckpoint: async () => {
+      beginTurn: async () => {
         calls.push("begin");
-        throw new Error("checkpoint unavailable");
+        throw new Error("session storage unavailable");
       },
-      settleCheckpoint: async () => {
+      endTurn: async () => {
         calls.push("settle");
       },
       persistSnapshot: async () => {
@@ -361,24 +361,6 @@ describe("UITurnController", () => {
 
     expect(calls).toEqual(["begin", "settle", "persist"]);
     expect(harness.agentCalls).toBe(0);
-    expect(harness.errors).toHaveLength(1);
-  });
-
-  test("Checkpoint 收尾失败不跳过 Session 保存", async () => {
-    const calls: string[] = [];
-    const harness = createHarness({
-      settleCheckpoint: async () => {
-        calls.push("settle");
-        throw new Error("settle failed");
-      },
-      persistSnapshot: async () => {
-        calls.push("persist");
-      },
-    });
-
-    await harness.controller.submit("完成任务");
-
-    expect(calls).toEqual(["settle", "persist"]);
     expect(harness.errors).toHaveLength(1);
   });
 
@@ -511,7 +493,7 @@ describe("UITurnController", () => {
     ]);
   });
 
-  test("关闭时等待当前 Turn 的 checkpoint 与保存全部收尾", async () => {
+  test("关闭时等待当前 Turn 的 Session 保存全部收尾", async () => {
     let releasePersist!: () => void;
     const persistGate = new Promise<void>((resolve) => {
       releasePersist = resolve;
@@ -527,7 +509,7 @@ describe("UITurnController", () => {
             abortReason: "shutdown",
           }), {once: true});
         })) as AgentRunner,
-      settleCheckpoint: async () => {
+      endTurn: async () => {
         calls.push("settle");
       },
       persistSnapshot: async () => {

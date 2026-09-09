@@ -210,7 +210,6 @@ export type ThreadEventPayload =
         abortReason?: TurnAbortReason;
         iterations: number;
         durationMs: number;
-        checkpointId?: string;
     }
     | {type: "turn.failed"; turnId: string; error: SDKErrorInfo};
 

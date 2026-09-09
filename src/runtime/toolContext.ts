@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import type {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
+import type {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import type {CompactState} from "../context/index.js";
 import type {McpManagerLike} from "../mcp/types.js";
 import type {PermissionMode, PermissionPromptPolicy, PermissionRules,} from "../permissions/index.js";
@@ -12,7 +12,6 @@ import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {FileStateTracker} from "../tools/shared/fileState.js";
 import {EMPTY_PROJECT_INSTRUCTIONS, type ProjectInstructions,} from "../prompt/instructions.js";
-import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
@@ -49,7 +48,6 @@ export interface ToolContextSession {
     compactState: CompactState;
     toolResultStore: ToolResultStore;
     toolResultFiles?: ToolContext["toolResultFiles"];
-    fileCheckpoints: FileCheckpointRuntimeLike;
     allowBackgroundTasks?: boolean;
     hookSession?: HookSessionRuntime;
     directoryAccess?: DirectoryAccessRuntimeLike;
@@ -124,7 +122,6 @@ export function createToolContext({
         fileCommits: resources.fileCommits,
         gitSession: resources.gitSession,
         memoryFiles: resources.memoryFiles,
-        fileCheckpoints: session.fileCheckpoints,
         networkAccess: session.networkAccess,
         directoryAccess: session.directoryAccess ?? createDirectoryAccessRuntime({
             cwd: resources.cwd,

@@ -14,10 +14,7 @@ import {
   listSessionIndex,
   loadLatestSession,
   loadSession,
-  listSessionTurnCheckpoints,
-  loadSessionTurnCheckpoint,
   saveSessionSnapshot,
-  saveSessionTurnCheckpoint,
 } from "../../src/session/index.js";
 import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
@@ -106,7 +103,7 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(4);
+      expect(snapshot.version).toBe(5);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
@@ -189,78 +186,6 @@ describe("session persistence", () => {
     });
   });
 
-  test("turn checkpoint 保存提交前状态且不影响最新 snapshot 恢复", async () => {
-    await withTempProject(async (cwd, storage) => {
-      await saveSessionTurnCheckpoint(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "checkpoint-session",
-        checkpointId: "checkpoint-1",
-        branchId: "branch-1",
-        prompt: "下一步修改",
-        history: [
-          {role: "system", content: "system"},
-          {role: "user", content: "上一轮"},
-          {role: "assistant", content: "上一轮完成"},
-        ],
-        todos: [{
-          content: "保留 todo",
-          status: "pending",
-          activeForm: "正在保留 todo",
-        }],
-        permissionMode: "default",
-        collaborationMode: "build",
-        compactState: createCompactState(),
-        toolDiscovery: {
-          version: 2,
-          loadedNames: ["mcp__fixture__echo"],
-        },
-      });
-      await saveSessionSnapshot(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "checkpoint-session",
-        history: [
-          {role: "system", content: "system"},
-          {role: "user", content: "下一步修改"},
-          {role: "assistant", content: "修改完成"},
-        ],
-        todos: [],
-        permissionMode: "default",
-        collaborationMode: "build",
-        checkpointHead: {
-          branchId: "branch-1",
-          checkpointId: "checkpoint-1",
-        },
-      });
-
-      expect(listSessionTurnCheckpoints(storage, cwd, "checkpoint-session")).toHaveLength(1);
-      expect(
-        loadSessionTurnCheckpoint(storage, cwd, "checkpoint-session", "checkpoint-1")
-      ).toMatchObject({
-        prompt: "下一步修改",
-        conversation: [
-          {role: "user", content: "上一轮"},
-          {role: "assistant", content: "上一轮完成"},
-        ],
-        permissionMode: "default",
-        collaborationMode: "build",
-        toolDiscovery: {
-          version: 2,
-          loadedNames: ["mcp__fixture__echo"],
-        },
-      });
-      expect(loadSession(storage, cwd, "checkpoint-session", "glm-test")).toMatchObject({
-        checkpointHead: {
-          branchId: "branch-1",
-          checkpointId: "checkpoint-1",
-        },
-      });
-      expect(loadSession(storage, cwd, "checkpoint-session", "glm-test")?.history.at(-1))
-        .toEqual({role: "assistant", content: "修改完成"});
-    });
-  });
-
   test("忽略末尾损坏行并恢复最后一个有效 snapshot", async () => {
     await withTempProject(async (cwd, storage) => {
       await saveSessionSnapshot(storage, {
@@ -283,13 +208,10 @@ describe("session persistence", () => {
       const loaded = loadSession(storage, cwd, "session-2", "glm-test");
       expect(loaded?.history.at(-1)).toEqual({ role: "user", content: "保留我" });
 
-      await saveSessionTurnCheckpoint(storage, {
+      await saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "session-2",
-        checkpointId: "after-partial-tail",
-        branchId: "branch-1",
-        prompt: "继续",
         history: loaded?.history ?? [],
         todos: [],
         permissionMode: "default",
@@ -300,7 +222,7 @@ describe("session persistence", () => {
         "utf8"
       )).trim().split("\n");
       expect(repairedLines.every((line) => Boolean(JSON.parse(line)))).toBe(true);
-      expect(repairedLines).toHaveLength(2);
+      expect(repairedLines).toHaveLength(1);
     });
   });
 
@@ -534,20 +456,8 @@ describe("session persistence", () => {
     });
   });
 
-  test("重复保存只替换 snapshot，保留 turn checkpoint", async () => {
+  test("重复保存只保留最新 snapshot", async () => {
     await withTempProject(async (cwd, storage) => {
-      await saveSessionTurnCheckpoint(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "compact-log",
-        checkpointId: "checkpoint-1",
-        branchId: "branch-1",
-        prompt: "修改前",
-        history: [{role: "system", content: "system"}],
-        todos: [],
-        permissionMode: "default",
-        collaborationMode: "build",
-      });
       for (const content of ["first", "latest"]) {
         await saveSessionSnapshot(storage, {
           cwd,
@@ -568,39 +478,10 @@ describe("session persistence", () => {
         "utf8"
       )).trim().split("\n").map((line) => JSON.parse(line) as {type: string});
       expect(lines.map((line) => line.type)).toEqual([
-        "turn_checkpoint",
         "snapshot",
       ]);
       expect(loadSession(storage, cwd, "compact-log", "glm-test")?.history.at(-1))
         .toEqual({role: "user", content: "latest"});
-    });
-  });
-
-  test("Session turn checkpoint 与文件 Checkpoint 一样最多保留 100 个", async () => {
-    await withTempProject(async (cwd, storage) => {
-      for (let index = 0; index < 101; index++) {
-        await saveSessionTurnCheckpoint(storage, {
-          cwd,
-          model: "glm-test",
-          sessionId: "bounded-checkpoints",
-          checkpointId: `checkpoint-${index}`,
-          branchId: "branch-1",
-          prompt: `turn-${index}`,
-          history: [{role: "system", content: "system"}],
-          todos: [],
-          permissionMode: "default",
-        collaborationMode: "build",
-        });
-      }
-
-      const checkpoints = listSessionTurnCheckpoints(
-        storage,
-        cwd,
-        "bounded-checkpoints"
-      );
-      expect(checkpoints).toHaveLength(100);
-      expect(checkpoints[0]?.checkpointId).toBe("checkpoint-1");
-      expect(checkpoints.at(-1)?.checkpointId).toBe("checkpoint-100");
     });
   });
 
@@ -686,14 +567,11 @@ describe("session persistence", () => {
       await symlink(redirectedLog, logPath);
 
       expect(loadSession(storage, cwd, "file-symlink", "glm-test")).toBeNull();
-      await expect(saveSessionTurnCheckpoint(storage, {
+      await expect(saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
         sessionId: "file-symlink",
-        checkpointId: "must-not-follow",
-        branchId: "branch",
-        prompt: "继续",
-        history: [],
+        history: [{role: "user", content: "继续"}],
         todos: [],
         permissionMode: "default",
         collaborationMode: "build",

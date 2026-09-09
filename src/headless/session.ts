@@ -7,7 +7,6 @@ import type {Todo} from "../todos.js";
 import type {Message} from "../llm/types.js";
 import type {PersistedUIEvent} from "../session/index.js";
 import type {HeadlessOptions} from "./types.js";
-import type {CheckpointHead} from "../checkpoints/index.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 import type {GitSessionState} from "../git/index.js";
 
@@ -19,7 +18,6 @@ export interface HeadlessSessionState {
     collaborationMode: CollaborationMode;
     compactState: ReturnType<typeof createCompactState>;
     uiEvents: PersistedUIEvent[];
-    checkpointHead?: CheckpointHead;
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
 }
@@ -64,7 +62,6 @@ export function loadHeadlessSession(
             collaborationMode ?? loaded?.collaborationMode ?? "build",
         compactState: loaded?.compactState ?? createCompactState(),
         uiEvents: loaded?.uiEvents ?? [],
-        checkpointHead: loaded?.checkpointHead,
         toolDiscovery: loaded?.toolDiscovery,
         gitSession: loaded?.gitSession,
     };

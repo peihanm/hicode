@@ -31,9 +31,6 @@ function createFakeTaskRuntime(): {
       getRunningSummary() {
         return {total: 0, shell: 0, agent: 0, memory: 0};
       },
-      hasRunningThatBlocksRewind() {
-        return false;
-      },
       async close() {
         state.closeCount += 1;
       },

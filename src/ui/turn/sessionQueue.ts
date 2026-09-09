@@ -65,7 +65,7 @@ export class SessionSnapshotQueue {
         return next;
     }
 
-    /** Rewind/Fork 等事务边界使用：保持串行，但把持久化失败交还调用方。 */
+    /** 需要传播保存失败的操作使用：保持串行，但把持久化失败交还调用方。 */
     enqueueCritical(input: SaveSessionSnapshotInput): Promise<void> {
         const snapshot = this.cloneSnapshot(input);
         const operation = this.pending.then(async () => {

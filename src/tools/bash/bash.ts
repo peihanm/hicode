@@ -328,7 +328,6 @@ export const bashTool: Tool<typeof inputSchema> = {
             canUseTool: ctx.canUseTool,
             canPrompt: () => ctx.permissionPromptPolicy === "onRequest",
         } : undefined;
-        await ctx.fileCheckpoints.markCoverageWarning({code: "bash_side_effects", message: "Bash 的文件变化、依赖安装和外部副作用不由 Checkpoint 保存或撤销"});
         if (run_in_background || yield_time_ms !== undefined) {
             if (
                 effectiveSandboxPermissions !== "require_escalated" &&

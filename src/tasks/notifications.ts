@@ -72,7 +72,7 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
         : "";
     const worktree = task.kind === "agent" && task.worktree
         ? task.worktree.state === "changed"
-            ? `；Worktree 已保留（${task.worktree.changedFiles.length + (task.worktree.omittedChangedFiles ?? 0)} 个变更文件，${task.worktree.commitsAhead ?? 0} 个新 Commit）。先用 task status 查看实时状态，在 Worktree 中检查、测试并 Commit，再用 Git cherry-pick 集成；完成后可 task discard。Git 集成不受 /rewind 的文件恢复保证覆盖`
+            ? `；Worktree 已保留（${task.worktree.changedFiles.length + (task.worktree.omittedChangedFiles ?? 0)} 个变更文件，${task.worktree.commitsAhead ?? 0} 个新 Commit）。先用 task status 查看实时状态，在 Worktree 中检查、测试并 Commit，再用 Git cherry-pick 集成；完成后可 task discard`
             : task.worktree.cleanupReason === "no_changes"
                 ? "；Worktree 无工作产物，已自动清理"
                 : `；Worktree 状态 ${task.worktree.state}`

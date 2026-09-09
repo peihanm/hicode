@@ -29,21 +29,8 @@ describe("parseCliArgs", () => {
     });
   });
 
-  test("解析显式 checkpoint rewind", () => {
-    expect(
-      parseCliArgs([
-        "-r",
-        "session-1",
-        "--rewind",
-        "checkpoint-1",
-        "--output-format",
-        "json",
-      ])
-    ).toMatchObject({
-      resumeMode: {kind: "session", sessionId: "session-1"},
-      rewindCheckpointId: "checkpoint-1",
-      outputFormat: "json",
-    });
+  test("删除的回退和分支参数不再接受", () => {
+    for (const option of ["--rewind", "--fork-from"]) expect(() => parseCliArgs(["-r", "session", option, "old"])).toThrow("未知参数");
   });
 
   test("解析本次启动的 model 和 source 覆盖", () => {
@@ -109,23 +96,14 @@ describe("parseCliArgs", () => {
     );
     expect(() =>
       parseCliArgs(["--rewind", "checkpoint-1"])
-    ).toThrow("必须和 -r <sessionId>");
+    ).toThrow("未知参数");
   });
 });
 
-test("对话分支参数要求显式 Session 且不与执行或文件恢复混用", () => {
-    expect(parseCliArgs(["-r", "source", "--fork-from=point", "--output-format=json"]))
-        .toMatchObject({forkCheckpointId: "point", resumeMode: {kind: "session", sessionId: "source"}, outputFormat: "json"});
-    for (const args of [["--fork-from", "point"], ["-r", "source", "--fork-from="],
-        ["-r", "source", "--fork-from", "point", "--rewind", "other"], ["-r", "source", "--fork-from", "point", "-p", "run"]]) {
-        expect(() => parseCliArgs(args)).toThrow();
-    }
-});
-
-test("--image accepts repeated explicit paths, keeps spaces and rejects overflow/rewind", () => {
+test("--image accepts repeated explicit paths, keeps spaces and rejects overflow and removed flags", () => {
     expect(parseCliArgs(["--image", "截图 with space.png", "-i", "b.jpg", "--image=c.webp"]).images).toEqual(["截图 with space.png", "b.jpg", "c.webp"]);
     expect(parseCliArgs(["-p", "compare", "--image", "x.png"]).printPrompt).toBe("compare");
     expect(() => parseCliArgs(["--image"])).toThrow("路径");
     expect(() => parseCliArgs(Array.from({length: 9}, () => "--image=x.png"))).toThrow("8 张");
-    expect(() => parseCliArgs(["--image=x.png", "-r", "s", "--rewind", "c"])).toThrow("不能");
+    expect(() => parseCliArgs(["--image=x.png", "-r", "s", "--rewind", "c"])).toThrow("未知参数");
 });

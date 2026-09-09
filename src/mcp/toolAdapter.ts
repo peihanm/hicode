@@ -82,7 +82,6 @@ export function adaptMcpTools(server: McpConnectedServer): {
             searchSource: {name: server.config.name},
             parameters: compiled.parameters,
             inputJsonSchema: compiled.schema,
-            externalSideEffects: "mcp",
             async checkPermissions() {
                 return annotationReadOnly
                     ? {behavior: "passthrough"}

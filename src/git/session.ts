@@ -286,7 +286,7 @@ function canonicalObservedPath(path: string, cwd: string): string {
     try {
         return realpathSync.native(candidate);
     } catch {
-        // Delete/Rewind 后路径可以不存在；这时只做 lexical repository boundary 校验。
+        // 删除文件后路径可以不存在；这时只做 lexical repository boundary 校验。
         return candidate;
     }
 }

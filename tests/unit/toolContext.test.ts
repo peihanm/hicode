@@ -1,5 +1,5 @@
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
-import {FileCommitCoordinator} from "../../src/checkpoints/fileCommit.js";
+import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import { describe, expect, test } from "bun:test";
 import { createCompactState } from "../../src/context/index.js";
 import type {
@@ -11,7 +11,6 @@ import type {CollaborationMode} from "../../src/collaboration/index.js";
 import { createToolContext } from "../../src/runtime/toolContext.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createDisabledFileCheckpointRuntime } from "../../src/checkpoints/index.js";
 import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
@@ -44,7 +43,6 @@ describe("ToolContext builder", () => {
           toolResultStore: createTestToolResultStore(cwd, "session-live", {
             pillarHome: `${cwd}/results`,
           }),
-          fileCheckpoints: createDisabledFileCheckpointRuntime(),
         },
         host: {
           canUseTool: async () => ({ behavior: "allow" }),
@@ -121,7 +119,6 @@ describe("ToolContext builder", () => {
         sessionId: "shared-session",
         compactState,
         toolResultStore,
-        fileCheckpoints: createDisabledFileCheckpointRuntime(),
       };
       const host = {
         canUseTool: async () => ({ behavior: "allow" as const }),

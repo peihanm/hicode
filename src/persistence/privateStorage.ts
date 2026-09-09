@@ -58,7 +58,7 @@ export function ensurePrivateStorageDirectory(
 }
 
 /** Read a private regular file without following a leaf symlink. */
-export function readPrivateStorageFile(
+function readPrivateStorageFile(
     storage: PillarStorageLayout,
     path: string,
     maxBytes: number

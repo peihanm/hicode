@@ -28,7 +28,6 @@ export function createUITurnSessionRuntime(
                 createInitialHistory(resources.cwd, resources.model),
             compactState:
                 initialSession?.compactState ?? createCompactState(),
-            checkpointHead: initialSession?.checkpointHead,
             toolDiscovery: initialSession?.toolDiscovery,
             gitSession: initialSession?.gitSession,
             taskNotificationReceipts: initialSession?.taskNotificationReceipts,

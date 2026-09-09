@@ -16,8 +16,7 @@ import {imageAssetId} from "../../src/images/identity.js";
 import {prepareImage} from "../../src/images/prepare.js";
 import type {Message} from "../../src/llm/types.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
-import {saveSessionTurnCheckpoint, loadSession} from "../../src/session/storage.js";
-import {forkSessionConversation} from "../../src/session/fork.js";
+import {saveSessionSnapshot, loadSession} from "../../src/session/storage.js";
 
 function fixture(cwd: string) {
     const ctx = createTestContext(cwd, {toolResultStore: createToolResultStore(createTestStorage(cwd), cwd, "test-session")});
@@ -75,27 +74,23 @@ test("orientation corrected source coordinates and alpha remain accurate", async
     expect((await sharp(result.data).metadata()).orientation).toBeUndefined();
 });
 
-test("Fork carries original dependency independently and corruption prevents new crop publication", async () => {
+test("Resume retains the original dependency and corruption prevents new crop publication", async () => {
     await withTempProject(async cwd => {
         const f = fixture(cwd), path = join(cwd, "fork.png");
         await writeFile(path, await sharp({create: {width: 100, height: 60, channels: 3, background: "blue"}}).png().toBuffer());
         const original = imageReferences((await f.view({path})).modelContent)[0]!;
         const reference = imageReferences((await f.view({image_id: original.imageId, region: {x: 10, y: 10, width: 30, height: 20}})).modelContent)[0]!;
-        // Only the derived image is referenced in the Fork; its original is a required dependency.
-        await saveSessionTurnCheckpoint(f.ctx.storage, {cwd, sessionId: f.ctx.sessionId, model: "qwen3.8-flash", checkpointId: "crop", branchId: "b",
-            history: [{role: "user", content: [reference]}], prompt: "inspect crop", todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"});
-        const fork = await forkSessionConversation({storage: f.ctx.storage, cwd, model: "qwen3.8-flash", sessionId: f.ctx.sessionId, checkpointId: "crop", permissionMode: "default"});
-        const saved = loadSession(f.ctx.storage, cwd, fork.sessionId, "qwen3.8-flash")!;
-        const target = createToolResultStore(f.ctx.storage, cwd, fork.sessionId);
+        await saveSessionSnapshot(f.ctx.storage, {cwd, sessionId: f.ctx.sessionId, model: "qwen3.8-flash",
+            history: [{role: "user", content: [reference]}], todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"});
+        const saved = loadSession(f.ctx.storage, cwd, f.ctx.sessionId, "qwen3.8-flash")!;
+        const target = createToolResultStore(f.ctx.storage, cwd, f.ctx.sessionId);
         const inherited = saved.history.flatMap(message => imageReferences(message.content))[0]!;
         expect(inherited.image.region).toEqual(reference.image.region);
         const sourcePath = f.ctx.toolResultStore.imagePath(imageAssetId(reference.image.source));
         const bytes = await f.ctx.toolResultStore.readImageSource(reference);
+        expect(await target.readImageSource(reference)).toEqual(bytes);
         await writeFile(sourcePath, Buffer.alloc(bytes.length));
         expect((await f.view({image_id: reference.imageId, region: {x: 0, y: 0, width: 10, height: 10}})).outcome).toBe("failed");
-        await unlink(sourcePath); await unlink(path);
-        expect(await target.readImageSource(reference)).toEqual(bytes);
-        expect((await prepareImage(await target.readImageSource(reference), new AbortController().signal, {x: 0, y: 0, width: 10, height: 10})).image.width).toBe(10);
     });
 });
 

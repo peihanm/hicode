@@ -28,7 +28,7 @@ ${example}
 operation 可为 remember（新增信息）或 correct（立即撤销该主题旧来源并替换）；type 仅 user/feedback/project/reference。
 不要写 ID、时间、version、索引或正式主题。框架生成身份并立即召回 note；后续 /memory maintain 在隔离草稿中整理发布。
 用户明确要求记住的 note 接收后已经可用，不必为此追加模型维护。明确忘记时 read_file 后 delete_file 对应主题或 note。
-读取视图不是源码，Memory 不参与代码 Checkpoint 回退。旧失败只是历史，不是当前待办。
+读取视图不是源码。旧失败只是历史，不是当前待办。
 待整理 note 优先于旧摘要；它是助手按显式请求记录的内容，不冒充用户原话证据。自动提取的 assistant-claimed 仍只是助手说法，不等于验证通过。更多待整理内容先查索引，再用其中给出的确切路径读取。
 当前召回数据：${data}
 </system-reminder>`;

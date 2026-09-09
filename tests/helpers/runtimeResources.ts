@@ -1,4 +1,4 @@
-import {FileCommitCoordinator} from "../../src/checkpoints/fileCommit.js";
+import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import type { TaskRuntimeLike } from "../../src/tasks/index.js";
@@ -83,7 +83,6 @@ export function createTestSettings(
     },
     hooks: createEmptyResolvedHookSettings(),
     memory: { enabled: false, autoExtract: false },
-    checkpointing: { enabled: false },
     sandbox: {
       enabled: false,
       filesystem: {

@@ -8,15 +8,14 @@ import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import {createCompactState} from "../../src/context/state.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
-import {createSessionArchiveAccess, prepareSessionArchive, readArchiveMessages} from "../../src/session/archive.js";
+import {prepareSessionArchive, readArchiveMessages} from "../../src/session/archive.js";
 import {saveSessionCompaction} from "../../src/session/storage.js";
 import {SessionContentStore} from "../../src/session/contentStore.js";
-import {loadSession, saveSessionSnapshot, listSessionTurnCheckpoints} from "../../src/session/storage.js";
+import {loadSession, saveSessionSnapshot} from "../../src/session/storage.js";
 import {getSessionContentDirectory, type PillarStorageLayout} from "../../src/persistence/index.js";
 import {getSessionLogPath} from "../../src/session/paths.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {Message} from "../../src/llm/types.js";
-import {forkSessionConversation} from "../../src/session/fork.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 import {referencedResultPaths} from "../../src/toolResults/references.js";
 
@@ -41,7 +40,7 @@ test("只有摘要 reminder 的候选也必须实际落盘，不能被普通快�
 });
 
 function fixture(cwd: string, storage: PillarStorageLayout, id = "archive-session") {
-    const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({checkpointing: {enabled: true}})});
+    const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({})});
     const history: Message[] = [{role: "system", content: "system"},
         {role: "user", content: "决定：删除列必须明确选择，禁止默认丢弃\n" + "历史资料\n".repeat(2500)},
         {role: "assistant", content: "已确认", reasoning_content: "hidden-reasoning-must-not-be-archived"},
@@ -122,36 +121,6 @@ test("压缩提交失败或取消不替换原 History，不留下生效档案", 
     });
 });
 
-test("真实回滚选择对应档案，分支只复制该恢复点已有来源与结果", async () => {
-    await withTempProject(async (cwd, storage) => {
-        const f = fixture(cwd, storage);
-        try {
-            expect((await f.compact()).compacted).toBe(true);
-            const first = f.session.compactState.archives![0]!;
-            await f.session.beginCheckpoint("后续请求", state());
-            const point = listSessionTurnCheckpoints(storage, cwd, f.session.sessionId).at(-1)!;
-            f.session.history.push({role: "user", content: "未来分支私有内容\n" + "future\n".repeat(2500)});
-            expect((await f.compact()).compacted).toBe(true);
-            const future = f.session.compactState.archives![1]!;
-            await f.session.settleCheckpoint();
-            await saveSessionSnapshot(storage, f.session.createSnapshot(state()));
-            const fork = await forkSessionConversation({storage, cwd, model: "glm-test", sessionId: f.session.sessionId, checkpointId: point.checkpointId, permissionMode: "default"});
-            const loaded = loadSession(storage, cwd, fork.sessionId, "glm-test")!;
-            expect(loaded.compactState!.archives).toHaveLength(1);
-            const access = createSessionArchiveAccess(storage, cwd, fork.sessionId, () => loaded.compactState!);
-            const forkIndex = archiveIndexPath(storage, cwd, fork.sessionId, loaded.compactState!.archives![0]!.id);
-            expect(await access.resolve(forkIndex)).not.toBeNull();
-            expect(JSON.stringify(loaded.history)).toContain(forkIndex);
-            await expect(access.resolve(archiveIndexPath(storage, cwd, f.session.sessionId, first.id))).rejects.toThrow("其他 Session");
-            expect((await f.session.restoreCheckpoint(point.checkpointId)).status).toBe("complete");
-            expect(f.session.compactState.archives).toHaveLength(1);
-            const after = createSessionArchiveAccess(storage, cwd, f.session.sessionId, () => f.session.compactState);
-            await expect(after.resolve(archiveIndexPath(storage, cwd, f.session.sessionId, future.id))).rejects.toThrow("当前恢复分支");
-            expect(await after.resolve(archiveIndexPath(storage, cwd, f.session.sessionId, first.id))).not.toBeNull();
-        } finally {await f.resources.close();}
-    });
-});
-
 test("档案正文损坏、未授权 Agent 与符号链接均 fail closed", async () => {
     await withTempProject(async (cwd, storage) => {
         const f = fixture(cwd, storage);
@@ -220,7 +189,7 @@ test("档案数量超限及竞争提交均拒绝发布；长 Unicode 原文分�
 import {createCompactSummaryGenerator} from "../../src/context/compactSummary.js";
 import {assistantText, createFakeLLM} from "../helpers/fakeLLM.js";
 
-test("生产交接链校验引用、保留纠正原话，Resume 与 Fork 保持可回查来源", async () => {
+test("生产交接链校验引用、保留纠正原话，Resume 保持可回查来源", async () => {
     await withTempProject(async (cwd, storage) => {
         const f = fixture(cwd, storage, "handoff-session");
         try {
@@ -244,14 +213,6 @@ test("生产交接链校验引用、保留纠正原话，Resume 与 Fork 保持�
             expect(f.session.history[1]!.content).toContain(`[[${originalRef}]]`);
             const loaded = loadSession(storage, cwd, f.session.sessionId, "glm-test")!;
             expect(loaded.history.slice(1)).toEqual(f.session.history.slice(1));
-            await f.session.beginCheckpoint("fork", state());
-            const point = listSessionTurnCheckpoints(storage, cwd, f.session.sessionId).at(-1)!;
-            await f.session.settleCheckpoint();
-            const fork = await forkSessionConversation({storage, cwd, model: "glm-test", sessionId: f.session.sessionId,
-                checkpointId: point.checkpointId, permissionMode: "default"});
-            const forked = loadSession(storage, cwd, fork.sessionId, "glm-test")!;
-            expect(JSON.stringify(forked.history)).not.toContain(`[[${originalRef}]]`);
-            expect(JSON.stringify(forked.history)).toContain(`[[${forked.compactState!.archives![0]!.id}/1]]`);
             const before = structuredClone(f.session.history);
             f.session.history.push({role: "assistant", content: "资料\n".repeat(10_000)});
             const beforeFailure = structuredClone(f.session.history);

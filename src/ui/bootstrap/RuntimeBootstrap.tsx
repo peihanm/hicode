@@ -1,4 +1,3 @@
-import {recoverSessionBeforeStart} from "../../checkpoints/rewind.js";
 import type {InteractiveShutdown} from "../../cli/interactiveShutdown.js";
 import {useEffect, useRef, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
@@ -126,7 +125,7 @@ export function createRuntimeBootstrap(
                     },
                 });
                 ownedResources = resources;
-                const initialSession = session ? (await recoverSessionBeforeStart(resources, session.sessionId)) ?? session : undefined;
+                const initialSession = session;
                 const turnSession = createUITurnSessionRuntime(resources, initialSession);
                 await turnSession.rootSession.initialize();
                 if (disposed) {

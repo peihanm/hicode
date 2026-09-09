@@ -20,8 +20,6 @@ export interface CliOptions {
     printPrompt?: string;
     images?: string[];
     outputFormat: CliOutputFormat;
-    rewindCheckpointId?: string;
-    forkCheckpointId?: string;
 }
 
 export function printHelp(): void {
@@ -34,8 +32,6 @@ Options:
   -p, --print <prompt>           Run one prompt in headless mode and print the final reply
   -i, --image <path>             Attach a local PNG/JPEG/WebP; repeat for multiple images
   --output-format <format>       Headless output format: text | json
-  --rewind <checkpointId>        Restore conversation and tracked files from -r <sessionId>
-  --fork-from <checkpointId>     Create a conversation branch; keep current files
   -r, --resume [sessionId]       Resume an existing session; omit sessionId to pick from a list
   -c, --continue                 Resume the most recently updated session
   --model <model>                Override the primary model for this run
@@ -139,27 +135,6 @@ export function parseCliArgs(args: string[]): CliOptions {
             setResumeMode({kind: "continue"});
             continue;
         }
-        if (arg === "--fork-from" || arg?.startsWith("--fork-from=")) {
-            const value = arg === "--fork-from" ? args[++i] : arg.slice("--fork-from=".length);
-            if (!value?.trim() || value.startsWith("-")) throw new Error("--fork-from 需要提供 checkpointId");
-            options.forkCheckpointId = value.trim();
-            continue;
-        }
-        if (arg === "--rewind") {
-            const value = args[i + 1]?.trim();
-            if (!value || value.startsWith("-")) {
-                throw new Error("--rewind 需要提供 checkpointId");
-            }
-            options.rewindCheckpointId = value;
-            i++;
-            continue;
-        }
-        if (arg.startsWith("--rewind=")) {
-            const value = arg.slice("--rewind=".length).trim();
-            if (!value) throw new Error("--rewind 需要提供 checkpointId");
-            options.rewindCheckpointId = value;
-            continue;
-        }
         if (arg === "--model") {
             const value = args[i + 1];
             if (!value) throw new Error("--model 需要提供 model");
@@ -251,27 +226,8 @@ export function parseCliArgs(args: string[]): CliOptions {
         throw new Error(`未知参数: ${arg}`);
     }
 
-    if (options.images?.length && (options.forkCheckpointId || options.rewindCheckpointId)) throw new Error("--image 不能与 --fork-from/--rewind 同时使用");
-    if (options.forkCheckpointId) {
-        if (options.rewindCheckpointId || options.printPrompt !== undefined) throw new Error("--fork-from 不能与 --rewind 或 -p 同时使用");
-        if (options.resumeMode.kind !== "session") throw new Error("--fork-from 必须和 -r <sessionId> 一起使用");
-    }
-    if (options.rewindCheckpointId) {
-        if (options.printPrompt !== undefined) {
-            throw new Error("--rewind 不能和 -p/--print 同时使用");
-        }
-        if (options.resumeMode.kind !== "session") {
-            throw new Error("--rewind 必须和 -r <sessionId> 一起使用");
-        }
-    }
-
-    if (
-        options.outputFormat !== "text" &&
-        options.printPrompt === undefined &&
-        options.rewindCheckpointId === undefined &&
-        options.forkCheckpointId === undefined
-    ) {
-        throw new Error("--output-format 只能用于 -p/--print 或 --rewind headless 模式");
+    if (options.outputFormat !== "text" && options.printPrompt === undefined) {
+        throw new Error("--output-format 只能用于 -p/--print headless 模式");
     }
 
     return options;

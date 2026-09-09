@@ -6,7 +6,7 @@ import {findMatches, type MatchSpan} from "./strMatch.js";
 import {formatDiff} from "./utils.js";
 import {normalizeFileText} from "../shared/fileState.js";
 import {createFileChange} from "../../fileChanges/index.js";
-import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
+import {commitFileWrite} from "../shared/fileWrite.js";
 
 const editSchema = z.object({
     old_string: z.string().min(1).describe("当前已读版本中要替换的字符串"),
@@ -190,14 +190,12 @@ export const editFileTool: Tool<typeof inputSchema> = {
             replacements: count,
         });
 
-        const {warnings: checkpointWarnings, identity} = await runTrackedFileWrite({
-            runtime: ctx.fileCheckpoints,
+        const {identity} = await commitFileWrite({
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
             path: absPath,
             beforeContent: originalContent,
             afterContent: newContent,
-            toolCallId: invocation.toolCallId,
         });
         ctx.fileState.recordWrite({
             identity,
@@ -207,8 +205,7 @@ export const editFileTool: Tool<typeof inputSchema> = {
             edits,
         });
         const result =
-            `已修改 ${path}（替换 ${count} 处）` +
-            formatCheckpointWarnings(checkpointWarnings);
+            `已修改 ${path}（替换 ${count} 处）`;
         return {
             content: result,
             displayContent: result,

@@ -1,6 +1,7 @@
+import {didRunCommandHook} from "../hooks/index.js";
 import {appendContentText, contentText} from "../images/content.js";
 import {toolFileChanges} from "../fileChanges/index.js";
-import {HookControlError, didRunCommandHook, formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
+import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
 import {
@@ -93,12 +94,6 @@ export async function executeRegisteredTool(
                 session: ctx.hookSession, store: ctx.toolResultStore, onEvent: ctx.onHookEvent,
             }
         );
-        if (didRunCommandHook(preHookResult)) {
-            await ctx.fileCheckpoints.markCoverageWarning({
-                code: "hook_side_effects",
-                message: "Command Hook 可能产生未被 File Checkpoint 捕获的文件副作用",
-            });
-        }
         if (ctx.signal.aborted) {
             return interruptedToolResult(ctx.signal);
         }
@@ -249,15 +244,6 @@ export async function executeRegisteredTool(
 
     if (permission.behavior === "ask") userApproved = true;
 
-    if (tool.externalSideEffects && tool.isReadOnly?.(input) !== true) {
-        const source = tool.externalSideEffects === "mcp" ? "MCP" : "Host Tool";
-        await ctx.fileCheckpoints.markCoverageWarning({
-            code: tool.externalSideEffects === "mcp"
-                ? "mcp_side_effects"
-                : "host_tool_side_effects",
-            message: `${source} ${name} 未声明只读，可能产生未被 File Checkpoint 捕获的文件副作用`,
-        });
-    }
 
     let result;
     try {
@@ -297,7 +283,7 @@ export async function executeRegisteredTool(
     }
 
     // A completed file commit is a fact even if the Turn was cancelled while
-    // its checkpoint/result was being recorded. Do not erase its FileChange.
+    // its result was being recorded. Do not erase its FileChange.
     const committedFile = typeof result !== "string" && toolFileChanges(result.uiData).length > 0;
     if (ctx.signal.aborted && !committedFile) {
         return interruptedToolResult(ctx.signal);
@@ -399,12 +385,6 @@ async function executePostToolHooks({
             matchesToolPermissionRule(tool, toolInput, condition),
         session: ctx.hookSession, store: ctx.toolResultStore, onEvent: ctx.onHookEvent,
     });
-    if (didRunCommandHook(hookResult)) {
-        await ctx.fileCheckpoints.markCoverageWarning({
-            code: "hook_side_effects",
-            message: `${event} Command Hook 可能产生未被 File Checkpoint 捕获的文件副作用`,
-        });
-    }
     return hookResult;
 }
 

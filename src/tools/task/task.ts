@@ -80,7 +80,6 @@ function formatTask(task: TaskSnapshot): string {
                 ? [
                     "Next: inspect and test this Worktree, commit selected files there,",
                     `then cherry-pick the commit into the source checkout and run task discard task_id=${task.id}.`,
-                    "Git integration is not captured by Pillar File Checkpoints; /rewind cannot promise to undo it.",
                 ].join(" ")
                 : undefined,
         ].filter(Boolean)

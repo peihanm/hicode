@@ -530,14 +530,6 @@ class TaskRuntime implements TaskRuntimeLike {
         return {total: shell + agent + memory, shell, agent, memory};
     }
 
-    hasRunningThatBlocksRewind(): boolean {
-        return [...this.tasks.values()].some(
-            (task) =>
-                task.status === "running" &&
-                (isShellTask(task) || (isAgentTask(task) && task.worktree === undefined))
-        );
-    }
-
     pendingNotifications(sessionId: string): Promise<readonly TaskNotification[]> {
         return this.notifications.pending(
             sessionId,

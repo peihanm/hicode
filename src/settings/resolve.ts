@@ -196,7 +196,6 @@ export function resolvePillarSettings(
     let memoryAutoExtract = false;
     let memoryDisabled = false;
     let autoExtractDisabled = false;
-    let checkpointingEnabled = true;
     let sandboxEnabled = true;
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
     let sandboxDenyWrite = [".pillar", ".env"];
@@ -210,7 +209,6 @@ export function resolvePillarSettings(
         permissionMode: "default",
         memoryEnabled: "default",
         memoryAutoExtract: "default",
-        checkpointingEnabled: "default",
         sandboxEnabled: "default",
     };
 
@@ -256,10 +254,6 @@ export function resolvePillarSettings(
                 memoryAutoExtract = true;
                 origins.memoryAutoExtract = document.source;
             }
-        }
-        if (value.checkpointing?.enabled !== undefined) {
-            checkpointingEnabled = value.checkpointing.enabled;
-            origins.checkpointingEnabled = document.source;
         }
         if (value.sandbox?.enabled !== undefined) {
             sandboxEnabled = value.sandbox.enabled;
@@ -320,7 +314,6 @@ export function resolvePillarSettings(
                 enabled: memoryEnabled,
                 autoExtract: memoryEnabled && memoryAutoExtract,
             },
-            checkpointing: {enabled: checkpointingEnabled},
             sandbox: {
                 enabled: sandboxEnabled,
                 filesystem: {

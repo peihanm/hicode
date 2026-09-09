@@ -15,7 +15,7 @@ test("Memory Task 具有真实 Turn owner；Host 禁后台无模型，关闭取�
  const tasks=createTaskRuntimeForTest(cwd,shell,undefined,home,undefined,memory);const binding={sessionId:"owner",toolResultStore:createTestToolResultStore(cwd,"owner")};
  expect(await tasks.forSession({...binding,allowBackgroundTasks:false}).startMemory({turnId:"turn",signal:memoryOwner().signal,background:true})).toBeUndefined();expect(calls).toBe(0);
  const session=tasks.forSession(binding);const job=await session.startMemory({turnId:"turn",signal:memoryOwner().signal,background:true});expect(job?.owner).toEqual({sessionId:"owner",turnId:"turn"});await ready;
- expect(tasks.getRunningSummary().memory).toBe(1);expect(tasks.hasRunningThatBlocksRewind()).toBe(false);await tasks.close();expect((await session.get(job!.id))?.status).toBe("cancelled");expect((await memory.status()).pending).toBe(1);
+ expect(tasks.getRunningSummary().memory).toBe(1);await tasks.close();expect((await session.get(job!.id))?.status).toBe("cancelled");expect((await memory.status()).pending).toBe(1);
  const restored=createTaskRuntimeForTest(cwd,shell,undefined,home,undefined,memory);const restoredSession=restored.forSession(binding);expect((await restoredSession.get(job!.id))?.kind).toBe("memory");const notes=await restoredSession.pendingNotifications();expect(notes[0]?.ownerToolCallId).toBeUndefined();expect(notes[0]?.kind).toBe("memory");await restored.close();await memory.close();expect(calls).toBe(1);
 }));
 test("显式前台维护在禁后台 Host 仍可等待完成，停止后不会作为 Agent 接收消息",async()=>withTempProject(async cwd=>{

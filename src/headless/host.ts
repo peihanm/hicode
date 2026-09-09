@@ -1,6 +1,5 @@
 import {importSelectedImages} from "../runtime/imageInput.js";
 import type {MessageContent} from "../images/content.js";
-import {recoverSessionBeforeStart} from "../checkpoints/rewind.js";
 import type {AgentEvent} from "../agent/types.js";
 import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../hooks/index.js";
 import type {PermissionDecision} from "../permissions/index.js";
@@ -56,14 +55,12 @@ export function createHeadlessRunner(
             headless: true,
         });
         try {
-            if (await recoverSessionBeforeStart(resources, state.sessionId)) state = loadHeadlessSession({...options, resumeMode: {kind: "session", sessionId: state.sessionId}});
             const rootSession = createRootSessionRuntime({
                 resources,
                 seed: {
                     sessionId: state.sessionId,
                     history: state.history,
                     compactState: state.compactState,
-                    checkpointHead: state.checkpointHead,
                     toolDiscovery: state.toolDiscovery,
                     gitSession: state.gitSession,
                 },
@@ -83,9 +80,7 @@ export function createHeadlessRunner(
                 }
             };
             const writeLifecycleIssue = async (issue: RootTurnLifecycleIssue) => {
-                const scope = issue.scope === "checkpoint"
-                    ? "Checkpoint"
-                    : issue.scope === "session"
+                const scope = issue.scope === "session"
                         ? "Session"
                         : "Host";
                 await dependencies.writeDiagnostic(
@@ -184,19 +179,7 @@ export function createHeadlessRunner(
                 return summary;
             } finally {
                 if (!turnInvoked) {
-                    try {
-                        await rootSession.settleCheckpoint("settled");
-                    } catch (error) {
-                        try {
-                            await writeLifecycleIssue({
-                                scope: "checkpoint",
-                                message: "异常路径收尾失败",
-                                error,
-                            });
-                        } catch {
-                            // 诊断输出失败不能阻止 Session 保存。
-                        }
-                    }
+                    rootSession.endTurn();
                     try {
                         await dependencies.saveSession(
                             resources.storage,

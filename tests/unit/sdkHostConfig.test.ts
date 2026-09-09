@@ -38,7 +38,7 @@ describe("SDK Host config", () => {
             );
             await writeFile(
                 join(projectSettings, "settings.json"),
-                JSON.stringify({checkpointing: {enabled: false}})
+                JSON.stringify({})
             );
             await writeFile(
                 join(projectSettings, "settings.local.json"),
@@ -72,9 +72,6 @@ describe("SDK Host config", () => {
             });
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
                 "default"
-            );
-            expect(loaded.configuration.settings.checkpointing.enabled).toBe(
-                false
             );
             expect(loaded.configuration.settings.memory.enabled).toBe(false);
             expect(loaded.origins.primaryModel).toBe("host");

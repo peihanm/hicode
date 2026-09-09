@@ -22,9 +22,6 @@ interface MemorySettingsFile {
     autoExtract?: boolean;
 }
 
-interface CheckpointingSettingsFile {
-    enabled?: boolean;
-}
 
 interface SandboxSettingsFile {
     enabled?: boolean;
@@ -84,7 +81,6 @@ export interface PillarSettingsFile {
     permissions?: PermissionSettingsFile;
     hooks?: HooksSettingsFile;
     memory?: MemorySettingsFile;
-    checkpointing?: CheckpointingSettingsFile;
     sandbox?: SandboxSettingsFile;
 }
 
@@ -127,9 +123,6 @@ export interface ResolvedPillarSettings {
         enabled: boolean;
         autoExtract: boolean;
     };
-    checkpointing: {
-        enabled: boolean;
-    };
     sandbox: {
         enabled: boolean;
         filesystem: {
@@ -151,7 +144,6 @@ export interface SettingsOrigins {
     permissionMode: SettingsValueSource;
     memoryEnabled: SettingsValueSource;
     memoryAutoExtract: SettingsValueSource;
-    checkpointingEnabled: SettingsValueSource;
     sandboxEnabled: SettingsValueSource;
 }
 

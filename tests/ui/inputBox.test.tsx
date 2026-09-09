@@ -323,20 +323,20 @@ describe("multiline input box", () => {
     expect(initial).toContain("/model");
     expect(initial).toContain("/resume");
     expect(initial).not.toContain("/agents");
-    expect(initial).not.toContain("/rewind");
+    expect(initial).not.toContain("/tasks");
     expect(initial).toContain("↑/↓ 选择 · Tab 补全");
 
-    const rewindIndex = getSlashCommandSuggestions("/")
-      .findIndex((suggestion) => suggestion.name === "rewind");
-    expect(rewindIndex).toBeGreaterThan(0);
-    for (let index = 0; index < rewindIndex; index += 1) {
+    const tasksIndex = getSlashCommandSuggestions("/")
+      .findIndex((suggestion) => suggestion.name === "tasks");
+    expect(tasksIndex).toBeGreaterThan(0);
+    for (let index = 0; index < tasksIndex; index += 1) {
       instance.stdin.write("\u001B[B");
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
 
     const scrolled = instance.lastFrame() ?? "";
     expect(scrolled).not.toContain("/help");
-    expect(scrolled).toContain("❯ /rewind");
+    expect(scrolled).toContain("❯ /tasks");
     expect(scrolled).toContain(`/ ${getSlashCommandSuggestions("/").length}`);
   });
 

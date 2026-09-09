@@ -19,7 +19,7 @@ const settings = {
 };
 
 describe("Sandbox Runtime lease", () => {
-    test("安全路径保护与 Checkpoint 无关，额外目录授权不移除 denyRead/denyWrite", async () => {
+    test("安全路径保护独立生效，额外目录授权不移除 denyRead/denyWrite", async () => {
         await withTempProject(async (root, storage) => {
             const project = join(root, "project"); await mkdir(project);
             const configs: Array<Partial<SandboxRuntimeConfig> | undefined> = [];

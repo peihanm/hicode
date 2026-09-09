@@ -81,7 +81,7 @@ export type HookInput = {session_id: string; turn_id?: string} & (
             summary: string; result_id?: string; changes: {path: string; kind: "create" | "update" | "delete"}[]}[]}
     | {hook_event_name: "Stop"; candidate: string; continuation_used: boolean}
     | {hook_event_name: "TurnEnd"; status: "completed" | "failed" | "cancelled" | "blocked" | "limit";
-        reason: string; persistence_status: "saved" | "failed"; checkpoint_status: "settled" | "failed"}
+        reason: string; persistence_status: "saved" | "failed"}
     | {hook_event_name: "PreCompact"; trigger: "auto" | "manual"; token_count: number; instructions?: string}
     | {hook_event_name: "PostCompact"; trigger: "auto" | "manual"; status: "success" | "failed" | "cancelled";
         pre_token_count: number; post_token_count: number; reason?: string}

@@ -1,6 +1,4 @@
-import type {MessageContent} from "../images/content.js";
 import type {CompactState} from "../context/index.js";
-import type {CheckpointHead} from "../checkpoints/index.js";
 import type {PersistedUIEvent} from "./uiEvents.js";
 import type {GitSessionState} from "../git/index.js";
 import type {Message} from "../llm/types.js";
@@ -11,7 +9,7 @@ import type {Todo} from "../todos.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 1;
-export const SESSION_ENTRY_VERSION = 4;
+export const SESSION_ENTRY_VERSION = 5;
 
 export interface SessionIndexEntry {
     sessionId: string;
@@ -33,7 +31,7 @@ export interface SessionIndexFile {
 
 export interface SessionSnapshotEntry {
     type: "snapshot";
-    version: 4;
+    version: 5;
     sessionId: string;
     cwd: string;
     model: string;
@@ -44,34 +42,14 @@ export interface SessionSnapshotEntry {
     collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents: PersistedUIEvent[];
-    checkpointHead?: CheckpointHead;
     queuedInputs?: RuntimeQueuedMessage[];
     taskNotificationReceipts?: string[];
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
 }
 
-export interface SessionTurnCheckpointEntry {
-    type: "turn_checkpoint";
-    version: 4;
-    checkpointId: string;
-    sessionId: string;
-    branchId: string;
-    parentCheckpointId?: string;
-    cwd: string;
-    model: string;
-    timestamp: string;
-    prompt: MessageContent;
-    conversation: Message[];
-    todos: Todo[];
-    permissionMode: PermissionMode;
-    collaborationMode: CollaborationMode;
-    compactState?: CompactState;
-    uiEvents: PersistedUIEvent[];
-    toolDiscovery?: ToolDiscoverySnapshot;
-}
 
-export type SessionEntry = SessionSnapshotEntry | SessionTurnCheckpointEntry;
+export type SessionEntry = SessionSnapshotEntry;
 
 export interface LoadedSession {
     sessionId: string;
@@ -83,7 +61,6 @@ export interface LoadedSession {
     collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents: PersistedUIEvent[];
-    checkpointHead?: CheckpointHead;
     queuedInputs: RuntimeQueuedMessage[];
     taskNotificationReceipts: string[];
     toolDiscovery?: ToolDiscoverySnapshot;
@@ -101,30 +78,12 @@ export interface SaveSessionSnapshotInput {
     collaborationMode: CollaborationMode;
     compactState?: CompactState;
     uiEvents?: PersistedUIEvent[];
-    checkpointHead?: CheckpointHead;
     queuedInputs?: readonly RuntimeQueuedMessage[];
     taskNotificationReceipts?: readonly string[];
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
-    /** Rewind 到首条问题之前时允许保存空 conversation。 */
+    /** 允许保存尚无完整回复的会话。 */
     allowEmpty?: boolean;
     /** 空 conversation 的 Session index 标题。 */
     summaryHint?: string;
-}
-
-export interface SaveSessionTurnCheckpointInput {
-    cwd: string;
-    model: string;
-    sessionId: string;
-    checkpointId: string;
-    branchId: string;
-    parentCheckpointId?: string;
-    prompt: MessageContent;
-    history: Message[];
-    todos: Todo[];
-    permissionMode: PermissionMode;
-    collaborationMode: CollaborationMode;
-    compactState?: CompactState;
-    uiEvents?: PersistedUIEvent[];
-    toolDiscovery?: ToolDiscoverySnapshot;
 }

@@ -17,7 +17,7 @@ import type {ZodType} from "zod";
 
 export interface HostDiagnostic {
     severity: "info" | "warning" | "error";
-    scope: "runtime" | "sandbox" | "agent" | "hook" | "checkpoint" | "session";
+    scope: "runtime" | "sandbox" | "agent" | "hook" | "session";
     message: string;
 }
 
@@ -106,7 +106,6 @@ export interface TurnResult {
     abortReason?: TurnAbortReason;
     iterations: number;
     durationMs: number;
-    checkpointId?: string;
 }
 
 export interface StreamedTurn {

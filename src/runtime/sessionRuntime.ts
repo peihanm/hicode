@@ -1,15 +1,11 @@
-import {contentText, type MessageContent} from "../images/content.js";
-import {forkSessionConversation} from "../session/fork.js";
+import type {MessageContent} from "../images/content.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {saveSessionCompaction} from "../session/storage.js";
-import {restoreSessionCheckpointWithRuntime} from "../checkpoints/rewind.js";
-import type {CheckpointRestoreResult} from "../checkpoints/types.js";
-import {loadSession} from "../session/index.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";
-import {createHookSessionRuntime, didRunCommandHook, type HookBatchResult, type HookExecutionContext} from "../hooks/index.js";
+import {createHookSessionRuntime, type HookBatchResult, type HookExecutionContext} from "../hooks/index.js";
 import type {Message} from "../llm/types.js";
 import {
     createDirectoryAccessRuntime,
@@ -18,18 +14,13 @@ import {
 } from "../permissions/index.js";
 import {appendLocalPermissionDirectory} from "../settings/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
-import {type SaveSessionSnapshotInput, saveSessionTurnCheckpoint, listSessionTurnCheckpoints} from "../session/index.js";
+import {type SaveSessionSnapshotInput, saveSessionSnapshot} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
 import type {Todo} from "../todos.js";
 import {createToolResultStore, type ToolResultStore} from "../toolResults/index.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
-import {
-    type CheckpointHead,
-    createFileCheckpointRuntime,
-    type FileCheckpointRuntimeLike,
-} from "../checkpoints/index.js";
 import {createGitSessionRuntime, type GitSessionRuntimeLike, type GitSessionState,} from "../git/index.js";
 import type {RuntimeQueuedMessage} from "./messageQueue.js";
 import {RuntimeMessageQueue} from "./messageQueue.js";
@@ -41,7 +32,6 @@ export interface RootSessionSeed {
     sessionId: string;
     history: Message[];
     compactState: CompactState;
-    checkpointHead?: CheckpointHead;
     toolDiscovery?: ToolDiscoverySnapshot;
     gitSession?: GitSessionState;
     queuedInputs?: readonly RuntimeQueuedMessage[];
@@ -64,17 +54,12 @@ export interface RootSessionRuntime {
     readonly history: Message[];
     readonly compactState: CompactState;
     readonly toolResultStore: ToolResultStore;
-    readonly fileCheckpoints: FileCheckpointRuntimeLike;
     readonly gitSession: GitSessionRuntimeLike;
     readonly taskSession: TaskSessionLike;
     readonly messageQueue: RuntimeMessageQueue;
     readonly directoryAccess: DirectoryAccessRuntimeLike;
 
     initialize(): Promise<void>;
-
-    restoreCheckpoint(checkpointId: string, permissionMode?: PermissionMode): Promise<CheckpointRestoreResult>;
-
-    forkConversation(checkpointId: string, permissionMode: PermissionMode): Promise<{sessionId: string}>;
 
     replaceConversation(history: Message[], compactState: CompactState): void;
 
@@ -88,12 +73,12 @@ export interface RootSessionRuntime {
 
     createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
 
-    beginCheckpoint(
+    beginTurn(
         prompt: MessageContent,
         state: Omit<RootSessionSnapshotState, "allowEmpty" | "summaryHint">
     ): Promise<void>;
 
-    settleCheckpoint(status?: "settled" | "no_agent_run"): Promise<void>;
+    endTurn(): void;
 
     runSessionStart(
         source: "startup" | "resume",
@@ -130,15 +115,6 @@ export function createRootSessionRuntime({
         persistedState: seed.gitSession,
         resumed,
     });
-    const fileCheckpoints = createFileCheckpointRuntime({
-        storage: resources.storage,
-        cwd: resources.cwd,
-        hardBoundary: resources.workspaceBoundary,
-        sessionId: seed.sessionId,
-        enabled: resources.settings.checkpointing.enabled,
-        fileState,
-        initialHead: seed.checkpointHead,
-    });
     const taskSession = resources.taskRuntime.forSession({
         sessionId: seed.sessionId,
         toolResultStore,
@@ -158,9 +134,7 @@ export function createRootSessionRuntime({
             appendLocalPermissionDirectory(resources.cwd, directory),
     });
     let initializePromise: Promise<void> | undefined;
-    let checkpointStartFailed = false;
     let turnActive = false;
-    let restoring = false;
 
     const snapshot = (
         state: RootSessionSnapshotState
@@ -174,7 +148,6 @@ export function createRootSessionRuntime({
         collaborationMode: state.collaborationMode,
         compactState: {...compactState},
         uiEvents: [...state.uiEvents],
-        checkpointHead: fileCheckpoints.getHead(),
         queuedInputs: messageQueue.list(),
         taskNotificationReceipts: messageQueue.getTaskReceipts(),
         toolDiscovery: resources.toolRuntime.getToolDiscoverySnapshot(),
@@ -192,58 +165,21 @@ export function createRootSessionRuntime({
             return compactState;
         },
         toolResultStore,
-        fileCheckpoints,
         gitSession,
         taskSession,
         messageQueue,
         directoryAccess,
         initialize() {
             initializePromise ??= (async () => {
-                // Task Session restoration starts at construction. Drain every initializer even when head reconciliation fails.
+                // Task Session restoration starts at construction. Drain every initializer even when another initializer fails.
                 const results = await Promise.allSettled([
-                    Promise.resolve().then(() => fileCheckpoints.reconcileSession(seed.checkpointHead,
-                        listSessionTurnCheckpoints(resources.storage, resources.cwd, seed.sessionId))),
                     gitSession.initialize(),
                     taskSession.initialize(),
                     directoryAccess.initialize(),
                 ] as const);
                 for (const result of results) if (result.status === "rejected") throw result.reason;
-                const recovery = results[0];
-                if (recovery.status !== "fulfilled") throw recovery.reason;
-                const interrupted = recovery.value;
-                if (interrupted.length) {
-                    const details = interrupted.map(record => {
-                        const paths = record.mutations.slice(0, 20).map(mutation => mutation.path.slice(0, 512));
-                        return `${record.checkpointId}: ${record.promptPreview}; 已记录 ${record.mutations.length} 个文件变更，路径示例 ${JSON.stringify(paths)}`;
-                    });
-                    history.push({role: "user", content: `<system-reminder>\nSession 崩溃恢复：以下 Turn 的最终对话未完整保存，已按 interrupted 保留文件 Checkpoint lineage。文件不会自动撤销；不要假定任务完成，请重新读取涉及文件并核验。\n${details.join("\n")}\n</system-reminder>`});
-                }
             })();
             return initializePromise;
-        },
-        async forkConversation(checkpointId, permissionMode) {
-            if (turnActive || restoring) throw new Error("请等待当前 Turn 或恢复完成");
-            return forkSessionConversation({storage: resources.storage, cwd: resources.cwd, model: resources.model,
-                sessionId: seed.sessionId, checkpointId, permissionMode});
-        },
-        async restoreCheckpoint(checkpointId, permissionMode) {
-            if (turnActive || restoring || resources.taskRuntime.hasRunningThatBlocksRewind()) throw new Error("仍有活动 Turn 或工作区任务，不能恢复");
-            restoring = true;
-            try {
-                return await resources.fileCommits.exclusive(new AbortController().signal, async () => {
-                    const result = await restoreSessionCheckpointWithRuntime({storage: resources.storage, cwd: resources.cwd,
-                        model: resources.model, sessionId: seed.sessionId, checkpointId, permissionMode, runtime: fileCheckpoints, gitSession});
-                    if (result.status === "complete") {
-                        const loaded = loadSession(resources.storage, resources.cwd, seed.sessionId, resources.model);
-                        if (!loaded) throw new Error("恢复后的 Session 不可读取");
-                        messageQueue.takeEditableInputs();
-                        history = loaded.history;
-                        compactState = loaded.compactState ?? compactState;
-                        resources.toolRuntime.restoreToolDiscovery(loaded.toolDiscovery);
-                    }
-                    return result;
-                });
-            } finally {restoring = false;}
         },
         replaceConversation(nextHistory, nextCompactState) {
             history = nextHistory;
@@ -257,7 +193,6 @@ export function createRootSessionRuntime({
                     sessionId: seed.sessionId,
                     compactState,
                     toolResultStore,
-                    fileCheckpoints,
                     fileState,
                     allowBackgroundTasks,
                     hookSession,
@@ -280,9 +215,6 @@ export function createRootSessionRuntime({
             ctx.runHook = async (input, hookSignal = signal) => {
                 const result = await resources.hooks.execute({...input, session_id: seed.sessionId, turn_id: ctx.turnId},
                     hookSignal, {session: hookSession, store: toolResultStore, onEvent});
-                if (turnActive && didRunCommandHook(result)) await fileCheckpoints.markCoverageWarning({
-                    code: "hook_side_effects", message: `${input.hook_event_name} Command Hook 可能产生未被 File Checkpoint 捕获的文件副作用`,
-                });
                 return result;
             };
             ctx.hookControl = {inspect: () => resources.hooks.inspect(), reload: async hookSignal => {
@@ -301,40 +233,16 @@ export function createRootSessionRuntime({
             return ctx;
         },
         createSnapshot: snapshot,
-        async beginCheckpoint(prompt, state) {
+        async beginTurn(prompt, state) {
             await this.initialize();
-            if (restoring || turnActive) throw new Error("当前 Session 已在运行或恢复中");
-            if (checkpointStartFailed) throw new Error("Checkpoint 启动未完整提交，必须重新恢复 Session");
+            if (turnActive) throw new Error("当前 Session 已在运行中");
             turnActive = true;
             try {
-                const checkpoint = await fileCheckpoints.beginTurn({prompt: contentText(prompt)});
-                if (!checkpoint) return;
-                await saveSessionTurnCheckpoint(resources.storage, {
-                    cwd: resources.cwd,
-                    model: resources.model,
-                    sessionId: seed.sessionId,
-                    checkpointId: checkpoint.checkpointId,
-                    branchId: checkpoint.branchId,
-                    parentCheckpointId: checkpoint.parentCheckpointId,
-                    prompt,
-                    history,
-                    todos: [...state.todos],
-                    permissionMode: state.permissionMode,
-                    collaborationMode: state.collaborationMode,
-                    compactState,
-                    uiEvents: [...state.uiEvents],
-                    toolDiscovery:
-                        resources.toolRuntime.getToolDiscoverySnapshot(),
-                });
-            } catch (error) {
-                turnActive = false;
-                checkpointStartFailed = true;
-                throw error;
-            }
+                await saveSessionSnapshot(resources.storage, {...snapshot(state),
+                    history: [...history, {role: "user", content: prompt}]});
+            } catch (error) {turnActive = false; throw error;}
         },
-        async settleCheckpoint(status = "settled") {
-            try {await fileCheckpoints.settleTurn(status);} finally {turnActive = false;}
-        },
+        endTurn() {turnActive = false;},
         runSessionStart(source, signal, onEvent) {
             return resources.hooks.execute({
                 hook_event_name: "SessionStart",

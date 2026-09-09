@@ -3,7 +3,7 @@ import {importUserInput} from "../../images/input.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/capability.js";
 import {imageReferences, type MessageContent} from "../../images/content.js";
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,} from "react";
+import {useCallback, useEffect, useRef, useState, useSyncExternalStore,} from "react";
 import {updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
 import {
@@ -30,7 +30,6 @@ import type {RootSessionRuntime} from "../../runtime/sessionRuntime.js";
 import {runRootTurn} from "../../runtime/turnRuntime.js";
 import type {ModelTargetSettings} from "../../settings/types.js";
 import {formatModelTarget} from "../../llm/modelCatalog.js";
-import {createUICheckpointActions} from "./checkpointActions.js";
 
 export interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
@@ -40,7 +39,6 @@ export interface UseTurnControllerOptions {
     rootSession: RootSessionRuntime;
     resumedDraft?: MessageContent;
     openResume?: () => void;
-    openRewind?: () => void;
     openAgents?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;
@@ -74,7 +72,6 @@ export function useTurnController({
                                           rootSession,
                                           resumedDraft,
                                           openResume,
-                                          openRewind,
                                           openAgents,
                                           openTasks,
                                           openGitDiff,
@@ -334,7 +331,6 @@ export function useTurnController({
                     memory: resources.memory,
                 }),
                 openResume,
-                openRewind,
                 openAgents,
                 openTasks,
                 toolRuntime,
@@ -519,52 +515,6 @@ export function useTurnController({
             [eventStore, persistSnapshot, resources, rootSession, toolRuntime]
         );
 
-        const applyRestoredState = useCallback((restored: {
-            history: Parameters<typeof eventStore.restore>[0]["history"];
-            todos: Todo[];
-            permissionMode: PermissionMode;
-            collaborationMode: CollaborationMode;
-            uiEvents: Parameters<typeof eventStore.restore>[0]["uiEvents"];
-            prompt: MessageContent;
-        }) => {
-            todosRef.current = [...restored.todos];
-            setTodosState([...restored.todos]);
-            permissionModeRef.current = restored.permissionMode;
-            collaborationModeRef.current = restored.collaborationMode;
-            setPermissionModeState(restored.permissionMode);
-            setCollaborationModeState(restored.collaborationMode);
-            eventStore.restore({
-                history: restored.history,
-                uiEvents: restored.uiEvents,
-                tokenInfo: estimateRestoredTokenInfo(
-                    restored.history,
-                    resources.skills,
-                    resources.instructions,
-                    toolRuntime.getToolSchemas(),
-                    resources.model
-                ),
-            });
-            const restoredDraft = turnController.restoreAttachments(restored.prompt);
-            setInputReplacement((current) => ({
-                value: restoredDraft,
-                revision: (current?.revision ?? 0) + 1,
-            }));
-        }, [eventStore, resources, toolRuntime]);
-        const checkpointActions = useMemo(() => createUICheckpointActions({
-            getPermissionMode: () => permissionModeRef.current,
-            resources,
-            rootSession,
-            eventStore,
-            sessionQueue,
-            applyRestoredState,
-        }), [
-            applyRestoredState,
-            eventStore,
-            resources,
-            rootSession,
-            sessionQueue,
-        ]);
-
         return {
             sessionId: rootSession.sessionId,
             sessionInitializationError,
@@ -608,7 +558,8 @@ export function useTurnController({
             inputReplacement,
             queuedMessages: messageQueueSnapshot.messages,
             backgroundTasks: taskSession.getRunningSummary(),
-            ...checkpointActions,
+            listFileChangeEvents: () => eventStore.getPersistedUIEvents(),
+            loadGitDiff: (signal: AbortSignal) => rootSession.gitSession.diff(signal),
             shutdown,
         };
 }

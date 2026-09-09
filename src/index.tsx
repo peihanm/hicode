@@ -1,17 +1,14 @@
 #!/usr/bin/env bun
-import {forkSessionConversation} from "./session/fork.js";
 import {render} from "ink";
 import {InteractiveShutdown, bindInteractiveSignals} from "./cli/interactiveShutdown.js";
 import {Root} from "./ui/Root.js";
 import {type CliOptions, loadEnv, parseCliArgs, printHelp} from "./cli/index.js";
 import {runHeadlessFromCli} from "./headless/cli.js";
-import {runCheckpointRewindFromCli} from "./checkpoints/index.js";
 import {loadPillarSettings, type LoadedPillarSettings} from "./settings/index.js";
 import {createTerminalCursorOutput} from "./ui/input/terminalCursor.js";
 import {TerminalCursorAnchorProvider} from "./ui/input/terminalCursorContext.js";
 import {TerminalSizeProvider} from "./ui/terminalSize.js";
 import {createPillarStorageLayout} from "./persistence/index.js";
-import {createChildProcessEnvironment} from "./runtime/childEnvironment.js";
 import {parse} from "node:path";
 import {
     CLI_FILE_SOURCES,
@@ -32,7 +29,7 @@ if (cliOptions.help) {
     process.exit(0);
 }
 
-loadEnv({required: cliOptions.rewindCheckpointId === undefined && cliOptions.forkCheckpointId === undefined});
+loadEnv();
 
 const cwd = process.cwd();
 const storage = createPillarStorageLayout();
@@ -69,39 +66,7 @@ const configuration = createPillarRootConfiguration({
     fileSources: CLI_FILE_SOURCES,
 });
 
-if (cliOptions.forkCheckpointId && cliOptions.resumeMode.kind === "session") {
-    try {
-        const result = await forkSessionConversation({storage, cwd, model: loadedSettings.values.models.primary.model,
-            sessionId: cliOptions.resumeMode.sessionId, checkpointId: cliOptions.forkCheckpointId,
-            permissionMode: cliOptions.permissionMode ?? loadedSettings.values.permissions.defaultMode});
-        process.stdout.write(cliOptions.outputFormat === "json" ? `${JSON.stringify({status: "complete", ...result, filesChanged: false})}\n` : `已创建对话分支 ${result.sessionId}，文件保持当前状态。使用 pillar -r ${result.sessionId} 继续。\n`);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (cliOptions.outputFormat === "json") process.stdout.write(`${JSON.stringify({status: "error", error: message})}\n`);
-        else process.stderr.write(`创建对话分支失败: ${message}\n`);
-        process.exitCode = 1;
-    }
-} else if (
-    cliOptions.rewindCheckpointId &&
-    cliOptions.resumeMode.kind === "session"
-) {
-    const childEnvironment = createChildProcessEnvironment(
-        process.env,
-        Object.values(loadedSettings.values.sources).map(
-            (source) => source.apiKeyEnv
-        )
-    );
-    await runCheckpointRewindFromCli({
-        storage,
-        cwd,
-        hardBoundary: configuration.workspaceBoundary,
-        model: loadedSettings.values.models.primary.model,
-        sessionId: cliOptions.resumeMode.sessionId,
-        checkpointId: cliOptions.rewindCheckpointId,
-        outputFormat: cliOptions.outputFormat,
-        childEnvironment,
-    });
-} else if (cliOptions.printPrompt !== undefined) {
+if (cliOptions.printPrompt !== undefined) {
     await runHeadlessFromCli({
         configuration,
         prompt: cliOptions.printPrompt,

@@ -1,7 +1,7 @@
 import {constants} from "node:fs";
 import {open} from "node:fs/promises";
 import type {BigIntStats} from "node:fs";
-import {MAX_CHECKPOINT_FILE_BYTES} from "../../checkpoints/fingerprint.js";
+const MAX_FILE_SNAPSHOT_BYTES = 20 * 1024 * 1024;
 
 function identity(info: BigIntStats): string {
     return [info.dev, info.ino, info.size, info.mode, info.mtimeNs, info.ctimeNs].join(":");
@@ -13,7 +13,7 @@ export async function readFileSnapshot(path: string): Promise<{content: Buffer; 
     try {
         const before = await handle.stat({bigint: true});
         if (!before.isFile()) throw new Error("只支持普通文件，不支持目录、Symlink 或特殊文件");
-        if (before.size > BigInt(MAX_CHECKPOINT_FILE_BYTES)) throw new Error(`文件超过 ${MAX_CHECKPOINT_FILE_BYTES} bytes 安全读取/Checkpoint 上限`);
+        if (before.size > BigInt(MAX_FILE_SNAPSHOT_BYTES)) throw new Error(`文件超过 ${MAX_FILE_SNAPSHOT_BYTES} bytes 安全读取上限`);
         const content = Buffer.alloc(Number(before.size));
         let position = 0;
         while (position < content.length) {

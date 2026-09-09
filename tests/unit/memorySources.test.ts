@@ -24,9 +24,9 @@ test("提取事实保留角色来源，阶段二发布；忘记后同一 frame �
  expect((await memory.read("brief"))?.content).toBe("保持简洁");expect(new MemoryPublicationStore(storage,cwd).snapshot().sources[0]?.origin.kind).toBe("session");
  await memory.forget("brief",memoryOwner().signal);await memory.captureSource("source-session",[],memoryOwner().signal);expect((await memory.maintain(memoryOwner())).status).toBe("empty");expect(await memory.read("brief")).toBeUndefined();await memory.close();
 }));
-test("来源已从当前分支移除则跳过，不生成事实或阻挡显式 note",async()=>withTempProject(async(cwd,storage)=>{
- const memory=createTestMemoryRuntime(cwd,{autoExtract:true});await persist(storage,cwd,[{role:"user",content:"旧分支"}]);const hashes=readSessionSourceIds(storage,cwd,"source-session");await memory.captureSource("source-session",[],memoryOwner().signal);
- await persist(storage,cwd,[{role:"user",content:"新分支"}]);expect(()=>readSessionSourceMessages(storage,cwd,"source-session",hashes)).toThrow("当前 Session 分支");expect((await memory.maintain(memoryOwner())).status).toBe("empty");expect(new MemoryPublicationStore(storage,cwd).snapshot().frames[0]?.status).toBe("unavailable");await remember(memory,"fresh","新偏好");expect((await memory.maintain(memoryOwner())).status).toBe("published");await memory.close();
+test("来源已从当前会话移除则跳过，不生成事实或阻挡显式 note",async()=>withTempProject(async(cwd,storage)=>{
+ const memory=createTestMemoryRuntime(cwd,{autoExtract:true});await persist(storage,cwd,[{role:"user",content:"旧会话内容"}]);const hashes=readSessionSourceIds(storage,cwd,"source-session");await memory.captureSource("source-session",[],memoryOwner().signal);
+ await persist(storage,cwd,[{role:"user",content:"新会话内容"}]);expect(()=>readSessionSourceMessages(storage,cwd,"source-session",hashes)).toThrow("当前 Session");expect((await memory.maintain(memoryOwner())).status).toBe("empty");expect(new MemoryPublicationStore(storage,cwd).snapshot().frames[0]?.status).toBe("unavailable");await remember(memory,"fresh","新偏好");expect((await memory.maintain(memoryOwner())).status).toBe("published");await memory.close();
 }));
 test("阶段一无工具，伪造来源或把助手声称升级为工具观察均拒绝",async()=>withTempProject(async(cwd,storage)=>{
  const hash="a".repeat(64);const fake=createFakeLLM([assistantText(JSON.stringify({facts:[{key:"result",type:"project",content:"测试通过",basis:"tool-observed",sources:[hash]}]}))]);

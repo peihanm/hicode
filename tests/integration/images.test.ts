@@ -1,4 +1,3 @@
-import {imageAssetId} from "../../src/images/identity.js";
 import {expect, test} from "bun:test";
 import {readdir, readFile, symlink, unlink, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -15,8 +14,7 @@ import {encodeImageMessages} from "../../src/images/wire.js";
 import {ToolResultStore, createToolResultStore} from "../../src/toolResults/store.js";
 import {applyBatchToolResultBudget, processToolOutput} from "../../src/toolResults/budget.js";
 import type {Message} from "../../src/llm/types.js";
-import {saveSessionSnapshot, saveSessionTurnCheckpoint, loadSession, saveSessionCompaction} from "../../src/session/storage.js";
-import {forkSessionConversation} from "../../src/session/fork.js";
+import {saveSessionSnapshot, loadSession, saveSessionCompaction} from "../../src/session/storage.js";
 import {prepareSessionArchive, createSessionArchiveAccess} from "../../src/session/archive.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {createCompactState} from "../../src/context/state.js";
@@ -28,8 +26,6 @@ import {createOpenAICompatibleCaller} from "../../src/llm/providers/openAICompat
 import {createHookRuntimeFactory, type HookEnvelope} from "../../src/hooks/index.js";
 import {resolvedHooks} from "../helpers/hooks.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
-import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
-import {listSessionTurnCheckpoints} from "../../src/session/storage.js";
 
 const signal = () => new AbortController().signal;
 const png = () => sharp({create: {width: 80, height: 40, channels: 4, background: {r: 20, g: 80, b: 160, alpha: 0.5}}}).png().toBuffer();
@@ -76,7 +72,7 @@ test("view_image saves pixels, gives no edit evidence, Resume and ID reread surv
     });
 });
 
-test("image access follows active archives and rollback, Fork copies assets independently", async () => {
+test("image access survives archive Resume and rejects unreachable references", async () => {
     await withTempProject(async (cwd, storage) => {
         const f = fixture(cwd), path = join(cwd, "screen.png");
         await writeFile(path, await png());
@@ -96,17 +92,13 @@ test("image access follows active archives and rollback, Fork copies assets inde
         const part = await archives.resolve(parts[0]!);
         expect(await readFile(part!.path, "utf8")).toContain(ref!.imageId);
         expect(await readFile(part!.path, "utf8")).not.toContain("[object Object]");
-        await saveSessionTurnCheckpoint(storage, {...input, history: f.history, compactState, checkpointId: "branch", branchId: "b", prompt: "continue"});
-        const fork = await forkSessionConversation({storage, cwd, model: input.model, sessionId: "images", checkpointId: "branch", permissionMode: "default"});
-        const loaded = loadSession(storage, cwd, fork.sessionId, input.model)!;
-        const target = createToolResultStore(storage, cwd, fork.sessionId);
-        await unlink(f.ctx.toolResultStore.imagePath(ref!.imageId));
+        const loaded = loadSession(storage, cwd, "images", input.model)!;
+        const target = createToolResultStore(storage, cwd, "images");
         const access = createImageAccess({storage, store: target, history: () => loaded.history, state: () => loaded.compactState!});
         const original = await f.ctx.toolResultStore.readImageSource(ref!);
-        await unlink(f.ctx.toolResultStore.imagePath(imageAssetId(ref!.image.source)));
         expect(await access.read(ref!)).toBeInstanceOf(Buffer);
         expect(await access.readSource(ref!)).toEqual(original);
-        // Rewinding to a state without that archive revokes ID access even though bytes exist.
+        // References outside the current history and archives are not readable.
         loaded.compactState = createCompactState();
         expect(() => access.find(ref!.imageId)).toThrow("可达引用");
         await expect(access.readSource(ref!)).rejects.toThrow("可达引用");
@@ -263,29 +255,5 @@ test("image retry reuses prepared bytes and HTTP errors cannot echo them into di
             expect(logged).not.toContain("base64,");
             expect(logged).not.toContain((await f.ctx.imageAccess!.read(ref!)).toString("base64"));
         } finally {globalThis.fetch = originalFetch;}
-    });
-});
-
-test("real Session checkpoint restore revokes future image access while keeping the asset on disk", async () => {
-    await withTempProject(async (cwd, storage) => {
-        const f = fixture(cwd); await writeFile(join(cwd, "s.png"), await png());
-        const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({checkpointing: {enabled: true}})});
-        const session = createRootSessionRuntime({resources, resumed: false, seed: {sessionId: "images", history: f.history, compactState: createCompactState()}});
-        try {
-            await session.initialize();
-            await session.beginCheckpoint("before image", state);
-            const point = listSessionTurnCheckpoints(storage, cwd, "images").at(-1)!;
-            const [ref] = imageReferences((await f.tool({path: "s.png"})).modelContent);
-            await session.settleCheckpoint();
-            await saveSessionSnapshot(storage, session.createSnapshot(state));
-            const access = createImageAccess({storage, store: session.toolResultStore, history: () => session.history, state: () => session.compactState});
-            expect(await access.read(ref!)).toBeInstanceOf(Buffer);
-            session.messageQueue.enqueueUser([ref!]);
-            expect((await session.restoreCheckpoint(point.checkpointId)).status).toBe("complete");
-            expect(session.messageQueue.list()).toHaveLength(0);
-            expect(() => access.find(ref!.imageId)).toThrow("可达引用");
-        await expect(access.readSource(ref!)).rejects.toThrow("可达引用");
-            expect((await readFile(session.toolResultStore.imagePath(ref!.imageId))).length).toBe(ref!.image.byteLength);
-        } finally {await resources.close();}
     });
 });

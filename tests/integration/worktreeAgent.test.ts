@@ -203,11 +203,11 @@ describe("Worktree background Agent", () => {
                     "status-worktree"
                 );
                 expect(status.modelContent).toContain("Commits ahead of base: 1");
-                expect(status.modelContent).toContain("Git integration is not captured");
+                expect(status.modelContent).toContain("cherry-pick");
 
                 const notifications = await tasks.pendingNotifications();
                 expect(notifications[0]?.message).toContain("Git cherry-pick");
-                expect(notifications[0]?.message).toContain("/rewind");
+                expect(notifications[0]?.message).toContain("cherry-pick");
                 const discarded = await toolRuntime.executeTool(
                     "task",
                     JSON.stringify({action: "discard", task_id: completed.id}),

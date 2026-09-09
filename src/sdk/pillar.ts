@@ -141,7 +141,6 @@ export class Pillar {
                 sessionId: loaded.sessionId,
                 history: loaded.history,
                 compactState: loaded.compactState ?? createCompactState(),
-                checkpointHead: loaded.checkpointHead,
                 queuedInputs: loaded.queuedInputs,
                 taskNotificationReceipts: loaded.taskNotificationReceipts,
                 toolDiscovery: loaded.toolDiscovery,

@@ -219,7 +219,6 @@ async function writeEvalSettings(
     }
     const generated: Record<string, unknown> = {
         memory: {enabled: false, autoExtract: false},
-        checkpointing: {enabled: true},
         permissions: {defaultMode: "default"},
         sandbox: {enabled: false},
     };

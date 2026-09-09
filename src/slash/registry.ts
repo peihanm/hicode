@@ -4,7 +4,6 @@ import {permissionsCommand} from "./commands/permissions.js";
 import {mcpCommand} from "./commands/mcp.js";
 import {agentsCommand} from "./commands/agents.js";
 import {memoryCommand} from "./commands/memory.js";
-import {rewindCommand} from "./commands/rewind.js";
 import {sandboxCommand} from "./commands/sandbox.js";
 import {tasksCommand} from "./commands/tasks.js";
 import {diffCommand} from "./commands/diff.js";
@@ -23,7 +22,6 @@ const COMMANDS: readonly SlashCommand[] = [
     mcpCommand,
     agentsCommand,
     memoryCommand,
-    rewindCommand,
     diffCommand,
     sandboxCommand,
     tasksCommand,

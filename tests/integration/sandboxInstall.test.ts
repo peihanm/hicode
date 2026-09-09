@@ -6,7 +6,6 @@ import {getDefaultWritePaths} from "@anthropic-ai/sandbox-runtime";
 import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {runShellCommand} from "../../src/tools/bash/process.js";
-import {createFileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {getProjectBunCacheDirectory} from "../../src/persistence/layout.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -17,7 +16,7 @@ import {testChildEnvironment} from "../helpers/childEnvironment.js";
 const enabled = process.env.PILLAR_RUN_SANDBOX_INTEGRATION === "1" && process.platform === "darwin";
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
-test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权，源码可回退且敏感路径仍禁写", async () => {
+test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权，敏感路径仍禁写", async () => {
     await withTempProject(async (root, storage) => {
         const cwd = join(root, "workspace");
         const pkg = join(root, "package");
@@ -48,11 +47,8 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
             network: {allowedDomains: [], allowLocalBinding: false}}});
         expect(sandbox.status.kind).toBe("ready");
         const runner = createShellRunner(sandbox, testChildEnvironment);
-        const checkpoints = createFileCheckpointRuntime({cwd, storage, sessionId: "install", enabled: true});
         const ctx = createTestContext(cwd, {toolResultStore: createTestToolResultStore(cwd, "install", {pillarHome: storage.pillarHome}), shellRunner: runner, canUseTool: async () => {throw new Error("unexpected approval");}});
-        ctx.fileCheckpoints = checkpoints;
         try {
-            const checkpoint = (await checkpoints.beginTurn({prompt: "install"}))!;
             const tools = createToolRuntime();
             expect((await tools.executeTool("write_file", JSON.stringify({path: "tracked.ts", content: "tracked"}), ctx, "write")).outcome).toBe("ok");
             const command = `${quote(process.execPath)} install --ignore-scripts`;
@@ -67,11 +63,9 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
             const denied = await tools.executeTool("bash", JSON.stringify({command: "printf damaged > .env"}), ctx, "protected");
             expect(denied.outcome).toBe("failed");
             expect(await readFile(join(cwd, ".env"), "utf8")).toBe("fixture=protected");
-            await checkpoints.settleTurn();
-            expect((await checkpoints.restoreCode(checkpoint.checkpointId)).status).toBe("complete");
             expect(await readFile(join(cwd, "source.ts"), "utf8")).toBe("before");
             expect(await Bun.file(join(cwd, "bun.lock")).exists()).toBe(true);
-            expect(await Bun.file(join(cwd, "tracked.ts")).exists()).toBe(false);
+            expect(await Bun.file(join(cwd, "tracked.ts")).exists()).toBe(true);
             expect(await Bun.file(join(cwd, "node_modules/pillar-install-fixture/package.json")).exists()).toBe(true);
         } finally {await sandbox.close();}
     });

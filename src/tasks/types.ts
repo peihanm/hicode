@@ -163,7 +163,6 @@ export interface TaskRuntimeLike {
 
     getRunningSummary(): RunningTaskSummary;
 
-    hasRunningThatBlocksRewind(): boolean;
 
     close(): Promise<void>;
 }

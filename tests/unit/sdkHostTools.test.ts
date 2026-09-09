@@ -131,13 +131,7 @@ describe("SDK Host Tools", () => {
             expect(interrupted.outcome).toBe("interrupted");
             expect(executions).toBe(0);
 
-            const coverageWarnings: string[] = [];
             const allowedContext = createTestContext(cwd);
-            allowedContext.fileCheckpoints.markCoverageWarning = async (
-                warning
-            ) => {
-                coverageWarnings.push(warning.code);
-            };
             const allowed = await runtime.executeTool(
                 "host_mutation",
                 JSON.stringify({value: "x"}),
@@ -146,7 +140,6 @@ describe("SDK Host Tools", () => {
             );
             expect(allowed.outcome).toBe("ok");
             expect(executions).toBe(1);
-            expect(coverageWarnings).toEqual(["host_tool_side_effects"]);
 
             const failed = await runtime.executeTool(
                 "host_invalid_output",

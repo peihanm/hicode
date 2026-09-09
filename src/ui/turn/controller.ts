@@ -41,7 +41,6 @@ export interface UITurnControllerDependencies {
     initialize(): Promise<void>;
 
     openResume?(): void;
-    openRewind?(): void;
     openAgents?(): void;
     openTasks?(): void;
     toolRuntime: Pick<ToolRuntime, "executeTool">;
@@ -225,7 +224,6 @@ export class UITurnController {
                     ctx,
                     onEvent: this.dependencies.onEvent,
                     openResume: this.dependencies.openResume,
-                    openRewind: this.dependencies.openRewind,
                     openAgents: this.dependencies.openAgents,
                     openTasks: this.dependencies.openTasks,
                     openGitDiff: this.dependencies.openGitDiff,
@@ -369,7 +367,6 @@ export class UITurnController {
             ctx,
             onEvent: this.dependencies.onEvent,
             openResume: this.dependencies.openResume,
-            openRewind: this.dependencies.openRewind,
             openAgents: this.dependencies.openAgents,
             openTasks: this.dependencies.openTasks,
             openGitDiff: this.dependencies.openGitDiff,

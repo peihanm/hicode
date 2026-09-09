@@ -131,7 +131,6 @@ export function adaptPillarHostTools(
             name,
             description,
             parameters,
-            externalSideEffects: "host",
             isReadOnly: () => readOnly,
             isConcurrencySafe: () => concurrencySafe,
             ...(maxResultSizeChars === undefined

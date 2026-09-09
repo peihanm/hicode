@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {closeSync, constants, fstatSync, linkSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync} from "node:fs";
 import {mkdir, open, unlink} from "node:fs/promises";
 import {dirname, join, relative, resolve} from "node:path";
-import {throwIfTurnAborted} from "../runtime/abort.js";
+import {throwIfTurnAborted} from "../../runtime/abort.js";
 
 function missing(error: unknown): boolean {
     return error instanceof Error && "code" in error && error.code === "ENOENT";

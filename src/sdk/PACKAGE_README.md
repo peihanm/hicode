@@ -1,7 +1,7 @@
 # Pillar TypeScript SDK
 
 Pillar exposes its programmatic API through the ESM-only `pillar-core-sdk` package.
-It runs the same Agent, ToolRuntime, permission, Hook, checkpoint, and Session
+It runs the same Agent, ToolRuntime, permission, Hook and Session
 chain as the terminal application.
 
 ```ts

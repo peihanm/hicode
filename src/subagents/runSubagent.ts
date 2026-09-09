@@ -23,7 +23,6 @@ import type {
     SubagentResult,
     SubagentThread,
 } from "./types.js";
-import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
 import {supportsWorkspaceWriteGrant, type SubagentRegistration} from "./registration.js";
@@ -189,14 +188,7 @@ export function createSubagentFactories(
         const childToolResultFiles = request.kind === "fork"
             ? createForkResultFiles(childHistory, parentContext.toolResultFiles, childToolResultStore)
             : undefined;
-        const childFileCheckpoints =
-            runtimeConfig.toolRuntimeOptions.allowedToolNames?.some(
-                (name) => name === "edit_file" ||
-                    name === "write_file" ||
-                    name === "delete_file"
-            )
-                ? parentContext.fileCheckpoints
-                : createDisabledFileCheckpointRuntime();
+
         const transcript = new SubagentTranscriptWriter(
             parentContext.storage,
             options.storageCwd ?? parentContext.cwd,
@@ -258,7 +250,6 @@ export function createSubagentFactories(
                             compactState: childCompactState,
                             toolResultStore: childToolResultStore,
                             toolResultFiles: childToolResultFiles,
-                            fileCheckpoints: childFileCheckpoints,
                         },
                         host: {
                             canUseTool: async () => ({

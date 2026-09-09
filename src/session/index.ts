@@ -4,15 +4,11 @@ export {
     loadLatestSession,
     loadSession,
     saveSessionSnapshot,
-    saveSessionTurnCheckpoint,
-    listSessionTurnCheckpoints,
-    loadSessionTurnCheckpoint,
 } from "./storage.js";
 
 export type {
     LoadedSession,
     SaveSessionSnapshotInput,
-    SessionTurnCheckpointEntry,
     SessionIndexEntry,
 } from "./types.js";
 

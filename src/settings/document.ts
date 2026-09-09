@@ -11,7 +11,6 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
     "permissions",
     "hooks",
     "memory",
-    "checkpointing",
     "sandbox",
 ]);
 const KNOWN_MODEL_TARGET_KEYS = new Set(["model", "source"]);
@@ -27,7 +26,6 @@ const KNOWN_PERMISSION_KEYS = new Set([
     "additionalDirectories",
 ]);
 const KNOWN_MEMORY_KEYS = new Set(["enabled", "autoExtract"]);
-const KNOWN_CHECKPOINTING_KEYS = new Set(["enabled"]);
 const KNOWN_SANDBOX_KEYS = new Set(["enabled", "filesystem", "network"]);
 const KNOWN_SANDBOX_FILESYSTEM_KEYS = new Set([
     "denyRead",
@@ -127,7 +125,7 @@ function collectUnknownFieldIssues(
         KNOWN_TOP_LEVEL_KEYS
     );
 
-    const {sources, models, permissions, memory, checkpointing, sandbox} = document.value;
+    const {sources, models, permissions, memory, sandbox} = document.value;
     if (sources) {
         appendUnknownFieldIssues(
             issues,
@@ -199,15 +197,6 @@ function collectUnknownFieldIssues(
             memory,
             KNOWN_MEMORY_KEYS,
             "memory"
-        );
-    }
-    if (checkpointing) {
-        appendUnknownFieldIssues(
-            issues,
-            document,
-            checkpointing,
-            KNOWN_CHECKPOINTING_KEYS,
-            "checkpointing"
         );
     }
     if (sandbox) {

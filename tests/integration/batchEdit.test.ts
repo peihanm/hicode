@@ -1,25 +1,17 @@
 import {describe, expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {createFileCheckpointRuntime} from "../../src/checkpoints/runtime.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {executeTool, executeToolResult} from "../helpers/executeTool.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("单文件批量编辑", () => {
-    test("乱序的多项替换在原版本定位，CRLF 和 Unicode 保留，只提交一次且可恢复", async () => {
-        await withTempProject(async (cwd, storage) => {
+    test("乱序的多项替换在原版本定位，CRLF 和 Unicode 保留，一次完成修改", async () => {
+        await withTempProject(async cwd => {
             const path = join(cwd, "file.txt");
             const original = "甲A\r\nB😀\r\nsame same\r\n";
             await writeFile(path, original);
             const ctx = createTestContext(cwd);
-            const checkpoints = createFileCheckpointRuntime({storage, cwd, sessionId: "batch", enabled: true,
-                fileState: ctx.fileState});
-            ctx.fileCheckpoints = checkpoints;
-            const checkpoint = await checkpoints.beginTurn({prompt: "批量编辑"});
-            let commits = 0;
-            const beforeWrite = checkpoints.beforeWrite.bind(checkpoints);
-            checkpoints.beforeWrite = async input => { commits++; return beforeWrite(input); };
             await executeTool("read_file", JSON.stringify({path}), ctx);
             const result = await executeToolResult("edit_file", JSON.stringify({path, edits: [
                 {old_string: "same", new_string: "同", replace_all: true},
@@ -29,12 +21,6 @@ describe("单文件批量编辑", () => {
             expect(result.outcome).toBe("ok");
             expect(await readFile(path, "utf8")).toBe("B😀\r\nC🙂\r\n同 同\r\n");
             expect(result.uiData).toMatchObject({type: "file_change", change: {replacements: 4}});
-            expect(commits).toBe(1);
-            await checkpoints.settleTurn();
-            const record = (await checkpoints.listCheckpoints())[0]!;
-            expect(record.mutations).toHaveLength(1);
-            expect((await checkpoints.restoreCode(checkpoint!.checkpointId)).status).toBe("complete");
-            expect(await readFile(path, "utf8")).toBe(original);
         });
     });
 
@@ -45,15 +31,12 @@ describe("单文件批量编辑", () => {
         {name: "范围重叠", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "pha", new_string: "x"}], error: "重叠"},
         {name: "重复项", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "alpha", new_string: "x"}], error: "重叠"},
         {name: "replace_all 与其他项重叠", edits: [{old_string: "same", new_string: "x", replace_all: true}, {old_string: "same end", new_string: "y"}], error: "重叠"},
-    ].map(({name, edits, error}) => [name, edits, error] as const))("%s：整次失败，没有文件变化和 Checkpoint mutation", async (_name, edits, error) => {
-        await withTempProject(async (cwd, storage) => {
+    ].map(({name, edits, error}) => [name, edits, error] as const))("%s：整次失败，没有文件变化", async (_name, edits, error) => {
+        await withTempProject(async cwd => {
             const path = join(cwd, "file.txt");
             const original = "alpha same same end\n";
             await writeFile(path, original);
             const ctx = createTestContext(cwd);
-            const checkpoints = createFileCheckpointRuntime({storage, cwd, sessionId: "failed", enabled: true});
-            ctx.fileCheckpoints = checkpoints;
-            await checkpoints.beginTurn({prompt: "拒绝无效批次"});
             await executeTool("read_file", JSON.stringify({path}), ctx);
             const result = await executeToolResult("edit_file", JSON.stringify({path, edits}), ctx, "invalid-batch");
             expect(result.outcome).toBe("failed");
@@ -61,7 +44,6 @@ describe("单文件批量编辑", () => {
             expect(result.modelContent).toContain("本次未写入文件");
             expect(result.uiData).toBeUndefined();
             expect(await readFile(path, "utf8")).toBe(original);
-            expect((await checkpoints.listCheckpoints())[0]?.mutations).toHaveLength(0);
         });
     });
 

@@ -1,8 +1,6 @@
 import {snapshotTurnInput, importUserInput, type TurnInput} from "../images/input.js";
 import {contentText, imageReferences, type MessageContent} from "../images/content.js";
 import {supportsToolImages} from "../images/capability.js";
-import {recoverSessionBeforeStart} from "../checkpoints/rewind.js";
-import {createCompactState} from "../context/index.js";
 import {randomUUID} from "node:crypto";
 import {getHookExecutionIssues, formatHookContext} from "../hooks/index.js";
 import {isPermissionMode, type PermissionDecision, type PermissionMode,} from "../permissions/index.js";
@@ -77,12 +75,6 @@ function createSDKThreadFactory(
     return async function createSDKThread(
         options: CreateSDKThreadOptions
     ): Promise<Thread> {
-        const recovered = options.resumed ? await recoverSessionBeforeStart(options.resources, options.seed.sessionId) : undefined;
-        if (recovered) options = {...options, seed: {...options.seed, history: recovered.history,
-            compactState: recovered.compactState ?? createCompactState(), checkpointHead: recovered.checkpointHead,
-            toolDiscovery: recovered.toolDiscovery, gitSession: recovered.gitSession, queuedInputs: recovered.queuedInputs,
-            taskNotificationReceipts: recovered.taskNotificationReceipts},
-            state: {todos: recovered.todos, permissionMode: options.state.permissionMode, collaborationMode: recovered.collaborationMode, uiEvents: recovered.uiEvents}};
         const session = createRootSessionRuntime({
             resources: options.resources,
             seed: options.seed,
@@ -317,8 +309,6 @@ class SDKThreadImpl implements Thread {
             await adapter.finish(result.reason);
             this.commitUIEvents(adapter);
             this.lastEndReason = result.reason;
-            const checkpointId =
-                this.options.session.fileCheckpoints.getHead().checkpointId;
             await emit({
                 type: "turn.completed",
                 turnId,
@@ -330,7 +320,6 @@ class SDKThreadImpl implements Thread {
                     0,
                     this.options.dependencies.now() - startedAt
                 ),
-                checkpointId,
             });
         } catch (error) {
             const interrupted = controller.signal.aborted;

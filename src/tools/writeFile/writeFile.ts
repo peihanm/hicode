@@ -3,7 +3,7 @@ import {readFile, stat} from "node:fs/promises";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {createFileChange} from "../../fileChanges/index.js";
-import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
+import {commitFileWrite} from "../shared/fileWrite.js";
 
 async function fileExists(path: string): Promise<boolean> {
     try {
@@ -99,14 +99,12 @@ export const writeFileTool: Tool<
             newContent: content,
         });
 
-        const {warnings: checkpointWarnings, identity} = await runTrackedFileWrite({
-            runtime: ctx.fileCheckpoints,
+        const {identity} = await commitFileWrite({
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
             path: absPath,
             beforeContent: exists ? oldContent : null,
             afterContent: content,
-            toolCallId: invocation.toolCallId,
         });
         ctx.fileState.recordWrite({
             identity,
@@ -115,8 +113,7 @@ export const writeFileTool: Tool<
             modelKnowsWholeFile: true,
         });
         const result =
-            `已写入 ${path}（${content.length} 字符）` +
-            formatCheckpointWarnings(checkpointWarnings);
+            `已写入 ${path}（${content.length} 字符）`;
         return {
             content: result,
             displayContent: result,

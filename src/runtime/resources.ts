@@ -1,5 +1,5 @@
 import {loadPillarSettings} from "../settings/index.js";
-import {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
+import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";

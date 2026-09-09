@@ -2,8 +2,7 @@ import { lstat, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { createAgentRunner, EMPTY_AGENT_INPUT_CHANNEL } from "../agent/index.js";
-import { FileCommitCoordinator } from "../checkpoints/fileCommit.js";
-import { createDisabledFileCheckpointRuntime } from "../checkpoints/index.js";
+import { FileCommitCoordinator } from "../tools/shared/fileCommit.js";
 import { createCompactState } from "../context/state.js";
 import { createGitCommandRunner, type GitCommandRunner } from "../git/process.js";
 import { createLLMCaller } from "../llm/index.js";
@@ -102,7 +101,6 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
                         fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.provider,
                         fastModel: options.target.model, fastProvider: options.target.provider, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,
                     }, session: { sessionId: input.sessionId, compactState: createCompactState(), fileState: createFileStateTracker(),
-                        fileCheckpoints: createDisabledFileCheckpointRuntime(),
                         toolResultStore: createToolResultStore(draftStorage, directory, input.sessionId) },
                     host: { canUseTool: async () => ({ behavior: "deny", message: "Memory 整理不能交互提权" }), getPermissionRules: () => ({ allow: [], ask: [], deny: [] }),
                         getPermissionMode: () => "default", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",

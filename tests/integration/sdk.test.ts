@@ -457,7 +457,6 @@ describe("TypeScript SDK", () => {
                     history: loaded!.history,
                     compactState:
                         loaded!.compactState ?? createCompactState(),
-                    checkpointHead: loaded!.checkpointHead,
                     queuedInputs: loaded!.queuedInputs,
                     toolDiscovery: loaded!.toolDiscovery,
                     gitSession: loaded!.gitSession,

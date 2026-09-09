@@ -21,7 +21,6 @@ describe("Slash busy behavior", () => {
             "/permissions",
             "/agents",
             "/memory",
-            "/rewind",
             "/diff",
             "/unknown",
         ]) {

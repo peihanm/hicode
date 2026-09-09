@@ -14,7 +14,6 @@ interface SlashCommandContext {
     subagents: SubagentRegistry;
     memory?: MemoryRuntimeLike;
     openResume?: () => void;
-    openRewind?: () => void;
     openAgents?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;

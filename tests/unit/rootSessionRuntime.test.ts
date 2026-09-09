@@ -75,7 +75,6 @@ describe("RootSessionRuntime", () => {
       });
       expect(ctx.tasks).toBe(runtime.taskSession);
       expect(ctx.gitSession).toBe(runtime.gitSession);
-      expect(ctx.fileCheckpoints).toBe(runtime.fileCheckpoints);
       expect(ctx.subagentLauncher).toBeDefined();
       expect(ctx.hookSession).toBeDefined();
 

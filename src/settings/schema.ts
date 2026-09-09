@@ -85,12 +85,6 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
             })
             .passthrough()
             .optional(),
-        checkpointing: z
-            .object({
-                enabled: z.boolean().optional(),
-            })
-            .passthrough()
-            .optional(),
         sandbox: z
             .object({
                 enabled: z.boolean().optional(),
@@ -150,9 +144,6 @@ export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
         memory: z.object({
             enabled: z.boolean().optional(),
             autoExtract: z.boolean().optional(),
-        }).strict().optional(),
-        checkpointing: z.object({
-            enabled: z.boolean().optional(),
         }).strict().optional(),
         sandbox: z
             .object({

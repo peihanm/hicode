@@ -3,7 +3,6 @@ export {hasFileSystemErrorCode} from "./errors.js";
 export {withFileLock} from "./fileLock.js";
 export {
     ensurePrivateStorageDirectory,
-    readPrivateStorageFile,
     readPrivateStorageTextFile,
 } from "./privateStorage.js";
 export {

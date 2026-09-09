@@ -1,7 +1,7 @@
 import {readFileSnapshot} from "../shared/fileSnapshot.js";
 import {z} from "zod";
 import {createByteFileChange} from "../../fileChanges/index.js";
-import {formatCheckpointWarnings, runTrackedFileWrite,} from "../../checkpoints/index.js";
+import {commitFileWrite} from "../shared/fileWrite.js";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 
@@ -18,7 +18,7 @@ function readRequirement(path: string, reason: "not_read" | "partial_read" | "st
 
 export const deleteFileTool: Tool<typeof inputSchema> = {
     name: "delete_file",
-    description: "删除普通文件。删除前必须读取并确认目标版本（支持二进制资产）；项目文件进入权限和 Checkpoint，Memory 主题通过受管 Memory 边界删除。",
+    description: "删除普通文件。删除前必须读取并确认目标版本（支持二进制资产）；项目文件进入权限和安全写入校验，Memory 主题通过受管 Memory 边界删除。",
     parameters: inputSchema,
     isReadOnly: () => false,
     getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
@@ -47,7 +47,7 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
         return {behavior: "ask" as const, message: `即将删除文件: ${path}\n是否执行?`};
     },
 
-    async execute({path}: Input, ctx, invocation) {
+    async execute({path}: Input, ctx) {
         const absPath = resolveToolPath(ctx.cwd, path);
         const snapshot = await readFileSnapshot(absPath);
         const state = ctx.fileState.check(absPath, snapshot.content, {identity: ctx.memoryFiles?.classify(absPath) ? undefined : snapshot.identity, requireFullRead: Boolean(ctx.memoryFiles?.classify(absPath))});
@@ -67,17 +67,15 @@ export const deleteFileTool: Tool<typeof inputSchema> = {
             oldContent: snapshot.content,
             newContent: Buffer.alloc(0),
         });
-        const {warnings} = await runTrackedFileWrite({
-            runtime: ctx.fileCheckpoints,
+        await commitFileWrite({
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
             path: absPath,
             beforeContent: snapshot.content,
             afterContent: null,
-            toolCallId: invocation.toolCallId,
         });
         ctx.fileState.forget(absPath);
-        const result = `已删除 ${path}${formatCheckpointWarnings(warnings)}`;
+        const result = `已删除 ${path}`;
         return {
             content: result,
             displayContent: result,

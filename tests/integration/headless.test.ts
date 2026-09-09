@@ -57,14 +57,13 @@ describe("headless integration", () => {
     });
   });
 
-  test("Checkpoint 无法创建时不运行 Agent", async () => {
+  test("Session 存储无法创建时不运行 Agent", async () => {
     await withTempProject(async (cwd) => {
       const pillarHome = join(cwd, "blocked-storage");
       await writeFile(pillarHome, "not a directory");
       const storage = createPillarStorageLayout({pillarHome});
       const settings = createTestSettings({
-        checkpointing: {enabled: true},
-      });
+        });
       const resources = createTestRuntimeResources(cwd, {settings});
       (resources as {storage: typeof storage}).storage = storage;
       let agentCalls = 0;

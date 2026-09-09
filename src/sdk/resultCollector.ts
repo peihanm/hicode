@@ -119,7 +119,6 @@ export async function collectTurnResult(
         abortReason: terminal.abortReason,
         iterations: terminal.iterations,
         durationMs: terminal.durationMs,
-        checkpointId: terminal.checkpointId,
     };
 }
 

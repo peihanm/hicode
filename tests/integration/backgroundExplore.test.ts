@@ -68,7 +68,6 @@ describe("background Explore", () => {
                 status: "running",
                 agentType: "Explore",
             });
-            expect(taskRuntime.hasRunningThatBlocksRewind()).toBe(true);
 
             let finish!: () => void;
             const finished = new Promise<void>((resolve) => {

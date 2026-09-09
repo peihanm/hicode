@@ -135,7 +135,6 @@ describe("Unified Settings", () => {
             permissionMode: "local",
             memoryEnabled: "default",
           memoryAutoExtract: "default",
-          checkpointingEnabled: "default",
           sandboxEnabled: "default",
         });
         expect(resolved.values.permissions.rules.allow).toEqual([
@@ -234,19 +233,6 @@ describe("Unified Settings", () => {
         });
         expect(resolved.origins.memoryEnabled).toBe("user");
         expect(resolved.origins.memoryAutoExtract).toBe("user");
-    });
-
-    test("Checkpoint 默认开启并按 user、project、local 顺序覆盖", () => {
-        expect(resolvePillarSettings([]).values.checkpointing).toEqual({
-            enabled: true,
-        });
-        const resolved = resolvePillarSettings([
-            document("user", {checkpointing: {enabled: false}}),
-            document("project", {checkpointing: {enabled: true}}),
-            document("local", {checkpointing: {enabled: false}}),
-        ]);
-        expect(resolved.values.checkpointing).toEqual({enabled: false});
-        expect(resolved.origins.checkpointingEnabled).toBe("local");
     });
 
     test("目录授权按来源合并去重且与 Sandbox 配置分离", () => {
@@ -466,7 +452,7 @@ describe("Unified Settings", () => {
             expect(
                 loaded.issues.some(
                     (issue) =>
-                        issue.field === "checkpointing.futureCheckpointing" &&
+                        issue.field === "checkpointing" &&
                         issue.severity === "warning"
                 )
             ).toBe(true);

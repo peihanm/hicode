@@ -1,6 +1,5 @@
 import {realpath} from "node:fs/promises";
 import {join, resolve} from "node:path";
-import {createDisabledFileCheckpointRuntime} from "../checkpoints/index.js";
 import {createDirectoryAccessRuntime} from "../permissions/index.js";
 import {
     createGitCommandRunner,
@@ -192,7 +191,6 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
             sessionArchives: undefined,
             memoryFiles: undefined,
             fileState: createFileStateTracker(),
-            fileCheckpoints: createDisabledFileCheckpointRuntime(),
             gitSession: undefined,
             mcpManager: undefined,
             tasks: undefined,

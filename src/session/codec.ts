@@ -1,4 +1,4 @@
-import {contentText, imageReferenceSchema, messageContentSchema} from "../images/content.js";
+import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
 import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";
@@ -17,7 +17,6 @@ import {
     type SessionEntry,
     type SessionIndexEntry,
     type SessionSnapshotEntry,
-    type SessionTurnCheckpointEntry,
 } from "./types.js";
 
 const MAX_PERSISTED_TOOL_NAME_CHARS = 256;
@@ -209,11 +208,6 @@ export function decodeSessionContentBlock(value: unknown) {
     return parsed.data;
 }
 
-const checkpointHeadSchema = z.object({
-    branchId: idSchema,
-    checkpointId: idSchema.optional(),
-}).strict();
-
 const sessionEntryBase = {
     version: z.literal(SESSION_ENTRY_VERSION),
     sessionId: idSchema,
@@ -232,19 +226,9 @@ const sessionEntryBase = {
 const sessionSnapshotSchema = z.object({
     ...sessionEntryBase,
     type: z.literal("snapshot"),
-    checkpointHead: checkpointHeadSchema.optional(),
     queuedInputs: z.unknown().optional(),
     taskNotificationReceipts: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096).refine(ids => new Set(ids).size === ids.length).optional(),
     gitSession: z.unknown().optional(),
-}).strict();
-
-const sessionTurnCheckpointSchema = z.object({
-    ...sessionEntryBase,
-    type: z.literal("turn_checkpoint"),
-    checkpointId: idSchema,
-    branchId: idSchema,
-    parentCheckpointId: idSchema.optional(),
-    prompt: messageContentSchema,
 }).strict();
 
 const sessionIndexEntrySchema = z.object({
@@ -323,15 +307,7 @@ export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
         } as SessionSnapshotEntry;
     }
 
-    const checkpoint = sessionTurnCheckpointSchema.safeParse(value);
-    if (!checkpoint.success) return undefined;
-    const toolDiscovery = checkpoint.data.toolDiscovery === undefined
-        ? undefined
-        : normalizeToolDiscoverySnapshot(checkpoint.data.toolDiscovery);
-    return {
-        ...checkpoint.data,
-        ...(toolDiscovery === undefined ? {} : {toolDiscovery}),
-    } as SessionTurnCheckpointEntry;
+    return undefined;
 }
 
 export function decodeSessionIndexEntries(

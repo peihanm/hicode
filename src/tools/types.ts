@@ -1,5 +1,5 @@
 import type {ImageAccess} from "../images/access.js";
-import type {FileCommitCoordinator} from "../checkpoints/fileCommit.js";
+import type {FileCommitCoordinator} from "./shared/fileCommit.js";
 import {z} from "zod";
 import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionPromptPresentation, PermissionResult, PermissionRules,} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
@@ -13,7 +13,6 @@ import type {TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "./bash/shellRunner.js";
 import type {FileStateTracker} from "./shared/fileState.js";
 import type {ProjectInstructions} from "../prompt/instructions.js";
-import type {FileCheckpointRuntimeLike} from "../checkpoints/index.js";
 import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime, HookInput, HookBatchResult, HookLifecycleEvent, HookRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
@@ -31,7 +30,6 @@ export type PermissionMatcher = (
 ) => boolean;
 
 export type ToolExposure = "direct" | "deferred";
-export type ExternalSideEffectBoundary = "mcp" | "host";
 export type DefaultApprovalScope =
     | {kind: "workspace"; path: string}
     | {kind: "sandboxed"};
@@ -129,9 +127,6 @@ export interface ToolContext {
     fileState: FileStateTracker;
     fileCommits: FileCommitCoordinator;
 
-    // 当前 Root Session 的文件 Checkpoint。同步写型 child 可显式继承；
-    // 只读和 Worktree child 使用 disabled runtime，Worktree 在 apply 时捕获 Root Preimage。
-    fileCheckpoints: FileCheckpointRuntimeLike;
 
     // 当前 Session 的 Git Baseline 与来源提示。它包装 gitWorkspace，
     // 但状态随 Session Snapshot 持久化，不能做成 Root 进程级全局。
@@ -188,9 +183,6 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     // 内置工具省略该字段，继续从 Zod schema 生成。
     inputJsonSchema?: Record<string, unknown>;
 
-    // 进程外或 Host callback 的副作用无法由 FileStateTracker 完整观测。
-    // 未声明只读时，Checkpoint 必须记录覆盖告警。
-    externalSideEffects?: ExternalSideEffectBoundary;
 
     // 权限意向声明：返回 allow/deny/ask/passthrough
     // 不写时默认 passthrough，由 executeTool 按 isReadOnly 决定

@@ -28,7 +28,7 @@ export interface RootTurnSnapshotState {
 }
 
 export interface RootTurnLifecycleIssue {
-    scope: "checkpoint" | "session" | "host";
+    scope: "session" | "host";
     message: string;
     error: unknown;
 }
@@ -91,7 +91,6 @@ export function createRootTurnRunnerFactory(
             getTodos: () => getSnapshotState().todos,
             ...(maxIterations === undefined ? {} : {maxIterations}),
         };
-        let checkpointSettled = false;
         let sessionSaved = false;
         let hostSettled = false;
         let result: AgentResult | undefined;
@@ -132,14 +131,14 @@ export function createRootTurnRunnerFactory(
                         error,
                     });
                 } catch {
-                    // Host 诊断 sink 不能阻止 Checkpoint 与 Session 保存。
+                    // Host 诊断 sink 不能阻止 Session 保存。
                 }
             }
         };
 
         try {
             const initialState = getSnapshotState();
-            await session.beginCheckpoint(prompt, initialState);
+            await session.beginTurn(prompt, initialState);
             const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId, getSnapshotState});
             ctx.canUseTool = (...args) => timing.measure("approval", () => host.canUseTool(...args));
             ctx.onToolExecution = phase => timing.change("tool", phase);
@@ -176,10 +175,6 @@ export function createRootTurnRunnerFactory(
             }
 
             await settleHost();
-            await session.settleCheckpoint(
-                (promptHooks.blocked || promptHooks.error) ? "no_agent_run" : "settled"
-            );
-            checkpointSettled = true;
             await finishTiming();
             await dependencies.saveSession(
                 resources.storage,
@@ -202,22 +197,7 @@ export function createRootTurnRunnerFactory(
             throw error;
         } finally {
             await settleHost();
-            if (!checkpointSettled) {
-                try {
-                    await session.settleCheckpoint("settled");
-                    checkpointSettled = true;
-                } catch (error) {
-                    try {
-                        await onLifecycleIssue({
-                            scope: "checkpoint",
-                            message: "异常路径收尾失败",
-                            error,
-                        });
-                    } catch {
-                        // 诊断 sink 失败不能阻止后续 Session 保存。
-                    }
-                }
-            }
+            session.endTurn();
             if (!sessionSaved) {
                 try {
                     await finishTiming();
@@ -250,7 +230,7 @@ export function createRootTurnRunnerFactory(
                         : result.reason === "hook_blocked" || result.reason === "permission_denied" ? "blocked"
                         : result.reason === "max_turns" || result.reason === "hook_limit" ? "limit" : "completed",
                     reason: signal.aborted ? normalizeTurnAbortReason(signal.reason) : failed ? "error" : result?.reason ?? "error",
-                    persistence_status: sessionSaved ? "saved" : "failed", checkpoint_status: checkpointSettled ? "settled" : "failed",
+                    persistence_status: sessionSaved ? "saved" : "failed",
                 };
                 await emitEvent({type: "turn_end", input});
                 // Cancellation reports a fact only; never create a fresh signal for notifications.

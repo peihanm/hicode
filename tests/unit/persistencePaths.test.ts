@@ -8,7 +8,6 @@ import {
     getSessionStorageDirectory,
     hashProjectValue,
 } from "../../src/persistence/index.js";
-import {getCheckpointDirectory} from "../../src/checkpoints/paths.js";
 import {getProjectMemoryDirectory} from "../../src/persistence/layout.js";
 import {getToolResultSessionDir} from "../../src/toolResults/paths.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -47,11 +46,7 @@ describe("persistence paths", () => {
             expect(getProjectMemoryDirectory(storage, cwd)).toBe(
                 join(projectDirectory, "memory")
             );
-            expect(getCheckpointDirectory(
-                storage,
-                cwd,
-                sessionId
-            )).toBe(join(sessionDirectory, "checkpoints"));
+
             expect(getToolResultSessionDir(
                 storage,
                 cwd,

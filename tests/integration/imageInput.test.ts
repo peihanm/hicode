@@ -15,8 +15,7 @@ import {imageReferences, contentText} from "../../src/images/content.js";
 import {importSelectedImages} from "../../src/runtime/imageInput.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
 import {RuntimeMessageQueue, normalizeRuntimeQueuedMessages} from "../../src/runtime/messageQueue.js";
-import {loadSession, saveSessionSnapshot, saveSessionTurnCheckpoint} from "../../src/session/storage.js";
-import {forkSessionConversation} from "../../src/session/fork.js";
+import {loadSession, saveSessionSnapshot} from "../../src/session/storage.js";
 import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
 import {getProjectDebugDirectory} from "../../src/persistence/index.js";
 
@@ -26,7 +25,6 @@ function settings() {
     const value = createTestSettings();
     value.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
     value.sources.qwen = {...value.sources.qwen, apiKeyEnv: "PILLAR_USER_IMAGE_TEST_KEY"};
-    value.checkpointing = {enabled: true};
     return value;
 }
 
@@ -65,7 +63,7 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             expect(metadata.origin.kind).toBe("user");
             expect(metadata.origin.inputId).toMatch(/^[a-f0-9-]{36}$/);
             expect(metadata).not.toHaveProperty("toolCallId");
-            const resumed = await createSDKThread({resources, seed: {sessionId: loaded.sessionId, history: loaded.history, compactState: loaded.compactState!, checkpointHead: loaded.checkpointHead}, state, resumed: true, onClose() {}});
+            const resumed = await createSDKThread({resources, seed: {sessionId: loaded.sessionId, history: loaded.history, compactState: loaded.compactState!}, state, resumed: true, onClose() {}});
             try {expect((await resumed.run("比较两张图")).stopReason).toBe("completed");} finally {await resumed.close();}
             expect(JSON.stringify(requests[1])).toContain("data:image/png;base64,");
             const logDir = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
@@ -82,7 +80,7 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
     });
 });
 
-test("selected local images obey policy and queue immutable snapshots through persistence, editing, and Fork prompt", async () => {
+test("selected local images obey policy and queue immutable snapshots through persistence, and draft editing", async () => {
     await withTempProject(async (cwd, storage) => {
         const resources = createTestRuntimeResources(cwd, {storage, settings: settings()});
         const ctx = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", workspaceBoundary: cwd, toolResultStore: createToolResultStore(storage, cwd, "test-session")});
@@ -109,12 +107,8 @@ test("selected local images obey policy and queue immutable snapshots through pe
             await ui.rootSession.initialize();
             const content = queue.takeEditableInputs()[0]!;
             expect(queue.list()).toHaveLength(0);
-            await saveSessionTurnCheckpoint(storage, {...args, checkpointId: "image-prompt", branchId: "b", prompt: content});
-            const fork = await forkSessionConversation({storage, cwd, model: resources.model, sessionId: ctx.sessionId, checkpointId: "image-prompt", permissionMode: "default"});
-            const forked = loadSession(storage, cwd, fork.sessionId, resources.model)!;
-            expect(imageReferences(forked.queuedInputs[0]!.content)).toEqual(images);
-            await unlink(ctx.toolResultStore.imagePath(images[0]!.imageId));
-            expect(await createToolResultStore(storage, cwd, fork.sessionId).readImage(images[0]!)).toBeInstanceOf(Buffer);
+            expect(imageReferences(content)).toEqual(images);
+            expect(await ctx.toolResultStore.readImage(images[0]!)).toBeInstanceOf(Buffer);
         } finally {await resources.close();}
     });
 });
