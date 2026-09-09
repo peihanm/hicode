@@ -67,7 +67,7 @@ class InactiveSandboxRuntime implements SandboxRuntimeLike {
 }
 
 class ActiveSandboxRuntime implements SandboxRuntimeLike {
-    private closed = false;
+    private closePromise: Promise<void> | undefined;
 
     constructor(
         readonly status: Extract<SandboxStatus, {kind: "ready"}>,
@@ -85,7 +85,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         signal: AbortSignal,
         options?: SandboxCommandOptions
     ): Promise<SandboxedCommand> {
-        if (this.closed) throw new Error("Sandbox Runtime 已关闭");
+        if (this.closePromise) throw new Error("Sandbox Runtime 已关闭");
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
             .map((path) => resolve(path));
@@ -140,11 +140,9 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         this.backend.cleanupAfterCommand();
     }
 
-    async close(): Promise<void> {
-        if (this.closed) return;
-        this.closed = true;
-        this.networkApproval.close();
-        await this.release();
+    close(): Promise<void> {
+        this.closePromise ??= this.release();
+        return this.closePromise;
     }
 }
 
@@ -153,7 +151,7 @@ export function createDisabledSandboxRuntime(): SandboxRuntimeLike {
 }
 
 export function createSandboxRuntimeFactory(backend: SandboxBackend) {
-    let activeLease: symbol | undefined;
+    let ownership: {kind: "unclaimed"} | {kind: "idle"} | {kind: "owned"; lease: symbol} | {kind: "failed"; reason: string} = {kind: "unclaimed"};
 
     return async function createSandboxRuntime({
         cwd,
@@ -194,7 +192,12 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 warnings: dependencies.warnings,
             });
         }
-        if (activeLease || backend.isSandboxingEnabled()) {
+        if (ownership.kind === "failed") {
+            return new InactiveSandboxRuntime({kind: "unavailable", reason: ownership.reason, warnings: dependencies.warnings});
+        }
+        // The backend's enabled flag means "config exists", even after a successful reset.
+        // Only our completed release proves it is safe to acquire that configured backend again.
+        if (ownership.kind === "owned" || (ownership.kind === "unclaimed" && backend.isSandboxingEnabled())) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
                 reason: "当前进程已有另一个 Root Runtime 持有 OS Sandbox",
@@ -204,17 +207,21 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
 
         const lease = Symbol("pillar-sandbox-lease");
         const networkApproval = new SandboxNetworkApproval();
-        activeLease = lease;
-        let released = false;
+        ownership = {kind: "owned", lease};
+        let releasePromise: Promise<void> | undefined;
         const release = async () => {
-            if (released || activeLease !== lease) return;
-            released = true;
-            networkApproval.close();
-            try {
-                await backend.reset();
-            } finally {
-                if (activeLease === lease) activeLease = undefined;
-            }
+            releasePromise ??= (async () => {
+                if (ownership.kind !== "owned" || ownership.lease !== lease) return;
+                networkApproval.close();
+                try {
+                    await backend.reset();
+                    ownership = {kind: "idle"};
+                } catch (error) {
+                    ownership = {kind: "failed", reason: `Sandbox 清理失败，请重启 Pillar：${errorMessage(error)}`};
+                    throw error;
+                }
+            })();
+            return releasePromise;
         };
 
         try {

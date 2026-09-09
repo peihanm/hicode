@@ -7,6 +7,7 @@ import {
 } from "../tools/bash/shellRunner.js";
 import type {StartShellTaskInput, TaskSessionBinding, TaskStatus,} from "./types.js";
 import {type ManagedShellTask, readOutputPreview,} from "./managed.js";
+import {isExpectedShellShutdown} from "./notifications.js";
 
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
@@ -90,7 +91,7 @@ export async function runShellTask(
     } finally {
         task.status = finalStatus;
         task.completedAt = new Date().toISOString();
-        task.notificationPending = !task.suppressTerminalNotification;
+        task.notificationPending = !task.suppressTerminalNotification && !isExpectedShellShutdown(task);
         await task.store.removeTemporaryFile(task.outputPath);
         await onFinished(task);
     }

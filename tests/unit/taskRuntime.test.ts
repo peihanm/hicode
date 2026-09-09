@@ -6,8 +6,43 @@ import type {ShellRunnerLike} from "../../src/tools/bash/shellRunner.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
+import {RuntimeMessageQueue} from "../../src/runtime/messageQueue.js";
+import {createTaskNotificationDelivery} from "../../src/runtime/taskNotificationDelivery.js";
 
 describe("TaskRuntime", () => {
+    for (const outputFailure of [false, true]) {
+        test(`shutdown 保留任务记录，正常清理不通知，输出异常仍通知（异常=${outputFailure}）`, async () => {
+            await withTempProject(async cwd => {
+                let runs = 0;
+                const runner: ShellRunnerLike = {sandboxStatus: {kind: "disabled"}, async run(request) {
+                    runs++;
+                    if (!request.signal.aborted) await new Promise<void>(resolve => request.signal.addEventListener("abort", () => resolve(), {once: true}));
+                    if (outputFailure) throw new Error("output capture failed");
+                    await appendFile(request.outputFilePath!, "stopped\n");
+                    return {stdout: "", stderr: "", termination: {kind: "aborted", reason: "shutdown"}, outputBytes: 8, outputComplete: true};
+                }};
+                const store = createTestToolResultStore(cwd, "quiet-shutdown", {pillarHome: `${cwd}/tool-results`});
+                const runtime = createTaskRuntimeForTest(cwd, runner);
+                const session = runtime.forSession({sessionId: "quiet-shutdown", toolResultStore: store});
+                const task = await session.startShell({command: "fixture-server", cwd, toolCallId: "start-server"});
+                await runtime.close();
+                expect(await session.pendingNotifications()).toHaveLength(outputFailure ? 1 : 0);
+                const restoredRuntime = createTaskRuntimeForTest(cwd, runner);
+                try {
+                    const restored = restoredRuntime.forSession({sessionId: "quiet-shutdown", toolResultStore: store});
+                    expect(await restored.get(task.id)).toMatchObject({status: "cancelled"});
+                    if (!outputFailure) expect(await restored.get(task.id)).toMatchObject({output: "stopped\n", termination: {kind: "aborted", reason: "shutdown"}});
+                    const queue = new RuntimeMessageQueue();
+                    const shown: string[] = [];
+                    const delivery = createTaskNotificationDelivery({tasks: restored, queue, async persist() {}, onQueued: item => {shown.push(item.taskId);}});
+                    await delivery.drain(); await delivery.drain();
+                    expect(shown).toHaveLength(outputFailure ? 1 : 0);
+                    expect(queue.list()).toHaveLength(outputFailure ? 1 : 0);
+                    expect(runs).toBe(1);
+                } finally {await restoredRuntime.close();}
+            });
+        });
+    }
     test("并发启动在异步准备期也不会突破 Session Agent 上限", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {

@@ -1,8 +1,13 @@
 import {createHash} from "node:crypto";
-import type {ManagedTask} from "./managed.js";
+import type {ManagedTask, ManagedShellTask} from "./managed.js";
 import type {TaskNotification, TaskSnapshot,} from "./types.js";
 
 type SnapshotTask = (task: ManagedTask) => Promise<TaskSnapshot>;
+export function isExpectedShellShutdown(task: Pick<ManagedShellTask, "status" | "termination" | "outputIssue">): boolean {
+    return task.status === "cancelled" && task.termination?.kind === "aborted" &&
+        task.termination.reason === "shutdown" && !task.outputIssue;
+}
+
 export function taskNotificationId(taskId: string, runCount: number): string {
     return createHash("sha256").update(JSON.stringify([taskId, runCount])).digest("hex");
 }

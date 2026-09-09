@@ -4,6 +4,7 @@ import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 import {withTempProject} from "../helpers/tempProject.js";
 import {mkdir, realpath} from "node:fs/promises";
 import {join} from "node:path";
+import {execFileSync} from "node:child_process";
 
 const settings = {
     enabled: true,
@@ -110,7 +111,7 @@ describe("Sandbox Runtime lease", () => {
             cleanupAfterCommand() {},
             async reset() {
                 resetCount += 1;
-                enabled = false;
+                // Real sandbox-runtime retains config, so this flag stays true after reset.
             },
         });
 
@@ -135,6 +136,67 @@ describe("Sandbox Runtime lease", () => {
         await third.close();
         expect(resetCount).toBe(2);
       });
+    });
+});
+
+test("真实依赖的 reset 保留 enabled 标记，不可用作活动 owner 判断", () => {
+    const output = execFileSync(process.execPath, ["-e", `
+        import {SandboxManager} from "@anthropic-ai/sandbox-runtime";
+        const before = SandboxManager.isSandboxingEnabled();
+        SandboxManager.updateConfig({filesystem:{denyRead:[],allowWrite:[],denyWrite:[]},network:{allowedDomains:[],deniedDomains:[]}});
+        await SandboxManager.reset();
+        process.stdout.write(JSON.stringify({before, after:SandboxManager.isSandboxingEnabled()}));
+    `], {encoding: "utf8", timeout: 10_000, env: {PATH: process.env.PATH ?? ""}});
+    expect(JSON.parse(output)).toEqual({before: false, after: true});
+});
+
+test("关闭等待 reset 完成，清理失败后禁止新 Root 接管", async () => {
+    await withTempProject(async (cwd, storage) => {
+        let configured = false, resets = 0;
+        let rejectReset!: (error: Error) => void;
+        const resetGate = new Promise<void>((_, reject) => {rejectReset = reject;});
+        const factory = createSandboxRuntimeFactory({
+            isSupportedPlatform: () => true, isSandboxingEnabled: () => configured,
+            checkDependencies: () => ({errors: [], warnings: []}),
+            async initialize() {configured = true;},
+            async wrapWithSandboxArgv() {return {argv: ["true"], env: {}};},
+            annotateStderrWithSandboxFailures: (_, stderr) => stderr, cleanupAfterCommand() {},
+            async reset() {resets++; await resetGate;},
+        });
+        const first = await factory({cwd, storage, settings});
+        expect(first.status.kind).toBe("ready");
+        const closing = first.close();
+        expect(first.close() === closing).toBe(true);
+        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("另一个 Root")});
+        await expect(first.wrapCommand("true", cwd, new AbortController().signal)).rejects.toThrow("已关闭");
+        const outcome = closing.catch(error => error);
+        rejectReset(new Error("reset failed"));
+        expect(await outcome).toMatchObject({message: "reset failed"});
+        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("清理失败")});
+        expect(resets).toBe(1);
+    });
+});
+
+test("初始化失败但 reset 成功后可重试，未知外部 owner 仍不能接管", async () => {
+    await withTempProject(async (cwd, storage) => {
+        let configured = true, starts = 0, resets = 0;
+        const factory = createSandboxRuntimeFactory({
+            isSupportedPlatform: () => true, isSandboxingEnabled: () => configured,
+            checkDependencies: () => ({errors: [], warnings: []}),
+            async initialize() {configured = true; if (++starts === 1) throw new Error("partial init");},
+            async wrapWithSandboxArgv() {return {argv: ["true"], env: {}};},
+            annotateStderrWithSandboxFailures: (_, stderr) => stderr, cleanupAfterCommand() {},
+            async reset() {resets++;},
+        });
+        expect((await factory({cwd, storage, settings})).status.kind).toBe("unavailable");
+        expect(starts).toBe(0); expect(resets).toBe(0);
+        configured = false;
+        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: "partial init"});
+        expect(configured).toBe(true); expect(resets).toBe(1);
+        const recovered = await factory({cwd, storage, settings});
+        expect(recovered.status.kind).toBe("ready");
+        await recovered.close();
+        expect(resets).toBe(2);
     });
 });
 

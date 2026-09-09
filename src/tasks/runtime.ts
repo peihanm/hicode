@@ -24,7 +24,7 @@ import {
     snapshotTask,
     worktreeSnapshot,
 } from "./managed.js";
-import {TaskNotificationCenter, taskNotificationId} from "./notifications.js";
+import {TaskNotificationCenter, taskNotificationId, isExpectedShellShutdown} from "./notifications.js";
 import {createShellTask, runShellTask} from "./shellTask.js";
 import {
     createAgentTask,
@@ -906,7 +906,8 @@ class TaskRuntime implements TaskRuntimeLike {
             this.archived.set(restored.id, restored);
             this.notifications.rememberArchived(
                 restored.id,
-                loaded.claimedNotificationIds.has(taskNotificationId(restored.id, restored.kind === "agent" ? restored.progress.runCount : 1))
+                loaded.claimedNotificationIds.has(taskNotificationId(restored.id, restored.kind === "agent" ? restored.progress.runCount : 1)) ||
+                (restored.kind === "shell" && isExpectedShellShutdown(restored))
             );
         }
     }
