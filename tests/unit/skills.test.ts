@@ -132,3 +132,21 @@ test("项目覆盖及 bundled 激活指向实际读取的 Markdown 文件", asyn
         expect(bundled.modelContent).not.toContain("debug/SKILL.md");
     });
 });
+
+
+test("未知 Skill 通过统一工具链报告 failed，并列出当前实际可用名称", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const empty = await executeToolResult("skill", '{"skill":"verify"}', {...createTestContext(cwd), skills: []}, "missing-empty");
+        expect(empty.outcome).toBe("failed");
+        expect(empty.modelContent).toContain("可用 skill: (无)");
+        const skills = loadSkills({storage, cwd, sources: [], hostSkills: [{name: "project-review", description: "review", content: "Args: $ARGUMENTS"}]});
+        const ctx = {...createTestContext(cwd), skills};
+        const missing = await executeToolResult("skill", '{"skill":"verify"}', ctx, "missing");
+        expect(missing.outcome).toBe("failed");
+        expect(missing.modelContent).toContain("project-review");
+        const loaded = await executeToolResult("skill", '{"skill":"project-review"}', ctx, "loaded");
+        expect(loaded.outcome).toBe("ok");
+        expect(loaded.modelContent).toContain("Args: ");
+        expect(loaded.modelContent).not.toContain("$ARGUMENTS");
+    });
+});

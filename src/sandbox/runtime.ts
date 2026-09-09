@@ -6,7 +6,7 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
-import {getProjectBunCacheDirectory, type PillarStorageLayout} from "../persistence/layout.js";
+import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type PillarStorageLayout} from "../persistence/layout.js";
 import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
 import {createSandboxRuntimeConfig} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
@@ -76,6 +76,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         private readonly baseConfig: SandboxRuntimeConfig,
         private readonly networkApproval: SandboxNetworkApproval,
         private readonly bunCacheDirectory: string,
+        private readonly npmCacheDirectory: string,
         private readonly pillarHome: string
     ) {}
 
@@ -125,7 +126,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                 signal,
                 cwd
             );
-            return {...wrapped, env: {...wrapped.env, BUN_INSTALL_CACHE_DIR: this.bunCacheDirectory}, ...approval};
+            return {...wrapped, env: {...wrapped.env, BUN_INSTALL_CACHE_DIR: this.bunCacheDirectory, npm_config_cache: this.npmCacheDirectory}, ...approval};
         } catch (error) {
             approval.release();
             throw error;
@@ -228,7 +229,10 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             const cachePath = getProjectBunCacheDirectory(storage, cwd);
             ensurePrivateStorageDirectory(storage, cachePath);
             const bunCacheDirectory = await realpath(cachePath);
-            const config = createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory]);
+            const npmCachePath = getProjectNpmCacheDirectory(storage, cwd);
+            ensurePrivateStorageDirectory(storage, npmCachePath);
+            const npmCacheDirectory = await realpath(npmCachePath);
+            const config = createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory, npmCacheDirectory]);
             await backend.initialize(config, networkApproval.ask);
             if (!backend.isSandboxingEnabled()) {
                 await release();
@@ -242,7 +246,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 kind: "ready",
                 platform,
                 warnings: dependencies.warnings,
-            }, backend, release, config, networkApproval, bunCacheDirectory, await realpath(storage.pillarHome));
+            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.pillarHome));
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

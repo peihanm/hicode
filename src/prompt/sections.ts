@@ -79,7 +79,7 @@ export function getToolGuidanceSection(): string {
         "  - 按名称或路径模式找文件用 glob；浏览单层目录用 list_files，而不是 find / ls",
         "  - 搜索文件内容用 grep 而不是 grep / rg 命令",
         "  - Bash 只用于真正需要 shell 执行的系统命令和终端操作",
-        "- 测试和构建直接运行原命令，由框架限制结果展示；不要仅为缩短输出先加 tail/head/grep 管道，这会丢弃可用于排障的原始内容。长结果返回保存路径后，用 grep 指定该文件及关键词、context、head_limit 定位细节；超过 Grep 的 1 MiB 单文件上限时，用 read_file 读取同一保存路径，offset/limit 仍使用行号；路径被拒绝时遵循权限边界，不扫描其他会话。不要仅为换一种截取方式重跑原命令；修复代码或环境后仍需重新执行相关检查，旧结果不能验证新状态。保存的读取输出也只是日志；修改源码前直接 read_file 原文件，避免依据旧日志覆盖当前版本。",
+        "- 测试和构建直接运行原命令，由框架限制结果展示；不要仅为缩短输出先加 tail/head/grep 管道，这会丢弃可用于排障的原始内容。长结果返回保存路径后，用 grep 指定该文件及关键词、context、head_limit 定位细节；精确文件支持至 64 MiB，超长行返回命中附近窗口；用 read_file 的行号 offset/limit 读取周围行；路径被拒绝时遵循权限边界，不扫描其他会话。不要仅为换一种截取方式重跑原命令；修复代码或环境后仍需重新执行相关检查，旧结果不能验证新状态。保存的读取输出也只是日志；修改源码前直接 read_file 原文件，避免依据旧日志覆盖当前版本。",
         "  - Git 操作统一使用 Bash。查看状态和差异时运行只读的 git status、git diff、git log；Commit 和 Push 分别需要用户明确授权，当前会话已明确的持续授权在指定范围内有效",
         "  - Commit 前检查 staged/unstaged/untracked 和最近 Commit 风格，只用 git add -- <精确路径...> Stage 用户要求的文件。不得使用 git add .、git add -A、跳过 Hook、修改 Git Config 或自动 Stash/Reset/Clean；不要擅自 Amend。Push 前核对分支、远端和待推送提交均在授权范围内；Commit/Push 后检查真实结果再报告",
         "- 按完整的逻辑修改组织文件操作。已确定的同文件多处替换合并到一次 edit_file 的 edits 数组；所有 old_string 均匹配同一已读原版本，后项不能引用前项生成的内容，范围不得重叠。单处修改也使用一项 edits。不要为凑字符数机械拆分，也不要仅为拆分留下占位实现。",

@@ -81,9 +81,10 @@ describe("Sandbox Runtime lease", () => {
         expect(wrappedConfigs[0]?.filesystem?.allowWrite).toEqual([
             "/project",
             expect.stringContaining("/cache/bun"),
+            expect.stringContaining("/cache/npm"),
             "/shared/session-a",
         ]);
-        expect(wrappedConfigs[1]?.filesystem?.allowWrite).toEqual(["/project", expect.stringContaining("/cache/bun")]);
+        expect(wrappedConfigs[1]?.filesystem?.allowWrite).toEqual(["/project", expect.stringContaining("/cache/bun"), expect.stringContaining("/cache/npm")]);
         await runtime.close();
       });
     });
@@ -200,13 +201,13 @@ test("初始化失败但 reset 成功后可重试，未知外部 owner 仍不能
     });
 });
 
-test("受管 Bun 缓存拒绝 symlink，初始化失败释放 lease，显式禁写仍保留", async () => {
+test.each(["bun", "npm"] as const)("受管 %s 缓存拒绝 symlink，初始化失败释放 lease，显式禁写仍保留", async manager => {
     await withTempProject(async (cwd, storage) => {
-        const {getProjectBunCacheDirectory} = await import("../../src/persistence/layout.js");
+        const {getProjectBunCacheDirectory, getProjectNpmCacheDirectory} = await import("../../src/persistence/layout.js");
         const {ensurePrivateStorageDirectory} = await import("../../src/persistence/privateStorage.js");
         const {dirname} = await import("node:path");
         const {symlink, unlink} = await import("node:fs/promises");
-        const cache = getProjectBunCacheDirectory(storage, cwd);
+        const cache = (manager === "bun" ? getProjectBunCacheDirectory : getProjectNpmCacheDirectory)(storage, cwd);
         ensurePrivateStorageDirectory(storage, dirname(cache));
         const outside = join(cwd, "outside");
         await mkdir(outside);
@@ -227,7 +228,7 @@ test("受管 Bun 缓存拒绝 symlink，初始化失败释放 lease，显式禁�
         try {
             expect(runtime.status.kind).toBe("ready");
             const wrapped = await runtime.wrapCommand("install", cwd, new AbortController().signal);
-            expect(wrapped.env.BUN_INSTALL_CACHE_DIR).toBe(await realpath(cache));
+            expect(wrapped.env[manager === "bun" ? "BUN_INSTALL_CACHE_DIR" : "npm_config_cache"]).toBe(await realpath(cache));
             expect(configs[0]?.filesystem?.denyWrite).toContain(cache);
             expect(configs[0]?.filesystem?.allowWrite).not.toContain(storage.pillarHome);
         } finally {await runtime.close();}

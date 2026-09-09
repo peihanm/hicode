@@ -12,7 +12,7 @@ import {inlineToolResult} from "../tools/execute.js";
 import {type CompactHistoryRunner, prepareAgentInvoke, type ToolSchemaProvider,} from "./invokePreparation.js";
 import {
     createTurnCompletionState,
-    formatCompletionReminder,
+    formatTodoCompletionReminder,
     formatCompletionContext,
     recordToolOutcomes,
 } from "./turnCompletion.js";
@@ -315,8 +315,7 @@ async function runAgentCore(
                     continue;
                 }
                 const completionReminder = textContent && !completionGateUsed
-                    ? formatCompletionReminder(
-                        completionState,
+                    ? formatTodoCompletionReminder(
                         textContent,
                         options.getTodos?.() ?? []
                     )

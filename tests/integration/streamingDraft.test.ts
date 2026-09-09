@@ -6,6 +6,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import type {AgentEvent} from "../../src/agent/types.js";
 import type {Message} from "../../src/llm/types.js";
 import {consumeOpenAICompatibleSSE} from "../../src/llm/providers/openAICompatibleStream.js";
+import type {Todo} from "../../src/todos.js";
 
 test("SSE 正文在完成前可见，推理和残缺工具参数不会成为正文", async () => {
     const encoder = new TextEncoder();
@@ -33,10 +34,16 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
         const history: Message[] = [];
         const controller = new AbortController();
         let calls = 0;
-        const running = runAgentForTest("回答", history, event => {events.push(event);}, createTestContext(cwd, {signal: controller.signal}), {
+        let todos: Todo[] = [];
+        const running = runAgentForTest("回答", history, event => {events.push(event);}, createTestContext(cwd, {
+            signal: controller.signal, setTodos: next => {todos = next;},
+        }), {
+            getTodos: () => todos,
             callLLM: async (_messages, _tools, _storage, _cwd, _model, _kind, _signal, _progress, onText) => {
                 calls++;
-                if (mode === "revision" && calls === 1) return assistantToolCall("write_file", {path: "app.ts", content: ""}, "write");
+                if (mode === "revision" && (calls === 1 || calls === 3)) return assistantToolCall("todo_write", {
+                    todos: [{content: "完成任务", activeForm: "正在完成任务", status: calls === 1 ? "in_progress" : "completed"}],
+                }, `todo-${calls}`);
                 await onText?.({type: "reset"});
                 await onText?.({type: "delta", text: "正在生成"});
                 expect(events.at(-1)?.type).toBe("assistant_draft");
@@ -47,9 +54,8 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
                     await onText?.({type: "reset"});
                     await onText?.({type: "delta", text: "新的回复"});
                 }
-                return assistantText(mode === "revision" && calls === 2 ? "应用已在沙箱运行" : "最终结论");
+                return assistantText(mode === "revision" && calls === 2 ? "任务已完成" : "最终结论");
             },
-            executeTool: async () => ({modelContent: "written", displayContent: "written", outcome: "ok"}),
         });
         if (mode === "failure") await expect(running).rejects.toThrow("truncated");
         else await running;

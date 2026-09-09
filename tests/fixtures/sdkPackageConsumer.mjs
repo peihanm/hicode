@@ -12,6 +12,7 @@ if (!workspace || !pillarHome) {
 let requestCount = 0;
 let sawHostToolResult = false;
 let sawGlobResult = false;
+let sawGrepResult = false;
 let sawImageResult = false;
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
@@ -27,6 +28,8 @@ globalThis.fetch = async (input, init) => {
     }
     if (requestCount === 3) sawGlobResult = body.includes("fixture.ts");
     if (requestCount === 4) sawImageResult = body.includes("data:image/png;base64,") && body.includes('"tool_call_id":"sdk-package-image"');
+
+    if (requestCount === 5) sawGrepResult = body.includes("fixture.ts:1: export const fixture = true;");
 
     const event = requestCount === 1
         ? {
@@ -80,10 +83,13 @@ globalThis.fetch = async (input, init) => {
         : requestCount === 3
         ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-image", type: "function",
             function: {name: "view_image", arguments: JSON.stringify({path: "image.png"})}}]}, finish_reason: "tool_calls"}]}
+        : requestCount === 4
+        ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-grep", type: "function",
+            function: {name: "grep", arguments: JSON.stringify({path: "fixture.ts", pattern: "fixture"})}}]}, finish_reason: "tool_calls"}]}
         : {
             choices: [{
                 delta: {
-                    content: sawHostToolResult && sawGlobResult && sawImageResult
+                    content: sawHostToolResult && sawGlobResult && sawImageResult && sawGrepResult
                         ? "SDK_PACKAGE_AGENT_OK"
                         : "SDK_PACKAGE_TOOL_RESULT_MISSING",
                 },
@@ -163,7 +169,7 @@ try {
         },
     });
     const thread = await pillar.startThread();
-    const result = await thread.run([{type: "text", text: "Use host_lookup, then glob TypeScript files, then view image.png."},
+    const result = await thread.run([{type: "text", text: "Use host_lookup, then glob TypeScript files, then view image.png and grep fixture.ts for fixture."},
         {type: "image", data: await readFile(resolve(workspace, "image.png"))}], {
         maxIterations: 5,
     });
@@ -175,11 +181,12 @@ try {
     );
     if (
         result.finalResponse !== "SDK_PACKAGE_AGENT_OK" ||
-        requestCount !== 4 ||
+        requestCount !== 5 ||
         hostToolCalls !== 1 ||
         !sawHostToolResult ||
         !sawGlobResult ||
         !sawImageResult ||
+        !sawGrepResult ||
         !hostLookup ||
         hostLookup.status !== "completed" ||
         hostLookup.outcome !== "ok" ||

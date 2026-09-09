@@ -109,13 +109,21 @@ export function createShellRunner(
             }
 
             try {
+                const commandEnvironment = mergeChildProcessEnvironment(childEnvironment, wrapped.env, env);
+                if (wrapped.env.npm_config_cache !== undefined) {
+                    // npm accepts case-insensitive config names. Remove inherited aliases so
+                    // a parent npm run cannot silently restore an unwritable user cache.
+                    for (const name of Object.keys(commandEnvironment)) {
+                        if (name.toLowerCase() === "npm_config_cache") delete commandEnvironment[name];
+                    }
+                    Object.assign(commandEnvironment, mergeChildProcessEnvironment(
+                        {base: {}, excludedNames: childEnvironment.excludedNames},
+                        {npm_config_cache: wrapped.env.npm_config_cache}
+                    ));
+                }
                 const result = await runShellArgv({
                     argv: wrapped.argv,
-                    env: mergeChildProcessEnvironment(
-                        childEnvironment,
-                        wrapped.env,
-                        env
-                    ),
+                    env: commandEnvironment,
                     ...processOptions,
                 });
                 let stderr = result.stderr;

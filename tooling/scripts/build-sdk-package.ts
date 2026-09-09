@@ -104,6 +104,16 @@ async function main(): Promise<void> {
         throw new Error("SDK ESM 构建失败");
     }
 
+    const grepWorker = await Bun.build({
+        entrypoints: [resolve(repositoryRoot, "src", "tools", "grep", "worker.ts")],
+        outdir: sdkDirectory,
+        naming: "grep.worker.js",
+        target: "node",
+        format: "esm",
+        packages: "external",
+    });
+    if (!grepWorker.success) throw new Error("SDK Grep worker 构建失败");
+
     const javascriptPath = resolve(sdkDirectory, "index.js");
     const declarationPath = resolve(sdkDirectory, "index.d.ts");
     await runDeclarationBundler(declarationPath);

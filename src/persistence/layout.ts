@@ -106,6 +106,9 @@ export function getProjectBunCacheDirectory(storage: PillarStorageLayout, cwd: s
     return join(getProjectStorageDirectory(storage, cwd), "cache", "bun");
 }
 
+export function getProjectNpmCacheDirectory(storage: PillarStorageLayout, cwd: string): string {
+    return join(getProjectStorageDirectory(storage, cwd), "cache", "npm");
+}
 
 export function getHookTrustPath(storage: PillarStorageLayout): string {
     return join(storage.pillarHome, "trusted-projects.json");

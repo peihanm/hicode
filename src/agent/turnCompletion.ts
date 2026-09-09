@@ -13,14 +13,12 @@ interface CheckEvidence {
 }
 
 export interface TurnCompletionState {
-    implementationWrites: number;
     projectChecks: Map<string, CheckEvidence>;
     revision: number;
 }
 
 export function createTurnCompletionState(): TurnCompletionState {
     return {
-        implementationWrites: 0,
         projectChecks: new Map(),
         revision: 0,
     };
@@ -101,15 +99,6 @@ export function recordToolOutcomes(
         }
         if (outcome.untrackedWorkspaceEffects) invalidateChecks(state);
         const args = parseArgs(outcome.argsJson);
-        if (outcome.outcome === "ok") {
-            if (
-                outcome.name === "write_file" ||
-                outcome.name === "edit_file" ||
-                outcome.name === "delete_file"
-            ) {
-                state.implementationWrites += 1;
-            }
-        }
         if (
             outcome.name === "bash" &&
             outcome.outcome === "ok" &&
@@ -133,52 +122,19 @@ export function formatCompletionContext(state: TurnCompletionState): string | un
         "</system-reminder>"].join("\n");
 }
 
-function relevantSentences(text: string): string[] {
-    return text.split(/[。！？\n]+/).map((line) => line.trim()).filter(Boolean);
-}
-
-function claimsSandboxedExecution(text: string): boolean {
-    return relevantSentences(text).some((sentence) =>
-        /(?:沙箱|sandbox).{0,16}(?:执行|运行)|(?:执行|运行).{0,16}(?:沙箱|sandbox)/i.test(
-            sentence
-        ) &&
-        !/(?:不是|并非|不能|不得|未|没有).{0,16}(?:沙箱|sandbox)|(?:沙箱|sandbox).{0,16}(?:不可用|未启用|不存在)/i.test(
-            sentence
-        )
-    );
-}
-
-export function formatCompletionReminder(
-    state: TurnCompletionState,
+/** Only structured Todo state can request this bounded final-answer nudge. */
+export function formatTodoCompletionReminder(
     candidateReply: string,
-    todos: readonly Todo[] = []
+    todos: readonly Todo[]
 ): string | undefined {
-    const unsupportedSandboxClaim =
-        state.implementationWrites > 0 && claimsSandboxedExecution(candidateReply);
     const inProgressTodos = todos.filter((todo) => todo.status === "in_progress");
-    const staleChecks = [...state.projectChecks.values()].filter(check => check.invalidatedAt !== undefined);
-    const staleValidationClaim = staleChecks.length > 0 && /(?:检查|测试|验证|构建).{0,16}(?:通过|成功|正常)/.test(candidateReply) &&
-        !/(?:未重跑|未重新|过期|修改后未|尚未验证)/.test(candidateReply);
-    if (
-        !unsupportedSandboxClaim &&
-        inProgressTodos.length === 0 && !staleValidationClaim
-    ) return undefined;
+    if (inProgressTodos.length === 0) return undefined;
 
     return [
         "<system-reminder>",
-        ...(staleValidationClaim ? ["已有检查通过后发生了相关修改，不能将旧结果当作最终版本验证。请重跑或明确披露修改后未重跑。"] : []),
-        ...(unsupportedSandboxClaim
-            ? [
-                "候选回答声称实现了沙箱执行，但本轮文件修改和普通命令证据不能证明生成的应用具备真实隔离。临时目录、子进程和 timeout 都不是沙箱；除非确实实现并验证了容器、虚拟机、受限 OS 用户或同等级隔离，否则必须改称本机子进程执行并披露文件、网络、凭证和资源风险。",
-            ]
-            : []),
-        ...(inProgressTodos.length > 0
-            ? [
-                "当前 Session 仍有标记为 in_progress 的 Todo：",
-                ...inProgressTodos.map((todo) => `- ${todo.content}`),
-                "本轮结束后不会再有工作实际执行，因此不能保留『正在进行』状态。若任务已经完成，先调用 todo_write 标记 completed；若尚未完成则继续执行；若决定暂缓，改为 pending 并在最终回答中准确说明。不要直接提交最终回答。",
-            ]
-            : []),
+        "当前 Session 仍有标记为 in_progress 的 Todo：",
+        ...inProgressTodos.map((todo) => `- ${todo.content}`),
+        "本轮结束后不会再有工作实际执行，因此不能保留『正在进行』状态。若任务已经完成，先调用 todo_write 标记 completed；若尚未完成则继续执行；若决定暂缓，改为 pending 并在最终回答中准确说明。不要直接提交最终回答。",
         "上一版候选回答如下：",
         "<candidate-reply>",
         sanitizeCandidateReply(candidateReply),

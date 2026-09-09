@@ -1,5 +1,5 @@
 import {expect, test} from "bun:test";
-import {createTurnCompletionState, formatCompletionContext, formatCompletionReminder, recordToolOutcomes} from "../../src/agent/turnCompletion.js";
+import {createTurnCompletionState, formatCompletionContext, recordToolOutcomes} from "../../src/agent/turnCompletion.js";
 import type {ToolCallOutcome} from "../../src/agent/toolBatch.js";
 import {createFileChange} from "../../src/fileChanges/index.js";
 
@@ -16,7 +16,6 @@ test("失败不形成额外未解决状态或阻止收尾，后续失败撤销�
     const state = createTurnCompletionState();
     recordToolOutcomes(state, [shell("failed", "bun test", "failed")], "/project");
     expect(formatCompletionContext(state)).toBeUndefined();
-    expect(formatCompletionReminder(state, "检查失败，未完成修复")).toBeUndefined();
     recordToolOutcomes(state, [shell("passed", "bun test", "ok")], "/project");
     expect(formatCompletionContext(state)).toContain("检查通过");
     recordToolOutcomes(state, [shell("failed-again", "bun test", "failed")], "/project");
@@ -27,13 +26,10 @@ test("失败不形成额外未解决状态或阻止收尾，后续失败撤销�
 test("相关目录修改使验证过期，其他目录修改保留证据，重跑恢复", () => {
     const state = createTurnCompletionState();
     recordToolOutcomes(state, [shell("check", "bun test", "ok"), write("b/x.ts")], "/project");
-    expect(formatCompletionReminder(state, "测试通过")).toBeUndefined();
     recordToolOutcomes(state, [write("a/x.ts")], "/project");
     expect(formatCompletionContext(state)).toContain("检查已过期");
-    expect(formatCompletionReminder(state, "测试通过")).toContain("相关修改");
-    expect(formatCompletionReminder(state, "测试此前通过，修改后未重跑")).toBeUndefined();
     recordToolOutcomes(state, [shell("rerun", "bun test", "ok")], "/project");
-    expect(formatCompletionReminder(state, "测试通过")).toBeUndefined();
+    expect(formatCompletionContext(state)).not.toContain("检查已过期");
 });
 
 test("未知 Shell 副作用和 Command Hook 使证据过期，复合掩盖失败的命令不算项目验证", () => {
@@ -56,7 +52,6 @@ test("后台启动仍使检查过期，但不维护生命周期提示或阻止�
     }], "/project");
     expect(formatCompletionContext(state)).toContain("检查已过期");
     expect(formatCompletionContext(state)).not.toContain("后台任务");
-    expect(formatCompletionReminder(state, "当前会话托管，退出后需要重启。检查修改后未重跑。")).toBeUndefined();
 });
 
 test.each(["node --test", 'node --test "tests/*.test.js"', "npm run test:e2e"])("项目检查 %s 可记录、过期与重跑", (command) => {
@@ -65,9 +60,9 @@ test.each(["node --test", 'node --test "tests/*.test.js"', "npm run test:e2e"])(
     expect(state.projectChecks.size).toBe(1);
     expect(formatCompletionContext(state)).toContain(command);
     recordToolOutcomes(state, [write("a/game.js")], "/project");
-    expect(formatCompletionReminder(state, "测试通过")).toContain("相关修改");
+    expect(formatCompletionContext(state)).toContain("检查已过期");
     recordToolOutcomes(state, [shell("rerun", command, "ok")], "/project");
-    expect(formatCompletionReminder(state, "测试通过")).toBeUndefined();
+    expect(formatCompletionContext(state)).not.toContain("检查已过期");
     recordToolOutcomes(state, [shell("failed", command, "failed")], "/project");
     expect(state.projectChecks.size).toBe(0);
 });

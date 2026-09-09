@@ -7,7 +7,8 @@ import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {runShellCommand} from "../../src/tools/bash/process.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
-import {getProjectBunCacheDirectory} from "../../src/persistence/layout.js";
+import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory} from "../../src/persistence/layout.js";
+import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createTestContext} from "../helpers/testContext.js";
@@ -46,7 +47,11 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
         const sandbox = await factory({cwd, storage, settings: {enabled: true, filesystem: {denyRead: [], denyWrite: []},
             network: {allowedDomains: [], allowLocalBinding: false}}});
         expect(sandbox.status.kind).toBe("ready");
-        const runner = createShellRunner(sandbox, testChildEnvironment);
+        const npmConfig = join(root, "empty.npmrc");
+        const npmGlobalConfig = join(root, "global.npmrc");
+        await writeFile(npmConfig, ""); await writeFile(npmGlobalConfig, "");
+        const runner = createShellRunner(sandbox, createChildProcessEnvironment({...testChildEnvironment.base,
+            npm_config_userconfig: npmConfig, npm_config_globalconfig: npmGlobalConfig, npm_config_update_notifier: "false"}, []));
         const ctx = createTestContext(cwd, {toolResultStore: createTestToolResultStore(cwd, "install", {pillarHome: storage.pillarHome}), shellRunner: runner, canUseTool: async () => {throw new Error("unexpected approval");}});
         try {
             const tools = createToolRuntime();
@@ -60,6 +65,11 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
             const cache = await realpath(getProjectBunCacheDirectory(storage, cwd));
             const env = await runner.run({cwd, signal: ctx.signal, command: 'printf "%s" "$BUN_INSTALL_CACHE_DIR"'});
             expect(env.stdout).toBe(cache);
+            const npmInstall = await tools.executeTool("bash", JSON.stringify({command: "npm install --offline --ignore-scripts --no-audit --no-fund"}), ctx, "npm-install");
+            expect(npmInstall.outcome).toBe("ok");
+            const npmCache = await realpath(getProjectNpmCacheDirectory(storage, cwd));
+            expect((await runner.run({cwd, signal: ctx.signal, command: "npm config get cache"})).stdout.trim()).toBe(npmCache);
+            expect((await runner.run({cwd, signal: ctx.signal, command: "npx --offline pillar-fixture"})).stdout).toContain("fixture");
             const denied = await tools.executeTool("bash", JSON.stringify({command: "printf damaged > .env"}), ctx, "protected");
             expect(denied.outcome).toBe("failed");
             expect(await readFile(join(cwd, ".env"), "utf8")).toBe("fixture=protected");

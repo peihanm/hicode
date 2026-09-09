@@ -1,6 +1,6 @@
 import {checkMemoryStoragePath} from "../../memory/publicationAccess.js";
 import {z} from "zod";
-import {appendFile, open} from "node:fs/promises";
+import {appendFile, lstat, open} from "node:fs/promises";
 import {constants} from "node:fs";
 import type {Tool} from "../types.js";
 import {createFileDiscovery, createPathMatcher} from "../shared/fileDiscovery.js";
@@ -9,9 +9,14 @@ import {basename, extname, relative} from "node:path";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
 import {resolveSessionArchiveFile} from "../../session/archiveAccess.js";
+import {createGrepMatcher} from "./matcher.js";
+import type {SearchHit, SearchResponse} from "./protocol.js";
 
 const INLINE_RESULT_CHARS = 20_000;
-const MAX_FILE_SIZE = 1024 * 1024; // 跳过 1MB 以上的文件
+const MAX_DISCOVERY_FILE_SIZE = 1024 * 1024;
+const MAX_EXPLICIT_FILE_SIZE = 64 * 1024 * 1024;
+const MAX_LINE_CHARS = 2_000;
+const SEARCH_DEADLINE_MS = 30_000;
 const MAX_CONTEXT = 10;
 const MAX_HEAD_LIMIT = 10_000;
 
@@ -36,7 +41,7 @@ const FILE_TYPE_EXTENSIONS: Record<string, readonly string[]> = {
 const inputSchema = z.object({
     include_ignored: z.boolean().default(false).describe("包含 .gitignore 与默认 node_modules 排除的文件"),
     search_mode: z.enum(["fast", "complete"]).default("fast").describe("fast 达到 head_limit 后停止；complete 继续统计全部匹配。两者都有文件数和读取字节硬上限，未覆盖部分会明确标注"),
-    pattern: z.string().describe("正则表达式"),
+    pattern: z.string().max(4_000).describe("JavaScript 正则表达式；独立 worker 执行，单文件最多 5 秒、整次搜索最多 30 秒"),
     path: z.string().default(".").describe("搜索起始目录或文件"),
     glob: z
         .string()
@@ -82,7 +87,7 @@ const inputSchema = z.object({
         .min(0)
         .max(MAX_HEAD_LIMIT)
         .optional()
-        .describe("最多显示多少条结果；0 或不传表示不限制，大范围搜索建议设置"),
+        .describe("最多显示多少条结果；0 或不传使用 10000 条安全上限，大范围搜索建议设置更小值"),
     offset: z
         .number()
         .int()
@@ -101,19 +106,32 @@ function formatLineNumber(lineNumber: number): string {
     return String(lineNumber).padStart(6, " ");
 }
 
-function formatContextBlock(
-    relPath: string,
-    lines: string[],
-    matchIndex: number,
-    before: number,
-    after: number
-): string {
-    const start = Math.max(0, matchIndex - before);
-    const end = Math.min(lines.length - 1, matchIndex + after);
-    const out = [`${relPath}:${matchIndex + 1}`];
-    for (let i = start; i <= end; i++) {
-        const marker = i === matchIndex ? ">" : " ";
-        out.push(`${marker}${formatLineNumber(i + 1)}\t${lines[i]}`);
+function linePreview(content: string, start: number, end: number, match = start): string {
+    if (end - start <= MAX_LINE_CHARS) return content.slice(start, end).replace(/\r$/, "");
+    let from = Math.max(start, Math.min(match - MAX_LINE_CHARS / 2, end - MAX_LINE_CHARS));
+    let to = Math.min(end, from + MAX_LINE_CHARS);
+    const splitsPair = (index: number) => /[\uD800-\uDBFF]/.test(content.charAt(index - 1)) && /[\uDC00-\uDFFF]/.test(content.charAt(index));
+    if (splitsPair(from)) from++;
+    if (splitsPair(to)) to--;
+    return `[长行片段，UTF-16 列 ${from - start + 1}–${to - start}/${end - start}] ${from > start ? "…" : ""}${content.slice(from, to)}${to < end ? "…" : ""}`;
+}
+
+function formatHit(rel: string, content: string, hit: SearchHit, before: number, after: number): string {
+    const preview = linePreview(content, hit.start, hit.end, hit.match);
+    if (!before && !after) return `${rel}:${hit.line}: ${preview.trim()}`;
+    const preceding: string[] = [];
+    let start = hit.start;
+    for (let n = 1; n <= before && start > 0; n++) {
+        const end = start - 1;
+        start = end === 0 ? 0 : content.lastIndexOf("\n", end - 1) + 1;
+        preceding.unshift(` ${formatLineNumber(hit.line - n)}\t${linePreview(content, start, end)}`);
+    }
+    const out = [`${rel}:${hit.line}`, ...preceding, `>${formatLineNumber(hit.line)}\t${preview}`];
+    let end = content.indexOf("\n", hit.end);
+    for (let n = 1; n <= after && end !== -1; n++) {
+        start = end + 1;
+        end = content.indexOf("\n", start);
+        out.push(` ${formatLineNumber(hit.line + n)}\t${linePreview(content, start, end === -1 ? content.length : end)}`);
     }
     return out.join("\n");
 }
@@ -128,29 +146,11 @@ function matchesFileType(file: string, type: string | undefined): boolean {
         : extension === `.${normalized}`;
 }
 
-function lineIndexAt(lineStarts: readonly number[], offset: number): number {
-    let low = 0;
-    let high = lineStarts.length - 1;
-    while (low <= high) {
-        const mid = Math.floor((low + high) / 2);
-        if (lineStarts[mid]! <= offset) low = mid + 1;
-        else high = mid - 1;
-    }
-    return Math.max(0, high);
-}
-
-function buildLineStarts(content: string): number[] {
-    const starts = [0];
-    for (let index = 0; index < content.length; index++) {
-        if (content.charCodeAt(index) === 10) starts.push(index + 1);
-    }
-    return starts;
-}
-
 export const grepTool: Tool<typeof inputSchema> = {
     name: "grep",
     description: [
         "强大的文件内容正则搜索工具。当任务是寻找代码位置、字面量、配置值或大文件中的目标时，先用 grep 缩小范围，不要盲目分段读取。",
+        "目录扫描跳过超过 1 MiB 的文件；明确指定文件可搜索至 64 MiB。超长行显示命中附近的 2000 字符窗口和行内列范围。",
         "默认 content 模式返回文件、行号和匹配行；支持 files_with_matches/count、glob/type、上下文、分页和 multiline。",
         "已经明确具体小文件且需要整体理解时，可以直接 read_file；需要类型语义时运行项目已有的类型检查、编译器或测试。",
     ].join("\n"),
@@ -179,29 +179,23 @@ export const grepTool: Tool<typeof inputSchema> = {
         ctx,
         invocation
     ) => {
-        let regex: RegExp;
-        try {
-            regex = new RegExp(
-                pattern,
-                `${ignore_case ? "i" : ""}${multiline ? "gms" : ""}`
-            );
-        } catch (err) {
-            return `正则表达式不合法: ${err instanceof Error ? err.message : err}`;
-        }
-
         const searchRoot = resolveToolPath(ctx.cwd, path);
         await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, searchRoot);
         if (await checkMemoryStoragePath(ctx.storage, searchRoot)) {
             if (!ctx.memoryFiles) throw new Error("当前 Agent 无 Memory 读取能力");
             await ctx.memoryFiles.prepare(searchRoot, "grep");
         }
+        const explicitFile = (await lstat(searchRoot)).isFile();
+        const maxFileSize = explicitFile ? MAX_EXPLICIT_FILE_SIZE : MAX_DISCOVERY_FILE_SIZE;
+        const startedAt = performance.now();
+        const limit = head_limit || MAX_HEAD_LIMIT;
         const matcher = glob ? createPathMatcher(glob, true) : undefined;
         const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
             canVisit: createSearchPathFilter(ctx.cwd, searchRoot, "grep", ctx.permissionRules),
             includeHidden: include_hidden, includeIgnored: include_ignored,
             maxEntries: search_mode === "fast" ? 20_000 : 100_000});
         const fileLimit = search_mode === "fast" ? 2_000 : 20_000;
-        const byteLimit = (search_mode === "fast" ? 32 : 256) * 1024 * 1024;
+        const byteLimit = (search_mode === "fast" ? (explicitFile ? 64 : 32) : 256) * 1024 * 1024;
         let scannedFiles = 0;
         let scannedBytes = 0;
         let searchIncomplete = false;
@@ -214,6 +208,8 @@ export const grepTool: Tool<typeof inputSchema> = {
         let resultEntries = 0;
         let displayedEntries = 0;
         let skippedCount = 0;
+        let oversizedCount = 0;
+        let searchError: string | undefined;
         let complete = true;
 
         const appendResult = async (result: string): Promise<boolean> => {
@@ -259,14 +255,19 @@ export const grepTool: Tool<typeof inputSchema> = {
         const appendPaginated = async (result: string): Promise<void> => {
             const index = resultEntries++;
             if (index < offset) return;
-            if (head_limit && displayedEntries >= head_limit) return;
+            if (displayedEntries >= limit) return;
             if (complete) await appendResult(result);
         };
 
+        const engine = createGrepMatcher(ctx.signal);
         try {
+            const validated = await engine.search({content: "", pattern, ignoreCase: ignore_case, multiline, offset: 0, limit: 0}, SEARCH_DEADLINE_MS);
+            if (validated.kind === "invalid_pattern") return {content: `正则表达式不合法: ${validated.message}`, outcome: "failed"};
             for await (const file of discovery.files) {
                 throwIfTurnAborted(ctx.signal);
+                if (performance.now() - startedAt >= SEARCH_DEADLINE_MS) { searchError = "Grep 搜索达到 30 秒时限，未完成扫描"; searchIncomplete = true; break; }
                 await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, file);
+                await ctx.toolResultFiles.resolveFile(file);
                 if (await checkMemoryStoragePath(ctx.storage, file)) {
                     if (!ctx.memoryFiles?.classify(file)) { skippedCount++; continue; }
                     await ctx.memoryFiles.prepare(file, "grep");
@@ -277,21 +278,22 @@ export const grepTool: Tool<typeof inputSchema> = {
                 let content: string;
                 let handle;
                 try {
-                    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+                    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
                     const info = await handle.stat();
-                    if (!info.isFile() || info.size > MAX_FILE_SIZE) { skippedCount++; continue; }
+                    if (!info.isFile()) { skippedCount++; continue; }
+                    if (info.size > maxFileSize) { skippedCount++; oversizedCount++; continue; }
                     if (scannedBytes + info.size > byteLimit) { searchIncomplete = true; break; }
-                    const bytes = Buffer.alloc(Math.min(info.size, MAX_FILE_SIZE, byteLimit - scannedBytes) + 1);
+                    const bytes = Buffer.alloc(Math.min(info.size, maxFileSize, byteLimit - scannedBytes) + 1);
                     let bytesRead = 0;
                     while (bytesRead < bytes.length) {
                         throwIfTurnAborted(ctx.signal);
-                        const chunk = await handle.read(bytes, bytesRead, bytes.length - bytesRead, bytesRead);
+                        const chunk = await handle.read(bytes, bytesRead, Math.min(64 * 1024, bytes.length - bytesRead), bytesRead);
                         if (chunk.bytesRead === 0) break;
                         bytesRead += chunk.bytesRead;
                     }
                     scannedFiles++;
                     scannedBytes += bytesRead;
-                    if (bytesRead === bytes.length || bytesRead > MAX_FILE_SIZE || scannedBytes > byteLimit) { skippedCount++; continue; }
+                    if (bytesRead === bytes.length || bytesRead > maxFileSize || scannedBytes > byteLimit) { skippedCount++; continue; }
                     if (bytes.subarray(0, bytesRead).includes(0)) { skippedCount++; continue; }
                     content = bytes.subarray(0, bytesRead).toString("utf8");
                 } catch (error) {
@@ -299,40 +301,27 @@ export const grepTool: Tool<typeof inputSchema> = {
                     skippedCount++;
                     continue;
                 } finally { await handle?.close(); }
-                const lines = content.split(/\r?\n/);
                 const rel = displayToolPath(ctx.cwd, file);
-                const beforeLines = before ?? context;
-                const afterLines = after ?? context;
-                let fileMatches = 0;
-
-                if (multiline) {
-                    const starts = buildLineStarts(content);
-                    regex.lastIndex = 0;
-                    for (const match of content.matchAll(regex)) {
-                        if (fileMatches % 250 === 0) throwIfTurnAborted(ctx.signal);
-                        const lineIndex = lineIndexAt(starts, match.index ?? 0);
-                        fileMatches++;
-                        totalMatches++;
-                        if (output_mode === "content") {
-                            const formatted = beforeLines > 0 || afterLines > 0
-                                ? formatContextBlock(rel, lines, lineIndex, beforeLines, afterLines)
-                                : `${rel}:${lineIndex + 1}: ${lines[lineIndex]?.trim() ?? ""}`;
-                            await appendPaginated(formatted);
-                        }
-                    }
-                } else {
-                    for (let index = 0; index < lines.length; index++) {
-                        if (index % 250 === 0) throwIfTurnAborted(ctx.signal);
-                        regex.lastIndex = 0;
-                        if (!regex.test(lines[index]!)) continue;
-                        fileMatches++;
-                        totalMatches++;
-                        if (output_mode === "content") {
-                            const formatted = beforeLines > 0 || afterLines > 0
-                                ? formatContextBlock(rel, lines, index, beforeLines, afterLines)
-                                : `${rel}:${index + 1}: ${lines[index]!.trim()}`;
-                            await appendPaginated(formatted);
-                        }
+                let found: SearchResponse;
+                try {
+                    found = await engine.search({content, pattern, ignoreCase: ignore_case, multiline,
+                        offset: Math.max(0, offset - resultEntries),
+                        limit: output_mode === "content" ? Math.max(0, limit - displayedEntries) : 0,
+                    }, SEARCH_DEADLINE_MS - (performance.now() - startedAt));
+                } catch (error) {
+                    throwIfTurnAborted(ctx.signal);
+                    searchError = error instanceof Error ? error.message : String(error);
+                    searchIncomplete = true;
+                    break;
+                }
+                if (found.kind === "invalid_pattern") { searchError = found.message; searchIncomplete = true; break; }
+                const fileMatches = found.count;
+                totalMatches += fileMatches;
+                if (output_mode === "content") {
+                    resultEntries += fileMatches;
+                    for (const hit of found.hits) {
+                        throwIfTurnAborted(ctx.signal);
+                        if (!await appendResult(formatHit(rel, content, hit, before ?? context, after ?? context))) break;
                     }
                 }
 
@@ -343,7 +332,7 @@ export const grepTool: Tool<typeof inputSchema> = {
                 } else if (output_mode === "count") {
                     await appendPaginated(`${rel}: ${fileMatches}`);
                 }
-                if (!complete || (search_mode === "fast" && head_limit && displayedEntries >= head_limit)) {
+                if (!complete || (search_mode === "fast" && displayedEntries >= limit)) {
                     searchIncomplete = true;
                     break;
                 }
@@ -353,8 +342,9 @@ export const grepTool: Tool<typeof inputSchema> = {
             searchIncomplete ||= stats.truncated || skippedCount > 0;
             const coverage = `搜了 ${scannedFiles} 个文件（${scannedBytes} 字节），发现 ${stats.candidateFiles} 个候选文件`;
             const incomplete = searchIncomplete
-                ? `；搜索未完整覆盖，仅报告已扫描范围${stats.issues.length ? `：${stats.issues.join("；")}` : ""}，可缩小 path 或使用 search_mode=complete`
+                ? `；搜索未完整覆盖，仅报告已扫描范围${stats.issues.length ? `：${stats.issues.join("；")}` : ""}。${oversizedCount ? `跳过 ${oversizedCount} 个超过 ${maxFileSize / 1024 / 1024} MiB 的文件${explicitFile ? "，需先缩小文件" : "，可指定具体文件（上限 64 MiB）"}。` : ""}${explicitFile ? "" : "可缩小 path 或使用 search_mode=complete"}`
                 : "";
+            if (totalMatches === 0 && searchError) return {content: `${searchError}（${coverage}）；不能据此判断没有匹配`, outcome: "failed"};
             if (totalMatches === 0) {
                 return `未找到匹配 /${pattern}/（${coverage}${skippedCount ? `，跳过 ${skippedCount} 个文件` : ""}${incomplete}）`;
             }
@@ -365,12 +355,12 @@ export const grepTool: Tool<typeof inputSchema> = {
             const modeSummary = output_mode === "content"
                 ? `共 ${totalMatches} 条匹配`
                 : `共 ${matchedFiles} 个匹配文件、${totalMatches} 条匹配`;
-            const summary = `${modeSummary}，${coverage}${pagination}${skippedCount > 0 ? `，跳过 ${skippedCount} 个文件` : ""}${complete ? "" : "；达到结果存储上限，结果不完整"}${incomplete}`;
+            const summary = `${modeSummary}，${coverage}${pagination}${skippedCount > 0 ? `，跳过 ${skippedCount} 个文件` : ""}${complete ? "" : "；达到结果存储上限，结果不完整"}${incomplete}${searchError ? `；${searchError}` : ""}`;
             if (displayedEntries === 0) {
-                return `${summary}；当前分页没有可显示结果`;
+                return {content: `${summary}；当前分页没有可显示结果`, outcome: searchError ? "failed" : "ok"};
             }
             if (!capturePath) {
-                return `${inlineOutput}\n\n（${summary}）`;
+                return {content: `${inlineOutput}\n\n（${summary}）`, outcome: searchError ? "failed" : "ok"};
             }
 
             const persisted = await ctx.toolResultStore.promoteFile({
@@ -382,10 +372,12 @@ export const grepTool: Tool<typeof inputSchema> = {
             });
             return {
                 content: summary,
+                outcome: searchError ? "failed" : "ok",
                 displayContent: `${persisted.preview}\n\n（${summary}）`,
                 persisted,
             };
         } finally {
+            await engine.close();
             if (capturePath) {
                 await ctx.toolResultStore.removeTemporaryFile(capturePath);
             }

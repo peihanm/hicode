@@ -60,13 +60,13 @@ describe("ToolResultStore", () => {
     });
   });
 
-  test("超过 Grep 文件上限的结果提示分页读取", async () => {
+  test("超过旧 1 MiB 上限的结果仍引导 Grep 定位", async () => {
     await withTempProject(async cwd => {
       const store = createTestToolResultStore(cwd, "large-preview");
       const result = await store.persistText({toolCallId: "large", toolName: "test", content: "x".repeat(1024 * 1024 + 1)});
       const message = buildPersistedToolResultMessage(result);
-      expect(message).toContain("exceeds grep's 1 MiB file limit");
-      expect(message).not.toContain("use grep on the saved file path");
+      expect(message).not.toContain("exceeds grep");
+      expect(message).toContain("use grep on the saved file path");
       expect(message).toContain(JSON.stringify(result.path));
     });
   });

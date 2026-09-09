@@ -673,57 +673,35 @@ describe("agent loop", () => {
     });
   });
 
-  test("纠正虚假沙箱声明时不追加浏览器验收要求", async () => {
+  test("正常沙箱说明与局部测试通过不触发文字收尾否决", async () => {
     await withTempProject(async (cwd) => {
+      const reply = "已在 Pillar 沙箱中执行测试。修改后已重新运行受影响的测试，测试通过。";
+      const history = initialHistory();
       const fake = createFakeLLM([
-        assistantToolCall("write_file", {
-          path: "server.js",
-          content: "console.log('server')",
-        }, "write-server"),
-        assistantToolCall("bash", {
-          command: [
-            "curl --fail-with-body -X POST http://localhost:3000/api/run",
-            "-H 'Content-Type: application/json'",
-            "-d '{\"code\":\"ok\"}'",
-          ].join(" "),
-        }, "curl-api"),
-        assistantText("完成，全链路验证通过。后端沙箱执行用户代码。"),
+        assistantToolCall("bash", {command: "bun test"}, "full-check"),
+        assistantToolCall("write_file", {path: "a.ts", content: "fixed"}, "write"),
+        assistantToolCall("bash", {command: "bun test tests/a.test.ts"}, "targeted-check"),
         (options) => {
-          expect(options.messages.some(
-            (message) =>
-              typeof message.content === "string" &&
-              !message.content.includes("没有 Browser/Playwright 证据") &&
-              message.content.includes("不是沙箱") &&
-              message.content.includes(
-                "<candidate-reply>\n完成，全链路验证通过。后端沙箱执行用户代码。\n</candidate-reply>"
-              )
-          )).toBe(true);
-          return assistantText(
-            "已验证一个 localhost POST 样例。浏览器交互、其他语言路径尚未验证；用户代码由本机子进程执行，仍可访问宿主文件和网络。"
-          );
+          const evidence = options.messages.map(message => message.content).filter(value => typeof value === "string").join("\n");
+          expect(evidence).toContain("检查已过期（之后有相关修改）");
+          expect(evidence).toContain("检查通过");
+          expect(evidence).toContain("bun test tests/a.test.ts");
+          return assistantText(reply);
         },
       ]);
-
-      const result = await runAgent(
-        "创建本地代码练习站",
-        initialHistory(),
-        () => {},
-        createTestContext(cwd),
-        {
-          callLLM: fake.callLLM,
-          executeTool: async (name, args) => ({
-            modelContent: "ok",
-            displayContent: "ok",
-            outcome: "ok",
-            ...(name === "bash" ? {shellExecution: {command: JSON.parse(args).command, cwd, sandboxPermissions: "use_default" as const}} : {}),
-          }),
-        }
-      );
-
-      expect(result.reply).toContain("浏览器交互、其他语言路径尚未验证");
-      expect(result.reply).toContain("本机子进程执行");
-      expect(result.reply).not.toContain("全链路验证通过");
+      const result = await runAgent("修复并运行受影响的测试", history, () => {}, createTestContext(cwd), {
+        callLLM: fake.callLLM,
+        executeTool: async (name, args) => ({
+          modelContent: "ok", displayContent: "ok", outcome: "ok",
+          ...(name === "bash"
+            ? {shellExecution: {command: JSON.parse(args).command, cwd, sandboxPermissions: "use_default" as const}}
+            : {uiData: {type: "file_change" as const, change: createFileChange({path: "a.ts", kind: "create", oldContent: "", newContent: "fixed"})}}),
+        }),
+      });
+      expect(result.reply).toBe(reply);
       expect(fake.calls).toHaveLength(4);
+      expect(history.at(-1)?.content).toBe(reply);
+      expect(history.some(message => typeof message.content === "string" && message.content.includes("<candidate-reply>"))).toBe(false);
     });
   });
 
