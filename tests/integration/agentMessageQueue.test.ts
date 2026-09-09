@@ -32,7 +32,9 @@ describe("Agent running input queue", () => {
                 createTestContext(cwd),
                 {
                     callLLM: fake.callLLM,
-                    getToolSchemas: () => [],
+                    getToolSchemas: () => [{type: "function", function: {
+                        name: "fixture", description: "Test input delivery", parameters: {type: "object", properties: {}},
+                    }}],
                     executeTool: async () => {
                         queue.enqueueUser("补充要求", "next");
                         return "tool ok";

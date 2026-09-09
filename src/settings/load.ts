@@ -31,6 +31,10 @@ export function loadPillarSettings(
         ? [...loaded.documents, host.document]
         : loaded.documents;
     const issues = [...loaded.issues, ...host.issues];
+    // Invalid rules must not disappear with a skipped settings document.
+    const invalidPermissions = issues.find(issue => issue.severity === "error" &&
+        (issue.field === "permissions" || issue.field?.startsWith("permissions.")));
+    if (invalidPermissions) throw new Error("权限配置无效，已停止加载: " + invalidPermissions.message);
     const resolved = resolvePillarSettings(
         documents,
         options.cliOverrides ?? {}

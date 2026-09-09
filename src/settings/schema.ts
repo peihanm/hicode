@@ -2,6 +2,8 @@ import {z} from "zod";
 import type {PillarSettingsFile} from "./types.js";
 import {hooksSettingsFileSchema} from "../hooks/schema.js";
 import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
+import {isFilePermissionTool, validateFilePattern} from "../permissions/filePattern.js";
+import {parsePermissionRule} from "../permissions/rules.js";
 
 const permissionModeSchema = z.enum([
     "default",
@@ -38,7 +40,12 @@ const strictModelSourceSchema = z.object({
     models: z.array(strictModelDefinitionSchema).max(100).optional(),
 }).strict();
 
-const permissionRuleListSchema = z.array(z.string().trim().min(1));
+const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value => {
+    const rule = parsePermissionRule(value);
+    const declaredName = value.split("(")[0]!;
+    if (isFilePermissionTool(declaredName) && declaredName !== rule.toolName) return false;
+    return !isFilePermissionTool(rule.toolName) || rule.content === undefined || validateFilePattern(rule.content);
+}, "文件权限内容必须是路径 glob，不接受 JSON、~ 或 Bash 前缀语法"));
 
 export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
     .object({

@@ -8,6 +8,7 @@ import {getTokenWarningState} from "../context/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason, throwIfTurnAborted,} from "../runtime/abort.js";
 import type {AgentEvent, AgentResult} from "./types.js";
 import {executeToolCallBatch, type ToolExecutor,} from "./toolBatch.js";
+import {inlineToolResult} from "../tools/execute.js";
 import {type CompactHistoryRunner, prepareAgentInvoke, type ToolSchemaProvider,} from "./invokePreparation.js";
 import {
     createTurnCompletionState,
@@ -216,6 +217,8 @@ async function runAgentCore(
                 ],
             });
             completionNudge = undefined;
+            // This request's exposure is immutable even if discovery changes during the batch.
+            const offeredToolNames = new Set(tools.map(tool => tool.function.name));
 
             // 调 LLM（用 invokeMessages，不是 history）
             await onEvent({type: "model_stream_start"});
@@ -396,8 +399,13 @@ async function runAgentCore(
                 ctx,
                 turnId,
                 onEvent,
-                executeTool: executeToolImpl,
-                isToolConcurrencySafe: isToolConcurrencySafeImpl,
+                executeTool: (name, args, context, callId) => offeredToolNames.has(name)
+                    ? executeToolImpl(name, args, context, callId)
+                    : Promise.resolve(inlineToolResult(
+                        "工具 " + name + " 未在本次模型请求中提供，未执行。请仅使用本次提供的工具；没有工具时直接总结已有证据。",
+                        "denied",
+                    )),
+                isToolConcurrencySafe: (name, args) => offeredToolNames.has(name) && isToolConcurrencySafeImpl(name, args),
             });
             if (batchResult.status === "interrupted" || ctx.signal.aborted) {
                 return interruptedResult();

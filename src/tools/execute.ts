@@ -12,6 +12,8 @@ import {
     type ToolOutcome,
 } from "../toolResults/index.js";
 import type {Tool, ToolContext} from "./types.js";
+import {resolveFilePermissionPath} from "../permissions/filePattern.js";
+import {toolPathInput} from "../worktrees/pathGuard.js";
 
 export function formatInterruptedToolResult(signal: AbortSignal): string {
     return `工具调用已取消（${normalizeTurnAbortReason(signal.reason)}）`;
@@ -90,7 +92,7 @@ export async function executeRegisteredTool(
             ctx.signal,
             {
                 matchesToolCondition: (condition, toolInput) =>
-                    matchesToolPermissionRule(tool, toolInput, condition),
+                    matchesToolPermissionRule(tool, toolInput, condition, ctx.cwd),
                 session: ctx.hookSession, store: ctx.toolResultStore, onEvent: ctx.onHookEvent,
             }
         );
@@ -129,7 +131,10 @@ export async function executeRegisteredTool(
     }
 
     let permission;
+    let authorizedPath: string | undefined;
+    const inputPath = toolPathInput(name, input);
     try {
+        if (inputPath !== undefined) authorizedPath = await resolveFilePermissionPath(ctx.cwd, inputPath);
         permission = await resolvePermission(tool, input, ctx);
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
@@ -247,6 +252,9 @@ export async function executeRegisteredTool(
 
     let result;
     try {
+        if (inputPath !== undefined && await resolveFilePermissionPath(ctx.cwd, inputPath) !== authorizedPath) {
+            return inlineToolResult("文件目标在权限检查期间发生变化，请重新调用工具", "denied");
+        }
         ctx.onToolExecution?.("start");
         try {
             result = await tool.execute(input, ctx, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(userApproved ? {userApproved} : {})});
@@ -382,7 +390,7 @@ async function executePostToolHooks({
         };
     const hookResult = await hooks.execute(hookInput, ctx.signal, {
         matchesToolCondition: (condition, toolInput) =>
-            matchesToolPermissionRule(tool, toolInput, condition),
+            matchesToolPermissionRule(tool, toolInput, condition, ctx.cwd),
         session: ctx.hookSession, store: ctx.toolResultStore, onEvent: ctx.onHookEvent,
     });
     return hookResult;

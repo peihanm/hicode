@@ -269,7 +269,7 @@ function loadSettingsDocument(
 
     const parsed = pillarSettingsFileSchema.safeParse(raw);
     if (!parsed.success) {
-        const first = parsed.error.issues[0];
+        const first = parsed.error.issues.find(issue => issue.path[0] === "permissions") ?? parsed.error.issues[0];
         return {
             issues: [{
                 source: location.source,

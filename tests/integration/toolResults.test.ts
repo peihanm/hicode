@@ -1,3 +1,4 @@
+import {fixtureToolSchemas} from "../helpers/fakeLLM.js";
 import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { runAgentForTest as runAgent } from "../helpers/agent.js";
@@ -127,6 +128,7 @@ describe("large tool result integration", () => {
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("a", "b"),
           executeTool: async (name) => ({
             modelContent: name.repeat(120_000),
             displayContent: name.repeat(100),

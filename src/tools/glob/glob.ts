@@ -2,6 +2,7 @@ import {stat} from "node:fs/promises";
 import {isAbsolute, relative} from "node:path";
 import {z} from "zod";
 import {createFileDiscovery, createPathMatcher} from "../shared/fileDiscovery.js";
+import {createSearchPathFilter} from "../../permissions/filePattern.js";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 
@@ -58,6 +59,7 @@ export const globTool: Tool<typeof inputSchema> = {
         let truncated = false;
         const matcher = createPathMatcher(pattern.replaceAll("\\", "/").replace(/^\.\//, ""));
         const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
+            canVisit: createSearchPathFilter(ctx.cwd, searchRoot, "glob", ctx.permissionRules),
             includeHidden: include_hidden, includeIgnored: include_ignored, maxEntries: 20_000});
         for await (const absolute of discovery.files) {
             if (!matcher(relative(searchRoot, absolute))) continue;

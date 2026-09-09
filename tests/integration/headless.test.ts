@@ -1,3 +1,4 @@
+import {fixtureToolSchemas} from "../helpers/fakeLLM.js";
 import { describe, expect, test } from "bun:test";
 import { formatHeadlessOutput } from "../../src/headless/output.js";
 import type {HeadlessRunSummary} from "../../src/headless/types.js";
@@ -229,6 +230,7 @@ describe("headless integration", () => {
         mcpManager: false,
         agent: {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("broken"),
           executeTool: async () => ({
             modelContent: "工具执行出错: boom",
             displayContent: "工具执行出错: boom",
@@ -286,6 +288,7 @@ describe("headless integration", () => {
         mcpManager: false,
         agent: {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("loop"),
           executeTool: async () => "continue",
           maxIterations: 2,
         },

@@ -1,3 +1,4 @@
+import {fixtureToolSchemas} from "../helpers/fakeLLM.js";
 import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { runAgentForTest as runAgent } from "../helpers/agent.js";
@@ -106,6 +107,7 @@ describe("runtime cancellation", () => {
         createTestContext(cwd, { signal: controller.signal }),
         {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("slow", "never-start"),
           executeTool: async (name, _args, ctx) => {
             executed.push(name);
             started.resolve();
@@ -160,6 +162,7 @@ describe("runtime cancellation", () => {
         createTestContext(cwd, { signal: controller.signal }),
         {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas(...calls.map(call => call.function.name)),
           isToolConcurrencySafe: (name) => name.startsWith("safe-"),
           executeTool: async (name, _args, ctx) => {
             executed.push(name);
@@ -293,6 +296,7 @@ describe("runtime cancellation", () => {
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("broken", "not-started"),
           executeTool: async () => {
             throw new Error("runner exploded");
           },

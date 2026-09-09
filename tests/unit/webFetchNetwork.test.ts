@@ -7,6 +7,7 @@ describe("web_fetch request lifecycle", () => {
         "declared-limit", "body-limit", "invalid-location", "response-close",
         "request-close", "pre-abort", "dns-abort", "dns-deadline", "body-abort",
         "redirect", "redirect-deadline", "late-error",
+        "dns-reserved", "dns-reserved-v6", "dns-private", "dns-mixed",
     ])("%s settles without uncaught errors or leaked requests", async mode => {
         const child = Bun.spawn([
             process.execPath,

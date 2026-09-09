@@ -6,6 +6,7 @@ import * as http from "node:http";
 import * as https from "node:https";
 import * as dns from "node:dns/promises";
 import {mock} from "bun:test";
+import type {LookupFunction} from "node:net";
 
 const mode = process.argv[2];
 const controller = new AbortController();
@@ -85,8 +86,12 @@ class RequestFixture extends EventEmitter {
     }
 }
 
-const request = (_url: URL, options: {signal: AbortSignal}, callback: (response: ResponseFixture) => void) => {
+const request = (_url: URL, options: {signal: AbortSignal; lookup: LookupFunction}, callback: (response: ResponseFixture) => void) => {
     requests++;
+    options.lookup(_url.hostname, {family: 4}, (error, address) => {
+        assert.equal(error, null);
+        assert.equal(address, "8.8.8.8", "only validated public addresses reach transport");
+    });
     const client = new RequestFixture(options.signal, callback);
     clients.push(client);
     return client;
@@ -101,6 +106,10 @@ mock.module("node:dns/promises", () => ({...dns, lookup: async () => {
             queueMicrotask(() => mode === "dns-abort" ? controller.abort() : deadlines[0]?.());
         });
     }
+    if (mode === "dns-reserved") return [{address: "198.18.0.42", family: 4}];
+    if (mode === "dns-reserved-v6") return [{address: "::1", family: 6}];
+    if (mode === "dns-private") return [{address: "10.0.0.8", family: 4}];
+    if (mode === "dns-mixed") return [{address: "198.18.0.42", family: 4}, {address: "8.8.8.8", family: 4}];
     return [{address: "8.8.8.8", family: 4}];
 }}));
 
@@ -126,7 +135,7 @@ await new Promise<void>(resolve => setImmediate(resolve));
 process.removeListener("uncaughtException", captureUncaught);
 assert.equal(watchdogExpired, false, "request must settle before the fixture watchdog");
 assert.deepEqual(uncaught, [], "response errors must not escape the request Promise");
-if (mode === "redirect" || mode === "late-error") {
+if (mode === "redirect" || mode === "late-error" || mode === "dns-mixed") {
     assert.equal(error, undefined);
     assert.equal(body, "complete");
 } else {
@@ -140,7 +149,7 @@ if (mode === "redirect" || mode === "late-error") {
     assert.ok(responses.every(response => response.destroyed));
     assert.ok(clients.every(client => client.destroyed));
 }
-if (mode?.startsWith("dns-") || mode === "pre-abort") assert.equal(requests, 0);
+if ((mode?.startsWith("dns-") && mode !== "dns-mixed") || mode === "pre-abort") assert.equal(requests, 0);
 if (mode === "pre-abort") assert.equal(lookups, 0);
 if (mode === "redirect" || mode === "redirect-deadline") assert.equal(requests, 2);
 process.stdout.write("verified\n");

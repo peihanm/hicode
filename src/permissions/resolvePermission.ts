@@ -23,6 +23,7 @@ import {directoryOperationForTool} from "./directoryAccess.js";
 import {resolveToolPath} from "../tools/shared/paths.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
 import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
+import {createFilePermissionMatcher} from "./filePattern.js";
 
 /**
  * 用当前工具的真实权限 matcher 判断单条规则。Hook `if` 复用该
@@ -31,13 +32,15 @@ import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
 export async function matchesToolPermissionRule(
     tool: Tool,
     input: unknown,
-    ruleText: string
+    ruleText: string,
+    cwd: string
 ): Promise<boolean> {
     const parsedInput = tool.parameters.safeParse(input);
     if (!parsedInput.success) return false;
     const rule = parsePermissionRule(ruleText);
-    const matcher = await getMatcher(tool, parsedInput.data);
-    return ruleMatches(rule, tool.name, matcher, "allow");
+    if (rule.toolName !== tool.name) return false;
+    const matcher = await getMatcher(tool, parsedInput.data, cwd, rule.content === undefined ? [] : [rule.content]);
+    return ruleMatches(rule, tool.name, matcher, toolPathInput(tool.name, parsedInput.data) === undefined ? "allow" : "deny");
 }
 
 export async function resolvePermission(
@@ -105,8 +108,10 @@ async function resolvePermissionInner(
         }
     }
 
-    const matcher = await getMatcher(tool, input);
     const rules = ctx.permissionRules;
+    const patterns = [...rules.allow, ...rules.ask, ...rules.deny].filter(rule => rule.toolName === tool.name)
+        .flatMap(rule => rule.content === undefined ? [] : [rule.content]);
+    const matcher = await getMatcher(tool, input, ctx.cwd, patterns);
     const defaultScope = tool.getDefaultApprovalScope?.(input, ctx);
 
     // 1. deny 规则（最高优先级）
@@ -245,11 +250,15 @@ function ruleMatches(
     return matcher(rule.content, behavior); // 内容匹配
 }
 
-// 获取 matcher：工具自定义优先，否则用默认（JSON.stringify + matchPattern）
+// File paths have one shared policy; other tools can specialize their argument matcher.
 async function getMatcher(
     tool: Tool,
-    input: unknown
+    input: unknown,
+    cwd: string,
+    patterns: readonly string[]
 ): Promise<PermissionMatcher> {
+    const path = toolPathInput(tool.name, input);
+    if (path !== undefined) return createFilePermissionMatcher(cwd, path, patterns);
     if (tool.preparePermissionMatcher) {
         return tool.preparePermissionMatcher(input);
     }

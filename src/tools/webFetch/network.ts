@@ -7,14 +7,6 @@ const WEB_FETCH_MAX_BYTES = 5 * 1024 * 1024;
 const WEB_FETCH_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
 
-// 当前 Pillar 运行环境的 DNS 分流器会把公网域名映射到 RFC 2544
-// 198.18.0.0/15，再由网络层按原始 Host/SNI 转发。这个地址段不能作为
-// 用户直接输入的 URL，但可以作为已校验公网域名的解析结果。
-function isSyntheticDnsProxyAddress(address: string): boolean {
-    const parts = address.split(".").map(Number);
-    return parts.length === 4 && parts[0] === 198 && parts[1] === 18;
-}
-
 const blockedIpv4Addresses = new BlockList();
 for (const [network, prefix] of [
     ["0.0.0.0", 8],
@@ -115,9 +107,7 @@ async function resolvePublicAddresses(hostname: string) {
     // CDN、企业 DNS 和本地代理有时会同时返回公网与保留地址。过滤掉
     // 不可访问的结果并固定到剩余公网地址；只有完全没有公网地址时才拒绝。
     // 这样不会把真实的公网站点误判成私网，同时请求仍不会连接到私有地址。
-    const publicAddresses = addresses.filter(({address}) =>
-        isSyntheticDnsProxyAddress(address) || isPublicAddress(address)
-    );
+    const publicAddresses = addresses.filter(({address}) => isPublicAddress(address));
     if (publicAddresses.length === 0) {
         throw new Error("目标域名解析到私网、回环、链路本地或保留地址");
     }

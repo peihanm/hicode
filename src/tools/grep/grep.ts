@@ -4,6 +4,7 @@ import {appendFile, open} from "node:fs/promises";
 import {constants} from "node:fs";
 import type {Tool} from "../types.js";
 import {createFileDiscovery, createPathMatcher} from "../shared/fileDiscovery.js";
+import {createSearchPathFilter} from "../../permissions/filePattern.js";
 import {basename, extname, relative} from "node:path";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
@@ -196,6 +197,7 @@ export const grepTool: Tool<typeof inputSchema> = {
         }
         const matcher = glob ? createPathMatcher(glob, true) : undefined;
         const discovery = createFileDiscovery({cwd: ctx.cwd, root: searchRoot, signal: ctx.signal,
+            canVisit: createSearchPathFilter(ctx.cwd, searchRoot, "grep", ctx.permissionRules),
             includeHidden: include_hidden, includeIgnored: include_ignored,
             maxEntries: search_mode === "fast" ? 20_000 : 100_000});
         const fileLimit = search_mode === "fast" ? 2_000 : 20_000;

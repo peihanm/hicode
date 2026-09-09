@@ -120,11 +120,11 @@ test("文件枚举达到目录项上限可报告未完成，取消不继续递�
         for (let index = 0; index < 8; index++) await put(cwd, `${index}.txt`);
         const controller = new AbortController();
         const discovery = createFileDiscovery({cwd, root: cwd, signal: controller.signal,
-            includeHidden: false, includeIgnored: false, maxEntries: 2});
+            includeHidden: false, includeIgnored: false, maxEntries: 2, canVisit: async () => true});
         for await (const _file of discovery.files) { /* exhaust the bounded scan */ }
         expect(discovery.getStats()).toMatchObject({visitedEntries: 2, truncated: true});
         const cancelled = createFileDiscovery({cwd, root: cwd, signal: controller.signal,
-            includeHidden: false, includeIgnored: false, maxEntries: 20_000});
+            includeHidden: false, includeIgnored: false, maxEntries: 20_000, canVisit: async () => true});
         await cancelled.files.next();
         controller.abort("user-cancel");
         await expect(cancelled.files.next()).rejects.toThrow();

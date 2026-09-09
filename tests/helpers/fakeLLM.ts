@@ -3,7 +3,14 @@ import type {
   LLMCallOptions,
   LLMCallResult,
   ToolCall,
+  OpenAITool,
 } from "../../src/llm/types.js";
+
+export function fixtureToolSchemas(...names: string[]): OpenAITool[] {
+  return names.map(name => ({type: "function", function: {
+    name, description: "Test executor fixture", parameters: {type: "object", properties: {}},
+  }}));
+}
 
 type FakeLLMStep =
   | LLMCallResult

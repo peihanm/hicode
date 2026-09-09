@@ -264,7 +264,7 @@ describe("Hooks", () => {
             tool_call_id: "call",
         }, new AbortController().signal, {
             matchesToolCondition: (condition, input) =>
-                matchesToolPermissionRule(bashTool, input, condition),
+                matchesToolPermissionRule(bashTool, input, condition, "/project"),
         });
 
         expect(commands).toEqual(["rewrite"]);
@@ -742,17 +742,17 @@ describe("Hook tool boundary", () => {
         expect(await matchesToolPermissionRule(
             bashTool,
             input,
-            "bash(git status:*)"
+            "bash(git status:*)", "/project"
         )).toBe(true);
         expect(await matchesToolPermissionRule(
             bashTool,
             input,
-            "bash(npm:*)"
+            "bash(npm:*)", "/project"
         )).toBe(false);
         expect(await matchesToolPermissionRule(
             bashTool,
             input,
-            "read_file"
+            "read_file", "/project"
         )).toBe(false);
     });
 

@@ -44,6 +44,7 @@ export function createFileDiscovery(input: {
     includeHidden: boolean;
     includeIgnored: boolean;
     maxEntries: number;
+    canVisit(path: string): Promise<boolean>;
 }) {
     const stats: DiscoveryStats = {visitedEntries: 0, candidateFiles: 0, skippedEntries: 0, truncated: false, issues: []};
     const root = resolve(input.root);
@@ -58,6 +59,7 @@ export function createFileDiscovery(input: {
         const path = join(directory, ".gitignore");
         let handle;
         try {
+            if (!await input.canVisit(path)) throw new Error("搜索权限不允许读取 ignore 规则");
             handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
             const info = await handle.stat();
             if (!info.isFile() || info.size > 64 * 1024) throw new Error("ignore 文件不是有界 regular file");
@@ -109,6 +111,11 @@ export function createFileDiscovery(input: {
             if (entry.name === ".git" || (!input.includeHidden && entry.name.startsWith(".")) ||
                 entry.isSymbolicLink() || ignored(path, entry.isDirectory(), layers)) {
                 stats.skippedEntries++;
+                continue;
+            }
+            if (!await input.canVisit(path)) {
+                stats.skippedEntries++;
+                issue("部分路径因 deny/ask 权限规则未扫描；需要确认的路径请单独调用工具");
                 continue;
             }
             if (entry.isDirectory()) yield* walk(path, layers, depth + 1);

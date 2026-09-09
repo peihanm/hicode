@@ -5,6 +5,7 @@ import type { AgentEvent } from "../../src/agent/types.js";
 import type { Message, ToolCall } from "../../src/llm/types.js";
 import {
   assistantText,
+  fixtureToolSchemas,
   assistantToolCall,
   createFakeLLM,
 } from "../helpers/fakeLLM.js";
@@ -329,6 +330,7 @@ describe("agent loop", () => {
         {
           callLLM: fake.callLLM,
           executeTool: async () => "synthetic result",
+          getToolSchemas: () => fixtureToolSchemas("synthetic_tool"),
         }
       );
 
@@ -405,6 +407,7 @@ describe("agent loop", () => {
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("safe-1", "safe-2", "safe-3"),
           isToolConcurrencySafe: () => true,
           executeTool: async (name) => {
             arrivals += 1;
@@ -488,6 +491,7 @@ describe("agent loop", () => {
         {
           callLLM: fake.callLLM,
           executeTool: async () => "工具执行出错: synthetic failure",
+          getToolSchemas: () => fixtureToolSchemas("broken_tool"),
         }
       );
 
@@ -768,6 +772,7 @@ describe("agent loop", () => {
       ]);
       const result = await runAgent("检查页面交互", initialHistory(), () => {}, createTestContext(cwd), {
         callLLM: fake.callLLM,
+        getToolSchemas: () => fixtureToolSchemas("mcp__chrome__navigate"),
         executeTool: async (name) => {
           invoked.push(name);
           return {modelContent: "CDP 连接失败", displayContent: "CDP 连接失败", outcome: "failed"};
@@ -838,6 +843,7 @@ describe("agent loop", () => {
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
+          getToolSchemas: () => fixtureToolSchemas("check"),
           isToolConcurrencySafe: () => true,
           executeTool: async (_name, _args, _ctx, toolCallId) => ({
             modelContent: toolCallId,
