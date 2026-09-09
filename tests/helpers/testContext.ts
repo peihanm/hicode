@@ -1,3 +1,4 @@
+import {ContextUsageTracker} from "../../src/context/usage.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import { createCompactState } from "../../src/context/index.js";
 import type { PermissionDecision, PermissionMode } from "../../src/permissions/index.js";
@@ -95,7 +96,7 @@ export function createTestContext(
     session: {
       fileState: options.fileState ?? createFileStateTracker(),
       sessionId,
-      compactState: createCompactState(),
+      compactState: createCompactState(), contextUsage: new ContextUsageTracker(),
       toolResultStore:
         options.toolResultStore ??
         createTestToolResultStore(cwd, sessionId),

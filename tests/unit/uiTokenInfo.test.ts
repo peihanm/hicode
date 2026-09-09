@@ -7,7 +7,7 @@ describe("restored session token info", () => {
     const withoutTool = estimateRestoredTokenInfo(
       [
         { role: "system", content: "system prompt" },
-        { role: "user", content: "previous question" },
+        { role: "user", origin: "user" as const, content: "previous question" },
         { role: "assistant", content: "previous answer" },
       ],
       [],
@@ -18,7 +18,7 @@ describe("restored session token info", () => {
     const withTool = estimateRestoredTokenInfo(
       [
         { role: "system", content: "system prompt" },
-        { role: "user", content: "previous question" },
+        { role: "user", origin: "user" as const, content: "previous question" },
         { role: "assistant", content: "previous answer" },
       ],
       [],

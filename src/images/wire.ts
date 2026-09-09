@@ -24,8 +24,9 @@ export async function encodeImageMessages(input: {
     const cache = new Map<string, string>();
     const messages: unknown[] = [];
     for (const message of input.messages) {
+        const wireMessage = message.role === "user" ? {role: message.role, content: message.content} : message;
         if (input.signal) throwIfTurnAborted(input.signal);
-        if (!Array.isArray(message.content)) {messages.push(message); continue;}
+        if (!Array.isArray(message.content)) {messages.push(wireMessage); continue;}
         const content: unknown[] = [];
         for (const part of message.content) {
             if (part.type === "text") {content.push(part); continue;}
@@ -38,7 +39,7 @@ export async function encodeImageMessages(input: {
             }
             content.push({type: "image_url", image_url: {url}});
         }
-        messages.push({...message, content});
+        messages.push({...wireMessage, content});
     }
     if (input.signal) throwIfTurnAborted(input.signal);
     return messages;

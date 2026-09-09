@@ -1,6 +1,7 @@
+import {ContextUsageTracker} from "../context/usage.js";
 import type {MessageContent} from "../images/content.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
-import {saveSessionCompaction} from "../session/storage.js";
+import {createSessionPersistence} from "../session/storage.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
@@ -14,7 +15,7 @@ import {
 } from "../permissions/index.js";
 import {appendLocalPermissionDirectory} from "../settings/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
-import {type SaveSessionSnapshotInput, saveSessionSnapshot} from "../session/index.js";
+import {type SaveSessionSnapshotInput} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
 import type {Todo} from "../todos.js";
@@ -27,6 +28,7 @@ import {RuntimeMessageQueue} from "./messageQueue.js";
 import type {RootRuntimeResources} from "./resources.js";
 import {createToolContext, type ToolContextHost} from "./toolContext.js";
 import {NetworkAccessSession} from "../permissions/networkAccess.js";
+import {hasCompleteToolPairs} from "../session/codec.js";
 
 export interface RootSessionSeed {
     sessionId: string;
@@ -72,6 +74,8 @@ export interface RootSessionRuntime {
     }): ToolContext;
 
     createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
+    saveSnapshot(input: SaveSessionSnapshotInput): Promise<void>;
+    flushSnapshots(): Promise<void>;
 
     beginTurn(
         prompt: MessageContent,
@@ -101,6 +105,8 @@ export function createRootSessionRuntime({
     allowBackgroundTasks?: boolean;
 }): RootSessionRuntime {
     const fileState = createFileStateTracker();
+    const contextUsage = new ContextUsageTracker();
+    const persistence = createSessionPersistence(resources.storage, resources.cwd, seed.sessionId);
     let history = seed.history;
     let compactState = seed.compactState;
     const toolResultStore = createToolResultStore(
@@ -182,6 +188,7 @@ export function createRootSessionRuntime({
             return initializePromise;
         },
         replaceConversation(nextHistory, nextCompactState) {
+            contextUsage.reset();
             history = nextHistory;
             compactState = nextCompactState;
         },
@@ -192,6 +199,7 @@ export function createRootSessionRuntime({
                 session: {
                     sessionId: seed.sessionId,
                     compactState,
+                    contextUsage,
                     toolResultStore,
                     fileState,
                     allowBackgroundTasks,
@@ -206,9 +214,13 @@ export function createRootSessionRuntime({
             ctx.sessionCompaction = {
                 prepare: source => prepareSessionArchive(resources.storage, resources.cwd, seed.sessionId, source),
                 async commit(candidate, nextState, draft) {
-                    await saveSessionCompaction(resources.storage, {...snapshot(getSnapshotState()),
+                    await persistence.compact({...snapshot(getSnapshotState()),
                         history: candidate, compactState: nextState}, draft, signal);
                 },
+            };
+            ctx.commitToolBatch = async () => {
+                if (!hasCompleteToolPairs(history)) throw new Error("工具批次未完整配对，拒绝继续请求模型");
+                await persistence.save(snapshot(getSnapshotState()));
             };
             ctx.holdHookConfiguration = resources.holdHookConfiguration;
             ctx.onHookEvent = onEvent;
@@ -233,13 +245,15 @@ export function createRootSessionRuntime({
             return ctx;
         },
         createSnapshot: snapshot,
+        saveSnapshot: persistence.save,
+        flushSnapshots: persistence.drain,
         async beginTurn(prompt, state) {
             await this.initialize();
             if (turnActive) throw new Error("当前 Session 已在运行中");
             turnActive = true;
             try {
-                await saveSessionSnapshot(resources.storage, {...snapshot(state),
-                    history: [...history, {role: "user", content: prompt}]});
+                await persistence.save({...snapshot(state),
+                    history: [...history, {role: "user", origin: "user" as const, content: prompt}]});
             } catch (error) {turnActive = false; throw error;}
         },
         endTurn() {turnActive = false;},

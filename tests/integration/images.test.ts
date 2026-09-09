@@ -1,3 +1,4 @@
+import {saveSessionSnapshot, saveSessionCompaction} from "../helpers/sessionStorage.js";
 import {expect, test} from "bun:test";
 import {readdir, readFile, symlink, unlink, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -14,7 +15,7 @@ import {encodeImageMessages} from "../../src/images/wire.js";
 import {ToolResultStore, createToolResultStore} from "../../src/toolResults/store.js";
 import {applyBatchToolResultBudget, processToolOutput} from "../../src/toolResults/budget.js";
 import type {Message} from "../../src/llm/types.js";
-import {saveSessionSnapshot, loadSession, saveSessionCompaction} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/storage.js";
 import {prepareSessionArchive, createSessionArchiveAccess} from "../../src/session/archive.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {createCompactState} from "../../src/context/state.js";
@@ -34,7 +35,7 @@ const state = {todos: [], uiEvents: [], permissionMode: "default" as const, coll
 function fixture(cwd: string) {
     const ctx = createTestContext(cwd, {sessionId: "images", workspaceBoundary: cwd, toolResultStore: createToolResultStore(createTestStorage(cwd), cwd, "images")});
     const runtime = createToolRuntime();
-    const history: Message[] = [{role: "user", content: "查看图片"}];
+    const history: Message[] = [{role: "user", origin: "user" as const, content: "查看图片"}];
     ctx.imageModelSupported = true;
     ctx.imageAccess = createImageAccess({storage: ctx.storage, store: ctx.toolResultStore, history: () => history, state: () => ctx.compactState});
     let sequence = 0;
@@ -81,7 +82,7 @@ test("image access survives archive Resume and rejects unreachable references", 
         await saveSessionSnapshot(storage, {...input, history: f.history});
         const draft = prepareSessionArchive(storage, cwd, "images", f.history);
         const compactState = {...createCompactState(), compactCount: 1, archives: [draft.record]};
-        const compacted: Message[] = [{role: "user", content: "<system-reminder>本会话已压缩，回查档案</system-reminder>"}];
+        const compacted: Message[] = [{role: "user", origin: "user" as const, content: "<system-reminder>本会话已压缩，回查档案</system-reminder>"}];
         await saveSessionCompaction(storage, {...input, history: compacted, compactState}, draft, signal());
         f.history.splice(0, f.history.length, ...compacted);
         Object.assign(f.ctx.compactState, compactState);

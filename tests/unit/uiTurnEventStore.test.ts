@@ -28,7 +28,7 @@ describe("UITurnEventStore", () => {
     const store = new UITurnEventStore({
       history: [
         { role: "system", content: "system" },
-        { role: "user", content: "之前的问题" },
+        { role: "user", origin: "user" as const, content: "之前的问题" },
         { role: "assistant", content: "之前的回答" },
       ],
     });

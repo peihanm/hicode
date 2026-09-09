@@ -73,7 +73,7 @@ function promptMessages(prompt: string, envelope: HookEnvelope): Message[] {
             prompt,
         ].join("\n"),
     }, {
-        role: "user",
+        role: "user", origin: "runtime" as const,
         content: `Evaluate this Hook event JSON:\n${JSON.stringify(envelope)}`,
     }];
 }

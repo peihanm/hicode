@@ -55,7 +55,7 @@ export function readArchiveMessages(record: SessionArchiveRecord, blocks: Sessio
 const VIEW_BYTES = 256 * 1024;
 function renderParts(record: SessionArchiveRecord, blocks: SessionContentStore): string[] {
     const text = readArchiveMessages(record, blocks).map((message, index) => {
-        const identity = `${record.id}/${index + 1} ${message.role}`;
+        const identity = `${record.id}/${index + 1} ${message.role}${message.role === "user" ? ` origin=${message.origin}` : ""}`;
         const calls = message.role === "assistant" ? (message.tool_calls ?? []).map(call =>
             `Tool call ${call.id}: ${call.function.name}\n${call.function.arguments}`).join("\n") : "";
         return `\n--- ${identity}${message.role === "tool" ? ` ${message.tool_call_id}` : ""} ---\n${contentText(message.content)}\n${calls}`;

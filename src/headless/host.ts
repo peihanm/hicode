@@ -7,8 +7,7 @@ import {createTurnAbortController} from "../runtime/abort.js";
 import {createRootRuntimeResources} from "../runtime/resources.js";
 import {createRootSessionRuntime} from "../runtime/sessionRuntime.js";
 import type {ToolContextHost} from "../runtime/toolContext.js";
-import {createRootTurnRunnerFactory, type RootTurnLifecycleIssue,} from "../runtime/turnRuntime.js";
-import {saveSessionSnapshot} from "../session/index.js";
+import {createRootTurnRunnerFactory, type RootTurnLifecycleIssue, type RootSessionSnapshotWriter} from "../runtime/turnRuntime.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
 import {HeadlessEventCollector} from "./collector.js";
 import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
@@ -18,7 +17,7 @@ import type {HeadlessOptions, HeadlessOutputFormat, HeadlessRunSummary,} from ".
 
 interface HeadlessRunnerDependencies {
     createResources: typeof createRootRuntimeResources;
-    saveSession: typeof saveSessionSnapshot;
+    saveSession: RootSessionSnapshotWriter;
     writeOutput: (
         summary: HeadlessRunSummary,
         format: HeadlessOutputFormat
@@ -32,7 +31,7 @@ export function createHeadlessRunner(
     const dependencies: HeadlessRunnerDependencies = {
         createResources:
             overrides.createResources ?? createRootRuntimeResources,
-        saveSession: overrides.saveSession ?? saveSessionSnapshot,
+        saveSession: overrides.saveSession ?? ((session, snapshot) => session.saveSnapshot(snapshot)),
         writeOutput: overrides.writeOutput ?? writeHeadlessOutput,
         writeDiagnostic: overrides.writeDiagnostic ?? writeHeadlessDiagnostic,
     };
@@ -182,7 +181,7 @@ export function createHeadlessRunner(
                     rootSession.endTurn();
                     try {
                         await dependencies.saveSession(
-                            resources.storage,
+                            rootSession,
                             rootSession.createSnapshot({
                                 ...getSnapshotState(),
                                 allowEmpty: true,

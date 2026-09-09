@@ -19,6 +19,7 @@ import {
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../todos.js";
 import {TodoProgress} from "./todoProgress.js";
+import {ContextLengthError} from "../llm/errors.js";
 
 export interface AgentToolBindings {
     getToolSchemas: ToolSchemaProvider;
@@ -27,6 +28,7 @@ export interface AgentToolBindings {
 }
 
 export interface AgentRunOptions extends AgentToolBindings {
+    inputOrigin?: "user" | "agent";
     maxIterations?: number;
     /** 读取 Host-owned Todo 真相源，供进度提醒与最终状态校验。 */
     getTodos?: () => readonly Todo[];
@@ -138,7 +140,9 @@ async function runAgentCore(
     let usageTotalTokens = 0;
     let usageCalls = 0;
     let usageEstimated = false;
-    let providerContextWindow: number | undefined;
+    let contextLengthRecoveryUsed = false;
+    let forceCompact = false;
+    let providerContextWindow = ctx.contextUsage.contextWindow({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
 
     let iterations = 0;
     const resultUsage = () => usageCalls === 0
@@ -169,14 +173,14 @@ async function runAgentCore(
 
     const appendQueuedInputs = (inputs: readonly QueuedAgentInput[]) => {
         for (const input of inputs) {
-            history.push({role: "user", content: input.content});
+            history.push({role: "user", origin: input.source === "user_input" ? "user" : "task_notification", content: input.content});
         }
     };
 
     // 已完成任务的通知先于新问题注入；它们是临时运行时消息，不触发独立 LLM turn。
     appendQueuedInputs(inputChannel.drainInitial());
     // push 真实用户输入到 history（userContext 不入 history）
-    history.push({role: "user", content: userInput});
+    history.push({role: "user", origin: options.inputOrigin ?? "user", content: userInput});
 
     try {
         throwIfTurnAborted(ctx.signal);
@@ -207,6 +211,7 @@ async function runAgentCore(
                 getToolSchemas: () => toolSchemas,
                 compactHistory: compactHistoryImpl,
                 contextWindow: providerContextWindow,
+                forceCompact,
                 getTodos: options.getTodos,
                 getAdditionalUserContextBlocks:options.getAdditionalUserContextBlocks,
                 additionalUserContextBlocks: [
@@ -216,6 +221,7 @@ async function runAgentCore(
                     ...(completionNudge ? [completionNudge] : []),
                 ],
             });
+            forceCompact = false;
             completionNudge = undefined;
             // This request's exposure is immutable even if discovery changes during the batch.
             const offeredToolNames = new Set(tools.map(tool => tool.function.name));
@@ -241,6 +247,14 @@ async function runAgentCore(
                     draft.update,
                     reference => ctx.imageAccess!.read(reference)
                 );
+            } catch (error) {
+                if (error instanceof ContextLengthError && !ctx.signal.aborted && !contextLengthRecoveryUsed && hasNextIteration && ctx.sessionCompaction) {
+                    contextLengthRecoveryUsed = true;
+                    forceCompact = true;
+                    ctx.contextUsage.reset();
+                    continue;
+                }
+                throw error;
             } finally {
                 await onEvent({type: "model_stream_end"});
             }
@@ -278,6 +292,8 @@ async function runAgentCore(
                 : hasActualUsage
                     ? usage.prompt_tokens
                     : estimatedTokens;
+            ctx.contextUsage.record({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount},
+                invokeMessages, tools, contextUsage?.inputTokens ?? (hasActualUsage ? usage.prompt_tokens : undefined), providerContextWindow);
             usageCalls += 1;
             if (hasActualUsage) {
                 usageInputTokens += usage.prompt_tokens;
@@ -406,6 +422,7 @@ async function runAgentCore(
                     )),
                 isToolConcurrencySafe: (name, args) => offeredToolNames.has(name) && isToolConcurrencySafeImpl(name, args),
             });
+            await ctx.commitToolBatch?.();
             if (batchResult.status === "interrupted" || ctx.signal.aborted) {
                 return interruptedResult();
             }

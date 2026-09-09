@@ -8,6 +8,7 @@ import {
     countSessionConversationMessages,
     hasCompleteToolPairs,
     limitSessionUIEvents,
+    createSessionUIEventLimiter,
     normalizeSessionSummaryHint,
     normalizeToolDiscoverySnapshot,
     stripSystemMessage,
@@ -15,7 +16,7 @@ import {
 } from "./codec.js";
 import {readSessionIndex, upsertSessionIndex} from "./indexStore.js";
 import {
-    replaceLatestSessionSnapshot,
+    createSessionSnapshotCommitter,
     readLatestSessionSnapshot,
     withSessionPersistenceLock,
     hasNewerSessionCompaction,
@@ -27,30 +28,43 @@ import {
     type SessionIndexEntry,
     type SessionSnapshotEntry,
 } from "./types.js";
+import {createSessionValueFreezer} from "./contentStore.js";
+
+/** Serial persistence belongs to the Session, shared by tools, compaction and every Host. */
+export function createSessionPersistence(storage: PillarStorageLayout, cwd: string, sessionId: string) {
+    const commit = createSessionSnapshotCommitter(storage, cwd, sessionId);
+    const limitUIEvents = createSessionUIEventLimiter();
+    const freezeSessionValue = createSessionValueFreezer();
+    let pending = Promise.resolve();
+    const enqueue = (input: SaveSessionSnapshotInput, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}) => {
+        if (input.cwd !== cwd || input.sessionId !== sessionId) return Promise.reject(new Error("Session writer owner mismatch"));
+        const preserveConversation = !hasCompleteToolPairs(stripSystemMessage(input.history));
+        if (preserveConversation && compaction) return Promise.reject(new Error("Refusing unpaired Session compaction"));
+        const snapshot: SaveSessionSnapshotInput = {
+            ...structuredClone({...input, history: [], uiEvents: []}),
+            history: preserveConversation ? [] : input.history.map(message => freezeSessionValue(message)),
+            uiEvents: preserveConversation ? [] : input.uiEvents?.map(event => freezeSessionValue(event)),
+            ...(preserveConversation ? {summaryHint: summarizeSessionHistory(input.history).summary ?? input.summaryHint} : {}),
+        };
+        const operation = pending.then(() => saveSnapshot(storage, snapshot, commit, limitUIEvents, preserveConversation, compaction));
+        pending = operation.catch(() => undefined);
+        return operation;
+    };
+    return {
+        save: (input: SaveSessionSnapshotInput) => enqueue(input),
+        compact: (input: SaveSessionSnapshotInput, draft: SessionArchiveDraft, signal: AbortSignal) => enqueue(input, {draft, signal}),
+        drain: () => pending,
+    };
+}
 
 export function createSessionId(): string {
     return randomUUID();
 }
 
-export async function saveSessionSnapshot(
-    storage: PillarStorageLayout,
-    input: SaveSessionSnapshotInput
-): Promise<void> {
-    return saveSnapshot(storage, input);
-}
-
-export function saveSessionCompaction(storage: PillarStorageLayout, input: SaveSessionSnapshotInput, draft: SessionArchiveDraft, signal: AbortSignal): Promise<void> {
-    return saveSnapshot(storage, input, {draft, signal});
-}
-
-async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnapshotInput, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
+async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnapshotInput,
+    commit: ReturnType<typeof createSessionSnapshotCommitter>, limitUIEvents: ReturnType<typeof createSessionUIEventLimiter>,
+    preserveConversation: boolean, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
     const conversation = stripSystemMessage(input.history);
-    // Todo/permission callbacks may request a snapshot while a tool batch is
-    // still running. Keep the previous restorable state until results exist.
-    if (!hasCompleteToolPairs(conversation)) {
-        if (compaction) throw new Error("Refusing unpaired Session compaction");
-        return;
-    }
     const summarized = summarizeSessionHistory(conversation);
     const hint = input.summaryHint
         ? normalizeSessionSummaryHint(input.summaryHint)
@@ -79,7 +93,7 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
             permissionMode: input.permissionMode,
             collaborationMode: input.collaborationMode,
             compactState: input.compactState,
-            uiEvents: limitSessionUIEvents(input.uiEvents),
+            uiEvents: limitUIEvents(input.uiEvents),
             ...(input.taskNotificationReceipts?.length ? {taskNotificationReceipts: [...input.taskNotificationReceipts]} : {}),
             ...(input.queuedInputs && input.queuedInputs.length > 0
                 ? {queuedInputs: input.queuedInputs.map((message) => ({...message}))}
@@ -88,20 +102,15 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
             ...(gitSession ? {gitSession} : {}),
         };
 
-        await replaceLatestSessionSnapshot(
-            storage,
-            input.cwd,
-            input.sessionId,
-            entry,
-            compaction
-        );
+        if (!await commit(entry, compaction, preserveConversation)) return;
+        const priorIndex = preserveConversation ? readSessionIndex(storage, input.cwd).sessions.find(item => item.sessionId === input.sessionId) : undefined;
         const updateProjections = async () => {
             await upsertSessionIndex(storage, {
                 cwd: input.cwd,
                 sessionId: input.sessionId,
                 model: input.model,
                 timestamp,
-                messageCount: countSessionConversationMessages(conversation),
+                messageCount: preserveConversation ? priorIndex?.messageCount ?? 0 : countSessionConversationMessages(conversation),
                 ...summary,
             });
         };

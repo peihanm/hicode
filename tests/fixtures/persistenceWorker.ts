@@ -1,6 +1,7 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import { access, writeFile } from "node:fs/promises";
 import { addToAllowList, type PermissionRules } from "../../src/permissions/index.js";
-import { saveSessionSnapshot } from "../../src/session/index.js";
+
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { join } from "node:path";
 import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
@@ -32,7 +33,7 @@ if (mode === "session") {
       sessionId: `${prefix}-${index}`,
       history: [
         { role: "system", content: "system" },
-        { role: "user", content: `${prefix}-task-${index}` },
+        { role: "user", origin: "user" as const, content: `${prefix}-task-${index}` },
       ],
       todos: [],
       permissionMode: "default",

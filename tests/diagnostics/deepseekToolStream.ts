@@ -237,7 +237,7 @@ function createRequestBody(config: ProbeConfig): Record<string, unknown> {
                     "只调用指定工具，不要输出解释、Markdown 或普通文本。工具参数必须严格使用用户给出的值。",
             },
             {
-                role: "user",
+                role: "user", origin: "user" as const,
                 content: `请调用 ${TOOL_NAME}，sequence 填 1，message 原样填写以下字符串：${PROBE_MESSAGE}`,
             },
         ],

@@ -84,7 +84,7 @@ test.each(["failed", "cancelled", "iteration-limit", "compacted"])("未交付的
         let compacted = false;
         const read = assistantToolCall("read_file", {path}, "read");
         const fake = createFakeLLM([
-            {...read, ...(mode === "compacted" ? {contextUsage: {tokenCount: 1, contextWindow: 10_000}} : {})},
+            {...read, ...(mode === "compacted" ? {contextUsage: {inputTokens: 7600, tokenCount: 7600, contextWindow: 10_000}} : {})},
             options => {
                 if (mode === "failed") throw new Error("offline failure");
                 if (mode === "cancelled") controller.abort("user-cancel");
@@ -97,7 +97,7 @@ test.each(["failed", "cancelled", "iteration-limit", "compacted"])("未交付的
             ...(mode === "iteration-limit" ? {maxIterations: 1} : {}),
             compactHistory: async ({history, preTokenCount}) => {
                 compacted = true;
-                history.splice(0, history.length, {role: "user", content: "已压缩，正文未保留"});
+                history.splice(0, history.length, {role: "user", origin: "user" as const, content: "已压缩，正文未保留"});
                 return {compacted: true, preTokenCount, postTokenCount: 1, threshold: 1};
             },
         });

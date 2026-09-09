@@ -16,7 +16,7 @@ describe("Compact recent tail", () => {
   test("同时满足 min tokens/text 后停止，max tokens 可以提前截断", () => {
     const history: Message[] = [
       { role: "system", content: "system" },
-      { role: "user", content: "old" },
+      { role: "user", origin: "user" as const, content: "old" },
       { role: "assistant", content: "result" },
       { role: "assistant", content: "recent" },
     ];
@@ -39,7 +39,7 @@ describe("Compact recent tail", () => {
   test("tool call/result 整组在预算内保留，超限不拆分", () => {
     const history: Message[] = [
       { role: "system", content: "system" },
-      { role: "user", content: "task" },
+      { role: "user", origin: "user" as const, content: "task" },
       {
         role: "assistant",
         content: null,

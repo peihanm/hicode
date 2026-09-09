@@ -1,3 +1,4 @@
+import {ContextUsageTracker} from "../context/usage.js";
 import {persistPreparedImage} from "../images/persist.js";
 import {imageReferences} from "../images/content.js";
 import type {HookInput} from "../hooks/types.js";
@@ -180,6 +181,7 @@ export function createSubagentFactories(
                 ),
             }];
         const childCompactState = createCompactState();
+        const childContextUsage = new ContextUsageTracker();
         const childFileState = createFileStateTracker();
         const childToolResultStore = dependencies.createToolResultStore(
             options.storageCwd ?? parentContext.cwd,
@@ -248,6 +250,7 @@ export function createSubagentFactories(
                             fileState: childFileState,
                             sessionId: childSessionId,
                             compactState: childCompactState,
+                            contextUsage: childContextUsage,
                             toolResultStore: childToolResultStore,
                             toolResultFiles: childToolResultFiles,
                         },
@@ -375,6 +378,7 @@ export function createSubagentFactories(
                         input.inputChannel,
                         {
                             maxIterations: explorationBudget,
+                            inputOrigin: "agent",
                             getToolSchemas: runtime.getToolSchemas,
                             isToolConcurrencySafe: runtime.isConcurrencySafe,
                             executeTool: runtime.executeTool,
@@ -395,6 +399,7 @@ export function createSubagentFactories(
                             input.inputChannel,
                             {
                                 maxIterations: 1,
+                                inputOrigin: "agent",
                                 getToolSchemas: () => [],
                                 isToolConcurrencySafe: runtime.isConcurrencySafe,
                                 executeTool: runtime.executeTool,

@@ -1,13 +1,4 @@
 import {contentText, imageReferences, IMAGE_ESTIMATED_TOKENS} from "../images/content.js";
-// Token 估算工具
-// 参考 claude-code src/services/tokenEstimation.ts:203-208 的 roughTokenCountEstimation
-// 和 src/utils/tokens.ts:230-265 的 tokenCountWithEstimation
-//
-// 设计决策：简化版直接从头估算所有消息，不用 lastUsage 增量计算。
-// 原因：阈值检查不需要精确，误差可接受；lastUsage 增量逻辑复杂（要找上次 assistant
-// 消息位置、避免重复计算 completion_tokens），收益不大。
-// UI 显示的真实 token 数直接用 agent/runner.ts 里 usage.prompt_tokens（API 返回）。
-
 import type {Message, OpenAITool} from "../llm/types.js";
 
 // 使用 chars/2，比英文为主的 chars/4 更保守。

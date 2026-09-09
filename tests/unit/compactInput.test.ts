@@ -14,10 +14,10 @@ function sources(count: number) {
 
 test("输入预算保留旧交接和最新原话，大工具组整体转为明确来源缺口", () => {
     const conversation: Message[] = [buildCompactSummaryMessage("原始约束仍适用"),
-        {role: "user", content: "旧请求"},
+        {role: "user", origin: "user" as const, content: "旧请求"},
         {role: "assistant", content: null, tool_calls: [{id: "read", type: "function", function: {name: "read_file", arguments: "{}"}}]},
         {role: "tool", tool_call_id: "read", content: "超大源码".repeat(10_000)},
-        {role: "user", content: "纠正：不得默认丢弃"}, {role: "assistant", content: "准备继续"}];
+        {role: "user", origin: "user" as const, content: "纠正：不得默认丢弃"}, {role: "assistant", content: "准备继续"}];
     const before = structuredClone(conversation);
     const selected = selectCompactInput({system, conversation, prompt: "交接", budget: 2000, sources: sources(conversation.length)});
     expect(tokenCountWithEstimation(selected.messages)).toBeLessThanOrEqual(2000);
@@ -31,13 +31,13 @@ test("输入预算保留旧交接和最新原话，大工具组整体转为明�
 });
 
 test("无档案或必须保留的原文过长时失败，不能伪造已覆盖", () => {
-    const conversation: Message[] = [{role: "user", content: "x".repeat(30_000)}];
+    const conversation: Message[] = [{role: "user", origin: "user" as const, content: "x".repeat(30_000)}];
     expect(() => selectCompactInput({system, conversation, prompt: "交接", budget: 1000})).toThrow("无来源档案");
     expect(() => selectCompactInput({system, conversation, prompt: "交接", budget: 1000, sources: sources(1)})).toThrow("无法容纳");
 });
 
 test("正常输入完整覆盖且不携带隐藏推理，压缩目标独立于触发阈值", () => {
-    const conversation: Message[] = [{role: "user", content: "task"}, {role: "assistant", content: "visible", reasoning_content: "private"}];
+    const conversation: Message[] = [{role: "user", origin: "user" as const, content: "task"}, {role: "assistant", content: "visible", reasoning_content: "private"}];
     const result = selectCompactInput({system, conversation, prompt: "交接", budget: 1000});
     expect(result.coverage).toBe("");
     expect(JSON.stringify(result.messages)).not.toContain("private");

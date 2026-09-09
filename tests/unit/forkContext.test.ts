@@ -19,7 +19,7 @@ describe("fork context snapshot", () => {
                 }))},
                 {role: "tool", tool_call_id: "task", content: `Saved output: ${JSON.stringify(task!.path)}\nSaved diff: ${JSON.stringify(diff!.path)}`},
                 {role: "tool", tool_call_id: "read_file", content: `Saved output: ${JSON.stringify(page!.path)}\nComplete artifact: yes`},
-                {role: "user", content: `Saved output: ${JSON.stringify(hidden!.path)}`},
+                {role: "user", origin: "user" as const, content: `Saved output: ${JSON.stringify(hidden!.path)}`},
             ];
             const files = createForkResultFiles(history, parent, local);
             history.push({role: "tool", tool_call_id: "task", content: `Saved output: ${JSON.stringify(hidden!.path)}`});
@@ -35,7 +35,7 @@ describe("fork context snapshot", () => {
     test("继承父前缀并为同批全部 tool call 补齐稳定占位", () => {
         const history: Message[] = [
             {role: "system", content: "root system"},
-            {role: "user", content: "实现 web 应用"},
+            {role: "user", origin: "user" as const, content: "实现 web 应用"},
             {
                 role: "assistant",
                 content: null,

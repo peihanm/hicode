@@ -1,3 +1,4 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {InteractiveShutdown} from "../../src/cli/interactiveShutdown.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
@@ -9,7 +10,7 @@ import {
   createTestSettings,
 } from "../helpers/runtimeResources.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import {saveSessionSnapshot, type LoadedSession} from "../../src/session/index.js";
+import {type LoadedSession} from "../../src/session/index.js";
 import type {HookTrustRequest, HookTrustDecision} from "../../src/hooks/types.js";
 
 afterEach(() => cleanup());
@@ -225,7 +226,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         sessionId: "older-session",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "恢复这段历史"},
+          {role: "user", origin: "user" as const, content: "恢复这段历史"},
           {role: "assistant", content: "历史回答"},
         ],
         todos: [],

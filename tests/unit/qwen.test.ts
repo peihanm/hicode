@@ -98,7 +98,7 @@ describe("Qwen provider", () => {
             }) as typeof fetch;
 
             const result = await callQwenProvider(qwenProvider, {
-                messages: [{role: "user", content: "读取入口"}],
+                messages: [{role: "user", origin: "user" as const, content: "读取入口"}],
                 tools: [{
                     type: "function",
                     function: {
@@ -181,7 +181,7 @@ describe("Qwen provider", () => {
 
             await callQwenProvider(qwenProvider, {
                 messages: [
-                    {role: "user", content: "继续"},
+                    {role: "user", origin: "user" as const, content: "继续"},
                     {
                         role: "assistant",
                         content: null,
@@ -219,7 +219,7 @@ describe("Qwen provider", () => {
         delete process.env.DASHSCOPE_API_KEY;
 
         await expect(callQwenProvider(qwenProvider, {
-            messages: [{role: "user", content: "hello"}],
+            messages: [{role: "user", origin: "user" as const, content: "hello"}],
             tools: [],
             cwd: process.cwd(),
             model: "qwen3.6-plus",
@@ -228,7 +228,7 @@ describe("Qwen provider", () => {
 
         const callQwen = createLLMCaller(QWEN_SOURCE);
         await expect(callQwen(
-            [{role: "user", content: "hello"}],
+            [{role: "user", origin: "user" as const, content: "hello"}],
             [],
             createTestStorage(process.cwd()),
             process.cwd(),

@@ -1,10 +1,11 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {contentText} from "../../src/images/content.js";
 import {describe, expect, test} from "bun:test";
 import {readFile, readdir, stat, writeFile, unlink, symlink} from "node:fs/promises";
 import {join} from "node:path";
 import {createCompactState} from "../../src/context/index.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
-import {loadSession, saveSessionSnapshot, listSessionIndex} from "../../src/session/index.js";
+import {loadSession, listSessionIndex} from "../../src/session/index.js";
 import {getSessionLogPath} from "../../src/session/paths.js";
 import {getSessionStorageDirectory, getSessionContentDirectory} from "../../src/persistence/index.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
@@ -43,7 +44,7 @@ describe("Session recovery and storage boundaries", () => {
 
     test("repeated large conversation is stored once across repeated saves", async () => {
         await withTempProject(async (cwd, storage) => {
-            const input = {cwd, sessionId: "dedup", model: "glm-test", history: [{role: "user" as const, content: "x".repeat(512 * 1024)}],
+            const input = {cwd, sessionId: "dedup", model: "glm-test", history: [{role: "user" as const, origin: "user" as const, content: "x".repeat(512 * 1024)}],
                 todos: [], permissionMode: "default" as const, collaborationMode: "build" as const};
             for (let n = 0; n < 20; n++) {
                 await saveSessionSnapshot(storage, input);
@@ -55,7 +56,7 @@ describe("Session recovery and storage boundaries", () => {
 
     test("Resume index listing does not open conversation logs", async () => {
         await withTempProject(async (cwd, storage) => {
-            await saveSessionSnapshot(storage, {cwd, sessionId: "indexed", model: "glm-test", history: [{role: "user", content: "indexed prompt"}],
+            await saveSessionSnapshot(storage, {cwd, sessionId: "indexed", model: "glm-test", history: [{role: "user", origin: "user" as const, content: "indexed prompt"}],
                 todos: [], permissionMode: "default", collaborationMode: "build"});
             await writeFile(getSessionLogPath(storage, cwd, "indexed"), "corrupt conversation\n");
             expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["indexed"]);
@@ -68,7 +69,7 @@ describe("Session recovery and storage boundaries", () => {
             const input = {cwd, sessionId: "large-current", model: "glm-test", todos: [],
                 permissionMode: "default" as const, collaborationMode: "build" as const};
             for (let turn = 0; turn < 2; turn++) {
-                const history = Array.from({length: 8}, (_, n) => ({role: "user" as const,
+                const history = Array.from({length: 8}, (_, n) => ({role: "user" as const, origin: "user" as const,
                     content: `${turn}:${n}:` + "x".repeat(8 * 1024 * 1024 - 100)}));
                 await saveSessionSnapshot(storage, {...input, history});
                 expect(contentText(loadSession(storage, cwd, input.sessionId, input.model)?.history.at(-1)?.content).startsWith(`${turn}:7:`)).toBe(true);
@@ -78,7 +79,7 @@ describe("Session recovery and storage boundaries", () => {
 
     test.each(["tamper", "missing", "symlink", "traversal", "duplicate-budget"])("content reference %s fails closed", async corruption => {
         await withTempProject(async (cwd, storage) => {
-            const input = {cwd, sessionId: "blocks", model: "glm-test", history: [{role: "user" as const, content: "x".repeat(1024 * 1024)}],
+            const input = {cwd, sessionId: "blocks", model: "glm-test", history: [{role: "user" as const, origin: "user" as const, content: "x".repeat(1024 * 1024)}],
                 todos: [], permissionMode: "default" as const, collaborationMode: "build" as const};
             await saveSessionSnapshot(storage, input);
             const path = getSessionLogPath(storage, cwd, "blocks");

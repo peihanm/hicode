@@ -1,3 +1,4 @@
+import {ContextUsageTracker} from "../../src/context/usage.js";
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import { describe, expect, test } from "bun:test";
@@ -39,7 +40,7 @@ describe("ToolContext builder", () => {
         },
         session: {fileState: createFileStateTracker(),
           sessionId: "session-live",
-          compactState: createCompactState(),
+          compactState: createCompactState(), contextUsage: new ContextUsageTracker(),
           toolResultStore: createTestToolResultStore(cwd, "session-live", {
             pillarHome: `${cwd}/results`,
           }),
@@ -118,6 +119,7 @@ describe("ToolContext builder", () => {
         fileState: createFileStateTracker(),
         sessionId: "shared-session",
         compactState,
+        contextUsage: new ContextUsageTracker(),
         toolResultStore,
       };
       const host = {

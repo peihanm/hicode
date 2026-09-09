@@ -37,7 +37,7 @@ describe("/compact runtime binding", () => {
                 {
                     history: [
                         {role: "system", content: "system"},
-                        {role: "user", content: "hello"},
+                        {role: "user", origin: "user" as const, content: "hello"},
                         {role: "assistant", content: "world"},
                     ],
                     ctx: createTestContext(cwd),

@@ -82,7 +82,7 @@ describe("RootSessionRuntime", () => {
       runtime.replaceConversation(
         [
           {role: "system", content: "system"},
-          {role: "user", content: "new turn"},
+          {role: "user", origin: "user" as const, content: "new turn"},
         ],
         nextCompactState
       );

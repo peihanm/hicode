@@ -3,7 +3,6 @@ export {
     listSessionIndex,
     loadLatestSession,
     loadSession,
-    saveSessionSnapshot,
 } from "./storage.js";
 
 export type {

@@ -1,3 +1,4 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import { describe, expect, test } from "bun:test";
 import {
   appendFile,
@@ -10,12 +11,7 @@ import {
 } from "node:fs/promises";
 import {dirname, join} from "node:path";
 import { createCompactState } from "../../src/context/index.js";
-import {
-  listSessionIndex,
-  loadLatestSession,
-  loadSession,
-  saveSessionSnapshot,
-} from "../../src/session/index.js";
+import {listSessionIndex, loadLatestSession, loadSession} from "../../src/session/index.js";
 import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -31,7 +27,7 @@ describe("session persistence", () => {
         sessionId: "queued-session",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "原始任务"},
+          {role: "user", origin: "user" as const, content: "原始任务"},
         ],
         todos: [],
         permissionMode: "default",
@@ -62,7 +58,7 @@ describe("session persistence", () => {
     await withTempProject(async (cwd, storage) => {
       const history: Message[] = [
         { role: "system", content: "不会持久化" },
-        { role: "user", content: "第一个任务" },
+        { role: "user", origin: "user" as const, content: "第一个任务" },
         { role: "assistant", content: "已完成" },
       ];
       await saveSessionSnapshot(storage, {
@@ -103,7 +99,7 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(5);
+      expect(snapshot.version).toBe(6);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
@@ -122,7 +118,7 @@ describe("session persistence", () => {
         sessionId: "legacy-tool-discovery",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "继续之前的对话"},
+          {role: "user", origin: "user" as const, content: "继续之前的对话"},
           {role: "assistant", content: "可以继续"},
         ],
         todos: [],
@@ -156,7 +152,7 @@ describe("session persistence", () => {
         sessionId: "unversioned",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "旧对话"},
+          {role: "user", origin: "user" as const, content: "旧对话"},
         ],
         todos: [],
         permissionMode: "default",
@@ -194,7 +190,7 @@ describe("session persistence", () => {
         sessionId: "session-2",
         history: [
           { role: "system", content: "system" },
-          { role: "user", content: "保留我" },
+          { role: "user", origin: "user" as const, content: "保留我" },
         ],
         todos: [],
         permissionMode: "default",
@@ -206,7 +202,7 @@ describe("session persistence", () => {
       );
 
       const loaded = loadSession(storage, cwd, "session-2", "glm-test");
-      expect(loaded?.history.at(-1)).toEqual({ role: "user", content: "保留我" });
+      expect(loaded?.history.at(-1)).toEqual({ role: "user", origin: "user" as const, content: "保留我" });
 
       await saveSessionSnapshot(storage, {
         cwd,
@@ -234,7 +230,7 @@ describe("session persistence", () => {
         sessionId: "untrusted-session",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "原始任务"},
+          {role: "user", origin: "user" as const, content: "原始任务"},
         ],
         todos: [],
         permissionMode: "default",
@@ -274,7 +270,7 @@ describe("session persistence", () => {
         sessionId: "strict-mutation",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "保留"},
+          {role: "user", origin: "user" as const, content: "保留"},
         ],
         todos: [],
         permissionMode: "default",
@@ -290,7 +286,7 @@ describe("session persistence", () => {
         sessionId: "strict-mutation",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "下一次"},
+          {role: "user", origin: "user" as const, content: "下一次"},
         ],
         todos: [],
         permissionMode: "default",
@@ -353,7 +349,7 @@ describe("session persistence", () => {
         sessionId: "with-ui",
         history: [
           { role: "system", content: "system" },
-          { role: "user", content: "修改 a" },
+          { role: "user", origin: "user" as const, content: "修改 a" },
           {
             role: "assistant",
             content: null,
@@ -406,7 +402,7 @@ describe("session persistence", () => {
             sessionId: `parallel-${index}`,
             history: [
               { role: "system", content: "system" },
-              { role: "user", content: `task-${index}` },
+              { role: "user", origin: "user" as const, content: `task-${index}` },
             ],
             todos: [],
             permissionMode: "default",
@@ -435,7 +431,7 @@ describe("session persistence", () => {
             sessionId: "shared",
             history: [
               { role: "system", content: "system" },
-              { role: "user", content: `shared-${index}` },
+              { role: "user", origin: "user" as const, content: `shared-${index}` },
             ],
             todos: [],
             permissionMode: "default",
@@ -465,7 +461,7 @@ describe("session persistence", () => {
           sessionId: "compact-log",
           history: [
             {role: "system", content: "system"},
-            {role: "user", content},
+            {role: "user", origin: "user" as const, content},
           ],
           todos: [],
           permissionMode: "default",
@@ -481,7 +477,7 @@ describe("session persistence", () => {
         "snapshot",
       ]);
       expect(loadSession(storage, cwd, "compact-log", "glm-test")?.history.at(-1))
-        .toEqual({role: "user", content: "latest"});
+        .toEqual({role: "user", origin: "user" as const, content: "latest"});
     });
   });
 
@@ -494,7 +490,7 @@ describe("session persistence", () => {
         sessionId: "existing",
         history: [
           { role: "system", content: "system" },
-          { role: "user", content: "existing" },
+          { role: "user", origin: "user" as const, content: "existing" },
         ],
         todos: [],
         permissionMode: "default",
@@ -509,7 +505,7 @@ describe("session persistence", () => {
           sessionId: "after-corruption",
           history: [
             { role: "system", content: "system" },
-            { role: "user", content: "recoverable" },
+            { role: "user", origin: "user" as const, content: "recoverable" },
           ],
           todos: [],
           permissionMode: "default",
@@ -518,7 +514,7 @@ describe("session persistence", () => {
       ).rejects.toThrow("Cannot update corrupt session index");
       expect(await readFile(indexPath, "utf8")).toBe("{corrupt-index");
       expect(loadSession(storage, cwd, "after-corruption", "glm-test")?.history.at(-1)).toEqual({
-        role: "user",
+        role: "user", origin: "user" as const,
         content: "recoverable",
       });
     });
@@ -538,7 +534,7 @@ describe("session persistence", () => {
         sessionId: "directory-symlink",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "不得重定向"},
+          {role: "user", origin: "user" as const, content: "不得重定向"},
         ],
         todos: [],
         permissionMode: "default",
@@ -553,7 +549,7 @@ describe("session persistence", () => {
         sessionId: "file-symlink",
         history: [
           {role: "system", content: "system"},
-          {role: "user", content: "原始内容"},
+          {role: "user", origin: "user" as const, content: "原始内容"},
         ],
         todos: [],
         permissionMode: "default",
@@ -571,7 +567,7 @@ describe("session persistence", () => {
         cwd,
         model: "glm-test",
         sessionId: "file-symlink",
-        history: [{role: "user", content: "继续"}],
+        history: [{role: "user", origin: "user" as const, content: "继续"}],
         todos: [],
         permissionMode: "default",
         collaborationMode: "build",

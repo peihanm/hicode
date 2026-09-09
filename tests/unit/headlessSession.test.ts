@@ -1,7 +1,8 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import { describe, expect, test } from "bun:test";
 import { createCompactState } from "../../src/context/index.js";
 import { loadHeadlessSession } from "../../src/headless/session.js";
-import { saveSessionSnapshot } from "../../src/session/index.js";
+
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestSettings } from "../helpers/runtimeResources.js";
 import {
@@ -87,7 +88,7 @@ describe("headless session boundary", () => {
         sessionId: "session-1",
         history: [
           { role: "system", content: "system" },
-          { role: "user", content: "hello" },
+          { role: "user", origin: "user" as const, content: "hello" },
           { role: "assistant", content: "world" },
         ],
         todos: [],

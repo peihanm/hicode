@@ -9,7 +9,7 @@ import {formatHookContext, type HookBatchResult, type HookInput} from "../hooks/
 import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import {
-    saveSessionSnapshot,
+    type SaveSessionSnapshotInput,
     type PersistedUIEvent,
 } from "../session/index.js";
 import type {Todo} from "../todos.js";
@@ -50,15 +50,14 @@ export interface RunRootTurnOptions {
     maxIterations?: number;
 }
 
-interface RootTurnRunnerDependencies {
-    saveSession: typeof saveSessionSnapshot;
-}
+export type RootSessionSnapshotWriter = (session: RootSessionRuntime, snapshot: SaveSessionSnapshotInput) => Promise<void>;
+interface RootTurnRunnerDependencies {saveSession: RootSessionSnapshotWriter}
 
 export function createRootTurnRunnerFactory(
     overrides: Partial<RootTurnRunnerDependencies> = {}
 ) {
     const dependencies: RootTurnRunnerDependencies = {
-        saveSession: overrides.saveSession ?? saveSessionSnapshot,
+        saveSession: overrides.saveSession ?? ((session, snapshot) => session.saveSnapshot(snapshot)),
     };
 
     return async function runRootTurn(
@@ -177,7 +176,7 @@ export function createRootTurnRunnerFactory(
             await settleHost();
             await finishTiming();
             await dependencies.saveSession(
-                resources.storage,
+                session,
                 session.createSnapshot(getSnapshotState())
             );
             sessionSaved = true;
@@ -202,7 +201,7 @@ export function createRootTurnRunnerFactory(
                 try {
                     await finishTiming();
                     await dependencies.saveSession(
-                        resources.storage,
+                        session,
                         session.createSnapshot({
                             ...getSnapshotState(),
                             allowEmpty: true,

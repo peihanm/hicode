@@ -19,7 +19,7 @@ export function buildInvokeMessages(
     }
 
     const userContextMessage: Message = {
-        role: "user",
+        role: "user", origin: "runtime" as const,
         content: userContextBlocks.join("\n\n"),
     };
 

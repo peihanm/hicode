@@ -1,3 +1,4 @@
+import type {ContextUsageTracker} from "../context/usage.js";
 import {randomUUID} from "node:crypto";
 import type {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import type {CompactState} from "../context/index.js";
@@ -46,6 +47,7 @@ export interface ToolContextSession {
     networkAccess?: ToolContext["networkAccess"];
     sessionId: string;
     compactState: CompactState;
+    contextUsage: ContextUsageTracker;
     toolResultStore: ToolResultStore;
     toolResultFiles?: ToolContext["toolResultFiles"];
     allowBackgroundTasks?: boolean;
@@ -113,6 +115,7 @@ export function createToolContext({
         cwd: resources.cwd,
         workspaceBoundary: resources.workspaceBoundary,
         compactState: session.compactState,
+        contextUsage: session.contextUsage,
         sessionId: session.sessionId,
         toolResultStore: session.toolResultStore,
         toolResultFiles: session.toolResultFiles ?? {

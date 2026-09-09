@@ -31,7 +31,7 @@ export function labelHandoffSources(messages: readonly Message[], sources: Hando
     return messages.map((message, index) => {
         const cloned = structuredClone(message);
         if (cloned.role === "assistant") delete cloned.reasoning_content;
-        cloned.content = `[source ${sources.current.id}/${index + 1}; role=${message.role}]\n${contentText(message.content)}`;
+        cloned.content = `[source ${sources.current.id}/${index + 1}; role=${message.role}${message.role === "user" ? `; origin=${message.origin}` : ""}]\n${contentText(message.content)}`;
         return cloned;
     });
 }

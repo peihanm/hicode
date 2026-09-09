@@ -1,4 +1,3 @@
-import {contentText} from "../images/content.js";
 import {dirname} from "node:path";
 import {
     ensurePrivateStorageDirectory, getProjectKey, readPrivateStorageTextFile,
@@ -85,54 +84,68 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
     return {...entry, conversation, uiEvents};
 }
 
-async function commitEntry(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionEntry,
-    compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
-    const normalized = decodeSessionEntry(entry);
-    if (!normalized || Buffer.byteLength(JSON.stringify(normalized)) > MAX_SESSION_ENTRY_BYTES) throw new Error("Refusing to persist invalid or oversized session entry");
+/** Called under the project persistence lock; one Session owns this committer. */
+export function createSessionSnapshotCommitter(storage: PillarStorageLayout, cwd: string, sessionId: string) {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
-    const previous = readReferences(storage, cwd, sessionId);
-    for (const old of previous) hydrate(old, blocks);
-    const oldRefs = references(previous);
-    if (compaction) {
-        const prior = previous.findLast(item => item.type === "snapshot");
-        const archives = normalized.compactState?.archives ?? [];
-        if (archives.at(-1)?.id !== compaction.draft.record.id ||
-            JSON.stringify(archives.slice(0, -1)) !== JSON.stringify(prior?.compactState?.archives ?? [])) {
-            throw new Error("Session archive base changed before compaction commit");
+    let lastCommit: string | undefined;
+    return async (entry: SessionEntry, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, preserveConversation: boolean): Promise<boolean> => {
+        const normalized = decodeSessionEntry({...entry, conversation: [], uiEvents: []});
+        if (!normalized || !hasCompleteToolPairs(entry.conversation) || entry.conversation.length > 20_000 || entry.uiEvents.length > 4_096) throw new Error("Refusing to persist invalid or oversized session entry");
+        const previous = readReferences(storage, cwd, sessionId);
+        const prior = previous.at(-1);
+        if (preserveConversation && !prior) return false;
+        if (preserveConversation) normalized.compactState = prior!.compactState;
+        const previousKey = JSON.stringify(previous);
+        if (lastCommit !== undefined && previousKey !== lastCommit) throw new Error("Session snapshot changed outside its writer");
+        if (lastCommit === undefined) for (const old of previous) hydrate(old, blocks);
+        else blocks.verifyStored(references(previous));
+        const oldRefs = references(previous);
+        if (compaction) {
+            const prior = previous.findLast(item => item.type === "snapshot");
+            const archives = normalized.compactState?.archives ?? [];
+            if (archives.at(-1)?.id !== compaction.draft.record.id ||
+                JSON.stringify(archives.slice(0, -1)) !== JSON.stringify(prior?.compactState?.archives ?? [])) {
+                throw new Error("Session archive base changed before compaction commit");
+            }
+            for (const value of compaction.draft.messages) blocks.stage({kind: "message", value});
         }
-        for (const value of compaction.draft.messages) blocks.stage({kind: "message", value});
-    }
-    for (const archive of normalized.compactState?.archives ?? []) readArchiveMessages(archive, blocks);
-    const stored: StoredEntry = {...normalized,
-        conversation: normalized.conversation.map(value => {
-            if (value.role === "system") throw new Error("Session cannot persist system messages");
-            return blocks.stage({kind: "message", value});
-        }),
-        uiEvents: normalized.uiEvents.map(value => blocks.stage({kind: "ui", value})),
+        const knownArchives = new Set(previous.flatMap(old => (old.compactState?.archives ?? []).map(archive => JSON.stringify(archive))));
+        for (const archive of normalized.compactState?.archives ?? []) {
+            if (!knownArchives.has(JSON.stringify(archive))) readArchiveMessages(archive, blocks);
+        }
+        const stored: StoredEntry = {...normalized,
+            conversation: preserveConversation ? prior!.conversation : entry.conversation.map(value => {
+                if (value.role === "system") throw new Error("Session cannot persist system messages");
+                return blocks.stage({kind: "message", value});
+            }),
+            uiEvents: preserveConversation ? prior!.uiEvents : entry.uiEvents.map(value => blocks.stage({kind: "ui", value})),
+        };
+        const conversationBytes = blocks.arrayBytes(stored.conversation);
+        const uiBytes = blocks.arrayBytes(stored.uiEvents);
+        if (conversationBytes > 64 * 1024 * 1024 || uiBytes > 20 * 1024 * 1024 ||
+            conversationBytes + uiBytes + Buffer.byteLength(JSON.stringify(normalized)) - 4 > MAX_SESSION_ENTRY_BYTES) throw new Error("Invalid Session conversation or UI budget");
+        const entries = [stored];
+        const content = JSON.stringify(stored) + "\n";
+        const ids = references(entries);
+        if (Buffer.byteLength(content) > MAX_SESSION_LOG_BYTES || blocks.bytes(ids) + Buffer.byteLength(content) > MAX_SESSION_CONTENT_BYTES || ids.size > 131_072) {
+            throw new Error("Session current state exceeds storage budget");
+        }
+        const path = getSessionLogPath(storage, cwd, sessionId);
+        ensurePrivateStorageDirectory(storage, dirname(path));
+        await blocks.collect(new Set([...oldRefs, ...ids]));
+        await blocks.persist(ids);
+        if (compaction) throwIfTurnAborted(compaction.signal);
+        await writeFileAtomically(path, content, 0o600);
+        lastCommit = JSON.stringify(entries);
+        blocks.releaseBodies(ids);
+        // Reference commit is the truth; failed reclamation must not invalidate an already committed snapshot.
+        await blocks.collect(ids).catch(() => undefined);
+        if ([...previous, ...entries].some(item => item.compactState?.archives?.length)) {
+            await collectArchiveViews(storage, cwd, sessionId, new Set(entries.flatMap(item =>
+                item.compactState?.archives?.map(record => record.id) ?? []))).catch(() => undefined);
+        }
+        return true;
     };
-    const entries = [stored];
-    const content = JSON.stringify(stored) + "\n";
-    const ids = references(entries);
-    if (Buffer.byteLength(content) > MAX_SESSION_LOG_BYTES || blocks.bytes(ids) + Buffer.byteLength(content) > MAX_SESSION_CONTENT_BYTES || ids.size > 131_072) {
-        throw new Error("Session current state exceeds storage budget");
-    }
-    const path = getSessionLogPath(storage, cwd, sessionId);
-    ensurePrivateStorageDirectory(storage, dirname(path));
-    await blocks.collect(new Set([...oldRefs, ...ids]));
-    await blocks.persist(ids);
-    if (compaction) throwIfTurnAborted(compaction.signal);
-    await writeFileAtomically(path, content, 0o600);
-    // Reference commit is the truth; failed reclamation must not invalidate an already committed snapshot.
-    await blocks.collect(ids).catch(() => undefined);
-    if ([...previous, ...entries].some(item => item.compactState?.archives?.length)) {
-        await collectArchiveViews(storage, cwd, sessionId, new Set(entries.flatMap(item =>
-            item.compactState?.archives?.map(record => record.id) ?? []))).catch(() => undefined);
-    }
-}
-
-export function replaceLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string, entry: SessionSnapshotEntry,
-    compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
-    return commitEntry(storage, cwd, sessionId, entry, compaction);
 }
 
 export function hasNewerSessionCompaction(storage: PillarStorageLayout, cwd: string, sessionId: string, count: number): boolean {
@@ -163,7 +176,9 @@ export function readSessionSourceMessages(storage: PillarStorageLayout, cwd: str
         const block = blocks.read(hash);
         if (block.kind !== "message") throw new Error("Memory 来源不是消息");
         const value = block.value;
-        return {id: hash, role: value.role, content: value.content};
+        return value.role === "user"
+            ? {id: hash, role: value.role, origin: value.origin, content: value.content}
+            : {id: hash, role: value.role, content: value.content};
     });
     if (Buffer.byteLength(JSON.stringify(result)) > 32 * 1024) throw new Error("Memory 来源超过 32 KiB，未送入模型");
     return result;
@@ -180,8 +195,8 @@ export function selectSessionMemorySource(storage:PillarStorageLayout,cwd:string
         const block=blocks.read(id);
         if(block.kind!=="message")throw new Error("Memory 来源不是消息");
         const message=block.value;
-        if(!message.content||(message.role==="user"&&contentText(message.content).startsWith("<system-reminder>\n本会话已压缩。")))continue;
-        const cost=Buffer.byteLength(JSON.stringify({id,role:message.role,content:message.content}))+1;
+        if(!message.content||(message.role==="user"&&(message.origin==="compaction"||message.origin==="runtime")))continue;
+        const cost=Buffer.byteLength(JSON.stringify({id,role:message.role,...(message.role==="user"?{origin:message.origin}:{}),content:message.content}))+1;
         if(bytes+cost>32*1024)continue;
         selected.push(id);bytes+=cost;
     }

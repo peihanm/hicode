@@ -201,6 +201,7 @@ describe("agent loop", () => {
               total_tokens: 340,
             },
             contextUsage: {
+                inputTokens: 100,
               tokenCount: 74,
               contextWindow: 1_050_000,
             },

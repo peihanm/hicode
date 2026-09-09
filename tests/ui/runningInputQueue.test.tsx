@@ -110,7 +110,7 @@ describe("running input queue UI", () => {
                 model: resources.model,
                 history: [
                     {role: "system", content: "system"},
-                    {role: "user", content: "旧任务"},
+                    {role: "user", origin: "user" as const, content: "旧任务"},
                     {role: "assistant", content: "旧任务已完成"},
                 ],
                 todos: [],

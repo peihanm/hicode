@@ -8,7 +8,6 @@ import {updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
 import {
     type LoadedSession,
-    saveSessionSnapshot,
     type SaveSessionSnapshotInput,
 } from "../../session/index.js";
 import type {PermissionDecision} from "../../permissions/index.js";
@@ -21,7 +20,6 @@ import type {ConfirmReq} from "./types.js";
 import {UITurnController} from "./controller.js";
 import {UITurnEventStore} from "./eventStore.js";
 import {UIPermissionRequests} from "./permissionRequests.js";
-import {SessionSnapshotQueue} from "./sessionQueue.js";
 import {createTaskNotificationDelivery} from "../../runtime/taskNotificationDelivery.js";
 import {estimateRestoredTokenInfo} from "./tokenInfo.js";
 import {formatAgentLoadWarning} from "../../subagents/diagnostics.js";
@@ -192,20 +190,17 @@ export function useTurnController({
         }
         const permissionRequests = permissionRequestsRef.current;
 
-        const sessionQueueRef = useRef<SessionSnapshotQueue | null>(null);
-        if (sessionQueueRef.current === null) {
-            sessionQueueRef.current = new SessionSnapshotQueue(
-                (snapshot) => saveSessionSnapshot(resources.storage, snapshot),
-                (error) => {
-                    const detail = error instanceof Error ? error.message : String(error);
-                    const bounded = detail.length > 240 ? `${detail.slice(0, 239)}…` : detail;
-                    eventStore.appendWarning(
-                        `会话保存失败，本次对话可能无法通过 /resume 恢复：${bounded}`
-                    );
-                }
-            );
-        }
-        const sessionQueue = sessionQueueRef.current;
+        const lastSaveError = useRef<string | undefined>(undefined);
+        const saveSnapshot = useCallback(async (snapshot: SaveSessionSnapshotInput) => {
+            try {
+                await rootSession.saveSnapshot(snapshot);
+                lastSaveError.current = undefined;
+            } catch (error) {
+                const detail = error instanceof Error ? error.message : String(error);
+                if (lastSaveError.current !== detail) eventStore.appendWarning(`会话保存失败，本次对话可能无法通过 /resume 恢复：${detail.slice(0, 240)}`);
+                lastSaveError.current = detail;
+            }
+        }, [rootSession, eventStore]);
 
         const createSnapshot = useCallback(
             (overrides?: {
@@ -234,8 +229,8 @@ export function useTurnController({
                 collaborationMode?: CollaborationMode;
                 allowEmpty?: boolean;
                 summaryHint?: string;
-            }) => sessionQueue.enqueue(createSnapshot(overrides)),
-            [createSnapshot, sessionQueue]
+            }) => saveSnapshot(createSnapshot(overrides)),
+            [createSnapshot, saveSnapshot]
         );
         useEffect(() => {
             let active = true;
@@ -428,10 +423,10 @@ export function useTurnController({
                 await rootSession.runSessionEnd("shutdown", eventStore.handleEvent)
                     .catch(() => undefined);
                 await persistSnapshot();
-                await sessionQueue.drain();
+                await rootSession.flushSnapshots();
             })();
             return shutdownPromiseRef.current;
-        }, [permissionRequests, persistSnapshot, rootSession, sessionQueue, turnController]);
+        }, [permissionRequests, persistSnapshot, rootSession, turnController]);
 
         useEffect(() => {
             void startSessionHooks();
@@ -446,7 +441,7 @@ export function useTurnController({
             let lastError: string | undefined;
             const delivery = createTaskNotificationDelivery({
                 tasks: taskSession, queue: messageQueue,
-                persist: () => sessionQueue.enqueueCritical(createSnapshot()),
+                persist: () => rootSession.saveSnapshot(createSnapshot()),
                 onQueued: notification => eventStore.appendTaskNotification(notification),
             });
             let observed: Promise<void> | undefined;
@@ -471,7 +466,7 @@ export function useTurnController({
                 unsubscribeTasks();
                 unsubscribeQueue();
             };
-        }, [createSnapshot, eventStore, messageQueue, sessionQueue, taskSession]);
+        }, [createSnapshot, eventStore, messageQueue, rootSession, taskSession]);
 
         useEffect(() => {
             if (messageQueueSnapshot.messages.length === 0) {

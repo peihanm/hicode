@@ -40,7 +40,7 @@ async function generateCompactSummaryCore(input: {
         ? sources ? renderHandoff(message.content, sources) : parseCompactSummary(message.content) : "";
     if (!summary) throw new Error("compact summary 为空");
     const result = [summary, selected.coverage].filter(Boolean).join("\n\n");
-    if (estimateMessageTokens({role: "user", content: result}) > Math.min(8000, Math.floor(inputBudget * 0.2))) {
+    if (estimateMessageTokens({role: "user", origin: "runtime" as const, content: result}) > Math.min(8000, Math.floor(inputBudget * 0.2))) {
         throw new Error("工作交接输出超过独立 token 预算，原历史已保留");
     }
     return result;

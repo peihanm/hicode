@@ -20,9 +20,9 @@ function historyWithToolPair(): Message[] {
   };
   return [
     { role: "system", content: "system" },
-    { role: "user", content: "较早任务".repeat(2_000) },
+    { role: "user", origin: "user" as const, content: "较早任务".repeat(2_000) },
     { role: "assistant", content: "较早回答" },
-    { role: "user", content: "最近任务" },
+    { role: "user", origin: "user" as const, content: "最近任务" },
     { role: "assistant", content: null, tool_calls: [toolCall] },
     { role: "tool", content: "工具结果", tool_call_id: "pair-1" },
   ];

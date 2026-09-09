@@ -11,7 +11,7 @@ import type {
 } from "../../src/headless/types.js";
 import type { McpManagerLike } from "../../src/mcp/index.js";
 import { createRootRuntimeResources } from "../../src/runtime/resources.js";
-import { saveSessionSnapshot } from "../../src/session/index.js";
+import type {RootSessionSnapshotWriter} from "../../src/runtime/turnRuntime.js";
 import { createRootRuntimeResourcesForTest } from "./runtimeResources.js";
 import {
   runAgentForTest,
@@ -46,7 +46,7 @@ interface HeadlessTestOptions {
   mcpManager?: McpManagerLike | false;
   createResources?: typeof createRootRuntimeResources;
   runAgent?: AgentRunner;
-  saveSession?: typeof saveSessionSnapshot;
+  saveSession?: RootSessionSnapshotWriter;
 }
 
 export type HeadlessTestInput = Omit<HeadlessOptions, "configuration"> & {
@@ -113,7 +113,7 @@ export function runHeadlessForTest(
           });
       return {...resources, agentRuntime};
     },
-    saveSession: test.saveSession ?? saveSessionSnapshot,
+    saveSession: test.saveSession ?? ((session, snapshot) => session.saveSnapshot(snapshot)),
     writeOutput: test.writeOutput ?? writeHeadlessOutput,
     writeDiagnostic: test.writeDiagnostic ?? writeHeadlessDiagnostic,
   });

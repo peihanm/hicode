@@ -1,3 +1,4 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {describe, expect, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -6,7 +7,7 @@ import {
     createGitWorkspaceRuntime,
 } from "../../src/git/index.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
-import {loadSession, saveSessionSnapshot} from "../../src/session/index.js";
+import {loadSession} from "../../src/session/index.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -125,7 +126,7 @@ describe("Git Session baseline", () => {
                 sessionId: "git-session",
                 history: [
                     {role: "system", content: "system"},
-                    {role: "user", content: "修改 observed"},
+                    {role: "user", origin: "user" as const, content: "修改 observed"},
                 ],
                 todos: [],
                 permissionMode: "default",

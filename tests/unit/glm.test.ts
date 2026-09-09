@@ -56,7 +56,7 @@ describe("GLM cancellation", () => {
       )) as typeof fetch;
 
       await expect(callGlm(glmProvider, {
-        messages: [{role: "user", content: "hello"}],
+        messages: [{role: "user", origin: "user" as const, content: "hello"}],
         tools: [],
         cwd,
         model: "glm-test",
@@ -97,7 +97,7 @@ describe("GLM cancellation", () => {
       }) as typeof fetch;
 
       const running = callGlm(glmProvider, {
-        messages: [{ role: "user", content: "hello" }],
+        messages: [{ role: "user", origin: "user" as const, content: "hello" }],
         tools: [],
         cwd,
         model: "glm-test",
@@ -154,7 +154,7 @@ describe("GLM cancellation", () => {
         });
         await expect(
           callGlm(provider, {
-            messages: [{ role: "user", content: "hello" }],
+            messages: [{ role: "user", origin: "user" as const, content: "hello" }],
             tools: [],
             cwd,
             model: "glm-test",
@@ -205,7 +205,7 @@ describe("GLM cancellation", () => {
       }) as typeof fetch;
 
       const result = await callGlm(glmProvider, {
-        messages: [{ role: "user", content: "create it" }],
+        messages: [{ role: "user", origin: "user" as const, content: "create it" }],
         tools: [],
         cwd,
         model: "glm-test",
@@ -310,7 +310,7 @@ describe("GLM cancellation", () => {
         retryBaseDelayMs: 1,
       });
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "create game" }],
+        messages: [{ role: "user", origin: "user" as const, content: "create game" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -375,7 +375,7 @@ describe("GLM cancellation", () => {
 
       const provider = createTestGlmProvider({ retryBaseDelayMs: 1 });
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "continue" }],
+        messages: [{ role: "user", origin: "user" as const, content: "continue" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -389,7 +389,7 @@ describe("GLM cancellation", () => {
         completion_tokens: 2,
         total_tokens: 18,
       });
-      expect(result.contextUsage).toEqual({tokenCount: 10});
+      expect(result.contextUsage).toEqual({inputTokens: 8, tokenCount: 10});
       const logs = (await readdir(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);
       const first = JSON.parse(
@@ -436,7 +436,7 @@ describe("GLM cancellation", () => {
 
       const provider = createTestGlmProvider({ retryBaseDelayMs: 1 });
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "continue" }],
+        messages: [{ role: "user", origin: "user" as const, content: "continue" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -482,7 +482,7 @@ describe("GLM cancellation", () => {
       const provider = createTestGlmProvider({ retryBaseDelayMs: 1 });
       await expect(
         callGlm(provider, {
-          messages: [{ role: "user", content: "continue" }],
+          messages: [{ role: "user", origin: "user" as const, content: "continue" }],
           tools: [],
           cwd,
           model: "glm-5.2",
@@ -521,7 +521,7 @@ describe("GLM cancellation", () => {
       }) as typeof fetch;
 
       await callGlm(glmProvider, {
-        messages: [{ role: "user", content: "hello" }],
+        messages: [{ role: "user", origin: "user" as const, content: "hello" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -557,7 +557,7 @@ describe("GLM cancellation", () => {
       }) as typeof fetch;
 
       await callGlm(glmProvider, {
-        messages: [{ role: "user", content: "hello" }],
+        messages: [{ role: "user", origin: "user" as const, content: "hello" }],
         tools: [],
         cwd,
         model: "glm-4.7",
@@ -612,7 +612,7 @@ describe("GLM cancellation", () => {
       });
       const startedAt = Date.now();
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "continue after stall" }],
+        messages: [{ role: "user", origin: "user" as const, content: "continue after stall" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -690,7 +690,7 @@ describe("GLM cancellation", () => {
         retryBaseDelayMs: 1,
       });
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "degrade after two stalls" }],
+        messages: [{ role: "user", origin: "user" as const, content: "degrade after two stalls" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -740,7 +740,7 @@ describe("GLM cancellation", () => {
       });
       await expect(
         callGlm(provider, {
-          messages: [{ role: "user", content: "stall twice" }],
+          messages: [{ role: "user", origin: "user" as const, content: "stall twice" }],
           tools: [],
           cwd,
           model: "glm-5.2",
@@ -797,7 +797,7 @@ describe("GLM cancellation", () => {
       });
       const startedAt = Date.now();
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "keep thinking" }],
+        messages: [{ role: "user", origin: "user" as const, content: "keep thinking" }],
         tools: [],
         cwd,
         model: "glm-5.2",
@@ -851,7 +851,7 @@ describe("GLM cancellation", () => {
       const provider = createTestGlmProvider({ streamIdleTimeoutMs: 200 });
       const startedAt = Date.now();
       const result = await callGlm(provider, {
-        messages: [{ role: "user", content: "slow output" }],
+        messages: [{ role: "user", origin: "user" as const, content: "slow output" }],
         tools: [],
         cwd,
         model: "glm-test",

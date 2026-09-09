@@ -1,3 +1,4 @@
+import type {ContextUsageTracker} from "../context/usage.js";
 import type {ImageAccess} from "../images/access.js";
 import type {FileCommitCoordinator} from "./shared/fileCommit.js";
 import {z} from "zod";
@@ -114,6 +115,7 @@ export interface ToolContext {
 
     // Auto-Compact 会话状态（失败熔断 / 次数统计）
     compactState: CompactState;
+    contextUsage: ContextUsageTracker;
 
     // 当前 Session 的大工具结果存储。由 UI / Headless / tests 注入。
     sessionId: string;
@@ -121,6 +123,8 @@ export interface ToolContext {
     toolResultFiles: Pick<ToolResultStore, "resolveFile">;
     sessionArchives?: SessionArchiveAccess;
     sessionCompaction?: SessionCompaction;
+    /** Root Session only: commit complete paired batches before the next model request. */
+    commitToolBatch?: () => Promise<void>;
 
     // Session 级的文件观测状态，供 Read/Edit/Write 做 stale
     // 和部分读取范围检查。不得使用进程级全局状态代替。

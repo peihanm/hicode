@@ -101,7 +101,7 @@ describe("fork subagent", () => {
             const parentToolCallId = "fork-frontend-call";
             const history: Message[] = [
                 {role: "system", content: "root system"},
-                {role: "user", content: "实现一个前后端 Web 应用，主题为白色"},
+                {role: "user", origin: "user" as const, content: "实现一个前后端 Web 应用，主题为白色"},
                 {
                     role: "assistant",
                     content: null,
@@ -199,7 +199,7 @@ describe("fork subagent", () => {
                 const parentToolCallId = "fork-worktree-call";
                 const history: Message[] = [
                     {role: "system", content: "root system"},
-                    {role: "user", content: "实现前端文件"},
+                    {role: "user", origin: "user" as const, content: "实现前端文件"},
                     {
                         role: "assistant",
                         content: null,

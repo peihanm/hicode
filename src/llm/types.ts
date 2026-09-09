@@ -2,8 +2,8 @@ import type {LLMProviderName} from "./providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {ImageReference, MessageContent} from "../images/content.js";
 
-// OpenAI-compatible chat message and Function Calling protocols belong to the
-// LLM boundary. Agent/UI application types live in their owning modules.
+// Conversation messages carry framework provenance; the Provider wire encoder
+// projects it away. Function calls are validated before ToolRuntime execution.
 export interface ToolCall {
     id: string;
     type: "function";
@@ -14,9 +14,11 @@ export interface ToolCall {
     };
 }
 
+export type UserMessageOrigin = "user" | "task_notification" | "runtime" | "compaction" | "agent";
+
 export type Message =
     | { role: "system"; content: string }
-    | { role: "user"; content: MessageContent }
+    | { role: "user"; origin: UserMessageOrigin; content: MessageContent }
     | {
         role: "assistant";
         content: string | null;
@@ -34,6 +36,8 @@ export interface TokenUsage {
 
 /** Latest active model context, distinct from accumulated billable usage. */
 export interface LLMContextUsage {
+    /** Input of the last successful request, excluding retry billing and generated output. */
+    inputTokens: number;
     tokenCount: number;
     contextWindow?: number;
 }

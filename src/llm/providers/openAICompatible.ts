@@ -1,4 +1,5 @@
 import {encodeImageMessages} from "../../images/wire.js";
+import {ContextLengthError, isContextLengthResponse} from "../errors.js";
 import {imageReferences} from "../../images/content.js";
 import {
     abortableDelay,
@@ -397,8 +398,10 @@ async function callOpenAICompatibleCore(
 
         try {
             if (!response.ok) {
+                const errorBody = await readErrorResponse(response);
+                const contextLengthExceeded = isContextLengthResponse(response.status, errorBody);
                 const text = redactSecret(
-                    hasImages ? (await readErrorResponse(response), "[图片请求错误正文已隐藏，避免接口回显图片数据]") : await readErrorResponse(response),
+                    hasImages ? "[图片请求错误正文已隐藏，避免接口回显图片数据]" : errorBody,
                     endpoint.apiKey
                 );
                 const retryable = isRetryableStatus(response.status);
@@ -410,6 +413,7 @@ async function callOpenAICompatibleCore(
                     error: `API ${response.status} (attempt ${attempt}/${LLM_MAX_ATTEMPTS}): ${text.slice(0, 500)}`,
                 });
                 failureLogged = true;
+                if (contextLengthExceeded) throw new ContextLengthError();
                 throw new Error(
                     `LLM API 错误: ${response.status} - ${text.slice(0, 500)}`
                 );
@@ -485,6 +489,7 @@ async function callOpenAICompatibleCore(
                 ...(streamed.usage.total_tokens > 0
                     ? {
                         contextUsage: {
+                            inputTokens: streamed.usage.prompt_tokens,
                             tokenCount: streamed.usage.total_tokens,
                         },
                     }

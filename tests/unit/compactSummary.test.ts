@@ -13,9 +13,9 @@ const system = { role: "system", content: "system" } as const;
 
 function conversation(): Message[] {
   return [
-    { role: "user", content: "old-user" },
+    { role: "user", origin: "user" as const, content: "old-user" },
     { role: "assistant", content: "old-assistant" },
-    { role: "user", content: "recent-user" },
+    { role: "user", origin: "user" as const, content: "recent-user" },
     { role: "assistant", content: "recent-assistant" },
   ];
 }

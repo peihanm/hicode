@@ -251,7 +251,7 @@ export async function executeToolCallBatch({
                         ...(item.persisted ? {result_id: item.persisted.resultId} : {}),
                         changes: toolFileChanges(item.uiData).map(change => ({path: change.path, kind: change.kind}))}))}, signal);
                 if (status === "completed" && !signal.aborted && hook.additionalContexts.length) {
-                    history.push({role: "user", content: formatHookContext("PostToolBatch", hook.additionalContexts).join("\n")});
+                    history.push({role: "user", origin: "runtime" as const, content: formatHookContext("PostToolBatch", hook.additionalContexts).join("\n")});
                 }
             } catch (error) {
                 if (status === "completed") throw error;

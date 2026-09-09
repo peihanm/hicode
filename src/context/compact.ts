@@ -1,4 +1,3 @@
-import {contentText} from "../images/content.js";
 import {formatHookContext} from "../hooks/index.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {ToolContext} from "../tools/types.js";
@@ -125,8 +124,8 @@ async function compactHistoryCore({
     let postDispatched = false;
     try {
         const contextBlocks = [...getUserContextBlocks(ctx.skills, ctx.instructions), ...additionalUserContextBlocks];
-        const fixedTokens = tokenCountWithEstimation(buildInvokeMessages([system, {role: "user", content: ""}], contextBlocks), tools);
-        const latestUserIndex = history.findLastIndex(message => message.role === "user");
+        const fixedTokens = tokenCountWithEstimation(buildInvokeMessages([system, {role: "user", origin: "runtime" as const, content: ""}], contextBlocks), tools);
+        const latestUserIndex = history.findLastIndex(message => message.role === "user" && (message.origin === "user" || message.origin === "agent"));
         const latestUser = latestUserIndex > 0 ? history[latestUserIndex]! : undefined;
         const latestUserTokens = latestUser ? estimateMessageTokens(latestUser) : 0;
         if (fixedTokens + latestUserTokens >= target) {
@@ -160,7 +159,7 @@ async function compactHistoryCore({
         let anchorTokens = 0;
         for (let index = history.length - 1; index > 0 && anchors.length < 3; index--) {
             const message = history[index]!;
-            if (message.role !== "user" || contentText(message.content).trimStart().startsWith("<system-reminder>")) continue;
+            if (message.role !== "user" || (message.origin !== "user" && message.origin !== "agent")) continue;
             const cost = estimateMessageTokens(message);
             if (index === latestUserIndex || anchorTokens + cost <= 2000) {
                 anchors.unshift(index);

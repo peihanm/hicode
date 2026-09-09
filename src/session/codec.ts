@@ -75,6 +75,7 @@ const toolCallSchema = z.object({
 const messageSchema = z.discriminatedUnion("role", [
     z.object({
         role: z.literal("user"),
+        origin: z.enum(["user", "task_notification", "runtime", "compaction", "agent"]),
         content: z.union([boundedString(MAX_MESSAGE_CONTENT_BYTES), z.array(z.union([z.object({type: z.literal("text"), text: boundedString(MAX_MESSAGE_CONTENT_BYTES)}).strict(), imageReferenceSchema])).min(1).max(32)]),
     }).strict(),
     z.object({
@@ -273,11 +274,24 @@ export function normalizeToolDiscoverySnapshot(
 export function limitSessionUIEvents(
     events: readonly PersistedUIEvent[] | undefined
 ): PersistedUIEvent[] {
-    const valid = (events ?? []).flatMap((event) => {
-        const parsed = persistedUIEventSchema.safeParse(event);
-        return parsed.success ? [parsed.data] : [];
-    });
-    return limitPersistedUIEvents(valid);
+    return createSessionUIEventLimiter()(events);
+}
+
+export function createSessionUIEventLimiter() {
+    const validated = new WeakMap<PersistedUIEvent, PersistedUIEvent>();
+    const sizes = new WeakMap<PersistedUIEvent, number>();
+    return (events: readonly PersistedUIEvent[] | undefined): PersistedUIEvent[] => {
+        const valid = (events ?? []).flatMap(event => {
+            const cached = Object.isFrozen(event) ? validated.get(event) : undefined;
+            if (cached) return [cached];
+            const parsed = persistedUIEventSchema.safeParse(event);
+            if (!parsed.success) return [];
+            if (Object.isFrozen(event)) validated.set(event, parsed.data);
+            sizes.set(parsed.data, Buffer.byteLength(JSON.stringify(parsed.data)));
+            return [parsed.data];
+        });
+        return limitPersistedUIEvents(valid, undefined, undefined, event => sizes.get(event)!);
+    };
 }
 
 export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
@@ -350,14 +364,12 @@ export function stripSystemMessage(history: Message[]): Message[] {
 }
 
 function getUserText(message: Message): string | null {
-    if (message.role !== "user") return null;
+    if (message.role !== "user" || message.origin !== "user") return null;
     return normalizeText(contentText(message.content));
 }
 
 function isMeaningfulUserText(text: string): boolean {
-    return text.length > 0 &&
-        !text.startsWith("<system-reminder>") &&
-        !text.startsWith("[为了重试压缩");
+    return text.length > 0;
 }
 
 export function summarizeSessionHistory(history: Message[]): SessionHistorySummary {

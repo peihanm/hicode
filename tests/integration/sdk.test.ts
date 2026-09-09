@@ -65,6 +65,28 @@ function createFakeAgentRuntime(
 }
 
 describe("TypeScript SDK", () => {
+    test("下一次模型请求开始时完整工具批次已经可从磁盘恢复", async () => {
+        await withTempProject(async (cwd, storage) => {
+            const sessionId = "sdk-durable-batch";
+            const fake = createFakeLLM([
+                assistantToolCall("write_file", {path: "durable.txt", content: "written"}, "durable-write"),
+                () => {
+                    const saved = loadSession(storage, cwd, sessionId, "glm-test")!;
+                    expect(saved.history.some(message => message.role === "tool" && message.tool_call_id === "durable-write")).toBe(true);
+                    expect(saved.uiEvents.some(event => event.type === "tool_call" && event.toolCallId === "durable-write")).toBe(true);
+                    return assistantText("done");
+                },
+            ]);
+            const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
+            const thread = await createSDKThread({resources, seed: {sessionId, history: createInitialHistory(cwd, "glm-test"), compactState: createCompactState()},
+                state: {todos: [], permissionMode: "bypassPermissions", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+            try {
+                expect((await thread.run("write")).finalResponse).toBe("done");
+                expect(await readFile(join(cwd, "durable.txt"), "utf8")).toBe("written");
+            } finally {await thread.close(); await resources.close();}
+        });
+    });
+
     test("sequential Threads sharing Root do not share file observations", async () => {
         await withTempProject(async (cwd, storage) => {
             await writeFile(`${cwd}/owned.txt`, "original\n");
@@ -253,9 +275,9 @@ describe("TypeScript SDK", () => {
                 assistantText("第一轮完成"),
                 (call) => {
                     expect(call.messages).toEqual(expect.arrayContaining([
-                        {role: "user", content: "第一轮"},
+                        {role: "user", origin: "user" as const, content: "第一轮"},
                         {role: "assistant", content: "第一轮完成"},
-                        {role: "user", content: "第二轮"},
+                        {role: "user", origin: "user" as const, content: "第二轮"},
                     ]));
                     return assistantText("第二轮完成");
                 },
@@ -419,7 +441,7 @@ describe("TypeScript SDK", () => {
                 (call) => {
                     expect(call.messages).toEqual(expect.arrayContaining([
                         {role: "assistant", content: "已记录上下文"},
-                        {role: "user", content: "继续"},
+                        {role: "user", origin: "user" as const, content: "继续"},
                     ]));
                     return assistantText("恢复成功");
                 },
@@ -733,7 +755,7 @@ for (const action of ["resume", "return", "close", "abort"] as const) {
             const agentRuntime: AgentRuntime = {
                 ...createFakeAgentRuntime(createFakeLLM([])),
                 async runAgent(_prompt, history, onEvent, ctx) {
-                    history.push({role: "user", content: "bounded stream"});
+                    history.push({role: "user", origin: "user" as const, content: "bounded stream"});
                     for (let index = 0; index < 400 && !ctx.signal.aborted; index++) {
                         if (index === 100) {
                             for (let draft = 0; draft < 1000; draft++) await onEvent({type: "assistant_draft", responseId: "slow-draft", text: String(draft), truncated: false});
@@ -828,7 +850,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
         const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: runtime});
         const sessionId = createSessionId();
         const first = await createSDKThread({resources, seed: {sessionId,
-            history: [...createInitialHistory(cwd, resources.model), {role: "user", content: "原始目标\n" + "x".repeat(250_000)},
+            history: [...createInitialHistory(cwd, resources.model), {role: "user", origin: "user" as const, content: "原始目标\n" + "x".repeat(250_000)},
                 {role: "assistant", content: "已检查"}], compactState: createCompactState()},
             state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
         try {

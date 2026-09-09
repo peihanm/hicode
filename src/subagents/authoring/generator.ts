@@ -50,7 +50,7 @@ export function createAgentDefinitionGenerator(
                             existingAgentNames: getExistingAgentNames(),
                             instructions,
                         }),
-                    }, {role: "user", content: normalized}],
+                    }, {role: "user", origin: "runtime" as const, content: normalized}],
                     [submitAgentDefinitionTool],
                     storage,
                     cwd,

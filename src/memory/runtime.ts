@@ -149,7 +149,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             if (!hashes.length)
                 return;
             const messages = readSessionSourceMessages(this.storage, this.cwd, sessionId, hashes);
-            if (messages.some(message => message.role === "user" && SUPPRESS_MEMORY.some(pattern => pattern.test(contentText(message.content)))))
+            if (messages.some(message => message.role === "user" && message.origin === "user" && SUPPRESS_MEMORY.some(pattern => pattern.test(contentText(message.content)))))
                 return;
             const id = createHash("sha256").update(JSON.stringify(["memory-extraction-v1", sessionId, hashes])).digest("hex");
             await this.store.offerFrame({ id, sessionId, messageHashes: hashes, omitted }, signal);

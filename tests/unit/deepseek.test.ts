@@ -124,7 +124,7 @@ describe("DeepSeek provider", () => {
             }) as typeof fetch;
 
             const first = await callDeepSeek(deepseekProvider, {
-                messages: [{role: "user", content: "读取入口"}],
+                messages: [{role: "user", origin: "user" as const, content: "读取入口"}],
                 tools: [{
                     type: "function",
                     function: {
@@ -163,7 +163,7 @@ describe("DeepSeek provider", () => {
 
             const second = await callDeepSeek(deepseekProvider, {
                 messages: [
-                    {role: "user", content: "读取入口"},
+                    {role: "user", origin: "user" as const, content: "读取入口"},
                     first.message,
                     {
                         role: "tool",
@@ -206,7 +206,7 @@ describe("DeepSeek provider", () => {
         delete process.env.DEEPSEEK_API_KEY;
 
         await expect(callDeepSeek(deepseekProvider, {
-            messages: [{role: "user", content: "hello"}],
+            messages: [{role: "user", origin: "user" as const, content: "hello"}],
             tools: [],
             cwd: process.cwd(),
             model: "deepseek-v4-pro",
@@ -214,7 +214,7 @@ describe("DeepSeek provider", () => {
         })).rejects.toThrow("缺少 DEEPSEEK_API_KEY");
 
         await expect(createLLMCaller(DEEPSEEK_SOURCE)(
-            [{role: "user", content: "hello"}],
+            [{role: "user", origin: "user" as const, content: "hello"}],
             [],
             createTestStorage(process.cwd()),
             process.cwd(),

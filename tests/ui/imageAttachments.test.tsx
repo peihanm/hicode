@@ -102,7 +102,7 @@ test("sent, restored and queued image messages share concise labels without chan
     const expected = "[Image #1] [Image #2] 这图片有什么内容";
     const sent = new UITurnEventStore();
     sent.appendUser(content);
-    const restored = new UITurnEventStore({history: [{role: "user", content}]});
+    const restored = new UITurnEventStore({history: [{role: "user", origin: "user" as const, content}]});
     expect(sent.getSnapshot().staticThreads[0]).toMatchObject({role: "user", text: expected});
     expect(restored.getSnapshot().staticThreads[0]).toMatchObject({role: "user", text: expected});
     sent.appendUser([reference]);

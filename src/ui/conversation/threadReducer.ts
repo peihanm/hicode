@@ -52,15 +52,6 @@ function textFromUserMessage(message: Extract<Message, { role: "user" }>): strin
     return userContentText(message.content);
 }
 
-function shouldShowUserText(text: string): boolean {
-    const trimmed = text.trim();
-    return (
-        trimmed.length > 0 &&
-        !trimmed.startsWith("<system-reminder>") &&
-        !trimmed.startsWith("[为了重试压缩")
-    );
-}
-
 export function threadsFromHistory(
     history: Message[],
     uiEvents: PersistedUIEvent[] = [],
@@ -71,7 +62,7 @@ export function threadsFromHistory(
     for (const message of history) {
         if (message.role === "user") {
             const text = textFromUserMessage(message);
-            if (shouldShowUserText(text)) {
+            if (message.origin === "user" && text.trim().length > 0) {
                 threads.push(createUserThread(text, createId));
             }
             continue;

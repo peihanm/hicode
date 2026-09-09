@@ -1,3 +1,4 @@
+import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {runHeadlessForTest} from "../helpers/headless.js";
 import {expect, test} from "bun:test";
 import {readFile, readdir, unlink, writeFile} from "node:fs/promises";
@@ -15,7 +16,7 @@ import {imageReferences, contentText} from "../../src/images/content.js";
 import {importSelectedImages} from "../../src/runtime/imageInput.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
 import {RuntimeMessageQueue, normalizeRuntimeQueuedMessages} from "../../src/runtime/messageQueue.js";
-import {loadSession, saveSessionSnapshot} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/storage.js";
 import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
 import {getProjectDebugDirectory} from "../../src/persistence/index.js";
 
@@ -97,7 +98,7 @@ test("selected local images obey policy and queue immutable snapshots through pe
             queue.enqueueUser(input);
             input.splice(0);
             expect(imageReferences(queue.list()[0]!.content)).toHaveLength(1);
-            const args = {...state, cwd, model: resources.model, sessionId: ctx.sessionId, history: [{role: "user" as const, content: "original"}]};
+            const args = {...state, cwd, model: resources.model, sessionId: ctx.sessionId, history: [{role: "user" as const, origin: "user" as const, content: "original"}]};
             await saveSessionSnapshot(storage, {...args, queuedInputs: queue.list()});
             const loaded = loadSession(storage, cwd, ctx.sessionId, resources.model)!;
             expect(normalizeRuntimeQueuedMessages(loaded.queuedInputs)).toEqual([...queue.list()]);
@@ -166,7 +167,7 @@ test("headless -p imports explicit files as user input before running the shared
                 expect(images).toHaveLength(1);
                 await unlink(path);
                 expect(await ctx.toolResultStore.readImage(images[0]!)).toBeInstanceOf(Buffer);
-                history.push({role: "user", content: input});
+                history.push({role: "user", origin: "user" as const, content: input});
                 observed = true;
                 await onEvent({type: "assistant_text", content: "received"});
                 return {reply: "received", reason: "completed", iterations: 1};

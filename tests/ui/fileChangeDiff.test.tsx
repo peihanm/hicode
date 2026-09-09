@@ -149,7 +149,7 @@ describe("file change diff UI", () => {
 
   test("从 Session conversation 与 uiEvents 恢复修改汇总", () => {
     const history: Message[] = [
-      { role: "user", content: "修改文件" },
+      { role: "user", origin: "user" as const, content: "修改文件" },
       {
         role: "assistant",
         content: null,

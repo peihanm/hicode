@@ -13,7 +13,7 @@ describe("prompt log lifecycle", () => {
                 cwd,
                 "main",
                 "glm-5.2",
-                {messages: [{role: "user", content: "private prompt"}]},
+                {messages: [{role: "user", origin: "user" as const, content: "private prompt"}]},
                 []
             );
             const directory = join(
@@ -41,7 +41,7 @@ describe("prompt log lifecycle", () => {
                 stream: true,
                 messages: [
                     {role: "system", content: "完整系统提示"},
-                    {role: "user", content: "完整用户任务"},
+                    {role: "user", origin: "user" as const, content: "完整用户任务"},
                     {
                         role: "assistant",
                         content: "准备读取",
@@ -84,6 +84,7 @@ describe("prompt log lifecycle", () => {
                     total_tokens: 12,
                 },
                 contextUsage: {
+                inputTokens: 5,
                     tokenCount: 7,
                     contextWindow: 1_050_000,
                 },
@@ -114,7 +115,7 @@ describe("prompt log lifecycle", () => {
             };
             expect(logged.request.messages).toEqual([
                 {role: "system", content: "完整系统提示"},
-                {role: "user", content: "完整用户任务"},
+                {role: "user", origin: "user" as const, content: "完整用户任务"},
                 {
                     role: "assistant",
                     content: "准备读取",
@@ -136,6 +137,7 @@ describe("prompt log lifecycle", () => {
             expect(logged.request.toolNames).toEqual(["read_file"]);
             expect(logged.request.tools).toBeUndefined();
             expect(logged.response.contextUsage).toEqual({
+                inputTokens: 5,
                 tokenCount: 7,
                 contextWindow: 1_050_000,
             });
@@ -163,7 +165,7 @@ describe("prompt log lifecycle", () => {
                 "main",
                 "qwen3.8-flash",
                 {
-                    messages: [{role: "user", content: "查找浏览器工具"}],
+                    messages: [{role: "user", origin: "user" as const, content: "查找浏览器工具"}],
                     tools: [
                         {
                             type: "function",
@@ -216,7 +218,7 @@ describe("prompt log lifecycle", () => {
                 "glm-5.2",
                 {
                     messages: [{
-                        role: "user",
+                        role: "user", origin: "user" as const,
                         content: `debug payload key=${apiKey}`,
                     }],
                 },
@@ -244,7 +246,7 @@ describe("prompt log lifecycle", () => {
                     cwd,
                     "main",
                     "glm-5.2",
-                    {messages: [{role: "user", content: String(index)}]},
+                    {messages: [{role: "user", origin: "user" as const, content: String(index)}]},
                     []
                 );
             }

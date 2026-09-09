@@ -10,7 +10,7 @@ import type {RootRuntimeResources} from "../runtime/resources.js";
 import {createRootSessionRuntime, type RootSessionRuntime, type RootSessionSeed,} from "../runtime/sessionRuntime.js";
 import type {ToolContextHost} from "../runtime/toolContext.js";
 import {runRootTurn, type RootTurnLifecycleIssue,} from "../runtime/turnRuntime.js";
-import {limitPersistedUIEvents, saveSessionSnapshot, type PersistedUIEvent,} from "../session/index.js";
+import {limitPersistedUIEvents, type PersistedUIEvent,} from "../session/index.js";
 import type {Todo} from "../todos.js";
 import {AsyncEventQueue} from "./eventQueue.js";
 import {SDKEventAdapter} from "./eventAdapter.js";
@@ -54,7 +54,6 @@ interface CreateSDKThreadOptions {
 
 interface SDKThreadDependencies {
     runTurn: typeof runRootTurn;
-    saveSession: typeof saveSessionSnapshot;
     now(): number;
 }
 
@@ -68,7 +67,6 @@ function createSDKThreadFactory(
 ) {
     const dependencies: SDKThreadDependencies = {
         runTurn: overrides.runTurn ?? runRootTurn,
-        saveSession: overrides.saveSession ?? saveSessionSnapshot,
         now: overrides.now ?? Date.now,
     };
 
@@ -481,8 +479,7 @@ class SDKThreadImpl implements Thread {
                     message: `SessionEnd 执行失败: ${error instanceof Error ? error.message : String(error)}`,
                 });
             }
-            await this.options.dependencies.saveSession(
-                this.options.resources.storage,
+            await this.options.session.saveSnapshot(
                 this.options.session.createSnapshot({
                     todos: this.options.state.todos,
                     permissionMode: this.options.state.permissionMode,

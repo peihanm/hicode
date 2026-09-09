@@ -1,3 +1,4 @@
+import {saveSessionCompaction, saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {readFile, symlink, unlink, writeFile} from "node:fs/promises";
@@ -9,9 +10,9 @@ import {createCompactState} from "../../src/context/state.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {prepareSessionArchive, readArchiveMessages} from "../../src/session/archive.js";
-import {saveSessionCompaction} from "../../src/session/storage.js";
+
 import {SessionContentStore} from "../../src/session/contentStore.js";
-import {loadSession, saveSessionSnapshot} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/storage.js";
 import {getSessionContentDirectory, type PillarStorageLayout} from "../../src/persistence/index.js";
 import {getSessionLogPath} from "../../src/session/paths.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
@@ -33,7 +34,7 @@ test("只有摘要 reminder 的候选也必须实际落盘，不能被普通快�
             const draft = f.ctx.sessionCompaction!.prepare(f.session.history);
             const compactState = {...createCompactState(), compactCount: 1, archives: [draft.record]};
             await saveSessionCompaction(storage, {...f.session.createSnapshot(state()), compactState,
-                history: [{role: "user", content: "<system-reminder>summary</system-reminder>"}]}, draft, f.controller.signal);
+                history: [{role: "user", origin: "user" as const, content: "<system-reminder>summary</system-reminder>"}]}, draft, f.controller.signal);
             expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")!.compactState?.archives).toHaveLength(1);
         } finally {await f.resources.close();}
     });
@@ -42,9 +43,9 @@ test("只有摘要 reminder 的候选也必须实际落盘，不能被普通快�
 function fixture(cwd: string, storage: PillarStorageLayout, id = "archive-session") {
     const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({})});
     const history: Message[] = [{role: "system", content: "system"},
-        {role: "user", content: "决定：删除列必须明确选择，禁止默认丢弃\n" + "历史资料\n".repeat(2500)},
+        {role: "user", origin: "user" as const, content: "决定：删除列必须明确选择，禁止默认丢弃\n" + "历史资料\n".repeat(2500)},
         {role: "assistant", content: "已确认", reasoning_content: "hidden-reasoning-must-not-be-archived"},
-        {role: "user", content: "继续实现"}];
+        {role: "user", origin: "user" as const, content: "继续实现"}];
     const session = createRootSessionRuntime({resources, resumed: false, seed: {sessionId: id, history, compactState: createCompactState()}});
     const controller = new AbortController();
     const ctx = session.createContext({signal: controller.signal, host, onEvent() {}, getSnapshotState: state});
@@ -65,7 +66,7 @@ test("连续五次压缩保留原文、工具配对及大结果，Resume 可用 
             const original = structuredClone(f.session.history);
             const stale = f.session.createSnapshot(state());
             for (let n = 0; n < 5; n++) {
-                if (n) f.session.history.push({role: "user", content: `后续 ${n}\n` + "新增资料\n".repeat(2500)});
+                if (n) f.session.history.push({role: "user", origin: "user" as const, content: `后续 ${n}\n` + "新增资料\n".repeat(2500)});
                 expect((await f.compact()).compacted).toBe(true);
             }
             await saveSessionSnapshot(storage, stale);
@@ -150,7 +151,7 @@ test("档案数量超限及竞争提交均拒绝发布；长 Unicode 原文分�
         const f = fixture(cwd, storage);
         try {
             const original = "细节😀".repeat(35_000);
-            f.session.history[1] = {role: "user", content: original};
+            f.session.history[1] = {role: "user", origin: "user" as const, content: original};
             expect((await f.compact()).compacted).toBe(true);
             const record = f.session.compactState.archives![0]!;
             const index = archiveIndexPath(storage, cwd, f.session.sessionId, record.id);
@@ -175,11 +176,11 @@ test("档案数量超限及竞争提交均拒绝发布；长 Unicode 原文分�
             }
             expect(rebuilt).toBe(combined);
             const before = await readFile(getSessionLogPath(storage, cwd, f.session.sessionId), "utf8");
-            const draft = prepareSessionArchive(storage, cwd, f.session.sessionId, [{role: "user", content: "other owner"}]);
+            const draft = prepareSessionArchive(storage, cwd, f.session.sessionId, [{role: "user", origin: "user" as const, content: "other owner"}]);
             const competing = {...f.session.createSnapshot(state()), compactState: {...createCompactState(), compactCount: 2, archives: [draft.record]}};
             await expect(saveSessionCompaction(storage, competing, draft, f.controller.signal)).rejects.toThrow("base changed");
             const oversized = {...f.session.createSnapshot(state()), compactState: {...f.session.compactState,
-                archives: Array.from({length: 129}, (_, index) => prepareSessionArchive(storage, cwd, f.session.sessionId, [{role: "user", content: `quota-${index}`}]).record)}};
+                archives: Array.from({length: 129}, (_, index) => prepareSessionArchive(storage, cwd, f.session.sessionId, [{role: "user", origin: "user" as const, content: `quota-${index}`}]).record)}};
             await expect(saveSessionSnapshot(storage, oversized)).rejects.toThrow("invalid");
             expect(await readFile(getSessionLogPath(storage, cwd, f.session.sessionId), "utf8")).toBe(before);
         } finally {await f.resources.close();}
@@ -194,11 +195,11 @@ test("生产交接链校验引用、保留纠正原话，Resume 保持可回查�
         const f = fixture(cwd, storage, "handoff-session");
         try {
             const correction = "允许显式丢弃，但默认不能丢弃";
-            f.session.history.push({role: "user", content: correction}, {role: "assistant", content: "资料\n".repeat(10_000)},
-                {role: "user", content: "继续实现"});
+            f.session.history.push({role: "user", origin: "user" as const, content: correction}, {role: "assistant", content: "资料\n".repeat(10_000)},
+                {role: "user", origin: "user" as const, content: "继续实现"});
             let originalRef = "";
             const fake = createFakeLLM([options => {
-                const match = contentText(options.messages[1]!.content).match(/\[source ([a-f0-9]{64}\/1); role=user\]/);
+                const match = contentText(options.messages[1]!.content).match(/\[source ([a-f0-9]{64}\/1); role=user; origin=user\]/);
                 expect(match).not.toBeNull();
                 originalRef = match![1]!;
                 expect(JSON.stringify(options.messages)).not.toContain("hidden-reasoning");
@@ -257,7 +258,7 @@ test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果�
             }));
             const compact = createCompactHistoryRunner({generateSummary: createCompactSummaryGenerator({callLLM: fake.callLLM})});
             for (let round = 0; round < 5; round++) {
-                f.session.history.push({role: "assistant", content: "中间证据\n".repeat(4000)}, {role: "user", content: `纠正_${round}：允许显式丢弃，默认仍不丢弃`});
+                f.session.history.push({role: "assistant", content: "中间证据\n".repeat(4000)}, {role: "user", origin: "user" as const, content: `纠正_${round}：允许显式丢弃，默认仍不丢弃`});
                 const result = await compact({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true});
                 expect(result.compacted).toBe(true);
                 expect(result.postTokenCount!).toBeLessThan(getCompactTarget(f.ctx.model));

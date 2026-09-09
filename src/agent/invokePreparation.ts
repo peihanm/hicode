@@ -1,6 +1,5 @@
 import type {CompactHistoryRunner} from "../context/compact.js";
 import {shouldAutoCompact} from "../context/compact.js";
-import {tokenCountWithEstimation} from "../context/tokens.js";
 import {getAutoCompactThreshold, getModelInputBudget, getTokenWarningState,} from "../context/window.js";
 import {getUserContextBlocks} from "../prompt/attachments.js";
 import {buildInvokeMessages} from "../prompt/invokeMessages.js";
@@ -21,6 +20,7 @@ export interface PrepareAgentInvokeInput {
     getToolSchemas: ToolSchemaProvider;
     compactHistory: CompactHistoryRunner;
     contextWindow?: number;
+    forceCompact?: boolean;
     additionalUserContextBlocks?: readonly string[];
     getAdditionalUserContextBlocks?: () => Promise<readonly string[]>;
     getTodos?: () => readonly Todo[];
@@ -39,6 +39,7 @@ export async function prepareAgentInvoke({
                                              getToolSchemas,
                                              compactHistory,
                                              contextWindow,
+                                             forceCompact = false,
                                              additionalUserContextBlocks = [],
                                              getTodos,
                                              getAdditionalUserContextBlocks,
@@ -51,9 +52,11 @@ export async function prepareAgentInvoke({
         ...getUserContextBlocks(ctx.skills, ctx.instructions),
         ...runtimeBlocks,
     ];
-    let invokeMessages = buildInvokeMessages(history, userContextBlocks);
+    let invokeMessages = [...buildInvokeMessages(history, userContextBlocks)];
     const tools = getToolSchemas();
-    let estimatedTokens = tokenCountWithEstimation(invokeMessages, tools);
+    const scope = () => ({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
+    contextWindow ??= ctx.contextUsage.contextWindow(scope());
+    let estimatedTokens = ctx.contextUsage.estimate(scope(), invokeMessages, tools);
     const preState = getTokenWarningState(
         estimatedTokens,
         ctx.model,
@@ -61,13 +64,13 @@ export async function prepareAgentInvoke({
     );
 
     if (
-        preState.critical &&
+        forceCompact || (preState.critical &&
         shouldAutoCompact(
             estimatedTokens,
             ctx.model,
             ctx.compactState,
             contextWindow
-        )
+        ))
     ) {
         await onEvent({
             type: "compact_start",
@@ -82,17 +85,19 @@ export async function prepareAgentInvoke({
             preTokenCount: estimatedTokens,
             contextWindow,
             additionalUserContextBlocks: runtimeBlocks,
+            force: forceCompact,
         });
         throwIfTurnAborted(ctx.signal);
 
         if (compactResult.compacted) {
+            ctx.contextUsage.reset();
             runtimeBlocks = await getRuntimeBlocks();
             userContextBlocks = [
                 ...getUserContextBlocks(ctx.skills, ctx.instructions),
                 ...runtimeBlocks,
             ];
-            invokeMessages = buildInvokeMessages(history, userContextBlocks);
-            estimatedTokens = tokenCountWithEstimation(invokeMessages, tools);
+            invokeMessages = [...buildInvokeMessages(history, userContextBlocks)];
+            estimatedTokens = ctx.contextUsage.estimate(scope(), invokeMessages, tools);
             await onEvent({
                 type: "compact_end",
                 preTokenCount: compactResult.preTokenCount,
@@ -106,6 +111,7 @@ export async function prepareAgentInvoke({
                 trigger: "auto",
             });
         }
+        if (forceCompact && !compactResult.compacted) throw new Error(`超长上下文恢复失败：${compactResult.message ?? "未能压缩"}；已停止重发请求，原历史保留`);
     }
 
     if (estimatedTokens > getModelInputBudget(ctx.model, contextWindow)) {

@@ -40,7 +40,7 @@ const malformed = event({content: "discard this draft", tool_calls: [{index: 0, 
 const good = event({content: "recovered"}, "stop");
 const caller = createOpenAICompatibleCaller({retryBaseDelayMs: 0});
 function options(cwd: string, storage: LLMCallOptions["storage"]): LLMCallOptions {
-    return {cwd, storage, kind: "main", model: "offline", messages: [{role: "user", content: "continue"}], tools: []};
+    return {cwd, storage, kind: "main", model: "offline", messages: [{role: "user", origin: "user" as const, content: "continue"}], tools: []};
 }
 
 test("残缺工具响应只重试模型请求，重置草稿并累加已报告 usage", async () => withTempProject(async (cwd, storage) => {

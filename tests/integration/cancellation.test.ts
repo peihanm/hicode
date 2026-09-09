@@ -199,9 +199,9 @@ describe("runtime cancellation", () => {
       const started = waitForStart();
       const messages: Message[] = [
         { role: "system", content: "system" },
-        { role: "user", content: "one" },
+        { role: "user", origin: "user" as const, content: "one" },
         { role: "assistant", content: "two" },
-        { role: "user", content: "three" },
+        { role: "user", origin: "user" as const, content: "three" },
       ];
       const before = structuredClone(messages);
       const ctx = createTestContext(cwd, { signal: controller.signal });

@@ -20,7 +20,7 @@ const scenarios=z.array(z.object({id:z.string(),goal:z.string(),stages:z.array(z
 for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全部纠正与验证证据 ${scenario.id}`,async()=>withTempProject(async(cwd,storage)=>{
  const resources=createTestRuntimeResources(cwd,{storage});
  const state=()=>({todos:[],uiEvents:[],permissionMode:"default" as const,collaborationMode:"build" as const});
- const session=createRootSessionRuntime({resources,resumed:false,seed:{sessionId:scenario.id,history:[{role:"system",content:"test"},{role:"user",content:scenario.goal}],compactState:createCompactState()}});
+ const session=createRootSessionRuntime({resources,resumed:false,seed:{sessionId:scenario.id,history:[{role:"system",content:"test"},{role:"user", origin: "user" as const,content:scenario.goal}],compactState:createCompactState()}});
  const ctx=session.createContext({signal:new AbortController().signal,onEvent(){},getSnapshotState:state,host:{canUseTool:async()=>({behavior:"deny",message:"offline"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"default",getCollaborationMode:()=>"build",getPermissionPromptPolicy:()=>"never",setPermissionMode(){},setCollaborationMode(){},setTodos(){}}});
  const fake=createFakeLLM(scenario.stages.map(stage=>input=>{
   const message=input.messages.findLast(message=>message.role==="user"&&contentText(message.content).includes(stage.request));
@@ -30,7 +30,7 @@ for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全
  const compact=createCompactHistoryRunner({generateSummary:createCompactSummaryGenerator({callLLM:fake.callLLM})});
  try{
   for(const [round,stage] of scenario.stages.entries()){
-   session.history.push({role:"user",content:stage.request},{role:"assistant",content:null,tool_calls:[{id:`evidence-${round}`,type:"function",function:{name:"bash",arguments:JSON.stringify({command:`offline-evidence-${round}`})}}]},
+   session.history.push({role:"user", origin: "user" as const,content:stage.request},{role:"assistant",content:null,tool_calls:[{id:`evidence-${round}`,type:"function",function:{name:"bash",arguments:JSON.stringify({command:`offline-evidence-${round}`})}}]},
     {role:"tool",tool_call_id:`evidence-${round}`,content:stage.evidence},{role:"assistant",content:"中间检索资料\n".repeat(4000)});
    expect((await compact({history:session.history,ctx,tools:[],preTokenCount:100_000,force:true})).compacted).toBe(true);
    expect(session.history[1]?.content).toContain(stage.constraint);

@@ -177,8 +177,8 @@ for (const trigger of ["auto", "manual"] as const) test(`实际 ${trigger} 压�
         const ctx = createTestContext(cwd);
         const inputs: HookInput[] = [];
         ctx.runHook = async input => {inputs.push(input); return {blocked: false, executions: [], additionalContexts: [input.hook_event_name === "PreCompact" ? "keep-api" : "handoff-note"]};};
-        const original: Message[] = [{role: "system", content: "system"}, {role: "user", content: "old".repeat(20000)},
-            {role: "assistant", content: "old answer"}, {role: "user", content: "new task"}];
+        const original: Message[] = [{role: "system", content: "system"}, {role: "user", origin: "user" as const, content: "old".repeat(20000)},
+            {role: "assistant", content: "old answer"}, {role: "user", origin: "user" as const, content: "new task"}];
         let fail = false;
         const compact = createCompactHistoryRunner({generateSummary: async input => {
             expect(input.customInstructions).toContain("keep-api");
@@ -212,8 +212,8 @@ test("PostCompact 超预算上下文不会抵消压缩或再次触发摘要", as
         };
         let summaries = 0;
         const compact = createCompactHistoryRunner({generateSummary: async () => {summaries++; return "summary";}});
-        const history: Message[] = [{role: "system", content: "test"}, {role: "user", content: "old".repeat(20000)},
-            {role: "assistant", content: "old answer"}, {role: "user", content: "latest task"}];
+        const history: Message[] = [{role: "system", content: "test"}, {role: "user", origin: "user" as const, content: "old".repeat(20000)},
+            {role: "assistant", content: "old answer"}, {role: "user", origin: "user" as const, content: "latest task"}];
         const result = await compact({history, ctx, tools: [], preTokenCount: 20000, contextWindow: 4096, force: true});
         expect(result.compacted).toBe(true);
         expect(result.postTokenCount).toBeLessThan(result.threshold);

@@ -17,11 +17,11 @@ function history(overThreshold = false): Message[] {
   return [
     { role: "system", content: "system" },
     ...(overThreshold
-      ? [{role: "user" as const, content: "x".repeat(
+      ? [{role: "user" as const, origin: "user" as const, content: "x".repeat(
           getAutoCompactThreshold("glm-test") * 2 + 100
         )}]
       : []),
-    { role: "user", content: "real user message" },
+    { role: "user", origin: "user" as const, content: "real user message" },
   ];
 }
 
@@ -197,7 +197,7 @@ describe("Agent invoke preparation", () => {
         compactHistory: async ({ history, tools: receivedTools, preTokenCount }) => {
           compactTools = receivedTools;
           history.splice(1, history.length - 1, {
-            role: "user",
+            role: "user", origin: "user" as const,
             content: "compacted history",
           });
           return {

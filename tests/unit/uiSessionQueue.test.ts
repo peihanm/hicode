@@ -1,144 +1,50 @@
-import {contentText} from "../../src/images/content.js";
-import { describe, expect, test } from "bun:test";
-import { createCompactState } from "../../src/context/index.js";
-import type { SaveSessionSnapshotInput } from "../../src/session/index.js";
-import { SessionSnapshotQueue } from "../../src/ui/turn/sessionQueue.js";
+import {expect, test} from "bun:test";
+import {writeFile} from "node:fs/promises";
+import {createSessionPersistence, loadSession} from "../../src/session/storage.js";
+import {getSessionIndexPath} from "../../src/session/paths.js";
+import {withTempProject} from "../helpers/tempProject.js";
+import type {SaveSessionSnapshotInput} from "../../src/session/types.js";
 
-function snapshot(content: string): SaveSessionSnapshotInput {
-  return {
-    cwd: "/tmp/project",
-    model: "glm-test",
-    sessionId: "session-1",
-    history: [{ role: "user", content }],
-    todos: [],
-    permissionMode: "default",
-        collaborationMode: "build",
-    compactState: createCompactState(),
-    uiEvents: [],
-  };
-}
-
-describe("SessionSnapshotQueue", () => {
-  test("严格串行，失败被隔离且后续保存继续", async () => {
-    const calls: string[] = [];
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
+test("Session 串行捕获输入数组，不被后续 Host 更新改变；保存失败后可继续", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const writer = createSessionPersistence(storage, cwd, "queue");
+        const input: SaveSessionSnapshotInput = {cwd, sessionId: "queue", model: "glm-test",
+            history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "default", collaborationMode: "build",
+            toolDiscovery: {version: 2, loadedNames: ["first"]}};
+        const first = writer.save(input);
+        input.history[0] = {role: "user", origin: "user", content: "next"};
+        input.toolDiscovery!.loadedNames[0] = "second";
+        await first;
+        expect(loadSession(storage, cwd, "queue", "glm-test")?.history.at(-1)?.content).toBe("original");
+        expect(loadSession(storage, cwd, "queue", "glm-test")?.toolDiscovery?.loadedNames).toEqual(["first"]);
+        await writeFile(getSessionIndexPath(storage, cwd), "invalid index");
+        await expect(writer.save(input)).rejects.toThrow("corrupt session index");
+        await writeFile(getSessionIndexPath(storage, cwd), '{"version":1,"sessions":[]}');
+        await writer.save(input);
+        await writer.drain();
+        expect(loadSession(storage, cwd, "queue", "glm-test")?.history.at(-1)?.content).toBe("next");
     });
-    let attempt = 0;
-    const queue = new SessionSnapshotQueue(async (input) => {
-      attempt += 1;
-      calls.push(contentText(input.history[0]?.content) ?? "");
-      if (attempt === 1) {
-        await gate;
-        throw new Error("disk failed");
-      }
+});
+
+test("半批次只保存通知收据和队列，不覆盖完整正文，也不冻结执行中的结果", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const writer = createSessionPersistence(storage, cwd, "metadata");
+        const input: SaveSessionSnapshotInput = {cwd, sessionId: "metadata", model: "glm-test",
+            history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "default", collaborationMode: "build"};
+        await writer.save(input);
+        const pending = {role: "assistant" as const, content: null, tool_calls: [{id: "pending", type: "function" as const, function: {name: "write_file", arguments: "{}"}}]};
+        const receipt = "a".repeat(64);
+        await writer.save({...input, history: [...input.history, pending], taskNotificationReceipts: [receipt],
+            queuedInputs: [{id: receipt, type: "task_notification", taskId: "task", priority: "next", content: "completed", createdAt: new Date().toISOString()}]});
+        const loaded = loadSession(storage, cwd, "metadata", "glm-test")!;
+        expect(loaded.history.filter(message => message.role === "assistant")).toHaveLength(0);
+        expect(loaded.taskNotificationReceipts).toEqual([receipt]);
+        expect(loaded.queuedInputs).toHaveLength(1);
+        expect(Object.isFrozen(pending)).toBe(false);
+        await writer.save({...input, history: [...input.history, pending, {role: "tool", tool_call_id: "pending", content: "done"}],
+            taskNotificationReceipts: [receipt], queuedInputs: []});
+        const final = loadSession(storage, cwd, "metadata", "glm-test")!;
+        expect(final.history.filter(message => message.role === "tool")).toHaveLength(1);
+        expect(final.queuedInputs).toHaveLength(0);
     });
-
-    const first = queue.enqueue(snapshot("first"));
-    const second = queue.enqueue(snapshot("second"));
-    await Promise.resolve();
-    expect(calls).toEqual(["first"]);
-    release();
-    await Promise.all([first, second]);
-    expect(calls).toEqual(["first", "second"]);
-  });
-
-  test("enqueue 时捕获可变数组", async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const observed: Array<{content: string; discovered?: string}> = [];
-    const queue = new SessionSnapshotQueue(async (input) => {
-      await gate;
-      observed.push({
-        content: contentText(input.history[0]?.content) ?? "",
-        discovered: input.toolDiscovery?.loadedNames[0],
-      });
-    });
-    const input = snapshot("original");
-    input.toolDiscovery = {
-      version: 2,
-      loadedNames: ["mcp__fixture__echo"],
-    };
-    const pending = queue.enqueue(input);
-    input.history[0] = { role: "user", content: "mutated" };
-    input.toolDiscovery.loadedNames[0] = "mcp__fixture__mutated";
-    release();
-    await pending;
-    expect(observed).toEqual([{
-      content: "original",
-      discovered: "mcp__fixture__echo",
-    }]);
-  });
-
-  test("连续相同失败只报告一次，成功后再次失败可重新报告", async () => {
-    const errors: string[] = [];
-    let attempt = 0;
-    const queue = new SessionSnapshotQueue(
-      async () => {
-        attempt += 1;
-        if (attempt !== 3) throw new Error("disk failed");
-      },
-      (error) => errors.push((error as Error).message)
-    );
-
-    await queue.enqueue(snapshot("first-failure"));
-    await queue.enqueue(snapshot("same-failure"));
-    await queue.enqueue(snapshot("recovered"));
-    await queue.enqueue(snapshot("failure-again"));
-    expect(errors).toEqual(["disk failed", "disk failed"]);
-  });
-
-  test("错误 callback 抛错不会破坏队列", async () => {
-    let calls = 0;
-    const queue = new SessionSnapshotQueue(
-      async () => {
-        calls += 1;
-        if (calls === 1) throw new Error("save failed");
-      },
-      () => {
-        throw new Error("render failed");
-      }
-    );
-
-    await expect(queue.enqueue(snapshot("failure"))).resolves.toBeUndefined();
-    await expect(queue.enqueue(snapshot("success"))).resolves.toBeUndefined();
-    expect(calls).toBe(2);
-  });
-
-  test("critical 保存向调用方返回失败且不阻塞后续队列", async () => {
-    let calls = 0;
-    const queue = new SessionSnapshotQueue(async () => {
-      calls += 1;
-      if (calls === 1) throw new Error("critical failed");
-    });
-
-    await expect(queue.enqueueCritical(snapshot("critical"))).rejects.toThrow(
-      "critical failed"
-    );
-    await expect(queue.enqueue(snapshot("after"))).resolves.toBeUndefined();
-    expect(calls).toBe(2);
-  });
-
-  test("drain 等待已经入队的最终快照完成", async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let completed = false;
-    const queue = new SessionSnapshotQueue(async () => {
-      await gate;
-      completed = true;
-    });
-
-    void queue.enqueue(snapshot("final"));
-    const drained = queue.drain();
-    await Promise.resolve();
-    expect(completed).toBeFalse();
-    release();
-    await drained;
-    expect(completed).toBeTrue();
-  });
 });
