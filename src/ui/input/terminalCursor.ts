@@ -1,7 +1,9 @@
 import stringWidth from "string-width";
 
-// 只由交互式 CLI 启用。零宽 marker 会在写入真实终端前移除。
-export const TERMINAL_CURSOR_ANCHOR_MARKER = "\u200C\u200D\u2060\u200B\u200D\u200C";
+// Ink treats zero-width text markers as cells and later siblings overwrite them.
+// An OSC 8 style survives its cell renderer; both delimiters are removed before terminal output.
+export const TERMINAL_CURSOR_ANCHOR_MARKER = "\u001B]8;;pillar-cursor://input\u0007";
+export const TERMINAL_CURSOR_ANCHOR_END = "\u001B]8;;\u0007";
 
 export interface TerminalCursorOutput extends NodeJS.WriteStream {
     disposeCursorOutput(): void;
@@ -14,6 +16,10 @@ export function formatTerminalCursorWrite(
     data: string,
     restorePreviousAnchor: boolean
 ): { output: string; anchored: boolean } {
+    // Cursor visibility/style writes do not move the cursor. Keep the existing anchor.
+    if (/^(?:\u001B\[\?25[hl]|\u001B\[[\d;]*m)*$/.test(data)) {
+        return {output: data, anchored: restorePreviousAnchor};
+    }
     const markerIndex = data.lastIndexOf(TERMINAL_CURSOR_ANCHOR_MARKER);
     const prefix = restorePreviousAnchor ? RESTORE_CURSOR : "";
     if (markerIndex < 0) {
@@ -24,9 +30,9 @@ export function formatTerminalCursorWrite(
     const afterMarker = data.slice(
         markerIndex + TERMINAL_CURSOR_ANCHOR_MARKER.length
     );
-    const cleanData = (beforeMarker + afterMarker).split(
-        TERMINAL_CURSOR_ANCHOR_MARKER
-    ).join("");
+    const cleanData = data.split(TERMINAL_CURSOR_ANCHOR_MARKER)
+        .map((part, index) => index === 0 ? part : part.replace(TERMINAL_CURSOR_ANCHOR_END, ""))
+        .join("");
     const currentLine = beforeMarker.slice(beforeMarker.lastIndexOf("\n") + 1);
     const column = stringWidth(currentLine);
     const rowsFromFrameEnd = (afterMarker.match(/\n/g) ?? []).length;
@@ -56,7 +62,7 @@ export function createTerminalCursorOutput(
         const encoding = typeof encodingOrCallback === "string"
             ? encodingOrCallback
             : "utf8";
-        let data = typeof chunk === "string"
+        const data = typeof chunk === "string"
             ? chunk
             : Buffer.from(chunk).toString(encoding);
         const formatted = formatTerminalCursorWrite(data, anchored);
@@ -73,6 +79,7 @@ export function createTerminalCursorOutput(
             if (property === "disposeCursorOutput") {
                 return () => {
                     inkResizeListener = undefined;
+                    if (anchored) target.write(RESTORE_CURSOR);
                     anchored = false;
                 };
             }

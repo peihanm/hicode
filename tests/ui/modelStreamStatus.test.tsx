@@ -21,7 +21,7 @@ describe("ModelStreamStatus", () => {
     expect(frame).not.toContain("思考中");
   });
 
-  test("从 progress ref 平滑追赶，追平后保持 token 并继续 glyph 动画", async () => {
+  test("直接展示接收到的字符量，无新数据时数值不补涨", async () => {
     const modelStream: UIModelStreamInfo = {
       phase: "reasoning",
       outputCharacters: 4,
@@ -40,35 +40,23 @@ describe("ModelStreamStatus", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 280));
     expect(instance.lastFrame()).toContain("正在生成推理");
-    expect(instance.lastFrame()).toContain("~1 tokens");
+    expect(instance.lastFrame()).toContain("4 字符");
 
     progressRef.current = {
       ...modelStream,
-      outputCharacters: 28,
-      estimatedOutputTokens: 7,
+      outputCharacters: 8000,
+      estimatedOutputTokens: 2000,
     };
     await new Promise((resolve) => setTimeout(resolve, 300));
-    const progressingTokens = Number(
-      instance.lastFrame()?.match(/~(\d+) tokens/)?.[1]
-    );
-    expect(progressingTokens).toBeGreaterThan(1);
-    expect(progressingTokens).toBeLessThan(7);
+    expect(instance.lastFrame()).toContain("8000 字符");
+    expect(instance.lastFrame()).not.toContain("tokens");
 
-    const deadline = Date.now() + 2_500;
-    while (
-      !instance.lastFrame()?.includes("~7 tokens") &&
-      Date.now() < deadline
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    expect(instance.lastFrame()).toContain("~7 tokens");
-
-    // token 追平后保持真实值，但独立 spinner 行仍继续产生有界动画帧。
+    // 没有新数据，只有独立 glyph 动画继续更新。
     await new Promise((resolve) => setTimeout(resolve, 150));
     const settledFrameCount = instance.frames.length;
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(instance.frames.length).toBeGreaterThan(settledFrameCount);
-    expect(instance.lastFrame()).toContain("~7 tokens");
+    expect(instance.lastFrame()).toContain("8000 字符");
     instance.unmount();
   });
 
@@ -103,4 +91,22 @@ describe("ModelStreamStatus", () => {
     expect(instance.lastFrame()).not.toContain("生成停滞");
     instance.unmount();
   });
+});
+
+
+test("下一次请求清零计数，停止后隐藏计数", async () => {
+    const running: UIModelStreamInfo = {phase: "tool_input", toolName: "write_file", outputCharacters: 4000, estimatedOutputTokens: 1000};
+    const progressRef: UIModelStreamProgressRef = {current: running};
+    const view = render(<ModelStreamStatus modelStream={running} progressRef={progressRef} stopping={false}/>);
+    await new Promise(resolve => setTimeout(resolve, 140));
+    expect(view.lastFrame()).toContain("4000 字符");
+    const next: UIModelStreamInfo = {phase: "requesting", outputCharacters: 0, estimatedOutputTokens: 0};
+    progressRef.current = next;
+    view.rerender(<ModelStreamStatus modelStream={next} progressRef={progressRef} stopping={false}/>);
+    await new Promise(resolve => setTimeout(resolve, 140));
+    expect(view.lastFrame()).toContain("等待模型响应");
+    expect(view.lastFrame()).not.toContain("字符");
+    view.rerender(<ModelStreamStatus modelStream={running} progressRef={progressRef} stopping/>);
+    expect(view.lastFrame()).not.toContain("字符");
+    view.unmount();
 });

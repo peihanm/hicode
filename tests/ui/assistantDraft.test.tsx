@@ -15,7 +15,7 @@ test.each(["", "\n\n", "\r\n  \r\n", "\n".repeat(10)])("草稿尾部空白 %j �
     const text = body + suffix;
     store.handleEvent({type: "assistant_draft", responseId: "spacing", text, truncated: false});
     const view = render(<Box flexDirection="column">
-        <AssistantDraftView store={store}/>
+        <AssistantDraftView store={store} phase="tool_input"/>
         <ModelStreamStatus
             modelStream={{phase: "tool_input", toolName: "write_file", outputCharacters: 1120, estimatedOutputTokens: 280}}
             progressRef={{current: null}}
@@ -27,6 +27,8 @@ test.each(["", "\n\n", "\r\n  \r\n", "\n".repeat(10)])("草稿尾部空白 %j �
     const statusLine = lines.findIndex(line => line.includes("正在构造 write_file 参数"));
     expect(bodyLine).toBeGreaterThanOrEqual(0);
     expect(statusLine - bodyLine).toBe(2);
+    expect(view.lastFrame()).toContain("回复说明");
+    expect(view.lastFrame()).not.toContain("正在生成");
     expect(lines[bodyLine + 1]?.trim()).toBe("");
     expect(store.getDraftSnapshot()?.text).toBe(text);
 });
@@ -81,4 +83,22 @@ test("恢复 Session 清掉临时正文，晚到的旧响应终止不清新草�
     expect(store.getDraftSnapshot()?.responseId).toBe("new");
     store.restore({history: [], uiEvents: []});
     expect(store.getDraftSnapshot()).toBeNull();
+});
+
+
+test("进入工具参数阶段补齐正文尾部，回到正文阶段再显示生成状态", async () => {
+    const store = new UITurnEventStore();
+    const draft = new ResponseDraft(store.handleEvent);
+    const view = render(<AssistantDraftView store={store} phase="content"/>);
+    try {
+        await draft.update({type: "delta", text: "我已经了解全貌，现在"});
+        await draft.update({type: "delta", text: "写一份说明文档。"});
+        view.rerender(<AssistantDraftView store={store} phase="tool_input"/>);
+        await flush();
+        expect(view.lastFrame()).toContain("我已经了解全貌，现在写一份说明文档。");
+        expect(view.lastFrame()).toContain("回复说明");
+        expect(view.lastFrame()).not.toContain("正在生成");
+        view.rerender(<AssistantDraftView store={store} phase="content"/>);
+        expect(view.lastFrame()).toContain("正在生成");
+    } finally {await draft.finish("discarded");}
 });

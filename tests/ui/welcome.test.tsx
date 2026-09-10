@@ -13,7 +13,8 @@ describe("Welcome", () => {
     expect(frame).toContain("From intent to verified code, inside your terminal.");
     expect(frame).toContain("❯ Describe what you want to change");
     expect(frame).toContain("/ Explore commands and workflows");
-    expect(frame).toContain("Enter send  ·  ? shortcuts  ·  shift+tab Build/Plan");
+    expect(frame).toContain("Enter send  ·  shift+tab Build/Plan");
+    expect(frame).not.toContain("? shortcuts");
     expect(frame.split("\n")[0]).toMatch(/^╔═+╗$/);
   });
 

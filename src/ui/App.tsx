@@ -169,7 +169,6 @@ export function App({
             initialImagesLoaded.current = true;
             void turn.addImages(initialImages);
         }, [initialImages, turn]);
-        const [showTodos, setShowTodos] = useState(true);
         const [showTranscript, setShowTranscript] = useState(false);
         const [hasInputDraft, setHasInputDraft] = useState(false);
         const [inputClearRevision, setInputClearRevision] = useState(0);
@@ -230,10 +229,6 @@ export function App({
                 );
                 return;
             }
-            if (key.ctrl && input === "t") {
-                setShowTodos((previous) => !previous);
-                return;
-            }
             if (key.ctrl && input === "o") {
                 setShowTranscript((previous) => !previous);
             }
@@ -258,7 +253,7 @@ export function App({
                     <TranscriptDetails threads={turn.threads}/>
                 )}
 
-                {showTodos && !showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
+                {!showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
@@ -267,7 +262,7 @@ export function App({
 
                 {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <>
-                        <AssistantDraftView store={turn.draftStore}/>
+                        <AssistantDraftView store={turn.draftStore} phase={turn.modelStream?.phase}/>
                         <ModelStreamStatus
                             modelStream={turn.modelStream}
                             progressRef={turn.modelStreamProgressRef}

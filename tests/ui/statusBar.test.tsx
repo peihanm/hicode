@@ -45,6 +45,8 @@ describe("StatusBar token state", () => {
     expect(frame).toContain("shift+tab Build/Plan");
     expect(frame).toContain("ctrl+o transcript");
     expect(frame).not.toContain("esc to cancel");
+    expect(frame).not.toContain("? for shortcuts");
+    expect(frame).not.toContain("ctrl+t");
   });
 });
 

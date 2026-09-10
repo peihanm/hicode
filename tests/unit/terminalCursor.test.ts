@@ -3,11 +3,12 @@ import {
   createTerminalCursorOutput,
   formatTerminalCursorWrite,
   TERMINAL_CURSOR_ANCHOR_MARKER,
+  TERMINAL_CURSOR_ANCHOR_END,
 } from "../../src/ui/input/terminalCursor.js";
 import {EventEmitter} from "node:events";
 
 describe("terminal IME cursor anchor", () => {
-  test("移除零宽 marker 并把帧末物理光标移回输入位置", () => {
+  test("移除样式 marker 并把帧末物理光标移回输入位置", () => {
     const frame = [
       "message",
       `❯ abc${TERMINAL_CURSOR_ANCHOR_MARKER} `,
@@ -107,6 +108,25 @@ describe("terminal IME cursor anchor", () => {
     expect(writes[0]).not.toContain("\u001B[?1007h");
     output.disposeCursorOutput();
     output.disposeCursorOutput();
-    expect(writes).toHaveLength(1);
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toBe("\u001B8");
   });
+});
+
+
+test("不移动光标的可见性和样式控制序列保持当前锚点", () => {
+    for (const data of ["", "\u001B[?25l", "\u001B[?25h", "\u001B[0m"]) {
+        expect(formatTerminalCursorWrite(data, true)).toEqual({output: data, anchored: true});
+        expect(formatTerminalCursorWrite(data, false)).toEqual({output: data, anchored: false});
+    }
+});
+
+test("只剥离输入锚点链接，正文中的真实链接保留成对边界", () => {
+    const realLink = `\u001B]8;;https://example.com\u0007Docs${TERMINAL_CURSOR_ANCHOR_END}`;
+    const input = `${realLink}\n❯ a${TERMINAL_CURSOR_ANCHOR_MARKER}b${TERMINAL_CURSOR_ANCHOR_END}c\nfooter\n`;
+    const result = formatTerminalCursorWrite(input, false);
+    expect(result.output).toContain(realLink);
+    expect(result.output).toContain("❯ abc");
+    expect(result.output).not.toContain(TERMINAL_CURSOR_ANCHOR_MARKER);
+    expect(result.output).toEndWith("\u001B7\u001B[2A\u001B[4G");
 });

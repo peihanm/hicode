@@ -3,7 +3,7 @@ import {useEffect, useState} from "react";
 import type {Todo} from "../../todos.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 
-// TodoList 渲染：固定在输入框上方，ctrl+t 切换显示/隐藏
+// TodoList 渲染：固定在输入框上方，展示当前进度
 //
 // pending     → ☐ 灰色
 // in_progress → ● 主题色（agent 在跑时加 spinner）

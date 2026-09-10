@@ -115,3 +115,31 @@ describe("App input cursor layout", () => {
     });
   });
 });
+
+
+test("Ctrl+T 不隐藏 Todo，也不改变输入草稿", async () => {
+  await withTempProject(async cwd => {
+    const resources = createTestRuntimeResources(cwd);
+    const instance = render(<App resources={resources} initialSession={{
+      sessionId: "todo-visibility", cwd, model: resources.model,
+      history: [{role: "system", content: "fixture"}],
+      todos: [{content: "检查实现", activeForm: "正在检查实现", status: "in_progress"},
+        {content: "运行测试", activeForm: "正在运行测试", status: "pending"}],
+      permissionMode: "default", collaborationMode: "build", uiEvents: [],
+      taskNotificationReceipts: [], queuedInputs: [],
+    }}/>);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      instance.stdin.write("下一步");
+      await new Promise(resolve => setTimeout(resolve, 20));
+      for (let index = 0; index < 2; index++) {
+        instance.stdin.write("\x14");
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(instance.lastFrame()).toContain("正在检查实现");
+        expect(instance.lastFrame()).toContain("☐ 运行测试");
+        expect(instance.lastFrame()).toContain("❯ 下一步");
+        expect(instance.lastFrame()).not.toContain("ctrl+t");
+      }
+    } finally {instance.unmount(); await resources.close();}
+  });
+});

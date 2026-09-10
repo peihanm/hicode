@@ -16,7 +16,6 @@ const RETRY_REASONS: Record<LLMRetryInfo["reason"], string> = {
 };
 
 const DEFAULT_ANIMATION_INTERVAL_MS = 120;
-const PROGRESS_SAMPLE_EVERY_TICKS = 2;
 const BASE_SPINNER_FRAMES =
     process.env.TERM === "xterm-ghostty"
         ? ["·", "✢", "✳", "✶", "✻", "*"]
@@ -27,14 +26,6 @@ const SPINNER_FRAMES = [
     ...BASE_SPINNER_FRAMES,
     ...[...BASE_SPINNER_FRAMES].reverse(),
 ];
-
-function nextDisplayedCharacters(current: number, target: number): number {
-    if (target <= current) return target;
-    const gap = target - current;
-    const increment =
-        gap < 70 ? 3 : gap < 200 ? Math.max(8, Math.ceil(gap * 0.15)) : 50;
-    return Math.min(current + increment, target);
-}
 
 function streamLabel(
     modelStream: UIModelStreamInfo | null,
@@ -78,13 +69,9 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
     useEffect(() => {
         const update = () => {
             setAnimation((current) => {
-                const target = stopping
+                const displayedCharacters = stopping
                     ? 0
-                    : (progressRef.current?.outputCharacters ?? 0);
-                const displayedCharacters =
-                    current.frame % PROGRESS_SAMPLE_EVERY_TICKS === 0
-                        ? nextDisplayedCharacters(current.displayedCharacters, target)
-                        : current.displayedCharacters;
+                    : (progressRef.current?.outputCharacters ?? modelStream?.outputCharacters ?? 0);
                 return {
                     displayedCharacters,
                     frame: current.frame + 1,
@@ -103,10 +90,6 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
         stopping,
     ]);
 
-    const estimatedTokens = Math.max(
-        0,
-        Math.round(animation.displayedCharacters / 4)
-    );
     const spinner = SPINNER_FRAMES[animation.frame % SPINNER_FRAMES.length];
 
     return (
@@ -116,8 +99,8 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
             </Box>
             <Text color={COLORS.dim}>
                 {stopping ? "正在停止..." : streamLabel(modelStream, activityLabel)}
-                {!stopping && estimatedTokens > 0
-                    ? ` · ~${estimatedTokens} tokens`
+                {!stopping && modelStream && animation.displayedCharacters > 0
+                    ? ` · ${animation.displayedCharacters} 字符`
                     : ""}
             </Text>
         </Box>

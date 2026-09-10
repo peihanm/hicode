@@ -1,8 +1,8 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text, Transform, useInput} from "ink";
 import stringWidth from "string-width";
 import {COLORS, SYMBOLS} from "../theme.js";
-import {useTerminalCursorAnchor} from "./terminalCursorContext.js";
+import {useTerminalCursorTransform} from "./terminalCursorContext.js";
 
 export interface InputRow {
     start: number;
@@ -185,7 +185,7 @@ export function MultilineTextInput({
         Math.min(cursorRow - maxRows + 1, rows.length - maxRows)
     );
     const visibleRows = rows.slice(firstVisible, firstVisible + maxRows);
-    const terminalCursorAnchor = useTerminalCursorAnchor();
+    const transformCursor = useTerminalCursorTransform();
 
     useEffect(() => {
         if (value !== expectedValueRef.current) {
@@ -346,10 +346,9 @@ export function MultilineTextInput({
                         </Text>
                         <Text>{before}</Text>
                         {hasCursor && (
-                            <Text inverse>
-                                {terminalCursorAnchor}
-                                {cursorText}
-                            </Text>
+                            <Transform transform={transformCursor}>
+                                <Text inverse>{cursorText}</Text>
+                            </Transform>
                         )}
                         <Text>{after}</Text>
                         {hasCursor && !displayedValue && placeholder && (

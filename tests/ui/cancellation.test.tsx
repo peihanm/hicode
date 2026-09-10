@@ -161,7 +161,7 @@ describe("App cancellation", () => {
     });
   });
 
-  test("流式 Function Calling 在等待完成时显示工具名和输出 token", async () => {
+  test("流式 Function Calling 显示工具名与实际接收字符量", async () => {
     await withTempProject(async (cwd) => {
       let release!: () => void;
       const released = new Promise<void>((resolve) => {
@@ -204,7 +204,7 @@ describe("App cancellation", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(instance.lastFrame()).toContain("正在构造 write_file 参数");
-      expect(instance.lastFrame()).toContain("tokens");
+      expect(instance.lastFrame()).toContain("4936 字符");
       release();
       await new Promise((resolve) => setTimeout(resolve, 20));
     });

@@ -65,8 +65,6 @@ export function Welcome() {
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>
                     <Text color={COLORS.accent}>Enter</Text> send
-                    {"  ·  "}
-                    <Text color={COLORS.accent}>?</Text> shortcuts
                     {!compact && (
                         <>
                             {"  ·  "}

@@ -82,7 +82,7 @@ export function StatusBar({
         ...runtimeDetails,
     ].join(" | ");
     const shortcuts =
-        "? for shortcuts · shift+tab Build/Plan · ctrl+o transcript · ctrl+t toggle todos";
+        "shift+tab Build/Plan · ctrl+o transcript";
     const firstPadding = " ".repeat(Math.max(0, width - stringWidth(firstPlain) - 1));
     const shortcutPadding = " ".repeat(Math.max(0, width - stringWidth(shortcuts) - 1));
 
@@ -130,7 +130,7 @@ export function StatusBar({
                 color={COLORS.surfaceText}
                 wrap="truncate-end"
             >
-                {" "}<Text color={COLORS.accent}>?</Text>{shortcuts.slice(1)}
+                {" "}{shortcuts}
                 {shortcutPadding}
             </Text>
         </Box>
