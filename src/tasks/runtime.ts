@@ -206,7 +206,14 @@ class TaskRuntime implements TaskRuntimeLike {
             if(this.closed)task.controller.abort("shutdown");
             const signal=input.background?task.controller.signal:AbortSignal.any([task.controller.signal,input.signal]);
             task.completion=(async()=>{
-                try{const result=await this.memory.maintain({sessionId:binding.sessionId,signal});task.status="completed";task.resultPreview=result.status==="published"?`Memory 已发布 ${result.topics} 个主题`:result.status==="busy"?"已有其他进程整理":"来源已处理，无待整理内容";}
+                try {
+                    const result = await this.memory.maintain({sessionId: binding.sessionId, signal});
+                    const {pending} = await this.memory.status();
+                    task.status = "completed";
+                    task.resultPreview = result.status === "published" ? `Memory 已发布 ${result.topics} 个主题` :
+                        result.status === "busy" ? "已有其他进程整理" : "本批来源已处理";
+                    if (pending > 0) task.resultPreview += `；${pending} 个来源待后续维护`;
+                }
                 catch{task.status=signal.aborted?"cancelled":"failed";task.outputIssue="Memory 维护未完成，未消费的来源保留；用 /memory 查看状态";}
                 finally{task.completedAt=new Date().toISOString();task.notificationPending=!task.suppressTerminalNotification;await this.publish("task_finished",task);}
             })();

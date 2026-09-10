@@ -409,7 +409,8 @@ class SDKThreadImpl implements Thread {
         }
         try {
             const response = await raceInteractionWithAbort(
-                callback(request, {
+                requestSignal => callback(request, {
+                    signal: requestSignal,
                     cwd: this.options.resources.cwd,
                     threadId: this.id,
                     turnId,

@@ -155,13 +155,22 @@ class MemoryRuntime implements MemoryRuntimeLike {
             await this.store.offerFrame({ id, sessionId, messageHashes: hashes, omitted }, signal);
         });
     }
-    async maintain(input: {
-        sessionId: string;
-        signal: AbortSignal;
-    }): Promise<MemoryMaintenanceResult> {
+    async maintain(input: {sessionId: string; signal: AbortSignal}): Promise<MemoryMaintenanceResult> {
         this.requireOpen();
         const signal = AbortSignal.any([input.signal, AbortSignal.timeout(5 * 60000)]);
-        throwIfTurnAborted(signal);
+        let result: MemoryMaintenanceResult = {status: "empty", topics: this.store.snapshot().topics.length};
+        // Drain arrivals during work without granting an unbounded model loop.
+        for (let batch = 0; batch < 4; batch++) {
+            throwIfTurnAborted(signal);
+            const current = await this.maintainBatch({...input, signal});
+            if (current.status === "published" || result.status !== "published") result = current;
+            const state = this.store.snapshot();
+            if (state.lease || (!state.frames.some(frame => frame.status === "pending") && !state.sources.some(source => !source.consumed))) break;
+        }
+        return result;
+    }
+    private async maintainBatch(input: {sessionId: string; signal: AbortSignal}): Promise<MemoryMaintenanceResult> {
+        const signal = input.signal;
         await this.store.recoverWorkspaces(signal);
         const extraction = await this.store.claimExtraction(signal);
         if (extraction) {

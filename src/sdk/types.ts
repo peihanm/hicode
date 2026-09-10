@@ -22,6 +22,8 @@ export interface HostDiagnostic {
 }
 
 export interface InteractionContext {
+    /** Aborted when this request ends, or its owning Turn/Root is cancelled. */
+    readonly signal: AbortSignal;
     cwd: string;
     threadId?: string;
     turnId?: string;

@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {normalizeInteractionResponse} from "../../src/sdk/interaction.js";
+import {normalizeInteractionResponse, raceInteractionWithAbort} from "../../src/sdk/interaction.js";
 
 describe("SDK network response validation", () => {
     test("答案使用独立字段，拒绝无效答案和问题参数替换", () => {
@@ -27,4 +27,52 @@ describe("SDK network response validation", () => {
             expect(normalizeInteractionResponse({behavior: "allow", ...extra}).behavior).toBe("deny");
         }
     });
+});
+
+test("预取消和调用前取消均不打开 Host 交互", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const operation = async () => { calls++; return "allow"; };
+    const pending = raceInteractionWithAbort(operation, controller.signal);
+    controller.abort("shutdown");
+    await expect(pending).rejects.toThrow("取消");
+    await expect(raceInteractionWithAbort(operation, controller.signal)).rejects.toThrow("取消");
+    expect(calls).toBe(0);
+});
+
+test.each([false, true])("Host 完成或异常后请求资源均关闭，owner 保持有效：%s", async fail => {
+    const owner = new AbortController();
+    const signals: AbortSignal[] = [];
+    let closed = 0;
+    const pending = raceInteractionWithAbort(async signal => {
+        signals.push(signal);
+        expect(signal.aborted).toBe(false);
+        signal.addEventListener("abort", () => closed++, {once: true});
+        if (fail) throw new Error("host failed");
+        return "allow";
+    }, owner.signal);
+    if (fail) await expect(pending).rejects.toThrow("host failed");
+    else expect(await pending).toBe("allow");
+    expect(signals[0]?.aborted).toBe(true);
+    expect(owner.signal.aborted).toBe(false);
+    owner.abort();
+    expect(closed).toBe(1);
+});
+
+test("等待中取消通知 Host，迟到批准不能完成请求", async () => {
+    const owner = new AbortController();
+    let finish!: (value: string) => void;
+    let ready!: () => void;
+    const started = new Promise<void>(resolve => { ready = resolve; });
+    let closed = 0;
+    const pending = raceInteractionWithAbort(signal => {
+        signal.addEventListener("abort", () => closed++, {once: true});
+        ready();
+        return new Promise<string>(resolve => { finish = resolve; });
+    }, owner.signal);
+    await started;
+    owner.abort("shutdown");
+    finish("allow");
+    await expect(pending).rejects.toThrow("取消");
+    expect(closed).toBe(1);
 });

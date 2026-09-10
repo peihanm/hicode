@@ -198,8 +198,12 @@ class ConfiguredHookRuntime implements HookRuntime {
                     event: effectiveInput};
                 const serialized = JSON.stringify(envelope);
                 const bytes = Buffer.byteLength(serialized);
-                if (bytes > 65536) {
-                    if (hook.purpose === "control") {await fail("Control Hook 输入超过 65536 bytes，未裁剪后判定"); return result;}
+                const inputLimit = hook.type === "command" && hook.purpose === "control" ? 16 * 1024 * 1024 : 65536;
+                if (bytes + 1 > inputLimit) {
+                    if (hook.purpose === "control") {
+                        await fail(`${hook.type === "command" ? "Command" : "Prompt"} Control Hook [${hookHandler(hook).slice(0, 120)}] 完整输入 ${bytes} bytes 超过 ${inputLimit} bytes，未截断或执行判定`);
+                        return result;
+                    }
                     envelope = {...envelope, event: summarize(effectiveInput), truncated: true, original_bytes: bytes};
                     if (context?.store) {
                         try {const saved = await context.store.persistText({toolCallId: `hook-input:${identity.executionId}`,

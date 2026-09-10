@@ -16,7 +16,7 @@ function originHash(origin: MemorySourceRecord["origin"]): string {
     return createHash("sha256").update(JSON.stringify(origin)).digest("hex");
 }
 function emptyPublication(): MemoryPublication {
-    return { version: 2, revision: 0, epoch: 0, summary: "", topics: [], sources: [], frames: [], revoked: [] };
+    return { version: 3, revision: 0, epoch: 0, summary: "", topics: [], sources: [], frames: [], completedFrames: [], retiredSources: [], revoked: [] };
 }
 export function serializeDraftTopic(topic: MemoryDraftTopic): string {
     const { content, ...header } = memoryDraftTopicSchema.parse(topic);
@@ -58,6 +58,10 @@ export class MemoryPublicationStore {
             const { result, changed } = action(state);
             if (!changed)
                 return result;
+            this.collect(state);
+            if (state.frames.length > 1000) throw new Error("Memory 待处理来源已满（1000），请先运行 /memory maintain");
+            if (state.sources.length > 1000) throw new Error("Memory 活跃来源已满（1000），请先整理或忘记不再需要的主题");
+            if (state.revoked.length > 10000) throw new Error("Memory 遗忘凭据已满（10000），未丢弃凭据或覆盖原版本");
             state.revision++;
             const encoded = JSON.stringify(memoryPublicationSchema.parse(state));
             if (Buffer.byteLength(encoded) > MAX_PUBLICATION_BYTES)
@@ -70,6 +74,22 @@ export class MemoryPublicationStore {
             return result;
         });
     }
+    private collect(state: MemoryPublication): void {
+        const protectedFrames = new Set(state.lease?.frameIds ?? []);
+        const completed = state.frames.filter(frame => frame.status !== "pending" && !protectedFrames.has(frame.id));
+        const retained = Math.max(0, Math.min(128, 1000 - (state.frames.length - completed.length)));
+        const retired = new Set(completed.slice(0, Math.max(0, completed.length - retained)).map(frame => frame.id));
+        state.completedFrames = [...new Set([...state.completedFrames, ...retired])].slice(-4096);
+        state.frames = state.frames.filter(frame => !retired.has(frame.id));
+        const referenced = new Set([...state.topics.flatMap(topic => topic.sources), ...(state.lease?.sourceIds ?? [])]);
+        const removed = state.sources.filter(source => source.consumed && !referenced.has(source.id));
+        state.retiredSources = [...new Set([...state.retiredSources, ...removed.map(source => originHash(source.origin))])].slice(-4096);
+        // The free-form summary may paraphrase discarded evidence; do not retain untraceable memory.
+        if (removed.length) state.summary = "";
+        const removedIds = new Set(removed.map(source => source.id));
+        state.sources = state.sources.filter(source => !removedIds.has(source.id));
+        // Revocations are permanent exclusion evidence, never ordinary eviction candidates.
+    }
     async acceptNote(key: string, note: MemoryNote, origin: Extract<MemorySourceRecord["origin"], {
         kind: "explicit";
     }>, expectedContent: string | null, signal: AbortSignal): Promise<void> {
@@ -78,15 +98,16 @@ export class MemoryPublicationStore {
         const source = memorySourceRecordSchema.parse({ id: randomUUID(), key, type: parsed.type, content: parsed.content,
             origin, createdAt: new Date().toISOString(), consumed: false });
         await this.transaction(state => {
-            if (state.sources.some(item => originHash(item.origin) === originHash(origin)))
+            if (state.retiredSources.includes(originHash(origin)) || state.sources.some(item => originHash(item.origin) === originHash(origin)))
                 return { result: undefined, changed: false };
             if (this.noteContent(state, key) !== expectedContent)
                 throw new Error("Memory note 已变化，请重新读取后修改");
             if (state.revoked.includes(originHash(origin)))
                 throw new Error("Memory 来源已撤销");
-            if (parsed.operation === "correct" && !this.revokeKey(state, key))
-                state.epoch++;
-            delete state.lease;
+            if (parsed.operation === "correct") {
+                if (!this.revokeKey(state, key)) state.epoch++;
+                delete state.lease;
+            }
             state.sources.push(source);
             delete state.lastIssue;
             return { result: undefined, changed: true };
@@ -126,7 +147,7 @@ export class MemoryPublicationStore {
     }
     async offerFrame(frame: Omit<MemoryFrame, "epoch" | "status" | "createdAt">, signal: AbortSignal): Promise<void> {
         await this.transaction(state => {
-            if (state.frames.some(item => item.id === frame.id))
+            if (state.completedFrames.includes(frame.id) || state.frames.some(item => item.id === frame.id))
                 return { result: undefined, changed: false };
             state.frames.push(memoryFrameSchema.parse({ ...frame, epoch: state.epoch, status: "pending", createdAt: new Date().toISOString() }));
             return { result: undefined, changed: true };
@@ -139,7 +160,8 @@ export class MemoryPublicationStore {
         return this.transaction(state => {
             if (state.lease && Date.parse(state.lease.expiresAt) > Date.now())
                 return { result: undefined, changed: false };
-            let changed = false;
+            let changed = state.lease !== undefined;
+            delete state.lease;
             for (const frame of state.frames)
                 if (frame.status === "pending" && frame.epoch !== state.epoch) {
                     frame.status = "no_output";
@@ -154,7 +176,7 @@ export class MemoryPublicationStore {
     }
     private requireLease(state: MemoryPublication, lease: MemoryLease, phase: MemoryLease["phase"]): void {
         const current = state.lease;
-        if (!current || current.id !== lease.id || current.phase !== phase || lease.phase !== phase || state.revision !== lease.revision || state.epoch !== lease.epoch ||
+        if (!current || current.id !== lease.id || current.phase !== phase || lease.phase !== phase || state.epoch !== lease.epoch ||
             current.revision !== lease.revision || current.epoch !== lease.epoch || current.expiresAt !== lease.expiresAt || Date.parse(current.expiresAt) <= Date.now() ||
             current.sourceIds.join(",") !== lease.sourceIds.join(",") || current.frameIds.join(",") !== lease.frameIds.join(",")) {
             throw new Error("Memory 版本或租约已过期，或处理来源集合发生变化；未发布");
@@ -182,7 +204,8 @@ export class MemoryPublicationStore {
                         throw new Error("Memory fact 引用越界");
                     const source = memorySourceRecordSchema.parse({ id: randomUUID(), key: fact.key, type: fact.type, content: fact.content, consumed: false, createdAt: new Date().toISOString(),
                         origin: { kind: "session", sessionId: frame.sessionId, messageHashes: fact.sources, contentHash: frame.id, basis: fact.basis } });
-                    if (!state.revoked.includes(originHash(source.origin)))
+                    if (!state.revoked.includes(originHash(source.origin)) && !state.retiredSources.includes(originHash(source.origin)) &&
+                        !state.sources.some(existing => existing.key === source.key && existing.content === source.content && originHash(existing.origin) === originHash(source.origin)))
                         state.sources.push(source);
                 }
                 current.status = unavailable ? "unavailable" : facts.length ? "extracted" : "no_output";
@@ -202,6 +225,8 @@ export class MemoryPublicationStore {
         return this.transaction(state => {
             if (state.lease && Date.parse(state.lease.expiresAt) > Date.now())
                 return { result: undefined, changed: false };
+            const changed = state.lease !== undefined;
+            delete state.lease;
             const pending: string[] = [];
             let bytes = 0;
             for (const source of state.sources.filter(source => !source.consumed)) {
@@ -211,7 +236,7 @@ export class MemoryPublicationStore {
                 bytes += Buffer.byteLength(source.content);
             }
             if (!pending.length)
-                return { result: undefined, changed: false };
+                return { result: undefined, changed };
             state.lease = { id: randomUUID(), phase: "consolidate", frameIds: [], revision: state.revision + 1, epoch: state.epoch,
                 sourceIds: pending, expiresAt: new Date(Date.now() + LEASE_MS).toISOString() };
             return { result: { lease: structuredClone(state.lease), baseline: structuredClone(state) }, changed: true };

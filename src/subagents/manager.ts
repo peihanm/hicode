@@ -46,17 +46,16 @@ function validateTools(
 export function createAgentDefinitionManager({
     store,
     catalog,
-    availableToolNames,
+    getAvailableToolNames,
 }: {
     store: AgentDefinitionStore;
     catalog: SubagentCatalog;
-    availableToolNames: readonly string[];
+    getAvailableToolNames(): readonly string[];
 }): AgentDefinitionManager {
-    const availableTools = new Set(availableToolNames);
     return {
         read: (scope, name) => store.read(scope, name),
         async create(scope, draft) {
-            validateTools(draft, availableTools);
+            validateTools(draft, new Set(getAvailableToolNames()));
             const builtin = catalog.get(draft.name);
             if (builtin?.definition.source === "builtin") {
                 throw new Error(`自定义 Agent 不能覆盖内置类型 ${builtin.definition.agentType}`);
@@ -66,7 +65,7 @@ export function createAgentDefinitionManager({
             return {file, update};
         },
         async update(scope, name, expectedHash, draft) {
-            validateTools(draft, availableTools);
+            validateTools(draft, new Set(getAvailableToolNames()));
             const file = await store.update(scope, name, expectedHash, draft);
             const update = await catalog.reload();
             return {file, update};

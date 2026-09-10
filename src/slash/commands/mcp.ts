@@ -1,14 +1,23 @@
 import type {SlashCommand} from "../types.js";
 
 export const mcpCommand: SlashCommand = {
-    busyBehavior: "immediate",
+    busyBehavior: "defer",
     name: "mcp",
     description: "显示 MCP Server 连接状态",
     async execute(args, context) {
-        if (args) {
+        if (args.startsWith("reconnect ")) {
+            try {
+                const manager = context.ctx.mcpManager;
+                if (!manager) throw new Error("没有配置 MCP Server");
+                await manager.reconnect(args.slice("reconnect ".length).trim());
+            } catch (error) {
+                await context.onEvent({type: "assistant_text", content: `MCP 重连失败：${error instanceof Error ? error.message : String(error)}`});
+                return;
+            }
+        } else if (args) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "/mcp 暂不接受参数；修改 MCP 配置后请重启 Pillar。",
+                content: "用法：/mcp 或 /mcp reconnect <server-name>",
             });
             return;
         }

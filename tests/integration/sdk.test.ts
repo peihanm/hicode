@@ -236,6 +236,9 @@ describe("TypeScript SDK", () => {
                 },
             });
             const interactionKinds: string[] = [];
+            const interactionSignals: AbortSignal[] = [];
+            let awaitingRoot!: () => void;
+            const rootWaiting = new Promise<void>(resolve => {awaitingRoot = resolve;});
 
             const pillar = await Pillar.create({
                 configuration: createTestRootConfiguration(
@@ -244,8 +247,12 @@ describe("TypeScript SDK", () => {
                     storage
                 ),
                 host: {
-                    async onInteraction(request) {
+                    async onInteraction(request, context) {
+                        interactionSignals.push(context.signal);
+                        expect(context.signal.aborted).toBe(false);
+                        expect(context.threadId).toBeUndefined();
                         interactionKinds.push(request.kind);
+                        if (interactionKinds.length === 4) {awaitingRoot(); return new Promise<never>(() => {});}
                         return {behavior: "allow", persistence: "once"};
                     },
                 },
@@ -262,7 +269,17 @@ describe("TypeScript SDK", () => {
                         status: "connected",
                     }),
                 ]);
+                expect(interactionSignals.every(signal => signal.aborted)).toBe(true);
+                await pillar.reconnectMcpServer("sdk_fixture");
+                expect(pillar.getMcpServers()[0]?.status).toBe("connected");
+                expect(interactionKinds).toEqual(["mcp_approval", "hook_trust", "mcp_approval"]);
                 await thread.close();
+                const reconnect = pillar.reconnectMcpServer("sdk_fixture");
+                await rootWaiting;
+                await pillar.close();
+                await reconnect;
+                expect(interactionSignals[3]?.aborted).toBe(true);
+                expect(pillar.getMcpServers()[0]?.status).toBe("closed");
             } finally {
                 await pillar.close();
             }
@@ -605,7 +622,7 @@ describe("TypeScript SDK", () => {
         });
     });
 
-    test("关闭 Thread 会取消等待中的 Host interaction 并闭合 Turn", async () => {
+    test.each(["thread", "signal", "stream"])("SDK %s 取消通知等待中的 Host 并闭合请求", async mode => {
         await withTempProject(async (cwd, storage) => {
             const fake = createFakeLLM([
                 assistantToolCall(
@@ -630,6 +647,7 @@ describe("TypeScript SDK", () => {
             const interactionStarted = new Promise<void>((resolve) => {
                 markInteractionStarted = resolve;
             });
+            let hostCancelled = 0;
             const never = new Promise<never>(() => {});
             const thread = await createSDKThread({
                 resources,
@@ -646,7 +664,11 @@ describe("TypeScript SDK", () => {
                 },
                 resumed: false,
                 host: {
-                    onInteraction() {
+                    onInteraction(_request, context) {
+                        expect(context.signal.aborted).toBe(false);
+                        expect(context.threadId).toBeDefined();
+                        expect(context.turnId).toBeDefined();
+                        context.signal.addEventListener("abort", () => hostCancelled++, {once: true});
                         markInteractionStarted();
                         return never;
                     },
@@ -654,14 +676,28 @@ describe("TypeScript SDK", () => {
                 onClose() {},
             });
 
-            const run = thread.run("先询问我");
+            if (mode === "stream") {
+                const {events} = await thread.runStreamed("先询问我");
+                const iterator = events[Symbol.asyncIterator]();
+                await iterator.next();
+                await interactionStarted;
+                await iterator.return?.(undefined);
+                expect(hostCancelled).toBe(1);
+                await thread.close();
+                await resources.close();
+                return;
+            }
+            const controller = new AbortController();
+            const run = thread.run("先询问我", {signal: controller.signal});
             await interactionStarted;
-            await thread.close();
+            if (mode === "thread") await thread.close();
+            else controller.abort("user-cancel");
             const result = await run;
+            expect(hostCancelled).toBe(1);
 
             expect(result).toMatchObject({
                 stopReason: "interrupted",
-                abortReason: "shutdown",
+                abortReason: mode === "thread" ? "shutdown" : "user-cancel",
             });
             expect(result.items).toEqual(expect.arrayContaining([
                 expect.objectContaining({
@@ -669,6 +705,7 @@ describe("TypeScript SDK", () => {
                     status: "interrupted",
                 }),
             ]));
+            await thread.close();
             await resources.close();
         });
     });

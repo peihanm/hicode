@@ -47,7 +47,7 @@ test.each(["broken-json", "exit", "oversize-input"])("Control %s 不成为放行
         }})({cwd, storage, childEnvironment: testChildEnvironment, hooks: resolvedHooks("UserPromptSubmit", [
             {type: "command", purpose: "control", command: "first"}, {type: "command", purpose: "control", command: "second"},
         ])});
-        const result = await runtime.execute({...prompt, prompt: mode === "oversize-input" ? "x".repeat(70000) : "hello"}, new AbortController().signal);
+        const result = await runtime.execute({...prompt, prompt: mode === "oversize-input" ? "x".repeat(16 * 1024 * 1024) : "hello"}, new AbortController().signal);
         expect(result.blocked).toBe(false);
         expect(result.error).toBeDefined();
         expect(calls).toEqual(mode === "oversize-input" ? [] : ["first"]);
@@ -140,4 +140,39 @@ test("配置拒绝通知型控制、清理阶段 Prompt 和 Shell/argv 混用", 
         {SessionEnd: [{hooks: [{type: "prompt", purpose: "observe", prompt: "x"}]}]},
         {SessionStart: [{hooks: [{type: "command", purpose: "observe", command: "x", executable: "node", args: []}]}]},
     ]) expect(hooksSettingsFileSchema.safeParse(hooks).success).toBe(false);
+});
+
+
+test("Command Control stdin 完整传递大段 Unicode，末尾拒绝条件不丢失", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const script = join(cwd, "large.cjs");
+        await writeFile(script, `let input='';process.stdin.setEncoding('utf8');
+            process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end',()=>{
+                const x=JSON.parse(input);const p=x.event.prompt;
+                process.stdout.write(JSON.stringify({decision:p.endsWith('DENY')?'block':'pass',reason:'checked',
+                    additionalContext:Buffer.byteLength(p)+':'+p.slice(-4)}));});`);
+        const runtime = await createHookRuntimeFactory({getTrust: async () => "allow"})({cwd, storage,
+            childEnvironment: testChildEnvironment, hooks: resolvedHooks("UserPromptSubmit", [
+                {type: "command", purpose: "control", executable: "node", args: [script]},
+            ])});
+        const content = "中文🌟".repeat(20000) + "DENY";
+        const result = await runtime.execute({...prompt, prompt: content}, new AbortController().signal);
+        expect(result.error).toBeUndefined();
+        expect(result.blocked).toBe(true);
+        expect(result.additionalContexts).toContain(Buffer.byteLength(content) + ":DENY");
+    });
+});
+
+test("Prompt Control 超过完整输入预算时不调用 evaluator", async () => {
+    await withTempProject(async (cwd, storage) => {
+        let called = false;
+        const runtime = await createHookRuntimeFactory({getTrust: async () => "allow"})({cwd, storage, childEnvironment: testChildEnvironment,
+            promptExecutor: {async execute() {called = true; throw new Error("must not execute");}}, hooks: resolvedHooks("UserPromptSubmit", [
+            {type: "prompt", purpose: "control", prompt: "decide"},
+        ])});
+        const result = await runtime.execute({...prompt, prompt: "中".repeat(23000)}, new AbortController().signal);
+        expect(called).toBe(false);
+        expect(result.error).toContain("Prompt Control Hook");
+        expect(result.error).toContain("65536");
+    });
 });

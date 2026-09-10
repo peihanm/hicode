@@ -18,6 +18,7 @@ describe("/mcp slash command", () => {
         getTools: () => [],
         subscribe: () => () => {},
         async closeAll() {},
+        async reconnect() {},
       };
       const messages: string[] = [];
       const handled = await processSlashCommand("/mcp", {

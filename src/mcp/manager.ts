@@ -17,6 +17,11 @@ interface MutableConnection {
     snapshot: McpServerSnapshot;
     connected?: McpConnectedServer;
     tools: Tool[];
+    generation: number;
+    catalogVersion: number;
+    controller?: AbortController;
+    pending?: Promise<void>;
+    connecting?: Promise<void>;
 }
 
 function errorMessage(error: unknown): string {
@@ -28,6 +33,7 @@ class McpManager implements McpManagerLike {
     private listeners = new Set<() => void>();
     private initialized = false;
     private closed = false;
+    private closing: Promise<void> | undefined;
 
     constructor(private readonly options: McpManagerOptions) {
     }
@@ -52,10 +58,12 @@ class McpManager implements McpManagerLike {
     }
 
     getTools(): readonly Tool[] {
+        if (this.closed || this.options.signal?.aborted) return [];
         return this.connections.flatMap((item) => item.tools);
     }
 
     private async isApproved(server: LoadedMcpServerConfig): Promise<boolean> {
+        if (this.closed || this.options.signal?.aborted) return false;
         if (server.source === "user") return true;
         const identity = await createMcpApprovalIdentity(this.options.cwd, server);
         const approvalPath = join(
@@ -72,6 +80,7 @@ class McpManager implements McpManagerLike {
             args: server.config.args,
             configHash: identity.configHash,
         });
+        if (this.closed || this.options.signal?.aborted) return false;
         if (decision === "always" || decision === "deny") {
             await saveMcpApproval(approvalPath, identity, server.name, decision);
         }
@@ -87,6 +96,7 @@ class McpManager implements McpManagerLike {
             this.options.sources ?? ["user", "project"],
             this.options.hostServers ?? []
         );
+        if (this.closed || this.options.signal?.aborted) return;
         this.connections = loaded.servers.map((server) => ({
             server,
             snapshot: {
@@ -95,7 +105,7 @@ class McpManager implements McpManagerLike {
                 status: server.config.disabled ? "disabled" : "pending-approval",
                 toolCount: 0,
             },
-            tools: [],
+            tools: [], generation: 0, catalogVersion: 0,
         }));
         for (const issue of loaded.issues) {
             const name = issue.serverName ?? `config:${issue.source}`;
@@ -128,7 +138,7 @@ class McpManager implements McpManagerLike {
                         },
                     },
                 snapshot: {name, source: issue.source, status: "failed", toolCount: 0, error: issue.message},
-                tools: [],
+                tools: [], generation: 0, catalogVersion: 0,
             });
         }
         this.emit();
@@ -137,6 +147,7 @@ class McpManager implements McpManagerLike {
         for (const connection of this.connections) {
             if (connection.snapshot.status === "disabled" || connection.snapshot.status === "failed") continue;
             if (!(await this.isApproved(connection.server))) {
+                if (this.closed || this.options.signal?.aborted) break;
                 connection.snapshot.status = "pending-approval";
                 connection.snapshot.error = "MCP Server 尚未批准";
                 continue;
@@ -152,57 +163,131 @@ class McpManager implements McpManagerLike {
                 !this.options.signal?.aborted
                 ) {
                 const connection = active[nextIndex++]!;
-                connection.snapshot.status = "connecting";
-                delete connection.snapshot.error;
-                this.emit();
-                try {
-                    const connected = await connectMcpServer(
-                        connection.server,
-                        this.options.cwd,
-                        this.options.childEnvironment,
-                        this.options.signal,
-                        () => {
-                            if (connection.snapshot.status === "connected") {
-                                connection.snapshot.status = "closed";
-                                this.emit();
-                            }
-                        },
-                        (error) => {
-                            connection.snapshot.error = errorMessage(error).slice(0, 2000);
-                            this.emit();
-                        }
-                    );
-                    if (this.closed || this.options.signal?.aborted) {
-                        await connected.close();
-                        continue;
-                    }
-                    const adapted = adaptMcpTools(connected);
-                    connection.connected = connected;
-                    connection.tools = adapted.tools;
-                    connection.snapshot.status = "connected";
-                    connection.snapshot.toolCount = adapted.tools.length;
-                    if (adapted.issues.length > 0) connection.snapshot.error = adapted.issues.join("; ").slice(0, 2000);
-                } catch (error) {
-                    connection.snapshot.status = "failed";
-                    connection.snapshot.error = errorMessage(error).slice(0, 2000);
-                }
-                this.emit();
+                await this.connect(connection);
             }
         };
         await Promise.all(Array.from({length: Math.min(3, active.length)}, () => worker()));
     }
 
-    async closeAll(): Promise<void> {
-        if (this.closed) return;
-        this.closed = true;
-        await Promise.allSettled(this.connections.map((item) => item.connected?.close()));
-        for (const item of this.connections) {
-            if (item.snapshot.status === "connected" || item.snapshot.status === "connecting") {
-                item.snapshot.status = "closed";
-            }
-        }
+    private invalidate(connection: MutableConnection, status: "closed" | "failed" | "connecting", error?: unknown): void {
+        connection.tools = [];
+        connection.catalogVersion++;
+        connection.snapshot.toolCount = 0;
+        connection.snapshot.status = status;
+        if (error !== undefined) connection.snapshot.error = errorMessage(error).slice(0, 2000);
         this.emit();
-        this.listeners.clear();
+    }
+
+    private publishTools(connection: MutableConnection, connected: McpConnectedServer, generation: number, strict = false): void {
+        const version = connection.catalogVersion + 1;
+        const adapted = adaptMcpTools({...connected, callTool: async (name, args, signal) => {
+            if (this.closed || this.options.signal?.aborted || connection.controller?.signal.aborted || connection.generation !== generation || connection.catalogVersion !== version ||
+                connection.snapshot.status !== "connected") throw new Error("MCP 工具能力已失效，请重新发现工具");
+            return connected.callTool(name, args, signal);
+        }});
+        if (strict && adapted.issues.length) throw new Error(adapted.issues.join("; ").slice(0, 2000));
+        connection.catalogVersion = version;
+        connection.tools = adapted.tools;
+        connection.snapshot.status = "connected";
+        connection.snapshot.toolCount = adapted.tools.length;
+        delete connection.snapshot.error;
+        if (adapted.issues.length) connection.snapshot.error = adapted.issues.join("; ").slice(0, 2000);
+        this.emit();
+    }
+
+    private async connect(connection: MutableConnection): Promise<void> {
+        const generation = ++connection.generation;
+        const controller = new AbortController();
+        connection.controller = controller;
+        const signal = AbortSignal.any([controller.signal, ...(this.options.signal ? [this.options.signal] : [])]);
+        const current = () => !this.closed && !signal.aborted && generation === connection.generation;
+        const pending = Promise.resolve().then(async () => {
+            if (!current()) return;
+            connection.snapshot.status = "connecting";
+            delete connection.snapshot.error;
+            this.emit();
+            try {
+                const connected = await connectMcpServer(connection.server, this.options.cwd, this.options.childEnvironment, signal,
+                    () => { if (current()) {this.invalidate(connection, "closed"); controller.abort();} },
+                    error => { if (current()) {this.invalidate(connection, "failed", error); controller.abort(); void connection.connected?.close();} },
+                    server => { if (current()) {
+                        if (server) this.publishTools(connection, server, generation, true);
+                        else this.invalidate(connection, "connecting");
+                    } });
+                if (!current()) { await connected.close(); return; }
+                connection.connected = connected;
+                this.publishTools(connection, connected, generation);
+            } catch (error) {
+                if (current()) this.invalidate(connection, "failed", error);
+                controller.abort();
+                await connection.connected?.close();
+            }
+        });
+        connection.connecting = pending;
+        try { await pending; } finally { if (connection.connecting === pending) delete connection.connecting; }
+    }
+
+    async reconnect(name: string): Promise<void> {
+        if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+        const connection = this.connections.find(item => item.snapshot.name === name);
+        if (!connection) throw new Error(`未知 MCP Server: ${name}`);
+        if (connection.pending || connection.connecting) throw new Error("MCP Server 正在连接");
+        // Reserve this server across configuration and approval awaits too.
+        const pending = Promise.resolve().then(() => this.reconnectConnection(connection));
+        connection.pending = pending;
+        try { await pending; } finally { if (connection.pending === pending) delete connection.pending; }
+    }
+
+    private async reconnectConnection(connection: MutableConnection): Promise<void> {
+        connection.generation++;
+        connection.controller?.abort();
+        this.invalidate(connection, "closed");
+        await connection.connected?.close();
+        delete connection.connected;
+        try {
+            const loaded = await loadMcpConfig(this.options.storage, this.options.cwd,
+                this.options.sources ?? ["user", "project"], this.options.hostServers ?? []);
+            const issue = loaded.issues.find(item => item.serverName === connection.server.name || !item.serverName);
+            if (issue) throw new Error(issue.message);
+            const server = loaded.servers.find(item => item.name === connection.server.name);
+            if (!server) throw new Error("MCP Server 配置已移除");
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+            connection.server = server;
+            connection.snapshot.source = server.source;
+            if (server.config.disabled) { connection.snapshot.status = "disabled"; this.emit(); return; }
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+            if (!(await this.isApproved(server))) { if (!this.closed) {connection.snapshot.status = "pending-approval"; this.emit();} return; }
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+            await this.connect(connection);
+        } catch (error) {
+            if (!this.closed) this.invalidate(connection, "failed", error);
+            throw error;
+        }
+    }
+
+    async closeAll(): Promise<void> {
+        if (this.closing) return this.closing;
+        this.closed = true;
+        for (const item of this.connections) {
+            item.generation++;
+            item.controller?.abort();
+            item.tools = [];
+            item.catalogVersion++;
+            item.snapshot.status = "closed";
+            item.snapshot.toolCount = 0;
+        }
+        this.closing = (async () => {
+            await Promise.allSettled(this.connections.flatMap(item => [item.connected?.close(), item.connecting]));
+            for (const item of this.connections) {
+                if (item.snapshot.status === "connected" || item.snapshot.status === "connecting") {
+                    item.snapshot.status = "closed";
+                }
+            }
+            this.emit();
+            this.listeners.clear();
+        })();
+        this.emit();
+        return this.closing;
     }
 }
 

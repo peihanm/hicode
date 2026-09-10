@@ -87,3 +87,63 @@ test("持有 lease ID 也不能更改领取的来源集合或时限",async()=>wi
  await expect(store.publish({...job.lease,expiresAt:"2099-01-01T00:00:00.000Z"},[],"延长期限",signal())).rejects.toThrow("租约");
  expect(store.snapshot().sources[0]?.consumed).toBe(false);expect(store.snapshot().lease?.id).toBe(job.lease.id);
 }));
+
+test("无关 note/frame 追加保留当前整理租约，新来源留待下一批", async () => withTempProject(async (cwd, storage) => {
+    const a = new MemoryPublicationStore(storage, cwd);
+    const b = new MemoryPublicationStore(storage, cwd);
+    await a.acceptNote("first", note, origin("first"), null, signal());
+    const job = (await a.claim(signal()))!;
+    await b.acceptNote("second", note, origin("second"), null, signal());
+    await b.offerFrame({id: "a".repeat(64), sessionId: "session", messageHashes: ["b".repeat(64)], omitted: 0}, signal());
+    await a.publish(job.lease, [{key: "first", name: "first", description: "first", type: "feedback", content: note.content,
+        sources: job.lease.sourceIds}], "first", signal());
+    expect(a.snapshot().sources.filter(source => !source.consumed).map(source => source.key)).toEqual(["second"]);
+    const extraction = (await a.claimExtraction(signal()))!;
+    await b.offerFrame({id: "c".repeat(64), sessionId: "session", messageHashes: ["d".repeat(64)], omitted: 0}, signal());
+    await a.finishExtraction(extraction.lease, extraction.frames.map(frame => ({frame, facts: [], unavailable: false})), signal());
+    expect(a.snapshot().frames.filter(frame => frame.status === "pending").map(frame => frame.id)).toEqual(["c".repeat(64)]);
+}));
+
+test("超过 1000 个无输出 frame 可继续入队，近期已消费输入不重新提取", async () => withTempProject(async (cwd, storage) => {
+    const store = new MemoryPublicationStore(storage, cwd);
+    const {createHash} = await import("node:crypto");
+    const frame = (index: number) => ({id: createHash("sha256").update(String(index)).digest("hex"), sessionId: "session", messageHashes: ["a".repeat(64)], omitted: 0});
+    for (let start = 0; start < 1004; start += 4) {
+        for (let offset = 0; offset < 4; offset++) await store.offerFrame(frame(start + offset), signal());
+        const job = (await store.claimExtraction(signal()))!;
+        await store.finishExtraction(job.lease, job.frames.map(frame => ({frame, facts: [], unavailable: false})), signal());
+    }
+    expect(store.snapshot().frames).toHaveLength(128);
+    expect(store.snapshot().completedFrames).toHaveLength(876);
+    await store.offerFrame(frame(0), signal());
+    await store.offerFrame(frame(1003), signal());
+    expect(await store.claimExtraction(signal())).toBeUndefined();
+    await store.offerFrame(frame(1004), signal());
+    expect((await store.claimExtraction(signal()))?.frames).toHaveLength(1);
+}), 20000);
+
+test("GC 保留正式主题证据，遗忘凭据不随消费窗口淘汰", async () => withTempProject(async (cwd, storage) => {
+    const store = new MemoryPublicationStore(storage, cwd);
+    const frame = {id: "a".repeat(64), sessionId: "session", messageHashes: ["b".repeat(64)], omitted: 0};
+    const fact = {key: "past", type: "feedback" as const, content: "旧偏好", basis: "user-stated" as const, sources: frame.messageHashes};
+    await store.offerFrame(frame, signal());
+    const extraction = (await store.claimExtraction(signal()))!;
+    await store.finishExtraction(extraction.lease, [{frame: extraction.frames[0]!, facts: [fact, {...fact, key: "discarded", content: "临时事实"}], unavailable: false}], signal());
+    const job = (await store.claim(signal()))!;
+    const source = job.baseline.sources.find(source => source.key === "past")!;
+    await store.publish(job.lease, [{key: "past", name: "past", description: "past", type: "feedback", content: fact.content, sources: [source.id]}], "summary", signal());
+    expect(store.snapshot().sources.map(source => source.id)).toEqual([source.id]);
+    expect(store.snapshot().retiredSources).toHaveLength(1);
+    expect(store.snapshot().summary).toBe("");
+    await store.forget("past", signal());
+    const state = store.snapshot();
+    // Simulate this old input falling outside ordinary receipt retention; revocation remains.
+    state.frames = []; state.completedFrames = []; state.retiredSources = [];
+    await writeFile(getMemoryPublicationPath(store.directory), JSON.stringify(state));
+    await store.offerFrame(frame, signal());
+    const replay = (await store.claimExtraction(signal()))!;
+    await store.finishExtraction(replay.lease, [{frame: replay.frames[0]!, facts: [fact], unavailable: false}], signal());
+    expect(store.snapshot().sources).toHaveLength(0);
+    expect(store.snapshot().revoked).toHaveLength(1);
+    expect(await store.claim(signal())).toBeUndefined();
+}));

@@ -1,6 +1,6 @@
 import {Client} from "@modelcontextprotocol/sdk/client/index.js";
 import {StdioClientTransport} from "@modelcontextprotocol/sdk/client/stdio.js";
-import type {Tool as McpSdkTool} from "@modelcontextprotocol/sdk/types.js";
+import {ToolListChangedNotificationSchema, type Tool as McpSdkTool} from "@modelcontextprotocol/sdk/types.js";
 import type {LoadedMcpServerConfig, McpConnectedServer} from "./types.js";
 import {
     mergeChildProcessEnvironment,
@@ -17,7 +17,8 @@ export async function connectMcpServer(
     childEnvironment: ChildProcessEnvironment,
     signal?: AbortSignal,
     onClosed?: () => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onToolsChanged?: (server: McpConnectedServer | undefined) => void
 ): Promise<McpConnectedServer> {
     const transport = new StdioClientTransport({
         command: server.config.command,
@@ -35,13 +36,15 @@ export async function connectMcpServer(
         stderr += String(chunk).slice(0, MAX_STDERR_CHARS - stderr.length);
     });
     const client = new Client({name: "pillar", version: "0.1.0"});
-    client.onclose = () => onClosed?.();
+    let closed = false;
+    let closing: Promise<void> | undefined;
+    let connected: McpConnectedServer | undefined;
+    let refresh: Promise<void> | undefined;
+    let dirty = false;
+    client.onclose = () => { closed = true; onClosed?.(); };
     client.onerror = (error) => onError?.(error);
-    try {
-        await client.connect(transport, {
-            timeout: server.config.timeoutMs,
-            signal,
-        });
+    const listTools = async (): Promise<McpSdkTool[]> => {
+        const listSignal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(server.config.timeoutMs)]);
         const tools: McpSdkTool[] = [];
         let cursor: string | undefined;
         const cursors = new Set<string>();
@@ -53,10 +56,11 @@ export async function connectMcpServer(
             pages += 1;
             const result = await client.listTools(cursor ? {cursor} : undefined, {
                 timeout: server.config.timeoutMs,
-                signal,
+                signal: listSignal,
             });
-            tools.push(...result.tools.slice(0, MAX_DISCOVERED_TOOLS - tools.length));
-            if (tools.length >= MAX_DISCOVERED_TOOLS) break;
+            tools.push(...result.tools);
+            if (tools.length > MAX_DISCOVERED_TOOLS || (tools.length === MAX_DISCOVERED_TOOLS && result.nextCursor))
+                throw new Error("MCP Tools/List 工具数量超过安全上限");
             cursor = result.nextCursor;
             if (cursor && cursors.has(cursor)) {
                 throw new Error("MCP Tools/List 返回重复 cursor");
@@ -64,52 +68,93 @@ export async function connectMcpServer(
             if (cursor) cursors.add(cursor);
         } while (cursor);
 
-        let closed = false;
-        return {
+        return tools;
+    };
+    client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+        dirty = true;
+        if (!connected || closed || refresh) return;
+        onToolsChanged?.(undefined);
+        refresh = (async () => {
+            try {
+                // Coalesce bursts, but stop a server that never settles its catalog.
+                for (let attempt = 0; dirty; attempt++) {
+                    if (attempt >= 3) throw new Error("MCP 工具列表持续变化，请显式重连");
+                    dirty = false;
+                    const tools = await listTools();
+                    if (closed || signal?.aborted) return;
+                    if (!dirty) {
+                        connected!.tools = tools;
+                        onToolsChanged?.(connected!);
+                    }
+                }
+            } catch (error) {
+                onError?.(error instanceof Error ? error : new Error(String(error)));
+                await connected?.close();
+            } finally { refresh = undefined; }
+        })();
+        await refresh;
+    });
+    try {
+        await client.connect(transport, {timeout: server.config.timeoutMs, signal});
+        let tools: McpSdkTool[] = [];
+        for (let attempt = 0; ; attempt++) {
+            if (attempt >= 3) throw new Error("MCP 初始工具列表持续变化");
+            dirty = false;
+            tools = await listTools();
+            if (!dirty) break;
+        }
+        if (closed || signal?.aborted) throw new Error("MCP 连接已关闭");
+        connected = {
             config: server,
             client,
             tools,
             get stderr() {
                 return stderr;
             },
-            async callTool(toolName, args, signal) {
+            async callTool(toolName, args, callSignal) {
+                const requestSignal = AbortSignal.any([callSignal, ...(signal ? [signal] : [])]);
+                if (closed || requestSignal.aborted) throw new Error("MCP 连接已关闭或调用已取消");
                 return client.callTool(
                     {name: toolName, arguments: args},
                     undefined,
-                    {signal, timeout: server.config.toolTimeoutMs, maxTotalTimeout: server.config.toolTimeoutMs}
+                    {signal: requestSignal, timeout: server.config.toolTimeoutMs, maxTotalTimeout: server.config.toolTimeoutMs}
                 );
             },
             async close() {
-                if (closed) return;
+                if (closing) return closing;
                 closed = true;
-                let completed = false;
-                const closePromise = client.close().catch(() => {
-                }).then(() => {
-                    completed = true;
-                });
-                let timeout: ReturnType<typeof setTimeout> | undefined;
-                await Promise.race([
-                    closePromise,
-                    new Promise<void>((resolve) => {
-                        timeout = setTimeout(resolve, 2_000);
-                        timeout.unref?.();
-                    }),
-                ]);
-                if (timeout) clearTimeout(timeout);
-                if (!completed) {
-                    const pid = transport.pid;
-                    if (pid) {
-                        try {
-                            process.kill(pid, "SIGTERM");
-                        } catch {
-                            // 进程可能已经退出。
-                        }
-                    }
-                    await transport.close().catch(() => {
+                closing = (async () => {
+                    let completed = false;
+                    const closePromise = client.close().catch(() => {
+                    }).then(() => {
+                        completed = true;
                     });
-                }
+                    let timeout: ReturnType<typeof setTimeout> | undefined;
+                    await Promise.race([
+                        closePromise,
+                        new Promise<void>((resolve) => {
+                            timeout = setTimeout(resolve, 2_000);
+                            timeout.unref?.();
+                        }),
+                    ]);
+                    if (timeout) clearTimeout(timeout);
+                    if (!completed) {
+                        const pid = transport.pid;
+                        if (pid) {
+                            try {
+                                process.kill(pid, "SIGTERM");
+                            } catch {
+                                // 进程可能已经退出。
+                            }
+                        }
+                        await transport.close().catch(() => {
+                        });
+                    }
+                })();
+                return closing;
             },
         };
+        return connected;
     } catch (error) {
         await client.close().catch(() => {
         });

@@ -170,7 +170,7 @@ export function createTestRuntimeResources(
     createAgentDefinitionManager({
       store: createAgentDefinitionStore(storage, cwd),
       catalog: subagents,
-      availableToolNames: toolRuntime.toolNames,
+      getAvailableToolNames: () => toolRuntime.toolNames,
     });
   const agentAuthoring = overrides.agentAuthoring ?? {
     async generate(): Promise<never> {

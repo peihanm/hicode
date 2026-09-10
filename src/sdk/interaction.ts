@@ -82,29 +82,29 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
     };
 }
 
-export function raceInteractionWithAbort<T>(
-    operation: Promise<T>,
+export async function raceInteractionWithAbort<T>(
+    operation: (signal: AbortSignal) => Promise<T>,
     signal: AbortSignal
 ): Promise<T> {
-    if (signal.aborted) {
-        return Promise.reject(new Error("操作已取消"));
+    if (signal.aborted) throw new Error("操作已取消");
+    const request = new AbortController();
+    const abort = () => request.abort(signal.reason);
+    signal.addEventListener("abort", abort, {once: true});
+    let rejectAbort: (() => void) | undefined;
+    try {
+        const interrupted = new Promise<never>((_, reject) => {
+            rejectAbort = () => reject(new Error("操作已取消"));
+            request.signal.addEventListener("abort", rejectAbort, {once: true});
+        });
+        const result = await Promise.race([interrupted, Promise.resolve().then(() => {
+            if (request.signal.aborted) throw new Error("操作已取消");
+            return operation(request.signal);
+        })]);
+        if (signal.aborted) throw new Error("操作已取消");
+        return result;
+    } finally {
+        signal.removeEventListener("abort", abort);
+        if (rejectAbort) request.signal.removeEventListener("abort", rejectAbort);
+        request.abort("interaction-ended");
     }
-    return new Promise<T>((resolve, reject) => {
-        const abort = () => {
-            cleanup();
-            reject(new Error("操作已取消"));
-        };
-        const cleanup = () => signal.removeEventListener("abort", abort);
-        signal.addEventListener("abort", abort, {once: true});
-        operation.then(
-            (value) => {
-                cleanup();
-                resolve(value);
-            },
-            (error: unknown) => {
-                cleanup();
-                reject(error);
-            }
-        );
-    });
 }

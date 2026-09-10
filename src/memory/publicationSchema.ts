@@ -31,10 +31,12 @@ export const memoryFrameSchema = z.object({ id: z.string().regex(/^[a-f0-9]{64}$
     status: z.enum(["pending", "no_output", "extracted", "unavailable"]), createdAt: z.string().datetime() }).strict();
 export type MemoryFrame = z.infer<typeof memoryFrameSchema>;
 export const memoryPublicationSchema = z.object({
-    version: z.literal(2), revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
+    version: z.literal(3), revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
     summary: z.string().max(4000), topics: z.array(topicSchema).max(200),
     sources: z.array(memorySourceRecordSchema).max(1000),
     frames: z.array(memoryFrameSchema).max(1000),
+    completedFrames: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096),
+    retiredSources: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096),
     revoked: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(10000),
     lease: z.object({ id, revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
         phase: z.enum(["extract", "consolidate"]), frameIds: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4),
@@ -59,7 +61,7 @@ export const memoryPublicationSchema = z.object({
             ctx.addIssue({ code: "custom", message: "Memory lease 阶段或来源集合无效" });
         }
     }
-    if (value.lease && (value.lease.frameIds.some(id => !value.frames.some(frame => frame.id === id)) || value.lease.epoch !== value.epoch || value.lease.sourceIds.some(source => !sourceIds.has(source)))) {
+    if (value.lease && (value.lease.frameIds.some(id => !value.frames.some(frame => frame.id === id && frame.status === "pending" && frame.epoch === value.epoch)) || value.lease.epoch !== value.epoch || value.lease.sourceIds.some(id => !value.sources.some(source => source.id === id && !source.consumed)))) {
         ctx.addIssue({ code: "custom", message: "Memory lease 与当前来源/epoch 不一致" });
     }
 });

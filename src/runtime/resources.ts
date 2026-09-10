@@ -259,12 +259,11 @@ export function createRootRuntimeResourcesFactory(
                 }),
                 requestTrust: options.requestHookTrust,
             });
-            const mcpTools = mcpManager?.getTools() ?? [];
-            const catalogToolNames = createToolCatalog({
-                additionalTools: mcpTools,
+            const catalogToolNames = () => createToolCatalog({
+                additionalTools: mcpManager?.getTools() ?? [],
             }).tools.map((tool) => tool.name);
             const validateLoadedAgents = (loaded: LoadedCustomAgents) =>
-                validateCustomAgentTools(loaded, catalogToolNames);
+                validateCustomAgentTools(loaded, catalogToolNames());
             const subagents = createSubagentCatalog({
                 initial: validateLoadedAgents(loadedCustomAgents),
                 load: async () => validateLoadedAgents(
@@ -279,7 +278,7 @@ export function createRootRuntimeResourcesFactory(
             const agentDefinitions = createAgentDefinitionManager({
                 store: createAgentDefinitionStore(storage, cwd),
                 catalog: subagents,
-                availableToolNames: catalogToolNames,
+                getAvailableToolNames: catalogToolNames,
             });
             const agentAuthoring = createAgentAuthoringRuntime({
                 storage,
@@ -287,7 +286,7 @@ export function createRootRuntimeResourcesFactory(
                 getModelTarget: auxiliaryModelTarget,
                 getModelSource: (source) => settings.sources[source],
                 instructions,
-                availableToolNames: catalogToolNames.filter(
+                availableToolNames: catalogToolNames().filter(
                     (name) => !name.startsWith("mcp__")
                 ),
                 getExistingAgentNames: () => subagents
@@ -295,8 +294,8 @@ export function createRootRuntimeResourcesFactory(
                     .map((definition) => definition.agentType),
             });
             const toolRuntime = dependencies.createToolRuntime({
-                additionalTools: [
-                    ...mcpTools,
+                getAdditionalTools: () => [
+                    ...(mcpManager?.getTools() ?? []),
                     ...(options.additionalTools ?? []),
                 ],
                 toolOverrides: [

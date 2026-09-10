@@ -72,6 +72,16 @@ export class Pillar {
         return pillar;
     }
 
+    getMcpServers() {
+        return this.resources.mcpManager?.getSnapshots() ?? [];
+    }
+
+    async reconnectMcpServer(name: string): Promise<void> {
+        if (this.closed) throw new Error("Pillar 已关闭");
+        if (!this.resources.mcpManager) throw new Error("没有配置 MCP Server");
+        await this.resources.mcpManager.reconnect(name);
+    }
+
     async startThread(
         options: StartThreadOptions = {}
     ): Promise<Thread> {
@@ -281,7 +291,7 @@ async function requestRootApproval(
     try {
         response = normalizeInteractionResponse(
             await raceInteractionWithAbort(
-                callback(request, {cwd: options.configuration.cwd}),
+                requestSignal => callback(request, {cwd: options.configuration.cwd, signal: requestSignal}),
                 signal
             )
         );

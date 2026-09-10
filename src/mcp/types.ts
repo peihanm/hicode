@@ -115,5 +115,7 @@ export interface McpManagerLike {
 
     subscribe(listener: () => void): () => void;
 
+    reconnect(name: string): Promise<void>;
+
     closeAll(): Promise<void>;
 }
