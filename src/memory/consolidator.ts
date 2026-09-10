@@ -1,3 +1,4 @@
+import type {ContextSettings} from "../context/config.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
@@ -35,6 +36,7 @@ export interface MemoryConsolidator {
     }>;
 }
 interface ConsolidatorOptions {
+    contextSettings: ContextSettings;
     storage: PillarStorageLayout;
     cwd: string;
     environment: ChildProcessEnvironment;
@@ -98,7 +100,7 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
                 // Private prompt logs and tool artifacts share the draft lifetime, including forgetting/cleanup.
                 const draftStorage = createPillarStorageLayout({ pillarHome: paths.runtime });
                 const ctx = createToolContext({ signal: input.signal, resources: {
-                        storage: draftStorage, cwd: directory, workspaceBoundary: directory, shellRunner: options.shellRunner,
+                        contextSettings: options.contextSettings, storage: draftStorage, cwd: directory, workspaceBoundary: directory, shellRunner: options.shellRunner,
                         fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.provider,
                         fastModel: options.target.model, fastProvider: options.target.provider, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,
                     }, session: { sessionId: input.sessionId, compactState: createCompactState(), contextUsage: new ContextUsageTracker(), fileState: createFileStateTracker(),

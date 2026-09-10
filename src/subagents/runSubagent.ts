@@ -245,6 +245,7 @@ export function createSubagentFactories(
                             provider: childProvider,
                             fastModel: dependencies.fastModel,
                             fastProvider: parentContext.fastProvider,
+                            contextSettings: parentContext.contextSettings,
                         },
                         session: {
                             fileState: childFileState,

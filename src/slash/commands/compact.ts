@@ -13,6 +13,7 @@ export const compactCommand: SlashCommand = {
         {history, ctx, onEvent, compactHistory, getToolSchemas}
     ) {
         const tools = getToolSchemas();
+        const contextWindow = ctx.contextUsage.contextWindow({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
         const invokeMessages = buildInvokeMessages(
             history,
             getUserContextBlocks(ctx.skills, ctx.instructions)
@@ -22,7 +23,7 @@ export const compactCommand: SlashCommand = {
         await onEvent({
             type: "compact_start",
             tokenCount: preTokenCount,
-            threshold: getAutoCompactThreshold(ctx.model),
+            threshold: getAutoCompactThreshold(ctx.model, contextWindow, ctx.contextSettings),
             trigger: "manual",
         });
 
@@ -31,6 +32,7 @@ export const compactCommand: SlashCommand = {
             ctx,
             tools,
             preTokenCount,
+            contextWindow,
             force: true,
             trigger: "manual",
             customInstructions: args.trim() || undefined,
@@ -50,7 +52,7 @@ export const compactCommand: SlashCommand = {
             getUserContextBlocks(ctx.skills, ctx.instructions)
         );
         const postTokenCount = tokenCountWithEstimation(postInvokeMessages, tools);
-        const postState = getTokenWarningState(postTokenCount, ctx.model);
+        const postState = getTokenWarningState(postTokenCount, ctx.model, contextWindow, ctx.contextSettings);
 
         await onEvent({
             type: "compact_end",

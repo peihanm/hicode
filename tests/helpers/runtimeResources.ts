@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
@@ -52,6 +53,7 @@ export function createTestSettings(
 ): ResolvedPillarSettings {
   const defaultSources = resolvePillarSettings([]).values.sources;
   return {
+    context: DEFAULT_CONTEXT_SETTINGS,
     sources: {
       ...defaultSources,
       glm: {
@@ -147,6 +149,7 @@ export function createTestRuntimeResources(
       shellRunner,
       environment: testChildEnvironment,
       settings: settings.memory,
+      contextSettings: settings.context,
     });
   const agentRuntime =
     overrides.agentRuntime ??

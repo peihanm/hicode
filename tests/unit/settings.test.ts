@@ -63,7 +63,7 @@ describe("Unified Settings", () => {
                     primary: {source: "qwen", model: "qwen3.6-plus"},
                     fast: {
                         source: "deepseek",
-                        model: "deepseek-v4-flash",
+                        model: "deepseek-flash",
                     },
                 },
             }),
@@ -77,8 +77,8 @@ describe("Unified Settings", () => {
         expect(resolved.values.models.fast).toEqual({
             provider: "deepseek",
             source: "deepseek",
-            model: "deepseek-v4-flash",
-            label: "DeepSeek V4 Flash",
+            model: "deepseek-flash",
+            label: "DeepSeek Flash",
         });
     });
 
@@ -110,14 +110,14 @@ describe("Unified Settings", () => {
                     permissions: {defaultMode: "ask"},
                 }),
             ],
-            {model: "deepseek-v4-pro", source: "deepseek"}
+            {model: "deepseek-pro", source: "deepseek"}
         );
 
         expect(resolved.values.models.primary).toEqual({
             source: "deepseek",
             provider: "deepseek",
-            model: "deepseek-v4-pro",
-            label: "DeepSeek V4 Pro",
+            model: "deepseek-pro",
+            label: "DeepSeek Pro",
         });
         expect(resolved.values.models.fast).toEqual({
             source: "qwen",
@@ -149,7 +149,7 @@ describe("Unified Settings", () => {
             document("project", {
                 models: {
                     primary: {source: "qwen", model: "qwen3.6-plus"},
-                    fast: {source: "deepseek", model: "deepseek-v4-flash"},
+                    fast: {source: "deepseek", model: "deepseek-flash"},
                 },
             }),
         ]);
@@ -163,8 +163,8 @@ describe("Unified Settings", () => {
         expect(resolved.values.models.fast).toEqual({
             provider: "deepseek",
             source: "deepseek",
-            model: "deepseek-v4-flash",
-            label: "DeepSeek V4 Flash",
+            model: "deepseek-flash",
+            label: "DeepSeek Flash",
         });
     });
 
@@ -459,5 +459,32 @@ describe("Unified Settings", () => {
                 )
             ).toBe(true);
         });
+    });
+});
+
+test("context 默认 50 万窗口、45 万压缩，可由各层分别覆盖", () => {
+    expect(resolvePillarSettings([]).values.context).toEqual({windowTokens: 500_000, autoCompactTokenLimit: 450_000});
+    const resolved = resolvePillarSettings([
+        document("user", {context: {windowTokens: 1_000_000, autoCompactTokenLimit: 900_000}}),
+        document("project", {context: {autoCompactTokenLimit: 800_000}}),
+        document("local", {context: {autoCompactTokenLimit: 750_000}}),
+        {source: "host", id: "host", value: {context: {autoCompactTokenLimit: 700_000}}},
+    ]);
+    expect(resolved.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 700_000});
+    expect(() => resolvePillarSettings([document("user", {context: {windowTokens: 100_000}})])).toThrow("输入预算");
+});
+
+test("非法 context 不静默回退到默认，Host 同样校验", async () => {
+    await withTempProject(async (cwd, storage) => {
+        await mkdir(join(cwd, ".pillar"), {recursive: true});
+        for (const context of [{windowTokens: -1}, {windowTokens: 1.5}, {autoCompactTokenLimit: 0}, {windowTokens: "500000"}, {typo: 10}]) {
+            await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({context}));
+            expect(() => loadPillarSettings({storage, cwd, sources: ["project"]})).toThrow("上下文配置无效");
+        }
+        await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({context: {windowTokens: 1_000_000}}));
+        const loaded = loadPillarSettings({storage, cwd, sources: ["project"], hostSettings: {context: {autoCompactTokenLimit: 800_000}}});
+        expect(loaded.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 800_000});
+        expect(loaded.issues).toEqual([]);
+        expect(() => loadPillarSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("上下文配置无效");
     });
 });

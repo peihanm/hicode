@@ -227,7 +227,9 @@ describe("SDK Host config", () => {
     test("Host Settings 最高优先级合并并保留 host 来源", async () => {
         await withTempProject(async (cwd) => {
             const pillarHome = join(cwd, "host-data");
+            const context = {windowTokens: 1_000_000, autoCompactTokenLimit: 900_000};
             const settingsOverrides: PillarSettingsFile = {
+                context,
                 sources: {
                     qwen: {
                         models: [{id: "host-model", label: "Host Model"}],
@@ -246,6 +248,8 @@ describe("SDK Host config", () => {
             });
 
             settingsOverrides.permissions!.defaultMode = "full-access";
+            context.windowTokens = 600_000;
+            expect(loaded.configuration.settings.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 900_000});
             expect(loaded.configuration.settings.models.primary.model).toBe(
                 "host-model"
             );

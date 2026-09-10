@@ -235,6 +235,7 @@ export function createRootRuntimeResourcesFactory(
                 shellRunner,
                 environment: childEnvironment,
                 settings: settings.memory,
+                contextSettings: settings.context,
             });
             memory = createdMemory;
             mcpManager = dependencies.createMcpManager({

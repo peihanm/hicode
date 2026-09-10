@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {expect, test} from "bun:test";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {prepareAgentInvoke} from "../../src/agent/invokePreparation.js";
@@ -85,7 +86,7 @@ test("Summary 本身也不会发送已知超限请求", async () => {
     await withTempProject(async (cwd, storage) => {
         let requests = 0;
         const summarize = createCompactSummaryGenerator({async callLLM() { requests++; throw new Error("unexpected request"); }});
-        await expect(summarize({system: {role: "system", content: "system"},
+        await expect(summarize({contextSettings: DEFAULT_CONTEXT_SETTINGS, system: {role: "system", content: "system"},
             conversation: [{role: "user", origin: "user" as const, content: "x".repeat(300_000)}], signal: new AbortController().signal,
             storage, cwd, model: "glm-test"})).rejects.toThrow("估算已超过输入预算");
         expect(requests).toBe(0);

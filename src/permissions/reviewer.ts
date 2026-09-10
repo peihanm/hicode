@@ -77,7 +77,8 @@ export function createApprovalReviewer(runAgent: AgentRunner): ApprovalReviewer 
         const runtime = createToolRuntime({allowedToolNames: REVIEW_TOOLS, toolOverrides: overrides});
         const target = parent.reviewerModel ?? {model: parent.model, provider: parent.provider};
         const ctx = createToolContext({signal, turnId: request.id,
-            resources: {storage: parent.storage, cwd: parent.cwd, model: target.model, provider: target.provider,
+            resources: {
+                contextSettings: parent.contextSettings, storage: parent.storage, cwd: parent.cwd, model: target.model, provider: target.provider,
                 fastModel: target.model, fastProvider: target.provider, skills: [], readOnlyTools: true,
                 fileCommits: new FileCommitCoordinator(), shellRunner: parent.shellRunner},
             session: {sessionId: `${parent.sessionId}:review:${request.id}`, toolResultStore: parent.toolResultStore,

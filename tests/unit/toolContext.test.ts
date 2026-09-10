@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
 import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
@@ -25,7 +26,8 @@ describe("ToolContext builder", () => {
       let promptPolicy: PermissionPromptPolicy = "onRequest";
       const context = createToolContext({
         signal: new AbortController().signal,
-        resources: {fileCommits: new FileCommitCoordinator(),
+        resources: {
+          contextSettings: DEFAULT_CONTEXT_SETTINGS,fileCommits: new FileCommitCoordinator(),
           storage,
           cwd,
           model: "glm-test",
@@ -96,6 +98,7 @@ describe("ToolContext builder", () => {
         pillarHome: `${cwd}/results`,
       });
       const resources = {
+        contextSettings: DEFAULT_CONTEXT_SETTINGS,
         fileCommits: new FileCommitCoordinator(),
         storage,
         cwd,

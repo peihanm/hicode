@@ -58,7 +58,7 @@ export interface SubagentRuntimeConfig {
     toolRuntimeOptions: CreateToolRuntimeOptions;
     contextResources: Omit<
         ToolContextResources,
-        "model" | "provider" | "fastModel" | "fastProvider" | "fileCommits"
+        "model" | "provider" | "fastModel" | "fastProvider" | "fileCommits" | "contextSettings"
     >;
     permissionRules: PermissionRules;
     permissionMode: PermissionMode;

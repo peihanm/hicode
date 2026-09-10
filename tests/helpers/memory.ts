@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import type {MemorySourceExtractor} from "../../src/memory/sourceExtractor.js";
 import {join} from "node:path";
 import {createMemoryRuntimeFactory, type MemoryRuntimeLike} from "../../src/memory/runtime.js";
@@ -11,7 +12,7 @@ export const memoryOwner = () => ({sessionId: "test-session", turnId: "test-turn
 export function createTestMemoryRuntime(cwd: string, options: {enabled?: boolean; autoExtract?: boolean; consolidator?: MemoryConsolidator;extractor?:MemorySourceExtractor} = {}): MemoryRuntimeLike {
  return createMemoryRuntimeFactory({createExtractor:()=>options.extractor??{async extract(){return [];}},createConsolidator: () => options.consolidator ?? {async consolidate({lease, baseline}) {
   return {summary: "已整理偏好", topics: [...baseline.topics, ...baseline.sources.filter(s => lease.sourceIds.includes(s.id)).map(s => ({key:s.key,name:s.key,description:"测试整理",type:s.type,content:s.content,sources:[s.id]}))]};
- }}})({storage:createTestStorage(cwd),cwd,environment:testChildEnvironment,shellRunner:createShellRunner(createDisabledSandboxRuntime(),testChildEnvironment),settings:{enabled:options.enabled??true,autoExtract:options.autoExtract??false},getModelTarget:()=>({source:"glm",provider:"glm",model:"glm-test",label:"GLM Test"}),getModelSource:()=>({id:"glm",label:"GLM",apiKeyEnv:"GLM_API_KEY",models:[{id:"glm-test",label:"GLM"}]})});
+ }}})({storage:createTestStorage(cwd),cwd,environment:testChildEnvironment,shellRunner:createShellRunner(createDisabledSandboxRuntime(),testChildEnvironment),contextSettings: DEFAULT_CONTEXT_SETTINGS, settings:{enabled:options.enabled??true,autoExtract:options.autoExtract??false},getModelTarget:()=>({source:"glm",provider:"glm",model:"glm-test",label:"GLM Test"}),getModelSource:()=>({id:"glm",label:"GLM",apiKeyEnv:"GLM_API_KEY",models:[{id:"glm-test",label:"GLM"}]})});
 }
 export async function remember(memory: MemoryRuntimeLike, key: string, content: string) {
  const path=join(memory.directory,"inbox",`${key}.md`);

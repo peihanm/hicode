@@ -25,6 +25,7 @@ import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js
 import type {NetworkAccessSession} from "../permissions/networkAccess.js";
 import type {ApprovalBudget, ApprovalEpoch, ApprovalEvent, ApprovalReviewer} from "../permissions/approval.js";
 import type {Message} from "../llm/types.js";
+import type {ContextSettings} from "../context/config.js";
 import type {ModelTargetSettings} from "../settings/types.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";
@@ -121,6 +122,7 @@ export interface ToolContext {
 
     // Auto-Compact 会话状态（失败熔断 / 次数统计）
     compactState: CompactState;
+    readonly contextSettings: ContextSettings;
     contextUsage: ContextUsageTracker;
 
     // 当前 Session 的大工具结果存储。由 UI / Headless / tests 注入。

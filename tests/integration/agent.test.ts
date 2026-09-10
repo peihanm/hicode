@@ -222,7 +222,7 @@ describe("agent loop", () => {
         status: "actual",
         warning: false,
       });
-      expect(update?.percentUsed).toBeCloseTo(74 / 1_030_000, 8);
+      expect(update?.percentUsed).toBeCloseTo(74 / 480_000, 8);
     });
   });
 

@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {contextSettingsFileSchema} from "../context/config.js";
 import type {PillarSettingsFile} from "./types.js";
 import {hooksSettingsFileSchema} from "../hooks/schema.js";
 import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
@@ -49,6 +50,7 @@ const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value =
 
 export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
     .object({
+        context: contextSettingsFileSchema.optional(),
         sources: z
             .object(Object.fromEntries(
                 LLM_PROVIDER_NAMES.map((name) => [name, modelSourceSchema.optional()])
@@ -119,6 +121,7 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
 /** Host values are an API boundary, so every object is strict. */
 export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
     .object({
+        context: contextSettingsFileSchema.optional(),
         sources: z
             .object(Object.fromEntries(
                 LLM_PROVIDER_NAMES.map((name) => [name, strictModelSourceSchema.optional()])

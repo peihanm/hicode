@@ -61,7 +61,8 @@ export async function prepareAgentInvoke({
     const preState = getTokenWarningState(
         estimatedTokens,
         ctx.model,
-        contextWindow
+        contextWindow,
+        ctx.contextSettings
     );
 
     if (
@@ -70,13 +71,14 @@ export async function prepareAgentInvoke({
             estimatedTokens,
             ctx.model,
             ctx.compactState,
-            contextWindow
+            contextWindow,
+            ctx.contextSettings
         ))
     ) {
         await onEvent({
             type: "compact_start",
             tokenCount: estimatedTokens,
-            threshold: getAutoCompactThreshold(ctx.model, contextWindow),
+            threshold: getAutoCompactThreshold(ctx.model, contextWindow, ctx.contextSettings),
             trigger: "auto",
         });
         const compactResult = await compactHistory({
@@ -115,8 +117,8 @@ export async function prepareAgentInvoke({
         if (forceCompact && !compactResult.compacted) throw new Error(`超长上下文恢复失败：${compactResult.message ?? "未能压缩"}；已停止重发请求，原历史保留`);
     }
 
-    if (estimatedTokens > getModelInputBudget(ctx.model, contextWindow)) {
-        throw new Error(`当前请求估算 ${estimatedTokens} tokens，超过可用输入预算 ${getModelInputBudget(ctx.model, contextWindow)}；已停止调用模型。请缩短最新输入、减少固定指令/工具，或用新 Session 继续；原历史已保留。`);
+    if (estimatedTokens > getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)) {
+        throw new Error(`当前请求估算 ${estimatedTokens} tokens，超过可用输入预算 ${getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)}；已停止调用模型。请缩短最新输入、减少固定指令/工具，或用新 Session 继续；原历史已保留。`);
     }
     return {invokeMessages, tools, estimatedTokens};
 }

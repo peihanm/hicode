@@ -1,5 +1,6 @@
 import {contentText} from "../images/content.js";
 import {z} from "zod";
+import {zodToJsonSchema} from "zod-to-json-schema";
 import type {Message} from "../llm/types.js";
 import type {SessionArchiveRecord} from "../session/archiveSchema.js";
 
@@ -19,6 +20,17 @@ const items = z.array(itemSchema).max(10);
 const schema = z.object({version: z.literal(1), objective: items, constraints: items,
     decisions: items, files: items, verification: items, next: items}).strict();
 
+export function handoffJsonSchema(): string {
+    return JSON.stringify(zodToJsonSchema(schema, {target: "jsonSchema7", $refStrategy: "none"}));
+}
+
+export class HandoffFormatError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "HandoffFormatError";
+    }
+}
+
 const sections = [
     ["objective", "目标与当前阶段"], ["constraints", "用户约束与纠正"],
     ["decisions", "仍适用的决定与理由"], ["files", "当前文件与读取定位"],
@@ -37,11 +49,20 @@ export function labelHandoffSources(messages: readonly Message[], sources: Hando
 }
 
 export function renderHandoff(raw: string, sources: HandoffSources): string {
-    if (Buffer.byteLength(raw) > 32 * 1024) throw new Error("工作交接超过 32 KiB 上限");
+    if (Buffer.byteLength(raw) > 32 * 1024) throw new HandoffFormatError("工作交接超过 32 KiB 上限");
     let parsed: unknown;
-    try {parsed = JSON.parse(raw);} catch {throw new Error("工作交接必须是完整 JSON 对象");}
+    try {parsed = JSON.parse(raw);} catch {throw new HandoffFormatError("工作交接必须是完整 JSON 对象");}
     const result = schema.safeParse(parsed);
-    if (!result.success) throw new Error(`工作交接格式无效: ${result.error.issues.map(issue => issue.path.join(".") + ": " + issue.message).join("; ")}`);
+    if (!result.success) {
+        const issues = result.error.issues;
+        // Only schema paths/codes enter diagnostics; never echo untrusted property names or model text.
+        const known = new Set(["objective", "constraints", "decisions", "files", "verification", "next", "version", "text", "sources", "basis"]);
+        const details = issues.slice(0, 5).map(issue => {
+            const path = issue.path.map(part => typeof part === "number" || known.has(part) ? part : "?").join(".");
+            return `${path}: ${issue.code}`;
+        }).join("; ");
+        throw new HandoffFormatError(`工作交接格式无效（${issues.length} 项问题）: ${details}。每项必须包含 text、sources、basis；每类最多 10 项`);
+    }
     const records = new Map([...sources.previous, sources.current].map(record => [record.id, record]));
     let count = 0;
     const body = sections.flatMap(([key, title]) => {

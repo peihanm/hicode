@@ -268,3 +268,21 @@ describe("compact integration", () => {
     });
   });
 });
+
+import {createCompactHistoryRunner} from "../../src/context/compact.js";
+import {createCompactSummaryGenerator} from "../../src/context/compactSummary.js";
+
+test("真实压缩按自定义低阈值保留余量，避免刚压缩完再次触发", async () => {
+  await withTempProject(async cwd => {
+    const ctx = createTestContext(cwd, {model: "deepseek-pro", provider: "deepseek",
+      contextSettings: {windowTokens: 500_000, autoCompactTokenLimit: 12_000}});
+    const history = historyWithToolPair();
+    history.splice(2, 0, {role: "assistant", content: "x".repeat(40_000)});
+    const compact = createCompactHistoryRunner({generateSummary: createCompactSummaryGenerator({callLLM: createFakeLLM([assistantText("继续最近任务")]).callLLM})});
+    const result = await compact({history, ctx, tools: [], preTokenCount: 30_000});
+    expect(result.compacted).toBe(true);
+    expect(result.threshold).toBe(12_000);
+    expect(result.postTokenCount!).toBeLessThan(12_000);
+    expect(history.some(m => m.content === "最近任务")).toBe(true);
+  });
+});

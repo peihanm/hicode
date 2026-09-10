@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {access, writeFile} from "node:fs/promises";
@@ -31,7 +32,7 @@ test("Memory 整理复用真实标准工具和隔离 Worktree，发布前不修�
             assistantToolCall("write_file", {path: "MEMORY.md", content: "用户偏好简洁的文件结构。"}, "summary-write"),
             assistantText("整理完成"),
         ]);
-        const worker = createMemoryConsolidatorFactory(fake.callLLM)({storage, cwd, environment: testChildEnvironment,
+        const worker = createMemoryConsolidatorFactory(fake.callLLM)({storage, cwd, contextSettings: DEFAULT_CONTEXT_SETTINGS, environment: testChildEnvironment,
             shellRunner: createShellRunner(createDisabledSandboxRuntime(), testChildEnvironment),
             target: {source: "glm", provider: "glm", model: "glm-test", label: "test"},
             source: {id: "glm", label: "test", apiKeyEnv: "NO_REAL_KEY"}});

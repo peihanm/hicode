@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../src/context/config.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import { createCompactState } from "../../src/context/index.js";
@@ -36,6 +37,7 @@ import type {DirectoryAccessRuntimeLike} from "../../src/permissions/index.js";
 export function createTestContext(
   cwd: string,
   options: {
+    contextSettings?: ContextSettings;
     permissionMode?: PermissionMode;
     allowFullAccess?: boolean;
     readOnlyTools?: boolean;
@@ -77,6 +79,7 @@ export function createTestContext(
   const context = createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
+      contextSettings: options.contextSettings ?? DEFAULT_CONTEXT_SETTINGS,
       allowFullAccess: options.allowFullAccess ?? true,
       readOnlyTools: options.readOnlyTools ?? false,
       fileCommits: options.fileCommits ?? new FileCommitCoordinator(),

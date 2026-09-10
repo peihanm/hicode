@@ -1,3 +1,4 @@
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import { createCompactHistoryRunner } from "../../src/context/compact.js";
 import { createCompactSummaryGenerator } from "../../src/context/compactSummary.js";
 import type { LLMCaller } from "../../src/llm/types.js";
@@ -21,8 +22,9 @@ export function compactHistoryForTest(
 }
 
 export function generateCompactSummaryForTest(
-  input: Omit<CompactSummaryInput, "storage"> & {
+  input: Omit<CompactSummaryInput, "storage" | "contextSettings"> & {
     storage?: CompactSummaryInput["storage"];
+    contextSettings?: CompactSummaryInput["contextSettings"];
     callLLM?: LLMCaller;
   }
 ) {
@@ -31,6 +33,7 @@ export function generateCompactSummaryForTest(
     callLLM: callLLMOverride ?? unexpectedCompactLLM,
   })({
     ...options,
+    contextSettings: options.contextSettings ?? DEFAULT_CONTEXT_SETTINGS,
     storage: options.storage ?? createTestStorage(options.cwd),
   });
 }

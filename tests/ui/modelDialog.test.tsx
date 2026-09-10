@@ -20,8 +20,8 @@ describe("Model dialog", () => {
             const deepseek = {
                 source: "deepseek" as const,
                 provider: "deepseek" as const,
-                model: "deepseek-v4-pro",
-                label: "DeepSeek V4 Pro",
+                model: "deepseek-pro",
+                label: "DeepSeek Pro",
             };
             const primaryModel = createPrimaryModelRuntime(
                 qwen,
@@ -52,7 +52,7 @@ describe("Model dialog", () => {
             expect(dialog).toContain("ALIBABA QWEN");
             expect(dialog).toContain("DEEPSEEK");
             expect(dialog).toContain("Qwen Primary");
-            expect(dialog).toContain("DeepSeek V4 Pro");
+            expect(dialog).toContain("DeepSeek Pro");
             expect(dialog).not.toContain("Fast model");
 
             instance.stdin.write("\u001b[B");
@@ -62,8 +62,8 @@ describe("Model dialog", () => {
 
             expect(primaryModel.target).toEqual(deepseek);
             expect(resources.fastModel).toBe(fastBefore);
-            expect(instance.lastFrame()).toContain("DeepSeek V4 Pro");
-            expect(instance.lastFrame()).toContain("已切换主模型：DeepSeek V4 Pro。");
+            expect(instance.lastFrame()).toContain("DeepSeek Pro");
+            expect(instance.lastFrame()).toContain("已切换主模型：DeepSeek Pro。");
             expect(instance.lastFrame()).not.toContain("Fast model");
 
             instance.stdin.write("验证真实上下文");
@@ -71,8 +71,9 @@ describe("Model dialog", () => {
             instance.stdin.write("\r");
             await new Promise((resolve) => setTimeout(resolve, 30));
             expect(nextContext?.provider).toBe("deepseek");
-            expect(nextContext?.model).toBe("deepseek-v4-pro");
+            expect(nextContext?.model).toBe("deepseek-pro");
             expect(nextContext?.fastModel).toBe(fastBefore);
+            expect(nextContext?.contextSettings).toEqual(resources.settings.context);
         });
     });
 });

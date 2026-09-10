@@ -71,7 +71,7 @@ interface ProbeResult {
 
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_GLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-pro";
 const DEFAULT_GLM_MODEL = "glm-5.2";
 const DEFAULT_TIMEOUT_MS = 120_000;
 

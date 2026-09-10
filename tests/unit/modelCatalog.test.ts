@@ -62,8 +62,8 @@ describe("primary model catalog", () => {
         const alternative = {
             source: "deepseek" as const,
             provider: "deepseek" as const,
-            model: "deepseek-v4-pro",
-            label: "DeepSeek V4 Pro",
+            model: "deepseek-pro",
+            label: "DeepSeek Pro",
         };
         const runtime = createPrimaryModelRuntime(
             initial,

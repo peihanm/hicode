@@ -6,6 +6,7 @@ import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
 import type {LoadedSettingsDocument, PillarSettingsFile, SettingsFileSource, SettingsIssue,} from "./types.js";
 
 const KNOWN_TOP_LEVEL_KEYS = new Set([
+    "context",
     "sources",
     "models",
     "permissions",
@@ -269,7 +270,7 @@ function loadSettingsDocument(
 
     const parsed = pillarSettingsFileSchema.safeParse(raw);
     if (!parsed.success) {
-        const first = parsed.error.issues.find(issue => issue.path[0] === "permissions") ?? parsed.error.issues[0];
+        const first = parsed.error.issues.find(issue => issue.path[0] === "permissions" || issue.path[0] === "context") ?? parsed.error.issues[0];
         return {
             issues: [{
                 source: location.source,

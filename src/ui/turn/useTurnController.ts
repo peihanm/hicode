@@ -130,7 +130,8 @@ export function useTurnController({
                         resources.skills,
                         resources.instructions,
                         toolRuntime.getToolSchemas(),
-                        model
+                        model,
+                        resources.settings.context
                     )
                     : undefined,
             });
@@ -502,7 +503,8 @@ export function useTurnController({
                     resources.skills,
                     resources.instructions,
                     toolRuntime.getToolSchemas(),
-                    target.model
+                    target.model,
+                    resources.settings.context
                 ));
                 eventStore.appendNotice(
                     `已切换主模型：${formatModelTarget(target)}。`

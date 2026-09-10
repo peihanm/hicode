@@ -1,3 +1,4 @@
+import type {ContextSettings} from "./config.js";
 import {formatHookContext} from "../hooks/index.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {ToolContext} from "../tools/types.js";
@@ -47,6 +48,7 @@ type CompactSummaryGenerator = (input: {
     customInstructions?: string;
     contextWindow?: number;
     sources?: HandoffSources;
+    contextSettings: ContextSettings;
 }) => Promise<string>;
 
 interface CompactResult {
@@ -61,10 +63,11 @@ export function shouldAutoCompact(
     tokenCount: number,
     model: string,
     state: CompactState,
-    contextWindow?: number
+    contextWindow?: number,
+    contextSettings?: ContextSettings
 ): boolean {
     if (state.consecutiveFailures >= MAX_CONSECUTIVE_COMPACT_FAILURES) return false;
-    return tokenCount >= getAutoCompactThreshold(model, contextWindow);
+    return tokenCount >= getAutoCompactThreshold(model, contextWindow, contextSettings);
 }
 
 export function createCompactHistoryRunner(
@@ -87,15 +90,16 @@ async function compactHistoryCore({
     generateSummary: CompactSummaryGenerator
 ): Promise<CompactResult> {
     throwIfTurnAborted(ctx.signal);
-    const threshold = getAutoCompactThreshold(ctx.model, contextWindow);
-    const target = getCompactTarget(ctx.model, contextWindow);
+    const threshold = getAutoCompactThreshold(ctx.model, contextWindow, ctx.contextSettings);
+    const target = getCompactTarget(ctx.model, contextWindow, ctx.contextSettings);
     const state = ctx.compactState;
 
     if (!force && !shouldAutoCompact(
         preTokenCount,
         ctx.model,
         state,
-        contextWindow
+        contextWindow,
+        ctx.contextSettings
     )) {
         return {compacted: false, preTokenCount, threshold};
     }
@@ -144,6 +148,7 @@ async function compactHistoryCore({
             storage: ctx.storage,
             cwd: ctx.cwd,
             model: ctx.model,
+            contextSettings: ctx.contextSettings,
             customInstructions: [customInstructions, ...formatHookContext("PreCompact", preHook?.additionalContexts ?? [])]
                 .filter(Boolean).join("\n") || undefined,
             contextWindow,

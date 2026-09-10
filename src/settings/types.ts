@@ -1,3 +1,4 @@
+import type {ContextSettings} from "../context/config.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PermissionMode, PermissionRules,} from "../permissions/types.js";
 import type {HooksSettingsFile, ResolvedHookSettings,} from "../hooks/types.js";
@@ -72,6 +73,7 @@ interface ModelSourceSettingsFile {
 }
 
 export interface PillarSettingsFile {
+    context?: Partial<ContextSettings>;
     sources?: Partial<Record<LLMProviderName, ModelSourceSettingsFile>>;
     models?: {
         reviewer?: ModelTargetSettingsFile;
@@ -108,6 +110,7 @@ export type SettingsIssue = SettingsIssueDetails & (
 );
 
 export interface ResolvedPillarSettings {
+    context: ContextSettings;
     sources: Record<LLMProviderName, ModelSourceSettings>;
     models: {
         reviewer?: ModelTargetSettings;

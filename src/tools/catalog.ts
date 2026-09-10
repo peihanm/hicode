@@ -68,7 +68,7 @@ export function schemaForTool(tool: Tool): OpenAITool {
             description: tool.getDescription?.() ?? tool.description,
             parameters:
                 tool.inputJsonSchema ??
-                (zodToJsonSchema(tool.parameters, {target: "openApi3"}) as Record<
+                (zodToJsonSchema(tool.parameters, {target: "jsonSchema7"}) as Record<
                     string,
                     unknown
                 >),

@@ -306,7 +306,8 @@ async function runAgentCore(
             const postState = getTokenWarningState(
                 tokenCount,
                 ctx.model,
-                providerContextWindow
+                providerContextWindow,
+                ctx.contextSettings
             );
             await onEvent({
                 type: "token_update",

@@ -134,12 +134,12 @@ describe("DeepSeek provider", () => {
                     },
                 }],
                 cwd,
-                model: "deepseek-v4-pro",
+                model: "deepseek-pro",
                 kind: "main",
             });
 
             expect(requests[0]).toMatchObject({
-                model: "deepseek-v4-pro",
+                model: "deepseek-pro",
                 stream: true,
                 thinking: {type: "enabled"},
                 stream_options: {include_usage: true},
@@ -173,7 +173,7 @@ describe("DeepSeek provider", () => {
                 ],
                 tools: [],
                 cwd,
-                model: "deepseek-v4-pro",
+                model: "deepseek-pro",
                 kind: "main",
             });
 
@@ -200,8 +200,8 @@ describe("DeepSeek provider", () => {
     });
 
     test("只接受 DeepSeek 模型并使用独立 Key", async () => {
-        expect(deepseekProvider.supports("deepseek-v4-pro")).toBe(true);
-        expect(deepseekProvider.supports("deepseek-v4-flash")).toBe(true);
+        expect(deepseekProvider.supports("deepseek-pro")).toBe(true);
+        expect(deepseekProvider.supports("deepseek-flash")).toBe(true);
         expect(deepseekProvider.supports("glm-5.2")).toBe(false);
         delete process.env.DEEPSEEK_API_KEY;
 
@@ -209,7 +209,7 @@ describe("DeepSeek provider", () => {
             messages: [{role: "user", origin: "user" as const, content: "hello"}],
             tools: [],
             cwd: process.cwd(),
-            model: "deepseek-v4-pro",
+            model: "deepseek-pro",
             kind: "main",
         })).rejects.toThrow("缺少 DEEPSEEK_API_KEY");
 

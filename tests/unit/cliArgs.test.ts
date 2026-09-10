@@ -47,9 +47,9 @@ describe("parseCliArgs", () => {
       source: "qwen",
     });
     expect(
-      parseCliArgs(["--model=deepseek-v4-pro", "--source", "DEEPSEEK"])
+      parseCliArgs(["--model=deepseek-pro", "--source", "DEEPSEEK"])
     ).toMatchObject({
-      model: "deepseek-v4-pro",
+      model: "deepseek-pro",
       source: "deepseek",
     });
   });

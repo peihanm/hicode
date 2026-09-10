@@ -25,6 +25,7 @@ import {
 } from "../permissions/index.js";
 
 export interface ToolContextResources {
+    contextSettings: ToolContext["contextSettings"];
     allowFullAccess?: boolean;
     readOnlyTools?: boolean;
     approvalReviewer?: ApprovalReviewer;
@@ -122,6 +123,7 @@ export function createToolContext({
         workspaceBoundary: resources.workspaceBoundary,
         compactState: session.compactState,
         contextUsage: session.contextUsage,
+        contextSettings: resources.contextSettings,
         sessionId: session.sessionId,
         toolResultStore: session.toolResultStore,
         toolResultFiles: session.toolResultFiles ?? {

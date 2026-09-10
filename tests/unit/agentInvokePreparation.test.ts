@@ -304,3 +304,21 @@ describe("Agent invoke preparation", () => {
     });
   });
 });
+
+test("实际请求准备使用配置阈值，DeepSeek 默认不会在 95k 压缩", async () => {
+  await withTempProject(async cwd => {
+    for (const limit of [450_000, 80_000]) {
+      const ctx = createTestContext(cwd, {model: "deepseek-flash", provider: "deepseek",
+        contextSettings: {windowTokens: 500_000, autoCompactTokenLimit: limit}});
+      const events: AgentEvent[] = [];
+      let compactions = 0;
+      await prepareAgentInvoke({ctx, history: history(true), onEvent: event => {events.push(event);}, getToolSchemas: () => [],
+        compactHistory: async ({preTokenCount}) => {
+          compactions++;
+          return {compacted: false, preTokenCount, threshold: limit, message: "fixture preserved history"};
+        }});
+      expect(compactions).toBe(limit === 450_000 ? 0 : 1);
+      if (compactions) expect(events[0]).toMatchObject({type: "compact_start", threshold: 80_000});
+    }
+  });
+});

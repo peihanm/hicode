@@ -1,5 +1,5 @@
 import type {Message} from "../llm/types.js";
-import type {HandoffSources} from "./handoff.js";
+import {handoffJsonSchema, type HandoffSources} from "./handoff.js";
 
 export function buildCompactPrompt(customInstructions?: string, sources?: HandoffSources): string {
     return `为接续当前任务生成简短工作交接。只输出交接，不输出分析草稿，不调用工具。
@@ -18,7 +18,9 @@ ${sources ? `来源协议：本次原始消息带有 [source archive-id/message-
 严格输出一个 JSON 对象（不要代码围栏），所有六个数组字段都提供，空项用 []：
 {"version":1,"objective":[],"constraints":[],"decisions":[],"files":[],"verification":[],"next":[]}
 每个数组项目格式：{"text":"内容","sources":["archive-id/message-index"],"basis":"reported"}。
-reported 表示有来源的转述（必须提供来源），不表示框架验证了语义；无依据则 basis 为 inferred，可留空 sources。每项最多 2000 字符/8 个来源，每类最多 10 项，总输出最多 32 KiB。` : "用上述六项标题输出纯文本交接。当前内部 Agent 没有原文档案能力，不编造来源 ID 或回查路径。"}
+reported 表示有来源的转述（必须提供来源），不表示框架验证了语义；无依据则 basis 为 inferred，可留空 sources。每项最多 2000 字符/8 个来源，每类最多 10 项，总输出最多 32 KiB。
+以下 JSON Schema 与实际校验器同源；提交前检查所有 required 字段与 maxItems：
+${handoffJsonSchema()}` : "用上述六项标题输出纯文本交接。当前内部 Agent 没有原文档案能力，不编造来源 ID 或回查路径。"}
 ${customInstructions?.trim() ? `\n额外交接要求（仍须遵循上述协议）：\n${customInstructions.trim()}` : ""}`;
 }
 

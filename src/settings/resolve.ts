@@ -11,6 +11,8 @@ import type {
     SettingsOrigins,
 } from "./types.js";
 
+import {DEFAULT_CONTEXT_SETTINGS, validateContextSettings} from "../context/config.js";
+
 export const DEFAULT_MODEL = "qwen3.8-flash";
 
 const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
@@ -39,8 +41,8 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
         label: "DeepSeek",
         apiKeyEnv: "DEEPSEEK_API_KEY",
         models: [
-            {id: "deepseek-v4-pro", label: "DeepSeek V4 Pro"},
-            {id: "deepseek-v4-flash", label: "DeepSeek V4 Flash"},
+            {id: "deepseek-pro", label: "DeepSeek Pro"},
+            {id: "deepseek-flash", label: "DeepSeek Flash"},
         ],
     },
 };
@@ -187,6 +189,7 @@ export function resolvePillarSettings(
     cli: PillarSettingsOverrides = {}
 ): Pick<LoadedPillarSettings, "values" | "origins"> {
     const sources = mergeUserSources(documents);
+    let context = {...DEFAULT_CONTEXT_SETTINGS};
     let reviewerTarget: {model: string; source: LLMProviderName} | undefined;
     let primaryModel = DEFAULT_MODEL;
     let primarySource = DEFAULT_LLM_PROVIDER;
@@ -213,6 +216,7 @@ export function resolvePillarSettings(
 
     for (const document of documents) {
         const value = document.value;
+        context = {...context, ...value.context};
         if (value.models?.reviewer) {
             if (document.source === "project" || document.source === "local") throw new Error("项目 Settings 不能替换审核模型");
             const {model, source} = value.models.reviewer;
@@ -301,6 +305,7 @@ export function resolvePillarSettings(
 
     return {
         values: {
+            context: validateContextSettings(context),
             sources,
             models: {
                 ...(reviewerTarget ? {reviewer: resolveModelTarget(sources, reviewerTarget.source, reviewerTarget.model, "reviewer")} : {}),

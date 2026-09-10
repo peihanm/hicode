@@ -251,6 +251,7 @@ export function createMemoryRuntimeFactory(overrides: Partial<MemoryRuntimeFacto
         environment: ChildProcessEnvironment;
         shellRunner: ShellRunnerLike;
         settings: ResolvedPillarSettings["memory"];
+        contextSettings: ResolvedPillarSettings["context"];
         getModelTarget(): ModelTargetSettings;
         getModelSource(source: ModelTargetSettings["source"]): ResolvedPillarSettings["sources"][ModelTargetSettings["source"]];
     }): MemoryRuntimeLike => {

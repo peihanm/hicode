@@ -115,7 +115,7 @@ describe("AgentRuntime model targets", () => {
                 parentToolCallId: "primary-call",
             });
             const deepseekContext = createTestContext(cwd, {
-                model: "deepseek-v4-pro",
+                model: "deepseek-pro",
                 provider: "deepseek",
                 fastModel: "glm-fast-test",
                 fastProvider: "glm",
@@ -134,7 +134,7 @@ describe("AgentRuntime model targets", () => {
 
             expect(fast.reply).toBe("reply from glm-fast-test");
             expect(primary.reply).toBe("reply from qwen-primary-test");
-            expect(switchedPrimary.reply).toBe("reply from deepseek-v4-pro");
+            expect(switchedPrimary.reply).toBe("reply from deepseek-pro");
             expect(calls).toEqual([
                 {
                     url: "https://glm.test/v1/chat/completions",
@@ -148,7 +148,7 @@ describe("AgentRuntime model targets", () => {
                 },
                 {
                     url: "https://deepseek.test/v1/chat/completions",
-                    model: "deepseek-v4-pro",
+                    model: "deepseek-pro",
                     authorization: "Bearer deepseek-key",
                 },
             ]);
