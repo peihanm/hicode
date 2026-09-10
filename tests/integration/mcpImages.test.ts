@@ -97,7 +97,7 @@ test("public SDK consumes MCP images through production Provider, preserves Hist
             fileSources: {settings: [], instructions: [], skills: [], agents: [], mcp: []},
             settingsOverrides: {models: {primary: {source: "qwen", model: "qwen3.8-flash"}},
                 sources: {qwen: {apiKeyEnv: "PILLAR_MCP_IMAGE_TEST_KEY"}},
-                memory: {enabled: false, autoExtract: false}, sandbox: {enabled: false}},
+                memory: {enabled: false, autoExtract: false}, sandbox: {}},
             rootContributions: {mcpServers: [{name: "fixture", command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/imageServer.ts"), path]}]},
         });
         const oldFetch = globalThis.fetch, oldKey = process.env.PILLAR_MCP_IMAGE_TEST_KEY;

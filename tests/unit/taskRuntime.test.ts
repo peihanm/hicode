@@ -14,7 +14,7 @@ describe("TaskRuntime", () => {
         test(`shutdown 保留任务记录，正常清理不通知，输出异常仍通知（异常=${outputFailure}）`, async () => {
             await withTempProject(async cwd => {
                 let runs = 0;
-                const runner: ShellRunnerLike = {sandboxStatus: {kind: "disabled"}, async run(request) {
+                const runner: ShellRunnerLike = {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, async run(request) {
                     runs++;
                     if (!request.signal.aborted) await new Promise<void>(resolve => request.signal.addEventListener("abort", () => resolve(), {once: true}));
                     if (outputFailure) throw new Error("output capture failed");
@@ -46,7 +46,7 @@ describe("TaskRuntime", () => {
     test("并发启动在异步准备期也不会突破 Session Agent 上限", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run() {
                     throw new Error("不应执行 Shell");
                 },
@@ -122,7 +122,7 @@ describe("TaskRuntime", () => {
     test("执行层拒绝把 GeneralPurpose 直接作为后台 Agent 启动", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run() {
                     throw new Error("不应执行 Shell");
                 },
@@ -157,7 +157,7 @@ describe("TaskRuntime", () => {
                 release = resolve;
             });
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run(request) {
                     await gate;
                     return {
@@ -227,7 +227,7 @@ describe("TaskRuntime", () => {
     test("按 Session 隔离任务、发布递增事件并只领取一次通知", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run(request) {
                     await new Promise((resolve) => setTimeout(resolve, 650));
                     await appendFile(request.outputFilePath!, "task output\n");
@@ -307,7 +307,7 @@ describe("TaskRuntime", () => {
     test("失败通知直接携带结构化终止原因和有界错误摘要", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run(request) {
                     await new Promise((resolve) => setTimeout(resolve, 650));
                     await appendFile(
@@ -366,7 +366,7 @@ describe("TaskRuntime", () => {
         await withTempProject(async (cwd) => {
             let runs = 0;
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run(request) {
                     runs += 1;
                     await new Promise((resolve) => setTimeout(resolve, 650));

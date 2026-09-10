@@ -7,8 +7,7 @@ describe("Sandbox config", () => {
     test("把项目路径和 home 路径规范化为绝对路径", () => {
         const cwd = "/tmp/pillar-sandbox-project";
         const config = createSandboxRuntimeConfig(cwd, {
-            enabled: true,
-            filesystem: {
+                        filesystem: {
                 denyRead: ["~/.ssh"],
                 denyWrite: ["secrets"],
             },
@@ -38,8 +37,7 @@ describe("Sandbox config", () => {
     test("Pillar 管理目录和 .env 始终保持禁止写入", () => {
         const cwd = "/tmp/pillar-sandbox-project";
         const config = createSandboxRuntimeConfig(cwd, {
-            enabled: true,
-            filesystem: {
+                        filesystem: {
                 denyRead: [],
                 denyWrite: [],
             },

@@ -36,7 +36,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(18);
+    expect(schemas).toHaveLength(16);
     expect(names).toContain("view_image");
     expect(new Set(names).size).toBe(names.length);
     for (const tool of schemas) {
@@ -259,7 +259,7 @@ describe("tool registry contract", () => {
     await withTempProject(async (cwd) => {
       const path = join(cwd, "remove.txt");
       await writeFile(path, "remove me\n");
-      const ctx = createTestContext(cwd, {permissionMode: "default"});
+      const ctx = createTestContext(cwd, {permissionMode: "ask"});
 
       const unread = await executeToolResult(
         "delete_file",
@@ -459,7 +459,7 @@ describe("tool registry contract", () => {
       const original = "const history = [];\n";
       await writeFile(path, original);
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         canUseTool: async () => { throw new Error("项目内编辑不应请求额外权限"); },
       });
       await executeTool("read_file", JSON.stringify({path}), ctx);
@@ -514,13 +514,14 @@ describe("tool registry contract", () => {
       await writeFile(path, "before\n");
       let approvals = 0;
       const ctx = createTestContext(cwd, {
-        permissionMode: "readOnly",
+        permissionMode: "ask",
         canUseTool: async () => {
           approvals++;
           await writeFile(path, "external\n");
           return {behavior: "allow"};
         },
       });
+      ctx.permissionRules.ask.push({toolName: "edit_file", source: "host"});
       await executeTool("read_file", JSON.stringify({path}), ctx);
       const result = await executeToolResult(
         "edit_file", JSON.stringify({path, edits: [{old_string: "before", new_string: "after"}]}),
@@ -539,9 +540,10 @@ describe("tool registry contract", () => {
       const path = join(cwd, "denied.txt");
       await writeFile(path, "before\n");
       const ctx = createTestContext(cwd, {
-        permissionMode: "readOnly",
+        permissionMode: "ask",
         canUseTool: async () => ({behavior: "deny", message: "不要修改"}),
       });
+      ctx.permissionRules.ask.push({toolName: "edit_file", source: "host"});
       await executeTool("read_file", JSON.stringify({path}), ctx);
       const args = JSON.stringify({path, edits: [{old_string: "before", new_string: "after"}]});
       const rejected = await executeToolResult("edit_file", args, ctx, "edit-user-denied");
@@ -558,7 +560,7 @@ describe("tool registry contract", () => {
   test("edit_file 成功结果包含结构化 diff，模型内容保持简短", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(join(cwd, "edit-me.txt"), "before\ncontext\n");
-      const ctx = createTestContext(cwd, { permissionMode: "bypassPermissions" });
+      const ctx = createTestContext(cwd, { permissionMode: "full-access" });
       await executeToolResult(
         "read_file",
         JSON.stringify({ path: "edit-me.txt" }),
@@ -712,11 +714,11 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("非交互 Read Only Host 拒绝需要确认的新文件写入", async () => {
+  test("无回调 Ask Host 拒绝需要确认的新文件写入", async () => {
     await withTempProject(async (cwd) => {
       let asked = false;
       const ctx = createTestContext(cwd, {
-        permissionMode: "readOnly",
+        permissionMode: "ask",
         collaborationMode: "build",
         permissionPromptPolicy: "never",
         canUseTool: async () => {
@@ -724,6 +726,7 @@ describe("tool registry contract", () => {
           return { behavior: "allow" };
         },
       });
+      ctx.permissionRules.ask.push({toolName: "write_file", source: "host"});
       const result = await executeTool(
         "write_file",
         JSON.stringify({ path: "new.txt", content: "hello" }),
@@ -738,7 +741,7 @@ describe("tool registry contract", () => {
   test("default 自动允许 canonical workspace 内的新文件写入", async () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         canUseTool: async () => {
           throw new Error("workspace-scoped write_file 不应请求权限");
@@ -766,7 +769,7 @@ describe("tool registry contract", () => {
         permissionRequested = resolve;
       });
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         signal: controller.signal,
         canUseTool: async () => {
@@ -798,7 +801,7 @@ describe("tool registry contract", () => {
   test("权限审批不能改写普通工具输入", async () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         canUseTool: async () => ({
           behavior: "allow",
@@ -827,7 +830,7 @@ describe("tool registry contract", () => {
   test("权限交互异常只让当前工具失败", async () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         canUseTool: async () => {
           throw new Error("interaction unavailable");

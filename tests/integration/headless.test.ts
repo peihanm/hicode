@@ -28,7 +28,7 @@ function options(cwd: string): HeadlessTestInput {
     cwd,
     settings: createTestSettings(),
     prompt: "执行任务",
-    permissionMode: "bypassPermissions",
+    permissionMode: "full-access",
         collaborationMode: "build",
     resumeMode: { kind: "none" },
     outputFormat: "json",

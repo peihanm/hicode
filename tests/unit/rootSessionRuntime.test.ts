@@ -53,8 +53,8 @@ describe("RootSessionRuntime", () => {
       )).toBe(true);
       expect(runtime.taskSession.sessionId).toBe("session-runtime-test");
 
-      let permissionMode: PermissionMode = "default";
-      const ctx = runtime.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"}),
+      let permissionMode: PermissionMode = "ask";
+      const ctx = runtime.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"}),
         signal: new AbortController().signal,
         onEvent: () => {},
         host: {
@@ -66,10 +66,6 @@ describe("RootSessionRuntime", () => {
           getPermissionMode: () => permissionMode,
           getCollaborationMode: () => "build",
           getPermissionPromptPolicy: () => "onRequest",
-          setPermissionMode(mode) {
-            permissionMode = mode;
-          },
-          setCollaborationMode() {},
           setTodos: () => {},
         },
       });
@@ -88,7 +84,7 @@ describe("RootSessionRuntime", () => {
       );
       const snapshot = runtime.createSnapshot({
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         uiEvents: [],
       });

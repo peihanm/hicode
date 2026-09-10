@@ -219,8 +219,8 @@ async function writeEvalSettings(
     }
     const generated: Record<string, unknown> = {
         memory: {enabled: false, autoExtract: false},
-        permissions: {defaultMode: "default"},
-        sandbox: {enabled: false},
+        permissions: {defaultMode: "ask"},
+        sandbox: {},
     };
     if (isRecord(userSettings.sources)) {
         generated.sources = userSettings.sources;

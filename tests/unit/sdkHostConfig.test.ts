@@ -33,7 +33,7 @@ describe("SDK Host config", () => {
                             ],
                         },
                     },
-                    permissions: {defaultMode: "default"},
+                    permissions: {defaultMode: "ask"},
                 })
             );
             await writeFile(
@@ -71,7 +71,7 @@ describe("SDK Host config", () => {
                 label: "Host Qwen",
             });
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
-                "default"
+                "ask"
             );
             expect(loaded.configuration.settings.memory.enabled).toBe(false);
             expect(loaded.origins.primaryModel).toBe("host");
@@ -173,12 +173,12 @@ describe("SDK Host config", () => {
             await mkdir(projectSettings, {recursive: true});
             await writeFile(
                 join(pillarHome, "settings.json"),
-                JSON.stringify({permissions: {defaultMode: "readOnly"}})
+                JSON.stringify({permissions: {defaultMode: "ask"}})
             );
             await writeFile(
                 join(projectSettings, "settings.local.json"),
                 JSON.stringify({
-                    permissions: {defaultMode: "bypassPermissions"},
+                    permissions: {defaultMode: "auto-review"},
                 })
             );
 
@@ -196,7 +196,7 @@ describe("SDK Host config", () => {
                 "local",
             ]);
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
-                "bypassPermissions"
+                "auto-review"
             );
         });
     });
@@ -236,7 +236,7 @@ describe("SDK Host config", () => {
                 models: {
                     primary: {source: "qwen", model: "host-model"},
                 },
-                permissions: {defaultMode: "readOnly"},
+                permissions: {defaultMode: "ask"},
             };
             const loaded = loadPillarHostConfig({
                 cwd,
@@ -245,12 +245,12 @@ describe("SDK Host config", () => {
                 settingsOverrides,
             });
 
-            settingsOverrides.permissions!.defaultMode = "bypassPermissions";
+            settingsOverrides.permissions!.defaultMode = "full-access";
             expect(loaded.configuration.settings.models.primary.model).toBe(
                 "host-model"
             );
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
-                "readOnly"
+                "ask"
             );
             expect(loaded.origins.primaryModel).toBe("host");
             expect(loaded.origins.permissionMode).toBe("host");

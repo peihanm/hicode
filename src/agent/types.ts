@@ -6,6 +6,7 @@ import type {ToolUIData} from "../fileChanges/index.js";
 import type {LLMStreamProgress} from "../llm/types.js";
 import type {MemoryChange} from "../memory/types.js";
 import type {TurnTimingSummary} from "../runtime/turnTiming.js";
+import type {ApprovalEvent} from "../permissions/approval.js";
 
 export type StopReason =
     | "completed"
@@ -34,6 +35,7 @@ export interface AgentUsage {
 
 /** Agent 主循环向宿主发布的运行事件。 */
 export type AgentEvent =
+    | ApprovalEvent
     | HookLifecycleEvent
     | {type: "turn_end"; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}
     | {type: "turn_timing"; turnId: string; timing: TurnTimingSummary}

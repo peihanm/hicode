@@ -45,7 +45,7 @@ describe("OS Sandbox integration", () => {
             await mkdir(join(cwd, ".pillar"), {recursive: true});
             const blockedPath = join(cwd, ".pillar", "network-must-not-enable-write.txt");
             const runtime = await createSandboxRuntime({cwd, storage, settings: {
-                enabled: true, filesystem: {denyRead: [], denyWrite: []},
+                filesystem: {denyRead: [], denyWrite: []},
                 network: {allowedDomains: [], allowLocalBinding: false},
             }});
             const runner = createShellRunner(runtime, testChildEnvironment);
@@ -57,7 +57,7 @@ describe("OS Sandbox integration", () => {
                 expect(runtime.status.kind).toBe("ready");
                 let asks = 0;
                 const ctx = createTestContext(cwd, {
-                    shellRunner: runner, permissionMode: "default",
+                    shellRunner: runner, permissionMode: "ask",
                     canUseTool: async (_tool, _message, _input, options) => {
                         asks++;
                         expect(options?.presentation).toEqual({
@@ -137,8 +137,7 @@ describe("OS Sandbox integration", () => {
                 cwd,
                 storage,
                 settings: {
-                    enabled: true,
-                    filesystem: {
+                                        filesystem: {
                         denyRead: [secretPath],
                         denyWrite: [],
                     },
@@ -159,7 +158,7 @@ describe("OS Sandbox integration", () => {
                         command: `/usr/bin/printf default-allowed > ${JSON.stringify(defaultAllowedPath)}`,
                     }),
                     createTestContext(cwd, {
-                        permissionMode: "default",
+                        permissionMode: "ask",
         collaborationMode: "build",
                         shellRunner: runner,
                         canUseTool: async () => {

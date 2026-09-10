@@ -24,7 +24,6 @@ interface MemorySettingsFile {
 
 
 interface SandboxSettingsFile {
-    enabled?: boolean;
     filesystem?: {
         denyRead?: string[];
         denyWrite?: string[];
@@ -75,6 +74,7 @@ interface ModelSourceSettingsFile {
 export interface PillarSettingsFile {
     sources?: Partial<Record<LLMProviderName, ModelSourceSettingsFile>>;
     models?: {
+        reviewer?: ModelTargetSettingsFile;
         primary?: ModelTargetSettingsFile;
         fast?: ModelTargetSettingsFile;
     };
@@ -110,6 +110,7 @@ export type SettingsIssue = SettingsIssueDetails & (
 export interface ResolvedPillarSettings {
     sources: Record<LLMProviderName, ModelSourceSettings>;
     models: {
+        reviewer?: ModelTargetSettings;
         primary: ModelTargetSettings;
         fast: ModelTargetSettings;
     };
@@ -124,7 +125,6 @@ export interface ResolvedPillarSettings {
         autoExtract: boolean;
     };
     sandbox: {
-        enabled: boolean;
         filesystem: {
             denyRead: string[];
             denyWrite: string[];
@@ -144,7 +144,6 @@ export interface SettingsOrigins {
     permissionMode: SettingsValueSource;
     memoryEnabled: SettingsValueSource;
     memoryAutoExtract: SettingsValueSource;
-    sandboxEnabled: SettingsValueSource;
 }
 
 export interface LoadedPillarSettings {

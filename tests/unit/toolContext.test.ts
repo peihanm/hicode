@@ -12,7 +12,7 @@ import type {CollaborationMode} from "../../src/collaboration/index.js";
 import { createToolContext } from "../../src/runtime/toolContext.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
@@ -20,7 +20,7 @@ describe("ToolContext builder", () => {
   test("同一个 context 通过 host getters 读取最新权限状态", async () => {
     await withTempProject(async (cwd, storage) => {
       let rules: PermissionRules = { allow: [], ask: [], deny: [] };
-      let mode: PermissionMode = "default";
+      let mode: PermissionMode = "ask";
       let collaborationMode: CollaborationMode = "build";
       let promptPolicy: PermissionPromptPolicy = "onRequest";
       const context = createToolContext({
@@ -51,18 +51,12 @@ describe("ToolContext builder", () => {
           getPermissionMode: () => mode,
           getCollaborationMode: () => collaborationMode,
           getPermissionPromptPolicy: () => promptPolicy,
-          setPermissionMode: (next) => {
-            mode = next;
-          },
-          setCollaborationMode: (next) => {
-            collaborationMode = next;
-          },
           setTodos() {},
         },
       });
 
       expect(context.permissionRules.allow).toEqual([]);
-      expect(context.permissionMode).toBe("default");
+      expect(context.permissionMode).toBe("ask");
       expect(context.collaborationMode).toBe("build");
       expect(context.permissionPromptPolicy).toBe("onRequest");
 
@@ -71,14 +65,14 @@ describe("ToolContext builder", () => {
         ask: [],
         deny: [],
       };
-      mode = "readOnly";
+      mode = "ask";
       collaborationMode = "plan";
       promptPolicy = "never";
 
       expect(context.permissionRules.allow).toEqual([
         { toolName: "write_file", source: "local" },
       ]);
-      expect(context.permissionMode).toBe("readOnly");
+      expect(context.permissionMode).toBe("ask");
       expect(context.collaborationMode).toBe("plan");
       expect(context.permissionPromptPolicy).toBe("never");
     });
@@ -125,11 +119,9 @@ describe("ToolContext builder", () => {
       const host = {
         canUseTool: async () => ({ behavior: "allow" as const }),
         getPermissionRules: () => ({ allow: [], ask: [], deny: [] }),
-        getPermissionMode: () => "default" as const,
+        getPermissionMode: () => "ask" as const,
         getCollaborationMode: () => "build" as const,
         getPermissionPromptPolicy: () => "onRequest" as const,
-        setPermissionMode() {},
-        setCollaborationMode() {},
         setTodos() {},
       };
 

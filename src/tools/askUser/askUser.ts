@@ -35,7 +35,7 @@ export const askUserTool: Tool<typeof inputSchema> = {
         "向用户提出多选题。可以一次问 1-4 个问题，每个问题 2-4 个选项。当需要用户从多个选项中做决策时使用（如选技术方案、选文件路径）。不要用来问 yes/no（那个直接在回复里问）。",
     parameters: inputSchema,
     isReadOnly: () => true,
-    requiresUserInteraction: () => true,
+    requiresExplicitApproval: () => true,
     acceptsUserAnswers: true,
     // 声明权限意向：需要问用户（触发权限弹窗流程）
     // App.tsx 根据 toolName === "ask_user" 分发到 AskDialog

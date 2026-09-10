@@ -1,3 +1,4 @@
+import {requestApproval} from "../permissions/approval.js";
 import {basename} from "node:path";
 import {realpath} from "node:fs/promises";
 import {viewImageTool} from "../tools/viewImage/viewImage.js";
@@ -28,7 +29,7 @@ export async function importSelectedImages(paths: readonly string[], resources: 
             workspaceBoundary: ctx.workspaceBoundary ? await realpath(ctx.workspaceBoundary) : undefined});
         if (permission.behavior === "deny") throw new Error(permission.message);
         if (permission.behavior === "ask" || selectionPermission.behavior === "ask") {
-            const decision = await ctx.canUseTool("view_image", permission.behavior === "ask" ? permission.message : "图片附件读取需要确认", input, {signal: ctx.signal, allowPersistent: false});
+            const {decision} = await requestApproval(ctx, "view_image", input, permission.behavior === "ask" ? permission.message : "图片附件读取需要确认", `image:${canonicalPath}`, {signal: ctx.signal, allowPersistent: false});
             if (decision.behavior !== "allow") throw new Error("图片附件读取被拒绝");
         }
         throwIfTurnAborted(ctx.signal);

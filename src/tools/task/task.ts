@@ -115,7 +115,7 @@ export const taskTool: Tool<typeof inputSchema> = {
         if (action === "stop") return checkTaskStopPermission(ctx, task_id);
         return {behavior: "passthrough"};
     },
-    requiresUserInteraction: ({action}) => action === "discard",
+    requiresExplicitApproval: ({action}) => action === "discard",
     async execute({action, task_id, message}, ctx) {
         if (!ctx.tasks) {
             return {content: "当前 Runtime 不支持后台任务", outcome: "failed"};

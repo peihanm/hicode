@@ -60,6 +60,7 @@ export function runHeadlessForTest(
   test: HeadlessTestOptions = {}
 ): Promise<HeadlessRunSummary> {
   const agentRuntime: AgentRuntime = {
+    reviewApproval: async () => ({decision: "needs_user", risk: "medium", reason: "test reviewer not configured"}),
     runAgent:
       test.runAgent ??
       ((prompt, history, onEvent, ctx, inputChannel, agentOptions) =>
@@ -120,6 +121,7 @@ export function runHeadlessForTest(
 
   const storage = options.storage ?? createTestStorage(options.cwd);
   const configuration = createPillarRootConfiguration({
+    allowFullAccess: true,
     cwd: options.cwd,
     workspaceBoundary: parse(options.cwd).root,
     storage,

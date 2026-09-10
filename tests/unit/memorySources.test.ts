@@ -10,7 +10,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import type {Message} from "../../src/llm/types.js";
 
 async function persist(storage:Parameters<typeof saveSessionSnapshot>[0],cwd:string,history:Message[]) {
- await saveSessionSnapshot(storage,{cwd,sessionId:"source-session",model:"glm-test",history,todos:[],permissionMode:"default",collaborationMode:"build",uiEvents:[]});
+ await saveSessionSnapshot(storage,{cwd,sessionId:"source-session",model:"glm-test",history,todos:[],permissionMode:"ask",collaborationMode:"build",uiEvents:[]});
 }
 test("只提取成功保存的新消息，no_output 持久消费且不重复调用",async()=>withTempProject(async(cwd,storage)=>{
  let calls=0;const memory=createTestMemoryRuntime(cwd,{autoExtract:true,extractor:{async extract(messages){calls++;expect(messages.some(m=>m.content==="旧输入")).toBe(false);return [];}}});

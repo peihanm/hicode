@@ -99,7 +99,7 @@ function resolveModelTarget(
     sources: Record<LLMProviderName, ModelSourceSettings>,
     sourceName: LLMProviderName,
     modelId: string,
-    slot: "primary" | "fast"
+    slot: "primary" | "fast" | "reviewer"
 ): ModelTargetSettings {
     const source = sources[sourceName];
     const model = source.models.find((candidate) => candidate.id === modelId);
@@ -187,16 +187,16 @@ export function resolvePillarSettings(
     cli: PillarSettingsOverrides = {}
 ): Pick<LoadedPillarSettings, "values" | "origins"> {
     const sources = mergeUserSources(documents);
+    let reviewerTarget: {model: string; source: LLMProviderName} | undefined;
     let primaryModel = DEFAULT_MODEL;
     let primarySource = DEFAULT_LLM_PROVIDER;
     let fastModel = DEFAULT_MODEL;
     let fastSource = DEFAULT_LLM_PROVIDER;
-    let permissionMode: PermissionMode = "default";
+    let permissionMode: PermissionMode = "ask";
     let memoryEnabled = true;
     let memoryAutoExtract = false;
     let memoryDisabled = false;
     let autoExtractDisabled = false;
-    let sandboxEnabled = true;
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
     let sandboxDenyWrite = [".pillar", ".env"];
     let sandboxAllowedDomains: string[] = [];
@@ -209,11 +209,16 @@ export function resolvePillarSettings(
         permissionMode: "default",
         memoryEnabled: "default",
         memoryAutoExtract: "default",
-        sandboxEnabled: "default",
     };
 
     for (const document of documents) {
         const value = document.value;
+        if (value.models?.reviewer) {
+            if (document.source === "project" || document.source === "local") throw new Error("项目 Settings 不能替换审核模型");
+            const {model, source} = value.models.reviewer;
+            if (!model || !source) throw new Error("models.reviewer 需要 model 和 source");
+            reviewerTarget = {model, source};
+        }
         if (value.models?.primary?.model !== undefined) {
             primaryModel = value.models.primary.model;
             origins.primaryModel = document.source;
@@ -231,6 +236,7 @@ export function resolvePillarSettings(
             origins.fastSource = document.source;
         }
         const documentMode = value.permissions?.defaultMode;
+        if (documentMode === "full-access" && (document.source === "project" || document.source === "local")) throw new Error("项目 Settings 不能选择 Full Access；请由用户或 Host 明确授权");
         if (documentMode !== undefined) {
             permissionMode = documentMode;
             origins.permissionMode = document.source;
@@ -254,10 +260,6 @@ export function resolvePillarSettings(
                 memoryAutoExtract = true;
                 origins.memoryAutoExtract = document.source;
             }
-        }
-        if (value.sandbox?.enabled !== undefined) {
-            sandboxEnabled = value.sandbox.enabled;
-            origins.sandboxEnabled = document.source;
         }
         if (value.sandbox?.filesystem?.denyRead !== undefined) {
             sandboxDenyRead = [...value.sandbox.filesystem.denyRead];
@@ -301,6 +303,7 @@ export function resolvePillarSettings(
         values: {
             sources,
             models: {
+                ...(reviewerTarget ? {reviewer: resolveModelTarget(sources, reviewerTarget.source, reviewerTarget.model, "reviewer")} : {}),
                 primary: resolveModelTarget(sources, primarySource, primaryModel, "primary"),
                 fast: resolveModelTarget(sources, fastSource, fastModel, "fast"),
             },
@@ -315,7 +318,6 @@ export function resolvePillarSettings(
                 autoExtract: memoryEnabled && memoryAutoExtract,
             },
             sandbox: {
-                enabled: sandboxEnabled,
                 filesystem: {
                     denyRead: sandboxDenyRead,
                     denyWrite: sandboxDenyWrite,

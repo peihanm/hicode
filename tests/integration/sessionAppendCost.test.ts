@@ -14,7 +14,7 @@ for (const archived of [false, true]) test(`追加不重新读取/编码既有�
         for (const size of [256 * 1024, 8 * 1024 * 1024]) {
             const sessionId = `cost-${size}`;
             const writer = createSessionPersistence(storage, cwd, sessionId);
-            let input: SaveSessionSnapshotInput = {cwd, sessionId, model: "glm-test", todos: [], permissionMode: "default", collaborationMode: "build",
+            let input: SaveSessionSnapshotInput = {cwd, sessionId, model: "glm-test", todos: [], permissionMode: "ask", collaborationMode: "build",
                 history: [{role: "user", origin: "user", content: "原始任务"},
                     ...Array.from({length: 4}, (_, n) => ({role: "assistant" as const, content: `${n}:` + "x".repeat(size / 4)}))]};
             await writer.save(input);
@@ -42,7 +42,7 @@ for (const archived of [false, true]) test(`追加不重新读取/编码既有�
 test("跨提交缓存不能掩盖磁盘内容被篡改", async () => {
     await withTempProject(async (cwd, storage) => {
         const writer = createSessionPersistence(storage, cwd, "tamper");
-        const input: SaveSessionSnapshotInput = {cwd, sessionId: "tamper", model: "glm-test", todos: [], permissionMode: "default", collaborationMode: "build",
+        const input: SaveSessionSnapshotInput = {cwd, sessionId: "tamper", model: "glm-test", todos: [], permissionMode: "ask", collaborationMode: "build",
             history: [{role: "user", origin: "user", content: "original"}]};
         await writer.save(input);
         const record: {conversation: string[]} = JSON.parse(await readFile(getSessionLogPath(storage, cwd, "tamper"), "utf8"));

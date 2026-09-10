@@ -9,7 +9,7 @@ import { runShellCommand } from "../../src/tools/bash/process.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { join } from "node:path";
 import { createTaskRuntimeForTest } from "../helpers/taskRuntime.js";
-import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {
   createShellRunner,
   type ShellRunnerLike,
@@ -124,7 +124,7 @@ describe("bash tool contract", () => {
         "bash",
         JSON.stringify({command: "printf sandboxed-default"}),
         createTestContext(cwd, {
-          permissionMode: "default",
+          permissionMode: "ask",
         collaborationMode: "build",
           shellRunner: readySandboxRunner,
           canUseTool: async () => {
@@ -139,14 +139,14 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("default 在 Sandbox disabled 时仍询问普通 Bash", async () => {
+  test("Ask 在就绪 Sandbox 内自动允许普通 Bash", async () => {
     await withTempProject(async (cwd) => {
       const requests: string[] = [];
       const result = await executeToolResult(
         "bash",
         JSON.stringify({command: "printf host-default"}),
         createTestContext(cwd, {
-          permissionMode: "default",
+          permissionMode: "ask",
         collaborationMode: "build",
           canUseTool: async (tool) => {
             requests.push(tool);
@@ -158,11 +158,11 @@ describe("bash tool contract", () => {
 
       expect(result.outcome).toBe("ok");
       expect(result.modelContent).toBe("host-default");
-      expect(requests).toEqual(["bash"]);
+      expect(requests).toEqual([]);
     });
   });
 
-  test("require_escalated 即使在 bypassPermissions 下也单独询问", async () => {
+  test("Full Access 预授权 require_escalated，不再询问", async () => {
     await withTempProject(async (cwd) => {
       const requests: Array<{ tool: string; message: string }> = [];
       const result = await executeToolResult(
@@ -172,7 +172,7 @@ describe("bash tool contract", () => {
           sandbox_permissions: "require_escalated",
         }),
         createTestContext(cwd, {
-          permissionMode: "bypassPermissions",
+          permissionMode: "full-access",
         collaborationMode: "build",
           canUseTool: async (tool, message) => {
             requests.push({ tool, message });
@@ -183,9 +183,7 @@ describe("bash tool contract", () => {
       );
       expect(result.outcome).toBe("ok");
       expect(result.modelContent).toBe("elevated");
-      expect(requests).toHaveLength(1);
-      expect(requests[0]).toMatchObject({ tool: "bash" });
-      expect(requests[0]?.message).toContain("脱离 OS Sandbox");
+      expect(requests).toHaveLength(0);
     });
   });
 
@@ -200,7 +198,7 @@ describe("bash tool contract", () => {
         "bash",
         JSON.stringify({command: "npm install && npm run build"}),
         createTestContext(cwd, {
-          permissionMode: "bypassPermissions",
+          permissionMode: "ask",
           collaborationMode: "build",
           shellRunner: runner,
           canUseTool: async (_tool, message, _input, options) => {
@@ -233,7 +231,7 @@ describe("bash tool contract", () => {
         "bash",
         JSON.stringify({command}),
         createTestContext(cwd, {
-          permissionMode: "bypassPermissions",
+          permissionMode: "ask",
           collaborationMode: "build",
           shellRunner: runner,
           canUseTool: async (_tool, message, _input, options) => {
@@ -247,7 +245,7 @@ describe("bash tool contract", () => {
       expect(result.outcome).toBe("ok");
       expect(requests).toHaveLength(1);
       expect(requests[0]?.message).toContain("启动 macOS 应用进程");
-      expect(requests[0]?.options).toEqual({
+      expect(requests[0]?.options).toMatchObject({
         allowPersistent: false,
         presentation: {
           kind: "host_execution",
@@ -268,7 +266,7 @@ describe("bash tool contract", () => {
         "bash",
         JSON.stringify({command}),
         createTestContext(cwd, {
-          permissionMode: "default",
+          permissionMode: "ask",
           collaborationMode: "build",
           shellRunner: runner,
           canUseTool: async () => {
@@ -290,7 +288,7 @@ describe("bash tool contract", () => {
         "bash",
         JSON.stringify({command: "npx --version"}),
         createTestContext(cwd, {
-          permissionMode: "default",
+          permissionMode: "ask",
           collaborationMode: "build",
           shellRunner: runner,
           canUseTool: async () => {
@@ -315,7 +313,7 @@ describe("bash tool contract", () => {
         "bash",
         JSON.stringify({command: "npm install"}),
         createTestContext(cwd, {
-          permissionMode: "default",
+          permissionMode: "ask",
           collaborationMode: "build",
           permissionPromptPolicy: "never",
           shellRunner: runner,
@@ -340,7 +338,7 @@ describe("bash tool contract", () => {
           sandbox_permissions: "require_escalated",
         }),
         createTestContext(cwd, {
-          permissionMode: "readOnly",
+          permissionMode: "ask",
         collaborationMode: "build",
           permissionPromptPolicy: "never",
           canUseTool: async () => {
@@ -374,12 +372,12 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("cwd 不能越过当前项目目录", async () => {
+  test("Ask 的 cwd 不能越过当前项目目录", async () => {
     await withTempProject(async (cwd) => {
       const result = await executeToolResult(
         "bash",
         JSON.stringify({ command: "pwd", cwd: ".." }),
-        createTestContext(cwd, {permissionMode: "bypassPermissions"}),
+        createTestContext(cwd, {permissionMode: "ask"}),
         "outside-cwd"
       );
       expect(result.outcome).toBe("denied");
@@ -395,7 +393,7 @@ describe("bash tool contract", () => {
           command: "node server.js &",
           run_in_background: true,
         }),
-        createTestContext(cwd, {permissionMode: "bypassPermissions"}),
+        createTestContext(cwd, {permissionMode: "full-access"}),
         "unmanaged-background"
       );
       expect(result.outcome).toBe("denied");

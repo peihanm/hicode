@@ -3,7 +3,7 @@ import {describe, expect, test} from "bun:test";
 import {access, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import type {Message} from "../../src/llm/types.js";
 import {executeToolResult} from "../helpers/executeTool.js";

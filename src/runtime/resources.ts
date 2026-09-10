@@ -42,6 +42,8 @@ import type {PillarRootConfiguration} from "./rootConfiguration.js";
 import type {Tool} from "../tools/types.js";
 
 export interface RootRuntimeResources {
+    readonly approvalReviewer: AgentRuntime["reviewApproval"];
+    readonly allowFullAccess: boolean;
     readonly storage: PillarStorageLayout;
     readonly inputHistory: InputHistoryStore;
     readonly cwd: string;
@@ -87,6 +89,7 @@ export interface CreateRootRuntimeResourcesOptions {
 }
 
 interface RootRuntimeDependencies {
+    createSandboxRuntime: typeof createSandboxRuntime;
     createMcpManager(
         options: McpManagerOptions
     ): McpManagerLike | undefined;
@@ -156,6 +159,7 @@ export function createRootRuntimeResourcesFactory(
     overrides: Partial<RootRuntimeDependencies> = {}
 ) {
     const dependencies: RootRuntimeDependencies = {
+        createSandboxRuntime: overrides.createSandboxRuntime ?? createSandboxRuntime,
         createMcpManager: overrides.createMcpManager ?? createMcpManager,
         loadSkills: overrides.loadSkills ?? loadSkills,
         loadProjectInstructions:
@@ -199,7 +203,7 @@ export function createRootRuntimeResourcesFactory(
         let taskRuntime: TaskRuntimeLike | undefined;
         let memory: MemoryRuntimeLike | undefined;
         let closeOwnedResources: RootResourceCloser | undefined;
-        const sandbox = await createSandboxRuntime({
+        const sandbox = await dependencies.createSandboxRuntime({
             cwd,
             storage,
             settings: settings.sandbox,
@@ -356,6 +360,8 @@ export function createRootRuntimeResourcesFactory(
                 inputHistory: createInputHistoryStore(storage),
                 cwd,
                 workspaceBoundary: options.configuration.workspaceBoundary,
+                approvalReviewer: agentRuntime.reviewApproval,
+                allowFullAccess: options.configuration.allowFullAccess,
                 get model() {
                     return primaryModel.target.model;
                 },

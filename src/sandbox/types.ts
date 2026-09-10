@@ -8,7 +8,6 @@ export type SandboxExecutionPreference =
     | "require_escalated";
 
 export type SandboxStatus =
-    | {kind: "disabled"}
     | {
         kind: "ready";
         platform: SandboxPlatform;

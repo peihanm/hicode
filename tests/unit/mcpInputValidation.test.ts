@@ -105,7 +105,7 @@ test("Hook 最终改写后再次校验，失败不请求权限也不调用 Serve
         const {server, calls} = fixture({type: "object", properties: {n: {type: "integer", minimum: 1}}, required: ["n"]});
         const tool = adaptMcpTools(server).tools[0]!;
         let approvals = 0;
-        const ctx = createTestContext(cwd, {permissionMode: "default", canUseTool: async () => {approvals++; return {behavior: "allow"};}});
+        const ctx = createTestContext(cwd, {permissionMode: "ask", canUseTool: async () => {approvals++; return {behavior: "allow"};}});
         const result = await executeRegisteredTool(new Map([[tool.name, tool]]), tool.name, '{"n":2}', ctx, "hook", {enabled: true, hasToolHooks: () => true, inspect: () => [], reload: async () => {}, issues: [], async execute() {
             return {blocked: false, additionalContexts: [], executions: [], updatedInput: {n: 0}};
         }});

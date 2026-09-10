@@ -19,6 +19,7 @@ interface TaskOwner {
 }
 
 export interface ShellTaskSnapshot {
+    executionMode: "sandbox" | "host";
     id: string;
     kind: "shell";
     owner: TaskOwner;

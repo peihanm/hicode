@@ -129,7 +129,7 @@ describe("Git Session baseline", () => {
                     {role: "user", origin: "user" as const, content: "修改 observed"},
                 ],
                 todos: [],
-                permissionMode: "default",
+                permissionMode: "ask",
         collaborationMode: "build",
                 gitSession: runtime.getState(),
             });

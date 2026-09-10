@@ -1,26 +1,26 @@
-import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from "node:fs/promises";
+import {access, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {resolve} from "node:path";
+import {dirname, resolve} from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..", "..");
 const packageDirectory = resolve(repositoryRoot, "dist", "sdk-package");
 
 async function run(
     command: string[],
-    cwd: string,
-    environment?: NodeJS.ProcessEnv
+    cwd: string
 ): Promise<string> {
     const child = Bun.spawn(command, {
         cwd,
-        env: environment ?? process.env,
+        env: process.env,
         stdout: "pipe",
         stderr: "pipe",
     });
+    let timedOut = false;
+    const timer = setTimeout(() => {timedOut = true; child.kill("SIGKILL");}, 120_000);
     const [exitCode, stdout, stderr] = await Promise.all([
-        child.exited,
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-    ]);
+        child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    ]).finally(() => clearTimeout(timer));
+    if (timedOut) throw new Error(`验证命令超过 120 秒：${command[0]}`);
     if (exitCode !== 0) {
         throw new Error([
             `命令失败 (${exitCode}): ${command.join(" ")}`,
@@ -80,16 +80,22 @@ async function main(): Promise<void> {
             type: "module",
             dependencies: {"pillar-core-sdk": `file:${tarball}`},
         }, null, 2)}\n`, "utf8");
-        await run([
-            process.execPath,
-            "install",
-            "--offline",
-            "--ignore-scripts",
-            "--no-progress",
-        ], consumerDirectory, {
-            ...process.env,
-            TMPDIR: temporaryRoot,
-        });
+        // Do not invoke an installer: Bun's --offline can still contact registries.
+        // Only declared direct dependencies are linked, so missing external declarations fail.
+        const modules = resolve(consumerDirectory, "node_modules");
+        const installedPackage = resolve(modules, "pillar-core-sdk");
+        await mkdir(installedPackage, {recursive: true});
+        await run(["tar", "-xzf", tarball, "-C", installedPackage, "--strip-components=1"], consumerDirectory);
+        const dependencies: unknown = packageManifest.dependencies;
+        if (!dependencies || typeof dependencies !== "object" || Array.isArray(dependencies)) throw new Error("SDK dependencies 必须是对象");
+        for (const name of Object.keys(dependencies)) {
+            if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name)) throw new Error(`非法依赖名：${name}`);
+            const installed = resolve(repositoryRoot, "node_modules", name);
+            await access(resolve(installed, "package.json"));
+            const link = resolve(modules, name);
+            await mkdir(dirname(link), {recursive: true});
+            await symlink(installed, link, process.platform === "win32" ? "junction" : "dir");
+        }
 
         await writeFile(
             resolve(consumerDirectory, "consumer.mjs"),

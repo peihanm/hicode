@@ -84,6 +84,9 @@ export class SDKEventAdapter {
     handleAgentEvent = async (event: AgentEvent): Promise<void> => {
         this.uiEvents.handleEvent(event);
         switch (event.type) {
+            case "approval_review":
+                await this.emit({type: "turn.approval_review", turnId: this.turnId, review: event});
+                return;
             case "hook_started":
             case "hook_completed": {
                 const execution = {...event.execution, handler: boundedText(event.execution.handler)};

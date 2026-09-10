@@ -23,6 +23,9 @@ import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js";
 import type {NetworkAccessSession} from "../permissions/networkAccess.js";
+import type {ApprovalBudget, ApprovalEpoch, ApprovalEvent, ApprovalReviewer} from "../permissions/approval.js";
+import type {Message} from "../llm/types.js";
+import type {ModelTargetSettings} from "../settings/types.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";
 export type PermissionMatcher = (
@@ -68,19 +71,22 @@ export interface ToolContext {
     // 配置文件加载的权限规则（allow/ask/deny 三桶）
     permissionRules: PermissionRules;
 
-    // 当前 Permission Profile（default/readOnly/bypassPermissions）。
-    permissionMode: PermissionMode;
+    // 执行权限预设；由 Host 选择，不向模型暴露修改入口。
+    readonly permissionMode: PermissionMode;
+    readonly allowFullAccess: boolean;
+    readonly readOnlyTools: boolean;
+    readonly approvalEpoch: ApprovalEpoch;
+    readonly approvalBudget: ApprovalBudget;
+    approvalReviewer?: ApprovalReviewer;
+    reviewerModel?: ModelTargetSettings;
+    approvalEvidence?: () => readonly Message[];
+    onApprovalEvent?: (event: ApprovalEvent) => void | Promise<void>;
 
     // Build/Plan 与权限 Profile 独立；Plan 只收窄能力，不改变 permissionMode。
-    collaborationMode: CollaborationMode;
+    readonly collaborationMode: CollaborationMode;
 
     // 非交互 Host 把 ask 收窄为 deny；它不是用户权限 Profile。
     permissionPromptPolicy: PermissionPromptPolicy;
-
-    // 运行时切换 PermissionMode（shift+tab、slash command、plan 工具共用）
-    setPermissionMode: (mode: PermissionMode) => void;
-
-    setCollaborationMode: (mode: CollaborationMode) => void;
 
     // TodoWrite 工具用：更新 React state 驱动 TodoList UI
     setTodos: (todos: Todo[]) => void | Promise<void>;
@@ -161,7 +167,7 @@ export interface ToolContext {
 }
 
 interface ToolInvocation {
-    userApproved?: true;
+    permissionApproved?: true;
     toolCallId: string;
     userAnswers?: Readonly<Record<string, string>>;
 }
@@ -211,9 +217,9 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     // 必须显式声明；只读不自动等于并发安全（例如 ask_user / todo_write）。
     isConcurrencySafe?(input: z.infer<T>): boolean;
 
-    // 这类工具即使在 bypassPermissions 下也必须询问用户。
-    // 例如 ask_user / exit_plan_mode，本质是用户交互而不是普通副作用。
-    requiresUserInteraction?(input: z.infer<T>, ctx: ToolContext): boolean;
+    // 普通 allow 规则不能静默批准这些操作；交给当前审核者或 Full Access 预授权。
+    // ask_user 的答案仍只能由 Host 提供。
+    requiresExplicitApproval?(input: z.infer<T>, ctx: ToolContext): boolean;
 
     // Host 回答经 invocation 传入，不属于模型参数，也不能改写原提问。
     acceptsUserAnswers?: boolean;

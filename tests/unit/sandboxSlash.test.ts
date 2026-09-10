@@ -4,8 +4,7 @@ import {getSlashCommandSuggestions} from "../../src/slash/registry.js";
 import {createTestContext} from "../helpers/testContext.js";
 
 describe("/sandbox", () => {
-    test("格式化 disabled、ready 和 unavailable 状态", () => {
-        expect(formatSandboxStatus({kind: "disabled"})).toContain("disabled");
+    test("格式化 ready 和 unavailable 状态", () => {
         expect(formatSandboxStatus({
             kind: "ready",
             platform: "macos",
@@ -48,7 +47,7 @@ describe("/sandbox", () => {
             },
         });
         expect(events).toEqual([
-            expect.stringContaining("Bash Sandbox: disabled"),
+            expect.stringContaining("Bash Sandbox: ready"),
         ]);
     });
 });

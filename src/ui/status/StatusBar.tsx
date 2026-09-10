@@ -53,9 +53,9 @@ export function StatusBar({
             : COLORS.dim;
     const pct = Math.round(percentUsed * 100);
     const modeColor =
-        permissionMode === "bypassPermissions"
+        permissionMode === "full-access"
             ? COLORS.error
-            : permissionMode === "readOnly"
+            : permissionMode === "auto-review"
                 ? COLORS.warning
                 : COLORS.status;
     const tokenLabel =
@@ -63,21 +63,22 @@ export function StatusBar({
             ? "new session"
             : `${tokenStatus === "estimated" ? "~" : ""}${tokenCount} tokens (${tokenStatus === "estimated" ? "~" : ""}${pct}%)`;
     const modeLabel = getPermissionModeShortLabel(permissionMode);
-    const showPermissionMode = permissionMode !== "default";
+    const showPermissionMode = permissionMode !== "ask";
     const collaborationLabel = collaborationMode === "plan" ? "Plan" : undefined;
     const backgroundTaskLabel = getBackgroundTaskLabel(backgroundTasks);
+    const showSandboxFailure = permissionMode !== "full-access" && sandboxStatus?.kind === "unavailable";
     const runtimeDetails = [
         ...(mcpTotal > 0 ? [`MCP ${mcpConnected}/${mcpTotal}`] : []),
-        ...(sandboxStatus?.kind === "unavailable"
+        ...(showSandboxFailure
             ? ["Sandbox unavailable · /sandbox"]
             : []),
         ...(backgroundTaskLabel ? [backgroundTaskLabel] : []),
     ];
     const firstPlain = [
         model,
-        cwd,
         ...(showPermissionMode ? [modeLabel] : []),
         ...(collaborationLabel ? [collaborationLabel] : []),
+        cwd,
         tokenLabel,
         ...runtimeDetails,
     ].join(" | ");
@@ -94,8 +95,6 @@ export function StatusBar({
                 wrap="truncate-end"
             >
                 {" "}<Text color={COLORS.status}>{model}</Text>
-                <Text> | </Text>
-                <Text color={COLORS.status}>{cwd}</Text>
                 {showPermissionMode && (
                     <>
                         <Text> | </Text>
@@ -109,13 +108,15 @@ export function StatusBar({
                     </>
                 )}
                 <Text> | </Text>
+                <Text color={COLORS.status}>{cwd}</Text>
+                <Text> | </Text>
                 <Text color={tokenColor}>{tokenLabel}</Text>
                 {mcpTotal > 0 && (
                     <Text color={mcpConnected === mcpTotal ? COLORS.surfaceText : COLORS.warning}>
                         {` | MCP ${mcpConnected}/${mcpTotal}`}
                     </Text>
                 )}
-                {sandboxStatus?.kind === "unavailable" && (
+                {showSandboxFailure && (
                     <Text color={COLORS.error}>
                         {" | Sandbox unavailable · /sandbox"}
                     </Text>

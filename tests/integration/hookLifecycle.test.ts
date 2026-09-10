@@ -25,8 +25,8 @@ import {executeToolCallBatch} from "../../src/agent/toolBatch.js";
 const sources = {settings: ["project"] as const, instructions: [], skills: [], agents: [], mcp: []};
 const host: ToolContextHost = {
     canUseTool: async () => ({behavior: "allow"}), getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-    getPermissionMode: () => "default", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "onRequest",
-    setPermissionMode() {}, setCollaborationMode() {}, setTodos() {},
+    getPermissionMode: () => "ask", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "onRequest",
+    setTodos() {},
 };
 function sessionFor(resources: RootRuntimeResources) {
     return createRootSessionRuntime({resources, resumed: false, seed: {sessionId: "hooks-case",
@@ -39,7 +39,7 @@ async function resourcesFor(cwd: string, storage: PillarStorageLayout, hooks: Re
             stderr: "", termination: {kind: "exit", code: 0}}),
     })})({configuration: createTestRootConfiguration(cwd, createTestSettings({hooks}), storage, sources)});
 }
-const state = () => ({todos: [], permissionMode: "default" as const, collaborationMode: "build" as const, uiEvents: []});
+const state = () => ({todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []});
 
 for (const cancelled of [false, true]) test(`异常批次完整配对并记录结束，不启动观察脚本 cancelled=${cancelled}`, async () => {
     await withTempProject(async (cwd, storage) => {
@@ -257,7 +257,7 @@ test("Root /hooks reload 仅重读声明来源，活动 Turn 禁止重载，坏�
         });
         try {
             const session = sessionFor(resources);
-            const ctx = session.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"}),host, signal: new AbortController().signal, onEvent() {}});
+            const ctx = session.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"}),host, signal: new AbortController().signal, onEvent() {}});
             const release = resources.holdHookConfiguration();
             await expect(ctx.hookControl!.reload(ctx.signal)).rejects.toThrow("尚未结束");
             release();

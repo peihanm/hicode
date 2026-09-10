@@ -80,8 +80,7 @@ export function createShellRunner(
                 ...processOptions
             } = request;
             if (
-                sandboxPermissions === "require_escalated" ||
-                sandbox.status.kind === "disabled"
+                sandboxPermissions === "require_escalated"
             ) {
                 return runShellCommand({
                     command,

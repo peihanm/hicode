@@ -44,7 +44,7 @@ export const GENERAL_PURPOSE_SUBAGENT: SubagentRegistration = {
                 ask: [...parentContext.permissionRules.ask],
                 deny: [...parentContext.permissionRules.deny],
             },
-            permissionMode: parentContext.permissionMode,
+            permissionMode: "ask",
             collaborationMode: parentContext.collaborationMode,
             permissionPromptPolicy: "never",
         };

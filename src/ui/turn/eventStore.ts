@@ -203,6 +203,10 @@ export class UITurnEventStore {
                 },
             ]);
         }
+        if (event.type === "approval_review" && event.phase === "end") {
+            this.persistedUIEvents = limitPersistedUIEvents([...this.persistedUIEvents,
+                {...event, phase: "end", reason: event.reason?.slice(0, 4000), version: 1, timestamp: new Date().toISOString()}]);
+        }
         if (event.type === "tool_call_end") {
             this.persistedUIEvents = limitPersistedUIEvents([
                 ...this.persistedUIEvents,

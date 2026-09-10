@@ -9,7 +9,7 @@ import type {Todo} from "../todos.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 1;
-export const SESSION_ENTRY_VERSION = 6;
+export const SESSION_ENTRY_VERSION = 7;
 
 export interface SessionIndexEntry {
     sessionId: string;

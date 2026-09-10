@@ -8,6 +8,14 @@ import {createInitialHistory} from "../../src/prompt/index.js";
 import {VERIFICATION_GUIDANCE} from "../../src/prompt/verification.js";
 
 describe("system prompt task constraints", () => {
+  test("Build 授权实现不因复杂度强制进入 Plan，纯方案不要求实施审批", () => {
+    const content = contentText(createInitialHistory("/project", "test-model")[0]!.content);
+    expect(content).toContain("本身不要求进入 Plan，也不要求额外批准计划");
+    expect(content).toContain("缺少关键决策时只询问该决策");
+    expect(content).toContain("Plan 由用户通过客户端切换");
+    expect(content).toContain("你不能自行进入或退出");
+    expect(content).not.toContain("先用 enter_plan_mode 进入 Plan 模式");
+  });
   test("生产 Prompt 承认会话持续授权，且不替代执行层审批", () => {
     const content = contentText(createInitialHistory("/project", "test-model")[0]!.content);
     expect(content).toContain("当前会话已明确的持续授权在指定范围内有效");

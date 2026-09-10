@@ -4,7 +4,7 @@ import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestMemoryRuntime,remember,memoryOwner} from "../helpers/memory.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
-import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

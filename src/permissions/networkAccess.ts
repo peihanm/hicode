@@ -16,5 +16,5 @@ export class NetworkAccessSession {
 export interface NetworkAccessExecution {
     session: NetworkAccessSession;
     canUseTool: ToolContext["canUseTool"];
-    canPrompt(): boolean;
+    canReview(): boolean;
 }

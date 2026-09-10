@@ -1,4 +1,5 @@
 import {contentText} from "../../src/images/content.js";
+import {createApprovalReviewer} from "../../src/permissions/reviewer.js";
 import {describe, expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
@@ -32,6 +33,7 @@ function createFakeAgentRuntime(
     fake: ReturnType<typeof createFakeLLM>
 ): AgentRuntime {
     return {
+        reviewApproval: async () => ({decision: "needs_user", risk: "medium", reason: "test reviewer not configured"}),
         runAgent: (
             prompt,
             history,
@@ -65,6 +67,33 @@ function createFakeAgentRuntime(
 }
 
 describe("TypeScript SDK", () => {
+    test("无 onInteraction 的 SDK 自动审核越界操作并持久化来源", async () => {
+        await withTempProject(async (root, storage) => {
+            const cwd = join(root, "workspace");
+            await import("node:fs/promises").then(fs => fs.mkdir(cwd));
+            const main = createFakeLLM([
+                assistantToolCall("write_file", {path: "../reviewed.txt", content: "approved"}, "outside"),
+                assistantText("done"),
+            ]);
+            const review = createFakeLLM([assistantText('{"decision":"allow","risk":"low","reason":"用户明确授权该文件"}')]);
+            const resources = createTestRuntimeResources(cwd, {storage, workspaceBoundary: root,
+                agentRuntime: createFakeAgentRuntime(main), approvalReviewer: createApprovalReviewer(createFakeAgentRuntime(review).runAgent)});
+            const sessionId = "sdk-auto-review";
+            const thread = await createSDKThread({resources,
+                seed: {sessionId, history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+                state: {todos: [], permissionMode: "auto-review", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {},
+            });
+            try {
+                const stream = await thread.runStreamed("请创建 ../reviewed.txt");
+                const events: ThreadEvent[] = [];
+                for await (const event of stream.events) events.push(event);
+                expect(events.some(event => event.type === "turn.approval_review" && event.review.outcome === "allow")).toBe(true);
+                expect(await readFile(join(root, "reviewed.txt"), "utf8")).toBe("approved");
+                expect(review.calls).toHaveLength(1);
+                expect(loadSession(storage, cwd, sessionId, resources.model)?.uiEvents.some(event => event.type === "approval_review" && event.source === "auto-review")).toBe(true);
+            } finally {await thread.close(); await resources.close();}
+        });
+    });
     test("下一次模型请求开始时完整工具批次已经可从磁盘恢复", async () => {
         await withTempProject(async (cwd, storage) => {
             const sessionId = "sdk-durable-batch";
@@ -79,7 +108,7 @@ describe("TypeScript SDK", () => {
             ]);
             const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
             const thread = await createSDKThread({resources, seed: {sessionId, history: createInitialHistory(cwd, "glm-test"), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "bypassPermissions", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+                state: {todos: [], permissionMode: "full-access", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
             try {
                 expect((await thread.run("write")).finalResponse).toBe("done");
                 expect(await readFile(join(cwd, "durable.txt"), "utf8")).toBe("written");
@@ -99,7 +128,7 @@ describe("TypeScript SDK", () => {
             const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
             const open = () => createSDKThread({resources,
                 seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "bypassPermissions", collaborationMode: "build", uiEvents: []},
+                state: {todos: [], permissionMode: "full-access", collaborationMode: "build", uiEvents: []},
                 resumed: false, onClose() {},
             });
             try {
@@ -132,7 +161,7 @@ describe("TypeScript SDK", () => {
                 async reset() { enabled = false; },
             });
             const sandbox = await createSandbox({cwd, storage, settings: {
-                enabled: true, filesystem: {denyRead: [], denyWrite: []},
+                filesystem: {denyRead: [], denyWrite: []},
                 network: {allowedDomains: [], allowLocalBinding: false},
             }});
             const fake = createFakeLLM([
@@ -149,7 +178,7 @@ describe("TypeScript SDK", () => {
             const thread = await createSDKThread({
                 resources,
                 seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []},
+                state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []},
                 resumed: false,
                 host: {async onInteraction(request) {
                     interactions.push(request);
@@ -187,14 +216,14 @@ describe("TypeScript SDK", () => {
                 ),
             });
             const thread = await pillar.startThread({
-                permissionMode: "default",
+                permissionMode: "ask",
         collaborationMode: "build",
             });
 
             expect(thread.getInfo()).toMatchObject({
                 id: thread.id,
                 cwd,
-                permissionMode: "default",
+                permissionMode: "ask",
         collaborationMode: "build",
                 resumed: false,
             });
@@ -312,7 +341,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -362,7 +391,7 @@ describe("TypeScript SDK", () => {
             ]);
             const settings = createTestSettings({
                 permissions: {
-                    defaultMode: "default",
+                    defaultMode: "ask",
                     additionalDirectories: [],
                     rules: {
                         allow: [],
@@ -386,7 +415,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -477,7 +506,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -552,7 +581,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -594,7 +623,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -658,7 +687,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -747,7 +776,7 @@ describe("TypeScript SDK", () => {
                 },
                 state: {
                     todos: [],
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     uiEvents: [],
                 },
@@ -809,7 +838,7 @@ for (const action of ["resume", "return", "close", "abort"] as const) {
             const resources = createTestRuntimeResources(cwd, {storage, agentRuntime});
             const thread = await createSDKThread({resources,
                 seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []},
+                state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []},
                 resumed: false, onClose() {},
             });
             const controller = new AbortController();
@@ -889,7 +918,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
         const first = await createSDKThread({resources, seed: {sessionId,
             history: [...createInitialHistory(cwd, resources.model), {role: "user", origin: "user" as const, content: "原始目标\n" + "x".repeat(250_000)},
                 {role: "assistant", content: "已检查"}], compactState: createCompactState()},
-            state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+            state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
         try {
             expect((await first.run("继续实现")).finalResponse).toBe("本轮完成");
             await first.close();
@@ -898,7 +927,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
             expect(JSON.stringify(loaded.history)).toContain("交接覆盖限制");
             indexPath = archiveIndexPath(storage, cwd, sessionId, loaded.compactState!.archives![0]!.id);
             const second = await createSDKThread({resources, seed: {...loaded, compactState: loaded.compactState!},
-                state: {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: loaded.uiEvents}, resumed: true, onClose() {}});
+                state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: loaded.uiEvents}, resumed: true, onClose() {}});
             try {expect((await second.run("回查原始来源")).finalResponse).toBe("找到原始来源索引");}
             finally {await second.close();}
             expect(fake.calls).toHaveLength(4);

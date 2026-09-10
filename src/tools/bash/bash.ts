@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {ApprovalBudget, ApprovalEpoch, requestApproval} from "../../permissions/approval.js";
 import {realpath, stat} from "node:fs/promises";
 import {isAbsolute, relative, resolve} from "node:path";
 import type {Tool, ToolContext} from "../types.js";
@@ -48,7 +49,8 @@ type CommandCwdResult =
 
 async function resolveCommandCwd(
     projectCwd: string,
-    requestedCwd: string | undefined
+    requestedCwd: string | undefined,
+    fullAccess = false
 ): Promise<CommandCwdResult> {
     const candidate = resolve(projectCwd, requestedCwd ?? ".");
     try {
@@ -59,7 +61,7 @@ async function resolveCommandCwd(
                 stat(candidate),
             ]);
         const rel = relative(projectRealPath, candidateRealPath);
-        if (rel.startsWith("..") || isAbsolute(rel)) {
+        if (!fullAccess && (rel.startsWith("..") || isAbsolute(rel))) {
             return {
                 ok: false,
                 message: `Bash cwd 必须位于当前项目目录内: ${requestedCwd}`,
@@ -199,7 +201,7 @@ export const bashTool: Tool<typeof inputSchema> = {
     isConcurrencySafe: ({command, sandbox_permissions}) =>
         sandbox_permissions !== "require_escalated" &&
         isShellCommandReadOnly(command),
-    requiresUserInteraction: ({command, sandbox_permissions}, ctx) =>
+    requiresExplicitApproval: ({command, sandbox_permissions}, ctx) =>
         sandbox_permissions === "require_escalated" ||
         requiredHostExecutionGrant(command, sandbox_permissions, ctx) !== undefined,
     getDefaultApprovalScope: ({command, sandbox_permissions}, ctx) =>
@@ -212,7 +214,7 @@ export const bashTool: Tool<typeof inputSchema> = {
         if (hasShellBackgroundOperator(command)) {
             return {behavior: "deny", message: backgroundSyntaxMessage()};
         }
-        const commandCwd = await resolveCommandCwd(ctx.cwd, cwd);
+        const commandCwd = await resolveCommandCwd(ctx.cwd, cwd, ctx.permissionMode === "full-access" && ctx.allowFullAccess);
         if (!commandCwd.ok) {
             return {behavior: "deny", message: commandCwd.message};
         }
@@ -310,7 +312,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 outcome: "failed" as const,
             };
         }
-        const resolvedCwd = await resolveCommandCwd(ctx.cwd, cwd);
+        const resolvedCwd = await resolveCommandCwd(ctx.cwd, cwd, ctx.permissionMode === "full-access" && ctx.allowFullAccess);
         if (!resolvedCwd.ok) {
             return {content: resolvedCwd.message, outcome: "failed" as const};
         }
@@ -320,13 +322,26 @@ export const bashTool: Tool<typeof inputSchema> = {
             sandbox_permissions,
             ctx
         );
-        const effectiveSandboxPermissions = hostGrant
+        const effectiveSandboxPermissions = hostGrant || (ctx.permissionMode === "full-access" && ctx.allowFullAccess)
             ? "require_escalated" as const
             : sandbox_permissions;
+        const networkEvidence = structuredClone(ctx.approvalEvidence?.() ?? []);
+        const detached = run_in_background === true || yield_time_ms !== undefined;
+        const networkEpoch = new ApprovalEpoch();
+        const networkBudget = new ApprovalBudget();
         const networkAccess = ctx.networkAccess ? {
             session: ctx.networkAccess,
-            canUseTool: ctx.canUseTool,
-            canPrompt: () => ctx.permissionPromptPolicy === "onRequest",
+            canUseTool: async (_tool: string, message: string, input: unknown, options?: Parameters<ToolContext["canUseTool"]>[3]) => {
+                const requestSignal = options?.signal ?? ctx.signal;
+                const networkContext: ToolContext = {...ctx, signal: requestSignal, approvalEpoch: networkEpoch,
+                    approvalBudget: networkBudget, approvalEvidence: () => networkEvidence,
+                    onApprovalEvent: detached ? undefined : ctx.onApprovalEvent,
+                    permissionPromptPolicy: detached || ctx.signal.aborted ? "never" : ctx.permissionPromptPolicy};
+                const resolution = await requestApproval(networkContext, "bash", {command, cwd: commandCwd,
+                    connection: input}, message, invocation.toolCallId, {...options, signal: requestSignal});
+                return resolution.decision;
+            },
+            canReview: () => ctx.permissionMode === "auto-review" || (!detached && !ctx.signal.aborted && ctx.permissionPromptPolicy === "onRequest"),
         } : undefined;
         if (run_in_background || yield_time_ms !== undefined) {
             if (

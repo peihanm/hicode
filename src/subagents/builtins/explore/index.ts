@@ -10,6 +10,7 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
                 allowedToolNames: EXPLORE_AGENT.allowedTools,
             },
             contextResources: {
+                readOnlyTools: true,
                 storage: parentContext.storage,
                 cwd: parentContext.cwd,
                 workspaceBoundary:
@@ -22,7 +23,7 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
                 ask: [...parentContext.permissionRules.ask],
                 deny: [...parentContext.permissionRules.deny],
             },
-            permissionMode: "readOnly",
+            permissionMode: "ask",
             collaborationMode: parentContext.collaborationMode,
             permissionPromptPolicy: "never",
         };

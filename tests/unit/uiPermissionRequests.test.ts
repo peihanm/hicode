@@ -15,13 +15,6 @@ describe("UIPermissionRequests", () => {
     expect(requests.getSnapshot()).toBeNull();
   });
 
-  test("plan mode 工具不展示永久允许", () => {
-    const requests = new UIPermissionRequests();
-    void requests.request("enter_plan_mode", "进入计划", {});
-    expect(requests.getSnapshot()?.allowAddToAllowList).toBe(false);
-    requests.denyPending("stop");
-  });
-
   test("脱离 Sandbox 的确认不展示永久允许", () => {
     const requests = new UIPermissionRequests();
     void requests.request("bash", "elevated", {

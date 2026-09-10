@@ -1,4 +1,5 @@
 import {ContextUsageTracker} from "../context/usage.js";
+import {ApprovalEpoch} from "../permissions/approval.js";
 import type {MessageContent} from "../images/content.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {createSessionPersistence} from "../session/storage.js";
@@ -52,6 +53,7 @@ interface RootSessionSnapshotState {
 const SESSION_END_TIMEOUT_MS = 1_500;
 
 export interface RootSessionRuntime {
+    invalidateApprovals(): void;
     readonly sessionId: string;
     readonly history: Message[];
     readonly compactState: CompactState;
@@ -105,6 +107,7 @@ export function createRootSessionRuntime({
     allowBackgroundTasks?: boolean;
 }): RootSessionRuntime {
     const fileState = createFileStateTracker();
+    const approvalEpoch = new ApprovalEpoch();
     const contextUsage = new ContextUsageTracker();
     const persistence = createSessionPersistence(resources.storage, resources.cwd, seed.sessionId);
     let history = seed.history;
@@ -163,6 +166,7 @@ export function createRootSessionRuntime({
     });
 
     return {
+        invalidateApprovals: () => approvalEpoch.invalidate(),
         sessionId: seed.sessionId,
         get history() {
             return history;
@@ -197,6 +201,7 @@ export function createRootSessionRuntime({
                 signal, turnId,
                 resources: {...resources, gitSession, tasks: taskSession},
                 session: {
+                    approvalEpoch,
                     sessionId: seed.sessionId,
                     compactState,
                     contextUsage,
@@ -210,6 +215,9 @@ export function createRootSessionRuntime({
                 host,
             });
             ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
+            ctx.approvalEvidence = () => history;
+            ctx.reviewerModel = resources.settings.models.reviewer;
+            ctx.onApprovalEvent = onEvent;
             ctx.memoryFiles = resources.memory.enabled ? resources.memory.fileAccess({sessionId: seed.sessionId, turnId: ctx.turnId, signal}) : undefined;
             ctx.sessionCompaction = {
                 prepare: source => prepareSessionArchive(resources.storage, resources.cwd, seed.sessionId, source),

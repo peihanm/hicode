@@ -1,4 +1,5 @@
 import {didRunCommandHook} from "../hooks/index.js";
+import {requestApproval, type ApprovalResolution} from "../permissions/approval.js";
 import {appendContentText, contentText} from "../images/content.js";
 import {toolFileChanges} from "../fileChanges/index.js";
 import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
@@ -76,7 +77,7 @@ export async function executeRegisteredTool(
     }
     let input = parsed.data;
     let userAnswers: Readonly<Record<string, string>> | undefined;
-    let userApproved: true | undefined;
+    let permissionApproved: true | undefined;
     let preHookResult: HookBatchResult | undefined;
 
     if (hooks?.enabled) {
@@ -131,6 +132,9 @@ export async function executeRegisteredTool(
     }
 
     let permission;
+    const approvalEpoch = ctx.approvalEpoch.signal;
+    const executionMode = ctx.permissionMode;
+    const collaborationMode = ctx.collaborationMode;
     let authorizedPath: string | undefined;
     const inputPath = toolPathInput(name, input);
     try {
@@ -161,17 +165,18 @@ export async function executeRegisteredTool(
     }
     if (permission.behavior === "ask") {
         let decision: PermissionDecision;
+        let resolution: ApprovalResolution;
         try {
-            decision = await ctx.canUseTool(
-                name,
-                permission.message,
-                structuredClone(input),
+            resolution = await requestApproval(
+                ctx, name, input, permission.message, toolCallId,
                 {
                     allowPersistent: permission.allowPersistent,
                     presentation: permission.presentation,
                 }
             );
+            decision = resolution.decision;
         } catch (error) {
+            if (approvalEpoch.aborted && !ctx.signal.aborted) return inlineToolResult("审批期间工作方式或权限发生变化，请重新调用工具", "denied");
             if (isTurnInterruptedError(error, ctx.signal)) {
                 return interruptedToolResult(ctx.signal);
             }
@@ -189,7 +194,7 @@ export async function executeRegisteredTool(
         }
         if (decision.behavior === "deny") {
             return hookDecoratedResult(
-                inlineToolResult(`用户拒绝: ${decision.message}`, "denied"),
+                inlineToolResult(`${resolution.source === "auto-review" ? "自动审核拒绝" : "审批拒绝"}${resolution.code ? ` [${resolution.code}]` : ""}: ${decision.message}`, "denied"),
                 "PreToolUse",
                 preHookResult
             );
@@ -247,7 +252,7 @@ export async function executeRegisteredTool(
         }
     }
 
-    if (permission.behavior === "ask") userApproved = true;
+    if (permission.behavior === "ask" || executionMode === "full-access") permissionApproved = true;
 
 
     let result;
@@ -255,9 +260,11 @@ export async function executeRegisteredTool(
         if (inputPath !== undefined && await resolveFilePermissionPath(ctx.cwd, inputPath) !== authorizedPath) {
             return inlineToolResult("文件目标在权限检查期间发生变化，请重新调用工具", "denied");
         }
+        if (approvalEpoch.aborted) return inlineToolResult("审批期间工作方式或权限发生变化，请重新调用工具", "denied");
+        if (ctx.approvalBudget.stopped) return inlineToolResult(ctx.approvalBudget.stopMessage, "denied");
         ctx.onToolExecution?.("start");
         try {
-            result = await tool.execute(input, ctx, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(userApproved ? {userApproved} : {})});
+            result = await tool.execute(input, {...ctx, permissionMode: executionMode, collaborationMode}, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(permissionApproved ? {permissionApproved} : {})});
         } finally {
             ctx.onToolExecution?.("end");
         }

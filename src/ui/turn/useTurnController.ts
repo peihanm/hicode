@@ -256,6 +256,8 @@ export function useTurnController({
 
         const setPermissionMode = useCallback(
             (mode: PermissionMode) => {
+                if (mode === "full-access" && !resources.allowFullAccess) return;
+                rootSession.invalidateApprovals();
                 permissionModeRef.current = mode;
                 setPermissionModeState(mode);
                 void persistSnapshot({permissionMode: mode});
@@ -265,6 +267,7 @@ export function useTurnController({
 
         const setCollaborationMode = useCallback(
             (mode: CollaborationMode) => {
+                rootSession.invalidateApprovals();
                 collaborationModeRef.current = mode;
                 setCollaborationModeState(mode);
                 void persistSnapshot({collaborationMode: mode});
@@ -300,8 +303,6 @@ export function useTurnController({
                 getPermissionMode: () => permissionModeRef.current,
                 getCollaborationMode: () => collaborationModeRef.current,
                 getPermissionPromptPolicy: () => "onRequest" as const,
-                setPermissionMode,
-                setCollaborationMode,
                 setTodos,
             };
             turnControllerRef.current = new UITurnController({
@@ -332,6 +333,7 @@ export function useTurnController({
                 openGitDiff,
                 openModel,
                 openPermissions,
+                setCollaborationMode,
                 runTurn: async (input, signal) => {
                     await startSessionHooks();
                     await runRootTurn({

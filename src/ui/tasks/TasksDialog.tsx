@@ -109,6 +109,7 @@ export function TasksDialog({tasks, stopTask, onClose}: {
         {error && <Box marginTop={1}><Text color={COLORS.error}>{clean(error)}</Text></Box>}
         {detail ? <>
             <Box marginTop={1}><Text bold>{clean(title(detail))}</Text></Box>
+            {detail.kind === "shell" && <Text color={COLORS.dim}>{`启动环境：${detail.executionMode === "host" ? "宿主执行" : "沙箱执行"}（后续切换权限不改变已启动进程）`}</Text>}
             <Text><Text color={statusColors[detail.status]}>{badge(detail)}</Text><Text color={COLORS.dim}>{` · ${metadata(detail)}`}</Text></Text>
             {detail.kind === "agent" && <Text color={COLORS.dim}>{`${detail.progress.iterations} 轮 · ${detail.progress.toolUseCount} 次工具调用 · ${clean(detail.progress.lastActivity ?? "")}`}</Text>}
             <Box flexDirection="column" marginTop={1} marginBottom={1} paddingLeft={1}>

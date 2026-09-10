@@ -3,6 +3,7 @@ import {shouldAutoCompact} from "../context/compact.js";
 import {getAutoCompactThreshold, getModelInputBudget, getTokenWarningState,} from "../context/window.js";
 import {getUserContextBlocks} from "../prompt/attachments.js";
 import {buildInvokeMessages} from "../prompt/invokeMessages.js";
+import {withCollaborationMode} from "../prompt/collaboration.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "./types.js";
@@ -52,7 +53,7 @@ export async function prepareAgentInvoke({
         ...getUserContextBlocks(ctx.skills, ctx.instructions),
         ...runtimeBlocks,
     ];
-    let invokeMessages = [...buildInvokeMessages(history, userContextBlocks)];
+    let invokeMessages = withCollaborationMode(buildInvokeMessages(history, userContextBlocks), ctx.collaborationMode);
     const tools = getToolSchemas();
     const scope = () => ({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
     contextWindow ??= ctx.contextUsage.contextWindow(scope());
@@ -96,7 +97,7 @@ export async function prepareAgentInvoke({
                 ...getUserContextBlocks(ctx.skills, ctx.instructions),
                 ...runtimeBlocks,
             ];
-            invokeMessages = [...buildInvokeMessages(history, userContextBlocks)];
+            invokeMessages = withCollaborationMode(buildInvokeMessages(history, userContextBlocks), ctx.collaborationMode);
             estimatedTokens = ctx.contextUsage.estimate(scope(), invokeMessages, tools);
             await onEvent({
                 type: "compact_end",

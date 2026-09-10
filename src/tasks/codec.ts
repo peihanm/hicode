@@ -247,7 +247,7 @@ function decodeCommon(value: Record<string, unknown>): {
 function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | undefined {
     if (!hasOnlyKeys(value, [
         "id", "kind", "owner", "command", "cwd", "status", "startedAt",
-        "completedAt", "output", "outputResult", "outputIssue", "termination",
+        "completedAt", "output", "outputResult", "outputIssue", "termination", "executionMode",
     ])) return undefined;
     const common = decodeCommon(value);
     const outputResult = value.outputResult === undefined
@@ -258,6 +258,7 @@ function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | un
         : decodeTermination(value.termination);
     if (
         value.kind !== "shell" || !common ||
+        (value.executionMode !== "sandbox" && value.executionMode !== "host") ||
         !boundedString(value.command, MAX_COMMAND_CHARACTERS) ||
         !boundedString(value.cwd, MAX_PATH_CHARACTERS) ||
         !boundedString(value.output, MAX_TEXT_CHARACTERS, true) ||
@@ -267,6 +268,7 @@ function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | un
     return {
         ...common,
         kind: "shell",
+        executionMode: value.executionMode,
         command: value.command,
         cwd: value.cwd,
         output: value.output,

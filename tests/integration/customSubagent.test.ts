@@ -147,12 +147,12 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "blocked-write"
                     );
-                    expect(denied?.content).toContain("当前 Host 不支持权限交互");
+                    expect(denied?.content).toContain("当前 Agent 仅允许只读工具调用");
                     return assistantText("写入被安全拒绝，审查结束。");
                 },
             ]);
             const ctx = createTestContext(cwd, {
-                permissionMode: "default",
+                permissionMode: "ask",
         collaborationMode: "build",
                 canUseTool: async () => {
                     confirmations += 1;
@@ -211,13 +211,13 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "allowed-write"
                     );
-                    expect(result?.content).toContain("当前 Host 不支持权限交互");
+                    expect(result?.content).toContain("当前 Agent 仅允许只读工具调用");
                     return assistantText("写入被拒绝");
                 },
             ]);
             const accepted = createSubagentRunnerForTest({
                 parentContext: createTestContext(cwd, {
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                 }),
                 onEvent: () => {},
@@ -245,12 +245,12 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "plan-write"
                     );
-                    expect(result?.content).toContain("当前 Host 不支持权限交互");
+                    expect(result?.content).toContain("当前 Agent 仅允许只读工具调用");
                     return assistantText("plan 写入未执行");
                 },
             ]);
             const planContext = createTestContext(cwd, {
-                permissionMode: "default",
+                permissionMode: "ask",
                 collaborationMode: "plan",
             });
             planContext.permissionRules.allow.push({
@@ -300,7 +300,7 @@ describe("custom subagent runtime", () => {
                 },
             ]);
             const ctx = createTestContext(cwd, {
-                permissionMode: "bypassPermissions",
+                permissionMode: "full-access",
         collaborationMode: "build",
             });
             ctx.permissionRules.deny.push({
@@ -389,13 +389,13 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "mcp-write"
                     );
-                    expect(result?.content).toContain("当前 Host 不支持权限交互");
+                    expect(result?.content).toContain("当前 Agent 仅允许只读工具调用");
                     return assistantText("MCP 权限边界正常");
                 },
             ]);
             const runner = createSubagentRunnerForTest({
                 parentContext: createTestContext(cwd, {
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     mcpManager,
                 }),

@@ -230,7 +230,7 @@ describe("RuntimeBootstrap lifecycle", () => {
           {role: "assistant", content: "历史回答"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const order: string[] = [];

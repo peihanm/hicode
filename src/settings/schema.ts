@@ -6,9 +6,9 @@ import {isFilePermissionTool, validateFilePattern} from "../permissions/filePatt
 import {parsePermissionRule} from "../permissions/rules.js";
 
 const permissionModeSchema = z.enum([
-    "default",
-    "readOnly",
-    "bypassPermissions",
+    "ask",
+    "auto-review",
+    "full-access",
 ]);
 
 const configuredLLMProviderSchema = z.enum(LLM_PROVIDER_NAMES);
@@ -57,6 +57,7 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
             .optional(),
         models: z
             .object({
+                reviewer: z.object({model: z.string().trim().min(1), source: configuredLLMProviderSchema}).strict().optional(),
                 primary: z
                     .object({
                         model: z.string().trim().min(1).optional(),
@@ -94,7 +95,7 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
             .optional(),
         sandbox: z
             .object({
-                enabled: z.boolean().optional(),
+                enabled: z.never({invalid_type_error: "sandbox.enabled 已移除；请使用 permissions.defaultMode 选择 ask、auto-review 或 full-access"}).optional(),
                 filesystem: z
                     .object({
                         denyRead: z.array(z.string().trim().min(1)).optional(),
@@ -126,6 +127,7 @@ export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
             .optional(),
         models: z
             .object({
+                reviewer: z.object({model: z.string().trim().min(1), source: configuredLLMProviderSchema}).strict().optional(),
                 primary: z.object({
                     model: z.string().trim().min(1).optional(),
                     source: configuredLLMProviderSchema.optional(),
@@ -154,7 +156,7 @@ export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
         }).strict().optional(),
         sandbox: z
             .object({
-                enabled: z.boolean().optional(),
+                enabled: z.never({invalid_type_error: "sandbox.enabled 已移除；请使用 permissions.defaultMode 选择 ask、auto-review 或 full-access"}).optional(),
                 filesystem: z.object({
                     denyRead: z.array(z.string().trim().min(1)).optional(),
                     denyWrite: z.array(z.string().trim().min(1)).optional(),

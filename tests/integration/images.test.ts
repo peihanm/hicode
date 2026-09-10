@@ -30,7 +30,7 @@ import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 const signal = () => new AbortController().signal;
 const png = () => sharp({create: {width: 80, height: 40, channels: 4, background: {r: 20, g: 80, b: 160, alpha: 0.5}}}).png().toBuffer();
-const state = {todos: [], uiEvents: [], permissionMode: "default" as const, collaborationMode: "build" as const};
+const state = {todos: [], uiEvents: [], permissionMode: "ask" as const, collaborationMode: "build" as const};
 
 function fixture(cwd: string) {
     const ctx = createTestContext(cwd, {sessionId: "images", workspaceBoundary: cwd, toolResultStore: createToolResultStore(createTestStorage(cwd), cwd, "images")});

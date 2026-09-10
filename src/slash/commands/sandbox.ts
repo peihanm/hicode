@@ -2,12 +2,6 @@ import type {SandboxStatus} from "../../sandbox/index.js";
 import type {SlashCommand} from "../types.js";
 
 export function formatSandboxStatus(status: SandboxStatus): string {
-    if (status.kind === "disabled") {
-        return [
-            "Bash Sandbox: disabled",
-            "可在 Settings 中配置 sandbox.enabled=true，修改后重启 Pillar。",
-        ].join("\n");
-    }
     if (status.kind === "unavailable") {
         const lines = [
             "Bash Sandbox: unavailable",
@@ -47,7 +41,9 @@ export const sandboxCommand: SlashCommand = {
         }
         await context.onEvent({
             type: "assistant_text",
-            content: formatSandboxStatus(context.ctx.shellRunner.sandboxStatus),
+            content: context.ctx.permissionMode === "full-access"
+                ? "当前会话为 Full Access：新命令在宿主环境执行，受当前系统账户权限约束。"
+                : formatSandboxStatus(context.ctx.shellRunner.sandboxStatus),
         });
     },
 };

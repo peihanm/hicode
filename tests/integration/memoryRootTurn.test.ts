@@ -14,8 +14,8 @@ for(const mode of ["success","save-failed","host-no-background","plan","ignore"]
  const session=createRootSessionRuntime({resources,resumed:false,allowBackgroundTasks:mode!=="host-no-background",seed:{sessionId:"root-memory",history:[{role:"system",content:"test"}],compactState:createCompactState()}});
  const runner=createRootTurnRunnerFactory(mode==="save-failed"?{saveSession:async()=>{throw new Error("disk-failed");}}:{});
  const run=runner({resources,session,prompt:mode==="ignore"?"忽略记忆":"完成任务",signal:new AbortController().signal,
-  host:{canUseTool:async()=>({behavior:"allow"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"default",getCollaborationMode:()=>mode==="plan"?"plan":"build",getPermissionPromptPolicy:()=>"never",setPermissionMode(){},setCollaborationMode(){},setTodos(){}},
-  onEvent(){},onHookResult(){},onLifecycleIssue(){},getSnapshotState:()=>({todos:[],permissionMode:"default",collaborationMode:mode==="plan"?"plan":"build",uiEvents:[]})});
+  host:{canUseTool:async()=>({behavior:"allow"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"ask",getCollaborationMode:()=>mode==="plan"?"plan":"build",getPermissionPromptPolicy:()=>"never",setTodos(){}},
+  onEvent(){},onHookResult(){},onLifecycleIssue(){},getSnapshotState:()=>({todos:[],permissionMode:"ask",collaborationMode:mode==="plan"?"plan":"build",uiEvents:[]})});
  if(mode==="save-failed")await expect(run).rejects.toThrow("disk-failed");else await run;
  if(mode==="success"){
   const deadline=Date.now()+2000;while(session.taskSession.hasRunning()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));

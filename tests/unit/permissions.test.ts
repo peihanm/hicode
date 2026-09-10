@@ -33,7 +33,7 @@ function createTool(
 
 describe("resolvePermission", () => {
   test("只读工具默认放行，写工具默认询问", async () => {
-    const ctx = createTestContext("/tmp/project", { permissionMode: "default" });
+    const ctx = createTestContext("/tmp/project", { permissionMode: "ask" });
     await expect(
       resolvePermission(createTool({ isReadOnly: () => true }), {}, ctx)
     ).resolves.toEqual({ behavior: "allow" });
@@ -42,9 +42,9 @@ describe("resolvePermission", () => {
     });
   });
 
-  test("deny 和 ask 规则不会被 bypassPermissions 绕过", async () => {
+  test("Full Access 保留 deny，普通 ask 由预授权满足", async () => {
     const ctx = createTestContext("/tmp/project", {
-      permissionMode: "bypassPermissions",
+      permissionMode: "full-access",
         collaborationMode: "build",
     });
     ctx.permissionRules.deny.push({ toolName: "synthetic", source: "project" });
@@ -55,13 +55,13 @@ describe("resolvePermission", () => {
     ctx.permissionRules.deny = [];
     ctx.permissionRules.ask.push({ toolName: "synthetic", source: "project" });
     await expect(resolvePermission(createTool(), {}, ctx)).resolves.toMatchObject({
-      behavior: "ask",
+      behavior: "allow",
     });
   });
 
   test("工具自身 deny 始终优先", async () => {
     const ctx = createTestContext("/tmp/project", {
-      permissionMode: "bypassPermissions",
+      permissionMode: "full-access",
         collaborationMode: "build",
     });
     const tool = createTool({
@@ -73,19 +73,19 @@ describe("resolvePermission", () => {
     });
   });
 
-  test("非交互 Host 将询问转换成拒绝", async () => {
+  test("权限意向不提前绑定 Host，人工可用性由审批入口处理", async () => {
     const ctx = createTestContext("/tmp/project", {
-      permissionMode: "readOnly",
+      permissionMode: "ask",
       permissionPromptPolicy: "never",
     });
     await expect(resolvePermission(createTool(), {}, ctx)).resolves.toEqual({
-      behavior: "deny",
-      message: "当前 Host 不支持权限交互，需要确认的操作被拒绝",
+      behavior: "ask",
+      message: "工具 synthetic 需要确认",
     });
   });
 
-  test("Read Only 自动允许读取，但写操作仍需确认", async () => {
-    const ctx = createTestContext("/tmp/project", {permissionMode: "readOnly"});
+  test("修改前确认自动允许读取，但写操作仍需确认", async () => {
+    const ctx = createTestContext("/tmp/project", {permissionMode: "ask"});
     await expect(resolvePermission(
       createTool({isReadOnly: () => true}),
       {},
@@ -93,13 +93,13 @@ describe("resolvePermission", () => {
     )).resolves.toEqual({behavior: "allow"});
     await expect(resolvePermission(createTool(), {}, ctx)).resolves.toEqual({
       behavior: "ask",
-      message: "Read Only 模式下工具 synthetic 需要确认",
+      message: "工具 synthetic 需要确认",
     });
   });
 
   test("default 只自动放行 canonical workspace 内声明范围的写入", async () => {
     await withTempProject(async (cwd) => {
-      const ctx = createTestContext(cwd, {permissionMode: "default"});
+      const ctx = createTestContext(cwd, {permissionMode: "ask"});
       const tool = createTool({
         checkPermissions: async () => ({behavior: "ask", message: "write"}),
         getDefaultApprovalScope: ({path}) =>
@@ -130,7 +130,7 @@ describe("resolvePermission", () => {
         hardBoundary,
       });
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         workspaceBoundary: hardBoundary,
       });
       ctx.directoryAccess = directoryAccess;
@@ -194,7 +194,7 @@ describe("resolvePermission", () => {
       getDefaultApprovalScope: () => ({kind: "sandboxed"}),
     });
     const defaultContext = createTestContext("/tmp/project", {
-      permissionMode: "default",
+      permissionMode: "ask",
         collaborationMode: "build",
     });
     await expect(resolvePermission(tool, {}, defaultContext)).resolves.toEqual({
@@ -210,23 +210,23 @@ describe("resolvePermission", () => {
     });
 
     const planContext = createTestContext("/tmp/project", {
-      permissionMode: "default",
+      permissionMode: "ask",
         collaborationMode: "plan",
     });
     await expect(resolvePermission(tool, {}, planContext)).resolves.toEqual({
-      behavior: "ask",
-      message: "command",
+      behavior: "deny",
+      message: "Plan 模式不执行 synthetic 的修改操作；请由用户切换 Build 后再实施",
     });
   });
 
   test("Plan 在 Bypass 之前收窄写操作", async () => {
     const context = createTestContext("/tmp/project", {
-      permissionMode: "bypassPermissions",
+      permissionMode: "full-access",
       collaborationMode: "plan",
     });
     await expect(resolvePermission(createTool(), {}, context)).resolves.toEqual({
-      behavior: "ask",
-      message: "Plan 模式下工具 synthetic 需要确认",
+      behavior: "deny",
+      message: "Plan 模式不执行 synthetic 的修改操作；请由用户切换 Build 后再实施",
     });
   });
 });

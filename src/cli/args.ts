@@ -36,9 +36,8 @@ Options:
   -c, --continue                 Resume the most recently updated session
   --model <model>                Override the primary model for this run
   --source <source>              Override primary model source: ${LLM_PROVIDER_NAMES.join(" | ")}
-  --permission-mode <mode>       default | readOnly | bypassPermissions
+  --permission-mode <mode>       ask | auto-review | full-access
   --collaboration-mode <mode>    build | plan
-  --dangerously-skip-permissions Start in bypassPermissions mode
   -h, --help                     Show help
 `);
 }
@@ -173,10 +172,6 @@ export function parseCliArgs(args: string[]): CliOptions {
                 throw new Error("--resume= 需要提供 sessionId");
             }
             setResumeMode({kind: "session", sessionId: value});
-            continue;
-        }
-        if (arg === "--dangerously-skip-permissions") {
-            options.permissionMode = "bypassPermissions";
             continue;
         }
         if (arg === "--permission-mode") {

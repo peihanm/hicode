@@ -36,7 +36,7 @@ if (mode === "session") {
         { role: "user", origin: "user" as const, content: `${prefix}-task-${index}` },
       ],
       todos: [],
-      permissionMode: "default",
+      permissionMode: "ask",
         collaborationMode: "build",
     });
   }

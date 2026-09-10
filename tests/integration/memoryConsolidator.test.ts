@@ -6,7 +6,7 @@ import {createMemoryConsolidatorFactory} from "../../src/memory/consolidator.js"
 import {MemoryPublicationStore, serializeDraftTopic} from "../../src/memory/publicationStore.js";
 import {getMemoryWorkspacePaths} from "../../src/persistence/layout.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
-import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {withTempProject} from "../helpers/tempProject.js";

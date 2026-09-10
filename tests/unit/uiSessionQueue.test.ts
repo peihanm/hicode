@@ -9,7 +9,7 @@ test("Session 串行捕获输入数组，不被后续 Host 更新改变；保存
     await withTempProject(async (cwd, storage) => {
         const writer = createSessionPersistence(storage, cwd, "queue");
         const input: SaveSessionSnapshotInput = {cwd, sessionId: "queue", model: "glm-test",
-            history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "default", collaborationMode: "build",
+            history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "ask", collaborationMode: "build",
             toolDiscovery: {version: 2, loadedNames: ["first"]}};
         const first = writer.save(input);
         input.history[0] = {role: "user", origin: "user", content: "next"};
@@ -30,7 +30,7 @@ test("半批次只保存通知收据和队列，不覆盖完整正文，也不�
     await withTempProject(async (cwd, storage) => {
         const writer = createSessionPersistence(storage, cwd, "metadata");
         const input: SaveSessionSnapshotInput = {cwd, sessionId: "metadata", model: "glm-test",
-            history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "default", collaborationMode: "build"};
+            history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "ask", collaborationMode: "build"};
         await writer.save(input);
         const pending = {role: "assistant" as const, content: null, tool_calls: [{id: "pending", type: "function" as const, function: {name: "write_file", arguments: "{}"}}]};
         const receipt = "a".repeat(64);

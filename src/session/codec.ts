@@ -164,6 +164,12 @@ const turnTimingSchema = z.object({
 }).strict().refine(t => t.durationMs === t.modelMs + t.toolMs + t.approvalMs + t.overlapMs + t.otherMs);
 
 const persistedUIEventSchema = z.discriminatedUnion("type", [
+    z.object({version: z.literal(1), type: z.literal("approval_review"), phase: z.literal("end"),
+        requestId: idSchema, toolCallId: idSchema, turnId: idSchema, timestamp: timestampSchema,
+        source: z.enum(["user", "auto-review", "preauthorized"]),
+        outcome: z.enum(["allow", "deny", "needs_user", "error"]).optional(), reason: z.string().max(4000).optional(),
+        code: z.enum(["policy_denied", "approval_required", "review_failed"]).optional(),
+    }).strict(),
     z.object({
         version: z.literal(1),
         type: z.literal("turn_timing"),

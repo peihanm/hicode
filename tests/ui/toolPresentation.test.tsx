@@ -34,19 +34,6 @@ function completeTool(
 }
 
 describe("phase-based tool presentation", () => {
-    test("退出 Plan 的确认标题合并到工具行", () => {
-        const threads = reduceThreads([], {
-            type: "tool_call_start",
-            turnId: "turn-1",
-            toolCallId: "exit-plan",
-            name: "exit_plan_mode",
-            args: JSON.stringify({plan: "1. 修改代码"}),
-        });
-
-        const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("● Exit plan mode · Ready to build?");
-    });
-
     test("连续成功探索合并为项目检查阶段，tool_search 静默吸收", () => {
         let threads: UIThread[] = [];
         threads = completeTool(threads, {

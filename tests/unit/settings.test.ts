@@ -37,7 +37,7 @@ describe("Unified Settings", () => {
                     label: "Qwen 3.8 Flash",
                 },
             },
-            permissions: {defaultMode: "default"},
+            permissions: {defaultMode: "ask"},
         });
         expect(resolved.values.permissions.rules).toEqual({
             allow: [],
@@ -45,8 +45,7 @@ describe("Unified Settings", () => {
             deny: [],
         });
         expect(resolved.values.sandbox).toEqual({
-            enabled: true,
-            filesystem: {
+                        filesystem: {
                 denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
                 denyWrite: [".pillar", ".env"],
             },
@@ -92,7 +91,7 @@ describe("Unified Settings", () => {
                         fast: {model: "glm-4.7", source: "glm"},
                     },
                     permissions: {
-                        defaultMode: "default",
+                        defaultMode: "ask",
                         allow: ["read_file", "bash(git status:*)"],
                     },
                 }),
@@ -108,7 +107,7 @@ describe("Unified Settings", () => {
                 }),
                 document("local", {
                     models: {primary: {model: "glm-4.7", source: "glm"}},
-                    permissions: {defaultMode: "readOnly"},
+                    permissions: {defaultMode: "ask"},
                 }),
             ],
             {model: "deepseek-v4-pro", source: "deepseek"}
@@ -126,7 +125,7 @@ describe("Unified Settings", () => {
             model: "qwen3.6-flash",
             label: "Qwen 3.6 Flash",
         });
-        expect(resolved.values.permissions.defaultMode).toBe("readOnly");
+        expect(resolved.values.permissions.defaultMode).toBe("ask");
         expect(resolved.origins).toEqual({
             primaryModel: "cli",
             primarySource: "cli",
@@ -135,7 +134,6 @@ describe("Unified Settings", () => {
             permissionMode: "local",
             memoryEnabled: "default",
           memoryAutoExtract: "default",
-          sandboxEnabled: "default",
         });
         expect(resolved.values.permissions.rules.allow).toEqual([
             {toolName: "read_file", source: "project"},
@@ -258,7 +256,7 @@ describe("Unified Settings", () => {
         const resolved = resolvePillarSettings([
             document("user", {
                 sandbox: {
-                    enabled: true,
+
                     filesystem: {
                         denyRead: ["~/.ssh"],
                     },
@@ -276,13 +274,12 @@ describe("Unified Settings", () => {
                 },
             }),
             document("local", {
-                sandbox: {enabled: false},
+                sandbox: {},
             }),
         ]);
 
         expect(resolved.values.sandbox).toEqual({
-            enabled: false,
-            filesystem: {
+                        filesystem: {
                 denyRead: ["~/.ssh"],
                 denyWrite: [".pillar", ".env"],
             },
@@ -291,7 +288,6 @@ describe("Unified Settings", () => {
                 allowLocalBinding: true,
             },
         });
-        expect(resolved.origins.sandboxEnabled).toBe("local");
     });
 
     test("旧顶层 mode 不再影响权限模式", () => {
@@ -299,15 +295,15 @@ describe("Unified Settings", () => {
             resolvePillarSettings([
                 document("project", {
                     mode: "plan",
-                    permissions: {defaultMode: "default"},
+                    permissions: {defaultMode: "ask"},
                 } as PillarSettingsFile),
             ]).values.permissions.defaultMode
-        ).toBe("default");
+        ).toBe("ask");
         expect(
             resolvePillarSettings([
                 document("project", {mode: "plan"} as PillarSettingsFile),
             ]).values.permissions.defaultMode
-        ).toBe("default");
+        ).toBe("ask");
     });
 
     test("Hooks 按 user、project、local 叠加并保留配置来源", () => {
@@ -396,7 +392,7 @@ describe("Unified Settings", () => {
                 },
             });
             expect(loaded.values.models.primary.model).toBe("glm-4.7");
-            expect(loaded.values.permissions.defaultMode).toBe("default");
+            expect(loaded.values.permissions.defaultMode).toBe("ask");
             expect(
                 loaded.issues.some(
                     (issue) =>

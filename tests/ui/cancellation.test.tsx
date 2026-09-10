@@ -56,12 +56,12 @@ describe("App cancellation", () => {
 
       instance.stdin.write("\u001B[Z");
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(instance.lastFrame()).toContain("| Plan | new sessi");
+      expect(instance.lastFrame()).toContain(`GLM Test | Plan | ${cwd}`);
 
       release();
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(observedCollaborationMode).toBe("plan");
-      expect(observedPermissionMode).toBe("default");
+      expect(observedPermissionMode).toBe("ask");
     });
   });
 

@@ -262,6 +262,8 @@ class SDKThreadImpl implements Thread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
+        if ((turnOptions.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "当前 Host 不允许 Full Access");
+        if (turnOptions.permissionMode !== undefined || turnOptions.collaborationMode !== undefined) this.options.session.invalidateApprovals();
         if (turnOptions.permissionMode !== undefined) {
             this.options.state.permissionMode = turnOptions.permissionMode;
         }
@@ -382,12 +384,6 @@ class SDKThreadImpl implements Thread {
             getCollaborationMode: () => this.options.state.collaborationMode,
             getPermissionPromptPolicy: () =>
                 this.options.host?.onInteraction ? "onRequest" : "never",
-            setPermissionMode: (mode) => {
-                this.options.state.permissionMode = mode;
-            },
-            setCollaborationMode: (mode) => {
-                this.options.state.collaborationMode = mode;
-            },
             setTodos: async (todos) => {
                 this.options.state.todos = todos;
                 await adapter.emitTodos(todos);

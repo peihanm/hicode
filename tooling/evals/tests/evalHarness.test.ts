@@ -310,7 +310,7 @@ describe("SDK Eval Harness", () => {
             expect(generatedSettings.sources).toBeDefined();
             expect(generatedSettings.hooks).toBeUndefined();
             expect(generatedSettings.permissions).toEqual({
-                defaultMode: "default",
+                defaultMode: "ask",
             });
             expect(prepared.verifierEnvironment.DASHSCOPE_API_KEY).toBeUndefined();
 

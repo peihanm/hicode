@@ -35,15 +35,16 @@ function sandboxRuntime(
 }
 
 describe("ShellRunner", () => {
-    test("disabled 状态保持现有裸 Shell 行为", async () => {
+    test("已授权的宿主执行跳过 Sandbox 包装", async () => {
         await withTempProject(async (cwd) => {
             const events: string[] = [];
             const runner = createShellRunner(
-                sandboxRuntime({kind: "disabled"}, events),
+                sandboxRuntime({kind: "ready", platform: "macos", warnings: []}, events),
                 testChildEnvironment
             );
             const result = await runner.run({
                 command: "printf disabled",
+                sandboxPermissions: "require_escalated",
                 cwd,
                 signal: new AbortController().signal,
             });
@@ -62,7 +63,7 @@ describe("ShellRunner", () => {
                 SESSION_TOKEN: "token-secret",
             }, ["CUSTOM_MODEL_CREDENTIAL"]);
             const runner = createShellRunner(
-                sandboxRuntime({kind: "disabled"}),
+                sandboxRuntime({kind: "ready", platform: "macos", warnings: []}),
                 childEnvironment
             );
             const result = await runner.run({

@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {

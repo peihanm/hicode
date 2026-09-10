@@ -1,7 +1,8 @@
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {expect, test} from "bun:test";
 import {mkdir, readFile, readdir, realpath, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {createSandboxRuntimeFactory, createDisabledSandboxRuntime} from "../../src/sandbox/runtime.js";
+import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 import {getProjectNpmCacheDirectory} from "../../src/persistence/layout.js";
@@ -29,7 +30,7 @@ test("真实 npm 离线安装、嵌套 npx 使用受管缓存，显式 --cache �
             async wrapWithSandboxArgv(command) {return {argv: ["/bin/bash", "--noprofile", "--norc", "-c", command], env: {}};},
             annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
             cleanupAfterCommand() {}, async reset() {active = false;},
-        })({cwd, storage, settings: {enabled: true, filesystem: {denyRead: [], denyWrite: []}, network: {allowedDomains: [], allowLocalBinding: false}}});
+        })({cwd, storage, settings: {filesystem: {denyRead: [], denyWrite: []}, network: {allowedDomains: [], allowLocalBinding: false}}});
         const inheritedCache = join(home, "inherited");
         const environment = createChildProcessEnvironment({PATH: process.env.PATH, HOME: home,
             npm_config_userconfig: config, npm_config_globalconfig: globalConfig, npm_config_update_notifier: "false",

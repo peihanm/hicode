@@ -32,7 +32,7 @@ test("大安装缓存不扫描，也不清空源码已读范围", async () => {
 test("Bash 改源码仍要求重读；同 Turn 外部修改不被后续 Edit 掩盖", async () => {
     await withTempProject(async cwd => {
         const fileState = createFileStateTracker();
-        const ctx = createTestContext(cwd, {fileState, shellRunner: {sandboxStatus: {kind: "disabled"}, run: runShellCommand}});
+        const ctx = createTestContext(cwd, {fileState, shellRunner: {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, run: runShellCommand}});
         const tools = createToolRuntime();
         await tools.executeTool("write_file", JSON.stringify({path: "app.txt", content: "B"}), ctx, "first");
         expect((await tools.executeTool("bash", JSON.stringify({command: "printf C > app.txt"}), ctx, "external")).outcome).toBe("ok");

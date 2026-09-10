@@ -114,7 +114,7 @@ describe("running input queue UI", () => {
                     {role: "assistant", content: "旧任务已完成"},
                 ],
                 todos: [],
-                permissionMode: "default",
+                permissionMode: "ask",
         collaborationMode: "build",
                 uiEvents: [],
                 taskNotificationReceipts: [],

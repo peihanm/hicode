@@ -102,7 +102,7 @@ export const memoryCommand: SlashCommand = {
                 await context.onEvent({type: "assistant_text", content: "用法: /memory forget <key>"});
                 return;
             }
-            if (context.ctx.permissionMode === "readOnly" || context.ctx.collaborationMode === "plan") {
+            if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
                 await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能删除 Memory。"}); return;
             }
             const change = await memory.forget(value, context.ctx.signal);
@@ -126,7 +126,7 @@ export const memoryCommand: SlashCommand = {
         }
 
         if (action === "maintain") {
-            if (context.ctx.permissionMode === "readOnly" || context.ctx.collaborationMode === "plan") {
+            if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
                 await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能整理 Memory。"}); return;
             }
             if(!context.ctx.tasks) {await context.onEvent({type:"assistant_text",content:"当前 Runtime 未提供 Memory 维护任务能力。"});return;}

@@ -12,7 +12,7 @@ export const fixFailingTestCase: EvalCase = {
         "要求：不要修改 tests/、package.json 或 README.md；定位真实实现问题并修复；运行 bun test 验证。",
         "完成后简洁说明根因、修改和真实验证结果。不要提交 Git commit。",
     ].join("\n"),
-    permissionMode: "default",
+    permissionMode: "ask",
     maxIterations: 12,
     timeoutMs: 180_000,
     budget: {

@@ -780,19 +780,16 @@ describe("Hook tool boundary", () => {
                 },
             };
             const runtime = createToolRuntime({hooks});
-            const result = await runtime.executeTool(
-                "bash",
-                JSON.stringify({command: "pwd"}),
-                createTestContext(cwd, {
-                    permissionMode: "default",
+            const context = createTestContext(cwd, {
+                    permissionMode: "ask",
         collaborationMode: "build",
                     canUseTool: async (_name, _message, input) => {
                         askedInput = input;
                         return {behavior: "deny", message: "fixture deny"};
                     },
-                }),
-                "call"
-            );
+                });
+            context.permissionRules.ask.push({toolName: "bash", source: "host"});
+            const result = await runtime.executeTool("bash", JSON.stringify({command: "pwd"}), context, "call");
 
             expect(askedInput).toEqual({
                 command: "printf unsafe > hook-output.txt",
@@ -821,7 +818,7 @@ describe("Hook tool boundary", () => {
                     "bash",
                     JSON.stringify({command: "pwd"}),
                     createTestContext(cwd, {
-                        permissionMode: "default",
+                        permissionMode: "ask",
         collaborationMode: "build",
                         canUseTool: async () => {
                             permissionCalls += 1;
@@ -875,7 +872,7 @@ describe("Hook tool boundary", () => {
             const ok = await runtime.executeTool(
                 "hook_fixture",
                 "{}",
-                createTestContext(cwd, {permissionMode: "default"}),
+                createTestContext(cwd, {permissionMode: "ask"}),
                 "ok"
             );
             expect(events).toEqual(["PreToolUse", "PostToolUse"]);
@@ -886,7 +883,7 @@ describe("Hook tool boundary", () => {
             await runtime.executeTool(
                 "hook_fixture",
                 JSON.stringify({fail: true}),
-                createTestContext(cwd, {permissionMode: "default"}),
+                createTestContext(cwd, {permissionMode: "ask"}),
                 "failed"
             );
             expect(events).toEqual(["PreToolUse", "PostToolUseFailure"]);
@@ -900,7 +897,7 @@ describe("Hook tool boundary", () => {
             await runtime.executeTool(
                 "hook_fixture",
                 JSON.stringify({throws: true}),
-                createTestContext(cwd, {permissionMode: "default"}),
+                createTestContext(cwd, {permissionMode: "ask"}),
                 "throws"
             );
             expect(events).toEqual(["PreToolUse", "PostToolUseFailure"]);
@@ -915,7 +912,7 @@ describe("Hook tool boundary", () => {
                 "hook_fixture",
                 JSON.stringify({write: true}),
                 createTestContext(cwd, {
-                    permissionMode: "readOnly",
+                    permissionMode: "ask",
                     permissionPromptPolicy: "never",
                 }),
                 "denied"

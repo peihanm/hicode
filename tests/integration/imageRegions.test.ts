@@ -82,7 +82,7 @@ test("Resume retains the original dependency and corruption prevents new crop pu
         const original = imageReferences((await f.view({path})).modelContent)[0]!;
         const reference = imageReferences((await f.view({image_id: original.imageId, region: {x: 10, y: 10, width: 30, height: 20}})).modelContent)[0]!;
         await saveSessionSnapshot(f.ctx.storage, {cwd, sessionId: f.ctx.sessionId, model: "qwen3.8-flash",
-            history: [{role: "user", origin: "user" as const, content: [reference]}], todos: [], uiEvents: [], permissionMode: "default", collaborationMode: "build"});
+            history: [{role: "user", origin: "user" as const, content: [reference]}], todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"});
         const saved = loadSession(f.ctx.storage, cwd, f.ctx.sessionId, "qwen3.8-flash")!;
         const target = createToolResultStore(f.ctx.storage, cwd, f.ctx.sessionId);
         const inherited = saved.history.flatMap(message => imageReferences(message.content))[0]!;

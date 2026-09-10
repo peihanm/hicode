@@ -51,9 +51,8 @@ export class SandboxNetworkApproval {
         if (this.closed) return undefined;
         for (const execution of this.executions) {
             const access = execution.access;
-            if (execution.signal.aborted || !access || !access.canPrompt()) return undefined;
-            if (selected && (access.session !== selected.session ||
-                access.canUseTool !== selected.canUseTool)) return undefined;
+            if (execution.signal.aborted || !access || !access.canReview()) return undefined;
+            if (selected && access !== selected) return undefined;
             selected = access;
         }
         return selected;
@@ -84,7 +83,7 @@ export class SandboxNetworkApproval {
                 (decision.networkScope !== undefined && decision.networkScope !== "once" &&
                     decision.networkScope !== "session")) {
                 for (const entry of this.executions) entry.denied.add(key);
-                this.recordDenial(host, port, "用户未批准网络连接");
+                this.recordDenial(host, port, decision.behavior === "deny" ? decision.message.slice(0, 1000) : "网络审批返回了无效决定");
                 return false;
             }
             if (decision.networkScope === "session") access.session.grant(host, port);

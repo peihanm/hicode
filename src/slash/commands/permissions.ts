@@ -1,10 +1,10 @@
-import {getPermissionModeDescription} from "../../permissions/index.js";
+import {getPermissionModeDescription, getPermissionModeShortLabel} from "../../permissions/index.js";
 import type {SlashCommand} from "../types.js";
 
 export const permissionsCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "permissions",
-    description: "查看或切换权限 Profile",
+    description: "选择哪些操作需要确认",
     async execute(args, context) {
         if (args.trim()) {
             await context.onEvent({
@@ -20,7 +20,7 @@ export const permissionsCommand: SlashCommand = {
         await context.onEvent({
             type: "assistant_text",
             content: [
-                `当前权限：${context.ctx.permissionMode}`,
+                `操作审批：${getPermissionModeShortLabel(context.ctx.permissionMode)}`,
                 getPermissionModeDescription(context.ctx.permissionMode),
             ].join("\n"),
         });

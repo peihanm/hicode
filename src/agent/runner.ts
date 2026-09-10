@@ -442,6 +442,9 @@ async function runAgentCore(
                     consecutiveDeniedToolCalls = 0;
                 }
             }
+            if (ctx.approvalBudget.stopped) {
+                return {reply: ctx.approvalBudget.stopMessage, reason: "permission_denied", iterations: i + 1, ...resultUsage()};
+            }
             if (denialLimitReached) {
                 return {
                     reply: `(连续 ${maxConsecutiveDeniedToolCalls} 次工具调用被权限策略拒绝，已停止工具阶段)`,

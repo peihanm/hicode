@@ -321,7 +321,7 @@ describe("MCP stdio integration", () => {
       try {
         const runtime = createToolRuntime({additionalTools: manager.getTools()});
         await exposeDeferredTools(runtime, cwd, "mcp__fixture__environment");
-        const ctx = createTestContext(cwd, {permissionMode: "bypassPermissions"});
+        const ctx = createTestContext(cwd, {permissionMode: "full-access"});
         const secret = await runtime.executeTool(
           "mcp__fixture__environment",
           JSON.stringify({name: "PILLAR_TEST_PROVIDER_API_KEY"}),
@@ -367,7 +367,7 @@ describe("MCP stdio integration", () => {
         let confirmations = 0;
         const runtime = createToolRuntime({ additionalTools: manager.getTools() });
         const ctx = createTestContext(cwd, {
-          permissionMode: "default",
+          permissionMode: "ask",
         collaborationMode: "build",
           canUseTool: async () => {
             confirmations++;
@@ -517,7 +517,7 @@ describe("MCP stdio integration", () => {
         cwd,
         settings: createTestSettings(),
         prompt: "call MCP",
-        permissionMode: "bypassPermissions",
+        permissionMode: "full-access",
         collaborationMode: "build",
         resumeMode: { kind: "none" },
         outputFormat: "json",
@@ -546,7 +546,7 @@ describe("MCP stdio integration", () => {
         cwd,
         settings: createTestSettings(),
         prompt: "continue with the loaded MCP tool",
-        permissionMode: "bypassPermissions",
+        permissionMode: "full-access",
         collaborationMode: "build",
         resumeMode: {kind: "session", sessionId: summary.sessionId},
         outputFormat: "json",

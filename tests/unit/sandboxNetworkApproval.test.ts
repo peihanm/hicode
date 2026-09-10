@@ -7,7 +7,7 @@ import {UIPermissionRequests} from "../../src/ui/turn/permissionRequests.js";
 const target = {host: "registry.example.test", port: 443};
 const signal = () => new AbortController().signal;
 const access = (canUseTool: NetworkAccessExecution["canUseTool"]): NetworkAccessExecution => ({
-    session: new NetworkAccessSession(), canUseTool, canPrompt: () => true,
+    session: new NetworkAccessSession(), canUseTool, canReview: () => true,
 });
 
 describe("Sandbox network approvals", () => {
@@ -59,7 +59,7 @@ describe("Sandbox network approvals", () => {
         expect(await broker.ask(target)).toBe(false);
         const releaseOwner = broker.register(owner, signal()).release;
         expect(await broker.ask(target)).toBe(true);
-        for (const other of [undefined, {...owner, canPrompt: () => false},
+        for (const other of [undefined, {...owner, canReview: () => false},
             {...owner, session: new NetworkAccessSession()},
             {...owner, canUseTool: async (): Promise<PermissionDecision> => ({behavior: "allow"})}]) {
             const releaseOther = broker.register(other, signal()).release;
@@ -75,13 +75,13 @@ describe("Sandbox network approvals", () => {
         broker.close();
     });
 
-    test("同 Session 前台与后台可共享批准", async () => {
+    test("同 Session 不同执行来源不能混用批准", async () => {
         const broker = new SandboxNetworkApproval();
         let asks = 0;
         const owner = access(async () => { asks++; return {behavior: "allow", networkScope: "session"}; });
         const releaseBackground = broker.register(owner, signal()).release;
         const releaseForeground = broker.register({...owner}, signal()).release;
-        expect(await broker.ask(target)).toBe(true);
+        expect(await broker.ask(target)).toBe(false);
         releaseForeground();
         expect(await broker.ask(target)).toBe(true);
         expect(asks).toBe(1);

@@ -1,4 +1,5 @@
 import type {ContextUsageTracker} from "../context/usage.js";
+import {ApprovalBudget, ApprovalEpoch, type ApprovalReviewer} from "../permissions/approval.js";
 import {randomUUID} from "node:crypto";
 import type {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import type {CompactState} from "../context/index.js";
@@ -24,6 +25,10 @@ import {
 } from "../permissions/index.js";
 
 export interface ToolContextResources {
+    allowFullAccess?: boolean;
+    readOnlyTools?: boolean;
+    approvalReviewer?: ApprovalReviewer;
+    reviewerModel?: ToolContext["reviewerModel"];
     fileCommits: FileCommitCoordinator;
     storage: PillarStorageLayout;
     cwd: string;
@@ -43,6 +48,7 @@ export interface ToolContextResources {
 }
 
 export interface ToolContextSession {
+    approvalEpoch?: ApprovalEpoch;
     fileState: FileStateTracker;
     networkAccess?: ToolContext["networkAccess"];
     sessionId: string;
@@ -66,10 +72,6 @@ export interface ToolContextHost {
 
     getPermissionPromptPolicy(): PermissionPromptPolicy;
 
-    setPermissionMode(mode: PermissionMode): void;
-
-    setCollaborationMode(mode: CollaborationMode): void;
-
     setTodos(todos: Todo[]): void | Promise<void>;
 }
 
@@ -88,6 +90,12 @@ export function createToolContext({
 }): ToolContext {
     return {
         signal,
+        allowFullAccess: resources.allowFullAccess ?? false,
+        readOnlyTools: resources.readOnlyTools ?? false,
+        approvalEpoch: session.approvalEpoch ?? new ApprovalEpoch(),
+        approvalBudget: new ApprovalBudget(),
+        approvalReviewer: resources.approvalReviewer,
+        reviewerModel: resources.reviewerModel,
         turnId: turnId ?? randomUUID(),
         canUseTool: host.canUseTool,
         get permissionRules() {
@@ -102,8 +110,6 @@ export function createToolContext({
         get permissionPromptPolicy() {
             return host.getPermissionPromptPolicy();
         },
-        setPermissionMode: host.setPermissionMode,
-        setCollaborationMode: host.setCollaborationMode,
         setTodos: host.setTodos,
         skills: resources.skills,
         instructions: resources.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,

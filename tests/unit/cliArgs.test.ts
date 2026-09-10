@@ -9,13 +9,13 @@ describe("parseCliArgs", () => {
         "检查项目",
         "--output-format=json",
         "--permission-mode",
-        "default",
+        "ask",
         "--collaboration-mode=plan",
       ])
     ).toMatchObject({
       printPrompt: "检查项目",
       outputFormat: "json",
-      permissionMode: "default",
+      permissionMode: "ask",
       collaborationMode: "plan",
       resumeMode: { kind: "none" },
     });

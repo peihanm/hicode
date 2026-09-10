@@ -13,11 +13,11 @@ async function flush(): Promise<void> {
 }
 
 describe("PermissionsDialog", () => {
-    test("展示三个权限 Profile，普通模式可直接切换", async () => {
+    test("展示实际审批行为，修改前确认可直接切换", async () => {
         const onSelect = mock(() => {});
         const instance = render(
-            <PermissionsDialog
-                current="default"
+            <PermissionsDialog allowFullAccess={true}
+                current="ask"
                 onSelect={onSelect}
                 onClose={() => {}}
             />
@@ -25,23 +25,26 @@ describe("PermissionsDialog", () => {
         await flush();
 
         const frame = instance.lastFrame() ?? "";
-        expect(frame).toContain("◆ PERMISSIONS");
-        expect(frame).toContain("Default");
-        expect(frame).toContain("Read Only");
-        expect(frame).toContain("Bypass");
+        expect(frame).toContain("◆ 执行权限");
+        expect(frame).toContain("Ask for approval");
+        expect(frame).toContain("Approve for me");
+        expect(frame).toContain("Full Access");
+        expect(frame).toContain("此处决定访问范围和审批方式");
+        expect(frame).not.toContain("Read Only");
+        expect(frame).not.toContain("Bypass");
 
         instance.stdin.write(DOWN);
         await flush();
         instance.stdin.write(ENTER);
         await flush();
-        expect(onSelect).toHaveBeenCalledWith("readOnly");
+        expect(onSelect).toHaveBeenCalledWith("auto-review");
     });
 
-    test("Bypass 必须二次确认且默认返回，不会误触启用", async () => {
+    test("自动批准普通操作必须二次确认且默认返回", async () => {
         const onSelect = mock(() => {});
         const instance = render(
-            <PermissionsDialog
-                current="default"
+            <PermissionsDialog allowFullAccess={true}
+                current="ask"
                 onSelect={onSelect}
                 onClose={() => {}}
             />
@@ -53,12 +56,12 @@ describe("PermissionsDialog", () => {
         instance.stdin.write(ENTER);
         await flush();
 
-        expect(instance.lastFrame()).toContain("◆ ENABLE BYPASS?");
-        expect(instance.lastFrame()).toContain("Deny/ask rules");
+        expect(instance.lastFrame()).toContain("◆ 启用 Full Access？");
+        expect(instance.lastFrame()).toContain("命令将不受 Pillar 沙箱隔离");
         instance.stdin.write(ENTER);
         await flush();
         expect(onSelect).not.toHaveBeenCalled();
-        expect(instance.lastFrame()).toContain("◆ PERMISSIONS");
+        expect(instance.lastFrame()).toContain("◆ 执行权限");
 
         instance.stdin.write(ENTER);
         await flush();
@@ -66,6 +69,6 @@ describe("PermissionsDialog", () => {
         await flush();
         instance.stdin.write(ENTER);
         await flush();
-        expect(onSelect).toHaveBeenCalledWith("bypassPermissions");
+        expect(onSelect).toHaveBeenCalledWith("full-access");
     });
 });

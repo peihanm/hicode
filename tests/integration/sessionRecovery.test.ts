@@ -11,7 +11,7 @@ import {getSessionStorageDirectory, getSessionContentDirectory} from "../../src/
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
-const state = {todos: [], permissionMode: "default", collaborationMode: "build", uiEvents: []} as const;
+const state = {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []} as const;
 async function directoryBytes(path: string): Promise<number> {
     let size = 0;
     for (const item of await readdir(path, {withFileTypes: true})) {
@@ -45,7 +45,7 @@ describe("Session recovery and storage boundaries", () => {
     test("repeated large conversation is stored once across repeated saves", async () => {
         await withTempProject(async (cwd, storage) => {
             const input = {cwd, sessionId: "dedup", model: "glm-test", history: [{role: "user" as const, origin: "user" as const, content: "x".repeat(512 * 1024)}],
-                todos: [], permissionMode: "default" as const, collaborationMode: "build" as const};
+                todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const};
             for (let n = 0; n < 20; n++) {
                 await saveSessionSnapshot(storage, input);
             }
@@ -57,7 +57,7 @@ describe("Session recovery and storage boundaries", () => {
     test("Resume index listing does not open conversation logs", async () => {
         await withTempProject(async (cwd, storage) => {
             await saveSessionSnapshot(storage, {cwd, sessionId: "indexed", model: "glm-test", history: [{role: "user", origin: "user" as const, content: "indexed prompt"}],
-                todos: [], permissionMode: "default", collaborationMode: "build"});
+                todos: [], permissionMode: "ask", collaborationMode: "build"});
             await writeFile(getSessionLogPath(storage, cwd, "indexed"), "corrupt conversation\n");
             expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["indexed"]);
             expect(loadSession(storage, cwd, "indexed", "glm-test")).toBeNull();
@@ -67,7 +67,7 @@ describe("Session recovery and storage boundaries", () => {
     test("a near-limit current conversation can replace a different near-limit pre-turn state", async () => {
         await withTempProject(async (cwd, storage) => {
             const input = {cwd, sessionId: "large-current", model: "glm-test", todos: [],
-                permissionMode: "default" as const, collaborationMode: "build" as const};
+                permissionMode: "ask" as const, collaborationMode: "build" as const};
             for (let turn = 0; turn < 2; turn++) {
                 const history = Array.from({length: 8}, (_, n) => ({role: "user" as const, origin: "user" as const,
                     content: `${turn}:${n}:` + "x".repeat(8 * 1024 * 1024 - 100)}));
@@ -80,7 +80,7 @@ describe("Session recovery and storage boundaries", () => {
     test.each(["tamper", "missing", "symlink", "traversal", "duplicate-budget"])("content reference %s fails closed", async corruption => {
         await withTempProject(async (cwd, storage) => {
             const input = {cwd, sessionId: "blocks", model: "glm-test", history: [{role: "user" as const, origin: "user" as const, content: "x".repeat(1024 * 1024)}],
-                todos: [], permissionMode: "default" as const, collaborationMode: "build" as const};
+                todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const};
             await saveSessionSnapshot(storage, input);
             const path = getSessionLogPath(storage, cwd, "blocks");
             const reference = JSON.parse(await readFile(path, "utf8")) as {conversation: string[]};

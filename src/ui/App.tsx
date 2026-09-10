@@ -16,9 +16,7 @@ import {
 } from "./dialogs/FileAccessDialog.js";
 import {isNetworkAccessRequest, NetworkAccessDialog} from "./dialogs/NetworkAccessDialog.js";
 import {ElevatedBashDialog, isElevatedBashRequest,} from "./dialogs/ElevatedBashDialog.js";
-import {EnterPlanDialog} from "./dialogs/EnterPlanDialog.js";
 import {AskDialog} from "./dialogs/AskDialog.js";
-import {PlanApprovalDialog} from "./dialogs/PlanApprovalDialog.js";
 import {PermissionsDialog} from "./dialogs/PermissionsDialog.js";
 import {StatusBar} from "./status/StatusBar.js";
 import {TodoList} from "./status/TodoList.js";
@@ -46,6 +44,7 @@ function runningActivityLabel(
             thread.role === "tool_call" && thread.status === "running"
     );
     if (!running) return undefined;
+    if (running.approvalReview) return running.approvalReview;
     if (running.name !== "agent") return `正在执行 ${running.name}...`;
 
     let agentType = running.subagentType;
@@ -202,14 +201,9 @@ export function App({
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
             if (showResume || showTasks || showAgents || showGitDiff || showModel || showPermissions) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
-            const planDialogHandlesEscape =
-                turn.confirmRequest?.toolName === "exit_plan_mode" &&
-                !isCtrlC &&
-                (key.escape || input === "\u001B");
             if (
                 (turn.busy || turn.attachmentState.preparing) &&
-                isCancel &&
-                !planDialogHandlesEscape
+                isCancel
             ) {
                 turn.cancel();
                 return;
@@ -291,6 +285,7 @@ export function App({
                     />
                 ) : showPermissions ? (
                     <PermissionsDialog
+                        allowFullAccess={resources.allowFullAccess}
                         current={turn.permissionMode}
                         onSelect={(mode) => {
                             turn.setPermissionMode(mode);
@@ -317,18 +312,6 @@ export function App({
                 ) : turn.confirmRequest ? (
                     turn.confirmRequest.toolName === "ask_user" ? (
                         <AskDialog
-                            key={turn.confirmRequest.id}
-                            req={turn.confirmRequest}
-                            onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
-                        />
-                    ) : turn.confirmRequest.toolName === "exit_plan_mode" ? (
-                        <PlanApprovalDialog
-                            key={turn.confirmRequest.id}
-                            req={turn.confirmRequest}
-                            onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}
-                        />
-                    ) : turn.confirmRequest.toolName === "enter_plan_mode" ? (
-                        <EnterPlanDialog
                             key={turn.confirmRequest.id}
                             req={turn.confirmRequest}
                             onDone={() => turn.clearConfirmRequest(turn.confirmRequest)}

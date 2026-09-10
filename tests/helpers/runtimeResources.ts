@@ -32,7 +32,7 @@ import {
   createMemoryRuntime,
   type MemoryRuntimeLike,
 } from "../../src/memory/index.js";
-import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import { createShellRunner } from "../../src/tools/bash/shellRunner.js";
 import { createGitWorkspaceRuntime } from "../../src/git/index.js";
 import { createPrimaryModelRuntime } from "../../src/runtime/primaryModel.js";
@@ -77,14 +77,14 @@ export function createTestSettings(
       },
     },
     permissions: {
-      defaultMode: "default",
+      defaultMode: "ask",
       additionalDirectories: [],
       rules: { allow: [], ask: [], deny: [] },
     },
     hooks: createEmptyResolvedHookSettings(),
     memory: { enabled: false, autoExtract: false },
     sandbox: {
-      enabled: false,
+
       filesystem: {
         denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
         denyWrite: [".pillar", ".env"],
@@ -102,6 +102,7 @@ export function createTestRootConfiguration(
   fileSources: PillarFileSources = CLI_FILE_SOURCES
 ): PillarRootConfiguration {
   return createPillarRootConfiguration({
+    allowFullAccess: true,
     cwd,
     workspaceBoundary: cwd,
     storage,
@@ -184,6 +185,8 @@ export function createTestRuntimeResources(
       .catch(() => undefined);
   };
   const base: RootRuntimeResources = {
+    allowFullAccess: true,
+    approvalReviewer: agentRuntime.reviewApproval,
     holdHookConfiguration: () => () => {},
     reloadHooks: async () => {},
     storage,
@@ -321,8 +324,10 @@ export function createRootRuntimeResourcesForTest(
       ? {loadCustomAgentDefinitions: async () => test.loadedCustomAgents!}
       : {}),
     createHookRuntime: async () => createDisabledTestHookRuntime(),
+    createSandboxRuntime: async () => createDisabledSandboxRuntime(),
   })({
     configuration: createPillarRootConfiguration({
+      allowFullAccess: true,
       cwd: options.cwd,
       workspaceBoundary: options.workspaceBoundary ?? options.cwd,
       storage: options.storage ?? createTestStorage(options.cwd),

@@ -25,7 +25,7 @@ async function main() {
         settingsOverrides: {
             sources: {qwen: {baseUrl: source.baseUrl, apiKeyEnv: "PILLAR_MCP_VISION_API_KEY", models: [{id: model, label: "Qwen 3.8 Flash"}]}},
             models: {primary: {source: "qwen", model}, fast: {source: "qwen", model}},
-            memory: {enabled: false, autoExtract: false}, sandbox: {enabled: false},
+            memory: {enabled: false, autoExtract: false}, sandbox: {},
             permissions: {deny: createToolCatalog({}).tools.map(tool => tool.name), allow: [`mcp__${serverName}__screenshot`]},
         },
         rootContributions: {mcpServers: [{name: serverName, command: process.execPath,

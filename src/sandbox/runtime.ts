@@ -147,10 +147,6 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
     }
 }
 
-export function createDisabledSandboxRuntime(): SandboxRuntimeLike {
-    return new InactiveSandboxRuntime({kind: "disabled"});
-}
-
 export function createSandboxRuntimeFactory(backend: SandboxBackend) {
     let ownership: {kind: "unclaimed"} | {kind: "idle"} | {kind: "owned"; lease: symbol} | {kind: "failed"; reason: string} = {kind: "unclaimed"};
 
@@ -165,7 +161,6 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         settings: ResolvedSandboxSettings;
         writableRoots?: readonly string[];
     }): Promise<SandboxRuntimeLike> {
-        if (!settings.enabled) return createDisabledSandboxRuntime();
 
         const platform = platformName();
         if (!platform || !backend.isSupportedPlatform()) {

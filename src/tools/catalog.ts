@@ -11,8 +11,6 @@ import {deleteFileTool} from "./deleteFile/deleteFile.js";
 import {globTool} from "./glob/glob.js";
 import {grepTool} from "./grep/grep.js";
 import {listFilesTool} from "./listFiles/listFiles.js";
-import {enterPlanModeTool} from "./plan/enterPlanMode.js";
-import {exitPlanModeTool} from "./plan/exitPlanMode.js";
 import {readFileTool} from "./readFile/readFile.js";
 import {skillTool} from "./skill/skill.js";
 import {taskTool} from "./task/task.js";
@@ -55,8 +53,6 @@ function createBuiltinTools(): Tool[] {
         bashTaskTool,
         askUserTool,
         todoWriteTool,
-        enterPlanModeTool,
-        exitPlanModeTool,
         skillTool,
         createAgentTool(BUILTIN_SUBAGENT_REGISTRY),
         taskTool,

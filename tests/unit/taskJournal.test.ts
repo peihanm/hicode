@@ -24,7 +24,7 @@ function shellEvent(input: {
         sessionId,
         task: {
             id: input.taskId ?? "task-a",
-            kind: "shell",
+            kind: "shell", executionMode: "sandbox",
             owner: {
                 sessionId: input.ownerSessionId ?? sessionId,
                 toolCallId: "call-a",

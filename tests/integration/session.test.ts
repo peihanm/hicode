@@ -30,7 +30,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "原始任务"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         taskNotificationReceipts: ["a".repeat(64)],
         queuedInputs: [{
@@ -67,7 +67,7 @@ describe("session persistence", () => {
         sessionId: "session-1",
         history,
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         compactState: createCompactState(),
         toolDiscovery: {
@@ -99,7 +99,7 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(6);
+      expect(snapshot.version).toBe(7);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
@@ -122,7 +122,7 @@ describe("session persistence", () => {
           {role: "assistant", content: "可以继续"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "legacy-tool-discovery");
@@ -155,7 +155,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "旧对话"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "unversioned");
@@ -193,7 +193,7 @@ describe("session persistence", () => {
           { role: "user", origin: "user" as const, content: "保留我" },
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       await appendFile(
@@ -210,7 +210,7 @@ describe("session persistence", () => {
         sessionId: "session-2",
         history: loaded?.history ?? [],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const repairedLines = (await readFile(
@@ -233,7 +233,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "原始任务"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "untrusted-session");
@@ -273,7 +273,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "保留"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const path = getSessionLogPath(storage, cwd, "strict-mutation");
@@ -289,7 +289,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "下一次"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       })).rejects.toThrow("Cannot update invalid session log");
       expect(await readFile(path, "utf8")).toBe(before);
@@ -308,7 +308,7 @@ describe("session persistence", () => {
           }],
         }],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         allowEmpty: true,
         summaryHint: "invalid",
@@ -328,7 +328,7 @@ describe("session persistence", () => {
         sessionId: "empty",
         history: [{ role: "system", content: "system only" }],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       expect(listSessionIndex(storage, cwd)).toEqual([]);
@@ -363,7 +363,7 @@ describe("session persistence", () => {
           { role: "tool", content: "已修改", tool_call_id: "edit-a" },
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         uiEvents: [{
           version: 1,
@@ -405,7 +405,7 @@ describe("session persistence", () => {
               { role: "user", origin: "user" as const, content: `task-${index}` },
             ],
             todos: [],
-            permissionMode: "default",
+            permissionMode: "ask",
         collaborationMode: "build",
           })
         )
@@ -434,7 +434,7 @@ describe("session persistence", () => {
               { role: "user", origin: "user" as const, content: `shared-${index}` },
             ],
             todos: [],
-            permissionMode: "default",
+            permissionMode: "ask",
         collaborationMode: "build",
           })
         )
@@ -464,7 +464,7 @@ describe("session persistence", () => {
             {role: "user", origin: "user" as const, content},
           ],
           todos: [],
-          permissionMode: "default",
+          permissionMode: "ask",
         collaborationMode: "build",
         });
       }
@@ -493,7 +493,7 @@ describe("session persistence", () => {
           { role: "user", origin: "user" as const, content: "existing" },
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       await writeFile(indexPath, "{corrupt-index", "utf8");
@@ -508,7 +508,7 @@ describe("session persistence", () => {
             { role: "user", origin: "user" as const, content: "recoverable" },
           ],
           todos: [],
-          permissionMode: "default",
+          permissionMode: "ask",
         collaborationMode: "build",
         })
       ).rejects.toThrow("Cannot update corrupt session index");
@@ -537,7 +537,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "不得重定向"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       })).rejects.toThrow("Pillar storage 目录不安全");
     });
@@ -552,7 +552,7 @@ describe("session persistence", () => {
           {role: "user", origin: "user" as const, content: "原始内容"},
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
       const logPath = getSessionLogPath(storage, cwd, "file-symlink");
@@ -569,7 +569,7 @@ describe("session persistence", () => {
         sessionId: "file-symlink",
         history: [{role: "user", origin: "user" as const, content: "继续"}],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
       })).rejects.toThrow();
       expect(await readFile(redirectedLog, "utf8")).toBe(originalLog);

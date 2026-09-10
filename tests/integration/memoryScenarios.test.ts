@@ -19,9 +19,9 @@ const scenarios=z.array(z.object({id:z.string(),goal:z.string(),stages:z.array(z
 // The summarizer is a deterministic oracle. This verifies evidence transport, not model understanding.
 for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全部纠正与验证证据 ${scenario.id}`,async()=>withTempProject(async(cwd,storage)=>{
  const resources=createTestRuntimeResources(cwd,{storage});
- const state=()=>({todos:[],uiEvents:[],permissionMode:"default" as const,collaborationMode:"build" as const});
+ const state=()=>({todos:[],uiEvents:[],permissionMode:"ask" as const,collaborationMode:"build" as const});
  const session=createRootSessionRuntime({resources,resumed:false,seed:{sessionId:scenario.id,history:[{role:"system",content:"test"},{role:"user", origin: "user" as const,content:scenario.goal}],compactState:createCompactState()}});
- const ctx=session.createContext({signal:new AbortController().signal,onEvent(){},getSnapshotState:state,host:{canUseTool:async()=>({behavior:"deny",message:"offline"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"default",getCollaborationMode:()=>"build",getPermissionPromptPolicy:()=>"never",setPermissionMode(){},setCollaborationMode(){},setTodos(){}}});
+ const ctx=session.createContext({signal:new AbortController().signal,onEvent(){},getSnapshotState:state,host:{canUseTool:async()=>({behavior:"deny",message:"offline"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"ask",getCollaborationMode:()=>"build",getPermissionPromptPolicy:()=>"never",setTodos(){}}});
  const fake=createFakeLLM(scenario.stages.map(stage=>input=>{
   const message=input.messages.findLast(message=>message.role==="user"&&contentText(message.content).includes(stage.request));
   const source=contentText(message?.content).match(/\[source ([a-f0-9]{64}\/\d+);/)?.[1];if(!source)throw new Error("fixture source missing");

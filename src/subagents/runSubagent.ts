@@ -85,6 +85,7 @@ function createForkRegistration(
             return {
                 toolRuntimeOptions: {allowedToolNames: allowedTools},
                 contextResources: {
+                    readOnlyTools: request.isolation !== "worktree",
                     storage: parentContext.storage,
                     cwd: parentContext.cwd,
                     workspaceBoundary:
@@ -99,9 +100,7 @@ function createForkRegistration(
                     ask: [],
                     deny: [...parentContext.permissionRules.deny],
                 },
-                permissionMode: request.isolation === "worktree"
-                    ? "default"
-                    : "readOnly",
+                permissionMode: "ask",
                 collaborationMode: parentContext.collaborationMode,
                 permissionPromptPolicy: "never",
             };
@@ -141,8 +140,9 @@ export function createSubagentFactories(
         let approvedWorkspace: string | undefined;
         // A one-launch grant only covers structured writes inside the child's
         // hard workspace boundary. It never authorizes Shell/MCP or changes Root.
-        if (request.kind === "registered" && request.workspaceWriteApproved && supportsWorkspaceWriteGrant(definition)) {
-            runtimeConfig.permissionMode = "default";
+        if (parentContext.collaborationMode !== "plan" && request.kind === "registered" && request.workspaceWriteApproved && supportsWorkspaceWriteGrant(definition)) {
+            runtimeConfig.permissionMode = "ask";
+            runtimeConfig.contextResources.readOnlyTools = false;
             runtimeConfig.collaborationMode = "build";
             approvedWorkspace = parentContext.workspaceBoundary && isPathInside(parentContext.cwd, parentContext.workspaceBoundary)
                 ? parentContext.workspaceBoundary : parentContext.cwd;
@@ -264,10 +264,6 @@ export function createSubagentFactories(
                             getCollaborationMode: () => runtimeConfig.collaborationMode,
                             getPermissionPromptPolicy: () =>
                                 runtimeConfig.permissionPromptPolicy,
-                            setPermissionMode() {
-                            },
-                            setCollaborationMode() {
-                            },
                             setTodos() {
                             },
                         },

@@ -184,6 +184,7 @@ export type TurnProgressPhase =
     | "stalled";
 
 export type ThreadEventPayload =
+    | {type: "turn.approval_review"; turnId: string; review: import("../permissions/approval.js").ApprovalEvent}
     | {type: "turn.settled"; turnId: string; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}
     | {type: "turn.draft"; turnId: string; responseId: string; text: string; truncated: boolean}
     | {type: "turn.draft_end"; turnId: string; responseId: string; disposition: "committed" | "discarded"}

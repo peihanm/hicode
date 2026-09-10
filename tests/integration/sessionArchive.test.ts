@@ -20,11 +20,11 @@ import type {Message} from "../../src/llm/types.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 import {referencedResultPaths} from "../../src/toolResults/references.js";
 
-const state = () => ({todos: [], uiEvents: [], permissionMode: "default" as const, collaborationMode: "build" as const});
+const state = () => ({todos: [], uiEvents: [], permissionMode: "ask" as const, collaborationMode: "build" as const});
 const host: ToolContextHost = {
     canUseTool: async () => ({behavior: "deny", message: "No interactive approvals in tests"}), getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-    getPermissionMode: () => "default", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",
-    setPermissionMode() {}, setCollaborationMode() {}, setTodos() {},
+    getPermissionMode: () => "ask", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",
+    setTodos() {},
 };
 
 test("只有摘要 reminder 的候选也必须实际落盘，不能被普通快照的空摘要过滤静默跳过", async () => {

@@ -104,6 +104,7 @@ export class Pillar {
                 `无效 collaborationMode: ${String(options.collaborationMode)}`
             );
         }
+        if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "当前 Host 不允许 Full Access");
         const sessionId = createSessionId();
         return this.openThread({
             seed: {

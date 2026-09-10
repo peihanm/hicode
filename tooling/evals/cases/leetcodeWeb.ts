@@ -18,7 +18,7 @@ export const leetcodeWebCase: EvalCase = {
         "POST /api/run 接收 JSON `{code: string}`。代码定义 `function twoSum(nums, target)`。服务必须在隔离子进程中对至少 4 组测试执行代码，并返回 `{ok, passed, total, results, error?}`；错误解法应返回失败测试，语法/运行错误应返回 ok=false 和可读错误，死循环必须在 2 秒内终止且不能拖死 Web 服务。",
         "GET / 返回页面，静态资源由同一服务提供。补充自动化测试并实际运行验证。不要提交 Git commit。",
     ].join("\n"),
-    permissionMode: "default",
+    permissionMode: "ask",
     maxIterations: 40,
     timeoutMs: 900_000,
     budget: {

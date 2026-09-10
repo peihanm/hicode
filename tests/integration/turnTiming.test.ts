@@ -53,13 +53,12 @@ for (const outcome of ["success", "denied", "cancel", "tool-error", "model-error
                                 : {behavior: "allow"};
                         },
                         getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-                        getPermissionMode: () => "default", getCollaborationMode: () => "build",
-                        getPermissionPromptPolicy: () => "onRequest", setPermissionMode() {},
-                        setCollaborationMode() {}, setTodos() {},
+                        getPermissionMode: () => "ask", getCollaborationMode: () => "build",
+                        getPermissionPromptPolicy: () => "onRequest", setTodos() {},
                     },
                     onEvent: event => collector.handleEvent(event), onHookResult() {},
                     onLifecycleIssue(issue) {throw issue.error;},
-                    getSnapshotState: () => ({todos: [], permissionMode: "default", collaborationMode: "build",
+                    getSnapshotState: () => ({todos: [], permissionMode: "ask", collaborationMode: "build",
                         uiEvents: collector.getEvents()}),
                 });
                 if (outcome === "model-error") await expect(run).rejects.toThrow("connection failed");

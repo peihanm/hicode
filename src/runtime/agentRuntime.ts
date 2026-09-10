@@ -1,4 +1,6 @@
 import {supportsToolImages} from "../images/capability.js";
+import {createApprovalReviewer} from "../permissions/reviewer.js";
+import type {ApprovalReviewer} from "../permissions/approval.js";
 import {type AgentRunner, createAgentRunner} from "../agent/index.js";
 import {type CompactHistoryRunner, createCompactHistoryRunner,} from "../context/compact.js";
 import {createCompactSummaryGenerator} from "../context/compactSummary.js";
@@ -17,6 +19,7 @@ import {createMemoryAwareAgentRunner, type MemoryRuntimeLike,} from "../memory/i
 import type {PillarStorageLayout} from "../persistence/index.js";
 
 export interface AgentRuntime {
+    reviewApproval: ApprovalReviewer;
     runAgent: AgentRunner;
     compactHistory: CompactHistoryRunner;
     createSubagentRunner: CreateSubagentRunner;
@@ -96,6 +99,7 @@ export function createAgentRuntime({
     });
     return {
         runAgent: rootRunAgent,
+        reviewApproval: createApprovalReviewer(primary.runAgent),
         compactHistory: primary.compactHistory,
         ...subagentFactories,
     };

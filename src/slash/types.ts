@@ -4,6 +4,7 @@ import type {ToolContext} from "../tools/types.js";
 import type {CompactHistoryRunner, ToolSchemaProvider,} from "../agent/invokePreparation.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {MemoryRuntimeLike} from "../memory/index.js";
+import type {CollaborationMode} from "../collaboration/index.js";
 
 interface SlashCommandContext {
     history: Message[];
@@ -19,6 +20,7 @@ interface SlashCommandContext {
     openGitDiff?: () => void;
     openModel?: () => void;
     openPermissions?: () => void;
+    setCollaborationMode?: (mode: CollaborationMode) => void;
 }
 
 export type SlashCommandHostContext = Omit<

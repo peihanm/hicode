@@ -45,7 +45,7 @@ describe("synchronous subagent", () => {
         },
       ]);
       const ctx = createTestContext(cwd, {
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         canUseTool: async () => {
           confirmations += 1;
@@ -83,7 +83,7 @@ describe("synchronous subagent", () => {
       const path = `${cwd}/owned-by-parent.ts`;
       const original = "export const value = 1;\n";
       await writeFile(path, original);
-      const ctx = createTestContext(cwd, {permissionMode: "default"});
+      const ctx = createTestContext(cwd, {permissionMode: "ask"});
       await executeToolResult("read_file", JSON.stringify({path}), ctx, "parent-read");
       const child = createFakeLLM([
         assistantToolCall("edit_file", {

@@ -154,7 +154,7 @@ export function createAgentTool(
             }
             return {behavior: "passthrough"};
         },
-        requiresUserInteraction: ({subagent_type, isolation}) => {
+        requiresExplicitApproval: ({subagent_type, isolation}) => {
             if (subagent_type === "fork") return isolation === "worktree";
             const definition = registry.get(subagent_type)?.definition;
             return isolation === "worktree" ||
@@ -296,7 +296,7 @@ export function createAgentTool(
                 parentToolCallId: request.parentToolCallId,
                 ...(input.model ? {model: input.model} : {}),
                 runInBackground: false,
-                ...(invocation.userApproved && supportsWorkspaceWriteGrant(registration.definition)
+                ...(invocation.permissionApproved && supportsWorkspaceWriteGrant(registration.definition)
                     ? {workspaceWriteApproved: true as const} : {}),
             });
             if (launched.kind !== "foreground") {

@@ -43,12 +43,8 @@ export type PermissionDecision =
 
 // ─── 配置规则相关类型 ───
 
-// PermissionMode：顶层模式开关
-// 参考 claude-code src/types/permissions.ts:16-38
-export type PermissionMode =
-    | "default" // 已验证的工作区/Sandbox 副作用自动放行，其余按规则确认
-    | "readOnly" // 只读自动放行，写操作需要确认
-    | "bypassPermissions"; // 高权限模式（仍不绕过 deny/ask 和用户交互）
+// 工具审批策略；文件/网络隔离由独立的执行边界负责。
+export type PermissionMode = "ask" | "auto-review" | "full-access"; // 自动批准普通操作，仍受 deny/ask、用户交互和 Sandbox 约束
 
 // Host 是否能够处理权限交互。never 只把 ask 收窄为 deny，不扩大权限。
 export type PermissionPromptPolicy = "onRequest" | "never";

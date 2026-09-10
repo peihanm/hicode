@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {access, mkdtemp, readFile, realpath, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {createSubagentRegistry, type AgentDefinition} from "../../src/subagents/index.js";
 import {createAgentTool} from "../../src/tools/agent/agent.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";

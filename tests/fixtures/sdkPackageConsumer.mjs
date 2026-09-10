@@ -136,7 +136,7 @@ try {
                 primary: {source: "qwen", model: "qwen3.8-flash"},
                 fast: {source: "qwen", model: "qwen3.8-flash"},
             },
-            sandbox: {enabled: false},
+
             memory: {enabled: false},
         },
     });

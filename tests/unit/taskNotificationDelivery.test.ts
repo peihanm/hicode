@@ -3,7 +3,7 @@ import {TaskNotificationCenter} from "../../src/tasks/notifications.js";
 import type {TaskSnapshot} from "../../src/tasks/types.js";
 import {RuntimeMessageQueue} from "../../src/runtime/messageQueue.js";
 
-const task: TaskSnapshot = {id: "task", kind: "shell", owner: {sessionId: "session", toolCallId: "call"},
+const task: TaskSnapshot = {id: "task", kind: "shell", executionMode: "sandbox", owner: {sessionId: "session", toolCallId: "call"},
     command: "echo done", cwd: "/workspace", status: "completed", startedAt: "2026-09-05T00:00:00.000Z", output: "done"};
 
 test("读取待交付通知不能提前持久化 ACK", async () => {
@@ -32,7 +32,7 @@ import type {TaskNotification} from "../../src/tasks/types.js";
 function deliveryFixture(queue = new RuntimeMessageQueue()) {
     const pending: TaskNotification[] = ["a", "b"].map(id => ({
         notificationId: id.repeat(64), taskId: id, sessionId: "session", ownerToolCallId: "call",
-        kind: "shell", label: id, status: "completed", summary: "done", message: id,
+        kind: "shell", executionMode: "sandbox", label: id, status: "completed", summary: "done", message: id,
     }));
     const calls: string[] = [];
     let persistFailure = false;

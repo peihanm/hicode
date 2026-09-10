@@ -30,6 +30,7 @@ export interface PillarFileSources {
 const rootConfigurationBrand: unique symbol = Symbol("PillarRootConfiguration");
 
 export interface PillarRootConfiguration {
+    readonly allowFullAccess: boolean;
     readonly [rootConfigurationBrand]: true;
     readonly cwd: string;
     readonly workspaceBoundary: string;
@@ -40,6 +41,7 @@ export interface PillarRootConfiguration {
 }
 
 export interface CreatePillarRootConfigurationOptions {
+    allowFullAccess?: boolean;
     cwd: string;
     workspaceBoundary: string;
     storage: PillarStorageLayout;
@@ -65,8 +67,11 @@ export function createPillarRootConfiguration(
         "workspaceBoundary"
     );
     assertContains(workspaceBoundary, cwd);
+    if (options.allowFullAccess !== undefined && typeof options.allowFullAccess !== "boolean") throw new Error("allowFullAccess 必须是 boolean");
+    if (options.settings.permissions.defaultMode === "full-access" && !options.allowFullAccess) throw new Error("当前 Host 不允许 Full Access");
     const configuration: PillarRootConfiguration = {
         [rootConfigurationBrand]: true,
+        allowFullAccess: options.allowFullAccess ?? false,
         cwd,
         workspaceBoundary,
         storage: normalizePillarStorageLayout(options.storage),

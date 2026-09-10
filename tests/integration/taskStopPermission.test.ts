@@ -10,7 +10,7 @@ for (const toolName of ["bash_task", "task"] as const) {
         await withTempProject(async cwd => {
             let approvals = 0;
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "disabled"},
+                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
                 async run(request) {
                     await new Promise<void>(resolve => {
                         if (request.signal.aborted) resolve();
@@ -20,7 +20,7 @@ for (const toolName of ["bash_task", "task"] as const) {
                         outputFilePath: request.outputFilePath, outputBytes: 0, outputComplete: true};
                 },
             };
-            const ctx = createTestContext(cwd, {permissionMode: "default", shellRunner,
+            const ctx = createTestContext(cwd, {permissionMode: "ask", shellRunner,
                 canUseTool: async () => {
                     approvals++;
                     return {behavior: "deny", message: "test declined"};
@@ -33,7 +33,7 @@ for (const toolName of ["bash_task", "task"] as const) {
                 const task = await session.startShell({command: "fixture-worker", cwd, toolCallId: "start"});
                 const input = JSON.stringify({task_id: task.id, action: "stop"});
                 const execute = () => tools.executeTool(toolName, input, ctx, "stop-test");
-                const other = createTestContext(cwd, {sessionId: "other", permissionMode: "bypassPermissions"});
+                const other = createTestContext(cwd, {sessionId: "other", permissionMode: "full-access"});
                 other.tasks = runtime.forSession({sessionId: other.sessionId, toolResultStore: other.toolResultStore});
                 const hidden = await tools.executeTool(toolName, input, other, "foreign-stop");
                 expect(hidden.outcome).toBe("denied");
@@ -55,23 +55,21 @@ for (const toolName of ["bash_task", "task"] as const) {
                 ctx.setCollaborationMode("plan");
                 expect((await execute()).outcome).toBe("denied");
                 ctx.setCollaborationMode("build");
-                ctx.setPermissionMode("readOnly");
-                expect((await execute()).outcome).toBe("denied");
-                expect(approvals).toBe(3);
+                expect(approvals).toBe(1);
                 expect((await session.get(task.id))?.status).toBe("running");
-                ctx.setPermissionMode("default");
+                ctx.setPermissionMode("ask");
                 const missing = await tools.executeTool(toolName,
                     JSON.stringify({task_id: "missing", action: "stop"}), ctx, "missing-stop");
                 expect(missing.outcome).toBe("denied");
-                expect(approvals).toBe(3);
+                expect(approvals).toBe(1);
 
                 // No interactive Host is needed for the scoped cleanup operation.
-                const noninteractive = createTestContext(cwd, {permissionMode: "default",
+                const noninteractive = createTestContext(cwd, {permissionMode: "ask",
                     permissionPromptPolicy: "never", tasks: session, shellRunner});
                 expect((await tools.executeTool(toolName, input, noninteractive, "stop-owned")).outcome).toBe("ok");
                 expect((await session.get(task.id))?.status).toBe("cancelled");
                 expect((await execute()).outcome).toBe("ok");
-                expect(approvals).toBe(3);
+                expect(approvals).toBe(1);
                 expect(await session.pendingNotifications()).toHaveLength(0);
             } finally {
                 await runtime.close();
@@ -83,7 +81,7 @@ for (const toolName of ["bash_task", "task"] as const) {
 test("task 默认停止自有 Agent，discard 仍强制确认", async () => {
     await withTempProject(async cwd => {
         let approvals = 0;
-        const ctx = createTestContext(cwd, {permissionMode: "default", canUseTool: async () => {
+        const ctx = createTestContext(cwd, {permissionMode: "ask", canUseTool: async () => {
             approvals++;
             return {behavior: "deny", message: "test declined"};
         }});

@@ -19,7 +19,7 @@ import {
   EMPTY_PROJECT_INSTRUCTIONS,
   type ProjectInstructions,
 } from "../../src/prompt/instructions.js";
-import { createDisabledSandboxRuntime } from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {
   createShellRunner,
   type ShellRunnerLike,
@@ -37,6 +37,8 @@ export function createTestContext(
   cwd: string,
   options: {
     permissionMode?: PermissionMode;
+    allowFullAccess?: boolean;
+    readOnlyTools?: boolean;
     collaborationMode?: CollaborationMode;
     permissionPromptPolicy?: PermissionPromptPolicy;
     canUseTool?: ToolContext["canUseTool"];
@@ -58,8 +60,8 @@ export function createTestContext(
     directoryAccess?: DirectoryAccessRuntimeLike;
     setTodos?: ToolContext["setTodos"];
   } = {}
-): ToolContext {
-  let permissionMode = options.permissionMode ?? "bypassPermissions";
+): ToolContext & {setPermissionMode(mode: PermissionMode): void; setCollaborationMode(mode: CollaborationMode): void} {
+  let permissionMode = options.permissionMode ?? "ask";
   let collaborationMode = options.collaborationMode ?? "build";
 
   const allow: PermissionDecision = { behavior: "allow" };
@@ -72,9 +74,11 @@ export function createTestContext(
     workspace: gitWorkspace,
     resumed: false,
   });
-  return createToolContext({
+  const context = createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
+      allowFullAccess: options.allowFullAccess ?? true,
+      readOnlyTools: options.readOnlyTools ?? false,
       fileCommits: options.fileCommits ?? new FileCommitCoordinator(),
       storage: createTestStorage(cwd),
       cwd,
@@ -109,13 +113,8 @@ export function createTestContext(
       getCollaborationMode: () => collaborationMode,
       getPermissionPromptPolicy: () =>
         options.permissionPromptPolicy ?? "onRequest",
-      setPermissionMode(mode) {
-        permissionMode = mode;
-      },
-      setCollaborationMode(mode) {
-        collaborationMode = mode;
-      },
       setTodos: options.setTodos ?? (() => {}),
     },
   });
+  return Object.assign(context, {setPermissionMode(mode: PermissionMode) {context.approvalEpoch.invalidate(); permissionMode = mode;}, setCollaborationMode(mode: CollaborationMode) {context.approvalEpoch.invalidate(); collaborationMode = mode;}});
 }

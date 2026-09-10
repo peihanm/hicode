@@ -25,6 +25,7 @@ export async function createShellTask(
     const outputPath = await binding.toolResultStore.createCapture();
     return {
         id: randomUUID(),
+        executionMode: input.sandboxPermissions === "require_escalated" ? "host" : "sandbox",
         owner: {sessionId: binding.sessionId, toolCallId: input.toolCallId},
         command: input.command,
         cwd: input.cwd,

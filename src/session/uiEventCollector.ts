@@ -12,6 +12,11 @@ export class SessionUIEventCollector {
     private readonly activeToolCalls = new Set<string>();
 
     handleEvent(event: AgentEvent): void {
+        if (event.type === "approval_review" && event.phase === "end") {
+            this.currentEvents = limitPersistedUIEvents([...this.currentEvents,
+                {...event, phase: "end", reason: event.reason?.slice(0, 4000), version: 1, timestamp: new Date().toISOString()}]);
+            return;
+        }
         if (event.type === "turn_timing") {
             this.currentEvents = limitPersistedUIEvents([
                 ...this.currentEvents,

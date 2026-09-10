@@ -1,21 +1,21 @@
 import type {PermissionMode} from "./types.js";
 
 const PERMISSION_MODE_SET = new Set<PermissionMode>([
-    "default",
-    "readOnly",
-    "bypassPermissions",
+    "ask",
+    "auto-review",
+    "full-access",
 ]);
 
 const SHORT_LABELS: Record<PermissionMode, string> = {
-    default: "Default",
-    readOnly: "Read Only",
-    bypassPermissions: "Bypass",
+    ask: "Ask for approval",
+    "auto-review": "Approve for me",
+    "full-access": "Full Access",
 };
 
 const DESCRIPTIONS: Record<PermissionMode, string> = {
-    default: "工作区文件与已就绪 Sandbox 内普通 Bash 自动放行，其余按规则确认。",
-    readOnly: "只读操作自动放行，写入或非只读命令需要确认。",
-    bypassPermissions: "高权限模式；不绕过 deny/ask 规则和必须用户交互的工具。",
+    ask: "工作区内读写和普通命令直接执行；联网及工作区外修改需要你批准。",
+    "auto-review": "额外权限由独立 Agent 审核；需要你的决定时再询问。",
+    "full-access": "按当前系统账户访问文件和网络，不再逐次确认额外访问。",
 };
 
 export function parsePermissionMode(value: string): PermissionMode | null {

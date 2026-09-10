@@ -32,10 +32,10 @@ describe("headless session boundary", () => {
       const state = loadHeadlessSession({
         configuration: configuration(cwd, storage),
         resumeMode: { kind: "none" },
-        permissionMode: "readOnly",
+        permissionMode: "ask",
         collaborationMode: "build",
       });
-      expect(state.permissionMode).toBe("readOnly");
+      expect(state.permissionMode).toBe("ask");
       expect(state.history[0]?.role).toBe("system");
       expect(state.todos).toEqual([]);
     });
@@ -46,14 +46,14 @@ describe("headless session boundary", () => {
       const state = loadHeadlessSession({
         configuration: configuration(cwd, storage, createTestSettings({
           permissions: {
-            defaultMode: "readOnly",
+            defaultMode: "ask",
             additionalDirectories: [],
             rules: { allow: [], ask: [], deny: [] },
           },
         })),
         resumeMode: { kind: "none" },
       });
-      expect(state.permissionMode).toBe("readOnly");
+      expect(state.permissionMode).toBe("ask");
     });
   });
 
@@ -92,7 +92,7 @@ describe("headless session boundary", () => {
           { role: "assistant", content: "world" },
         ],
         todos: [],
-        permissionMode: "default",
+        permissionMode: "ask",
         collaborationMode: "build",
         compactState: createCompactState(),
         uiEvents: [],
@@ -105,7 +105,7 @@ describe("headless session boundary", () => {
           configuration: configuration(cwd, storage),
           resumeMode: { kind: "continue" },
         });
-      expect(resumed.permissionMode).toBe("default");
+      expect(resumed.permissionMode).toBe("ask");
       expect(resumed.toolDiscovery).toEqual({
         version: 2,
         loadedNames: ["mcp__fixture__echo"],
@@ -114,10 +114,10 @@ describe("headless session boundary", () => {
         loadHeadlessSession({
           configuration: configuration(cwd, storage),
           resumeMode: { kind: "session", sessionId: "session-1" },
-          permissionMode: "bypassPermissions",
+          permissionMode: "full-access",
         collaborationMode: "build",
         }).permissionMode
-      ).toBe("bypassPermissions");
+      ).toBe("full-access");
     });
   });
 });

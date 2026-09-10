@@ -22,6 +22,8 @@ export function reduceEvalLiveStatus(
         sequence: event.sequence,
     };
     switch (event.type) {
+        case "turn.approval_review":
+            return {...base, phase: "interaction", detail: event.review.phase === "start" ? "reviewing approval" : `approval ${event.review.outcome ?? "ended"}`};
         case "thread.started":
             return {...base, phase: "starting", detail: "thread started"};
         case "turn.started":

@@ -345,7 +345,7 @@ describe("UITurnEventStore", () => {
       type: "tool_call_start",
       turnId: "turn-1",
       toolCallId: "plan-1",
-      name: "enter_plan_mode",
+      name: "ask_user",
       args: "{}",
     });
 
@@ -357,7 +357,7 @@ describe("UITurnEventStore", () => {
     expect(selectLiveThreads(planning.threads, planning.staticThreads))
       .toEqual([expect.objectContaining({
         role: "tool_call",
-        name: "enter_plan_mode",
+        name: "ask_user",
       })]);
   });
 

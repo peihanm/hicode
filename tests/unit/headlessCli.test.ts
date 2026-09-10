@@ -38,7 +38,7 @@ function summary(exitCode = 0): HeadlessRunSummary {
     reason: "completed",
     iterations: 1,
     reply: "done",
-    permissionMode: "default",
+    permissionMode: "ask",
         collaborationMode: "build",
     toolCalls: [],
     permissionDenials: [],

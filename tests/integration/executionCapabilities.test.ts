@@ -1,3 +1,4 @@
+import {bashTool} from "../../src/tools/bash/bash.js";
 import {describe, expect, test} from "bun:test";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {executeToolCallBatch} from "../../src/agent/toolBatch.js";
@@ -16,8 +17,8 @@ import type {Tool} from "../../src/tools/types.js";
 describe("effective execution capabilities", () => {
     test("Bash rules consume literal argv and cannot authorize hidden syntax", async () => {
         await withTempProject(async cwd => {
-            const rt = createToolRuntime();
-            const ctx = createTestContext(cwd, {permissionMode: "default",
+            const rt = createToolRuntime({toolOverrides: [{...bashTool, getDefaultApprovalScope: () => undefined}]});
+            const ctx = createTestContext(cwd, {permissionMode: "ask",
                 canUseTool: async () => ({behavior: "deny", message: "not approved"})});
             ctx.permissionRules.allow.push({toolName: "bash", content: "printf:*", source: "local"});
             const literal = await rt.executeTool("bash", JSON.stringify({command: 'p"rintf" ok'}), ctx, "literal");
@@ -28,14 +29,14 @@ describe("effective execution capabilities", () => {
             ctx.permissionRules.deny.push({toolName: "bash", content: "sort -oout:*", source: "local"});
             const deny = await rt.executeTool("bash", JSON.stringify({command: 's"ort" "-oout" input'}), ctx, "deny");
             expect(deny.modelContent).toContain("deny 规则");
-            ctx.setPermissionMode("bypassPermissions");
+            ctx.setPermissionMode("full-access");
             const opaque = await rt.executeTool("bash", JSON.stringify({command: 'printf "$(touch hidden.txt)"'}), ctx, "opaque");
             expect(opaque.outcome).toBe("denied");
             expect(await Bun.file(`${cwd}/hidden.txt`).exists()).toBe(false);
         });
     });
 
-    test.each(["default", "bypassPermissions", "readOnly"] as const)("Plan %s approves only bounded structured writes", async permissionMode => {
+    test.each(["ask", "auto-review", "full-access"] as const)("Plan %s refuses writer launches without approval", async permissionMode => {
         await withTempProject(async cwd => {
             const workspace = `${cwd}/workspace`;
             await mkdir(workspace);
@@ -57,9 +58,10 @@ describe("effective execution capabilities", () => {
             attachSubagentLauncher(ctx, createSubagentRunnerForTest({parentContext: ctx, registry,
                 onEvent: () => {}, agentOptions: {callLLM: child.callLLM}}));
             const rt = createToolRuntime({toolOverrides: [createAgentTool(registry)]});
-            expect((await rt.executeTool("agent", JSON.stringify({subagent_type: "Writer", description: "write", prompt: "write"}), ctx, "writer")).outcome).toBe("ok");
-            expect(approvals).toBe(1);
-            expect(await Bun.file(`${workspace}/inside.txt`).text()).toBe("approved");
+            expect((await rt.executeTool("agent", JSON.stringify({subagent_type: "Writer", description: "write", prompt: "write"}), ctx, "writer")).outcome).toBe("denied");
+            expect(approvals).toBe(0);
+            expect(await Bun.file(`${workspace}/inside.txt`).exists()).toBe(false);
+            expect(child.calls).toHaveLength(0);
             expect(await Bun.file(`${cwd}/outside.txt`).exists()).toBe(false);
             expect(ctx.collaborationMode).toBe("plan");
             expect(ctx.permissionMode).toBe(permissionMode);
@@ -96,7 +98,7 @@ describe("effective execution capabilities", () => {
                 allowedTools: [toolName], model: "inherit", maxIterations: 4,
             }]});
             let approvals = 0;
-            const ctx = createTestContext(cwd, {permissionMode: "bypassPermissions", collaborationMode: "plan",
+            const ctx = createTestContext(cwd, {permissionMode: "full-access", collaborationMode: "plan",
                 mcpManager: {async initialize() {}, getSnapshots: () => [], getTools: () => [tool], subscribe: () => () => {}, async reconnect() {}, async closeAll() {}},
                 canUseTool: async () => { approvals++; return {behavior: "allow"}; }});
             // Only MCP is supplied dynamically. Bash uses the production tool/runner.
@@ -112,26 +114,26 @@ describe("effective execution capabilities", () => {
             attachSubagentLauncher(ctx, runner);
             const rt = createToolRuntime({toolOverrides: [createAgentTool(registry)]});
             await rt.executeTool("agent", JSON.stringify({subagent_type: "IndirectWriter", description: "write", prompt: "write"}), ctx, "indirect");
-            expect(approvals).toBe(1);
-            expect(child.calls).toHaveLength(2);
+            expect(approvals).toBe(0);
+            expect(child.calls).toHaveLength(0);
             expect(writes).toBe(0);
             expect(await Bun.file(`${cwd}/escaped.txt`).exists()).toBe(false);
         });
     });
     test.each(['sort -oout input', 'sort "-o" out input', 'sort -rout input', 'sort \\-o out input'])(
-        "Plan refuses equivalent output options: %s", async command => {
+        "只读 Agent 拒绝等价写出选项: %s", async command => {
             await withTempProject(async cwd => {
                 await Bun.write(`${cwd}/input`, "b\na\n");
                 let approvals = 0;
                 const ctx = createTestContext(cwd, {
-                    permissionMode: "readOnly", collaborationMode: "plan",
+                    permissionMode: "ask", collaborationMode: "plan", readOnlyTools: true,
                     canUseTool: async () => { approvals++; return {behavior: "deny", message: "no writes"}; },
                 });
                 const rt = createToolRuntime();
                 const args = JSON.stringify({command});
                 const result = await rt.executeTool("bash", args, ctx, "sort");
                 expect(result.outcome).toBe("denied");
-                expect(approvals).toBe(1);
+                expect(approvals).toBe(0);
                 expect(rt.isConcurrencySafe("bash", args)).toBe(false);
                 expect(await Bun.file(`${cwd}/out`).exists()).toBe(false);
             });
@@ -148,7 +150,7 @@ describe("effective execution capabilities", () => {
         });
     });
 
-    test.each(["default", "bypassPermissions", "readOnly"] as const)("Plan %s cannot escape via Bash Agent", async permissionMode => {
+    test.each(["ask", "auto-review", "full-access"] as const)("Plan %s cannot escape via Bash Agent", async permissionMode => {
         await withTempProject(async cwd => {
             const registry = createSubagentRegistry({issues: [], definitions: [{
                 source: "host", id: "fixture", agentType: "ShellHelper", whenToUse: "fixture",
@@ -168,7 +170,7 @@ describe("effective execution capabilities", () => {
             const result = await rt.executeTool("agent", JSON.stringify({subagent_type: "ShellHelper",
                 description: "write", prompt: "write"}), ctx, "delegate");
             expect(result.outcome).toBe("denied");
-            expect(approvals).toBe(1);
+            expect(approvals).toBe(0);
             expect(child.calls).toHaveLength(0);
             expect(await Bun.file(`${cwd}/escaped.txt`).exists()).toBe(false);
         });
@@ -219,7 +221,7 @@ describe("effective execution capabilities", () => {
             const history: Message[] = [{role: "assistant", content: "", tool_calls: calls}];
             const ended: string[] = [];
             const result = await executeToolCallBatch({toolCalls: calls, history,
-                ctx: createTestContext(cwd, {signal: controller.signal, permissionMode: "readOnly",
+                ctx: createTestContext(cwd, {signal: controller.signal, permissionMode: "ask",
                     canUseTool: async () => { approvals++; return {behavior: "allow"}; }}),
                 turnId: "cancel", onEvent: event => { if (event.type === "tool_call_end") ended.push(event.toolCallId); },
                 executeTool: rt.executeTool, isToolConcurrencySafe: rt.isConcurrencySafe});

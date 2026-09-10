@@ -162,6 +162,8 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
         });
         return {
             ...parentContext,
+            allowFullAccess: false,
+            readOnlyTools: false,
             cwd: mapped.cwd,
             workspaceBoundary: mapped.root,
             directoryAccess: createDirectoryAccessRuntime({
@@ -169,7 +171,7 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
                 hardBoundary: mapped.root,
                 allowGrants: false,
             }),
-            permissionMode: "default",
+            permissionMode: "ask",
             collaborationMode: "build",
             permissionPromptPolicy: "never",
             permissionRules: {
@@ -181,8 +183,6 @@ class WorktreeRuntime implements WorktreeRuntimeLike {
                 behavior: "deny",
                 message: "Worktree Agent 不允许交互式权限确认",
             }),
-            setPermissionMode() {},
-            setCollaborationMode() {},
             setTodos() {},
             skills: [],
             instructions,

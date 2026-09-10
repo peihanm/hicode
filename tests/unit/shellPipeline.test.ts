@@ -1,5 +1,6 @@
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {describe, expect, test} from "bun:test";
-import {createSandboxRuntimeFactory, createDisabledSandboxRuntime} from "../../src/sandbox/runtime.js";
+import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
@@ -24,7 +25,7 @@ describe("Bash pipeline status", () => {
                     async reset() { enabled = false; },
                 });
                 const sandbox = mode === "disabled" ? createDisabledSandboxRuntime() : await factory({cwd, storage,
-                    settings: {enabled: true, filesystem: {denyRead: [], denyWrite: []},
+                    settings: {filesystem: {denyRead: [], denyWrite: []},
                         network: {allowedDomains: [], allowLocalBinding: false}}});
                 const runner = createShellRunner(sandbox, testChildEnvironment);
                 try {

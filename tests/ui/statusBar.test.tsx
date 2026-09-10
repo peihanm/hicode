@@ -14,7 +14,7 @@ function renderStatusBar(
       <StatusBar
         cwd="/tmp/project"
         model="glm-4.7"
-        permissionMode="default"
+        permissionMode="ask"
         collaborationMode="build"
         tokenCount={1234}
         percentUsed={0.12}
@@ -27,6 +27,14 @@ function renderStatusBar(
 }
 
 describe("StatusBar token state", () => {
+  test("长项目路径不会挤掉审批状态和 Plan 标记", () => {
+    const instance = render(<StatusBar
+      cwd={`/project/${"long-path/".repeat(30)}`} model="Qwen"
+      permissionMode="auto-review" collaborationMode="plan"
+      tokenCount={0} percentUsed={0} warning={false} tokenStatus="unavailable"
+    />);
+    expect(instance.lastFrame()).toContain("Qwen | Approve for me | Plan | /project/");
+  });
   test("新进程在首次模型调用前明确显示新会话", () => {
     const frame = renderStatusBar("unavailable");
     expect(frame).toContain("new session");
@@ -52,13 +60,17 @@ describe("StatusBar token state", () => {
 
 describe("StatusBar background tasks", () => {
   test("正常 Sandbox 隐藏，异常保留诊断入口", () => {
-    const props = {cwd: "/project", model: "Qwen", permissionMode: "default" as const,
+    const props = {cwd: "/project", model: "Qwen", permissionMode: "ask" as const,
       collaborationMode: "build" as const, tokenCount: 1, percentUsed: 0, warning: false, tokenStatus: "actual" as const};
     const instance = render(<StatusBar {...props} sandboxStatus={{kind: "ready", platform: "macos", warnings: []}}/>);
     expect(instance.lastFrame()).not.toContain("Sandbox");
     instance.unmount();
     const failed = render(<StatusBar {...props} sandboxStatus={{kind: "unavailable", reason: "fixture", warnings: []}}/>);
     expect(failed.lastFrame()).toContain("Sandbox unavailable · /sandbox");
+    failed.unmount();
+    const full = render(<StatusBar {...props} permissionMode="full-access" sandboxStatus={{kind: "unavailable", reason: "fixture", warnings: []}}/>);
+    expect(full.lastFrame()).toContain("Full Access");
+    expect(full.lastFrame()).not.toContain("Sandbox unavailable");
   });
   test("用后台服务数量代替容易误解的运行中提示", () => {
     const frame = renderStatusBar("actual", {total: 1, shell: 1, agent: 0, memory: 0});

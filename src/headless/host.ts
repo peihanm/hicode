@@ -111,12 +111,6 @@ export function createHeadlessRunner(
                 getPermissionMode: () => state.permissionMode,
                 getCollaborationMode: () => state.collaborationMode,
                 getPermissionPromptPolicy: () => "never",
-                setPermissionMode(mode) {
-                    state.permissionMode = mode;
-                },
-                setCollaborationMode(mode) {
-                    state.collaborationMode = mode;
-                },
                 setTodos(todos) {
                     state.todos = todos;
                 },

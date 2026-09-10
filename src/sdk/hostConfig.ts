@@ -16,6 +16,7 @@ import type {
 import {PillarSDKError} from "./types.js";
 
 export interface LoadPillarHostConfigOptions {
+    allowFullAccess?: boolean;
     cwd: string;
     pillarHome: string;
     workspaceBoundary?: string;
@@ -81,6 +82,7 @@ export function loadPillarHostConfig(
     let configuration: PillarRootConfiguration;
     try {
         configuration = createPillarRootConfiguration({
+            allowFullAccess: options.allowFullAccess,
             cwd: resolvedCwd,
             workspaceBoundary: options.workspaceBoundary ?? resolvedCwd,
             storage,

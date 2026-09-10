@@ -22,6 +22,7 @@ export type UIThread =
     | {
         id: string;
         role: "tool_call";
+        approvalReview?: string;
         turnId?: string;
         toolCallId: string;
         name: string;

@@ -11,7 +11,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {executeDeliveredTool} from "../helpers/executeTool.js";
 test("自动 pending 可经普通 Read/Grep 读取，保留助手声称类别；忘记后不能读旧缓存",async()=>withTempProject(async(cwd,storage)=>{
  const memory=createTestMemoryRuntime(cwd,{autoExtract:true,extractor:{async extract(messages){return [{key:"unverified",type:"project",basis:"assistant-claimed",sources:[messages.find(m=>m.role==="assistant")!.id],content:"助手称部署成功，未独立验证"}];}},consolidator:{async consolidate(){throw new Error("offline failure");}}});
- await saveSessionSnapshot(storage,{cwd,sessionId:"evidence",model:"glm-test",history:[{role:"user", origin: "user" as const,content:"结果如何"},{role:"assistant",content:"部署成功"}],todos:[],permissionMode:"default",collaborationMode:"build",uiEvents:[]});
+ await saveSessionSnapshot(storage,{cwd,sessionId:"evidence",model:"glm-test",history:[{role:"user", origin: "user" as const,content:"结果如何"},{role:"assistant",content:"部署成功"}],todos:[],permissionMode:"ask",collaborationMode:"build",uiEvents:[]});
  await memory.captureSource("evidence",[],memoryOwner().signal);await expect(memory.maintain(memoryOwner())).rejects.toThrow("offline failure");
  const context=await memory.contextForTurn("继续");expect(context.block).toContain("assistant-claimed");const entry=(await memory.read("unverified"))!;expect(entry.path).toContain("views/unverified.md");
  const tools=createToolRuntime();const ctx=createTestContext(cwd,{memoryFiles:memory.fileAccess(memoryOwner())});const execute=(name:string,input:object,id:string)=>executeDeliveredTool(tools,name,JSON.stringify(input),ctx,id);

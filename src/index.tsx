@@ -59,6 +59,7 @@ for (const issue of loadedSettings.issues) {
 }
 
 const configuration = createPillarRootConfiguration({
+    allowFullAccess: true,
     cwd,
     workspaceBoundary: parse(cwd).root,
     storage,

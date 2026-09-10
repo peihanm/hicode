@@ -3,7 +3,7 @@ import {join} from "node:path";
 import {createMemoryRuntimeFactory, type MemoryRuntimeLike} from "../../src/memory/runtime.js";
 import type {MemoryConsolidator} from "../../src/memory/consolidator.js";
 import {serializeMemoryNote} from "../../src/memory/note.js";
-import {createDisabledSandboxRuntime} from "../../src/sandbox/index.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createTestStorage} from "./tempProject.js";
 import {testChildEnvironment} from "./childEnvironment.js";

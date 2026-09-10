@@ -50,7 +50,7 @@ describe("SDK Host Tools", () => {
                 "host_lookup",
                 JSON.stringify({key: "alpha"}),
                 createTestContext(cwd, {
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     sessionId: "sdk-thread",
                     canUseTool: async () => {
@@ -107,7 +107,7 @@ describe("SDK Host Tools", () => {
                 "host_mutation",
                 JSON.stringify({value: "x"}),
                 createTestContext(cwd, {
-                    permissionMode: "default",
+                    permissionMode: "ask",
         collaborationMode: "build",
                     canUseTool: async (name) => {
                         requestedTool = name;

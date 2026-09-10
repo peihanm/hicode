@@ -26,6 +26,7 @@ interface ManagedTaskBase {
 }
 
 export interface ManagedShellTask extends ManagedTaskBase {
+    executionMode: "sandbox" | "host";
     command: string;
     cwd: string;
     outputPath: string;
@@ -131,6 +132,7 @@ export async function snapshotShell(
     return {
         id: task.id,
         kind: "shell",
+        executionMode: task.executionMode,
         owner: task.owner,
         command: task.command,
         cwd: task.cwd,

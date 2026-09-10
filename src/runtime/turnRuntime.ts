@@ -82,7 +82,7 @@ export function createRootTurnRunnerFactory(
         const turnId = options.turnId ?? randomUUID();
         const releaseHookTurn = resources.holdHookConfiguration();
         let timingEmitted = false;
-        const memoryBaseline=host.getPermissionMode()==="readOnly"||host.getCollaborationMode()==="plan"?undefined:await resources.memory.captureBaseline(session.sessionId,contentText(prompt));
+        const memoryBaseline=host.getCollaborationMode()==="plan"?undefined:await resources.memory.captureBaseline(session.sessionId,contentText(prompt));
         const agentOptions: AgentRunOptions = {
             getToolSchemas: resources.toolRuntime.getToolSchemas,
             executeTool: resources.toolRuntime.executeTool,
@@ -180,7 +180,7 @@ export function createRootTurnRunnerFactory(
                 session.createSnapshot(getSnapshotState())
             );
             sessionSaved = true;
-            if(result.reason==="completed"&&!signal.aborted&&memoryBaseline&&host.getPermissionMode()!=="readOnly"&&host.getCollaborationMode()!=="plan"){
+            if(result.reason==="completed"&&!signal.aborted&&memoryBaseline&&host.getCollaborationMode()!=="plan"){
                 try {await session.taskSession.startMemory({turnId,signal,background:true,baseline:memoryBaseline});}
                 catch(error){try{await onLifecycleIssue({scope:"host",message:"Memory 来源调度失败，主任务结果已保存",error});}catch{}}
             }
