@@ -23,10 +23,6 @@ export function createQwenRequestFields(
 export const qwenProvider: LLMProvider = {
     name: "qwen",
 
-    supports(model: string): boolean {
-        return model.toLowerCase().startsWith("qwen");
-    },
-
     async call(options, source) {
         const apiKey = process.env[source.apiKeyEnv];
         if (!apiKey) {

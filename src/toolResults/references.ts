@@ -24,7 +24,7 @@ export function referencedResultPaths(history: readonly Message[]): Set<string> 
             if (match[1]!.length <= 16384) paths.add(resolve(match[1]!));
         }
         const name = toolNames.get(message.tool_call_id);
-        if (name === "task" || name === "bash_task") references.push(...content.matchAll(/^Saved (?:output|diff): ("(?:[^"\\\n]|\\.)*")$/gm));
+        if (name === "task") references.push(...content.matchAll(/^Saved (?:output|diff): ("(?:[^"\\\n]|\\.)*")$/gm));
         else if (name === "read_file") references.push(...content.matchAll(/^Saved output: ("(?:[^"\\\n]|\\.)*")\n/g));
         for (const match of references) {
             try {

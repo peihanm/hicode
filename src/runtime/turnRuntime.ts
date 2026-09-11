@@ -18,7 +18,6 @@ import type {RootRuntimeResources} from "./resources.js";
 import type {RootSessionRuntime} from "./sessionRuntime.js";
 import {normalizeTurnAbortReason} from "./abort.js";
 import {randomUUID} from "node:crypto";
-import {TurnTiming} from "./turnTiming.js";
 
 export interface RootTurnSnapshotState {
     todos: readonly Todo[];
@@ -78,10 +77,8 @@ export function createRootTurnRunnerFactory(
             inputChannel = EMPTY_AGENT_INPUT_CHANNEL,
             maxIterations,
         } = options;
-        const timing = new TurnTiming();
         const turnId = options.turnId ?? randomUUID();
         const releaseHookTurn = resources.holdHookConfiguration();
-        let timingEmitted = false;
         const memoryBaseline=host.getCollaborationMode()==="plan"?undefined:await resources.memory.captureBaseline(session.sessionId,contentText(prompt));
         const agentOptions: AgentRunOptions = {
             getToolSchemas: resources.toolRuntime.getToolSchemas,
@@ -98,23 +95,7 @@ export function createRootTurnRunnerFactory(
 
         const emitEvent = (event: AgentEvent): void | Promise<void> => {
             if (event.type === "turn_interrupted") interruptionEmitted = true;
-            if (event.type === "model_stream_start" || event.type === "compact_start") timing.change("model", "start");
-            if (event.type === "model_stream_end" || event.type === "compact_end" || event.type === "compact_error") timing.change("model", "end");
             return onEvent(event);
-        };
-
-        const finishTiming = async (): Promise<void> => {
-            if (timingEmitted) return;
-            timingEmitted = true;
-            try {
-                await emitEvent({type: "turn_timing", turnId, timing: timing.finish()});
-            } catch (error) {
-                try {
-                    await onLifecycleIssue({scope: "host", message: "Turn 耗时投影失败", error});
-                } catch {
-                    // Optional diagnostics must not prevent saving the conversation.
-                }
-            }
         };
 
         const settleHost = async (): Promise<void> => {
@@ -139,8 +120,6 @@ export function createRootTurnRunnerFactory(
             const initialState = getSnapshotState();
             await session.beginTurn(prompt, initialState);
             const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId, getSnapshotState});
-            ctx.canUseTool = (...args) => timing.measure("approval", () => host.canUseTool(...args));
-            ctx.onToolExecution = phase => timing.change("tool", phase);
             const promptHooks = await ctx.runHook!({hook_event_name: "UserPromptSubmit", session_id: session.sessionId,
                 turn_id: turnId, prompt: contentText(prompt), permission_mode: initialState.permissionMode});
             await onHookResult(promptHooks);
@@ -174,7 +153,6 @@ export function createRootTurnRunnerFactory(
             }
 
             await settleHost();
-            await finishTiming();
             await dependencies.saveSession(
                 session,
                 session.createSnapshot(getSnapshotState())
@@ -199,7 +177,6 @@ export function createRootTurnRunnerFactory(
             session.endTurn();
             if (!sessionSaved) {
                 try {
-                    await finishTiming();
                     await dependencies.saveSession(
                         session,
                         session.createSnapshot({

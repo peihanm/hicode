@@ -1,6 +1,5 @@
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "./uiEvents.js";
-import type {GitSessionState} from "../git/index.js";
 import type {Message} from "../llm/types.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
@@ -9,7 +8,7 @@ import type {Todo} from "../todos.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 1;
-export const SESSION_ENTRY_VERSION = 7;
+export const SESSION_ENTRY_VERSION = 8;
 
 export interface SessionIndexEntry {
     sessionId: string;
@@ -45,7 +44,6 @@ export interface SessionSnapshotEntry {
     queuedInputs?: RuntimeQueuedMessage[];
     taskNotificationReceipts?: string[];
     toolDiscovery?: ToolDiscoverySnapshot;
-    gitSession?: GitSessionState;
 }
 
 
@@ -64,7 +62,6 @@ export interface LoadedSession {
     queuedInputs: RuntimeQueuedMessage[];
     taskNotificationReceipts: string[];
     toolDiscovery?: ToolDiscoverySnapshot;
-    gitSession?: GitSessionState;
     index?: SessionIndexEntry;
 }
 
@@ -81,7 +78,6 @@ export interface SaveSessionSnapshotInput {
     queuedInputs?: readonly RuntimeQueuedMessage[];
     taskNotificationReceipts?: readonly string[];
     toolDiscovery?: ToolDiscoverySnapshot;
-    gitSession?: GitSessionState;
     /** 允许保存尚无完整回复的会话。 */
     allowEmpty?: boolean;
     /** 空 conversation 的 Session index 标题。 */

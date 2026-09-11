@@ -8,7 +8,6 @@ import type {Message} from "../llm/types.js";
 import type {PersistedUIEvent} from "../session/index.js";
 import type {HeadlessOptions} from "./types.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
-import type {GitSessionState} from "../git/index.js";
 
 export interface HeadlessSessionState {
     sessionId: string;
@@ -19,7 +18,6 @@ export interface HeadlessSessionState {
     compactState: ReturnType<typeof createCompactState>;
     uiEvents: PersistedUIEvent[];
     toolDiscovery?: ToolDiscoverySnapshot;
-    gitSession?: GitSessionState;
 }
 
 export function loadHeadlessSession(
@@ -63,6 +61,5 @@ export function loadHeadlessSession(
         compactState: loaded?.compactState ?? createCompactState(),
         uiEvents: loaded?.uiEvents ?? [],
         toolDiscovery: loaded?.toolDiscovery,
-        gitSession: loaded?.gitSession,
     };
 }

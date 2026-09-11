@@ -50,7 +50,6 @@ export interface ModelSourceSettings {
 
 export interface ModelTargetSettings {
     source: LLMProviderName;
-    provider: LLMProviderName;
     model: string;
     label: string;
 }

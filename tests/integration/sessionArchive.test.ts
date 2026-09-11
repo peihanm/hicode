@@ -46,7 +46,7 @@ function fixture(cwd: string, storage: PillarStorageLayout, id = "archive-sessio
         {role: "user", origin: "user" as const, content: "决定：删除列必须明确选择，禁止默认丢弃\n" + "历史资料\n".repeat(2500)},
         {role: "assistant", content: "已确认", reasoning_content: "hidden-reasoning-must-not-be-archived"},
         {role: "user", origin: "user" as const, content: "继续实现"}];
-    const session = createRootSessionRuntime({resources, resumed: false, seed: {sessionId: id, history, compactState: createCompactState()}});
+    const session = createRootSessionRuntime({resources,  seed: {sessionId: id, history, compactState: createCompactState()}});
     const controller = new AbortController();
     const ctx = session.createContext({signal: controller.signal, host, onEvent() {}, getSnapshotState: state});
     const compact = (summary = "继续实现删除列") => createCompactHistoryRunner({async generateSummary() {return summary;}})({
@@ -80,7 +80,7 @@ test("连续五次压缩保留原文、工具配对及大结果，Resume 可用 
             expect(JSON.stringify(messages)).not.toContain("hidden-reasoning");
             expect([...referencedResultPaths(messages)]).toEqual([result.path]);
             expect(await readFile(result.path, "utf8")).toContain("ERR_ASSERTION");
-            const resumed = createRootSessionRuntime({resources: f.resources, resumed: true, seed: {...loaded, compactState: loaded.compactState!}});
+            const resumed = createRootSessionRuntime({resources: f.resources,  seed: {...loaded, compactState: loaded.compactState!}});
             const ctx = resumed.createContext({signal: f.controller.signal, host, onEvent() {}, getSnapshotState: state});
             const indexPath = archiveIndexPath(storage, cwd, loaded.sessionId, records[0]!.id);
             const index = await f.resources.toolRuntime.executeTool("read_file", JSON.stringify({path: indexPath}), ctx, "archive-index");

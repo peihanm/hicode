@@ -1,7 +1,6 @@
 import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
 import {createInitialHistory} from "../prompt/index.js";
-import {normalizeGitSessionState} from "../git/index.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import {getProjectKey} from "../persistence/index.js";
 import {
@@ -80,7 +79,6 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
             input.compactState?.compactCount ?? 0)) return;
         const timestamp = new Date().toISOString();
         const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
-        const gitSession = normalizeGitSessionState(input.gitSession);
         const entry: SessionSnapshotEntry = {
             type: "snapshot",
             version: SESSION_ENTRY_VERSION,
@@ -99,7 +97,6 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
                 ? {queuedInputs: input.queuedInputs.map((message) => ({...message}))}
                 : {}),
             ...(toolDiscovery ? {toolDiscovery} : {}),
-            ...(gitSession ? {gitSession} : {}),
         };
 
         if (!await commit(entry, compaction, preserveConversation)) return;
@@ -160,7 +157,6 @@ export function loadSession(
         queuedInputs: snapshot.queuedInputs ?? [],
         taskNotificationReceipts: snapshot.taskNotificationReceipts ?? [],
         toolDiscovery: normalizeToolDiscoverySnapshot(snapshot.toolDiscovery),
-        gitSession: normalizeGitSessionState(snapshot.gitSession),
         index,
     };
 }

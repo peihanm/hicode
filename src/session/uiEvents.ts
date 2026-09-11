@@ -1,6 +1,5 @@
 import type {FileChange} from "../fileChanges/types.js";
 import type {ToolOutcome} from "../toolResults/index.js";
-import type {TurnTimingSummary} from "../runtime/turnTiming.js";
 
 export interface PersistedFileChangeUIEvent {
     version: 1;
@@ -22,7 +21,6 @@ export interface PersistedToolCallUIEvent {
 
 export type PersistedUIEvent =
     | (import("../permissions/approval.js").ApprovalEvent & {phase: "end"; version: 1; timestamp: string})
-    | {version: 1; type: "turn_timing"; turnId: string; timestamp: string; timing: TurnTimingSummary}
     | PersistedFileChangeUIEvent
     | PersistedToolCallUIEvent;
 

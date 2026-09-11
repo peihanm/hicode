@@ -273,7 +273,7 @@ async function main(): Promise<void> {
         ? document.request.model
         : document.model;
     if (!model) throw new Error("Prompt Log 缺少 model");
-    const provider = settings.values.models.primary.provider;
+    const provider = settings.values.models.primary.source;
     const connection = getReplayConnection(provider);
     if (!connection.apiKey) {
         throw new Error(`缺少 ${connection.apiKeyVariable}`);

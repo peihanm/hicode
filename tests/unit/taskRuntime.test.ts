@@ -119,7 +119,7 @@ describe("TaskRuntime", () => {
         });
     });
 
-    test("执行层拒绝把 GeneralPurpose 直接作为后台 Agent 启动", async () => {
+    test("已删除的 GeneralPurpose 不能作为后台 Agent 启动", async () => {
         await withTempProject(async (cwd) => {
             const shellRunner: ShellRunnerLike = {
                 sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
@@ -145,7 +145,7 @@ describe("TaskRuntime", () => {
                     parentToolCallId: "policy-call",
                 },
                 parentContext: context,
-            })).rejects.toThrow("只支持内置 Explore");
+            })).rejects.toThrow("未知 Agent 类型");
             await runtime.close();
         });
     });

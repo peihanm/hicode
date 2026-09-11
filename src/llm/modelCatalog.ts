@@ -3,7 +3,6 @@ import type {
     ModelTargetSettings,
     ResolvedPillarSettings,
 } from "../settings/types.js";
-import {isLLMModelSupported} from "./index.js";
 
 function nonEmpty(value: string | undefined): string | undefined {
     const normalized = value?.trim();
@@ -12,10 +11,8 @@ function nonEmpty(value: string | undefined): string | undefined {
 
 function targetsForSource(source: ModelSourceSettings): ModelTargetSettings[] {
     return source.models
-        .filter((model) => isLLMModelSupported(source.id, model.id))
         .map((model) => ({
             source: source.id,
-            provider: source.id,
             model: model.id,
             label: model.label,
         }));

@@ -20,7 +20,7 @@ const scenarios=z.array(z.object({id:z.string(),goal:z.string(),stages:z.array(z
 for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全部纠正与验证证据 ${scenario.id}`,async()=>withTempProject(async(cwd,storage)=>{
  const resources=createTestRuntimeResources(cwd,{storage});
  const state=()=>({todos:[],uiEvents:[],permissionMode:"ask" as const,collaborationMode:"build" as const});
- const session=createRootSessionRuntime({resources,resumed:false,seed:{sessionId:scenario.id,history:[{role:"system",content:"test"},{role:"user", origin: "user" as const,content:scenario.goal}],compactState:createCompactState()}});
+ const session=createRootSessionRuntime({resources,seed:{sessionId:scenario.id,history:[{role:"system",content:"test"},{role:"user", origin: "user" as const,content:scenario.goal}],compactState:createCompactState()}});
  const ctx=session.createContext({signal:new AbortController().signal,onEvent(){},getSnapshotState:state,host:{canUseTool:async()=>({behavior:"deny",message:"offline"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"ask",getCollaborationMode:()=>"build",getPermissionPromptPolicy:()=>"never",setTodos(){}}});
  const fake=createFakeLLM(scenario.stages.map(stage=>input=>{
   const message=input.messages.findLast(message=>message.role==="user"&&contentText(message.content).includes(stage.request));

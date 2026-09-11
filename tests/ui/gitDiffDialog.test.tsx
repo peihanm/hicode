@@ -2,7 +2,7 @@ import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import {GitDiffDialog} from "../../src/ui/git/GitDiffDialog.js";
 import type {GitDiffSnapshotResult} from "../../src/git/index.js";
-import type {GitSessionFileStatus} from "../../src/git/types.js";
+import type {GitFileStatus} from "../../src/git/types.js";
 import type {PersistedUIEvent} from "../../src/session/index.js";
 
 afterEach(() => cleanup());
@@ -36,8 +36,7 @@ function result(): GitDiffSnapshotResult {
                     staged: true,
                     unstaged: false,
                     submodule: null,
-                    provenance: "pillar-observed",
-                } as GitSessionFileStatus,
+                } as GitFileStatus,
                 additions: 1,
                 deletions: 1,
                 binary: false,

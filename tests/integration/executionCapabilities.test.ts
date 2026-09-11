@@ -1,3 +1,4 @@
+import {createWriterRegistry} from "../helpers/writerAgent.js";
 import {bashTool} from "../../src/tools/bash/bash.js";
 import {describe, expect, test} from "bun:test";
 import {createToolRuntime} from "../../src/tools/runtime.js";
@@ -80,8 +81,8 @@ describe("effective execution capabilities", () => {
                     return assistantText("done");
                 },
             ]);
-            attachSubagentLauncher(ctx, createSubagentRunnerForTest({parentContext: ctx, onEvent: () => {}, agentOptions: {callLLM: child.callLLM}}));
-            await createToolRuntime().executeTool("agent", JSON.stringify({subagent_type: "GeneralPurpose", description: "bounded write", prompt: "write"}), ctx, "bounded");
+            attachSubagentLauncher(ctx, createSubagentRunnerForTest({parentContext: ctx, registry: createWriterRegistry(), onEvent: () => {}, agentOptions: {callLLM: child.callLLM}}));
+            await createToolRuntime({toolOverrides: [createAgentTool(createWriterRegistry())]}).executeTool("agent", JSON.stringify({subagent_type: "FixtureWriter", description: "bounded write", prompt: "write"}), ctx, "bounded");
             expect(await Bun.file(`${cwd}/allowed/ok.txt`).exists()).toBe(false);
             expect(await Bun.file(`${cwd}/root.txt`).exists()).toBe(false);
             expect(ctx.collaborationMode).toBe("plan");
@@ -198,7 +199,6 @@ describe("effective execution capabilities", () => {
             const result = await executeToolCallBatch({toolCalls: calls, history, ctx: createTestContext(cwd),
                 turnId: "turn", onEvent: () => {}, executeTool: rt.executeTool, isToolConcurrencySafe: rt.isConcurrencySafe});
             expect(result.outcomes.map(item => item.outcome)).toEqual(["ok", "ok"]);
-            expect(result.outcomes.map(item => item.shellExecution?.command)).toEqual([replacement ?? original, replacement ?? original]);
             expect(sequence).toEqual(["pre:one", "post:one", "pre:two", "post:two"]);
             expect(history.filter(item => item.role === "tool")).toHaveLength(2);
             if (replacement?.includes("shared.txt")) expect(await Bun.file(`${cwd}/shared.txt`).text()).toBe("writtenwritten");

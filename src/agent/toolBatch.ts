@@ -45,8 +45,6 @@ export interface ToolCallOutcome {
     result: string;
     persisted?: ToolExecutionResult["persisted"];
     uiData?: ToolUIData;
-    shellExecution?: ToolExecutionResult["shellExecution"];
-    untrackedWorkspaceEffects?: boolean;
 }
 
 export async function executeToolCallBatch({
@@ -200,8 +198,6 @@ export async function executeToolCallBatch({
                     argsJson: toolCall.function.arguments,
                     outcome: interrupted ? "interrupted" : execution.outcome,
                     result: interruptedContent ?? contentText(execution.modelContent),
-                    ...(!interrupted && execution.shellExecution ? {shellExecution: execution.shellExecution} : {}),
-                    ...(execution.untrackedWorkspaceEffects ? {untrackedWorkspaceEffects: true} : {}),
                     ...(!interrupted && execution.uiData
                         ? {uiData: execution.uiData}
                         : {}),

@@ -44,7 +44,7 @@ describe("RootSessionRuntime", () => {
             createdAt: "2026-07-22T00:00:00.000Z",
           }],
         },
-        resumed: true,
+
       });
 
       await Promise.all([runtime.initialize(), runtime.initialize()]);
@@ -70,7 +70,6 @@ describe("RootSessionRuntime", () => {
         },
       });
       expect(ctx.tasks).toBe(runtime.taskSession);
-      expect(ctx.gitSession).toBe(runtime.gitSession);
       expect(ctx.subagentLauncher).toBeDefined();
       expect(ctx.hookSession).toBeDefined();
 

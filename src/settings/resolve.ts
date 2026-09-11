@@ -112,7 +112,6 @@ function resolveModelTarget(
     }
     return {
         source: sourceName,
-        provider: sourceName,
         model: model.id,
         label: model.label,
     };

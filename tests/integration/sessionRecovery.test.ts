@@ -27,12 +27,12 @@ describe("Session recovery and storage boundaries", () => {
         await withTempProject(async (cwd, storage) => {
             const resources = createTestRuntimeResources(cwd, {storage});
             try {
-                const session = createRootSessionRuntime({resources, resumed: false, seed: {sessionId: "first", history: [], compactState: createCompactState()}});
+                const session = createRootSessionRuntime({resources,  seed: {sessionId: "first", history: [], compactState: createCompactState()}});
                 await session.beginTurn("first interrupted request", state);
                 await writeFile(join(cwd, "changed.txt"), "current file");
                 const loaded = loadSession(storage, cwd, "first", resources.model)!;
                 expect(loaded.history.at(-1)?.content).toBe("first interrupted request");
-                const resumed = createRootSessionRuntime({resources, resumed: true, seed: {...loaded, compactState: createCompactState()}});
+                const resumed = createRootSessionRuntime({resources,  seed: {...loaded, compactState: createCompactState()}});
                 await resumed.initialize();
                 await resumed.beginTurn("continue", state);
                 resumed.endTurn();

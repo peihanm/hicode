@@ -1,5 +1,5 @@
 import {z} from "zod";
-import type {TaskSnapshot} from "../../tasks/index.js";
+import type {ShellTaskSnapshot, TaskSnapshot} from "../../tasks/index.js";
 import type {Tool} from "../types.js";
 import {checkTaskStopPermission} from "./stopPermission.js";
 
@@ -20,6 +20,22 @@ const inputSchema = z.object({
         .describe("action=send 时必填；运行中在安全边界注入，已结束时继续同一 Agent Thread"),
 });
 
+function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
+    const termination = snapshot.termination;
+    if (!termination) return undefined;
+    if (termination.kind === "exit") {
+        return termination.signal
+            ? `signal ${termination.signal}`
+            : `exit code ${termination.code}`;
+    }
+    if (termination.kind === "timeout") return `timeout ${termination.timeoutMs}ms`;
+    if (termination.kind === "aborted") return `aborted ${termination.reason}`;
+    if (termination.kind === "output_limit") {
+        return `output limit ${termination.maxBuffer} bytes`;
+    }
+    return `spawn error: ${termination.error.message}`;
+}
+
 function formatTask(task: TaskSnapshot): string {
     if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"正在提取与整理 Memory"}`;
     const result = task.outputResult
@@ -27,11 +43,14 @@ function formatTask(task: TaskSnapshot): string {
         : "";
     const issue = task.outputIssue ? `\nIssue: ${task.outputIssue}` : "";
     if (task.kind === "shell") {
+        const termination = formatTermination(task);
         return [
             `Task: ${task.id}`,
             "Type: shell",
             `Status: ${task.status}`,
             `Command: ${task.command}`,
+            `Cwd: ${task.cwd}`,
+            ...(termination ? [`Termination: ${termination}`] : []),
             task.output ? `Output:\n${task.output}` : "Output: (无输出)",
         ].join("\n") + result + issue;
     }

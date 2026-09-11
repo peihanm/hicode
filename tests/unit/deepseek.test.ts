@@ -199,10 +199,7 @@ describe("DeepSeek provider", () => {
         });
     });
 
-    test("只接受 DeepSeek 模型并使用独立 Key", async () => {
-        expect(deepseekProvider.supports("deepseek-pro")).toBe(true);
-        expect(deepseekProvider.supports("deepseek-flash")).toBe(true);
-        expect(deepseekProvider.supports("glm-5.2")).toBe(false);
+    test("来源固定使用 DeepSeek Key，模型别名不改用其他来源", async () => {
         delete process.env.DEEPSEEK_API_KEY;
 
         await expect(callDeepSeek(deepseekProvider, {
@@ -221,7 +218,7 @@ describe("DeepSeek provider", () => {
             "qwen3.6-plus",
             "main"
         )).rejects.toThrow(
-            "模型来源 DeepSeek 不支持模型 qwen3.6-plus"
+            "缺少 DEEPSEEK_API_KEY"
         );
     });
 

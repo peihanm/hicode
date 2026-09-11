@@ -134,7 +134,7 @@ export interface TaskSessionLike {
 
     list(): Promise<readonly TaskSnapshot[]>;
 
-    stop(id: string, expectedKind?: TaskSnapshot["kind"]): Promise<TaskSnapshot | undefined>;
+    stop(id: string): Promise<TaskSnapshot | undefined>;
 
     send(id: string, message: string): Promise<AgentTaskSnapshot>;
 

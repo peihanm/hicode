@@ -4,8 +4,7 @@ import {createAssistantThread, createTaskNotificationThread, createUserThread, r
 import type {AgentEvent} from "../../agent/types.js";
 import type {UIThread} from "../conversation/types.js";
 import type {LLMRetryInfo, Message} from "../../llm/types.js";
-import {mergeFileChange} from "../../fileChanges/index.js";
-import {limitPersistedUIEvents, type PersistedFileChangeUIEvent, type PersistedUIEvent,} from "../../session/index.js";
+import {SessionUIEventCollector, type PersistedUIEvent,} from "../../session/index.js";
 import {isSuccessfulToolActivity} from "../../tools/presentation.js";
 import type {TaskNotification} from "../../tasks/index.js";
 
@@ -77,15 +76,15 @@ export class UITurnEventStore {
     private readonly archivedThreadIds = new Set<string>();
     private activeIteration = 0;
     private threadSequence = 0;
-    private persistedUIEvents: PersistedUIEvent[];
+    private readonly uiEvents: SessionUIEventCollector;
     private snapshot: UITurnEventSnapshot;
 
     constructor(options: UITurnEventStoreOptions = {}) {
         const history = options.history ?? [];
-        this.persistedUIEvents = [...(options.uiEvents ?? [])];
+        this.uiEvents = new SessionUIEventCollector(options.uiEvents);
         const restoredThreads = threadsFromHistory(
             history,
-            this.persistedUIEvents,
+            [...this.uiEvents.getEvents()],
             this.createThreadId
         );
         for (const thread of restoredThreads) this.archivedThreadIds.add(thread.id);
@@ -98,13 +97,8 @@ export class UITurnEventStore {
     }
 
     handleEvent = (event: AgentEvent): void => {
-        if (event.type === "turn_timing") {
-            this.persistedUIEvents = limitPersistedUIEvents([
-                ...this.persistedUIEvents,
-                {version: 1, ...event, timestamp: new Date().toISOString()},
-            ]);
-            return;
-        }
+        this.uiEvents.handleEvent(event);
+
         if (event.type === "assistant_draft") {
             this.updateDraft(event);
             return;
@@ -179,46 +173,6 @@ export class UITurnEventStore {
                 },
             });
             return;
-        }
-
-        if (event.type === "tool_call_end") for (const change of toolFileChanges(event.uiData, event.outcome)) {
-            const previous = [...this.persistedUIEvents].reverse().find(
-                (item): item is PersistedFileChangeUIEvent =>
-                    item.type === "file_change" &&
-                    item.turnId === event.turnId &&
-                    item.change.path === change.path
-            );
-            const persistedChange = previous
-                ? mergeFileChange([previous.change], change).at(-1)!
-                : change;
-            this.persistedUIEvents = limitPersistedUIEvents([
-                ...this.persistedUIEvents,
-                {
-                    version: 1,
-                    type: "file_change",
-                    turnId: event.turnId,
-                    toolCallId: event.toolCallId,
-                    timestamp: new Date().toISOString(),
-                    change: persistedChange,
-                },
-            ]);
-        }
-        if (event.type === "approval_review" && event.phase === "end") {
-            this.persistedUIEvents = limitPersistedUIEvents([...this.persistedUIEvents,
-                {...event, phase: "end", reason: event.reason?.slice(0, 4000), version: 1, timestamp: new Date().toISOString()}]);
-        }
-        if (event.type === "tool_call_end") {
-            this.persistedUIEvents = limitPersistedUIEvents([
-                ...this.persistedUIEvents,
-                {
-                    version: 1,
-                    type: "tool_call",
-                    turnId: event.turnId,
-                    toolCallId: event.toolCallId,
-                    timestamp: new Date().toISOString(),
-                    outcome: event.outcome ?? "ok",
-                },
-            ]);
         }
 
         if (
@@ -357,7 +311,7 @@ export class UITurnEventStore {
     }
 
     getPersistedUIEvents(): PersistedUIEvent[] {
-        return [...this.persistedUIEvents];
+        return [...this.uiEvents.getEvents()];
     }
 
     getModelStreamProgressRef(): UIModelStreamProgressRef {
@@ -378,7 +332,7 @@ export class UITurnEventStore {
             input.uiEvents,
             this.createThreadId
         );
-        this.persistedUIEvents = [...input.uiEvents];
+        this.uiEvents.reset(input.uiEvents);
         this.archivedThreadIds.clear();
         for (const thread of threads) this.archivedThreadIds.add(thread.id);
         this.activeIteration = 0;

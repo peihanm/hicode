@@ -104,7 +104,7 @@ export function threadsFromHistory(
     }
 
     for (const event of uiEvents) {
-        if (event.type === "turn_timing" || event.type === "approval_review") continue;
+        if (event.type === "approval_review") continue;
         const target = threads.find(
             (thread) =>
                 thread.role === "tool_call" && thread.toolCallId === event.toolCallId
@@ -188,7 +188,6 @@ export function reduceThreads(
             return threads.map(thread => thread.role === "tool_call" && thread.toolCallId === event.toolCallId
                 ? {...thread, approvalReview: event.phase === "start" ? "正在自动审核权限" : undefined} : thread);
         case "iteration":
-        case "turn_timing":
             return threads;
         case "assistant_draft":
         case "assistant_draft_end":

@@ -1,27 +1,23 @@
 import type {ContextSettings} from "../context/config.js";
 import {ContextUsageTracker} from "../context/usage.js";
-import { lstat, readdir, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { createAgentRunner, EMPTY_AGENT_INPUT_CHANNEL } from "../agent/index.js";
 import { FileCommitCoordinator } from "../tools/shared/fileCommit.js";
 import { createCompactState } from "../context/state.js";
-import { createGitCommandRunner, type GitCommandRunner } from "../git/process.js";
 import { createLLMCaller } from "../llm/index.js";
 import type { LLMCaller, LLMSourceConnection } from "../llm/types.js";
 import type { ModelTargetSettings } from "../settings/types.js";
 import { createPillarStorageLayout, ensurePrivateStorageDirectory, readPrivateStorageTextFile, writeFileAtomically, type PillarStorageLayout } from "../persistence/index.js";
-import { getMemoryWorkspacePaths, getProjectMemoryDirectory } from "../persistence/layout.js";
+import { getMemoryWorkspacePaths, getMemoryWorkspacesDirectory, getProjectMemoryDirectory } from "../persistence/layout.js";
 import { EMPTY_PROJECT_INSTRUCTIONS } from "../prompt/instructions.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
-import type { ChildProcessEnvironment } from "../runtime/childEnvironment.js";
 import { createToolContext } from "../runtime/toolContext.js";
 import type { ShellRunnerLike } from "../tools/bash/shellRunner.js";
 import { createToolRuntime } from "../tools/registry.js";
 import { createFileStateTracker } from "../tools/shared/fileState.js";
 import { createToolResultStore } from "../toolResults/index.js";
-import { createMemoryWorktreeRuntime } from "../worktrees/runtime.js";
-import type { AgentWorktreeRecord } from "../worktrees/types.js";
 import { memoryDraftTopicSchema, type MemoryDraftTopic, type MemoryLease, type MemoryPublication } from "./publicationSchema.js";
 import { serializeDraftTopic } from "./publicationStore.js";
 export interface MemoryConsolidator {
@@ -39,7 +35,6 @@ interface ConsolidatorOptions {
     contextSettings: ContextSettings;
     storage: PillarStorageLayout;
     cwd: string;
-    environment: ChildProcessEnvironment;
     shellRunner: ShellRunnerLike;
     target: ModelTargetSettings;
     source: LLMSourceConnection;
@@ -52,11 +47,6 @@ export function createMemoryConsolidatorFactory(callLLM: LLMCaller) {
     return (options: ConsolidatorOptions) => buildMemoryConsolidator(options, callLLM);
 }
 function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller): MemoryConsolidator {
-    const base = Object.fromEntries(Object.entries(options.environment.base).filter(([name]) => !name.startsWith("GIT_")));
-    const git = createGitCommandRunner({ base: { ...base, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
-        excludedNames: options.environment.excludedNames });
-    const runGit: GitCommandRunner = (cwd, args, signal, extra) => git(cwd, ["-c", "core.hooksPath=/dev/null", "-c", "core.attributesFile=/dev/null",
-        "-c", "commit.gpgsign=false", ...args], signal, extra);
     const callLLM: LLMCaller = (messages, tools, storage, cwd, model, _kind, signal, onProgress, onText) => caller(messages, tools, storage, cwd, model, "memory", signal, onProgress, onText);
     const runAgent = createAgentRunner({ callLLM, compactHistory: async () => { throw new Error("Memory 整理超过固定输入预算，不递归压缩"); } });
     const tools = createToolRuntime({ allowedToolNames: ["read_file", "grep", "list_files", "write_file", "edit_file", "delete_file"] });
@@ -66,43 +56,26 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
                 throw new Error("Memory 整理租约已过期");
             input = { ...input, signal: AbortSignal.any([input.signal, AbortSignal.timeout(Math.min(5 * 60000, remaining))]) };
             const paths = getMemoryWorkspacePaths(getProjectMemoryDirectory(options.storage, options.cwd), input.lease.id);
-            const worktrees = createMemoryWorktreeRuntime({ storage: options.storage, cwd: options.cwd, leaseId: input.lease.id, runGit });
-            let record: AgentWorktreeRecord | undefined;
             let ownsRoot = false;
             try {
                 throwIfTurnAborted(input.signal);
-                try {
-                    await lstat(paths.root);
-                    throw new Error("Memory 草稿目录已存在，拒绝覆盖");
-                }
-                catch (error) {
-                    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT"))
-                        throw error;
-                }
-                ensurePrivateStorageDirectory(options.storage, join(paths.repository, "memory", "topics"));
+                ensurePrivateStorageDirectory(options.storage, getMemoryWorkspacesDirectory(getProjectMemoryDirectory(options.storage, options.cwd)));
+                await mkdir(paths.root, {mode: 0o700});
                 ownsRoot = true;
+                const directory = paths.draft;
+                ensurePrivateStorageDirectory(options.storage, join(directory, "topics"));
                 const sourceText = JSON.stringify(input.baseline.sources.filter(source => input.lease.sourceIds.includes(source.id)), null, 2);
-                await writeFileAtomically(join(paths.repository, ".gitignore"), ".pillar/\n", 0o600);
-                await writeFileAtomically(join(paths.repository, "memory", "INPUTS.json"), sourceText, 0o600);
-                await writeFileAtomically(join(paths.repository, "memory", "MEMORY.md"), input.baseline.summary, 0o600);
+                await writeFileAtomically(join(directory, "INPUTS.json"), sourceText, 0o600);
+                await writeFileAtomically(join(directory, "MEMORY.md"), input.baseline.summary, 0o600);
                 for (const topic of input.baseline.topics)
-                    await writeFileAtomically(join(paths.repository, "memory", "topics", `${topic.key}.md`), serializeDraftTopic({ key: topic.key, name: topic.name, description: topic.description, type: topic.type,
+                    await writeFileAtomically(join(directory, "topics", `${topic.key}.md`), serializeDraftTopic({ key: topic.key, name: topic.name, description: topic.description, type: topic.type,
                         content: topic.content, sources: topic.sources }), 0o600);
-                for (const args of [["init", "--template=", "-q"], ["add", "--", ".gitignore", "memory"],
-                    ["-c", "user.name=Pillar", "-c", "user.email=memory@pillar.invalid", "commit", "-qm", "Memory baseline"]]) {
-                    const result = await runGit(paths.repository, args, input.signal);
-                    if (result.code !== 0)
-                        throw new Error("Memory 草稿 Git 初始化失败");
-                }
-                record = await worktrees.create({ taskId: input.lease.id, sessionId: input.sessionId, signal: input.signal });
-                // Keep the host layout spelling (e.g. /var rather than /private/var) for private-storage checks.
-                const directory = join(paths.repository, relative(record.sourceGitRoot, record.path), "memory");
                 // Private prompt logs and tool artifacts share the draft lifetime, including forgetting/cleanup.
                 const draftStorage = createPillarStorageLayout({ pillarHome: paths.runtime });
                 const ctx = createToolContext({ signal: input.signal, resources: {
                         contextSettings: options.contextSettings, storage: draftStorage, cwd: directory, workspaceBoundary: directory, shellRunner: options.shellRunner,
-                        fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.provider,
-                        fastModel: options.target.model, fastProvider: options.target.provider, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,
+                        fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.source,
+                        fastModel: options.target.model, fastProvider: options.target.source, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,
                     }, session: { sessionId: input.sessionId, compactState: createCompactState(), contextUsage: new ContextUsageTracker(), fileState: createFileStateTracker(),
                         toolResultStore: createToolResultStore(draftStorage, directory, input.sessionId) },
                     host: { canUseTool: async () => ({ behavior: "deny", message: "Memory 整理不能交互提权" }), getPermissionRules: () => ({ allow: [], ask: [], deny: [] }),
@@ -153,18 +126,9 @@ MEMORY.md 只写最多 4000 字符的简短召回摘要；不必手动维护索�
                 return { topics, summary };
             }
             finally {
-                try {
-                    if (record) {
-                        const finished = await worktrees.finish(record);
-                        if (finished.record.state !== "cleaned")
-                            await worktrees.discard(finished.record);
-                    }
-                }
-                finally {
-                    if (ownsRoot) {
-                        ensurePrivateStorageDirectory(options.storage, paths.root);
-                        await rm(paths.root, { recursive: true, force: true });
-                    }
+                if (ownsRoot) {
+                    ensurePrivateStorageDirectory(options.storage, paths.root);
+                    await rm(paths.root, {recursive: true, force: true});
                 }
             }
         } };

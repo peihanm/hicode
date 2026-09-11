@@ -14,7 +14,6 @@ import type {TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "./bash/shellRunner.js";
 import type {FileStateTracker} from "./shared/fileState.js";
 import type {ProjectInstructions} from "../prompt/instructions.js";
-import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime, HookInput, HookBatchResult, HookLifecycleEvent, HookRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {SessionArchiveAccess} from "../session/archiveAccess.js";
@@ -50,7 +49,6 @@ export interface ToolContext {
     imageModelSupported?: boolean;
     imageAccess?: ImageAccess;
     /** Root Turn observes actual execute intervals, excluding permission and batch queues. */
-    onToolExecution?: (phase: "start" | "end") => void;
     storage: PillarStorageLayout;
     // 当前 turn 的取消信号。每轮必须创建新的 signal，不能复用已取消 signal。
     signal: AbortSignal;
@@ -142,7 +140,6 @@ export interface ToolContext {
 
     // 当前 Session 的 Git Baseline 与来源提示。它包装 gitWorkspace，
     // 但状态随 Session Snapshot 持久化，不能做成 Root 进程级全局。
-    gitSession?: GitSessionRuntimeLike;
 
     // Root turn 注入统一子 Agent launcher；子 Agent context 不注入，阻止递归。
     subagentLauncher?: SubagentLauncher;

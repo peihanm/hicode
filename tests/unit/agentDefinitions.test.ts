@@ -23,31 +23,13 @@ describe("agent definitions", () => {
     expect(explore.whenToUse).not.toContain("3 个以上文件");
     expect(explore.model).toBe("fast");
 
-    const general = BUILTIN_SUBAGENT_REGISTRY.get("GeneralPurpose")!.definition;
-    expect(general.allowedTools).toEqual([
-      "list_files",
-      "glob",
-      "read_file",
-      "grep",
-      "edit_file",
-      "write_file",
-      "delete_file",
-    ]);
-    expect(general.allowedTools).not.toContain("bash");
-    expect(general.allowedTools).not.toContain("agent");
-    expect(general.allowedTools).not.toContain("task");
-    expect(general.whenToUse).toContain("默认不自动使用");
-    expect(general.whenToUse).toContain("用户明确要求委派");
-    expect(general.whenToUse).toContain("前台串行 Agent");
-    expect(general.whenToUse).toContain("不用于承接整个已批准计划");
-    expect(general.model).toBe("inherit");
   });
 
   test("只接受已注册的 Agent 类型", () => {
     expect(BUILTIN_SUBAGENT_REGISTRY.has("Explore")).toBe(true);
     expect(BUILTIN_SUBAGENT_REGISTRY.has("verification")).toBe(false);
-    expect(BUILTIN_SUBAGENT_REGISTRY.listDefinitions().map(agent => agent.agentType)).toEqual(["Explore", "GeneralPurpose"]);
-    expect(BUILTIN_SUBAGENT_REGISTRY.has("GeneralPurpose")).toBe(true);
+    expect(BUILTIN_SUBAGENT_REGISTRY.listDefinitions().map(agent => agent.agentType)).toEqual(["Explore"]);
+    expect(BUILTIN_SUBAGENT_REGISTRY.has("GeneralPurpose")).toBe(false);
   });
 
   test("Agent Tool 不按文件数量机械要求委派", () => {
@@ -56,9 +38,6 @@ describe("agent definitions", () => {
     expect(description).toContain("Root 默认亲自完成顺序性的调查、实现和验证");
     expect(description).toContain("本身都不是委派理由");
     expect(description).toContain("若 Root 必须等待结果才能继续");
-    expect(description).toContain("GeneralPurpose 默认不自动使用");
-    expect(description).toContain("它是前台串行 Agent");
-    expect(description).toContain("不用于承接整个已批准计划");
     expect(description).not.toContain("3 个以上文件");
     expect(description).not.toContain("必须优先使用 Explore");
   });

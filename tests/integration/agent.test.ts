@@ -684,18 +684,18 @@ describe("agent loop", () => {
         assistantToolCall("bash", {command: "bun test tests/a.test.ts"}, "targeted-check"),
         (options) => {
           const evidence = options.messages.map(message => message.content).filter(value => typeof value === "string").join("\n");
-          expect(evidence).toContain("检查已过期（之后有相关修改）");
-          expect(evidence).toContain("检查通过");
-          expect(evidence).toContain("bun test tests/a.test.ts");
+          expect(evidence).not.toContain("检查已过期");
+          expect(evidence).not.toContain("当前完成证据");
+          expect(JSON.stringify(options.messages)).toContain("bun test tests/a.test.ts");
           return assistantText(reply);
         },
       ]);
       const result = await runAgent("修复并运行受影响的测试", history, () => {}, createTestContext(cwd), {
         callLLM: fake.callLLM,
-        executeTool: async (name, args) => ({
+        executeTool: async (name) => ({
           modelContent: "ok", displayContent: "ok", outcome: "ok",
           ...(name === "bash"
-            ? {shellExecution: {command: JSON.parse(args).command, cwd, sandboxPermissions: "use_default" as const}}
+            ? {}
             : {uiData: {type: "file_change" as const, change: createFileChange({path: "a.ts", kind: "create", oldContent: "", newContent: "fixed"})}}),
         }),
       });
@@ -716,8 +716,8 @@ describe("agent loop", () => {
       const fake = createFakeLLM([
         ...commands.map((command, i) => assistantToolCall("bash", {command}, `check-${i}`)),
         (options) => {
-          expect(options.messages.some(message => typeof message.content === "string" &&
-            message.content.includes(`检查通过: ${cwd}: ${command}`))).toBe(true);
+          expect(JSON.stringify(options.messages)).toContain(command);
+          expect(JSON.stringify(options.messages)).not.toContain("当前完成证据");
           return assistantText(reply);
         },
       ]);
@@ -727,8 +727,7 @@ describe("agent loop", () => {
           expect(name).toBe("bash");
           const input = JSON.parse(args) as {command: string};
           executed.push(input.command);
-          return {modelContent: "ok", displayContent: "ok", outcome: "ok",
-            shellExecution: {command: input.command, cwd, sandboxPermissions: "use_default"}};
+          return {modelContent: "ok", displayContent: "ok", outcome: "ok"};
         },
       });
       expect(result.reply).toBe(reply);

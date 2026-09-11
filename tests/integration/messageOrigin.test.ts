@@ -41,7 +41,7 @@ test.each(["user", "task_notification", "runtime", "compaction", "agent"] satisf
         const id = "a".repeat(64);
         const fake = createFakeLLM([assistantText(JSON.stringify({facts: [{key: "preference", type: "user", content: "偏好简洁", basis: "user-stated", sources: [id]}]}))]);
         const extractor = createMemorySourceExtractorFactory(fake.callLLM)({cwd, storage,
-            target: {source: "glm", provider: "glm", model: "glm-test", label: "Fixture"}, source: {id: "glm", label: "Fixture", apiKeyEnv: "UNUSED"}});
+            target: {source: "glm", model: "glm-test", label: "Fixture"}, source: {id: "glm", label: "Fixture", apiKeyEnv: "UNUSED"}});
         const result = extractor.extract([{id, role: "user", origin, content: "偏好简洁"}], new AbortController().signal, 0);
         if (origin === "user") expect(await result).toHaveLength(1);
         else await expect(result).rejects.toThrow("真实用户输入");

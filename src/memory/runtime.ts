@@ -10,7 +10,6 @@ import type { ResolvedPillarSettings } from "../settings/index.js";
 import type { ModelTargetSettings } from "../settings/types.js";
 import type { ShellRunnerLike } from "../tools/bash/shellRunner.js";
 import type { PillarStorageLayout } from "../persistence/index.js";
-import type { ChildProcessEnvironment } from "../runtime/childEnvironment.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
 import { getMemoryInboxDirectory, getMemoryViewsDirectory } from "../persistence/layout.js";
 import { join } from "node:path";
@@ -248,7 +247,6 @@ export function createMemoryRuntimeFactory(overrides: Partial<MemoryRuntimeFacto
     return (options: {
         storage: PillarStorageLayout;
         cwd: string;
-        environment: ChildProcessEnvironment;
         shellRunner: ShellRunnerLike;
         settings: ResolvedPillarSettings["memory"];
         contextSettings: ResolvedPillarSettings["context"];

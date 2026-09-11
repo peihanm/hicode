@@ -75,11 +75,11 @@ export function createApprovalReviewer(runAgent: AgentRunner): ApprovalReviewer 
             return {behavior: "deny" as const, message: "审核补证仅限相关工作区和待审文件"};
         }}));
         const runtime = createToolRuntime({allowedToolNames: REVIEW_TOOLS, toolOverrides: overrides});
-        const target = parent.reviewerModel ?? {model: parent.model, provider: parent.provider};
+        const target = parent.reviewerModel ?? {model: parent.model, source: parent.provider};
         const ctx = createToolContext({signal, turnId: request.id,
             resources: {
-                contextSettings: parent.contextSettings, storage: parent.storage, cwd: parent.cwd, model: target.model, provider: target.provider,
-                fastModel: target.model, fastProvider: target.provider, skills: [], readOnlyTools: true,
+                contextSettings: parent.contextSettings, storage: parent.storage, cwd: parent.cwd, model: target.model, provider: target.source,
+                fastModel: target.model, fastProvider: target.source, skills: [], readOnlyTools: true,
                 fileCommits: new FileCommitCoordinator(), shellRunner: parent.shellRunner},
             session: {sessionId: `${parent.sessionId}:review:${request.id}`, toolResultStore: parent.toolResultStore,
                 fileState: createFileStateTracker(), compactState: createCompactState(), contextUsage: new ContextUsageTracker()},

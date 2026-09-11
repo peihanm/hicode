@@ -22,7 +22,7 @@ async function waitUntil(predicate: () => boolean) {
 test("TUI attaches Chinese paths with spaces, removes attachments, submits pure image after source deletion", async () => {
     await withTempProject(async cwd => {
         const settings = createTestSettings();
-        settings.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
+        settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
         const resources = createTestRuntimeResources(cwd, {settings});
         const path = join(cwd, "图片 with space.png");
         await writeFile(path, await sharp({create: {width: 30, height: 20, channels: 3, background: "red"}}).png().toBuffer());
@@ -30,9 +30,7 @@ test("TUI attaches Chinese paths with spaces, removes attachments, submits pure 
         const instance = render(<AppForTest resources={resources} runAgentImpl={async input => {inputs.push(input); return {reply: "ok", reason: "completed", iterations: 1};}}/>);
         try {
             await new Promise(resolve => setTimeout(resolve, 30));
-            instance.stdin.write(`/attach ${path}`);
-            await new Promise(resolve => setTimeout(resolve, 80));
-            instance.stdin.write("\r");
+            instance.stdin.write(path);
             await waitUntil(() => instance.lastFrame()?.includes("[Image #1]") === true).catch(error => {throw new Error(`${error.message}: ${instance.lastFrame()}`);});
             expect(instance.lastFrame()).toContain("❯ [Image #1]");
             expect(instance.lastFrame()).not.toContain("图片 with space.png");
@@ -40,14 +38,10 @@ test("TUI attaches Chinese paths with spaces, removes attachments, submits pure 
             expect(instance.lastFrame()).not.toContain("Ask Pillar to build");
             expect(inputs).toHaveLength(0);
             await new Promise(resolve => setTimeout(resolve, 80));
-            instance.stdin.write("/detach all");
-            await new Promise(resolve => setTimeout(resolve, 80));
-            instance.stdin.write("\r");
+            instance.stdin.write("\u007f");
             await waitUntil(() => !instance.lastFrame()?.includes("[Image #1]") && instance.lastFrame()?.includes("Ask Pillar to build") === true);
             await new Promise(resolve => setTimeout(resolve, 80));
-            instance.stdin.write(`/attach ${path}`);
-            await new Promise(resolve => setTimeout(resolve, 80));
-            instance.stdin.write("\r");
+            instance.stdin.write(path);
             await waitUntil(() => instance.lastFrame()?.includes("[Image #1]") === true).catch(error => {throw new Error(`${error.message}: ${instance.lastFrame()}`);});
             await unlink(path);
             instance.stdin.write("\r");
@@ -61,7 +55,7 @@ test("TUI attaches Chinese paths with spaces, removes attachments, submits pure 
 test("pasted file drop becomes an Image attachment without Enter and preserves the surrounding prompt", async () => {
     await withTempProject(async cwd => {
         const settings = createTestSettings();
-        settings.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
+        settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
         const resources = createTestRuntimeResources(cwd, {settings});
         const path = join(cwd, "中文 screenshot.png");
         await writeFile(path, await sharp({create: {width: 31, height: 21, channels: 3, background: "blue"}}).png().toBuffer());
@@ -120,7 +114,7 @@ test("sent, restored and queued image messages share concise labels without chan
 test("invalid pasted image restores the path and existing draft without submitting a turn", async () => {
     await withTempProject(async cwd => {
         const settings = createTestSettings();
-        settings.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
+        settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
         const resources = createTestRuntimeResources(cwd, {settings});
         const path = join(cwd, "broken.png");
         await writeFile(path, "not an image");
@@ -142,7 +136,7 @@ test("invalid pasted image restores the path and existing draft without submitti
 test("inline image labels support Backspace and Ctrl+C without leaving hidden attachments", async () => {
     await withTempProject(async cwd => {
         const settings = createTestSettings();
-        settings.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
+        settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
         const resources = createTestRuntimeResources(cwd, {settings});
         const path = join(cwd, "inline.png");
         await writeFile(path, await sharp({create: {width: 3, height: 2, channels: 3, background: "red"}}).png().toBuffer());

@@ -155,7 +155,6 @@ export class Pillar {
                 queuedInputs: loaded.queuedInputs,
                 taskNotificationReceipts: loaded.taskNotificationReceipts,
                 toolDiscovery: loaded.toolDiscovery,
-                gitSession: loaded.gitSession,
             },
             state: {
                 todos: loaded.todos,

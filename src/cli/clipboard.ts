@@ -12,7 +12,7 @@ const resultSchema = z.discriminatedUnion("kind", [
 /** User-triggered CLI input only. Never invoked by a model tool or ordinary text paste. */
 export async function readClipboardImage(signal: AbortSignal): Promise<Buffer> {
     throwIfTurnAborted(signal);
-    if (process.platform !== "darwin") throw new Error("图片剪贴板目前仅支持本机 macOS；请用 /attach 本地图片路径");
+    if (process.platform !== "darwin") throw new Error("图片剪贴板目前仅支持本机 macOS；请粘贴本地图片文件路径");
     let output: string;
     try {
         const result = await promisify(execFile)("/usr/bin/osascript", ["-l", "JavaScript", "-e", MACOS_CLIPBOARD_IMAGE_SCRIPT], {
@@ -21,7 +21,7 @@ export async function readClipboardImage(signal: AbortSignal): Promise<Buffer> {
         output = result.stdout;
     } catch {
         throwIfTurnAborted(signal);
-        throw new Error("无法读取本机图片剪贴板（系统限制、超时或内容过大）；请保存图片后用 /attach 添加");
+        throw new Error("无法读取本机图片剪贴板（系统限制、超时或内容过大）；请保存图片后粘贴文件路径添加");
     }
     throwIfTurnAborted(signal);
     return parseClipboardImage(output);
@@ -33,7 +33,7 @@ export function parseClipboardImage(output: string): Buffer {
     try {raw = JSON.parse(output);} catch {throw new Error("图片剪贴板返回了无效结果");}
     const result = resultSchema.safeParse(raw);
     if (!result.success) throw new Error("图片剪贴板返回了无效结果");
-    if (result.data.kind === "empty") throw new Error("剪贴板中没有 PNG/TIFF 图片；复制文件路径或文本请用 /attach");
+    if (result.data.kind === "empty") throw new Error("剪贴板中没有 PNG/TIFF 图片；图片文件请粘贴其完整路径");
     if (result.data.kind === "error") throw new Error("剪贴板不可用、图片过大、不可解码或读取时发生变化；请重新复制后再试");
     const data = Buffer.from(result.data.data, "base64");
     if (data.length > 20 * 1024 * 1024 || data.toString("base64") !== result.data.data) throw new Error("图片剪贴板数据无效");

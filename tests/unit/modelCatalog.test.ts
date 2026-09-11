@@ -14,37 +14,31 @@ describe("primary model catalog", () => {
         expect(models).toEqual([
             {
                 source: "glm",
-                provider: "glm",
                 model: "glm-5.2",
                 label: "GLM 5.2",
             },
             {
                 source: "glm",
-                provider: "glm",
                 model: "glm-4.7",
                 label: "GLM 4.7",
             },
             {
                 source: "qwen",
-                provider: "qwen",
                 model: "qwen3.8-flash",
                 label: "Qwen 3.8 Flash",
             },
             {
                 source: "qwen",
-                provider: "qwen",
                 model: "qwen3.8-max",
                 label: "Qwen 3.8 Max",
             },
             {
                 source: "qwen",
-                provider: "qwen",
                 model: "qwen3.6-plus",
                 label: "Qwen 3.6 Plus",
             },
             {
                 source: "qwen",
-                provider: "qwen",
                 model: "qwen3.6-flash",
                 label: "Qwen 3.6 Flash",
             },
@@ -55,13 +49,11 @@ describe("primary model catalog", () => {
         const sources = resolvePillarSettings([]).values.sources;
         const initial = {
             source: "qwen" as const,
-            provider: "qwen" as const,
             model: "qwen3.6-plus",
             label: "Qwen 3.6 Plus",
         };
         const alternative = {
             source: "deepseek" as const,
-            provider: "deepseek" as const,
             model: "deepseek-pro",
             label: "DeepSeek Pro",
         };
@@ -75,9 +67,17 @@ describe("primary model catalog", () => {
         expect(runtime.target).toEqual(alternative);
         expect(() => runtime.select({
             source: "glm",
-            provider: "glm",
             model: "glm-5.2",
             label: "GLM 5.2",
         })).toThrow("当前不可用");
     });
+});
+
+test("可信来源声明的别名不会被模型家族前缀过滤，未声明目标仍拒绝", () => {
+    const sources = resolvePillarSettings([]).values.sources;
+    sources.qwen = {...sources.qwen, models: [{id: "vendor/custom-alias", label: "Alias"}]};
+    const available = listConfiguredPrimaryModels(sources, {DASHSCOPE_API_KEY: "fixture"});
+    expect(available).toEqual([{source: "qwen", model: "vendor/custom-alias", label: "Alias"}]);
+    const runtime = createPrimaryModelRuntime(available[0]!, sources, available);
+    expect(() => runtime.select({...available[0]!, model: "undeclared"})).toThrow("当前不可用");
 });

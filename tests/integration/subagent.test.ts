@@ -1,3 +1,6 @@
+import {createWriterRegistry} from "../helpers/writerAgent.js";
+import {createToolRuntime} from "../../src/tools/runtime.js";
+import {createAgentTool} from "../../src/tools/agent/agent.js";
 import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
@@ -19,7 +22,7 @@ import { attachSubagentLauncher } from "../helpers/subagentLauncher.js";
 import { executeToolResult } from "../helpers/executeTool.js";
 
 describe("synchronous subagent", () => {
-  test("GeneralPurpose 只在 Root 启动时确认一次并使用结构化文件工具", async () => {
+  test("FixtureWriter 只在 Root 启动时确认一次并使用结构化文件工具", async () => {
     await withTempProject(async (cwd) => {
       let confirmations = 0;
       const child = createFakeLLM([
@@ -53,6 +56,7 @@ describe("synchronous subagent", () => {
         },
       });
       const runner = createSubagentRunner({
+        registry: createWriterRegistry(),
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: {callLLM: child.callLLM},
@@ -60,12 +64,12 @@ describe("synchronous subagent", () => {
       });
       attachSubagentLauncher(ctx, runner);
 
-      const result = await executeToolResult(
+      const result = await createToolRuntime({toolOverrides: [createAgentTool(createWriterRegistry())]}).executeTool(
         "agent",
         JSON.stringify({
           description: "实现小文件",
           prompt: "创建 general-purpose.txt",
-          subagent_type: "GeneralPurpose",
+          subagent_type: "FixtureWriter",
         }),
         ctx,
         "general-purpose-call"
@@ -102,6 +106,7 @@ describe("synchronous subagent", () => {
         },
       ]);
       const runner = createSubagentRunner({
+        registry: createWriterRegistry(),
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: {callLLM: child.callLLM},
@@ -110,10 +115,11 @@ describe("synchronous subagent", () => {
 
       const result = await runner({
         kind: "registered",
-        agentType: "GeneralPurpose",
+        agentType: "FixtureWriter",
         description: "验证文件观察隔离",
         prompt: "不要读取文件，直接修改 owned-by-parent.ts",
         parentToolCallId: "parent-observation",
+        workspaceWriteApproved: true,
       });
 
       expect(result.reply).toContain("未修改文件");
@@ -251,6 +257,7 @@ describe("synchronous subagent", () => {
       const ctx = createTestContext(cwd, { signal: controller.signal });
       const events: AgentEvent[] = [];
       const runner = createSubagentRunner({
+        registry: createWriterRegistry(),
         parentContext: ctx,
         onEvent: (event) => {
           events.push(event);
@@ -299,6 +306,7 @@ describe("synchronous subagent", () => {
       });
       const originalMode = ctx.permissionMode;
       const runner = createSubagentRunner({
+        registry: createWriterRegistry(),
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
@@ -345,6 +353,7 @@ describe("synchronous subagent", () => {
       );
       const ctx = createTestContext(cwd);
       const runner = createSubagentRunner({
+        registry: createWriterRegistry(),
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
@@ -371,6 +380,7 @@ describe("synchronous subagent", () => {
       const child = createFakeLLM([assistantText("仍然完成调查")]);
       const ctx = createTestContext(cwd);
       const runner = createSubagentRunner({
+        registry: createWriterRegistry(),
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },

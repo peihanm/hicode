@@ -19,7 +19,7 @@ export function continuityFixture(cwd: string, storage: PillarStorageLayout, cal
     let compactions = 0;
     const compact = createCompactHistoryRunner({generateSummary: async () => {compactions++; return "工作继续，详细来源见档案";}});
     resources.agentRuntime.runAgent = createAgentRunner({callLLM, compactHistory: compact});
-    const session = createRootSessionRuntime({resources, resumed: false,
+    const session = createRootSessionRuntime({resources,
         seed: {sessionId: "continuity", history, compactState: createCompactState()}});
     return {resources, session, compactions: () => compactions};
 }

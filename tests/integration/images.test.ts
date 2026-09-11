@@ -167,7 +167,7 @@ test("text budget keeps image references; summaries disclose missing pixels; req
 test("production Agent → Qwen Provider sends native tool pixels; logs and events contain references only", async () => {
     await withTempProject(async (cwd, storage) => {
         const settings = createTestSettings();
-        settings.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
+        settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
         settings.sources.qwen = {...settings.sources.qwen, apiKeyEnv: "PILLAR_IMAGE_TEST_KEY"};
         expect(supportsToolImages(settings.sources.qwen, "qwen3.8-flash")).toBe(true);
         expect(supportsToolImages({...settings.sources.qwen, baseUrl: "https://example.com"}, "qwen3.8-flash")).toBe(false);

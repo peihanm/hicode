@@ -548,13 +548,13 @@ test("attachments import explicitly, survive queue editing and removal, and plai
     const h = createHarness({importImages: async selected => {paths.push([...selected]); return [imageReference];},
         runTurn: async input => {inputs.push(input); await gate;}});
     const active = h.controller.submit("original");
-    await h.controller.attachmentCommand('/attach "some folder/截图.png"');
+    await h.controller.addImages(["some folder/截图.png"]);
     expect(paths).toEqual([["some folder/截图.png"]]);
     expect(h.controller.enqueue("fix screenshot")).toBe(true);
     expect(h.controller.getAttachmentSnapshot().images).toHaveLength(0);
     expect(h.controller.takeQueuedInputsForEditing("draft", 3)?.value).toBe("fix screenshot\ndraft");
     expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
-    await h.controller.attachmentCommand("/detach 1");
+    h.controller.removeAttachment(0);
     expect(h.controller.getAttachmentSnapshot().images).toHaveLength(0);
     release(); await active;
     await h.controller.submit("some folder/截图.png");
@@ -570,7 +570,7 @@ test("cancel attachment preparation does not cancel the running task or publish 
         return [imageReference];
     }, runTurn: async () => gate});
     const turn = h.controller.submit("run");
-    const attachment = h.controller.attachmentCommand("/attach screen.png");
+    const attachment = h.controller.addImages(["screen.png"]);
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(h.controller.cancel()).toBe(true);
     await attachment;
@@ -584,7 +584,7 @@ test("unsupported model preserves attachment draft and text, pure image input re
     let supported = false;
     const h = createHarness({importImages: async () => [imageReference], restoreDraft: text => drafts.push(text),
         validateImages: () => {if (!supported) throw new Error("unsupported");}, runTurn: async input => {inputs.push(input);}});
-    await h.controller.attachmentCommand("/attach screen.png");
+    await h.controller.addImages(["screen.png"]);
     expect(await h.controller.submit("inspect")).toBe(false);
     expect(drafts).toEqual(["inspect"]);
     expect(h.controller.getAttachmentSnapshot().images).toHaveLength(1);
@@ -607,7 +607,7 @@ test("explicit clipboard attachment uses the existing queue and ordinary text pa
     expect(reads).toBe(0);
     await h.controller.attachmentCommand("/paste-image");
     expect(reads).toBe(1); expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
-    await h.controller.attachmentCommand("/detach all");
+    h.controller.removeAttachment("all");
     expect(h.controller.getAttachmentSnapshot().images).toEqual([]);
     await h.controller.attachmentCommand("/paste-image");
     expect(h.controller.enqueue("查看剪贴板图片")).toBe(true);

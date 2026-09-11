@@ -4,7 +4,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 
-test("bash_task 拒绝 Agent ID 时不取消、不 ACK，跨 Session 不泄露任务", async () => {
+test("task 跨 Session 不停止 Agent、不确认通知，恢复后仍隔离", async () => {
     await withTempProject(async cwd => {
         const ctx = createTestContext(cwd);
         let finish!: () => void;
@@ -30,12 +30,9 @@ test("bash_task 拒绝 Agent ID 时不取消、不 ACK，跨 Session 不泄露�
                 kind: "registered", agentType: "Explore", description: "kind test",
                 prompt: "wait", parentToolCallId: "start-kind",
             }});
-            const wrong = await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "wrong-kind");
-            expect(wrong.outcome).toBe("denied");
-            expect((await session.get(task.id))?.status).toBe("running");
             const other = createTestContext(cwd, {sessionId: "other"});
             other.tasks = runtime.forSession({sessionId: other.sessionId, toolResultStore: other.toolResultStore});
-            const hidden = await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), other, "other-session");
+            const hidden = await tools.executeTool("task", JSON.stringify({task_id: task.id, action: "stop"}), other, "other-session");
             expect(hidden.modelContent).toContain("不存在");
             let completed!: () => void;
             const done = new Promise<void>(resolve => { completed = resolve; });
@@ -45,15 +42,15 @@ test("bash_task 拒绝 Agent ID 时不取消、不 ACK，跨 Session 不泄露�
             finish();
             await done;
             unsubscribe();
-            // Wrong-type calls must not acknowledge even an already finished task.
-            expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "finished-kind")).outcome).toBe("denied");
+            // Foreign calls must not acknowledge even an already finished task.
+            expect((await tools.executeTool("task", JSON.stringify({task_id: task.id, action: "stop"}), other, "finished-kind")).outcome).toBe("denied");
             await runtime.close();
             const restoredRuntime = createTaskRuntimeForTest(cwd, ctx.shellRunner);
             try {
                 const restored = restoredRuntime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
-                ctx.tasks = restored;
+                other.tasks = restoredRuntime.forSession({sessionId: other.sessionId, toolResultStore: other.toolResultStore});
                 await restored.initialize();
-                expect((await tools.executeTool("bash_task", JSON.stringify({task_id: task.id, action: "stop"}), ctx, "archived-kind")).outcome).toBe("denied");
+                expect((await tools.executeTool("task", JSON.stringify({task_id: task.id, action: "stop"}), other, "archived-kind")).outcome).toBe("denied");
                 expect(await restored.pendingNotifications()).toHaveLength(1);
             } finally {
                 await restoredRuntime.close();

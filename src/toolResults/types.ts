@@ -38,12 +38,6 @@ export interface PersistedBinaryArtifact {
 
 export type ToolOutcome = "ok" | "failed" | "denied" | "interrupted";
 
-export interface ShellExecutionEvidence {
-    command: string;
-    cwd: string;
-    sandboxPermissions: "use_default" | "require_escalated";
-}
-
 export type ToolOutput =
     | string
     | {
@@ -52,7 +46,6 @@ export type ToolOutput =
     persisted?: PersistedToolResult;
     outcome?: ToolOutcome;
     uiData?: ToolUIData;
-    shellExecution?: ShellExecutionEvidence;
 };
 
 export interface ToolExecutionResult {
@@ -61,8 +54,6 @@ export interface ToolExecutionResult {
     outcome: ToolOutcome;
     persisted?: PersistedToolResult;
     uiData?: ToolUIData;
-    shellExecution?: ShellExecutionEvidence;
-    untrackedWorkspaceEffects?: boolean;
 }
 
 export interface ToolResultStoreLimits {

@@ -6,24 +6,6 @@ import {
 import { selectLiveThreads } from "../../src/ui/turn/useTurnController.js";
 
 describe("UITurnEventStore", () => {
-  test("耗时摘要仅持久化，不刷新界面或创建聊天行", () => {
-    const store = new UITurnEventStore();
-    const timing = {durationMs: 1000, modelMs: 100, toolMs: 200, approvalMs: 700, overlapMs: 0, otherMs: 0};
-    const snapshot = store.getSnapshot();
-    let notifications = 0;
-    const unsubscribe = store.subscribe(() => notifications++);
-    store.handleEvent({type: "turn_timing", turnId: "turn-1", timing});
-    expect(store.getSnapshot()).toBe(snapshot);
-    expect(notifications).toBe(0);
-    unsubscribe();
-    expect(store.getSnapshot().threads).toHaveLength(0);
-    expect(store.getPersistedUIEvents()[0]).toMatchObject({type: "turn_timing", timing});
-    const restored = new UITurnEventStore({uiEvents: store.getPersistedUIEvents()});
-    expect(restored.getPersistedUIEvents()).toEqual(store.getPersistedUIEvents());
-    expect(restored.getSnapshot().threads).toHaveLength(0);
-    store.appendUser("下一轮");
-    expect(store.getPersistedUIEvents()).toHaveLength(1);
-  });
   test("恢复 history，并分别归约 token、文本和用户输入", () => {
     const store = new UITurnEventStore({
       history: [
@@ -468,9 +450,10 @@ describe("UITurnEventStore", () => {
       store.getPersistedUIEvents().filter((event) => event.type === "file_change")
     ).toEqual([]);
 
+    store.handleEvent({type: "tool_call_start", turnId: "turn-1", toolCallId: "call-2", name: "write_file", args: "{}"});
     store.handleEvent({
       type: "tool_call_end",
-      toolCallId: "call-1",
+      toolCallId: "call-2",
       result: "ok",
       outcome: "ok",
       turnId: "turn-1",
@@ -481,7 +464,7 @@ describe("UITurnEventStore", () => {
     ).toEqual([
       expect.objectContaining({
         turnId: "turn-1",
-        toolCallId: "call-1",
+        toolCallId: "call-2",
         timestamp: expect.any(String),
       }),
     ]);
@@ -606,4 +589,21 @@ describe("UITurnEventStore", () => {
             summary: "exit 1 · EADDRINUSE",
         });
     });
+});
+
+test("TUI and shared Session collector persist the same paired events", async () => {
+    const {SessionUIEventCollector} = await import("../../src/session/uiEventCollector.js");
+    const shared = new SessionUIEventCollector();
+    const tui = new UITurnEventStore();
+    const events: import("../../src/agent/types.js").AgentEvent[] = [
+        {type: "tool_call_end", turnId: "t", toolCallId: "orphan", result: "ignored", outcome: "ok"},
+        {type: "tool_call_start", turnId: "t", toolCallId: "call", name: "write_file", args: "{}"},
+        {type: "tool_call_end", turnId: "t", toolCallId: "call", result: "done", outcome: "ok",
+            uiData: {type: "file_change", change: createFileChange({path: "a.ts", kind: "create", oldContent: "", newContent: "hello"})}},
+        {type: "tool_call_end", turnId: "t", toolCallId: "call", result: "duplicate", outcome: "failed"},
+    ];
+    for (const event of events) {shared.handleEvent(event); tui.handleEvent(event);}
+    const normalize = (events: readonly import("../../src/session/uiEvents.js").PersistedUIEvent[]) => events.map(({timestamp: _timestamp, ...event}) => event);
+    expect(normalize(tui.getPersistedUIEvents())).toEqual(normalize(shared.getEvents()));
+    expect(tui.getPersistedUIEvents().filter(event => event.type === "tool_call")).toHaveLength(1);
 });

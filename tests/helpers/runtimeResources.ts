@@ -67,13 +67,11 @@ export function createTestSettings(
     models: {
       primary: {
         source: "glm",
-        provider: "glm",
         model: "glm-test",
         label: "GLM Test",
       },
       fast: {
         source: "glm",
-        provider: "glm",
         model: "glm-fast-test",
         label: "GLM Fast Test",
       },
@@ -147,7 +145,6 @@ export function createTestRuntimeResources(
       getModelTarget: () => primaryModel.target,
       getModelSource: (source) => settings.sources[source],
       shellRunner,
-      environment: testChildEnvironment,
       settings: settings.memory,
       contextSettings: settings.context,
     });
@@ -200,10 +197,10 @@ export function createTestRuntimeResources(
       return primaryModel.target.model;
     },
     get provider() {
-      return primaryModel.target.provider;
+      return primaryModel.target.source;
     },
     fastModel: settings.models.fast.model,
-    fastProvider: settings.models.fast.provider,
+    fastProvider: settings.models.fast.source,
     primaryModel,
     settings,
     agentRuntime,
@@ -238,7 +235,7 @@ export function createTestRuntimeResources(
   };
   Object.defineProperties(result, {
     model: {get: () => primaryModel.target.model, enumerable: true},
-    provider: {get: () => primaryModel.target.provider, enumerable: true},
+    provider: {get: () => primaryModel.target.source, enumerable: true},
   });
   return result;
 }

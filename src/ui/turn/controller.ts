@@ -114,26 +114,12 @@ export class UITurnController {
     }
 
     async attachmentCommand(input: string): Promise<boolean> {
-        const match = /^\/(attach|detach|attachments|paste-image)(?:\s+([\s\S]*))?$/.exec(input.trim());
+        const match = /^\/paste-image(?:\s+([\s\S]*))?$/.exec(input.trim());
         if (!match) return false;
         if (this.disposed) return true;
         if (this.imageImport) {this.dependencies.onUnexpectedError(new Error("图片仍在准备，请稍后或按 Esc 取消")); return true;}
-        const argument = match[2]?.trim();
-        if (match[1] === "attachments") return true;
-        if (match[1] === "paste-image") {
-            if (argument) this.dependencies.onUnexpectedError(new Error("/paste-image 不接受参数，只读取本机图片剪贴板"));
-            else await this.prepareImages(1, signal => this.dependencies.importClipboard(signal));
-            return true;
-        }
-        if (match[1] === "detach") {
-            if (argument === "all") this.removeAttachment("all");
-            else if (argument && /^[1-9][0-9]{0,2}$/.test(argument) && Number(argument) <= this.attachmentState.images.length)
-                this.removeAttachment(Number(argument) - 1);
-            else this.dependencies.onUnexpectedError(new Error("用 /detach <编号> 或 /detach all 移除附件"));
-            return true;
-        }
-        if (!argument) {this.dependencies.onUnexpectedError(new Error("用 /attach <本地图片路径> 添加附件；路径可包含空格")); return true;}
-        await this.addImages([argument.replace(/^(?:"([\s\S]*)"|'([\s\S]*)')$/, (_, double: string | undefined, single: string | undefined) => double ?? single ?? "")]);
+        if (match[1]?.trim()) this.dependencies.onUnexpectedError(new Error("/paste-image 不接受参数，只读取本机图片剪贴板"));
+        else await this.prepareImages(1, signal => this.dependencies.importClipboard(signal));
         return true;
     }
 
@@ -175,13 +161,13 @@ export class UITurnController {
     }
 
     async submit(input: string): Promise<boolean> {
-        if (/^\/(attach|detach|attachments|paste-image)(?:\s|$)/.test(input.trim())) return this.attachmentCommand(input);
+        if (/^\/paste-image(?:\s|$)/.test(input.trim())) return this.attachmentCommand(input);
         if (this.imageImport) return false;
         // Slash commands do not consume the pending prompt's attachments.
         const content = input.trim().startsWith("/") ? input : this.withAttachments(input);
         try {
             const images = imageReferences(content);
-            if (images.length > IMAGE_MAX_COUNT || images.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 8 张或 10 MiB，请用 /detach 移除部分图片");
+            if (images.length > IMAGE_MAX_COUNT || images.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 8 张或 10 MiB，请在输入框退格移除部分图片");
             this.dependencies.validateImages(content);
         } catch (error) {
             this.dependencies.restoreDraft(input); this.dependencies.onUnexpectedError(error); return false;

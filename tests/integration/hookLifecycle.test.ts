@@ -29,7 +29,7 @@ const host: ToolContextHost = {
     setTodos() {},
 };
 function sessionFor(resources: RootRuntimeResources) {
-    return createRootSessionRuntime({resources, resumed: false, seed: {sessionId: "hooks-case",
+    return createRootSessionRuntime({resources,  seed: {sessionId: "hooks-case",
         history: [{role: "system", content: "test"}], compactState: createCompactState()}});
 }
 async function resourcesFor(cwd: string, storage: PillarStorageLayout, hooks: ResolvedHookSettings,

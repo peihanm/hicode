@@ -11,7 +11,7 @@ import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
 for(const mode of ["success","save-failed","host-no-background","plan","ignore"] as const)test(`Root 仅在成功保存并允许后台后维护 ${mode}`,async()=>withTempProject(async(cwd,storage)=>{
  let calls=0;const memory=createTestMemoryRuntime(cwd,{autoExtract:true,extractor:{async extract(){calls++;return [];}}});
  const resources=createTestRuntimeResources(cwd,{memory});const fake=createFakeLLM([assistantText("完成")]);resources.agentRuntime.runAgent=createAgentRunner({callLLM:fake.callLLM,compactHistory:resources.agentRuntime.compactHistory});
- const session=createRootSessionRuntime({resources,resumed:false,allowBackgroundTasks:mode!=="host-no-background",seed:{sessionId:"root-memory",history:[{role:"system",content:"test"}],compactState:createCompactState()}});
+ const session=createRootSessionRuntime({resources,allowBackgroundTasks:mode!=="host-no-background",seed:{sessionId:"root-memory",history:[{role:"system",content:"test"}],compactState:createCompactState()}});
  const runner=createRootTurnRunnerFactory(mode==="save-failed"?{saveSession:async()=>{throw new Error("disk-failed");}}:{});
  const run=runner({resources,session,prompt:mode==="ignore"?"忽略记忆":"完成任务",signal:new AbortController().signal,
   host:{canUseTool:async()=>({behavior:"allow"}),getPermissionRules:()=>({allow:[],deny:[],ask:[]}),getPermissionMode:()=>"ask",getCollaborationMode:()=>mode==="plan"?"plan":"build",getPermissionPromptPolicy:()=>"never",setTodos(){}},

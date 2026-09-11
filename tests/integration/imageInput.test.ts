@@ -24,7 +24,7 @@ const png = (red = 30) => sharp({create: {width: 32, height: 16, channels: 4, ba
 const state = {todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []};
 function settings() {
     const value = createTestSettings();
-    value.models.primary = {source: "qwen", provider: "qwen", model: "qwen3.8-flash", label: "Qwen"};
+    value.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
     value.sources.qwen = {...value.sources.qwen, apiKeyEnv: "PILLAR_USER_IMAGE_TEST_KEY"};
     return value;
 }

@@ -5,7 +5,6 @@ import {BUILTIN_SUBAGENT_REGISTRY} from "../subagents/registry.js";
 import {createAgentTool} from "./agent/agent.js";
 import {askUserTool} from "./askUser/askUser.js";
 import {bashTool} from "./bash/bash.js";
-import {bashTaskTool} from "./bash/bashTask.js";
 import {editFileTool} from "./editFile/editFile.js";
 import {deleteFileTool} from "./deleteFile/deleteFile.js";
 import {globTool} from "./glob/glob.js";
@@ -50,7 +49,6 @@ function createBuiltinTools(): Tool[] {
         grepTool,
         globTool,
         bashTool,
-        bashTaskTool,
         askUserTool,
         todoWriteTool,
         skillTool,

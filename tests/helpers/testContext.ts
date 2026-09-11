@@ -26,10 +26,6 @@ import {
   type ShellRunnerLike,
 } from "../../src/tools/bash/shellRunner.js";
 import {testChildEnvironment} from "./childEnvironment.js";
-import {
-  createGitSessionRuntime,
-  createGitWorkspaceRuntime,
-} from "../../src/git/index.js";
 import {createTestStorage} from "./tempProject.js";
 import type { LLMProviderName } from "../../src/llm/providerRegistry.js";
 import type {DirectoryAccessRuntimeLike} from "../../src/permissions/index.js";
@@ -70,12 +66,6 @@ export function createTestContext(
 
   const permissionRules = { allow: [], ask: [], deny: [] };
   const sessionId = options.sessionId ?? "test-session";
-  const gitWorkspace = createGitWorkspaceRuntime(cwd, testChildEnvironment);
-  const gitSession = createGitSessionRuntime({
-    cwd,
-    workspace: gitWorkspace,
-    resumed: false,
-  });
   const context = createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
@@ -94,7 +84,6 @@ export function createTestContext(
       instructions: options.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
       tasks: options.tasks,
       mcpManager: options.mcpManager,
-      gitSession,
       memoryFiles: options.memoryFiles,
       shellRunner:
         options.shellRunner ??

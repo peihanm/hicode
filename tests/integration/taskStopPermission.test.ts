@@ -5,7 +5,8 @@ import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
-for (const toolName of ["bash_task", "task"] as const) {
+{
+    const toolName = "task";
     test(`${toolName} 默认停止自有任务无需确认，仍尊重规则、模式和 Session 边界`, async () => {
         await withTempProject(async cwd => {
             let approvals = 0;

@@ -27,13 +27,11 @@ describe("Unified Settings", () => {
                 primary: {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
-                    provider: DEFAULT_LLM_PROVIDER,
                     label: "Qwen 3.8 Flash",
                 },
                 fast: {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
-                    provider: DEFAULT_LLM_PROVIDER,
                     label: "Qwen 3.8 Flash",
                 },
             },
@@ -69,13 +67,11 @@ describe("Unified Settings", () => {
             }),
         ]);
         expect(resolved.values.models.primary).toEqual({
-            provider: "qwen",
             source: "qwen",
             model: "qwen3.6-plus",
             label: "Qwen 3.6 Plus",
         });
         expect(resolved.values.models.fast).toEqual({
-            provider: "deepseek",
             source: "deepseek",
             model: "deepseek-flash",
             label: "DeepSeek Flash",
@@ -115,13 +111,11 @@ describe("Unified Settings", () => {
 
         expect(resolved.values.models.primary).toEqual({
             source: "deepseek",
-            provider: "deepseek",
             model: "deepseek-pro",
             label: "DeepSeek Pro",
         });
         expect(resolved.values.models.fast).toEqual({
             source: "qwen",
-            provider: "qwen",
             model: "qwen3.6-flash",
             label: "Qwen 3.6 Flash",
         });
@@ -155,13 +149,11 @@ describe("Unified Settings", () => {
         ]);
 
         expect(resolved.values.models.primary).toEqual({
-            provider: "qwen",
             source: "qwen",
             model: "qwen3.6-plus",
             label: "Qwen 3.6 Plus",
         });
         expect(resolved.values.models.fast).toEqual({
-            provider: "deepseek",
             source: "deepseek",
             model: "deepseek-flash",
             label: "DeepSeek Flash",

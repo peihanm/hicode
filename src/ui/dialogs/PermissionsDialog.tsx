@@ -106,24 +106,26 @@ export function PermissionsDialog({
     return (
         <Box flexDirection="column" paddingLeft={2} width={rowWidth + 2}>
             <Text color={COLORS.accent} bold>◆ 执行权限</Text>
-            <Text color={COLORS.dim}>选择哪些操作可以自动执行。</Text>
+            <Text color={COLORS.dim}>选择额外访问权限的审批方式。</Text>
             <Box marginTop={1} flexDirection="column">
                 {OPTIONS.map((option, index) => {
                     const focused = index === selectedIndex;
                     const active = option === current;
                     return (
-                        <Box key={option} flexDirection="column">
-                            <Text
-                                backgroundColor={focused ? COLORS.accent : undefined}
-                                color={focused ? "white" : undefined}
-                                bold={focused}
-                            >
-                                {fitRow(
-                                    `${focused ? "›" : " "} ${active ? "●" : " "} ${getPermissionModeShortLabel(option)}${option === "ask" ? "（推荐）" : option === "full-access" && !allowFullAccess ? "（Host 禁用）" : ""}`,
-                                    rowWidth
-                                )}
-                            </Text>
-                            <Text color={COLORS.dim}>  {getPermissionModeDescription(option)}</Text>
+                        <Box key={option} marginTop={index === 0 ? 0 : 1}>
+                            <Box width={2} flexShrink={0}>
+                                <Text color={COLORS.accent}>{focused ? "›" : " "}</Text>
+                            </Box>
+                            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                                <Text color={focused ? COLORS.accent : undefined} bold={focused}>
+                                    {getPermissionModeShortLabel(option)}
+                                    <Text color={COLORS.dim} bold={false}>
+                                        {active ? "  (当前)" : ""}
+                                        {option === "full-access" && !allowFullAccess ? "  (Host 禁用)" : ""}
+                                    </Text>
+                                </Text>
+                                <Text color={COLORS.dim}>{getPermissionModeDescription(option)}</Text>
+                            </Box>
                         </Box>
                     );
                 })}

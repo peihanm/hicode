@@ -310,11 +310,6 @@ export function describeToolCall(
                 label: "Bash",
                 detail: summarizeShellCommand(stringArg(args, "command") ?? ""),
             };
-        case "bash_task":
-            return {
-                label: "Task",
-                detail: taskDetail(args),
-            };
         case "task":
             return {label: "Task", detail: taskDetail(args)};
         case "write_file":

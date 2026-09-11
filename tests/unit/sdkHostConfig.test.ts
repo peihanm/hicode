@@ -60,13 +60,11 @@ describe("SDK Host config", () => {
             expect(loaded.configuration.storage.pillarHome).toBe(pillarHome);
             expect(loaded.configuration.settings.models.primary).toEqual({
                 source: "qwen",
-                provider: "qwen",
                 model: "host-qwen",
                 label: "Host Qwen",
             });
             expect(loaded.configuration.settings.models.fast).toEqual({
                 source: "qwen",
-                provider: "qwen",
                 model: "host-qwen",
                 label: "Host Qwen",
             });

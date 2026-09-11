@@ -30,43 +30,6 @@ export interface GitFileStatus {
     submodule: string | null;
 }
 
-export type GitProvenanceHint =
-    | "pre-existing"
-    | "pillar-observed"
-    | "mixed"
-    | "external-or-unknown"
-    | "clean";
-
-export type GitSessionTraceability =
-    | "complete"
-    | "resume-baseline"
-    | "repository-reset";
-
-export interface GitSessionDiagnostic {
-    code: "resume-baseline" | "repository-changed" | "head-changed" | "paths-truncated";
-    message: string;
-    timestamp: string;
-}
-
-export interface GitSessionState {
-    version: 1;
-    repositoryIdentity: string;
-    repositoryRoot: string;
-    initialHeadOid: string | null;
-    initialBranch: string | null;
-    initialFiles: readonly GitFileStatus[];
-    observedPaths: readonly string[];
-    lastKnownHeadOid: string | null;
-    lastKnownBranch: string | null;
-    traceability: GitSessionTraceability;
-    createdAt: string;
-    diagnostics: readonly GitSessionDiagnostic[];
-}
-
-export interface GitSessionFileStatus extends GitFileStatus {
-    provenance: GitProvenanceHint;
-}
-
 export interface GitNumstatEntry {
     path: string;
     originalPath?: string;
@@ -94,10 +57,6 @@ export interface GitDiffFile {
     unavailableReason?: GitDiffUnavailableReason;
 }
 
-interface GitSessionDiffFile extends Omit<GitDiffFile, "status"> {
-    status: GitSessionFileStatus;
-}
-
 interface GitDiffSnapshot {
     version: 1;
     repository: GitRepositorySnapshot;
@@ -105,18 +64,6 @@ interface GitDiffSnapshot {
     patch: string;
     truncated: boolean;
     omittedFiles: number;
-}
-
-export interface GitSessionRepositorySnapshot
-    extends Omit<GitRepositorySnapshot, "files"> {
-    files: readonly GitSessionFileStatus[];
-    session: GitSessionState;
-}
-
-export interface GitSessionDiffSnapshot
-    extends Omit<GitDiffSnapshot, "repository" | "files"> {
-    repository: GitSessionRepositorySnapshot;
-    files: readonly GitSessionDiffFile[];
 }
 
 export type GitDiffSnapshotResult =
@@ -127,9 +74,6 @@ export type GitDiffSnapshotResult =
         message: string;
     };
 
-export type GitSessionDiffSnapshotResult =
-    | {status: "available"; snapshot: GitSessionDiffSnapshot}
-    | Extract<GitDiffSnapshotResult, {status: "unavailable"}>;
 
 export interface GitRepositorySnapshot {
     version: 1;
@@ -167,9 +111,6 @@ export type GitRepositorySnapshotResult =
         message: string;
     };
 
-export type GitSessionRepositorySnapshotResult =
-    | {status: "available"; snapshot: GitSessionRepositorySnapshot}
-    | Extract<GitRepositorySnapshotResult, {status: "unavailable"}>;
 
 export interface ParsedGitStatus {
     branch: string | null;

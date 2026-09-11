@@ -126,8 +126,6 @@ export type LLMCaller = (
 export interface LLMProvider {
     name: LLMProviderName;
 
-    supports(model: string): boolean;
-
     call(
         options: LLMCallOptions,
         source: LLMSourceConnection

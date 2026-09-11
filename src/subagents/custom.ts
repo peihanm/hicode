@@ -7,7 +7,6 @@ export const CUSTOM_AGENT_FORBIDDEN_TOOLS = new Set([
     "todo_write",
     "skill",
     "memory",
-    "bash_task",
     "task",
 ]);
 
@@ -36,7 +35,6 @@ export function createCustomSubagentRegistration(
                         parentContext.workspaceBoundary ?? parentContext.cwd,
                     skills: [],
                     instructions: parentContext.instructions,
-                    gitSession: parentContext.gitSession,
                     shellRunner: parentContext.shellRunner,
                 },
                 permissionRules: {

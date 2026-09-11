@@ -29,12 +29,21 @@ describe("PermissionsDialog", () => {
         expect(frame).toContain("Ask for approval");
         expect(frame).toContain("Approve for me");
         expect(frame).toContain("Full Access");
+        expect(frame).toContain("› Ask for approval  (当前)");
+        expect(frame).not.toContain("●");
+        const lines = frame.split("\n");
+        const title = lines.find(line => line.includes("Ask for approval"))!;
+        const description = lines.find(line => line.includes("工作区内读写"))!;
+        expect(title.indexOf("Ask")).toBe(description.indexOf("工作区"));
+        expect(frame).toMatch(/需要你批准。\n\s*\n/);
         expect(frame).toContain("此处决定访问范围和审批方式");
         expect(frame).not.toContain("Read Only");
         expect(frame).not.toContain("Bypass");
 
         instance.stdin.write(DOWN);
         await flush();
+        expect(instance.lastFrame()).toContain("› Approve for me");
+        expect(instance.lastFrame()).toContain("Ask for approval  (当前)");
         instance.stdin.write(ENTER);
         await flush();
         expect(onSelect).toHaveBeenCalledWith("auto-review");

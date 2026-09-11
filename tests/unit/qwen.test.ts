@@ -213,9 +213,7 @@ describe("Qwen provider", () => {
         });
     });
 
-    test("只接受 Qwen 模型，并在缺少百炼 Key 时给出明确错误", async () => {
-        expect(qwenProvider.supports("qwen3.6-plus")).toBe(true);
-        expect(qwenProvider.supports("glm-5.2")).toBe(false);
+    test("来源固定使用百炼 Key，模型别名不改用其他来源", async () => {
         delete process.env.DASHSCOPE_API_KEY;
 
         await expect(callQwenProvider(qwenProvider, {
@@ -234,6 +232,24 @@ describe("Qwen provider", () => {
             process.cwd(),
             "glm-5.2",
             "main"
-        )).rejects.toThrow("模型来源 Qwen 不支持模型 glm-5.2");
+        )).rejects.toThrow("缺少 DASHSCOPE_API_KEY");
+    });
+});
+
+test("declared-source alias reaches the chosen Qwen endpoint unchanged", async () => {
+    await withTempProject(async (cwd, storage) => {
+        process.env.DASHSCOPE_API_KEY = "fixture-key";
+        let model: unknown;
+        let url = "";
+        globalThis.fetch = (async (input, init) => {
+            url = String(input);
+            const body = JSON.parse(String(init?.body)) as {model: unknown};
+            model = body.model;
+            return new Response('data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {headers: {"content-type": "text/event-stream"}});
+        }) as typeof fetch;
+        const result = await createLLMCaller(QWEN_SOURCE)([{role: "user", origin: "user", content: "hi"}], [], storage, cwd, "vendor/custom-alias", "main");
+        expect(result.message.content).toBe("ok");
+        expect(model).toBe("vendor/custom-alias");
+        expect(url).toBe("https://qwen.test/v1/chat/completions");
     });
 });

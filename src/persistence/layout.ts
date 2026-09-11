@@ -134,8 +134,8 @@ export function getMemoryWorkspacesDirectory(directory: string): string {
     return join(directory, "workspaces");
 }
 
-export function getMemoryWorkspacePaths(directory: string, leaseId: string): {root: string; repository: string; manifests: string; runtime: string} {
+export function getMemoryWorkspacePaths(directory: string, leaseId: string): {root: string; draft: string; runtime: string} {
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(leaseId)) throw new Error("Memory workspace ID 无效");
     const root = join(getMemoryWorkspacesDirectory(directory), leaseId);
-    return {root, repository: join(root, "repository"), manifests: join(root, "manifests"), runtime: join(root, "runtime")};
+    return {root, draft: join(root, "draft"), runtime: join(root, "runtime")};
 }

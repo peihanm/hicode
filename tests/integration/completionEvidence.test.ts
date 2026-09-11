@@ -17,7 +17,8 @@ test("真实 Bash 失败、文件修复、同一检查通过后直接收尾", as
             assistantToolCall("bash", {command: "bun test verify.test.ts"}, "passed"),
             options => {
                 const context = options.messages.map(message => message.content).join("\n");
-                expect(context).toContain("检查通过");
+                expect(context).toContain("1 pass");
+                expect(context).not.toContain("当前完成证据");
                 expect(context).not.toContain("未解决 bash (failed)");
                 return assistantText("修复完成，同一检查已通过");
             },

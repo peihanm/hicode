@@ -26,7 +26,6 @@ export async function processToolOutput(input: {
     const normalized = {...original, content: contentText(original.content)};
     const outcome = normalized.outcome ?? input.outcome ?? "ok";
     const uiData = outcome === "ok" ? normalized.uiData : undefined;
-    const shellExecution = input.toolName === "bash" ? normalized.shellExecution : undefined;
     const displayContent = normalized.displayContent ?? normalized.content;
     if (normalized.persisted) {
         const reference = buildPersistedToolResultMessage(normalized.persisted);
@@ -36,7 +35,6 @@ export async function processToolOutput(input: {
             outcome,
             persisted: normalized.persisted,
             ...(uiData ? {uiData} : {}),
-            ...(shellExecution ? {shellExecution} : {}),
         };
     }
     const content = normalized.content.trim().length === 0
@@ -49,7 +47,6 @@ export async function processToolOutput(input: {
             displayContent: createPreview(displayContent, DEFAULT_DISPLAY_CHARS),
             outcome,
             ...(uiData ? {uiData} : {}),
-            ...(shellExecution ? {shellExecution} : {}),
         };
     }
     const preview = createPreview(content, input.store.previewChars);
@@ -65,7 +62,6 @@ export async function processToolOutput(input: {
             outcome,
             persisted,
             ...(uiData ? {uiData} : {}),
-            ...(shellExecution ? {shellExecution} : {}),
         };
     } catch (error) {
         return {
@@ -73,7 +69,6 @@ export async function processToolOutput(input: {
             displayContent: `${preview}\n\n（完整结果保存失败）`,
             outcome,
             ...(uiData ? {uiData} : {}),
-            ...(shellExecution ? {shellExecution} : {}),
         };
     }
 }

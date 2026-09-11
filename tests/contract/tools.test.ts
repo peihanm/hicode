@@ -36,7 +36,8 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(16);
+    expect(schemas).toHaveLength(15);
+    expect(names).not.toContain("bash_task");
     expect(names).toContain("view_image");
     expect(new Set(names).size).toBe(names.length);
     for (const tool of schemas) {
@@ -122,8 +123,6 @@ describe("tool registry contract", () => {
     expect(agent?.function.description).toContain("Root 默认亲自完成顺序性的调查、实现和验证");
     expect(agent?.function.description).toContain("本身都不是委派理由");
     expect(agent?.function.description).toContain("若 Root 必须等待结果才能继续");
-    expect(agent?.function.description).toContain("GeneralPurpose 默认不自动使用");
-    expect(agent?.function.description).toContain("它是前台串行 Agent");
     expect(agent?.function.description).not.toContain("3 个以上文件");
     expect(JSON.stringify(agent?.function.parameters)).toContain("fast");
     expect(JSON.stringify(agent?.function.parameters)).toContain("run_in_background");

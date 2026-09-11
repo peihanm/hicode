@@ -49,9 +49,9 @@ export interface RootRuntimeResources {
     readonly cwd: string;
     readonly workspaceBoundary: string;
     readonly model: string;
-    readonly provider: ResolvedPillarSettings["models"]["primary"]["provider"];
+    readonly provider: ResolvedPillarSettings["models"]["primary"]["source"];
     readonly fastModel: string;
-    readonly fastProvider: ResolvedPillarSettings["models"]["fast"]["provider"];
+    readonly fastProvider: ResolvedPillarSettings["models"]["fast"]["source"];
     readonly primaryModel: PrimaryModelRuntime;
     readonly settings: ResolvedPillarSettings;
     readonly agentRuntime: AgentRuntime;
@@ -233,7 +233,6 @@ export function createRootRuntimeResourcesFactory(
                 getModelTarget: auxiliaryModelTarget,
                 getModelSource: (source) => settings.sources[source],
                 shellRunner,
-                environment: childEnvironment,
                 settings: settings.memory,
                 contextSettings: settings.context,
             });
@@ -367,10 +366,10 @@ export function createRootRuntimeResourcesFactory(
                     return primaryModel.target.model;
                 },
                 get provider() {
-                    return primaryModel.target.provider;
+                    return primaryModel.target.source;
                 },
                 fastModel: settings.models.fast.model,
-                fastProvider: settings.models.fast.provider,
+                fastProvider: settings.models.fast.source,
                 primaryModel,
                 settings,
                 agentRuntime,

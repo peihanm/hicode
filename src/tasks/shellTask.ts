@@ -75,7 +75,7 @@ export async function runShellTask(
         try {
             task.outputResult = await task.store.promoteFile({
                 toolCallId: task.owner.toolCallId,
-                toolName: "bash_task",
+                toolName: "task",
                 sourcePath: task.outputPath,
                 originalByteLength: result.outputBytes,
                 complete: result.outputComplete,

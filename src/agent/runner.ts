@@ -11,10 +11,7 @@ import {executeToolCallBatch, type ToolExecutor,} from "./toolBatch.js";
 import {inlineToolResult} from "../tools/execute.js";
 import {type CompactHistoryRunner, prepareAgentInvoke, type ToolSchemaProvider,} from "./invokePreparation.js";
 import {
-    createTurnCompletionState,
     formatTodoCompletionReminder,
-    formatCompletionContext,
-    recordToolOutcomes,
 } from "./turnCompletion.js";
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../todos.js";
@@ -128,7 +125,6 @@ async function runAgentCore(
         options.maxConsecutiveDeniedToolCalls === undefined
             ? undefined
             : Math.max(1, Math.floor(options.maxConsecutiveDeniedToolCalls));
-    const completionState = createTurnCompletionState();
     const todoProgress = new TodoProgress();
     let completionGateUsed = false;
     let hookContinuationUsed = false;
@@ -198,7 +194,6 @@ async function runAgentCore(
             const hasNextIteration =
                 maxIterations === undefined || i + 1 < maxIterations;
             await draft.finish("discarded");
-            const evidenceContext = formatCompletionContext(completionState);
             const toolSchemas = getToolSchemasImpl();
             const todoReminder = todoProgress.takeReminder(
                 options.getTodos?.() ?? [],
@@ -216,7 +211,6 @@ async function runAgentCore(
                 getAdditionalUserContextBlocks:options.getAdditionalUserContextBlocks,
                 additionalUserContextBlocks: [
                     ...(options.additionalUserContextBlocks ?? []),
-                    ...(evidenceContext ? [evidenceContext] : []),
                     ...(todoReminder ? [todoReminder] : []),
                     ...(completionNudge ? [completionNudge] : []),
                 ],
@@ -427,7 +421,6 @@ async function runAgentCore(
             if (batchResult.status === "interrupted" || ctx.signal.aborted) {
                 return interruptedResult();
             }
-            recordToolOutcomes(completionState, batchResult.outcomes, ctx.cwd);
             todoProgress.recordToolBatch(batchResult.outcomes, options.getTodos?.() ?? []);
             let denialLimitReached = false;
             for (const outcome of batchResult.outcomes) {

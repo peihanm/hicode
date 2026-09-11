@@ -429,7 +429,7 @@ describe("subagent UI", () => {
         "|---|---|",
         "| 两数之和 | Easy |",
         "",
-        "- 使用 `bash_task` 管理服务",
+        "- 使用 `task` 管理服务",
       ].join("\n"),
     }];
 
@@ -440,7 +440,7 @@ describe("subagent UI", () => {
     expect(frame).toContain("服务地址：http://localhost:3000");
     expect(frame).toContain("题目");
     expect(frame).toContain("两数之和");
-    expect(frame).toContain("• 使用 bash_task 管理服务");
+    expect(frame).toContain("• 使用 task 管理服务");
     expect(frame).not.toContain("##");
     expect(frame).not.toContain("**");
     expect(frame).not.toContain("|---|");

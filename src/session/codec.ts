@@ -2,7 +2,6 @@ import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
 import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";
-import {normalizeGitSessionState} from "../git/index.js";
 import {isPermissionMode} from "../permissions/index.js";
 import {isCollaborationMode} from "../collaboration/index.js";
 import {getProjectKey} from "../persistence/index.js";
@@ -153,29 +152,12 @@ const fileChangeSchema = z.object({
     diffUnavailableReason: z.enum(["timeout", "too_large", "binary", "error"]).optional(),
 }).strict();
 
-const timingMsSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const turnTimingSchema = z.object({
-    durationMs: timingMsSchema,
-    modelMs: timingMsSchema,
-    toolMs: timingMsSchema,
-    approvalMs: timingMsSchema,
-    overlapMs: timingMsSchema,
-    otherMs: timingMsSchema,
-}).strict().refine(t => t.durationMs === t.modelMs + t.toolMs + t.approvalMs + t.overlapMs + t.otherMs);
-
 const persistedUIEventSchema = z.discriminatedUnion("type", [
     z.object({version: z.literal(1), type: z.literal("approval_review"), phase: z.literal("end"),
         requestId: idSchema, toolCallId: idSchema, turnId: idSchema, timestamp: timestampSchema,
         source: z.enum(["user", "auto-review", "preauthorized"]),
         outcome: z.enum(["allow", "deny", "needs_user", "error"]).optional(), reason: z.string().max(4000).optional(),
         code: z.enum(["policy_denied", "approval_required", "review_failed"]).optional(),
-    }).strict(),
-    z.object({
-        version: z.literal(1),
-        type: z.literal("turn_timing"),
-        turnId: idSchema,
-        timestamp: timestampSchema,
-        timing: turnTimingSchema,
     }).strict(),
     z.object({
         version: z.literal(1),
@@ -235,7 +217,6 @@ const sessionSnapshotSchema = z.object({
     type: z.literal("snapshot"),
     queuedInputs: z.unknown().optional(),
     taskNotificationReceipts: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096).refine(ids => new Set(ids).size === ids.length).optional(),
-    gitSession: z.unknown().optional(),
 }).strict();
 
 const sessionIndexEntrySchema = z.object({
@@ -312,18 +293,11 @@ export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
         const toolDiscovery = snapshot.data.toolDiscovery === undefined
             ? undefined
             : normalizeToolDiscoverySnapshot(snapshot.data.toolDiscovery);
-        const gitSession = snapshot.data.gitSession === undefined
-            ? undefined
-            : normalizeGitSessionState(snapshot.data.gitSession);
-        if (snapshot.data.gitSession !== undefined && !gitSession) {
-            return undefined;
-        }
         return {
             ...snapshot.data,
             ...(queuedInputs === undefined ? {} : {queuedInputs}),
             ...(snapshot.data.taskNotificationReceipts ? {taskNotificationReceipts: snapshot.data.taskNotificationReceipts} : {}),
             ...(toolDiscovery === undefined ? {} : {toolDiscovery}),
-            ...(gitSession === undefined ? {} : {gitSession}),
         } as SessionSnapshotEntry;
     }
 

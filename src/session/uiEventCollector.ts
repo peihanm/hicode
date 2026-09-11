@@ -11,19 +11,20 @@ export class SessionUIEventCollector {
     private currentEvents: PersistedUIEvent[] = [];
     private readonly activeToolCalls = new Set<string>();
 
+    constructor(events: readonly PersistedUIEvent[] = []) { this.reset(events); }
+
+    reset(events: readonly PersistedUIEvent[]): void {
+        this.currentEvents = limitPersistedUIEvents([...events]);
+        this.activeToolCalls.clear();
+    }
+
     handleEvent(event: AgentEvent): void {
         if (event.type === "approval_review" && event.phase === "end") {
             this.currentEvents = limitPersistedUIEvents([...this.currentEvents,
                 {...event, phase: "end", reason: event.reason?.slice(0, 4000), version: 1, timestamp: new Date().toISOString()}]);
             return;
         }
-        if (event.type === "turn_timing") {
-            this.currentEvents = limitPersistedUIEvents([
-                ...this.currentEvents,
-                {version: 1, ...event, timestamp: new Date().toISOString()},
-            ]);
-            return;
-        }
+
         if (event.type === "tool_call_start") {
             this.activeToolCalls.add(event.toolCallId);
             return;

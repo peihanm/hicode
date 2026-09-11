@@ -14,7 +14,6 @@ import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {FileStateTracker} from "../tools/shared/fileState.js";
 import {EMPTY_PROJECT_INSTRUCTIONS, type ProjectInstructions,} from "../prompt/instructions.js";
-import type {GitSessionRuntimeLike} from "../git/index.js";
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
@@ -44,7 +43,6 @@ export interface ToolContextResources {
     taskRuntime?: TaskRuntimeLike;
     tasks?: TaskSessionLike;
     shellRunner: ShellRunnerLike;
-    gitSession?: GitSessionRuntimeLike;
     memoryFiles?: MemoryFileAccess;
 }
 
@@ -131,7 +129,6 @@ export function createToolContext({
         },
         fileState: session.fileState,
         fileCommits: resources.fileCommits,
-        gitSession: resources.gitSession,
         memoryFiles: resources.memoryFiles,
         networkAccess: session.networkAccess,
         directoryAccess: session.directoryAccess ?? createDirectoryAccessRuntime({

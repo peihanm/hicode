@@ -21,10 +21,6 @@ export function createGlmProvider(
     return {
         name: "glm",
 
-        supports(model: string): boolean {
-            return model.toLowerCase().includes("glm");
-        },
-
         async call(options, source) {
             const apiKey = process.env[source.apiKeyEnv];
             if (!apiKey) {

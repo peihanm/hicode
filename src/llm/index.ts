@@ -22,13 +22,6 @@ const providers: Record<LLMProviderName, LLMProvider> = {
     deepseek: deepseekProvider,
 };
 
-export function isLLMModelSupported(
-    provider: LLMProviderName,
-    model: string
-): boolean {
-    return providers[provider].supports(model);
-}
-
 // LLM 对外统一入口。
 // Provider 由配置显式选择，model 只用于能力校验和远端路由。
 // agent/context 层不感知具体 endpoint API。
@@ -49,11 +42,6 @@ export function createLLMCaller(
         onText?: (update: LLMTextUpdate) => void | Promise<void>,
         readImage?: (reference: ImageReference) => Promise<Buffer>
     ): Promise<LLMCallResult> {
-        if (!provider.supports(model)) {
-            throw new Error(
-                `模型来源 ${source.label} 不支持模型 ${model}`
-            );
-        }
         return provider.call({
             messages,
             tools,

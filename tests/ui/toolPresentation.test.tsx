@@ -229,7 +229,7 @@ describe("phase-based tool presentation", () => {
             id: "background-worker",
             name: "bash",
             args: {command: "node worker.js", run_in_background: true},
-            result: "后台任务已启动。\nTask: worker-123\nLifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。\nStatus: running\nCwd: .\n使用 bash_task 查询输出、完成状态或停止任务。",
+            result: "后台任务已启动。\nTask: worker-123\nLifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。\nStatus: running\nCwd: .\n使用 task 查询输出、完成状态或停止任务。",
         });
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("worker-123");

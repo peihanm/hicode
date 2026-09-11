@@ -76,7 +76,6 @@ function createSDKThreadFactory(
         const session = createRootSessionRuntime({
             resources: options.resources,
             seed: options.seed,
-            resumed: options.resumed,
             allowBackgroundTasks: false,
         });
         await session.initialize();

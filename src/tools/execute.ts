@@ -1,7 +1,6 @@
-import {didRunCommandHook} from "../hooks/index.js";
+import {toolFileChanges} from "../fileChanges/index.js";
 import {requestApproval, type ApprovalResolution} from "../permissions/approval.js";
 import {appendContentText, contentText} from "../images/content.js";
-import {toolFileChanges} from "../fileChanges/index.js";
 import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
@@ -262,12 +261,7 @@ export async function executeRegisteredTool(
         }
         if (approvalEpoch.aborted) return inlineToolResult("审批期间工作方式或权限发生变化，请重新调用工具", "denied");
         if (ctx.approvalBudget.stopped) return inlineToolResult(ctx.approvalBudget.stopMessage, "denied");
-        ctx.onToolExecution?.("start");
-        try {
-            result = await tool.execute(input, {...ctx, permissionMode: executionMode, collaborationMode}, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(permissionApproved ? {permissionApproved} : {})});
-        } finally {
-            ctx.onToolExecution?.("end");
-        }
+        result = await tool.execute(input, {...ctx, permissionMode: executionMode, collaborationMode}, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(permissionApproved ? {permissionApproved} : {})});
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
             return interruptedToolResult(ctx.signal);
@@ -310,8 +304,6 @@ export async function executeRegisteredTool(
         maxResultSizeChars: tool.maxResultSizeChars,
         store: ctx.toolResultStore,
     });
-    const changes = toolFileChanges(processed.uiData);
-    if (changes.length) ctx.gitSession?.observePaths(changes.map(change => change.path), ctx.cwd);
 
     const postEvent = processed.outcome === "ok"
         ? "PostToolUse"
@@ -335,11 +327,7 @@ export async function executeRegisteredTool(
         postHookResult
     );
     ctx.fileState.bindOutput(toolCallId, typeof result === "string" ? result : contentText(result.content), {...decorated, modelContent: contentText(decorated.modelContent)});
-    return {
-        ...decorated,
-        ...(((preHookResult && didRunCommandHook(preHookResult)) || (postHookResult && didRunCommandHook(postHookResult)))
-            ? {untrackedWorkspaceEffects: true} : {}),
-    };
+    return decorated;
 }
 
 async function executePostToolHooks({

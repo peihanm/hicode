@@ -23,7 +23,7 @@ describe("Agents dialog", () => {
 
             const dialog = instance.lastFrame() ?? "";
             expect(dialog).toContain("◆ Agents");
-            expect(dialog).toContain("GeneralPurpose");
+            expect(dialog).not.toContain("GeneralPurpose");
             expect(dialog).toContain("创建新 Agent");
             expect(dialog).toContain("重新加载 Agent 文件");
 

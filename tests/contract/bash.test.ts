@@ -399,7 +399,7 @@ describe("bash tool contract", () => {
       expect(result.outcome).toBe("denied");
       expect(result.modelContent).toContain("禁止使用 shell 后台操作符 &");
       expect(result.modelContent).toContain("run_in_background=true");
-      expect(result.modelContent).toContain("bash_task stop");
+      expect(result.modelContent).toContain("task stop");
     });
   });
 
@@ -436,7 +436,7 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("后台 Bash 返回 task ID，bash_task 可读取完成输出", async () => {
+  test("后台 Bash 返回 task ID，task 可读取完成输出", async () => {
     await withTempProject(async (cwd) => {
       const {runtime, tasks} = createTaskSession(cwd);
       try {
@@ -457,13 +457,15 @@ describe("bash tool contract", () => {
 
         await new Promise((resolve) => setTimeout(resolve, 150));
         const status = await executeToolResult(
-          "bash_task",
+          "task",
           JSON.stringify({ task_id: taskId, action: "status" }),
           ctx,
           "background-status"
         );
         expect(status.outcome).toBe("ok");
         expect(status.modelContent).toContain("Status: completed");
+        expect(status.modelContent).toContain(`Cwd: ${await realpath(cwd)}`);
+        expect(status.modelContent).toContain("Termination: exit code 0");
         expect(status.modelContent).toContain("字节已省略");
         expect(status.modelContent.length).toBeLessThan(22_000);
         expect(status.modelContent).toContain("done");
@@ -547,7 +549,7 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("bash_task 可以停止仍在运行的后台进程", async () => {
+  test("task 可以停止仍在运行的后台进程", async () => {
     await withTempProject(async (cwd) => {
       const {runtime, tasks} = createTaskSession(cwd);
       try {
@@ -564,7 +566,7 @@ describe("bash tool contract", () => {
         expect(taskId).toBeDefined();
 
         const stopped = await executeToolResult(
-          "bash_task",
+          "task",
           JSON.stringify({ task_id: taskId, action: "stop" }),
           ctx,
           "background-stop"
@@ -605,7 +607,7 @@ describe("bash tool contract", () => {
         );
         expect(duplicate.outcome).toBe("failed");
         expect(duplicate.modelContent).toContain(`Task: ${taskId}`);
-        expect(duplicate.modelContent).toContain("bash_task stop");
+        expect(duplicate.modelContent).toContain("task stop");
 
         await tasks.stop(taskId!);
       } finally {
@@ -627,7 +629,6 @@ describe("bash tool contract", () => {
       );
       expect(result.modelContent).toContain("<persisted-output>");
       expect(result.modelContent.length).toBeLessThan(5_000);
-      expect(result.shellExecution).toEqual({command: "node -e \"process.stdout.write('x'.repeat(40000))\"", cwd: await realpath(cwd), sandboxPermissions: "use_default"});
       expect(result.persisted?.complete).toBe(true);
       const saved = await readFile(result.persisted!.path, "utf8");
       expect(saved).toBe("x".repeat(40_000));

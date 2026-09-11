@@ -13,10 +13,6 @@ function createDeepSeekRequestFields(): Record<string, unknown> {
 export const deepseekProvider: LLMProvider = {
     name: "deepseek",
 
-    supports(model: string): boolean {
-        return model.toLowerCase().startsWith("deepseek-");
-    },
-
     async call(options, source) {
         const apiKey = process.env[source.apiKeyEnv];
         if (!apiKey) {

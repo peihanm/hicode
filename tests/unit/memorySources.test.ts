@@ -31,7 +31,7 @@ test("来源已从当前会话移除则跳过，不生成事实或阻挡显式 n
 }));
 test("阶段一无工具，伪造来源或把助手声称升级为工具观察均拒绝",async()=>withTempProject(async(cwd,storage)=>{
  const hash="a".repeat(64);const fake=createFakeLLM([assistantText(JSON.stringify({facts:[{key:"result",type:"project",content:"测试通过",basis:"tool-observed",sources:[hash]}]}))]);
- const extractor=createMemorySourceExtractorFactory(fake.callLLM)({cwd,storage,target:{source:"glm",provider:"glm",model:"glm-test",label:"GLM"},source:{id:"glm",label:"GLM",apiKeyEnv:"GLM_API_KEY"}});
+ const extractor=createMemorySourceExtractorFactory(fake.callLLM)({cwd,storage,target:{source:"glm",model:"glm-test",label:"GLM"},source:{id:"glm",label:"GLM",apiKeyEnv:"GLM_API_KEY"}});
  await expect(extractor.extract([{id:hash,role:"assistant",content:"测试通过"}],memoryOwner().signal,0)).rejects.toThrow("证据类别");expect(fake.calls[0]?.tools).toHaveLength(0);
 }));
 

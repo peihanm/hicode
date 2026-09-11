@@ -23,7 +23,6 @@ import type {Todo} from "../todos.js";
 import {createToolResultStore, type ToolResultStore} from "../toolResults/index.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
-import {createGitSessionRuntime, type GitSessionRuntimeLike, type GitSessionState,} from "../git/index.js";
 import type {RuntimeQueuedMessage} from "./messageQueue.js";
 import {RuntimeMessageQueue} from "./messageQueue.js";
 import type {RootRuntimeResources} from "./resources.js";
@@ -36,7 +35,6 @@ export interface RootSessionSeed {
     history: Message[];
     compactState: CompactState;
     toolDiscovery?: ToolDiscoverySnapshot;
-    gitSession?: GitSessionState;
     queuedInputs?: readonly RuntimeQueuedMessage[];
     taskNotificationReceipts?: readonly string[];
 }
@@ -58,7 +56,6 @@ export interface RootSessionRuntime {
     readonly history: Message[];
     readonly compactState: CompactState;
     readonly toolResultStore: ToolResultStore;
-    readonly gitSession: GitSessionRuntimeLike;
     readonly taskSession: TaskSessionLike;
     readonly messageQueue: RuntimeMessageQueue;
     readonly directoryAccess: DirectoryAccessRuntimeLike;
@@ -98,12 +95,10 @@ export interface RootSessionRuntime {
 export function createRootSessionRuntime({
     resources,
     seed,
-    resumed,
     allowBackgroundTasks = true,
 }: {
     resources: RootRuntimeResources;
     seed: RootSessionSeed;
-    resumed: boolean;
     allowBackgroundTasks?: boolean;
 }): RootSessionRuntime {
     const fileState = createFileStateTracker();
@@ -118,12 +113,6 @@ export function createRootSessionRuntime({
         seed.sessionId
     );
     resources.toolRuntime.restoreToolDiscovery(seed.toolDiscovery);
-    const gitSession = createGitSessionRuntime({
-        cwd: resources.cwd,
-        workspace: resources.gitWorkspace,
-        persistedState: seed.gitSession,
-        resumed,
-    });
     const taskSession = resources.taskRuntime.forSession({
         sessionId: seed.sessionId,
         toolResultStore,
@@ -160,7 +149,6 @@ export function createRootSessionRuntime({
         queuedInputs: messageQueue.list(),
         taskNotificationReceipts: messageQueue.getTaskReceipts(),
         toolDiscovery: resources.toolRuntime.getToolDiscoverySnapshot(),
-        gitSession: gitSession.getState(),
         ...(state.allowEmpty ? {allowEmpty: true} : {}),
         ...(state.summaryHint ? {summaryHint: state.summaryHint} : {}),
     });
@@ -175,7 +163,6 @@ export function createRootSessionRuntime({
             return compactState;
         },
         toolResultStore,
-        gitSession,
         taskSession,
         messageQueue,
         directoryAccess,
@@ -183,7 +170,6 @@ export function createRootSessionRuntime({
             initializePromise ??= (async () => {
                 // Task Session restoration starts at construction. Drain every initializer even when another initializer fails.
                 const results = await Promise.allSettled([
-                    gitSession.initialize(),
                     taskSession.initialize(),
                     directoryAccess.initialize(),
                 ] as const);
@@ -199,7 +185,7 @@ export function createRootSessionRuntime({
         createContext({signal, host, onEvent, turnId, getSnapshotState}) {
             const ctx = createToolContext({
                 signal, turnId,
-                resources: {...resources, contextSettings: resources.settings.context, gitSession, tasks: taskSession},
+                resources: {...resources, contextSettings: resources.settings.context, tasks: taskSession},
                 session: {
                     approvalEpoch,
                     sessionId: seed.sessionId,

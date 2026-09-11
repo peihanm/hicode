@@ -99,7 +99,7 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(7);
+      expect(snapshot.version).toBe(8);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);

@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, test} from "bun:test";
 import {createAgentRuntime} from "../../src/runtime/agentRuntime.js";
-import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/index.js";
+import {createWriterRegistry} from "../helpers/writerAgent.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createTestMemoryRuntime} from "../helpers/memory.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -67,7 +67,6 @@ describe("AgentRuntime model targets", () => {
                 storage,
                 fastModel: {
                     source: "glm",
-                    provider: "glm",
                     model: "glm-fast-test",
                     label: "GLM Fast Test",
                 },
@@ -86,7 +85,7 @@ describe("AgentRuntime model targets", () => {
                         baseUrl: "https://deepseek.test/v1",
                     },
                 },
-                subagents: BUILTIN_SUBAGENT_REGISTRY,
+                subagents: createWriterRegistry(),
                 memory,
             });
             const parentContext = createTestContext(cwd, {
@@ -109,7 +108,7 @@ describe("AgentRuntime model targets", () => {
             });
             const primary = await runSubagent({
                 kind: "registered",
-                agentType: "GeneralPurpose",
+                agentType: "FixtureWriter",
                 description: "主力实现",
                 prompt: "直接总结",
                 parentToolCallId: "primary-call",
@@ -126,7 +125,7 @@ describe("AgentRuntime model targets", () => {
             });
             const switchedPrimary = await runDeepseekSubagent({
                 kind: "registered",
-                agentType: "GeneralPurpose",
+                agentType: "FixtureWriter",
                 description: "切换后的主力实现",
                 prompt: "直接总结",
                 parentToolCallId: "switched-primary-call",

@@ -61,9 +61,7 @@ export function createHeadlessRunner(
                     history: state.history,
                     compactState: state.compactState,
                     toolDiscovery: state.toolDiscovery,
-                    gitSession: state.gitSession,
                 },
-                resumed: options.resumeMode.kind !== "none",
                 allowBackgroundTasks: false,
             });
             await rootSession.initialize();

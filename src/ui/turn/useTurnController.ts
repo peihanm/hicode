@@ -558,7 +558,7 @@ export function useTurnController({
             queuedMessages: messageQueueSnapshot.messages,
             backgroundTasks: taskSession.getRunningSummary(),
             listFileChangeEvents: () => eventStore.getPersistedUIEvents(),
-            loadGitDiff: (signal: AbortSignal) => rootSession.gitSession.diff(signal),
+            loadGitDiff: (signal: AbortSignal) => resources.gitWorkspace.diff(signal),
             shutdown,
         };
 }

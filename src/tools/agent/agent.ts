@@ -105,7 +105,7 @@ function formatAgentToolDescription(
     });
     return [
         "仅在委派有明确收益时启动子 Agent。Root 默认亲自完成顺序性的调查、实现和验证；任务复杂、跨多个文件或目录、耗时较长或需要多次工具调用本身都不是委派理由。只有子任务能与 Root 的其他有效工作并行，或大型陌生代码库的独立只读调查能显著压缩主上下文时才使用。若 Root 必须等待结果才能继续且自己具备所需工具，直接处理。",
-        "Explore 用于独立的大范围只读调查或多个可并行研究方向。GeneralPurpose 默认不自动使用；只有用户明确要求委派，或边界清楚的独立实现确实需要 fresh context 隔离时才使用。它是前台串行 Agent，不用于承接整个已批准计划，也不能声称与 Root 并行。持久 Agent 使用 fresh context，prompt 必须提供完整背景；model=fast 适合边界明确、低风险的只读调查，复杂实现和独立验证使用主力模型。subagent_type=fork 会继承当前父对话，name 必填且必须后台运行，不接受 model。只读 Fork 可并行调查，写 Fork 必须 isolation=worktree。仅使用安全结构化文件工具的写型自定义 Agent 可使用 Worktree。后台普通 Agent 可通过 task action=send 接收中途修正或在完成后沿用同一 History 继续；cancelled、Worktree 和旧进程恢复出的 Agent 不支持。后台完成后 Pillar 会主动通知，禁止轮询等待。Worktree 是协作隔离，不是 OS 沙盒。不要在主上下文重复执行已经委派的调查；工具结果对用户不可见，完成后必须由你总结。",
+        "Explore 用于独立的大范围只读调查或多个可并行研究方向。持久 Agent 使用 fresh context，prompt 必须提供完整背景；model=fast 适合边界明确、低风险的只读调查，复杂实现和独立验证使用主力模型。subagent_type=fork 会继承当前父对话，name 必填且必须后台运行，不接受 model。只读 Fork 可并行调查，写 Fork 必须 isolation=worktree。仅使用安全结构化文件工具的写型自定义 Agent 可使用 Worktree。后台普通 Agent 可通过 task action=send 接收中途修正或在完成后沿用同一 History 继续；cancelled、Worktree 和旧进程恢复出的 Agent 不支持。后台完成后 Pillar 会主动通知，禁止轮询等待。Worktree 是协作隔离，不是 OS 沙盒。不要在主上下文重复执行已经委派的调查；工具结果对用户不可见，完成后必须由你总结。",
         "",
         "当前可用 Agent：",
         ...agents,

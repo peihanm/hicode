@@ -254,9 +254,6 @@ export function getHookExecutionIssues(result: HookBatchResult): string[] {
     return result.executions.filter(item => item.outcome === "error" || item.outcome === "skipped_budget")
         .map(item => `${item.event} ${item.type} Hook [${item.handler.replace(/\s+/g, " ").slice(0, 180)}] ${item.outcome}: ${boundedHookMessage(item.message ?? "")}`);
 }
-export function didRunCommandHook(result: HookBatchResult): boolean {
-    return result.executions.some(item => item.type === "command" && item.commandInvoked === true);
-}
 export function formatHookContext(event: HookInput["hook_event_name"], contexts: readonly string[]): string[] {
     return contexts.map(context => `<system-reminder>\nHook ${event} provided the following additional context:\n${context}\n</system-reminder>`);
 }

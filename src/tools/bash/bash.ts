@@ -34,7 +34,7 @@ const inputSchema = z.object({
     run_in_background: z
         .boolean()
         .optional()
-        .describe("长运行服务、GUI 或 watcher 设为 true；立即返回 task ID，之后用 bash_task 查询或停止。timeout_ms 不是启动等待时间，后台任务必须省略；任务会持续到自然退出、显式停止或 Pillar Runtime 关闭"),
+        .describe("长运行服务、GUI 或 watcher 设为 true；立即返回 task ID，之后用 task 查询或停止。timeout_ms 不是启动等待时间，后台任务必须省略；任务会持续到自然退出、显式停止或 Pillar Runtime 关闭"),
     yield_time_ms: z.number().int().min(100).max(30_000).optional()
         .describe("可选等待窗口：等待 100–30000ms，已结束直接返回结果，未结束返回 Task ID 并让同一进程继续后台运行。仅交互式或支持后台任务的 Host 可用；timeout_ms 仍是整个进程的执行上限，省略则不设上限。不要同时设置 run_in_background=true"),
     sandbox_permissions: z
@@ -82,7 +82,7 @@ async function resolveCommandCwd(
 }
 
 function backgroundSyntaxMessage(): string {
-    return "Bash command 禁止使用 shell 后台操作符 &。启动长运行服务请单独调用 bash 并设置 run_in_background=true；重启受管任务时先用 bash_task stop。";
+    return "Bash command 禁止使用 shell 后台操作符 &。启动长运行服务请单独调用 bash 并设置 run_in_background=true；重启受管任务时先用 task stop。";
 }
 
 function isDirectMacOSApplicationCommand(command: string): boolean {
@@ -371,7 +371,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                     return {
                         content:
                             `相同后台命令已在此目录运行。Task: ${duplicate.id}\n` +
-                            "请先用 bash_task status 查询；确需重启时先用 bash_task stop，不要重复启动或按端口杀进程。",
+                            "请先用 task status 查询；确需重启时先用 task stop，不要重复启动或按端口杀进程。",
                         outcome: "failed" as const,
                     };
                 }
@@ -405,7 +405,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                         ...(timeout_ms !== undefined && yield_time_ms === undefined
                             ? ["已忽略 timeout_ms：后台任务不会使用前台执行超时。"]
                             : []),
-                        "使用 bash_task 查询输出、完成状态或停止任务。",
+                        "使用 task 查询输出、完成状态或停止任务。",
                     ].join("\n"),
                     outcome: "ok" as const,
                 };
@@ -431,7 +431,6 @@ export const bashTool: Tool<typeof inputSchema> = {
                     writableRoots: ctx.directoryAccess.listDirectories(),
                     networkAccess,
                 });
-                const shellExecution = {command, cwd: commandCwd, sandboxPermissions: effectiveSandboxPermissions ?? "use_default" as const};
                 const shouldPersist =
                     (result.outputBytes ?? 0) > 30_000 ||
                     result.outputComplete === false;
@@ -439,7 +438,6 @@ export const bashTool: Tool<typeof inputSchema> = {
                     return {
                         content: formatShellResult(result),
                         outcome: shellOutcome(result),
-                        shellExecution,
                     };
                 }
                 try {
@@ -455,13 +453,11 @@ export const bashTool: Tool<typeof inputSchema> = {
                         displayContent: `${formatShellStatus(result)}\n${persisted.preview}`,
                         persisted,
                         outcome: shellOutcome(result),
-                        shellExecution,
                     };
                 } catch (error) {
                     return {
                         content: `${formatShellResult(result)}\n\n完整输出保存失败：${error instanceof Error ? error.message : String(error)}`,
                         outcome: shellOutcome(result),
-                        shellExecution,
                     };
                 }
             } finally {

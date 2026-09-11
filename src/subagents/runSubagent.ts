@@ -92,7 +92,6 @@ function createForkRegistration(
                         parentContext.workspaceBoundary ?? parentContext.cwd,
                     skills: [],
                     instructions: parentContext.instructions,
-                    gitSession: parentContext.gitSession,
                     shellRunner: parentContext.shellRunner,
                 },
                 permissionRules: {
