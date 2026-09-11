@@ -1,6 +1,6 @@
 import {contentText} from "../../src/images/content.js";
 import {describe, expect, test} from "bun:test";
-import {access, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {access, mkdir, mkdtemp, readFile, realpath, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
@@ -22,29 +22,6 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {buildForkContextSnapshot} from "../../src/subagents/fork.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
-
-async function git(cwd: string, ...args: string[]): Promise<void> {
-    const process = Bun.spawn(["git", "-C", cwd, ...args], {
-        stdout: "ignore",
-        stderr: "pipe",
-    });
-    const [stderr, code] = await Promise.all([
-        new Response(process.stderr).text(),
-        process.exited,
-    ]);
-    if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
-}
-
-async function initializeRepository(cwd: string): Promise<void> {
-    await git(cwd, "init", "-q");
-    await git(cwd, "config", "user.name", "Pillar Test");
-    await git(cwd, "config", "user.email", "pillar-test@example.com");
-    await writeFile(join(cwd, ".gitignore"), ".pillar/worktrees/\n");
-    await writeFile(join(cwd, "PILLAR.md"), "只完成被委派的工作。\n");
-    await writeFile(join(cwd, "base.txt"), "base\n");
-    await git(cwd, "add", ".gitignore", "PILLAR.md", "base.txt");
-    await git(cwd, "commit", "-q", "-m", "initial");
-}
 
 describe("fork subagent", () => {
     test("Fork 只读 snapshot 引用的父 artifact，缺失结果明确失败", async () => {
@@ -170,10 +147,11 @@ describe("fork subagent", () => {
                 prompt: "只调查现有前端结构并给出方案",
                 subagent_type: "fork",
                 name: "frontend",
+                read_only: true,
                 run_in_background: true,
             }), ctx, parentToolCallId);
             expect(launched.outcome).toBe("ok");
-            expect(launched.modelContent).toContain("frontend (fork)");
+            expect(launched.modelContent).toContain("frontend");
             await completion;
 
             const [task] = await tasks.list();
@@ -185,17 +163,18 @@ describe("fork subagent", () => {
                 resultPreview: "frontend 已理解父上下文",
             });
             const notifications = await tasks.pendingNotifications();
-            expect(notifications[0]?.message).toContain("frontend (fork)");
+            expect(notifications[0]?.message).toContain("frontend");
             await runtime.close();
         });
     });
 
-    test("写型 Fork 只修改独立 Worktree 并保留真实名字", async () => {
+    test("写型 Fork 使用普通 cwd，无 Git 项目也可修改并保留真实名字", async () => {
         await withTempProject(async (cwd) => {
             const projectsRoot = await mkdtemp(join(tmpdir(), "pillar-fork-worktree-"));
             let runtime: ReturnType<typeof createTaskRuntimeForTest> | undefined;
             try {
-                await initializeRepository(cwd);
+                const childCwd = join(cwd, "worker");
+                await mkdir(childCwd);
                 const parentToolCallId = "fork-worktree-call";
                 const history: Message[] = [
                     {role: "system", content: "root system"},
@@ -221,6 +200,7 @@ describe("fork subagent", () => {
                                 "edit_file",
                                 "write_file",
                                 "delete_file",
+                                "bash",
                             ].sort());
                         return assistantToolCall(
                             "write_file",
@@ -287,7 +267,7 @@ describe("fork subagent", () => {
                         subagent_type: "fork",
                         name: "frontend",
                         run_in_background: true,
-                        isolation: "worktree",
+                        cwd: childCwd,
                     }),
                     ctx,
                     parentToolCallId
@@ -301,23 +281,14 @@ describe("fork subagent", () => {
                     agentType: "fork",
                     agentName: "frontend",
                     status: "completed",
-                    worktree: {
-                        state: "changed",
-                        changedFiles: [{
-                            path: "fork-feature.txt",
-                            kind: "create",
-                        }],
-                    },
+                    cwd: await realpath(childCwd),
                 });
                 expect(await access(join(cwd, "fork-feature.txt")).then(
                     () => true,
                     () => false
                 )).toBe(false);
-                if (task?.kind !== "agent" || !task.worktree) {
-                    throw new Error("缺少 Fork Worktree");
-                }
                 expect(await readFile(
-                    join(task.worktree.path, "fork-feature.txt"),
+                    join(childCwd, "fork-feature.txt"),
                     "utf8"
                 )).toBe("isolated fork change\n");
             } finally {
@@ -340,7 +311,7 @@ describe("fork subagent", () => {
                 run_in_background: true,
             }), ctx, "missing-name");
             expect(missingName.outcome).toBe("failed");
-            expect(missingName.modelContent).toContain("必须提供 name");
+            expect(missingName.modelContent).toContain("需要 name");
 
             const foreground = await executeToolResult("agent", JSON.stringify({
                 description: "fork",
@@ -349,7 +320,7 @@ describe("fork subagent", () => {
                 name: "frontend",
             }), ctx, "foreground-fork");
             expect(foreground.outcome).toBe("failed");
-            expect(foreground.modelContent).toContain("必须设置 run_in_background=true");
+            expect(foreground.modelContent).toContain("run_in_background=true");
         });
     });
 });

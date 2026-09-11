@@ -5,7 +5,6 @@ import type {ShellTermination} from "../tools/bash/process.js";
 import type {StopReason} from "../agent/types.js";
 import type {SubagentRequest} from "../subagents/types.js";
 import type {ToolContext} from "../tools/types.js";
-import type {AgentWorktreeSnapshot} from "../worktrees/index.js";
 
 export type TaskStatus =
     | "running"
@@ -44,6 +43,7 @@ interface AgentTaskProgress {
 }
 
 export interface AgentTaskSnapshot {
+    cwd: string;
     id: string;
     kind: "agent";
     owner: TaskOwner;
@@ -59,10 +59,6 @@ export interface AgentTaskSnapshot {
     outputResult?: PersistedToolResult;
     transcriptPath?: string;
     outputIssue?: string;
-    worktree?: AgentWorktreeSnapshot;
-    worktreeDiffStat?: string;
-    worktreeDiffPreview?: string;
-    worktreeDiffResult?: PersistedToolResult;
 }
 
 export interface MemoryTaskSnapshot {
@@ -95,7 +91,6 @@ export interface StartShellTaskInput {
 export interface StartAgentTaskInput {
     request: SubagentRequest;
     parentContext: ToolContext;
-    isolation?: "worktree";
 }
 
 export interface TaskNotification {
@@ -112,7 +107,7 @@ export interface TaskNotification {
 }
 
 export interface TaskEventEnvelope {
-    version: 4;
+    version: 5;
     sequence: number;
     sessionId: string;
     task: TaskSnapshot;
@@ -138,7 +133,6 @@ export interface TaskSessionLike {
 
     send(id: string, message: string): Promise<AgentTaskSnapshot>;
 
-    discardWorktree(id: string): Promise<AgentTaskSnapshot>;
 
     hasRunning(): boolean;
 

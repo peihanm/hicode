@@ -1,3 +1,4 @@
+import {createToolRuntime} from "../../src/tools/runtime.js";
 import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../src/context/config.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
@@ -34,6 +35,7 @@ export function createTestContext(
   cwd: string,
   options: {
     contextSettings?: ContextSettings;
+    toolNames?: readonly string[];
     permissionMode?: PermissionMode;
     allowFullAccess?: boolean;
     readOnlyTools?: boolean;
@@ -69,6 +71,7 @@ export function createTestContext(
   const context = createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
+      toolNames: options.toolNames ?? [...new Set([...createToolRuntime().toolNames, ...(options.mcpManager?.getTools().map(tool => tool.name) ?? [])])],
       contextSettings: options.contextSettings ?? DEFAULT_CONTEXT_SETTINGS,
       allowFullAccess: options.allowFullAccess ?? true,
       readOnlyTools: options.readOnlyTools ?? false,

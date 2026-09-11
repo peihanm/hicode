@@ -70,13 +70,6 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
     const output = resultId
         ? `，完整输出见保存文件 ${JSON.stringify(result?.path)}，可用 read_file 读取`
         : "";
-    const worktree = task.kind === "agent" && task.worktree
-        ? task.worktree.state === "changed"
-            ? `；Worktree 已保留（${task.worktree.changedFiles.length + (task.worktree.omittedChangedFiles ?? 0)} 个变更文件，${task.worktree.commitsAhead ?? 0} 个新 Commit）。先用 task status 查看实时状态，在 Worktree 中检查、测试并 Commit，再用 Git cherry-pick 集成；完成后可 task discard`
-            : task.worktree.cleanupReason === "no_changes"
-                ? "；Worktree 无工作产物，已自动清理"
-                : `；Worktree 状态 ${task.worktree.state}`
-        : "";
     const summary = notificationSummary(task);
     return {
         notificationId: taskNotificationId(task.id, task.kind === "agent" ? task.progress.runCount : 1),
@@ -94,7 +87,7 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
                 : task.status === "cancelled"
                     ? "取消"
                     : "失败"
-        }：${summary}${output}${worktree}。`,
+        }：${summary}${output}。`,
     };
 }
 

@@ -185,7 +185,7 @@ export function createRootSessionRuntime({
         createContext({signal, host, onEvent, turnId, getSnapshotState}) {
             const ctx = createToolContext({
                 signal, turnId,
-                resources: {...resources, contextSettings: resources.settings.context, tasks: taskSession},
+                resources: {...resources, toolNames: resources.toolRuntime.toolNames, contextSettings: resources.settings.context, tasks: taskSession},
                 session: {
                     approvalEpoch,
                     sessionId: seed.sessionId,

@@ -2,7 +2,6 @@ import {z} from "zod";
 import type {StopReason} from "../agent/types.js";
 import type {PersistedToolResult} from "../toolResults/index.js";
 import type {ShellTermination} from "../tools/bash/process.js";
-import type {AgentWorktreeSnapshot, WorktreeChangedFile} from "../worktrees/types.js";
 import type {
     AgentTaskSnapshot,
     ShellTaskSnapshot,
@@ -14,7 +13,7 @@ import type {
 export type TaskJournalEntry =
     | TaskEventEnvelope
     | {
-    version: 4;
+    version: 5;
     type: "task_notification_claimed";
     sequence: number;
     sessionId: string;
@@ -27,7 +26,6 @@ const MAX_LABEL_CHARACTERS = 256;
 const MAX_PATH_CHARACTERS = 16_384;
 const MAX_TEXT_CHARACTERS = 128 * 1024;
 const MAX_COMMAND_CHARACTERS = 1024 * 1024;
-const MAX_CHANGED_FILES = 500;
 
 const TASK_STATUSES = new Set<TaskStatus>([
     "running", "completed", "failed", "cancelled",
@@ -39,10 +37,6 @@ const STOP_REASONS = new Set<StopReason>([
 const ABORT_REASONS = new Set([
     "user-cancel", "sigint", "timeout", "shutdown",
 ]);
-const CHANGE_KINDS = new Set<WorktreeChangedFile["kind"]>([
-    "create", "update", "delete", "rename", "copy", "conflict", "type-change",
-]);
-
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -101,78 +95,6 @@ function decodePersistedResult(value: unknown): PersistedToolResult | undefined 
         preview: value.preview,
         complete: value.complete,
         encoding: "utf-8",
-    };
-}
-
-function decodeChangedFile(value: unknown): WorktreeChangedFile | undefined {
-    if (!isRecord(value) || !hasOnlyKeys(value, ["path", "originalPath", "kind"])) {
-        return undefined;
-    }
-    if (
-        !boundedString(value.path, MAX_PATH_CHARACTERS) ||
-        (value.originalPath !== undefined &&
-            !boundedString(value.originalPath, MAX_PATH_CHARACTERS)) ||
-        typeof value.kind !== "string" ||
-        !CHANGE_KINDS.has(value.kind as WorktreeChangedFile["kind"])
-    ) return undefined;
-    return {
-        path: value.path,
-        ...(typeof value.originalPath === "string"
-            ? {originalPath: value.originalPath}
-            : {}),
-        kind: value.kind as WorktreeChangedFile["kind"],
-    };
-}
-
-function decodeWorktree(value: unknown): AgentWorktreeSnapshot | undefined {
-    if (!isRecord(value) || !hasOnlyKeys(value, [
-        "path", "branch", "baseCommit", "state", "sourceHadChanges",
-        "changedFiles", "omittedChangedFiles", "headCommit", "dirty",
-        "commitsAhead", "revision", "cleanupReason", "issue",
-    ])) return undefined;
-    if (
-        !boundedString(value.path, MAX_PATH_CHARACTERS) ||
-        !boundedString(value.branch, MAX_LABEL_CHARACTERS) ||
-        typeof value.baseCommit !== "string" ||
-        !/^[0-9a-f]{40,64}$/i.test(value.baseCommit) ||
-        (value.state !== "active" && value.state !== "changed" && value.state !== "cleaned") ||
-        typeof value.sourceHadChanges !== "boolean" ||
-        !Array.isArray(value.changedFiles) ||
-        value.changedFiles.length > MAX_CHANGED_FILES
-    ) return undefined;
-    const changedFiles = value.changedFiles.map(decodeChangedFile);
-    if (changedFiles.some((file) => !file)) return undefined;
-    if (
-        (value.omittedChangedFiles !== undefined && !safeCount(value.omittedChangedFiles)) ||
-        (value.headCommit !== undefined &&
-            (typeof value.headCommit !== "string" || !/^[0-9a-f]{40,64}$/i.test(value.headCommit))) ||
-        (value.dirty !== undefined && typeof value.dirty !== "boolean") ||
-        (value.commitsAhead !== undefined && !safeCount(value.commitsAhead)) ||
-        (value.revision !== undefined &&
-            (typeof value.revision !== "string" || !/^[0-9a-f]{64}$/i.test(value.revision))) ||
-        (value.state === "cleaned"
-            ? value.cleanupReason !== "no_changes" && value.cleanupReason !== "explicit_discard"
-            : value.cleanupReason !== undefined) ||
-        (value.issue !== undefined && !boundedString(value.issue, MAX_TEXT_CHARACTERS, true))
-    ) return undefined;
-    return {
-        path: value.path,
-        branch: value.branch,
-        baseCommit: value.baseCommit,
-        state: value.state,
-        sourceHadChanges: value.sourceHadChanges,
-        changedFiles: changedFiles as WorktreeChangedFile[],
-        ...(typeof value.omittedChangedFiles === "number"
-            ? {omittedChangedFiles: value.omittedChangedFiles}
-            : {}),
-        ...(typeof value.headCommit === "string" ? {headCommit: value.headCommit} : {}),
-        ...(typeof value.dirty === "boolean" ? {dirty: value.dirty} : {}),
-        ...(typeof value.commitsAhead === "number" ? {commitsAhead: value.commitsAhead} : {}),
-        ...(typeof value.revision === "string" ? {revision: value.revision} : {}),
-        ...(value.cleanupReason === "no_changes" || value.cleanupReason === "explicit_discard"
-            ? {cleanupReason: value.cleanupReason}
-            : {}),
-        ...(typeof value.issue === "string" ? {issue: value.issue} : {}),
     };
 }
 
@@ -279,10 +201,9 @@ function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | un
 
 function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | undefined {
     if (!hasOnlyKeys(value, [
-        "id", "kind", "owner", "agentType", "agentName", "description", "status",
+        "id", "kind", "cwd", "owner", "agentType", "agentName", "description", "status",
         "startedAt", "completedAt", "progress", "reason", "resultPreview",
-        "outputResult", "transcriptPath", "outputIssue", "worktree",
-        "worktreeDiffStat", "worktreeDiffPreview", "worktreeDiffResult",
+        "outputResult", "transcriptPath", "outputIssue",
     ])) return undefined;
     const common = decodeCommon(value);
     if (!isRecord(value.progress) || !hasOnlyKeys(value.progress, [
@@ -292,14 +213,8 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
     const outputResult = value.outputResult === undefined
         ? undefined
         : decodePersistedResult(value.outputResult);
-    const diffResult = value.worktreeDiffResult === undefined
-        ? undefined
-        : decodePersistedResult(value.worktreeDiffResult);
-    const worktree = value.worktree === undefined
-        ? undefined
-        : decodeWorktree(value.worktree);
     if (
-        value.kind !== "agent" || !common ||
+        value.kind !== "agent" || !common || !boundedString(value.cwd, MAX_PATH_CHARACTERS) ||
         !boundedString(value.agentType, MAX_LABEL_CHARACTERS) ||
         (value.agentName !== undefined && !boundedString(value.agentName, MAX_LABEL_CHARACTERS)) ||
         !boundedString(value.description, MAX_TEXT_CHARACTERS) ||
@@ -317,17 +232,12 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
             !boundedString(value.resultPreview, MAX_TEXT_CHARACTERS, true)) ||
         (value.outputResult !== undefined && !outputResult) ||
         (value.transcriptPath !== undefined &&
-            !boundedString(value.transcriptPath, MAX_PATH_CHARACTERS)) ||
-        (value.worktree !== undefined && !worktree) ||
-        (value.worktreeDiffStat !== undefined &&
-            !boundedString(value.worktreeDiffStat, MAX_TEXT_CHARACTERS, true)) ||
-        (value.worktreeDiffPreview !== undefined &&
-            !boundedString(value.worktreeDiffPreview, MAX_TEXT_CHARACTERS, true)) ||
-        (value.worktreeDiffResult !== undefined && !diffResult)
+            !boundedString(value.transcriptPath, MAX_PATH_CHARACTERS))
     ) return undefined;
     return {
         ...common,
         kind: "agent",
+        cwd: value.cwd,
         agentType: value.agentType,
         ...(typeof value.agentName === "string" ? {agentName: value.agentName} : {}),
         description: value.description,
@@ -347,14 +257,6 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
         ...(typeof value.resultPreview === "string" ? {resultPreview: value.resultPreview} : {}),
         ...(outputResult ? {outputResult} : {}),
         ...(typeof value.transcriptPath === "string" ? {transcriptPath: value.transcriptPath} : {}),
-        ...(worktree ? {worktree} : {}),
-        ...(typeof value.worktreeDiffStat === "string"
-            ? {worktreeDiffStat: value.worktreeDiffStat}
-            : {}),
-        ...(typeof value.worktreeDiffPreview === "string"
-            ? {worktreeDiffPreview: value.worktreeDiffPreview}
-            : {}),
-        ...(diffResult ? {worktreeDiffResult: diffResult} : {}),
     };
 }
 
@@ -376,13 +278,13 @@ export function decodeTaskJournalEntry(
     value: unknown,
     expectedSessionId: string
 ): TaskJournalEntry | undefined {
-    if (!isRecord(value) || value.version !== 4 || !safeCount(value.sequence) ||
+    if (!isRecord(value) || value.version !== 5 || !safeCount(value.sequence) ||
         value.sequence === 0 || value.sessionId !== expectedSessionId) return undefined;
     if (value.type === "task_notification_claimed") {
         if (!hasOnlyKeys(value, ["version", "type", "sequence", "sessionId", "taskId", "notificationId"]) ||
             !boundedString(value.taskId, MAX_ID_CHARACTERS) || typeof value.notificationId !== "string" || !/^[a-f0-9]{64}$/.test(value.notificationId)) return undefined;
         return {
-            version: 4,
+            version: 5,
             type: "task_notification_claimed",
             sequence: value.sequence,
             sessionId: expectedSessionId,
@@ -405,7 +307,7 @@ export function decodeTaskJournalEntry(
         (value.type === "task_finished" && task.status === "running")
     ) return undefined;
     return {
-        version: 4,
+        version: 5,
         type: value.type,
         sequence: value.sequence,
         sessionId: expectedSessionId,

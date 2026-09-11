@@ -10,6 +10,7 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
                 allowedToolNames: EXPLORE_AGENT.allowedTools,
             },
             contextResources: {
+                    toolNames: parentContext.toolNames,
                 readOnlyTools: true,
                 storage: parentContext.storage,
                 cwd: parentContext.cwd,

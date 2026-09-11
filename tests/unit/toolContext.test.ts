@@ -27,7 +27,7 @@ describe("ToolContext builder", () => {
       const context = createToolContext({
         signal: new AbortController().signal,
         resources: {
-          contextSettings: DEFAULT_CONTEXT_SETTINGS,fileCommits: new FileCommitCoordinator(),
+          contextSettings: DEFAULT_CONTEXT_SETTINGS, toolNames: ["read_file"],fileCommits: new FileCommitCoordinator(),
           storage,
           cwd,
           model: "glm-test",
@@ -98,7 +98,7 @@ describe("ToolContext builder", () => {
         pillarHome: `${cwd}/results`,
       });
       const resources = {
-        contextSettings: DEFAULT_CONTEXT_SETTINGS,
+        contextSettings: DEFAULT_CONTEXT_SETTINGS, toolNames: ["read_file"],
         fileCommits: new FileCommitCoordinator(),
         storage,
         cwd,

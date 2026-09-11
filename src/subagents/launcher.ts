@@ -5,6 +5,8 @@ import {buildForkContextSnapshot} from "./fork.js";
 import type {ForkSubagentRequest, RegisteredSubagentRequest, SubagentResult, SubagentRunner,} from "./types.js";
 import type {SubagentModelOverride} from "./model.js";
 
+import {resolveSubagentDirectory} from "./workspace.js";
+
 type SubagentLaunchInput =
     | {
     kind: "registered";
@@ -15,16 +17,19 @@ type SubagentLaunchInput =
     parentToolCallId: string;
     model?: SubagentModelOverride;
     runInBackground: boolean;
-    isolation?: "worktree";
+    cwd?: string;
+    readOnly?: boolean;
 }
     | {
     kind: "fork";
+    workspaceWriteApproved?: true;
     name: string;
     description: string;
     prompt: string;
     parentToolCallId: string;
     runInBackground: true;
-    isolation?: "worktree";
+    cwd?: string;
+    readOnly?: boolean;
 };
 
 type SubagentLaunchResult =
@@ -46,6 +51,7 @@ export function createSubagentLauncher({
 }): SubagentLauncher {
     return {
         async launch(input) {
+            const cwd = await resolveSubagentDirectory(parentContext, input.cwd);
             let request: RegisteredSubagentRequest | ForkSubagentRequest;
             if (input.kind === "fork") {
                 request = {
@@ -55,7 +61,8 @@ export function createSubagentLauncher({
                     description: input.description,
                     prompt: input.prompt,
                     parentToolCallId: input.parentToolCallId,
-                    isolation: input.isolation,
+                    cwd, readOnly: input.readOnly,
+                    ...(input.workspaceWriteApproved ? {workspaceWriteApproved: true} : {}),
                     contextSnapshot: buildForkContextSnapshot(
                         getHistory(),
                         input.parentToolCallId
@@ -64,6 +71,7 @@ export function createSubagentLauncher({
             } else {
                 request = {
                     kind: "registered",
+                    cwd, readOnly: input.readOnly,
                     ...(input.workspaceWriteApproved ? {workspaceWriteApproved: true} : {}),
                     agentType: input.agentType,
                     description: input.description,
@@ -80,7 +88,6 @@ export function createSubagentLauncher({
                 const task = await parentContext.tasks.startAgent({
                     request,
                     parentContext,
-                    ...(input.isolation ? {isolation: input.isolation} : {}),
                 });
                 return {kind: "background", task};
             }

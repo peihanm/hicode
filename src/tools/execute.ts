@@ -13,7 +13,7 @@ import {
 } from "../toolResults/index.js";
 import type {Tool, ToolContext} from "./types.js";
 import {resolveFilePermissionPath} from "../permissions/filePattern.js";
-import {toolPathInput} from "../worktrees/pathGuard.js";
+import {toolPathInput} from "../permissions/pathGuard.js";
 
 export function formatInterruptedToolResult(signal: AbortSignal): string {
     return `工具调用已取消（${normalizeTurnAbortReason(signal.reason)}）`;

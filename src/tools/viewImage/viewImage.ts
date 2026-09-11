@@ -8,7 +8,7 @@ import {readFileSnapshot} from "../shared/fileSnapshot.js";
 import {prepareImage} from "../../images/prepare.js";
 import {imageRegionSchema, type ImageReference} from "../../images/content.js";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
-import {isPathInside} from "../../worktrees/pathGuard.js";
+import {isPathInside} from "../../permissions/pathGuard.js";
 
 const schema = z.object({
     region: imageRegionSchema.optional().describe("原图方向纠正后的绝对像素区域 {x,y,width,height}；即使 image_id 来自裁剪图，坐标也以原图为准"),

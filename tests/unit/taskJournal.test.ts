@@ -18,7 +18,7 @@ function shellEvent(input: {
     const sessionId = input.sessionId ?? "session-a";
     const status = input.status ?? "running";
     return {
-        version: 4,
+        version: 5,
         type: input.type ?? "task_progress",
         sequence: input.sequence,
         sessionId,
@@ -142,8 +142,8 @@ describe("TaskJournal", () => {
             const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             for (const runCount of [1, 2]) {
-                await journal.append({version: 4, type: "task_finished", sequence: runCount, sessionId: "session-a",
-                    task: {id: "agent-a", kind: "agent", owner: {sessionId: "session-a", toolCallId: "call"},
+                await journal.append({version: 5, type: "task_finished", sequence: runCount, sessionId: "session-a",
+                    task: {id: "agent-a", kind: "agent", cwd, owner: {sessionId: "session-a", toolCallId: "call"},
                         agentType: "Explore", description: "test", status: "completed", startedAt: "2026-09-05T00:00:00.000Z",
                         completedAt: "2026-09-05T00:00:01.000Z", resultPreview: `run ${runCount}`,
                         progress: {runCount, iterations: 1, toolUseCount: 0, pendingMessages: 0}}});

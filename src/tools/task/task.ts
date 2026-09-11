@@ -5,9 +5,9 @@ import {checkTaskStopPermission} from "./stopPermission.js";
 
 const inputSchema = z.object({
     action: z
-        .enum(["list", "status", "send", "stop", "discard"])
+        .enum(["list", "status", "send", "stop"])
         .default("list")
-        .describe("list/status/send/stop 管理任务；send 向 Agent 发送消息或继续；discard 永久删除已结束的 Worktree"),
+        .describe("list/status/send/stop 管理任务；send 向 Agent 发送消息或继续"),
     task_id: z
         .string()
         .optional()
@@ -65,47 +65,10 @@ function formatTask(task: TaskSnapshot): string {
             ? `${task.progress.tokenCount} tokens`
             : undefined,
     ].filter(Boolean).join(" · ");
-    const worktree = task.worktree
-        ? [
-            `Worktree: ${task.worktree.path}`,
-            `Worktree state: ${task.worktree.state}`,
-            `Branch: ${task.worktree.branch}`,
-            `Base: ${task.worktree.baseCommit}`,
-            task.worktree.sourceHadChanges
-                ? "Source checkout: had uncommitted changes (not included in this Worktree)"
-                : "Source checkout: clean when this Worktree was created",
-            task.worktree.headCommit ? `HEAD: ${task.worktree.headCommit}` : undefined,
-            task.worktree.dirty !== undefined ? `Dirty: ${task.worktree.dirty}` : undefined,
-            task.worktree.commitsAhead !== undefined
-                ? `Commits ahead of base: ${task.worktree.commitsAhead}`
-                : undefined,
-            task.worktree.changedFiles.length > 0
-                ? `Changed files:\n${task.worktree.changedFiles.map(
-                    (file) => `- ${file.kind}: ${file.originalPath ? `${file.originalPath} -> ` : ""}${file.path}`
-                ).join("\n")}${task.worktree.omittedChangedFiles
-                    ? `\n- … ${task.worktree.omittedChangedFiles} more file(s) omitted from summary`
-                    : ""}`
-                : "Changed files: (无)",
-            task.worktree.cleanupReason
-                ? `Cleanup: ${task.worktree.cleanupReason}`
-                : undefined,
-            task.worktree.issue ? `Worktree issue: ${task.worktree.issue}` : undefined,
-            task.worktreeDiffStat ? `Diff stat:\n${task.worktreeDiffStat}` : undefined,
-            task.worktreeDiffPreview ? `Diff preview:\n${task.worktreeDiffPreview}` : undefined,
-            task.worktreeDiffResult
-                ? `Saved diff: ${JSON.stringify(task.worktreeDiffResult.path)}`
-                : undefined,
-            task.worktree.state === "changed"
-                ? [
-                    "Next: inspect and test this Worktree, commit selected files there,",
-                    `then cherry-pick the commit into the source checkout and run task discard task_id=${task.id}.`,
-                ].join(" ")
-                : undefined,
-        ].filter(Boolean)
-        : [];
     return [
         `Task: ${task.id}`,
         "Type: agent",
+        `Cwd: ${task.cwd}`,
         `Status: ${task.status}`,
         `Agent: ${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType}`,
         `Description: ${task.description}`,
@@ -116,7 +79,6 @@ function formatTask(task: TaskSnapshot): string {
         task.reason ? `Reason: ${task.reason}` : undefined,
         task.resultPreview ? `Result preview:\n${task.resultPreview}` : undefined,
         task.transcriptPath ? `Transcript: ${task.transcriptPath}` : undefined,
-        ...worktree,
     ].filter(Boolean).join("\n") + result + issue;
 }
 
@@ -128,13 +90,9 @@ export const taskTool: Tool<typeof inputSchema> = {
     isReadOnly: ({action}) => action === "list" || action === "status",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
     checkPermissions: async ({action, task_id}, ctx) => {
-        if (action === "discard") {
-            return {behavior: "ask", message: "永久丢弃 Worktree 及其未应用变更"};
-        }
         if (action === "stop") return checkTaskStopPermission(ctx, task_id);
         return {behavior: "passthrough"};
     },
-    requiresExplicitApproval: ({action}) => action === "discard",
     async execute({action, task_id, message}, ctx) {
         if (!ctx.tasks) {
             return {content: "当前 Runtime 不支持后台任务", outcome: "failed"};
@@ -175,9 +133,7 @@ export const taskTool: Tool<typeof inputSchema> = {
         }
         const task = action === "stop"
             ? await ctx.tasks.stop(task_id)
-            : action === "discard"
-                    ? await ctx.tasks.discardWorktree(task_id)
-                    : await ctx.tasks.get(task_id);
+            : await ctx.tasks.get(task_id);
         if (!task) {
             return {content: `后台任务不存在: ${task_id}`, outcome: "failed"};
         }

@@ -34,19 +34,19 @@ export async function validateWorkspacePath(
         ? resolve(inputPath)
         : resolve(cwd, inputPath);
     if (!isPathInside(lexicalRoot, target)) {
-        return {ok: false, message: `Worktree 路径越界: ${inputPath}`};
+        return {ok: false, message: `工作区 路径越界: ${inputPath}`};
     }
     try {
         const root = await realpath(lexicalRoot);
         const existing = await nearestExisting(target);
         const resolvedExisting = await realpath(existing);
         if (!isPathInside(root, resolvedExisting)) {
-            return {ok: false, message: `Worktree 路径经过 symlink 越界: ${inputPath}`};
+            return {ok: false, message: `工作区 路径经过 symlink 越界: ${inputPath}`};
         }
     } catch (error) {
         return {
             ok: false,
-            message: `无法验证 Worktree 路径 ${inputPath}: ${error instanceof Error ? error.message : String(error)}`,
+            message: `无法验证 工作区 路径 ${inputPath}: ${error instanceof Error ? error.message : String(error)}`,
         };
     }
     return {ok: true, path: target};

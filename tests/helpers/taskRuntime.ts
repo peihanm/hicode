@@ -9,7 +9,6 @@ import {
 import type {CreateSubagentThread} from "../../src/subagents/types.js";
 import type {ShellRunnerLike} from "../../src/tools/bash/shellRunner.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
-import {testChildEnvironment} from "./childEnvironment.js";
 import {join} from "node:path";
 
 export function createTaskRuntimeForTest(
@@ -29,7 +28,6 @@ export function createTaskRuntimeForTest(
     return createTaskRuntime(
         storage,
         cwd,
-        testChildEnvironment,
         shellRunner,
         createSubagentThread,
         subagents,

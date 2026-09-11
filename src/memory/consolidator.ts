@@ -72,7 +72,7 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
                         content: topic.content, sources: topic.sources }), 0o600);
                 // Private prompt logs and tool artifacts share the draft lifetime, including forgetting/cleanup.
                 const draftStorage = createPillarStorageLayout({ pillarHome: paths.runtime });
-                const ctx = createToolContext({ signal: input.signal, resources: {
+                const ctx = createToolContext({ signal: input.signal, resources: {toolNames: tools.toolNames,
                         contextSettings: options.contextSettings, storage: draftStorage, cwd: directory, workspaceBoundary: directory, shellRunner: options.shellRunner,
                         fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.source,
                         fastModel: options.target.model, fastProvider: options.target.source, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,

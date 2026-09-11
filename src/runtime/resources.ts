@@ -36,7 +36,6 @@ import type {PillarStorageLayout} from "../persistence/index.js";
 import {createInputHistoryStore, type InputHistoryStore,} from "../session/inputHistory/index.js";
 import {
     createChildProcessEnvironment,
-    type ChildProcessEnvironment,
 } from "./childEnvironment.js";
 import type {PillarRootConfiguration} from "./rootConfiguration.js";
 import type {Tool} from "../tools/types.js";
@@ -102,7 +101,6 @@ interface RootRuntimeDependencies {
     createTaskRuntime(
         storage: PillarStorageLayout,
         cwd: string,
-        childEnvironment: ChildProcessEnvironment,
         shellRunner: ShellRunnerLike,
         createSubagentThread: CreateSubagentThread,
         subagents: SubagentCatalog,
@@ -321,7 +319,6 @@ export function createRootRuntimeResourcesFactory(
             const createdTaskRuntime = dependencies.createTaskRuntime(
                 storage,
                 cwd,
-                childEnvironment,
                 shellRunner,
                 agentRuntime.createSubagentThread,
                 subagents,

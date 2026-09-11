@@ -5,7 +5,7 @@
 import type {PermissionMatcher, PermissionRuleBehavior, Tool, ToolContext} from "../tools/types.js";
 import type {PermissionResult} from "./types.js";
 import {matchPattern} from "./matchPattern.js";
-import {toolPathInput, validateWorkspacePath} from "../worktrees/pathGuard.js";
+import {toolPathInput, validateWorkspacePath} from "./pathGuard.js";
 import {parsePermissionRule} from "./rules.js";
 import {directoryOperationForTool} from "./directoryAccess.js";
 import {resolveToolPath} from "../tools/shared/paths.js";

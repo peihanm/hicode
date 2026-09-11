@@ -3,11 +3,9 @@ import {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CreateSubagentThread} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
-import {validateBackgroundAgent} from "../subagents/registration.js";
 import type {ToolContext} from "../tools/types.js";
 import type {ManagedAgentTask} from "./managed.js";
 import type {StartAgentTaskInput, TaskSessionBinding, TaskStatus,} from "./types.js";
-import type {TaskWorktreeManager} from "./worktreeTask.js";
 
 export function validateAgentTaskInput(
     input: StartAgentTaskInput,
@@ -17,20 +15,13 @@ export function validateAgentTaskInput(
         if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(input.request.name)) {
             throw new Error("Fork name 只能包含小写字母、数字和连字符，长度 1–40");
         }
-        if (input.request.isolation !== input.isolation) {
-            throw new Error("Fork request 与 Task isolation 不一致");
-        }
         return;
     }
     const registration = subagents.get(input.request.agentType);
     if (!registration) {
         throw new Error(`未知 Agent 类型: ${input.request.agentType}`);
     }
-    const policyIssue = validateBackgroundAgent(
-        registration.definition,
-        input.isolation
-    );
-    if (policyIssue) throw new Error(policyIssue);
+
 }
 
 export function createAgentTask(
@@ -39,8 +30,7 @@ export function createAgentTask(
     input: StartAgentTaskInput,
     context: ToolContext,
     createSubagentThread: CreateSubagentThread,
-    publishProgress: (task: ManagedAgentTask) => Promise<void>,
-    worktree?: ManagedAgentTask["worktree"]
+    publishProgress: (task: ManagedAgentTask) => Promise<void>
 ): ManagedAgentTask {
     const messageQueue = new RuntimeMessageQueue();
     let task: ManagedAgentTask;
@@ -64,6 +54,7 @@ export function createAgentTask(
         thread,
         messageQueue,
         agentType: input.request.agentType,
+        cwd: input.request.cwd ?? context.cwd,
         ...(input.request.kind === "fork"
             ? {agentName: input.request.name}
             : {}),
@@ -76,7 +67,6 @@ export function createAgentTask(
         iterations: 0,
         toolUseCount: 0,
         lastPublishedTokenCount: 0,
-        ...(worktree ? {worktree} : {}),
         notificationPending: false,
         suppressTerminalNotification: false,
         completion: Promise.resolve(),
@@ -87,7 +77,6 @@ export function createAgentTask(
 export async function runAgentTask(
     task: ManagedAgentTask,
     prompt: string,
-    worktrees: TaskWorktreeManager,
     publishFinished: (task: ManagedAgentTask) => Promise<void>
 ): Promise<void> {
     let finalStatus: TaskStatus = "failed";
@@ -134,7 +123,6 @@ export async function runAgentTask(
         finalStatus = task.controller.signal.aborted ? "cancelled" : "failed";
         task.outputIssue = error instanceof Error ? error.message : String(error);
     } finally {
-        await worktrees.finish(task);
         task.status = finalStatus;
         task.completedAt = new Date().toISOString();
         task.notificationPending = !task.suppressTerminalNotification;

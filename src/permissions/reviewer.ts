@@ -12,7 +12,7 @@ import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {createCompactState} from "../context/index.js";
 import {SubagentTranscriptWriter} from "../subagents/transcript.js";
-import {toolPathInput, validateWorkspacePath} from "../worktrees/pathGuard.js";
+import {toolPathInput, validateWorkspacePath} from "./pathGuard.js";
 import type {ApprovalRequest, ApprovalReviewer, ReviewVerdict} from "./approval.js";
 
 const verdictSchema = z.object({
@@ -78,6 +78,7 @@ export function createApprovalReviewer(runAgent: AgentRunner): ApprovalReviewer 
         const target = parent.reviewerModel ?? {model: parent.model, source: parent.provider};
         const ctx = createToolContext({signal, turnId: request.id,
             resources: {
+                toolNames: runtime.toolNames,
                 contextSettings: parent.contextSettings, storage: parent.storage, cwd: parent.cwd, model: target.model, provider: target.source,
                 fastModel: target.model, fastProvider: target.source, skills: [], readOnlyTools: true,
                 fileCommits: new FileCommitCoordinator(), shellRunner: parent.shellRunner},

@@ -7,22 +7,14 @@ import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {CreateSubagentThread} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
-import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
-import {
-    type AgentWorktreeRecord,
-    createWorktreeRuntime,
-    type WorktreeRuntimeLike,
-} from "../worktrees/index.js";
 import {createTaskJournal, type TaskJournalLike} from "./journal.js";
 import {
     appendTaskIssue,
     isShellTask,
-    type ManagedAgentTask,
     type ManagedTask,
     snapshotAgent,
     snapshotShell,
     snapshotTask,
-    worktreeSnapshot,
 } from "./managed.js";
 import {TaskNotificationCenter, taskNotificationId, isExpectedShellShutdown} from "./notifications.js";
 import {createShellTask, runShellTask} from "./shellTask.js";
@@ -32,7 +24,6 @@ import {
     runAgentTask,
     validateAgentTaskInput,
 } from "./agentTask.js";
-import {TaskWorktreeManager} from "./worktreeTask.js";
 import type {
     AgentTaskSnapshot,
     ShellTaskSnapshot,
@@ -122,11 +113,6 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.sendAgent(this.binding, id, message);
     }
 
-    async discardWorktree(id: string): Promise<AgentTaskSnapshot> {
-        await this.ready;
-        return this.runtime.discardWorktree(this.sessionId, id);
-    }
-
     hasRunning(): boolean {
         return this.runtime.hasRunning(this.sessionId);
     }
@@ -159,7 +145,6 @@ class TaskRuntime implements TaskRuntimeLike {
         Set<(event: TaskEventEnvelope) => void>
     >();
     private readonly notifications = new TaskNotificationCenter();
-    private readonly worktreeTasks: TaskWorktreeManager;
     private readonly pendingAgentStarts = new Map<string, number>();
     private pendingTaskStarts = 0;
     private sequence = 0;
@@ -170,11 +155,9 @@ class TaskRuntime implements TaskRuntimeLike {
         private readonly shellRunner: ShellRunnerLike,
         private readonly createSubagentThread: CreateSubagentThread,
         private readonly journal: TaskJournalLike,
-        worktrees: WorktreeRuntimeLike,
         private readonly subagents: SubagentRegistry,
         private readonly memory:MemoryRuntimeLike
     ) {
-        this.worktreeTasks = new TaskWorktreeManager(worktrees);
     }
 
     ensureSession(sessionId: string): Promise<void> {
@@ -291,39 +274,23 @@ class TaskRuntime implements TaskRuntimeLike {
         try {
             releaseAgentSlot = this.reserveAgentSlot(binding.sessionId);
             const id = randomUUID();
-            const prepared = await this.worktreeTasks.prepare(
-                id,
-                binding.sessionId,
-                input,
-                this.hasActiveWorktree(binding.sessionId)
-            );
-            if (this.closed) {
-                await this.worktreeTasks.release(prepared.worktree);
-                throw new Error("Task Runtime 已关闭");
-            }
             const task = createAgentTask(
                 id,
                 binding,
-                prepared.input,
-                prepared.context,
+                input,
+                input.parentContext,
                 this.createSubagentThread,
                 async (progress) => { this.notifyListeners(this.createEvent("task_progress", await snapshotTask(progress))); },
-                prepared.worktree,
             );
             this.tasks.set(id, task);
-            try {
-                await this.publish("task_started", task, true);
-            } catch (error) {
-                this.tasks.delete(id);
-                await this.worktreeTasks.release(task.worktree);
-                throw error;
-            }
-            task.completion = runAgentTask(
-                task,
-                prepared.input.request.prompt,
-                this.worktreeTasks,
-                (finished) => this.publish("task_finished", finished)
-            );
+            releaseAgentSlot();
+            releaseTaskSlot();
+            const started = this.publish("task_started", task, true);
+            task.completion = started.then(() => runAgentTask(task, input.request.prompt,
+                finished => this.publish("task_finished", finished)));
+            void task.completion.catch(() => {});
+            try {await started;}
+            catch (error) {this.tasks.delete(id); throw error;}
             return snapshotAgent(task);
         } finally {
             releaseAgentSlot?.();
@@ -350,9 +317,6 @@ class TaskRuntime implements TaskRuntimeLike {
             throw new Error(`Agent Task 不存在: ${id}`);
         }
         if (!isAgentTask(task)) throw new Error(`Task ${id} 不是 Agent`);
-        if (task.worktree) {
-            throw new Error("Worktree Agent 暂不支持发送消息或继续");
-        }
         if (task.status === "cancelled") {
             throw new Error("已取消的 Agent 不能继续，请重新启动 Agent");
         }
@@ -441,7 +405,6 @@ class TaskRuntime implements TaskRuntimeLike {
         task.completion = runAgentTask(
             task,
             queued.content,
-            this.worktreeTasks,
             (finished) => this.publish("task_finished", finished)
         );
         return snapshotAgent(task);
@@ -450,14 +413,11 @@ class TaskRuntime implements TaskRuntimeLike {
     async get(binding: TaskSessionBinding, id: string): Promise<TaskSnapshot | undefined> {
         const task = this.ownedTask(binding.sessionId, id);
         if (task) {
-            if (isAgentTask(task)) await this.refreshManagedWorktree(task);
             return snapshotTask(task);
         }
         const archived = this.archived.get(id);
         if (archived?.owner.sessionId !== binding.sessionId) return undefined;
-        return archived.kind === "agent"
-            ? this.refreshArchivedWorktree(binding, archived)
-            : archived;
+        return archived;
     }
 
     async list(sessionId: string): Promise<readonly TaskSnapshot[]> {
@@ -492,20 +452,6 @@ class TaskRuntime implements TaskRuntimeLike {
         }
         task.notificationPending = false;
         return snapshotTask(task);
-    }
-
-    async discardWorktree(
-        sessionId: string,
-        taskId: string
-    ): Promise<AgentTaskSnapshot> {
-        const record = await this.getWorktreeRecord(sessionId, taskId);
-        const lifecycle = await this.worktreeTasks.discard(record);
-        return this.updateWorktree(
-            sessionId,
-            taskId,
-            lifecycle.record,
-            lifecycle.inspection
-        );
     }
 
     hasRunning(sessionId?: string): boolean {
@@ -605,16 +551,6 @@ class TaskRuntime implements TaskRuntimeLike {
         return task?.owner.sessionId === sessionId ? task : undefined;
     }
 
-    private hasActiveWorktree(sessionId: string): boolean {
-        return [...this.tasks.values()].some(
-            (task) =>
-                isAgentTask(task) &&
-                task.owner.sessionId === sessionId &&
-                task.status === "running" &&
-                task.worktree?.state === "active"
-        );
-    }
-
     private runningAgentCount(sessionId: string): number {
         return [...this.tasks.values()].filter(
             (task) =>
@@ -680,128 +616,6 @@ class TaskRuntime implements TaskRuntimeLike {
         };
     }
 
-    private async getWorktreeRecord(
-        sessionId: string,
-        taskId: string
-    ): Promise<AgentWorktreeRecord> {
-        const managed = this.ownedTask(sessionId, taskId);
-        const agentTask = managed && isAgentTask(managed) ? managed : undefined;
-        const archived = this.archived.get(taskId);
-        const archivedAgent = archived?.kind === "agent" ? archived : undefined;
-        return this.worktreeTasks.loadRecord(
-            sessionId,
-            taskId,
-            agentTask,
-            archivedAgent
-        );
-    }
-
-    private async refreshManagedWorktree(task: ManagedAgentTask): Promise<void> {
-        if (!task.worktree || task.worktree.state === "cleaned") return;
-        task.worktreeDiffStat = undefined;
-        task.worktreeDiffPreview = undefined;
-        task.worktreeDiffResult = undefined;
-        task.worktreeDiffRevision = undefined;
-        try {
-            const inspection = await this.worktreeTasks.refresh(task.worktree);
-            task.worktreeInspection = inspection;
-            if (!inspection) return;
-            const captured = await this.worktreeTasks.captureDiff({
-                record: task.worktree,
-                inspection,
-                store: task.store,
-                toolCallId: task.owner.toolCallId,
-            });
-            task.worktreeDiffStat = captured?.stat;
-            task.worktreeDiffRevision = captured?.revision;
-            task.worktreeDiffPreview = captured?.preview;
-            task.worktreeDiffResult = captured?.result;
-        } catch (error) {
-            appendTaskIssue(
-                task,
-                `Worktree 实时状态刷新失败：${error instanceof Error ? error.message : String(error)}`
-            );
-        }
-    }
-
-    private async refreshArchivedWorktree(
-        binding: TaskSessionBinding,
-        task: AgentTaskSnapshot
-    ): Promise<AgentTaskSnapshot> {
-        if (!task.worktree || task.worktree.state === "cleaned") return task;
-        const record = await this.worktreeTasks.loadRecord(
-            binding.sessionId,
-            task.id,
-            undefined,
-            task
-        );
-        const inspection = await this.worktreeTasks.refresh(record);
-        if (!inspection) return task;
-        let captured: Awaited<ReturnType<TaskWorktreeManager["captureDiff"]>>;
-        let outputIssue = task.outputIssue;
-        try {
-            captured = await this.worktreeTasks.captureDiff({
-                record,
-                inspection,
-                store: binding.toolResultStore,
-                toolCallId: task.owner.toolCallId,
-            });
-        } catch (error) {
-            const issue = `Worktree 实时 Diff 刷新失败：${
-                error instanceof Error ? error.message : String(error)
-            }`;
-            outputIssue = [outputIssue, issue].filter(Boolean).join("；");
-        }
-        const updated: AgentTaskSnapshot = {
-            ...task,
-            worktree: worktreeSnapshot(record, inspection, captured?.revision),
-            ...(captured
-                ? {
-                    worktreeDiffStat: captured.stat,
-                    worktreeDiffPreview: captured.preview,
-                    worktreeDiffResult: captured.result,
-                }
-                : {
-                    worktreeDiffStat: undefined,
-                    worktreeDiffPreview: undefined,
-                    worktreeDiffResult: undefined,
-                }),
-            ...(outputIssue ? {outputIssue} : {}),
-        };
-        this.archived.set(task.id, updated);
-        return updated;
-    }
-
-    private async updateWorktree(
-        sessionId: string,
-        taskId: string,
-        record: AgentWorktreeRecord,
-        inspection?: Awaited<ReturnType<TaskWorktreeManager["refresh"]>>
-    ): Promise<AgentTaskSnapshot> {
-        const managed = this.ownedTask(sessionId, taskId);
-        if (managed && isAgentTask(managed)) {
-            managed.worktree = record;
-            managed.worktreeInspection = inspection;
-            await this.publish("task_progress", managed);
-            return snapshotAgent(managed);
-        }
-        const archived = this.archived.get(taskId);
-        if (
-            !archived ||
-            archived.kind !== "agent" ||
-            archived.owner.sessionId !== sessionId
-        ) {
-            throw new Error(`Agent Task 不存在: ${taskId}`);
-        }
-        const updated: AgentTaskSnapshot = {
-            ...archived,
-            worktree: worktreeSnapshot(record, inspection),
-        };
-        this.archived.set(taskId, updated);
-        await this.publishArchived("task_progress", updated);
-        return updated;
-    }
-
     private async publish(
         type: TaskEventEnvelope["type"],
         task: ManagedTask,
@@ -820,21 +634,12 @@ class TaskRuntime implements TaskRuntimeLike {
         this.notifyListeners(event);
     }
 
-    private async publishArchived(
-        type: TaskEventEnvelope["type"],
-        task: TaskSnapshot
-    ): Promise<void> {
-        const event = this.createEvent(type, task);
-        await this.journal.append(event);
-        this.notifyListeners(event);
-    }
-
     private createEvent(
         type: TaskEventEnvelope["type"],
         task: TaskSnapshot
     ): TaskEventEnvelope {
         return {
-            version: 4,
+            version: 5,
             sequence: ++this.sequence,
             sessionId: task.owner.sessionId,
             task,
@@ -883,9 +688,6 @@ class TaskRuntime implements TaskRuntimeLike {
                 };
             }
             if (snapshot.status === "running") {
-                const reconciliation = snapshot.kind === "agent"
-                    ? await this.worktreeTasks.reconcileInterrupted(snapshot)
-                    : {};
                 restored = {
                     ...restored,
                     status: "cancelled",
@@ -893,11 +695,7 @@ class TaskRuntime implements TaskRuntimeLike {
                     outputIssue: [
                         restored.outputIssue,
                         "上次 Pillar 进程结束或崩溃，任务不会自动重跑",
-                        reconciliation.issue,
                     ].filter(Boolean).join("；"),
-                    ...(reconciliation.worktree
-                        ? {worktree: reconciliation.worktree}
-                        : {}),
                 };
                 await this.journal.append(
                     this.createEvent("task_finished", restored)
@@ -916,7 +714,6 @@ class TaskRuntime implements TaskRuntimeLike {
 export function createTaskRuntime(
     storage: PillarStorageLayout,
     cwd: string,
-    childEnvironment: ChildProcessEnvironment,
     shellRunner: ShellRunnerLike,
     createSubagentThread: CreateSubagentThread,
     subagents: SubagentRegistry,
@@ -926,7 +723,6 @@ export function createTaskRuntime(
         shellRunner,
         createSubagentThread,
         createTaskJournal(storage, cwd),
-        createWorktreeRuntime(storage, cwd, childEnvironment),
         subagents,
         memory
     );

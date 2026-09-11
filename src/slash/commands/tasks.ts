@@ -12,17 +12,10 @@ function formatTask(task: TaskSnapshot): string {
     const activity = task.progress.lastActivity
         ? ` · ${task.progress.lastActivity}`
         : "";
-    const worktree = task.worktree
-        ? `\n  worktree ${task.worktree.state} · ${task.worktree.changedFiles.length + (task.worktree.omittedChangedFiles ?? 0)} files · ${task.worktree.commitsAhead ?? 0} commits · ${task.worktree.path}${
-            task.worktreeDiffResult
-                ? `\n  diff result ${task.worktreeDiffResult.resultId}`
-                : ""
-        }`
-        : "";
     const identity = task.agentName
         ? `${task.agentName} (${task.agentType})`
         : task.agentType;
-    return `- ${task.id} · agent · ${task.status}${result}\n  ${identity} · ${task.description}\n  ${task.progress.iterations} iterations · ${task.progress.toolUseCount} tools${activity}${worktree}`;
+    return `- ${task.id} · agent · ${task.status}${result}\n  ${identity} · ${task.description}\n  ${task.progress.iterations} iterations · ${task.progress.toolUseCount} tools${activity}`;
 }
 
 export const tasksCommand: SlashCommand = {

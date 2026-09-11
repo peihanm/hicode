@@ -22,7 +22,7 @@ describe("system prompt task constraints", () => {
     expect(content).toContain("一次性批准不扩展为其他任务的长期授权");
     expect(content).toContain("用户撤回或改变范围时遵循最新指令");
     expect(content).toContain("不会自动修改工具权限或替代 Runtime 审批");
-    expect(content).toContain("这不授权停止任意系统进程或删除 Worktree");
+    expect(content).toContain("这不授权停止任意系统进程或删除工作目录");
     expect(content).toContain("Push 前核对分支、远端和待推送提交均在授权范围内");
     expect(content).not.toContain("否则总是先确认");
     expect(content).not.toContain("CLAUDE.md");

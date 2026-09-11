@@ -1,6 +1,6 @@
 import {lstat, realpath} from "node:fs/promises";
 import {dirname, isAbsolute, relative, resolve} from "node:path";
-import {isPathInside} from "../worktrees/pathGuard.js";
+import {isPathInside} from "./pathGuard.js";
 
 export type DirectoryGrantScope = "session" | "project";
 

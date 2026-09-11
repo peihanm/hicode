@@ -46,6 +46,7 @@ interface ToolSearchSource {
 // 工具运行时上下文：注入权限裁决、规则、模式等依赖
 // 避免工具直接耦合 UI / 配置加载
 export interface ToolContext {
+    readonly toolNames: readonly string[];
     imageModelSupported?: boolean;
     imageAccess?: ImageAccess;
     /** Root Turn observes actual execute intervals, excluding permission and batch queues. */
@@ -108,7 +109,7 @@ export interface ToolContext {
     // 当前工作目录（工具路径解析、attachment 探测与项目 identity 用）
     cwd: string;
 
-    // Worktree Agent 的执行层文件边界；Root Runtime 默认不设置。
+    // 子 Agent 的执行层文件边界；Root Runtime 默认不设置。
     workspaceBoundary?: string;
 
     // 当前 Session 已授权的工作目录；不能替代 Host/子 Agent hard boundary。

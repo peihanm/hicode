@@ -1,7 +1,7 @@
 import {realpath} from "node:fs/promises";
 import {resolve} from "node:path";
 import {readFileSnapshot} from "../tools/shared/fileSnapshot.js";
-import {isPathInside} from "../worktrees/pathGuard.js";
+import {isPathInside} from "../permissions/pathGuard.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 
 /** Already-authorized local selection. Resolve once, reject private storage, then open without following a leaf symlink. */

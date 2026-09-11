@@ -1,10 +1,10 @@
 import {z} from "zod";
-import type {AgentTaskSnapshot} from "../../tasks/index.js";
 import type {SubagentRegistry} from "../../subagents/registry.js";
 import type {SubagentResult} from "../../subagents/types.js";
 import {formatSubagentModel} from "../../subagents/model.js";
-import {hasAgentWriteTools, supportsWorkspaceWriteGrant, validateBackgroundAgent,} from "../../subagents/registration.js";
+import {hasAgentWriteTools,} from "../../subagents/registration.js";
 import type {Tool} from "../types.js";
+import {resolveSubagentDirectory} from "../../subagents/workspace.js";
 
 const agentInputSchema = z.object({
     description: z
@@ -37,28 +37,16 @@ const agentInputSchema = z.object({
         .boolean()
         .default(false)
         .describe("true 时立即返回 Task ID，完成后 Pillar 主动通知"),
-    isolation: z
-        .enum(["worktree"])
-        .optional()
-        .describe("写型自定义 Agent 后台运行时必须使用 worktree 隔离"),
+    cwd: z.string().trim().min(1).optional().describe("已有工作目录，默认当前目录；必须在父任务已授权目录内，不会自动创建或授权目录"),
+    read_only: z.boolean().default(false).describe("true 时只读调查，禁止文件写入和有副作用的命令；Explore 始终只读"),
     model: z
         .enum(["inherit", "fast"])
         .optional()
         .describe("可选模型层级：inherit 使用主力模型；fast 使用独立配置的快速 Provider 与模型。仅持久 Agent 支持"),
-});
+}).strict();
 
 const MAX_AGENT_TOOL_LINE_CHARS = 340;
 
-function worktreeLaunchLines(task: AgentTaskSnapshot): string[] {
-    if (!task.worktree) return [];
-    return [
-        `Worktree: ${task.worktree.path}`,
-        `Base: ${task.worktree.baseCommit}`,
-        ...(task.worktree.sourceHadChanges
-            ? ["注意：来源工作区有未提交修改，这些内容未进入 Worktree。"]
-            : []),
-    ];
-}
 function formatResult(result: SubagentResult): string {
     const completed =
         result.reason === "completed" || result.reason === "no_tool_calls";
@@ -105,11 +93,11 @@ function formatAgentToolDescription(
     });
     return [
         "仅在委派有明确收益时启动子 Agent。Root 默认亲自完成顺序性的调查、实现和验证；任务复杂、跨多个文件或目录、耗时较长或需要多次工具调用本身都不是委派理由。只有子任务能与 Root 的其他有效工作并行，或大型陌生代码库的独立只读调查能显著压缩主上下文时才使用。若 Root 必须等待结果才能继续且自己具备所需工具，直接处理。",
-        "Explore 用于独立的大范围只读调查或多个可并行研究方向。持久 Agent 使用 fresh context，prompt 必须提供完整背景；model=fast 适合边界明确、低风险的只读调查，复杂实现和独立验证使用主力模型。subagent_type=fork 会继承当前父对话，name 必填且必须后台运行，不接受 model。只读 Fork 可并行调查，写 Fork 必须 isolation=worktree。仅使用安全结构化文件工具的写型自定义 Agent 可使用 Worktree。后台普通 Agent 可通过 task action=send 接收中途修正或在完成后沿用同一 History 继续；cancelled、Worktree 和旧进程恢复出的 Agent 不支持。后台完成后 Pillar 会主动通知，禁止轮询等待。Worktree 是协作隔离，不是 OS 沙盒。不要在主上下文重复执行已经委派的调查；工具结果对用户不可见，完成后必须由你总结。",
+        "Explore 用于独立只读调查。自定义 Agent 使用 fresh context，prompt 提供任务背景；fork 继承当前父对话，name 必填、后台运行、继承主模型。默认可修改文件和使用 Bash 验证，read_only=true 可收窄为只读。用 cwd 指定已有且获准的目录；不自动创建 Git Worktree、分支或集成改动。明确每个 Agent 的文件职责，保留其他工作者的修改。所有后台 Agent 可通过 task send 接收纠正或完成后沿原 History/cwd 继续，cancelled 和旧进程任务除外。需要新增目录、联网或 elevated 权限时，子 Agent 报告父 Agent 处理，不能自行越权。后台完成会主动通知，不要轮询等待。",
         "",
         "当前可用 Agent：",
         ...agents,
-        "- fork: 根据当前父对话临时派生具名 worker，不会保存为 Agent 定义 (readonly tools: list_files, read_file, grep; worktree tools: list_files, read_file, grep, edit_file, write_file, delete_file)",
+        "- fork: 继承父对话的临时 worker，可读取、搜索、修改文件并用 Bash 检查；read_only=true 时只提供读取与搜索工具。",
     ].join("\n");
 }
 
@@ -117,202 +105,51 @@ export function createAgentTool(
     registry: SubagentRegistry,
     fastModel?: string
 ): Tool<typeof agentInputSchema> {
+    const writes = (input: z.infer<typeof agentInputSchema>): boolean => !input.read_only &&
+        (input.subagent_type === "fork" || !!registry.get(input.subagent_type) && hasAgentWriteTools(registry.get(input.subagent_type)!.definition));
     return {
         name: "agent",
         description: formatAgentToolDescription(registry, fastModel),
         getDescription: () => formatAgentToolDescription(registry, fastModel),
         parameters: agentInputSchema,
         maxResultSizeChars: 30_000,
-        isReadOnly: ({subagent_type, isolation}) => {
-            if (subagent_type === "fork") return isolation !== "worktree";
-            const definition = registry.get(subagent_type)?.definition;
-            return isolation !== "worktree" &&
-                (!definition || !hasAgentWriteTools(definition));
+        isReadOnly: input => !writes(input),
+        isConcurrencySafe: input => !writes(input) &&
+            (input.subagent_type === "fork" || registry.get(input.subagent_type)?.concurrencySafe === true),
+        checkPermissions: async (input, ctx) => {
+            try {await resolveSubagentDirectory(ctx, input.cwd);}
+            catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
+            return writes(input) ? {behavior: "ask", message: `启动可修改文件的子 Agent，工作目录：${input.cwd ?? ctx.cwd}`} : {behavior: "passthrough"};
         },
-        isConcurrencySafe: ({subagent_type, isolation}) =>
-            isolation !== "worktree" && (
-                subagent_type === "fork" ||
-                registry.get(subagent_type)?.concurrencySafe === true
-            ),
-        checkPermissions: async ({subagent_type, isolation}) => {
-            if (subagent_type === "fork") {
-                return isolation === "worktree"
-                    ? {behavior: "ask", message: "启动可修改文件的临时 Worktree Fork"}
-                    : {behavior: "passthrough"};
-            }
-            const definition = registry.get(subagent_type)?.definition;
-            if (
-                isolation === "worktree" ||
-                (definition ? hasAgentWriteTools(definition) : false)
-            ) {
-                return {
-                    behavior: "ask",
-                    message: isolation === "worktree"
-                        ? "启动可修改文件的 Worktree Agent"
-                        : "启动可修改当前工作区的子 Agent",
-                };
-            }
-            return {behavior: "passthrough"};
-        },
-        requiresExplicitApproval: ({subagent_type, isolation}) => {
-            if (subagent_type === "fork") return isolation === "worktree";
-            const definition = registry.get(subagent_type)?.definition;
-            return isolation === "worktree" ||
-                (definition ? hasAgentWriteTools(definition) : false);
-        },
+        requiresExplicitApproval: writes,
         async execute(input, ctx, invocation) {
-            if (!ctx.subagentLauncher) {
-                return {
-                    content: "当前运行入口没有配置子 Agent launcher",
-                    outcome: "failed",
-                };
-            }
-            if (input.subagent_type === "fork") {
-                if (input.model) {
-                    return {
-                        content: "Fork Agent 继承父模型，不接受 model 参数。",
-                        outcome: "failed",
-                    };
-                }
-                if (!input.name) {
-                    return {
-                        content: "subagent_type=fork 时必须提供 name。",
-                        outcome: "failed",
-                    };
-                }
-                if (!input.run_in_background) {
-                    return {
-                        content: "Fork Agent 必须设置 run_in_background=true。",
-                        outcome: "failed",
-                    };
-                }
-                try {
-                    const launched = await ctx.subagentLauncher.launch({
-                        kind: "fork",
-                        name: input.name,
-                        description: input.description,
-                        prompt: input.prompt,
-                        parentToolCallId: invocation.toolCallId,
-                        runInBackground: true,
-                        ...(input.isolation ? {isolation: input.isolation} : {}),
-                    });
-                    const task = launched.kind === "background"
-                        ? launched.task
-                        : undefined;
-                    if (!task) {
-                        return {content: "Fork 未进入后台 Task。", outcome: "failed"};
-                    }
-                    return {
-                        content: [
-                            "Fork Agent Task 已启动。",
-                            `Task: ${task.id}`,
-                            `Agent: ${input.name} (fork)`,
-                            `Description: ${task.description}`,
-                            `Status: ${task.status}`,
-                            ...worktreeLaunchLines(task),
-                            "完成后 Pillar 会主动通知；不要轮询等待。",
-                        ].filter(Boolean).join("\n"),
-                        outcome: "ok",
-                    };
-                } catch (error) {
-                    return {
-                        content: error instanceof Error ? error.message : String(error),
-                        outcome: "failed",
-                    };
-                }
-            }
-            const registration = registry.get(input.subagent_type);
-            if (!registration) {
-                const available = registry
-                    .listDefinitions()
-                    .map((definition) => definition.agentType)
-                    .join(", ");
-                return {
-                    content: `未知 Agent 类型: ${input.subagent_type}。当前可用: ${available}`,
-                    outcome: "failed",
-                };
-            }
-            const request = {
-                agentType: registration.definition.agentType,
-                description: input.description,
-                prompt: input.prompt,
+            if (!ctx.subagentLauncher) return {content: "当前入口没有配置子 Agent launcher", outcome: "failed"};
+            const workspaceWriteApproved = writes(input) &&
+                (invocation.permissionApproved || (ctx.permissionMode === "full-access" && ctx.allowFullAccess));
+            const common = {
+                description: input.description, prompt: input.prompt,
                 parentToolCallId: invocation.toolCallId,
+                cwd: input.cwd, readOnly: input.read_only,
+                ...(workspaceWriteApproved ? {workspaceWriteApproved: true as const} : {}),
             };
-            if (input.isolation && !input.run_in_background) {
-                return {
-                    content: "isolation=worktree 第一版只支持后台 Agent。",
-                    outcome: "failed",
-                };
+            if (input.subagent_type === "fork" && (!input.name || !input.run_in_background || input.model)) {
+                return {content: "Fork 需要 name 和 run_in_background=true，继承父模型，不接受 model 参数。", outcome: "failed"};
             }
-            if (input.run_in_background) {
-                const policyIssue = validateBackgroundAgent(
-                    registration.definition,
-                    input.isolation
-                );
-                if (policyIssue) {
-                    return {
-                        content: policyIssue,
-                        outcome: "failed",
-                    };
-                }
-                if (!ctx.tasks) {
-                    return {
-                        content: "当前运行入口不支持后台 Agent Task。",
-                        outcome: "failed",
-                    };
-                }
-                const launched = await ctx.subagentLauncher.launch({
-                    kind: "registered",
-                    agentType: request.agentType,
-                    description: request.description,
-                    prompt: request.prompt,
-                    parentToolCallId: request.parentToolCallId,
-                    ...(input.model ? {model: input.model} : {}),
-                    runInBackground: true,
-                    ...(input.isolation ? {isolation: input.isolation} : {}),
-                });
-                if (launched.kind !== "background") {
-                    return {content: "Agent 未进入后台 Task。", outcome: "failed"};
-                }
+            if (input.subagent_type !== "fork" && !registry.has(input.subagent_type)) {
+                return {content: `未知 Agent 类型: ${input.subagent_type}`, outcome: "failed"};
+            }
+            try {
+                const launched = await ctx.subagentLauncher.launch(input.subagent_type === "fork"
+                    ? {...common, kind: "fork", name: input.name!, runInBackground: true}
+                    : {...common, kind: "registered", agentType: input.subagent_type,
+                        runInBackground: input.run_in_background, ...(input.model ? {model: input.model} : {})});
+                if (launched.kind === "foreground") return {content: formatResult(launched.result),
+                    outcome: launched.result.reason === "completed" || launched.result.reason === "no_tool_calls" ? "ok" : "failed"};
                 const task = launched.task;
-                return {
-                    content: [
-                        "Agent Task 已启动。",
-                        `Task: ${task.id}`,
-                        `Agent: ${task.agentType}`,
-                        `Description: ${task.description}`,
-                        `Status: ${task.status}`,
-                        ...worktreeLaunchLines(task),
-                        "完成后 Pillar 会主动通知；不要轮询等待。",
-                    ].filter(Boolean).join("\n"),
-                    outcome: "ok",
-                };
-            }
-            const launched = await ctx.subagentLauncher.launch({
-                kind: "registered",
-                agentType: request.agentType,
-                description: request.description,
-                prompt: request.prompt,
-                parentToolCallId: request.parentToolCallId,
-                ...(input.model ? {model: input.model} : {}),
-                runInBackground: false,
-                ...(invocation.permissionApproved && supportsWorkspaceWriteGrant(registration.definition)
-                    ? {workspaceWriteApproved: true as const} : {}),
-            });
-            if (launched.kind !== "foreground") {
-                return {content: "Agent 意外进入后台 Task。", outcome: "failed"};
-            }
-            const result = launched.result;
-            return {
-                content: formatResult(result),
-                outcome:
-                    result.reason === "interrupted"
-                        ? "interrupted"
-                        : result.reason === "max_turns" ||
-                            result.reason === "permission_denied"
-                          ? "failed"
-                          : "ok",
-            };
+                return {content: ["Agent Task 已启动。", `Task: ${task.id}`, `Agent: ${task.agentName ?? task.agentType}`,
+                    `Description: ${task.description}`, `Status: ${task.status}`, `Cwd: ${task.cwd}`,
+                    "完成后会主动通知；用 task send 纠正或继续原 Agent，不要轮询等待。"].join("\n"), outcome: "ok"};
+            } catch (error) {return {content: error instanceof Error ? error.message : String(error), outcome: "failed"};}
         },
     };
 }

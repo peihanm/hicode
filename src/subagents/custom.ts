@@ -28,7 +28,8 @@ export function createCustomSubagentRegistration(
                     additionalTools: mcpTools,
                 },
                 contextResources: {
-                readOnlyTools: !parentContext.workspaceBoundary || parentContext.permissionPromptPolicy !== "never",
+                    toolNames: parentContext.toolNames,
+                readOnlyTools: true,
                     storage: parentContext.storage,
                     cwd: parentContext.cwd,
                     workspaceBoundary:

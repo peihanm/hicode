@@ -24,6 +24,7 @@ import {
 } from "../permissions/index.js";
 
 export interface ToolContextResources {
+    toolNames: readonly string[];
     contextSettings: ToolContext["contextSettings"];
     allowFullAccess?: boolean;
     readOnlyTools?: boolean;
@@ -91,6 +92,7 @@ export function createToolContext({
         signal,
         allowFullAccess: resources.allowFullAccess ?? false,
         readOnlyTools: resources.readOnlyTools ?? false,
+        toolNames: Object.freeze([...resources.toolNames]),
         approvalEpoch: session.approvalEpoch ?? new ApprovalEpoch(),
         approvalBudget: new ApprovalBudget(),
         approvalReviewer: resources.approvalReviewer,

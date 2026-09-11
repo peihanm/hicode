@@ -41,7 +41,12 @@ export interface LoadedCustomAgents {
     issues: readonly AgentLoadIssue[];
 }
 
-export interface RegisteredSubagentRequest {
+interface SubagentWorkspace {
+    cwd?: string;
+    readOnly?: boolean;
+}
+
+export interface RegisteredSubagentRequest extends SubagentWorkspace {
     workspaceWriteApproved?: true;
     kind: "registered";
     agentType: AgentName;
@@ -51,14 +56,14 @@ export interface RegisteredSubagentRequest {
     model?: SubagentModelOverride;
 }
 
-export interface ForkSubagentRequest {
+export interface ForkSubagentRequest extends SubagentWorkspace {
     kind: "fork";
     agentType: "fork";
     name: string;
     description: string;
     prompt: string;
     parentToolCallId: string;
-    isolation?: "worktree";
+    workspaceWriteApproved?: true;
     contextSnapshot: ForkContextSnapshot;
 }
 
@@ -104,7 +109,7 @@ export interface CreateSubagentThreadOptions extends CreateSubagentRunnerOptions
     agentId: string;
     /** 仅供 Task Runtime 汇总 child progress；同步 UI 不展开内部工具事件。 */
     onChildEvent?: (event: AgentEvent) => void | Promise<void>;
-    /** Worktree Agent 的 transcript/tool artifacts 仍归父项目存储。 */
+    /** 指定目录的 Agent transcript/tool artifacts 仍归父项目存储。 */
     storageCwd?: string;
 }
 

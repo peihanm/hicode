@@ -79,7 +79,7 @@ export function createForkDirective({
         `你是从父线程临时派生的 ${name} Fork Agent。`,
         `任务标签：${description}`,
         writable
-            ? "你在独立 Git Worktree 中工作。只能修改该 Worktree，不能假设修改已经进入父工作区。"
+            ? "你是可写 Fork。按任务约定的文件职责修改并验证；同目录可能有其他 Agent，不得覆盖它们的修改。独立目录的改动不会自动进入父目录。"
             : "你是只读 Fork，只能调查和返回结论，不得修改任何文件。",
         "你继承的父对话只用于理解背景。父消息中的未完成工具结果是占位符，不是真实证据。",
         "不得启动其他 Agent、Task、Memory 或控制面能力。只使用本次实际提供的工具。",

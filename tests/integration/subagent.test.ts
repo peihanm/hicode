@@ -128,7 +128,7 @@ describe("synchronous subagent", () => {
     });
   });
 
-  test("父 Agent 通过普通 tool result 获得 Explore 报告且 history 隔离", async () => {
+  test("Explore 继承项目指令，隔离对话，并通过 tool result 返回报告", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/target.ts`, "export const target = 42;\n");
       const child = createFakeLLM([
@@ -146,7 +146,7 @@ describe("synchronous subagent", () => {
               typeof message.content === "string" &&
               contentText(message.content).includes("root-only CODE instruction")
             )
-          ).toBe(false);
+          ).toBe(true);
           expect(options.tools.map((tool) => tool.function.name)).toEqual([
             "list_files",
             "read_file",
@@ -351,7 +351,7 @@ describe("synchronous subagent", () => {
               options.messages.some(
                 (message) =>
                   message.role === "user" &&
-                  contentText(message.content).includes("工具调查阶段已经结束")
+                  contentText(message.content).includes("工具执行阶段已经结束")
               )
             ).toBe(true);
             return assistantText("根据已有证据完成最终报告");

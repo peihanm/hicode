@@ -79,7 +79,7 @@ import {withTempProject} from "../helpers/tempProject.js";
     });
 }
 
-test("task 默认停止自有 Agent，discard 仍强制确认", async () => {
+test("task 默认停止自有 Agent，已删除的 discard 在 Schema 边界拒绝", async () => {
     await withTempProject(async cwd => {
         let approvals = 0;
         const ctx = createTestContext(cwd, {permissionMode: "ask", canUseTool: async () => {
@@ -111,8 +111,8 @@ test("task 默认停止自有 Agent，discard 仍强制确认", async () => {
             expect((await session.get(task.id))?.status).toBe("cancelled");
             expect(approvals).toBe(0);
             const discarded = await tools.executeTool("task", JSON.stringify({action: "discard", task_id: task.id}), ctx, "agent-discard");
-            expect(discarded.outcome).toBe("denied");
-            expect(approvals).toBe(1);
+            expect(discarded.outcome).toBe("failed");
+            expect(approvals).toBe(0);
             expect(await session.get(task.id)).toBeDefined();
         } finally {
             await runtime.close();

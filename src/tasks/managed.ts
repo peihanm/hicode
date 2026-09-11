@@ -4,7 +4,6 @@ import type {StopReason} from "../agent/types.js";
 import {selectUtf8Range} from "../toolResults/utf8.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {ShellTermination} from "../tools/bash/process.js";
-import type {AgentWorktreeRecord, WorktreeInspection} from "../worktrees/index.js";
 import type {SubagentThread} from "../subagents/types.js";
 import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot, TaskStatus,} from "./types.js";
@@ -36,6 +35,7 @@ export interface ManagedShellTask extends ManagedTaskBase {
 }
 
 export interface ManagedAgentTask extends ManagedTaskBase {
+    cwd: string;
     thread: SubagentThread;
     messageQueue: RuntimeMessageQueue;
     agentType: string;
@@ -51,12 +51,6 @@ export interface ManagedAgentTask extends ManagedTaskBase {
     resultPreview?: string;
     outputResult?: AgentTaskSnapshot["outputResult"];
     transcriptPath?: string;
-    worktree?: AgentWorktreeRecord;
-    worktreeInspection?: WorktreeInspection;
-    worktreeDiffStat?: string;
-    worktreeDiffRevision?: string;
-    worktreeDiffPreview?: string;
-    worktreeDiffResult?: AgentTaskSnapshot["worktreeDiffResult"];
 }
 
 export interface ManagedMemoryTask extends Omit<ManagedTaskBase,"owner"> {kind:"memory";owner:{sessionId:string;turnId:string};resultPreview?:string;}
@@ -74,38 +68,6 @@ export function isShellTask(task: ManagedTask): task is ManagedShellTask {
 export function appendTaskIssue(task: ManagedTask, issue: string): void {
     if (task.outputIssue?.includes(issue)) return;
     task.outputIssue = [task.outputIssue, issue].filter(Boolean).join("；");
-}
-
-export function worktreeSnapshot(
-    record: AgentWorktreeRecord,
-    inspection?: WorktreeInspection,
-    revision?: string
-) {
-    return {
-        path: record.path,
-        branch: record.branch,
-        baseCommit: record.baseCommit,
-        state: record.state,
-        sourceHadChanges: record.sourceHadChanges,
-        changedFiles: [...(inspection?.changedFiles ?? [])],
-        ...(inspection?.status === "available" && inspection.omittedChangedFiles > 0
-            ? {omittedChangedFiles: inspection.omittedChangedFiles}
-            : {}),
-        ...(inspection?.status === "available"
-            ? {
-                headCommit: inspection.headCommit,
-                dirty: inspection.dirty,
-                commitsAhead: inspection.commitsAhead,
-            }
-            : {}),
-        ...(revision ? {revision} : {}),
-        ...(record.cleanupReason ? {cleanupReason: record.cleanupReason} : {}),
-        ...(inspection?.status === "unavailable"
-            ? {issue: inspection.issue}
-            : record.issue
-                ? {issue: record.issue}
-                : {}),
-    };
 }
 
 export async function readOutputPreview(path: string): Promise<string> {
@@ -150,6 +112,7 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
     return {
         id: task.id,
         kind: "agent",
+        cwd: task.cwd,
         owner: task.owner,
         agentType: task.agentType,
         ...(task.agentName ? {agentName: task.agentName} : {}),
@@ -172,18 +135,6 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
         ...(task.outputResult ? {outputResult: task.outputResult} : {}),
         ...(task.transcriptPath ? {transcriptPath: task.transcriptPath} : {}),
         ...(task.outputIssue ? {outputIssue: task.outputIssue} : {}),
-        ...(task.worktree
-            ? {worktree: worktreeSnapshot(task.worktree, task.worktreeInspection, task.worktreeDiffRevision)}
-            : {}),
-        ...(task.worktreeDiffStat
-            ? {worktreeDiffStat: task.worktreeDiffStat}
-            : {}),
-        ...(task.worktreeDiffPreview
-            ? {worktreeDiffPreview: task.worktreeDiffPreview}
-            : {}),
-        ...(task.worktreeDiffResult
-            ? {worktreeDiffResult: task.worktreeDiffResult}
-            : {}),
     };
 }
 

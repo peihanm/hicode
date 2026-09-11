@@ -1,3 +1,4 @@
+import {throwIfTurnAborted} from "../runtime/abort.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {persistPreparedImage} from "../images/persist.js";
 import {imageReferences} from "../images/content.js";
@@ -7,6 +8,7 @@ import {DEFAULT_SUBAGENT_MAX_ITERATIONS} from "../agent/constants.js";
 import type {AgentRunner} from "../agent/runner.js";
 import {createCompactState} from "../context/state.js";
 import type {ToolResultStore} from "../toolResults/index.js";
+import {inlineToolResult} from "../tools/execute.js";
 import {createToolRuntime} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "../agent/types.js";
@@ -26,10 +28,10 @@ import type {
 } from "./types.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
-import {supportsWorkspaceWriteGrant, type SubagentRegistration} from "./registration.js";
+import {type SubagentRegistration} from "./registration.js";
 import {resolveSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
-import {isPathInside, validateWorkspacePath} from "../worktrees/pathGuard.js";
+import {resolveSubagentDirectory, subagentInstructions, subagentPermissionRules} from "./workspace.js";
 
 interface SubagentRunnerDependencies {
     primaryRunAgent: AgentRunner;
@@ -41,9 +43,9 @@ interface SubagentRunnerDependencies {
 }
 
 const DEFAULT_FINALIZE_PROMPT = [
-    "工具调查阶段已经结束。",
-    "现在禁止继续调用工具，请只根据当前 history 中已经获得的证据输出最终调查报告。",
-    "报告应直接回答原始任务，列出关键文件和结论，并明确任何尚未确认的部分。",
+    "工具执行阶段已经结束。",
+    "现在禁止继续调用工具，请只根据当前 history 中已经获得的证据输出最终任务报告。",
+    "报告应回答原始任务，列出已完成修改、验证结果和未完成部分，不得把未执行的检查声称为通过。",
 ].join("\n");
 
 const READONLY_FORK_TOOLS = [
@@ -53,7 +55,7 @@ const READONLY_FORK_TOOLS = [
     "grep",
 ] as const;
 
-const WORKTREE_FORK_TOOLS = [
+const WRITABLE_FORK_TOOLS = [
     "list_files",
     "glob",
     "read_file",
@@ -61,14 +63,15 @@ const WORKTREE_FORK_TOOLS = [
     "edit_file",
     "write_file",
     "delete_file",
+    "bash",
 ] as const;
 
 function createForkRegistration(
     request: ForkSubagentRequest,
     parentContext: ToolContext
 ): SubagentRegistration {
-    const allowedTools = request.isolation === "worktree"
-        ? WORKTREE_FORK_TOOLS
+    const allowedTools = request.readOnly !== true
+        ? WRITABLE_FORK_TOOLS
         : READONLY_FORK_TOOLS;
     return {
         definition: {
@@ -80,12 +83,13 @@ function createForkRegistration(
             maxIterations: 12,
             source: "builtin",
         },
-        concurrencySafe: request.isolation !== "worktree",
+        concurrencySafe: request.readOnly === true,
         createRuntimeConfig() {
             return {
                 toolRuntimeOptions: {allowedToolNames: allowedTools},
                 contextResources: {
-                    readOnlyTools: request.isolation !== "worktree",
+                    readOnlyTools: request.readOnly === true,
+                    toolNames: parentContext.toolNames,
                     storage: parentContext.storage,
                     cwd: parentContext.cwd,
                     workspaceBoundary:
@@ -136,18 +140,14 @@ export function createSubagentFactories(
         }
         const {definition} = registration;
         const runtimeConfig = registration.createRuntimeConfig(parentContext);
-        let approvedWorkspace: string | undefined;
-        // A one-launch grant only covers structured writes inside the child's
-        // hard workspace boundary. It never authorizes Shell/MCP or changes Root.
-        if (parentContext.collaborationMode !== "plan" && request.kind === "registered" && request.workspaceWriteApproved && supportsWorkspaceWriteGrant(definition)) {
-            runtimeConfig.permissionMode = "ask";
-            runtimeConfig.contextResources.readOnlyTools = false;
-            runtimeConfig.collaborationMode = "build";
-            approvedWorkspace = parentContext.workspaceBoundary && isPathInside(parentContext.cwd, parentContext.workspaceBoundary)
-                ? parentContext.workspaceBoundary : parentContext.cwd;
-            runtimeConfig.contextResources.workspaceBoundary = approvedWorkspace;
-        }
-        const runtime = createToolRuntime(runtimeConfig.toolRuntimeOptions);
+        const writable = request.workspaceWriteApproved === true && request.readOnly !== true &&
+            !parentContext.readOnlyTools && parentContext.collaborationMode !== "plan";
+        runtimeConfig.contextResources.readOnlyTools = !writable;
+        runtimeConfig.permissionRules = subagentPermissionRules(parentContext);
+        const runtime = createToolRuntime({...runtimeConfig.toolRuntimeOptions,
+            allowedToolNames: (runtimeConfig.toolRuntimeOptions.allowedToolNames ?? [])
+                .filter(name => parentContext.toolNames.includes(name)),
+        });
         const initialToolNames = runtime.getToolSchemas()
             .map((tool) => tool.function.name);
         const modelSelection = request.kind !== "fork"
@@ -170,15 +170,7 @@ export function createSubagentFactories(
         const childSessionId = `subagent-${agentId}`;
         const childHistory: Message[] = request.kind === "fork"
             ? structuredClone(request.contextSnapshot.history)
-            : [{
-                role: "system",
-                content: createAgentSystemPrompt(
-                    definition,
-                    parentContext.cwd,
-                    childModel,
-                    initialToolNames
-                ),
-            }];
+            : [];
         const childCompactState = createCompactState();
         const childContextUsage = new ContextUsageTracker();
         const childFileState = createFileStateTracker();
@@ -201,6 +193,8 @@ export function createSubagentFactories(
         let transcriptDisabled = false;
         let running = false;
         let runCount = 0;
+        let childCwd: string | undefined;
+        let instructions = parentContext.instructions;
 
         const thread: SubagentThread = {
             agentId,
@@ -213,11 +207,15 @@ export function createSubagentFactories(
                 let hookStatus: "completed" | "failed" | "cancelled" = "failed";
                 let hookReason = "error";
                 try {
-                    if (approvedWorkspace) {
-                        for (const boundary of [parentContext.cwd, parentContext.workspaceBoundary ?? parentContext.cwd]) {
-                            const validation = await validateWorkspacePath(boundary, parentContext.cwd, approvedWorkspace);
-                            if (!validation.ok) throw new Error(validation.message);
-                        }
+                    throwIfTurnAborted(input.signal);
+                    const cwd = await resolveSubagentDirectory(parentContext, request.cwd);
+                    throwIfTurnAborted(input.signal);
+                    if (childCwd !== undefined && cwd !== childCwd) throw new Error("子 Agent 工作目录在继续前发生变化");
+                    if (childCwd === undefined) {
+                        childCwd = cwd;
+                        instructions = await subagentInstructions(parentContext, cwd);
+                        if (request.kind !== "fork") childHistory.push({role: "system",
+                            content: createAgentSystemPrompt(definition, cwd, childModel, initialToolNames)});
                     }
                     if (runCount === 0 && request.kind === "fork") {
                         const copied = new Set<string>();
@@ -238,6 +236,7 @@ export function createSubagentFactories(
                         // 逐字段构造，禁止未来 capability 被 Root resources 自动扩散到 Child。
                         resources: {
                             ...runtimeConfig.contextResources,
+                            cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames,
                             fileCommits: parentContext.fileCommits,
                             // Child 只能凭自己实际读取过的内容获得编辑授权。
                             model: childModel,
@@ -268,6 +267,15 @@ export function createSubagentFactories(
                             },
                         },
                     });
+                    const executeChildTool: typeof runtime.executeTool = async (name, args, context, callId) => {
+                        try {
+                            const current = await resolveSubagentDirectory(parentContext, request.cwd);
+                            if (current !== cwd) return inlineToolResult("子 Agent 工作目录在工具执行前发生变化，未执行", "denied");
+                        } catch (error) {
+                            return inlineToolResult(`子 Agent 目录权限拒绝: ${error instanceof Error ? error.message : String(error)}`, "denied");
+                        }
+                        return runtime.executeTool(name, args, context, callId);
+                    };
                     // subagentLauncher 故意缺失，形成不可递归的运行时边界。
                     if (!transcriptStarted && !transcriptDisabled) {
                         try {
@@ -284,7 +292,7 @@ export function createSubagentFactories(
                                     : {}),
                                 description: request.description,
                                 model: childModel,
-                                cwd: parentContext.cwd,
+                                cwd,
                                 allowedTools: runtime.toolNames,
                             });
                             transcriptPath = transcript.path;
@@ -363,8 +371,8 @@ export function createSubagentFactories(
                         ? createForkDirective({
                             name: request.name,
                             description: request.description,
-                            prompt: input.prompt,
-                            writable: request.isolation === "worktree",
+                            prompt: `当前实际工作目录：${cwd}。路径以此目录为准，继承历史中的其他目录不授予访问权限。\n${input.prompt}`,
+                            writable,
                         })
                         : input.prompt;
                     let result = await runChildAgent(
@@ -378,7 +386,7 @@ export function createSubagentFactories(
                             inputOrigin: "agent",
                             getToolSchemas: runtime.getToolSchemas,
                             isToolConcurrencySafe: runtime.isConcurrencySafe,
-                            executeTool: runtime.executeTool,
+                            executeTool: executeChildTool,
                         }
                     );
                     let totalIterations = result.iterations;
@@ -399,7 +407,7 @@ export function createSubagentFactories(
                                 inputOrigin: "agent",
                                 getToolSchemas: () => [],
                                 isToolConcurrencySafe: runtime.isConcurrencySafe,
-                                executeTool: runtime.executeTool,
+                                executeTool: executeChildTool,
                             }
                         );
                         result = finalized;
