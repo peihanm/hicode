@@ -1,16 +1,14 @@
-import {createCompactState} from "../context/index.js";
 import type {HookTrustRequest} from "../hooks/index.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
 import {isPermissionMode} from "../permissions/index.js";
 import {isCollaborationMode} from "../collaboration/index.js";
-import {createInitialHistory} from "../prompt/index.js";
 import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime/resources.js";
 import {isPillarRootConfiguration} from "../runtime/rootConfiguration.js";
-import {createSessionId, loadSession} from "../session/index.js";
+import {loadSession} from "../session/index.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
 import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
 import type {InteractionRequest, InteractionResponse} from "./protocol.js";
-import {createSDKThread} from "./thread.js";
+import {createSDKThread, prepareThreadSession} from "./thread.js";
 import {adaptPillarHostTools} from "./hostTools.js";
 import {
     PillarSDKError,
@@ -105,26 +103,10 @@ export class Pillar {
             );
         }
         if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "当前 Host 不允许 Full Access");
-        const sessionId = createSessionId();
-        return this.openThread({
-            seed: {
-                sessionId,
-                history: createInitialHistory(
-                    this.resources.cwd,
-                    this.resources.model
-                ),
-                compactState: createCompactState(),
-            },
-            state: {
-                todos: [],
-                permissionMode:
-                    options.permissionMode ??
-                    this.resources.settings.permissions.defaultMode,
-                collaborationMode: options.collaborationMode ?? "build",
-                uiEvents: [],
-            },
-            resumed: false,
-        });
+        const initial = prepareThreadSession(this.resources);
+        initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;
+        initial.state.collaborationMode = options.collaborationMode ?? initial.state.collaborationMode;
+        return this.openThread(initial);
     }
 
     async resumeThread(sessionId: string): Promise<Thread> {
@@ -147,23 +129,7 @@ export class Pillar {
                 `没有找到会话: ${sessionId}`
             );
         }
-        return this.openThread({
-            seed: {
-                sessionId: loaded.sessionId,
-                history: loaded.history,
-                compactState: loaded.compactState ?? createCompactState(),
-                queuedInputs: loaded.queuedInputs,
-                taskNotificationReceipts: loaded.taskNotificationReceipts,
-                toolDiscovery: loaded.toolDiscovery,
-            },
-            state: {
-                todos: loaded.todos,
-                permissionMode: loaded.permissionMode,
-                collaborationMode: loaded.collaborationMode,
-                uiEvents: loaded.uiEvents,
-            },
-            resumed: true,
-        });
+        return this.openThread(prepareThreadSession(this.resources, loaded));
     }
 
     close(): Promise<void> {

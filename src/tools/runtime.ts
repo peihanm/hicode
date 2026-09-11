@@ -27,6 +27,7 @@ export interface ToolRuntime {
 }
 
 export interface CreateToolRuntimeOptions {
+    skillsAvailable?: boolean;
     allowedToolNames?: readonly string[];
     additionalTools?: readonly Tool[];
     /** Root-owned live capabilities; sampled before discovery and execution. */

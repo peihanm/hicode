@@ -23,6 +23,10 @@ import { createSubagentRegistry } from "../../src/subagents/index.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
 import {createPillarStorageLayout} from "../../src/persistence/index.js";
 
+function toolItems(result: HeadlessRunSummary) {return result.items.filter(item => item.type === "tool_call");}
+function agentItems(result: HeadlessRunSummary) {return result.items.filter(item => item.type === "subagent");}
+function fileChanges(result: HeadlessRunSummary) {return result.items.flatMap(item => item.type === "file_change" ? item.changes : []);}
+
 function options(cwd: string): HeadlessTestInput {
   return {
     cwd,
@@ -113,12 +117,12 @@ describe("headless integration", () => {
         },
       });
 
-      expect(summary).toMatchObject({ ok: true, exitCode: 0, reply: "完成" });
+      expect(summary).toMatchObject({ ok: true, exitCode: 0, finalResponse: "完成" });
       expect(captured).toBe(summary);
       expect(JSON.parse(formatHeadlessOutput(summary, "json"))).toMatchObject({
         ok: true,
         exitCode: 0,
-        reason: "completed",
+        stopReason: "completed",
       });
     });
   });
@@ -167,9 +171,9 @@ describe("headless integration", () => {
       expect(summary).toMatchObject({
         ok: false,
         exitCode: 2,
-        reason: "hook_blocked",
+        stopReason: "hook_blocked",
       });
-      expect(summary.reply).toContain("headless policy");
+      expect(summary.finalResponse).toContain("headless policy");
     });
   });
 
@@ -202,9 +206,9 @@ describe("headless integration", () => {
         writeOutput: ignoreOutput,
       });
 
-      expect(summary.reply).toBe("调查完成");
-      expect(summary.subagents).toHaveLength(1);
-      expect(summary.subagents[0]).toMatchObject({
+      expect(summary.finalResponse).toBe("调查完成");
+      expect(agentItems(summary)).toHaveLength(1);
+      expect(agentItems(summary)[0]).toMatchObject({
         agentType: "Explore",
         description: "调查入口",
         status: "completed",
@@ -212,15 +216,15 @@ describe("headless integration", () => {
         iterations: 1,
         toolUseCount: 0,
       });
-      expect(summary.subagents[0]?.transcriptPath).toBeTruthy();
-      expect(summary.toolCalls[0]).toMatchObject({
+      expect(agentItems(summary)[0]?.transcriptPath).toBeTruthy();
+      expect(toolItems(summary)[0]).toMatchObject({
         name: "agent",
         outcome: "ok",
       });
     });
   });
 
-  test("工具失败记录为 failure 并返回 exit 2", async () => {
+  test("工具失败保留原记录，正常结束不额外改退出码", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall("broken", {}, "broken-1"),
@@ -240,19 +244,19 @@ describe("headless integration", () => {
         writeOutput: ignoreOutput,
       });
 
-      expect(summary.ok).toBe(false);
-      expect(summary.exitCode).toBe(2);
-      expect(summary.toolFailures).toHaveLength(1);
-      expect(summary.toolCalls[0]?.outcome).toBe("failed");
-      expect(summary.reply).toBe("工具仍然失败，任务未完成");
+      expect(summary.ok).toBe(true);
+      expect(summary.exitCode).toBe(0);
+      expect(toolItems(summary).filter(item => item.outcome === "failed")).toHaveLength(1);
+      expect(toolItems(summary)[0]?.outcome).toBe("failed");
+      expect(summary.finalResponse).toBe("工具仍然失败，任务未完成");
       expect(fake.calls).toHaveLength(2);
-      expect(formatHeadlessOutput(summary, "text")).toContain(
+      expect(formatHeadlessOutput(summary, "text")).not.toContain(
         "1 tool call(s) failed"
       );
     });
   });
 
-  test("权限拒绝单独记录并返回 exit 2", async () => {
+  test("权限拒绝单独记录，正常结束不额外改退出码", async () => {
     await withTempProject(async (cwd) => {
       const fake = createFakeLLM([
         assistantToolCall("write_file", {}, "denied-1"),
@@ -271,10 +275,10 @@ describe("headless integration", () => {
         writeOutput: ignoreOutput,
       });
 
-      expect(summary.exitCode).toBe(2);
-      expect(summary.permissionDenials).toHaveLength(1);
-      expect(summary.toolFailures).toHaveLength(0);
-      expect(summary.toolCalls[0]?.outcome).toBe("permission_denied");
+      expect(summary.exitCode).toBe(0);
+      expect(toolItems(summary).filter(item => item.outcome === "denied")).toHaveLength(1);
+      expect(toolItems(summary).filter(item => item.outcome === "failed")).toHaveLength(0);
+      expect(toolItems(summary)[0]?.outcome).toBe("denied");
     });
   });
 
@@ -298,11 +302,11 @@ describe("headless integration", () => {
       expect(summary).toMatchObject({
         ok: false,
         exitCode: 3,
-        reason: "max_turns",
+        stopReason: "max_turns",
         iterations: 2,
       });
       expect(formatHeadlessOutput(summary, "text")).toContain(
-        "maximum iteration limit"
+        "max_turns"
       );
     });
   });
@@ -326,7 +330,7 @@ describe("headless integration", () => {
         }
       );
 
-      expect(secondSummary.sessionId).toBe(firstSummary.sessionId);
+      expect(secondSummary.threadId).toBe(firstSummary.threadId);
       expect(
         second.calls[0]?.messages.some(
           (message) => message.role === "assistant" && message.content === "第一轮"
@@ -352,18 +356,18 @@ describe("headless integration", () => {
         toolResultStoreOptions: { pillarHome },
         writeOutput: ignoreOutput,
       });
-      expect(first.toolCalls[0]?.persisted).toMatchObject({
+      expect(toolItems(first)[0]).toMatchObject({
         resultId: "tr_headless-large",
-        complete: true,
+        resultComplete: true,
       });
       expect(JSON.parse(formatHeadlessOutput(first, "json"))).toMatchObject({
-        toolCalls: [{ persisted: { resultId: "tr_headless-large" } }],
+        items: expect.arrayContaining([expect.objectContaining({type: "tool_call", resultId: "tr_headless-large"})]),
       });
 
       const secondFake = createFakeLLM([
         assistantToolCall(
           "read_file",
-          { path: first.toolCalls[0]!.persisted!.path, limit: 1 },
+          { path: toolItems(first)[0]!.resultPath!, limit: 1 },
           "headless-read"
         ),
         (call) => {
@@ -385,8 +389,8 @@ describe("headless integration", () => {
           writeOutput: ignoreOutput,
         }
       );
-      expect(second.sessionId).toBe(first.sessionId);
-      expect(second.reply).toBe("恢复读取成功");
+      expect(second.threadId).toBe(first.threadId);
+      expect(second.finalResponse).toBe("恢复读取成功");
     });
   });
 
@@ -426,16 +430,16 @@ describe("headless integration", () => {
         writeOutput: ignoreOutput,
       });
 
-      expect(summary.fileChanges).toHaveLength(1);
-      expect(summary.fileChanges[0]).toMatchObject({
+      expect(fileChanges(summary)).toHaveLength(1);
+      expect(fileChanges(summary)[0]).toMatchObject({
         path: "created.txt",
         kind: "create",
         linesAdded: 2,
         linesRemoved: 0,
       });
-      expect(summary.toolCalls[0]?.uiData?.type).toBe("file_change");
+      expect(summary.items.some(item => item.type === "file_change")).toBe(true);
       expect(JSON.parse(formatHeadlessOutput(summary, "json"))).toMatchObject({
-        fileChanges: [{ path: "created.txt", linesAdded: 2 }],
+        items: expect.arrayContaining([expect.objectContaining({type: "file_change", changes: [expect.objectContaining({path: "created.txt", linesAdded: 2})]})]),
       });
     });
   });
@@ -467,10 +471,10 @@ describe("headless integration", () => {
       expect(summary).toMatchObject({
         ok: false,
         exitCode: 130,
-        reason: "interrupted",
+        stopReason: "interrupted",
         abortReason: "sigint",
       });
-      expect(formatHeadlessOutput(summary, "text")).toContain("task interrupted");
+      expect(formatHeadlessOutput(summary, "text")).toContain("interrupted");
     });
   });
 
@@ -516,17 +520,16 @@ describe("headless integration", () => {
       });
       const summary = await runHeadless(options(cwd), {
         createResources: async () => resources,
-        runAgent: (async () => ({
-          reply: "done",
-          reason: "completed",
-          iterations: 1,
-        })) as AgentRunner,
+        runAgent: (async (_prompt, _history, onEvent) => {
+          await onEvent({type:"assistant_text",content:"done",phase:"final"});
+          return {reply:"done",reason:"completed",iterations:1};
+        }) as AgentRunner,
         saveSession: async () => {},
         writeOutput: ignoreOutput,
         writeDiagnostic: async () => {},
       });
 
-      expect(summary.reply).toBe("done");
+      expect(summary.finalResponse).toBe("done");
       expect(closeCount).toBe(1);
     });
   });
@@ -598,7 +601,7 @@ describe("headless integration", () => {
       };
 
       expect(await runWithFormat("text")).toEqual([
-        "● read_file src/a.ts",
+        '● read_file {"path":"src/a.ts"}',
         "  done",
       ]);
       expect(await runWithFormat("json")).toEqual([]);
@@ -623,11 +626,10 @@ describe("headless integration", () => {
 
       await runHeadless(options(cwd), {
         createResources: async () => resources,
-        runAgent: (async () => ({
-          reply: "done",
-          reason: "completed",
-          iterations: 1,
-        })) as AgentRunner,
+        runAgent: (async (_prompt, _history, onEvent) => {
+          await onEvent({type:"assistant_text",content:"done",phase:"final"});
+          return {reply:"done",reason:"completed",iterations:1};
+        }) as AgentRunner,
         saveSession: async () => {},
         writeOutput(summary) {
           output = summary;
@@ -641,7 +643,7 @@ describe("headless integration", () => {
         "Agent 配置: ERROR · project · broken.md · tools · 当前 Runtime 不存在工具: missing",
       ]);
       expect(JSON.stringify(output)).not.toContain("broken.md");
-      expect(output?.reply).toBe("done");
+      expect(output?.finalResponse).toBe("done");
     });
   });
 
@@ -674,4 +676,17 @@ describe("headless integration", () => {
       expect(closeCount).toBe(1);
     });
   });
+});
+
+test("Headless 共享 Thread 初始化失败仍运行 SessionEnd 并关闭 Root", async () => {
+ await withTempProject(async cwd => {
+  const events: string[] = [];
+  const resources=createTestRuntimeResources(cwd,{hooks:{enabled:true,inspect:()=>[],issues:[],hasToolHooks:()=>false,reload:async()=>{},execute:async input=>{
+   events.push(input.hook_event_name);
+   if(input.hook_event_name==="SessionStart") throw new Error("start hook failed");
+   return {blocked:false,additionalContexts:[],executions:[]};
+  }},close:async()=>{events.push("closed");}});
+  await expect(runHeadless(options(cwd),{createResources:async()=>resources,writeDiagnostic:()=>{},writeOutput:ignoreOutput})).rejects.toThrow("start hook failed");
+  expect(events).toEqual(["SessionStart","SessionEnd","closed"]);
+ });
 });

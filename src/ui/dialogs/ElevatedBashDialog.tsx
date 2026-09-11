@@ -50,9 +50,7 @@ function readElevatedBashInput(req: ConfirmReq): ElevatedBashInput | undefined {
     const command = req.input.command.trim();
     const explicitlyElevated = "sandbox_permissions" in req.input &&
         req.input.sandbox_permissions === "require_escalated";
-    const hostExecution = req.presentation?.kind === "host_execution" &&
-        req.presentation.command.trim() === command;
-    if (!explicitlyElevated && !hostExecution) return undefined;
+    if (!explicitlyElevated) return undefined;
     const cwd = "cwd" in req.input && typeof req.input.cwd === "string"
         ? req.input.cwd
         : undefined;

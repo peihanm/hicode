@@ -7,7 +7,7 @@ import type {RuntimeQueuedMessage} from "../runtime/messageQueue.js";
 import type {Todo} from "../todos.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
-export const SESSION_INDEX_VERSION = 1;
+export const SESSION_INDEX_VERSION = 2;
 export const SESSION_ENTRY_VERSION = 8;
 
 export interface SessionIndexEntry {
@@ -17,10 +17,7 @@ export interface SessionIndexEntry {
     createdAt: string;
     updatedAt: string;
     messageCount: number;
-    firstPrompt?: string;
-    lastPrompt?: string;
     summary?: string;
-    archived?: boolean;
 }
 
 export interface SessionIndexFile {

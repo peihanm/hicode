@@ -106,7 +106,7 @@ describe("ShellRunner", () => {
         });
     });
 
-    test("Sandbox 本地端口 EPERM 提示保持原命令并申请 elevated", async () => {
+    test("Sandbox 保留进程 EPERM 输出，不据文本添加提权建议", async () => {
         await withTempProject(async (cwd) => {
             const runner = createShellRunner(
                 sandboxRuntime({
@@ -123,15 +123,11 @@ describe("ShellRunner", () => {
             });
 
             expect(result.stderr).toContain("listen EPERM");
-            expect(result.stderr).toContain("Pillar Sandbox: 本地端口监听被");
-            expect(result.stderr).toContain('sandbox_permissions="require_escalated"');
-            expect(result.stderr).toContain("不要换端口或重写服务");
-            expect(result.stderr).toContain("仅当该命令是原始任务的必要步骤时");
-            expect(result.stderr).toContain("可选验证受阻时说明未验证范围");
+            expect(result.stderr).not.toContain("Pillar Sandbox:");
         });
     });
 
-    test("Sandbox 本地端点连接失败提示提升原探测命令", async () => {
+    test("普通本地连接失败不归因为 Sandbox 拒绝", async () => {
         await withTempProject(async (cwd) => {
             const runner = createShellRunner(
                 sandboxRuntime({
@@ -148,9 +144,7 @@ describe("ShellRunner", () => {
             });
 
             expect(result.stderr).toContain("Immediate connect fail");
-            expect(result.stderr).toContain("Pillar Sandbox: 本地端点访问被");
-            expect(result.stderr).toContain("仅当该探测是原始任务的必要步骤时");
-            expect(result.stderr).toContain('sandbox_permissions="require_escalated"');
+            expect(result.stderr).not.toContain("Pillar Sandbox:");
         });
     });
 

@@ -40,7 +40,7 @@ const inputSchema = z.object({
     sandbox_permissions: z
         .enum(["use_default", "require_escalated"])
         .optional()
-        .describe("默认在 OS Sandbox 内执行；实际网络连接由 Runtime 按域名与端口申请授权，批准后仍保留 Sandbox。直接启动 macOS .app 可执行文件时自动申请本次 elevated 授权。只有确实需要脱离 Sandbox 时才使用 require_escalated，并等待用户单独确认"),
+        .describe("默认在 OS Sandbox 内执行；实际网络连接由 Runtime 按域名与端口申请授权，批准后仍保留 Sandbox。只有确实需要脱离 Sandbox 时才使用 require_escalated，并等待用户单独确认"),
 });
 
 type CommandCwdResult =
@@ -83,27 +83,6 @@ async function resolveCommandCwd(
 
 function backgroundSyntaxMessage(): string {
     return "Bash command 禁止使用 shell 后台操作符 &。启动长运行服务请单独调用 bash 并设置 run_in_background=true；重启受管任务时先用 task stop。";
-}
-
-function isDirectMacOSApplicationCommand(command: string): boolean {
-    const quotedExecutable = /^\s*(["'])(\/.+?\.app\/Contents\/MacOS\/.+?)\1(?:\s|$)/i;
-    const unquotedExecutable = /^\s*\/\S+\.app\/Contents\/MacOS\/\S+(?:\s|$)/i;
-    return splitShellSubCommands(command).some((part) =>
-        quotedExecutable.test(part) || unquotedExecutable.test(part)
-    );
-}
-
-function requiredHostExecutionGrant(
-    command: string,
-    sandboxPermissions: "use_default" | "require_escalated" | undefined,
-    ctx: ToolContext
-): {reason: string; command: string} | undefined {
-    if (
-        sandboxPermissions === "require_escalated" ||
-        ctx.shellRunner.sandboxStatus.kind !== "ready" ||
-        !isDirectMacOSApplicationCommand(command)
-    ) return undefined;
-    return {reason: "启动 macOS 应用进程", command};
 }
 
 function formatShellResult(result: ShellExecutionResult): string {
@@ -192,7 +171,7 @@ function formatObservedBackgroundTask(task: ShellTaskSnapshot, yielded = false):
 
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。直接启动 macOS .app 可执行文件时，Runtime 会自动申请本次命令的 elevated 授权。已知文件内容使用 read_file，代码定位使用 grep。测试和构建直接运行，由框架限制展示；不要仅为缩短输出加 tail/head/grep 管道。长输出保存后用 grep 搜索返回的文件路径，无法搜索时用 read_file 按行分页，不要仅为换截取方式重跑命令；修复后再运行相关检查。按共同验证原则选择项目已有检查；不得通过 Bash 补造缺失的浏览器能力，项目既有 E2E 和用户明确要求搭建自动化的任务按其范围执行。原始任务必需的命令因 Sandbox EPERM 受阻时，保持原命令并申请 require_escalated，不要换端口、语言或重写服务来规避限制；可选验证受阻则披露范围。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
+    description: "在 shell 中执行系统命令、项目脚本、依赖安装、构建与测试并返回 stdout/stderr。每次调用都是独立进程，需要子目录时传 cwd，不要依赖上一条命令中的 cd。网络代理会按实际连接的域名和端口申请授权；无需为了下载依赖主动脱离 Sandbox。已知文件内容使用 read_file，代码定位使用 grep。测试和构建直接运行，由框架限制展示；不要仅为缩短输出加 tail/head/grep 管道。长输出保存后用 grep 搜索返回的文件路径，无法搜索时用 read_file 按行分页，不要仅为换截取方式重跑命令；修复后再运行相关检查。按共同验证原则选择项目已有检查；不得通过 Bash 补造缺失的浏览器能力，项目既有 E2E 和用户明确要求搭建自动化的任务按其范围执行。原始任务必需的命令因 Sandbox EPERM 受阻时，保持原命令并申请 require_escalated，不要换端口、语言或重写服务来规避限制；可选验证受阻则披露范围。长运行服务、GUI 或 watcher 使用 run_in_background 并省略 timeout_ms；工具会拒绝 shell 后台操作符 &。",
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
     isReadOnly: ({command, sandbox_permissions}) =>
@@ -201,12 +180,9 @@ export const bashTool: Tool<typeof inputSchema> = {
     isConcurrencySafe: ({command, sandbox_permissions}) =>
         sandbox_permissions !== "require_escalated" &&
         isShellCommandReadOnly(command),
-    requiresExplicitApproval: ({command, sandbox_permissions}, ctx) =>
-        sandbox_permissions === "require_escalated" ||
-        requiredHostExecutionGrant(command, sandbox_permissions, ctx) !== undefined,
-    getDefaultApprovalScope: ({command, sandbox_permissions}, ctx) =>
+    requiresExplicitApproval: ({sandbox_permissions}) => sandbox_permissions === "require_escalated",
+    getDefaultApprovalScope: ({sandbox_permissions}, ctx) =>
         sandbox_permissions !== "require_escalated" &&
-            requiredHostExecutionGrant(command, sandbox_permissions, ctx) === undefined &&
             ctx.shellRunner.sandboxStatus.kind === "ready"
             ? {kind: "sandboxed"}
             : undefined,
@@ -225,26 +201,6 @@ export const bashTool: Tool<typeof inputSchema> = {
                     "该命令请求脱离 OS Sandbox，在宿主环境中执行：",
                     `  ${command}`,
                     "脱离 Sandbox 后，命令及其子进程不再受文件和网络边界保护。是否继续?",
-                ].join("\n"),
-            };
-        }
-        const hostGrant = requiredHostExecutionGrant(
-            command,
-            sandbox_permissions,
-            ctx
-        );
-        if (hostGrant) {
-            return {
-                behavior: "ask",
-                allowPersistent: false,
-                presentation: {
-                    kind: "host_execution",
-                    reason: hostGrant.reason,
-                    command: hostGrant.command,
-                },
-                message: [
-                    `检测到命令需要${hostGrant.reason}。`,
-                    "批准后本次命令将脱离 OS Sandbox；命令及其子进程不再受文件和网络边界保护。",
                 ].join("\n"),
             };
         }
@@ -317,14 +273,8 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {content: resolvedCwd.message, outcome: "failed" as const};
         }
         const commandCwd = resolvedCwd.path;
-        const hostGrant = requiredHostExecutionGrant(
-            command,
-            sandbox_permissions,
-            ctx
-        );
-        const effectiveSandboxPermissions = hostGrant || (ctx.permissionMode === "full-access" && ctx.allowFullAccess)
-            ? "require_escalated" as const
-            : sandbox_permissions;
+        const effectiveSandboxPermissions = ctx.permissionMode === "full-access" && ctx.allowFullAccess
+            ? "require_escalated" as const : sandbox_permissions;
         const networkEvidence = structuredClone(ctx.approvalEvidence?.() ?? []);
         const detached = run_in_background === true || yield_time_ms !== undefined;
         const networkEpoch = new ApprovalEpoch();

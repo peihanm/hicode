@@ -103,6 +103,7 @@ describe("RootRuntimeResources", () => {
         content: "host instruction",
         truncated: false,
       }]);
+      expect(resources.toolRuntime.toolNames).toContain("skill");
       expect(resources.skills.find((skill) => skill.name === "host-skill"))
         .toMatchObject({source: "host", id: "host-skill"});
       expect(resources.subagents.get("host-reviewer")?.definition)
@@ -341,4 +342,12 @@ describe("RootRuntimeResources", () => {
       await disabled.close();
     });
   });
+});
+
+test("没有实际 Skill 的 Root 不暴露 skill 工具", async () => {
+ await withTempProject(async cwd => {
+  const resources = await createRootRuntimeResources({cwd,settings:createTestSettings(),fileSources:{settings:[],instructions:[],skills:[],agents:[],mcp:[]}}, {mcpManager:false});
+  try {expect(resources.toolRuntime.toolNames).not.toContain("skill");expect(resources.toolRuntime.getToolSchemas().some(tool=>tool.function.name==="skill")).toBe(false);}
+  finally {await resources.close();}
+ });
 });

@@ -234,7 +234,7 @@ describe("permission confirmation UI", () => {
     expect(instance.lastFrame()).toContain("› Start once");
   });
 
-  test("自动识别的 macOS 应用宿主执行使用 elevated 专用界面", async () => {
+  test("显式申请 macOS 应用宿主执行使用 elevated 专用界面", async () => {
     const command =
       '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new';
     const instance = render(
@@ -243,13 +243,8 @@ describe("permission confirmation UI", () => {
           id: 1,
           question: "launch application",
           toolName: "bash",
-          input: {command, run_in_background: true},
+          input: {command, run_in_background: true, sandbox_permissions: "require_escalated"},
           allowAddToAllowList: false,
-          presentation: {
-            kind: "host_execution",
-            reason: "启动 macOS 应用进程",
-            command,
-          },
           resolve: () => {},
         }}
         onDone={() => {}}

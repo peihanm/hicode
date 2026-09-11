@@ -1,6 +1,6 @@
 import type {ToolOutcome} from "../toolResults/index.js";
 
-export type ToolPhaseKind = "inspect" | "build" | "verify" | "service";
+export type ToolPhaseKind = "inspect";
 
 export interface ToolPhasePresentation {
     kind: ToolPhaseKind;
@@ -33,10 +33,6 @@ function parseArgs(argsJson: string): ParsedArgs {
 function stringArg(args: ParsedArgs, key: string): string | undefined {
     const value = args[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function booleanArg(args: ParsedArgs, key: string): boolean {
-    return args[key] === true;
 }
 
 function truncate(value: string, max: number): string {
@@ -78,90 +74,6 @@ function taskDetail(args: ParsedArgs): string {
 
 function quotedTarget(value: string): string {
     return truncate(JSON.stringify(value), 80);
-}
-
-function describeBashPhase(args: ParsedArgs): ToolPhasePresentation | undefined {
-    const command = stringArg(args, "command") ?? "";
-    const normalized = command.replace(/\r\n?/g, "\n").toLowerCase();
-    if (booleanArg(args, "run_in_background")) {
-        const looksLikeService =
-            /\b(?:serve|server|vite|next\s+dev|http\.server)\b/.test(normalized) ||
-            /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start)\b/.test(normalized) ||
-            /\bnode\s+[^\n;&|]*(?:server|app|index)\.(?:js|mjs|cjs|ts)\b/.test(normalized);
-        return looksLikeService
-            ? {
-                kind: "service",
-                label: "Starting service",
-                activity: "Starting local service",
-                success: "Service running",
-            }
-            : undefined;
-    }
-    if (
-        /\bcurl\b[\s\S]*(?:127\.0\.0\.1|localhost|\[::1\])/.test(normalized)
-    ) {
-        const failsOnHttpError =
-            /\bcurl\b[^\n;&|]*(?:--fail(?:-with-body)?\b|-[a-z]*f[a-z]*\b)/.test(normalized);
-        return {
-            kind: "verify",
-            label: "Verifying",
-            activity: "Checking local endpoints",
-            success: failsOnHttpError
-                ? "Local endpoint checks passed"
-                : "Local endpoint checks completed",
-        };
-    }
-    if (
-        /\b(?:node|bun)\s+--check\b/.test(normalized) ||
-        /\b(?:ast\.parse|py_compile|compileall)\b/.test(normalized)
-    ) {
-        return {
-            kind: "verify",
-            label: "Verifying",
-            activity: "Checking syntax",
-            success: "Syntax checks passed",
-        };
-    }
-    if (
-        /\b(?:bun|npm|pnpm|yarn)\s+(?:(?:run|exec)\s+)?(?:test|check|lint|typecheck|verify)\b/.test(normalized) ||
-        /\b(?:pytest|vitest|jest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test)\b/.test(normalized)
-    ) {
-        return {
-            kind: "verify",
-            label: "Verifying",
-            activity: "Running project checks",
-            success: "Project checks passed",
-        };
-    }
-    if (
-        /\b(?:bun|npm|pnpm|yarn)\s+(?:(?:run|exec)\s+)?build\b/.test(normalized)
-    ) {
-        return {
-            kind: "build",
-            label: "Building",
-            activity: "Building project",
-            success: "Build completed",
-        };
-    }
-    if (
-        /(^|[;&|\n]\s*)(?:which|command\s+-v)\s+/.test(normalized) ||
-        /\b(?:node|bun|python\d*|git|java|go|rustc)\s+(?:-v|--version|version)\b/.test(normalized)
-    ) {
-        return {
-            kind: "inspect",
-            label: "Inspecting project",
-            activity: "Checking development environment",
-            success: "Development environment checked",
-        };
-    }
-    return undefined;
-}
-
-function reportsLocalEndpointFailure(result: string | undefined): boolean {
-    if (!result) return false;
-    return /(?:^|\s)(?:GET\s+\S+\s*->\s*)?000(?:FAIL)?(?:\s|$)/im.test(result) ||
-        /^curl:\s*\(\d+\)/im.test(result) ||
-        /(?:Failed to connect to|Immediate connect fail for)\s+(?:127\.0\.0\.1|localhost|\[::1\])/i.test(result);
 }
 
 /**
@@ -214,8 +126,6 @@ export function describeToolPhase(
                 success: `Found paths for ${quotedTarget(target)}`,
             };
         }
-        case "bash":
-            return describeBashPhase(args);
         default:
             return undefined;
     }
@@ -231,14 +141,6 @@ export function summarizePhaseToolCall(input: {
     const phase = describeToolPhase(input.name, input.args);
     if (!phase || phase.hidden) return undefined;
     if (input.status === "running") return phase.activity;
-
-    if (input.name === "bash") {
-        if (phase.kind === "service") {
-            const taskId = input.result?.match(/^Task:\s*(\S+)$/m)?.[1];
-            return `${phase.success}${taskId ? ` · task ${taskId}` : ""} · 退出 Pillar 后停止`;
-        }
-        return phase.success;
-    }
 
     if (input.name === "read_file" && input.result) {
         const detail = summarizeToolResult(
@@ -384,16 +286,6 @@ export function isSuccessfulToolActivity(input: {
     if (!activity) return false;
     if (input.status === "running") return true;
     if (input.outcome !== "ok") return false;
-    if (
-        input.name === "bash" &&
-        activity.kind === "verify" &&
-        reportsLocalEndpointFailure(input.result)
-    ) return false;
-    if (
-        input.name === "bash" &&
-        activity.kind === "service" &&
-        /^Status:\s*(?:completed|failed|cancelled)$/im.test(input.result ?? "")
-    ) return false;
     return true;
 }
 

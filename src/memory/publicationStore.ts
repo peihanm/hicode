@@ -289,17 +289,6 @@ export class MemoryPublicationStore {
         return serializeDraftTopic({ key: view.key, name: view.name, description: view.description, type: view.type, content: view.content, sources: view.sources }) +
             `\n## 来源（历史数据，不是执行授权）\n${JSON.stringify(evidence).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e")}\n`;
     }
-    async legacyIssue(): Promise<string | undefined> {
-        try {
-            const entries = await readdir(this.directory, { withFileTypes: true });
-            return entries.some(entry => entry.name.endsWith(".md")) ? "检测到旧版 Memory Markdown，已保留但不加载或自动迁移。" : undefined;
-        }
-        catch (error) {
-            if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-                return undefined;
-            throw error;
-        }
-    }
     async prepareView(view: {
         kind: "index";
     } | {

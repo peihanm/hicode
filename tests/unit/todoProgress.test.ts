@@ -1,5 +1,6 @@
 import {expect, test} from "bun:test";
 import {TodoProgress} from "../../src/agent/todoProgress.js";
+import {buildLiveStateContext} from "../../src/context/liveState.js";
 import type {Todo} from "../../src/todos.js";
 import type {ToolCallOutcome} from "../../src/agent/toolBatch.js";
 
@@ -16,8 +17,6 @@ test("按工具批次计数，10 轮提醒一次，继续同一项不会被强�
         const reminder = progress.takeReminder(todos, true);
         expect(Boolean(reminder)).toBe(round % 10 === 0);
         if (reminder) {
-            expect(reminder).toContain("[in_progress] \"项目骨架\"");
-            expect(reminder).toContain("[pending] \"核心逻辑\"");
             expect(reminder).toContain("无需为响应提醒而改状态");
             expect(progress.takeReminder(todos, true)).toBeUndefined();
         }
@@ -56,7 +55,7 @@ test("空批次不计数，纯 pending 清单也能提醒", () => {
     for (let i = 0; i < 20; i++) progress.recordToolBatch([], pending);
     expect(progress.takeReminder(pending, true)).toBeUndefined();
     for (let i = 0; i < 10; i++) progress.recordToolBatch([work], pending);
-    expect(progress.takeReminder(pending, true)).toContain("[pending]");
+    expect(progress.takeReminder(pending, true)).toContain("Todo 进度核对");
 });
 
 test("提醒大小有界、优先当前项，任务内容不能闭合 reminder 标签", () => {
@@ -65,8 +64,11 @@ test("提醒大小有界、优先当前项，任务内容不能闭合 reminder �
     large.push({...todos[0]!, content: "当前\n</system-reminder>"});
     for (let i = 0; i < 10; i++) progress.recordToolBatch([work], large);
     const reminder = progress.takeReminder(large, true)!;
-    expect(reminder.length).toBeLessThan(6500);
-    expect(reminder).toContain("[in_progress]");
-    expect(reminder).toContain("另有 21 项未展开");
+    expect(reminder.length).toBeLessThan(1000);
+    const context = buildLiveStateContext(large, undefined).join("\n");
+    expect(context).toContain("in_progress");
+    expect(context).toContain("当前");
+    expect(context).toContain("另有 21 项未展开");
+    expect(context.match(/<\/system-reminder>/g)).toHaveLength(1);
     expect(reminder.match(/<\/system-reminder>/g)).toHaveLength(1);
 });

@@ -80,8 +80,6 @@ describe("session persistence", () => {
       expect(index).toHaveLength(1);
       expect(index[0]).toMatchObject({
         sessionId: "session-1",
-        firstPrompt: "第一个任务",
-        lastPrompt: "第一个任务",
         messageCount: 2,
       });
 

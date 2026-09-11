@@ -174,6 +174,6 @@ test("headless -p imports explicit files as user input before running the shared
             },
         });
         expect(result.ok).toBe(true); expect(observed).toBe(true);
-        expect(loadSession(storage, cwd, result.sessionId, "qwen3.8-flash")!.history.flatMap(message => imageReferences(message.content))).toHaveLength(1);
+        expect(loadSession(storage, cwd, result.threadId, "qwen3.8-flash")!.history.flatMap(message => imageReferences(message.content))).toHaveLength(1);
     });
 });

@@ -351,7 +351,6 @@ export async function readGitRepositorySnapshot(
             "--no-optional-locks",
             "rev-parse",
             "--absolute-git-dir",
-            "--git-common-dir",
         ], signal),
     ]);
     const failed = statusResult.code !== 0 ? statusResult :
@@ -371,30 +370,17 @@ export async function readGitRepositorySnapshot(
             .split(/\r?\n/)
             .filter(Boolean);
         const gitDirectory = gitPaths[0];
-        const reportedCommonDirectory = gitPaths[1];
-        if (!gitDirectory || !reportedCommonDirectory) {
-            throw new Error("Git 未返回 absolute git dir/common dir");
-        }
-        const repositoryIdentity = await realpath(
-            reportedCommonDirectory.startsWith("/")
-                ? reportedCommonDirectory
-                : join(root.repositoryRoot, reportedCommonDirectory)
-        );
+        if (!gitDirectory) throw new Error("Git 未返回 absolute git dir");
         const operation = await readOperationState(gitDirectory);
-        const recentCommitTitles = parsed.unborn
-            ? []
-            : await readRecentCommitTitles(runGit, root.repositoryRoot, signal);
         if (signal?.aborted) return cancelledRepositoryResult;
         return {
             status: "available",
             snapshot: {
                 version: 1,
-                repositoryIdentity,
                 repositoryRoot: root.repositoryRoot,
                 ...parsed,
                 operation,
                 clean: parsed.files.length === 0,
-                recentCommitTitles,
             },
         };
     } catch (error) {
@@ -404,21 +390,4 @@ export async function readGitRepositorySnapshot(
             message: error instanceof Error ? error.message : String(error),
         };
     }
-}
-
-async function readRecentCommitTitles(
-    runGit: GitCommandRunner,
-    repositoryRoot: string,
-    signal?: AbortSignal
-): Promise<string[]> {
-    const result = await runGit(repositoryRoot, [
-        "--no-optional-locks",
-        "log",
-        "-5",
-        "--format=%s",
-    ], signal);
-    if (result.code !== 0) throw new Error(formatGitProcessError(result));
-    return result.stdout.toString("utf8")
-        .split(/\r?\n/)
-        .filter(Boolean);
 }

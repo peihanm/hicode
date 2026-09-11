@@ -526,12 +526,11 @@ describe("MCP stdio integration", () => {
         agent: { callLLM: fake.callLLM },
         writeOutput: async () => {},
       });
-      expect(summary.reply).toBe("MCP complete");
-      expect(summary.toolCalls).toEqual(expect.arrayContaining([
+      expect(summary.finalResponse).toBe("MCP complete");
+      expect(summary.items.filter(item => item.type === "tool_call")).toEqual(expect.arrayContaining([
         expect.objectContaining({name: "tool_search", outcome: "ok"}),
         expect.objectContaining({name: "mcp__fixture__echo", outcome: "ok"}),
       ]));
-      expect(summary.mcpServers[0]).toMatchObject({ name: "fixture", status: "connected", toolCount: 8 });
       expect(manager.getSnapshots()[0]?.status).toBe("closed");
 
       const resumedManager = await createFixtureManager(cwd);
@@ -548,14 +547,14 @@ describe("MCP stdio integration", () => {
         prompt: "continue with the loaded MCP tool",
         permissionMode: "full-access",
         collaborationMode: "build",
-        resumeMode: {kind: "session", sessionId: summary.sessionId},
+        resumeMode: {kind: "session", sessionId: summary.threadId},
         outputFormat: "json",
       }, {
         mcpManager: resumedManager,
         agent: {callLLM: resumedFake.callLLM},
         writeOutput: async () => {},
       });
-      expect(resumed.reply).toBe("MCP resumed");
+      expect(resumed.finalResponse).toBe("MCP resumed");
       expect(resumedManager.getSnapshots()[0]?.status).toBe("closed");
     });
   });

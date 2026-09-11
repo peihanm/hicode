@@ -31,6 +31,8 @@ export interface ToolCatalog {
 }
 
 export interface CreateToolCatalogOptions {
+    /** Root startup capability; omitted for the complete definition catalog. */
+    skillsAvailable?: boolean;
     allowedToolNames?: readonly string[];
     additionalTools?: readonly Tool[];
     toolOverrides?: readonly Tool[];
@@ -124,9 +126,10 @@ export function createToolCatalog(
             throw new Error(`Agent 配置了未知工具: ${unknown.join(", ")}`);
         }
     }
+    const availableTools = options.skillsAvailable === false ? combinedTools.filter(tool => tool.name !== "skill") : combinedTools;
     const scopedTools = allowed
-        ? combinedTools.filter((tool) => allowed.has(tool.name))
-        : combinedTools;
+        ? availableTools.filter((tool) => allowed.has(tool.name))
+        : availableTools;
     return {
         tools: scopedTools,
         registrations: scopedTools.map((tool) => ({

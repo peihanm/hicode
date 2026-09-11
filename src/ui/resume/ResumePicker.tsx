@@ -40,7 +40,7 @@ function formatSessionLabel(session: SessionIndexEntry): string {
     const modified = pad(formatRelativeTime(session.updatedAt), 20);
     const created = pad(formatRelativeTime(session.createdAt), 20);
     const count = pad(String(session.messageCount), 8);
-    const summary = session.summary || session.lastPrompt || session.firstPrompt || session.sessionId;
+    const summary = session.summary || session.sessionId;
     return `${modified}${created}${count}${summary}`;
 }
 

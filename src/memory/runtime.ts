@@ -87,7 +87,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             else
                 entries.push(pending);
         }
-        return { entries, issues: [state.lastIssue, this.store.viewIssue, await this.store.legacyIssue()].filter((issue): issue is string => !!issue).map(message => ({ path: this.directory, message })) };
+        return { entries, issues: [state.lastIssue, this.store.viewIssue].filter((issue): issue is string => !!issue).map(message => ({ path: this.directory, message })) };
     }
     async read(key: string): Promise<MemoryEntry | undefined> { return (await this.list()).entries.find(entry => entry.key === key); }
     async forget(key: string, signal: AbortSignal): Promise<MemoryChange | undefined> {
@@ -113,8 +113,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             return { ignoredForTurn: true,
                 block: "<system-reminder>用户本轮要求忽略 Memory；Memory 文件能力已收窄，不读取、维护或应用已保存记忆。</system-reminder>" };
         try {
-            await this.store.prepareView({ kind: "index" });
-            return { ignoredForTurn: false, block: formatPublicationContext(this.directory, this.store.snapshot(), await this.store.legacyIssue()) };
+            return { ignoredForTurn: false, block: formatPublicationContext(this.directory, this.store.snapshot()) };
         }
         catch {
             return { ignoredForTurn: true, block: "<system-reminder>Memory 发布状态读取失败，本轮不读取或维护 Memory，不假设存在已保存内容。</system-reminder>" };

@@ -311,7 +311,8 @@ export function createSubagentFactories(
                     let toolUseCount = 0;
                     const recordChildEvent = async (event: AgentEvent): Promise<void> => {
                         if (event.type === "tool_call_start") toolUseCount += 1;
-                        if (transcriptPath) {
+                        if (transcriptPath && event.type !== "assistant_draft" && event.type !== "assistant_draft_end" &&
+                            event.type !== "model_stream_start" && event.type !== "model_stream_progress" && event.type !== "model_stream_end") {
                             try {
                                 await transcript.append({
                                     type: "event",

@@ -218,7 +218,7 @@ describe("bash tool contract", () => {
     });
   });
 
-  test("直接启动 macOS 应用时先申请单次宿主执行权限", async () => {
+  test("macOS 应用路径不自动申请宿主权限", async () => {
     await withTempProject(async (cwd) => {
       const {runner, calls} = networkCaptureRunner();
       const command =
@@ -243,17 +243,8 @@ describe("bash tool contract", () => {
       );
 
       expect(result.outcome).toBe("ok");
-      expect(requests).toHaveLength(1);
-      expect(requests[0]?.message).toContain("启动 macOS 应用进程");
-      expect(requests[0]?.options).toMatchObject({
-        allowPersistent: false,
-        presentation: {
-          kind: "host_execution",
-          reason: "启动 macOS 应用进程",
-          command,
-        },
-      });
-      expect(calls).toEqual([{command, sandboxPermissions: "require_escalated"}]);
+      expect(requests).toHaveLength(0);
+      expect(calls).toEqual([{command, sandboxPermissions: undefined}]);
     });
   });
 
@@ -509,8 +500,7 @@ describe("bash tool contract", () => {
         expect(result.modelContent).toContain("Status: failed");
         expect(result.modelContent).toContain("Termination: exit 1");
         expect(result.modelContent).toContain("listen EPERM");
-        expect(result.modelContent).toContain("Pillar Sandbox: 本地端口监听被");
-        expect(result.modelContent).toContain("不要换端口或重写服务");
+        expect(result.modelContent).not.toContain("Pillar Sandbox: 本地端口监听被");
         expect(await tasks.pendingNotifications()).toEqual([]);
       } finally {
         await runtime.close();

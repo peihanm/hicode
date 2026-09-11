@@ -185,6 +185,7 @@ export class SDKEventAdapter {
                     ...(event.persisted
                         ? {
                             resultId: event.persisted.resultId,
+                    resultPath: event.persisted.path,
                             resultByteLength: event.persisted.byteLength,
                             resultComplete: event.persisted.complete,
                         }
@@ -214,6 +215,7 @@ export class SDKEventAdapter {
                 const item: ToolCallItem = {
                     ...current,
                     resultId: event.persisted.resultId,
+                    resultPath: event.persisted.path,
                     resultByteLength: event.persisted.byteLength,
                     resultComplete: event.persisted.complete,
                 };

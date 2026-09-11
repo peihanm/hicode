@@ -70,7 +70,7 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
         : undefined;
     const summary = summarized.summary
         ? summarized
-        : {firstPrompt: hint, lastPrompt: hint, summary: hint};
+        : {summary: hint};
     if (!summary.summary && !input.allowEmpty && !compaction) return;
 
     await withSessionPersistenceLock(storage, input.cwd, async () => {
@@ -124,7 +124,7 @@ export function listSessionIndex(
     const projectKey = getProjectKey(cwd);
     return readSessionIndex(storage, cwd).sessions
         .filter(
-            (entry) => getProjectKey(entry.cwd) === projectKey && !entry.archived
+            (entry) => getProjectKey(entry.cwd) === projectKey
         )
         .sort(
             (left, right) =>

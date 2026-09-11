@@ -33,8 +33,6 @@ const MAX_SUMMARY_CHARS = 120;
 const MAX_SESSION_INDEX_ENTRIES = 10_000;
 
 export interface SessionHistorySummary {
-    firstPrompt?: string;
-    lastPrompt?: string;
     summary?: string;
 }
 
@@ -226,10 +224,7 @@ const sessionIndexEntrySchema = z.object({
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     messageCount: nonNegativeIntegerSchema,
-    firstPrompt: z.string().max(MAX_SUMMARY_CHARS).optional(),
-    lastPrompt: z.string().max(MAX_SUMMARY_CHARS).optional(),
     summary: z.string().max(MAX_SUMMARY_CHARS).optional(),
-    archived: z.boolean().optional(),
 }).strict();
 
 export function normalizeToolDiscoverySnapshot(
@@ -356,15 +351,8 @@ export function summarizeSessionHistory(history: Message[]): SessionHistorySumma
     const prompts = history
         .map(getUserText)
         .filter((text): text is string => text !== null && isMeaningfulUserText(text));
-    const firstPrompt = prompts[0] ? truncate(prompts[0], MAX_SUMMARY_CHARS) : undefined;
-    const lastPrompt = prompts[prompts.length - 1]
-        ? truncate(prompts[prompts.length - 1]!, MAX_SUMMARY_CHARS)
-        : undefined;
-    return {
-        firstPrompt,
-        lastPrompt,
-        summary: lastPrompt ?? firstPrompt,
-    };
+    const prompt = prompts.at(-1);
+    return {summary: prompt ? truncate(prompt, MAX_SUMMARY_CHARS) : undefined};
 }
 
 export function countSessionConversationMessages(history: Message[]): number {

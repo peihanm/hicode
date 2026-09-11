@@ -11,11 +11,6 @@ export type PermissionPromptPresentation =
         host: string;
         port: number;
     }
-    | {
-        kind: "host_execution";
-        reason: string;
-        command: string;
-    }
     | ({kind: "filesystem_access"} & DirectoryAccessRequest);
 
 export type PermissionResult =

@@ -1,10 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {createTurnAbortController} from "../runtime/abort.js";
 import type {ShellExecutionResult} from "../tools/bash/process.js";
-import {
-    annotateSandboxLocalNetworkFailure,
-    type ShellRunnerLike,
-} from "../tools/bash/shellRunner.js";
+import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {StartShellTaskInput, TaskSessionBinding, TaskStatus,} from "./types.js";
 import {type ManagedShellTask, readOutputPreview,} from "./managed.js";
 import {isExpectedShellShutdown} from "./notifications.js";
@@ -63,11 +60,7 @@ export async function runShellTask(
         finalStatus = statusFromResult(result);
         task.termination = result.termination;
         const outputPreview = await readOutputPreview(task.outputPath);
-        task.outputPreview =
-            input.sandboxPermissions !== "require_escalated" &&
-            shellRunner.sandboxStatus.kind === "ready"
-                ? annotateSandboxLocalNetworkFailure(outputPreview)
-                : outputPreview;
+        task.outputPreview = outputPreview;
         // Proxy approval diagnostics are generated after process output capture.
         if (result.stderr.trim() && !task.outputPreview.includes(result.stderr.trim())) {
             task.outputPreview = `${task.outputPreview}\n${result.stderr}`.trim();

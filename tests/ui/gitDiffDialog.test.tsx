@@ -15,7 +15,6 @@ function result(): GitDiffSnapshotResult {
             version: 1,
             repository: {
                 version: 1,
-                repositoryIdentity: "/project/.git",
                 repositoryRoot: "/project",
                 branch: "main",
                 headOid: "a".repeat(40),
@@ -24,7 +23,6 @@ function result(): GitDiffSnapshotResult {
                 operation: "normal",
             clean: false,
             files: [],
-            recentCommitTitles: [],
             },
             files: [{
                 status: {

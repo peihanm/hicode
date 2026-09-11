@@ -49,25 +49,6 @@ describe("UIPermissionRequests", () => {
     requests.denyPending("stop");
   });
 
-  test("macOS 应用宿主执行授权不展示永久允许", () => {
-    const requests = new UIPermissionRequests();
-    const command = '"/Applications/Test.app/Contents/MacOS/Test"';
-    void requests.request(
-      "bash",
-      "launch application",
-      {command},
-      {
-        presentation: {
-          kind: "host_execution",
-          reason: "启动 macOS 应用进程",
-          command,
-        },
-      }
-    );
-    expect(requests.getSnapshot()?.allowAddToAllowList).toBe(false);
-    requests.denyPending("stop");
-  });
-
   test("取消只 resolve 一次，旧 request 不能清掉新 request", async () => {
     const requests = new UIPermissionRequests();
     const firstDecision = requests.request("bash", "first", {});

@@ -163,7 +163,7 @@ describe("phase-based tool presentation", () => {
         expect(frame).toContain("工具执行出错: 搜索目录不存在");
     });
 
-    test("已知验证命令默认显示语义摘要，Transcript 保留原始命令和完整输出", () => {
+    test("Bash 默认显示真实命令与预览，Transcript 保留完整输出", () => {
         const threads = completeTool([], {
             id: "bash",
             name: "bash",
@@ -171,10 +171,10 @@ describe("phase-based tool presentation", () => {
             result: ["one", "two", "three", "four", "five"].join("\n"),
         });
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("● Verifying");
-        expect(frame).toContain("✓ Project checks passed");
-        expect(frame).not.toContain("bun test");
-        expect(frame).not.toContain("one");
+        expect(frame).not.toContain("● Verifying");
+        expect(frame).not.toContain("Project checks passed");
+        expect(frame).toContain("bun test");
+        expect(frame).toContain("one");
         expect(frame).not.toContain("five");
 
         const transcript = render(
@@ -184,44 +184,14 @@ describe("phase-based tool presentation", () => {
         expect(transcript).toContain("five");
     });
 
-    test("常见开发流程按检查、验证和服务阶段展示", () => {
-        let threads: UIThread[] = [];
-        threads = completeTool(threads, {
-            id: "environment",
-            name: "bash",
-            args: {command: "which node python3; node -v; python3 -V"},
-            result: "/opt/homebrew/bin/node\nv26.0.0\nPython 3.9.6",
-        });
-        threads = completeTool(threads, {
-            id: "syntax",
-            name: "bash",
-            args: {command: "node --check server.js && python3 -m py_compile runner.py"},
-            result: "runner.py OK",
-        });
-        threads = completeTool(threads, {
-            id: "service",
-            name: "bash",
-            args: {command: "node server.js", run_in_background: true},
-            result: "后台任务已启动。\nTask: task-123\nStatus: running",
-        });
-        threads = completeTool(threads, {
-            id: "endpoint",
-            name: "bash",
-            args: {command: "curl -sf http://127.0.0.1:5175/api/problems"},
-            result: "[{\"slug\":\"two-sum\"}]",
-        });
-
+    test.each(["echo npm test", "bun test", "node --check app.js", "curl -sf http://localhost:8000", "node server.js"])("Bash %s 不派生验证或服务结论", command => {
+        const threads = completeTool([], {id: "bash", name: "bash", args: {command}, result: "original output"});
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("● Inspecting project");
-        expect(frame).toContain("✓ Development environment checked");
-        expect(frame).toContain("● Verifying");
-        expect(frame).toContain("✓ Syntax checks passed");
-        expect(frame).toContain("● Starting service");
-        expect(frame).toContain("✓ Service running · task task-123");
-        expect(frame).toContain("退出 Pillar 后停止");
-        expect(frame).toContain("✓ Local endpoint checks passed");
-        expect(frame).not.toContain("curl -sf");
-        expect(frame).not.toContain("node --check");
+        expect(frame).toContain("● Bash");
+        expect(frame).toContain(command);
+        expect(frame).toContain("original output");
+        expect(frame).not.toContain("checks passed");
+        expect(frame).not.toContain("Service running");
     });
 
     test("普通后台命令默认结果保留生命周期说明", () => {

@@ -22,6 +22,8 @@ test("Root 执行中提醒实时清单，真实 Todo 工具更新后停止提醒
             options => {
                 expect(JSON.stringify(options.messages)).toContain("Todo 进度核对");
                 expect(JSON.stringify(options.messages)).toContain("核心逻辑");
+                const runtime = options.messages.filter(message => typeof message.content === "string" && message.content.includes("Todo 进度核对")).map(message => message.content).join("\n");
+                expect(runtime.match(/核心逻辑/g)).toHaveLength(1);
                 expect(todos).toEqual(initial);
                 return assistantToolCall("todo_write", {todos: next}, "advance");
             },

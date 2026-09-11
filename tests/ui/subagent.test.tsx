@@ -351,7 +351,7 @@ describe("subagent UI", () => {
     expect(expanded).toContain("VERDICT: FAIL");
   });
 
-  test("已知长 Bash 默认使用阶段摘要，Transcript 保留可见换行和截断", () => {
+  test("长 Bash 默认显示原命令，Transcript 保留可见换行和截断", () => {
     const command = [
       'echo "=== first ==="',
       "curl -s http://localhost:3000/api/first",
@@ -367,9 +367,9 @@ describe("subagent UI", () => {
     });
 
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
-    expect(frame).toContain("● Verifying");
-    expect(frame).toContain("… Checking local endpoints");
-    expect(frame).not.toContain("curl -s");
+    expect(frame).toContain("● Bash");
+    expect(frame).not.toContain("Checking local endpoints");
+    expect(frame).toContain("curl -s");
     expect(frame).not.toContain("x".repeat(200));
 
     const transcript = render(

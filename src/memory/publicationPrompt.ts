@@ -2,7 +2,7 @@ import { serializeMemoryNote } from "./note.js";
 import { join } from "node:path";
 import { getMemoryInboxDirectory, getMemoryViewsDirectory } from "../persistence/layout.js";
 import type { MemoryPublication } from "./publicationSchema.js";
-export function formatPublicationContext(directory: string, state: MemoryPublication, legacyIssue?: string): string {
+export function formatPublicationContext(directory: string, state: MemoryPublication): string {
     const example = serializeMemoryNote({ operation: "remember", type: "feedback", content: "\u9700\u8981\u4fdd\u5b58\u7684\u7b80\u77ed\u6b63\u6587\u548c\u9002\u7528\u8303\u56f4\u3002" });
     const pending = state.sources.filter(source => !source.consumed).reverse();
     const visible: typeof pending = [];
@@ -14,7 +14,7 @@ export function formatPublicationContext(directory: string, state: MemoryPublica
         visible.push(source);
         bytes += cost;
     }
-    const data = JSON.stringify({ summary: state.summary, legacyIssue, pending: visible.map(source => ({ key: source.key, type: source.type,
+    const data = JSON.stringify({ summary: state.summary, pending: visible.map(source => ({ key: source.key, type: source.type,
             origin: source.origin.kind, basis: source.origin.kind === "session" ? source.origin.basis : "assistant-recorded-explicit-request", content: source.content })), omittedPending: pending.length - visible.length })
         .replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
     return `<system-reminder>

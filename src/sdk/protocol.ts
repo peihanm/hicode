@@ -50,6 +50,7 @@ export interface ToolCallItem extends ThreadItemBase {
     arguments: unknown;
     resultPreview?: string;
     resultId?: string;
+    resultPath?: string;
     resultByteLength?: number;
     resultComplete?: boolean;
     outcome?: "ok" | "failed" | "denied" | "interrupted";

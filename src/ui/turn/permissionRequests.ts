@@ -39,7 +39,6 @@ export class UIPermissionRequests {
                     toolName !== "write_file" &&
                     toolName !== "edit_file" &&
                     toolName !== "delete_file" &&
-                    options?.presentation?.kind !== "host_execution" &&
                     options?.presentation?.kind !== "network_access" &&
                     !(
                         toolName === "bash" &&

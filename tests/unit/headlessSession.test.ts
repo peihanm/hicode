@@ -1,123 +1,24 @@
+import {expect,test} from "bun:test";
+import {prepareThreadSession} from "../../src/sdk/thread.js";
+import {loadSession} from "../../src/session/index.js";
 import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
-import { describe, expect, test } from "bun:test";
-import { createCompactState } from "../../src/context/index.js";
-import { loadHeadlessSession } from "../../src/headless/session.js";
+import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
+import {withTempProject} from "../helpers/tempProject.js";
+import {runHeadlessForTest} from "../helpers/headless.js";
+import {createTestSettings} from "../helpers/runtimeResources.js";
 
-import { withTempProject } from "../helpers/tempProject.js";
-import { createTestSettings } from "../helpers/runtimeResources.js";
-import {
-  CLI_FILE_SOURCES,
-  createPillarRootConfiguration,
-} from "../../src/runtime/rootConfiguration.js";
-import type {PillarStorageLayout} from "../../src/persistence/index.js";
-import type {ResolvedPillarSettings} from "../../src/settings/index.js";
-
-function configuration(
-  cwd: string,
-  storage: PillarStorageLayout,
-  settings: ResolvedPillarSettings = createTestSettings()
-) {
-  return createPillarRootConfiguration({
-    cwd,
-    workspaceBoundary: cwd,
-    storage,
-    settings,
-    fileSources: CLI_FILE_SOURCES,
-  });
-}
-
-describe("headless session boundary", () => {
-  test("none 创建默认 state 且使用 CLI permission override", async () => {
-    await withTempProject(async (cwd, storage) => {
-      const state = loadHeadlessSession({
-        configuration: configuration(cwd, storage),
-        resumeMode: { kind: "none" },
-        permissionMode: "ask",
-        collaborationMode: "build",
-      });
-      expect(state.permissionMode).toBe("ask");
-      expect(state.history[0]?.role).toBe("system");
-      expect(state.todos).toEqual([]);
-    });
-  });
-
-  test("没有 CLI 或 Session mode 时使用同一 Settings snapshot", async () => {
-    await withTempProject(async (cwd, storage) => {
-      const state = loadHeadlessSession({
-        configuration: configuration(cwd, storage, createTestSettings({
-          permissions: {
-            defaultMode: "ask",
-            additionalDirectories: [],
-            rules: { allow: [], ask: [], deny: [] },
-          },
-        })),
-        resumeMode: { kind: "none" },
-      });
-      expect(state.permissionMode).toBe("ask");
-    });
-  });
-
-  test("picker、missing continue 和 missing id 保持错误", async () => {
-    await withTempProject(async (cwd, storage) => {
-      expect(() =>
-        loadHeadlessSession({
-          configuration: configuration(cwd, storage),
-          resumeMode: { kind: "picker" },
-        })
-      ).toThrow("headless 模式不能使用交互式 -r");
-      expect(() =>
-        loadHeadlessSession({
-          configuration: configuration(cwd, storage),
-          resumeMode: { kind: "continue" },
-        })
-      ).toThrow("没有找到可继续的历史会话");
-      expect(() =>
-        loadHeadlessSession({
-          configuration: configuration(cwd, storage),
-          resumeMode: { kind: "session", sessionId: "missing" },
-        })
-      ).toThrow("没有找到会话: missing");
-    });
-  });
-
-  test("resume mode 恢复，CLI mode 优先于 snapshot mode", async () => {
-    await withTempProject(async (cwd, storage) => {
-      await saveSessionSnapshot(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "session-1",
-        history: [
-          { role: "system", content: "system" },
-          { role: "user", origin: "user" as const, content: "hello" },
-          { role: "assistant", content: "world" },
-        ],
-        todos: [],
-        permissionMode: "ask",
-        collaborationMode: "build",
-        compactState: createCompactState(),
-        uiEvents: [],
-        toolDiscovery: {
-          version: 2,
-          loadedNames: ["mcp__fixture__echo"],
-        },
-      });
-      const resumed = loadHeadlessSession({
-          configuration: configuration(cwd, storage),
-          resumeMode: { kind: "continue" },
-        });
-      expect(resumed.permissionMode).toBe("ask");
-      expect(resumed.toolDiscovery).toEqual({
-        version: 2,
-        loadedNames: ["mcp__fixture__echo"],
-      });
-      expect(
-        loadHeadlessSession({
-          configuration: configuration(cwd, storage),
-          resumeMode: { kind: "session", sessionId: "session-1" },
-          permissionMode: "full-access",
-        collaborationMode: "build",
-        }).permissionMode
-      ).toBe("full-access");
-    });
-  });
-});
+test("CLI 与 SDK 共用 Session seed，恢复时保留来源/模式/工具发现",async()=>withTempProject(async(cwd,storage)=>{
+ const resources=createTestRuntimeResources(cwd);
+ const fresh=prepareThreadSession(resources);
+ expect(fresh.seed.history[0]?.role).toBe("system");expect(fresh.resumed).toBe(false);
+ await saveSessionSnapshot(storage,{cwd,sessionId:"resume",model:"glm-test",history:[{role:"user",origin:"user",content:"hello"},{role:"assistant",content:"world"}],todos:[],permissionMode:"ask",collaborationMode:"plan",toolDiscovery:{version:2,loadedNames:["mcp__fixture__echo"]}});
+ const loaded=loadSession(storage,cwd,"resume","glm-test")!;
+ const restored=prepareThreadSession(resources,loaded);
+ expect(restored.seed.sessionId).toBe("resume");expect(restored.state.collaborationMode).toBe("plan");expect(restored.state.permissionMode).toBe("ask");
+ expect(restored.seed.toolDiscovery).toEqual(loaded.toolDiscovery);expect(restored.resumed).toBe(true);
+}));
+test("Headless 在创建 Root 前拒绝 picker 和不存在的恢复目标",async()=>withTempProject(async(cwd)=>{
+ for(const resumeMode of [{kind:"picker"},{kind:"continue"},{kind:"session",sessionId:"missing"}] as const){
+  await expect(runHeadlessForTest({cwd,settings:createTestSettings(),prompt:"hi",resumeMode,outputFormat:"json"},{createResources:async()=>{throw new Error("should not initialize");}})).rejects.toThrow(resumeMode.kind==="picker"?"headless 模式不能使用交互式":"没有找到可恢复");
+ }
+}));

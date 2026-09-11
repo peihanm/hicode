@@ -30,7 +30,6 @@ type ViewState =
         repository?: string;
         branch?: string;
         truncated?: boolean;
-        head?: string;
     };
 
 function gitFileLabel(kind: GitDiffFile["status"]["kind"]): string {
@@ -113,7 +112,6 @@ export function GitDiffDialog({
                     ? `detached ${repository.headOid?.slice(0, 12) ?? ""}`
                     : repository.branch ?? "unknown",
                 truncated: result.snapshot.truncated,
-                head: repository.headOid?.slice(0, 12),
             });
         }).catch((error) => {
             if (!controller.signal.aborted) {

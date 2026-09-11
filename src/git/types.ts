@@ -77,7 +77,6 @@ export type GitDiffSnapshotResult =
 
 export interface GitRepositorySnapshot {
     version: 1;
-    repositoryIdentity: string;
     repositoryRoot: string;
     branch: string | null;
     headOid: string | null;
@@ -86,7 +85,6 @@ export interface GitRepositorySnapshot {
     operation: GitOperationState;
     clean: boolean;
     files: readonly GitFileStatus[];
-    recentCommitTitles: readonly string[];
 }
 
 export type GitRepositoryUnavailableReason =

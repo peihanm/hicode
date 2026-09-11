@@ -114,7 +114,6 @@ describe("Git repository snapshot", () => {
             const current = await snapshot(cwd);
             expect(current.branch).toBe(branch);
             expect(current.headOid).toMatch(/^[0-9a-f]{40,64}$/);
-            expect(current.recentCommitTitles).toEqual(["initial"]);
             expect(current.clean).toBe(false);
             expect(current.files.find((file) => file.path === "rename new.txt"))
                 .toMatchObject({
@@ -266,7 +265,6 @@ describe("Git repository snapshot", () => {
             const source = await snapshot(cwd);
             const isolated = await snapshot(worktree);
             expect(isolated.repositoryRoot).not.toBe(source.repositoryRoot);
-            expect(isolated.repositoryIdentity).toBe(source.repositoryIdentity);
         });
     });
 });

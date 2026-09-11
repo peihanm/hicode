@@ -34,18 +34,8 @@ function summary(exitCode = 0): HeadlessRunSummary {
   return {
     ok: exitCode === 0,
     exitCode,
-    sessionId: "session-1",
-    reason: "completed",
-    iterations: 1,
-    reply: "done",
-    permissionMode: "ask",
-        collaborationMode: "build",
-    toolCalls: [],
-    permissionDenials: [],
-    toolFailures: [],
-    subagents: [],
-    fileChanges: [],
-    mcpServers: [],
+    threadId: "session-1", turnId: "turn-1", stopReason: "completed", iterations: 1,
+    finalResponse: "done", usage: null, durationMs: 0, items: [],
   };
 }
 

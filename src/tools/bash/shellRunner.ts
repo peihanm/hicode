@@ -10,26 +10,6 @@ interface ShellRunnerRequest extends ShellCommandOptions {
     networkAccess?: NetworkAccessExecution;
 }
 
-const LOCAL_BINDING_HINT =
-    'Pillar Sandbox: 本地端口监听被 OS Sandbox 阻止。仅当该命令是原始任务的必要步骤时，才使用完全相同的命令并设置 sandbox_permissions="require_escalated" 申请重试；不要换端口或重写服务来规避限制。可选验证受阻时说明未验证范围，不要为此申请提权。';
-const LOCAL_CONNECTION_HINT =
-    'Pillar Sandbox: 本地端点访问被 OS Sandbox 阻止。仅当该探测是原始任务的必要步骤时，才使用完全相同的探测命令并设置 sandbox_permissions="require_escalated" 申请重试。可选验证受阻时说明未验证范围，不要为此申请提权。';
-
-export function annotateSandboxLocalNetworkFailure(output: string): string {
-    if (!output || output.includes("Pillar Sandbox:")) return output;
-    const bindingDenied =
-        /\blisten\s+EPERM\b/i.test(output) ||
-        /(?:server_bind|socket\.bind|http\.server)[\s\S]*PermissionError:\s*\[Errno\s+1\]\s+Operation not permitted/i.test(output);
-    const connectionDenied =
-        /(?:Immediate connect fail for|Failed to connect to)\s+(?:127\.0\.0\.1|localhost|\[::1\])[\s\S]*(?:Operation not permitted|Couldn't connect)/i.test(output);
-    const hint = bindingDenied
-        ? LOCAL_BINDING_HINT
-        : connectionDenied
-            ? LOCAL_CONNECTION_HINT
-            : undefined;
-    return hint ? `${output.trimEnd()}\n\n${hint}` : output;
-}
-
 export interface ShellRunnerLike {
     readonly sandboxStatus: SandboxStatus;
 
@@ -130,7 +110,6 @@ export function createShellRunner(
                     stderr = sandbox.annotateStderr(command, stderr);
                 } catch {
                 }
-                stderr = annotateSandboxLocalNetworkFailure(stderr);
                 if (wrapped.networkDenials?.length) {
                     stderr += `\nPillar Sandbox: 网络代理拒绝 ${wrapped.networkDenials.join("；")}。` +
                         "这是本地网络权限限制，不代表远端服务故障；用户拒绝后不要自动换源或提权绕过。";

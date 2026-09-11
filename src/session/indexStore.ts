@@ -13,8 +13,6 @@ interface UpsertSessionIndexInput {
     model: string;
     timestamp: string;
     messageCount: number;
-    firstPrompt?: string;
-    lastPrompt?: string;
     summary?: string;
 }
 
@@ -127,9 +125,6 @@ export async function upsertSessionIndex(
         createdAt: existing?.createdAt ?? input.timestamp,
         updatedAt: input.timestamp,
         messageCount: input.messageCount,
-        archived: existing?.archived,
-        firstPrompt: existing?.firstPrompt ?? input.firstPrompt,
-        lastPrompt: input.lastPrompt ?? existing?.lastPrompt,
         summary: input.summary ?? existing?.summary,
     };
     const sessions = existing

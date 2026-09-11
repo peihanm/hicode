@@ -298,6 +298,7 @@ export function createRootRuntimeResourcesFactory(
                     .map((definition) => definition.agentType),
             });
             const toolRuntime = dependencies.createToolRuntime({
+                skillsAvailable: skills.length > 0,
                 getAdditionalTools: () => [
                     ...(mcpManager?.getTools() ?? []),
                     ...(options.additionalTools ?? []),

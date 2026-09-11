@@ -206,7 +206,11 @@ describe("synchronous subagent", () => {
         onEvent: (event) => {
           events.push(event);
         },
-        agentOptions: { callLLM: child.callLLM },
+        agentOptions: { callLLM: async (...args) => {
+          args[7]?.({phase:"content",outputCharacters:20,estimatedOutputTokens:5});
+          await args[8]?.({type:"delta",text:"transient-draft-not-for-log"});
+          return child.callLLM(...args);
+        } },
         toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       }));
       const history: Message[] = [{ role: "system", content: "parent system" }];
@@ -236,6 +240,9 @@ describe("synchronous subagent", () => {
         expect(transcript).toContain('"type":"start"');
         expect(transcript).toContain('"type":"snapshot"');
         expect(transcript).toContain("child-read");
+        expect(transcript).not.toContain("transient-draft-not-for-log");
+        expect(transcript).not.toContain("model_stream_progress");
+        expect(transcript).not.toContain("assistant_draft");
       }
     });
   });

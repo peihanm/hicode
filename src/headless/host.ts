@@ -1,217 +1,67 @@
-import {importSelectedImages} from "../runtime/imageInput.js";
-import type {MessageContent} from "../images/content.js";
-import type {AgentEvent} from "../agent/types.js";
-import {formatHookContext, getHookExecutionIssues, type HookBatchResult,} from "../hooks/index.js";
-import type {PermissionDecision} from "../permissions/index.js";
 import {createTurnAbortController} from "../runtime/abort.js";
 import {createRootRuntimeResources} from "../runtime/resources.js";
-import {createRootSessionRuntime} from "../runtime/sessionRuntime.js";
-import type {ToolContextHost} from "../runtime/toolContext.js";
-import {createRootTurnRunnerFactory, type RootTurnLifecycleIssue, type RootSessionSnapshotWriter} from "../runtime/turnRuntime.js";
+import {createRootTurnRunnerFactory, type RootSessionSnapshotWriter} from "../runtime/turnRuntime.js";
+import {loadLatestSession, loadSession} from "../session/index.js";
+import {createSDKThreadFactory, prepareThreadSession} from "../sdk/thread.js";
+import {collectTurnResult} from "../sdk/resultCollector.js";
+import type {ThreadEvent} from "../sdk/protocol.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
-import {HeadlessEventCollector} from "./collector.js";
 import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
-import {buildHeadlessRunSummary, formatHeadlessProgress,} from "./output.js";
-import {loadHeadlessSession} from "./session.js";
-import type {HeadlessOptions, HeadlessOutputFormat, HeadlessRunSummary,} from "./types.js";
+import {buildHeadlessRunSummary, formatHeadlessProgress} from "./output.js";
+import type {HeadlessOptions, HeadlessOutputFormat, HeadlessRunSummary} from "./types.js";
 
 interface HeadlessRunnerDependencies {
     createResources: typeof createRootRuntimeResources;
     saveSession: RootSessionSnapshotWriter;
-    writeOutput: (
-        summary: HeadlessRunSummary,
-        format: HeadlessOutputFormat
-    ) => void | Promise<void>;
-    writeDiagnostic: (line: string) => void | Promise<void>;
+    writeOutput(summary: HeadlessRunSummary, format: HeadlessOutputFormat): void | Promise<void>;
+    writeDiagnostic(line: string): void | Promise<void>;
 }
 
-export function createHeadlessRunner(
-    overrides: Partial<HeadlessRunnerDependencies> = {}
-) {
+export function createHeadlessRunner(overrides: Partial<HeadlessRunnerDependencies> = {}) {
     const dependencies: HeadlessRunnerDependencies = {
-        createResources:
-            overrides.createResources ?? createRootRuntimeResources,
+        createResources: overrides.createResources ?? createRootRuntimeResources,
         saveSession: overrides.saveSession ?? ((session, snapshot) => session.saveSnapshot(snapshot)),
         writeOutput: overrides.writeOutput ?? writeHeadlessOutput,
         writeDiagnostic: overrides.writeDiagnostic ?? writeHeadlessDiagnostic,
     };
-    const runRootTurn = createRootTurnRunnerFactory({
-        saveSession: dependencies.saveSession,
-    });
-
-    return async function runHeadless(
-        options: HeadlessOptions,
-        signal?: AbortSignal
-    ): Promise<HeadlessRunSummary> {
-        let state = loadHeadlessSession(options);
-        const permissionRules = options.configuration.settings.permissions.rules;
-        const collector = new HeadlessEventCollector();
-        const fallbackController = createTurnAbortController();
-        const activeSignal = signal ?? fallbackController.signal;
-        const resources = await dependencies.createResources({
-            configuration: options.configuration,
-            signal: activeSignal,
-            headless: true,
-        });
+    const createThread = createSDKThreadFactory({runTurn: createRootTurnRunnerFactory({saveSession: dependencies.saveSession})});
+    return async (options: HeadlessOptions, signal?: AbortSignal): Promise<HeadlessRunSummary> => {
+        const {configuration, resumeMode} = options;
+        if (resumeMode.kind === "picker") throw new Error("headless 模式不能使用交互式 -r；请使用 -c 或 -r <sessionId>");
+        const {storage, cwd, settings} = configuration;
+        const model = settings.models.primary.model;
+        const loaded = resumeMode.kind === "continue" ? loadLatestSession(storage, cwd, model) :
+            resumeMode.kind === "session" ? loadSession(storage, cwd, resumeMode.sessionId, model) : null;
+        if (resumeMode.kind !== "none" && !loaded) throw new Error("没有找到可恢复的历史会话");
+        const activeSignal = signal ?? createTurnAbortController().signal;
+        const resources = await dependencies.createResources({configuration, signal: activeSignal, headless: true});
+        let thread: Awaited<ReturnType<typeof createThread>> | undefined;
         try {
-            const rootSession = createRootSessionRuntime({
-                resources,
-                seed: {
-                    sessionId: state.sessionId,
-                    history: state.history,
-                    compactState: state.compactState,
-                    toolDiscovery: state.toolDiscovery,
-                },
-                allowBackgroundTasks: false,
-            });
-            await rootSession.initialize();
-            const eventHandler = async (event: AgentEvent): Promise<void> => {
-                collector.handleEvent(event);
-                if (options.outputFormat !== "text" && event.type !== "hook_completed") return;
-                const line = formatHeadlessProgress(event);
-                if (line !== null) await dependencies.writeDiagnostic(line);
-            };
-            const writeHookIssues = async (result: HookBatchResult) => {
-                for (const issue of getHookExecutionIssues(result)) {
-                    await dependencies.writeDiagnostic(`Hook: ${issue}`);
-                }
-            };
-            const writeLifecycleIssue = async (issue: RootTurnLifecycleIssue) => {
-                const scope = issue.scope === "session"
-                        ? "Session"
-                        : "Host";
-                await dependencies.writeDiagnostic(
-                    `${scope}: ${issue.message}：${issue.error instanceof Error ? issue.error.message : String(issue.error)}`
-                );
-            };
-            const getSnapshotState = () => ({
-                todos: state.todos,
-                permissionMode: state.permissionMode,
-                collaborationMode: state.collaborationMode,
-                uiEvents: [
-                    ...state.uiEvents,
-                    ...collector.getSnapshot().currentUIEvents,
-                ],
-            });
-            const toolContextHost: ToolContextHost = {
-                canUseTool: async (
-                    toolName,
-                    message
-                ): Promise<PermissionDecision> => ({
-                    behavior: "deny",
-                    message: [
-                        `headless 模式不能交互确认工具 ${toolName}`,
-                        message,
-                        "请使用 Default 的受限能力、--dangerously-skip-permissions 或配置 allow 规则。",
-                    ].join("\n"),
-                }),
-                getPermissionRules: () => permissionRules,
-                getPermissionMode: () => state.permissionMode,
-                getCollaborationMode: () => state.collaborationMode,
-                getPermissionPromptPolicy: () => "never",
-                setTodos(todos) {
-                    state.todos = todos;
-                },
-            };
-            let sessionEndReason = "error";
-            let turnInvoked = false;
-
-            try {
-                if (resources.sandbox.status.kind === "unavailable") {
-                    await dependencies.writeDiagnostic(
-                        `Sandbox unavailable: ${resources.sandbox.status.reason}`
-                    );
-                }
-                for (const issue of resources.subagents.issues) {
-                    await dependencies.writeDiagnostic(
-                        `Agent 配置: ${formatAgentLoadIssue(issue)}`
-                    );
-                }
-                for (const issue of resources.hooks.issues) {
-                    await dependencies.writeDiagnostic(`Hook: ${issue.message}`);
-                }
-                const sessionStart = await rootSession.runSessionStart(
-                    options.resumeMode.kind === "none" ? "startup" : "resume",
-                    activeSignal,
-                    eventHandler
-                );
-                await writeHookIssues(sessionStart);
-                const images = options.images?.length ? await importSelectedImages(options.images, resources, rootSession.createContext({
-                    signal: activeSignal, host: toolContextHost, onEvent: eventHandler, getSnapshotState,
-                })) : [];
-                const prompt: MessageContent = images.length ? [{type: "text", text: options.prompt}, ...images] : options.prompt;
-                turnInvoked = true;
-                const result = await runRootTurn({
-                    resources,
-                    session: rootSession,
-                    prompt,
-                    signal: activeSignal,
-                    host: toolContextHost,
-                    onEvent: eventHandler,
-                    onHookResult: writeHookIssues,
-                    onLifecycleIssue: writeLifecycleIssue,
-                    getSnapshotState,
-                    sessionStartContextBlocks: formatHookContext(
-                        "SessionStart",
-                        sessionStart.additionalContexts
-                    ),
-                });
-                sessionEndReason = result.reason;
-                const collectorSnapshot = collector.getSnapshot();
-                const summary = buildHeadlessRunSummary({
-                    result,
-                    sessionId: state.sessionId,
-                    permissionMode: state.permissionMode,
-                    collaborationMode: state.collaborationMode,
-                    collector: collectorSnapshot,
-                    mcpServers: resources.mcpManager?.getSnapshots() ?? [],
-                });
-                await dependencies.writeOutput(summary, options.outputFormat);
-                return summary;
-            } finally {
-                if (!turnInvoked) {
-                    rootSession.endTurn();
-                    try {
-                        await dependencies.saveSession(
-                            rootSession,
-                            rootSession.createSnapshot({
-                                ...getSnapshotState(),
-                                allowEmpty: true,
-                                summaryHint: options.prompt,
-                            })
-                        );
-                    } catch (error) {
-                        try {
-                            await writeLifecycleIssue({
-                                scope: "session",
-                                message: "异常路径保存失败",
-                                error,
-                            });
-                        } catch {
-                            // 诊断输出失败不能覆盖原始 Headless 错误。
-                        }
+            if (resources.sandbox.status.kind === "unavailable") await dependencies.writeDiagnostic(`Sandbox unavailable: ${resources.sandbox.status.reason}`);
+            for (const issue of resources.subagents.issues) await dependencies.writeDiagnostic(`Agent 配置: ${formatAgentLoadIssue(issue)}`);
+            for (const issue of resources.hooks.issues) await dependencies.writeDiagnostic(`Hook: ${issue.message}`);
+            const initial = prepareThreadSession(resources, loaded ?? undefined);
+            initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;
+            initial.state.collaborationMode = options.collaborationMode ?? initial.state.collaborationMode;
+            thread = await createThread({...initial, resources, signal: activeSignal, onClose() {},
+                host: {onDiagnostic: diagnostic => dependencies.writeDiagnostic(`${diagnostic.scope}: ${diagnostic.message}`)}});
+            const stream = await thread.runStreamedWithImagePaths(options.prompt, options.images ?? [], {signal: activeSignal});
+            async function* observed(): AsyncGenerator<ThreadEvent> {
+                for await (const event of stream.events) {
+                    if (options.outputFormat === "text" || (event.type === "item.completed" && event.item.type === "hook")) {
+                        const line = formatHeadlessProgress(event);
+                        if (line !== null) await dependencies.writeDiagnostic(line);
                     }
-                }
-                try {
-                    const endResult = await rootSession.runSessionEnd(
-                        sessionEndReason,
-                        eventHandler
-                    );
-                    await writeHookIssues(endResult);
-                } catch (error) {
-                    try {
-                        await dependencies.writeDiagnostic(
-                            `Hook: SessionEnd 执行失败: ${error instanceof Error ? error.message : String(error)}`
-                        );
-                    } catch {
-                        // stderr sink 失败也不能破坏资源回收。
-                    }
+                    yield event;
                 }
             }
+            const summary = buildHeadlessRunSummary(await collectTurnResult(observed()));
+            await thread.close();
+            await dependencies.writeOutput(summary, options.outputFormat);
+            return summary;
         } finally {
-            await resources.close();
+            try {await thread?.close();} finally {await resources.close();}
         }
     };
 }
-
 export const runHeadless = createHeadlessRunner();
