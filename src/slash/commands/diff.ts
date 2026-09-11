@@ -3,7 +3,7 @@ import type {SlashCommand} from "../types.js";
 export const diffCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "diff",
-    description: "交互查看当前修改与历史任务差异",
+    description: "查看当前 Git 未提交修改",
     async execute(args, context) {
         if (args) {
             await context.onEvent({

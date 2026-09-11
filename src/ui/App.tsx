@@ -186,7 +186,6 @@ export function App({
                     requestExit();
                     return;
                 }
-                if (await turn.attachmentCommand(input)) return;
                 if (turn.busy) {
                     turn.enqueue(input);
                     return;
@@ -306,7 +305,6 @@ export function App({
                 ) : showGitDiff ? (
                     <GitDiffDialog
                         loadDiff={turn.loadGitDiff}
-                        listFileChangeEvents={turn.listFileChangeEvents}
                         onClose={() => setShowGitDiff(false)}
                     />
                 ) : turn.confirmRequest ? (

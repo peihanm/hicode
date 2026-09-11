@@ -3,7 +3,6 @@ import {cleanup, render} from "ink-testing-library";
 import {GitDiffDialog} from "../../src/ui/git/GitDiffDialog.js";
 import type {GitDiffSnapshotResult} from "../../src/git/index.js";
 import type {GitFileStatus} from "../../src/git/types.js";
-import type {PersistedUIEvent} from "../../src/session/index.js";
 
 afterEach(() => cleanup());
 
@@ -59,113 +58,69 @@ function result(): GitDiffSnapshotResult {
     };
 }
 
-const turnEvent: PersistedUIEvent = {
-    version: 1,
-    type: "file_change",
-    turnId: "turn-one",
-    toolCallId: "call-one",
-    timestamp: "2026-07-20T00:00:00.000Z",
-    change: {
-        version: 1,
-        path: "history.ts",
-        kind: "update",
-        scope: "turn",
-        linesAdded: 1,
-        linesRemoved: 0,
-        diffStatus: "complete",
-        hunks: [{
-            oldStart: 1,
-            oldLines: 0,
-            newStart: 1,
-            newLines: 1,
-            lines: [{type: "add", content: "historical", newLineNumber: 1}],
-        }],
-    },
-};
-
 describe("GitDiffDialog", () => {
-    test("先加载当前修改，并可用左右键切换到历史任务", async () => {
+    test("只加载当前 Git 修改，左右键不切换来源", async () => {
         let loaded = 0;
-        const view = render(
-            <GitDiffDialog
-                loadDiff={async () => {
-                    loaded += 1;
-                    return result();
-                }}
-                listFileChangeEvents={() => [turnEvent]}
-                onClose={() => {}}
-            />
-        );
+        const view = render(<GitDiffDialog loadDiff={async () => {loaded++; return result();}} onClose={() => {}} />);
+        await waitForRender();
+        expect(view.lastFrame()).toContain("当前未提交修改");
+        expect(view.lastFrame()).toContain("current.ts");
+        expect(view.lastFrame()).not.toContain("来源");
+        expect(view.lastFrame()).not.toContain("任务 1");
+        view.stdin.write("\u001B[C");
+        view.stdin.write("\u001B[D");
         await waitForRender();
         expect(view.lastFrame()).toContain("current.ts");
-        expect(view.lastFrame()).toContain("当前未提交修改");
-        expect(view.lastFrame()).toContain("当前修改");
-        expect(view.lastFrame()).toContain("修改");
-        view.stdin.write("\u001B[C");
-        await waitForRender();
-        expect(view.lastFrame()).toContain("history.ts");
-        expect(view.lastFrame()).toContain("会话任务 1 的修改");
         expect(loaded).toBe(1);
     });
 
-    test("没有历史任务时只展示当前修改", async () => {
+    test("当前文件可展开完整差异并返回列表，r 读取最新 Git 状态", async () => {
+        const current = result();
+        if (current.status !== "available") throw new Error("fixture unavailable");
+        current.snapshot.files[0]!.hunks[0]!.lines = Array.from({length: 43}, (_, index) => ({
+            type: "add", content: `line-${index + 1}`, newLineNumber: index + 1,
+        }));
         let loaded = 0;
-        const view = render(
-            <GitDiffDialog
-                loadDiff={async () => {
-                    loaded += 1;
-                    return result();
-                }}
-                listFileChangeEvents={() => []}
-                onClose={() => {}}
-            />
-        );
-        await waitForRender();
-        expect(view.lastFrame()).toContain("当前修改");
-        expect(view.lastFrame()).not.toContain("暂无任务");
-        expect(loaded).toBe(1);
-    });
-
-    test("历史任务先展示文件列表，ctrl+o 进入并退出 Diff 详情", async () => {
-        const longTurnEvent: PersistedUIEvent = {
-            ...turnEvent,
-            turnId: "turn-long",
-            change: {
-                ...turnEvent.change,
-                path: "long.ts",
-                linesAdded: 43,
-                hunks: [{
-                    oldStart: 1,
-                    oldLines: 0,
-                    newStart: 1,
-                    newLines: 43,
-                    lines: Array.from({length: 43}, (_, index) => ({
-                        type: "add" as const,
-                        content: `line-${index + 1}`,
-                        newLineNumber: index + 1,
-                    })),
-                }],
-            },
-        };
-        const view = render(
-            <GitDiffDialog
-                loadDiff={async () => result()}
-                listFileChangeEvents={() => [longTurnEvent]}
-                onClose={() => {}}
-            />
-        );
-        await waitForRender();
-        view.stdin.write("\u001B[C");
+        let closed = 0;
+        const view = render(<GitDiffDialog loadDiff={async () => {
+            loaded++;
+            return loaded === 1 ? current : {...current, snapshot: {...current.snapshot, files: []}};
+        }} onClose={() => {closed++;}} />);
         await waitForRender();
         expect(view.lastFrame()).not.toContain("line-43");
-
         view.stdin.write("\u000f");
         await waitForRender();
         expect(view.lastFrame()).toContain("line-43");
-        expect(view.lastFrame()).toContain("Ctrl+O 返回");
-
         view.stdin.write("\u000f");
         await waitForRender();
         expect(view.lastFrame()).not.toContain("line-43");
+        view.stdin.write("\r");
+        await waitForRender();
+        expect(view.lastFrame()).toContain("line-43");
+        view.stdin.write("r");
+        await waitForRender();
+        expect(loaded).toBe(2);
+        expect(view.lastFrame()).toContain("当前没有未提交修改");
+        view.stdin.write("\u001B");
+        await waitForRender();
+        expect(closed).toBe(1);
+    });
+
+    test("读取失败后可以刷新重试，关闭时取消加载", async () => {
+        const signals: AbortSignal[] = [];
+        const view = render(<GitDiffDialog loadDiff={async signal => {
+            signals.push(signal);
+            if (signals.length === 1) throw new Error("Git unavailable");
+            return result();
+        }} onClose={() => {}} />);
+        await waitForRender();
+        expect(view.lastFrame()).toContain("Git unavailable");
+        view.stdin.write("r");
+        await waitForRender();
+        expect(signals[0]!.aborted).toBe(true);
+        expect(view.lastFrame()).toContain("current.ts");
+        view.unmount();
+        await waitForRender();
+        expect(signals[1]!.aborted).toBe(true);
     });
 });

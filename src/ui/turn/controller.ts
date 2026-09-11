@@ -54,7 +54,6 @@ export interface UITurnControllerDependencies {
     runTurn(input: MessageContent, signal: AbortSignal): Promise<void>;
 
     importImages(paths: readonly string[], signal: AbortSignal): Promise<ImageReference[]>;
-    importClipboard(signal: AbortSignal): Promise<ImageReference[]>;
     validateImages(content: MessageContent): void;
     restoreDraft(text: string): void;
     messageQueue: RuntimeMessageQueue;
@@ -113,16 +112,6 @@ export class UITurnController {
         }
     }
 
-    async attachmentCommand(input: string): Promise<boolean> {
-        const match = /^\/paste-image(?:\s+([\s\S]*))?$/.exec(input.trim());
-        if (!match) return false;
-        if (this.disposed) return true;
-        if (this.imageImport) {this.dependencies.onUnexpectedError(new Error("图片仍在准备，请稍后或按 Esc 取消")); return true;}
-        if (match[1]?.trim()) this.dependencies.onUnexpectedError(new Error("/paste-image 不接受参数，只读取本机图片剪贴板"));
-        else await this.prepareImages(1, signal => this.dependencies.importClipboard(signal));
-        return true;
-    }
-
     async addImages(paths: readonly string[]): Promise<void> {
         await this.prepareImages(paths.length, signal => this.dependencies.importImages(paths, signal));
     }
@@ -161,7 +150,6 @@ export class UITurnController {
     }
 
     async submit(input: string): Promise<boolean> {
-        if (/^\/paste-image(?:\s|$)/.test(input.trim())) return this.attachmentCommand(input);
         if (this.imageImport) return false;
         // Slash commands do not consume the pending prompt's attachments.
         const content = input.trim().startsWith("/") ? input : this.withAttachments(input);

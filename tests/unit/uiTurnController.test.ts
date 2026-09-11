@@ -13,7 +13,6 @@ import type {SlashCommandProcessor} from "../../src/slash/types.js";
 import type {Todo} from "../../src/todos.js";
 
 function createHarness(overrides: {
-  importClipboard?: ConstructorParameters<typeof UITurnController>[0]["importClipboard"];
   importImages?: ConstructorParameters<typeof UITurnController>[0]["importImages"];
   validateImages?: ConstructorParameters<typeof UITurnController>[0]["validateImages"];
   restoreDraft?: ConstructorParameters<typeof UITurnController>[0]["restoreDraft"];
@@ -112,7 +111,6 @@ function createHarness(overrides: {
         }
       }
     }),
-    importClipboard: overrides.importClipboard ?? (async () => []),
     importImages: overrides.importImages ?? (async () => []),
     validateImages: overrides.validateImages ?? (() => {}),
     restoreDraft: overrides.restoreDraft ?? (() => {}),
@@ -595,43 +593,8 @@ test("unsupported model preserves attachment draft and text, pure image input re
 });
 
 
-test("explicit clipboard attachment uses the existing queue and ordinary text paste never reads it", async () => {
-    let reads = 0;
-    let release!: () => void;
-    const gate = new Promise<void>(resolve => {release = resolve;});
-    const h = createHarness({importClipboard: async () => {reads++; return [imageReference];}, runTurn: async () => gate});
-    const active = h.controller.submit("working");
-    expect(await h.controller.attachmentCommand("a pasted file path.png")).toBe(false);
-    expect(reads).toBe(0);
-    expect(await h.controller.attachmentCommand("/paste-image unexpected")).toBe(true);
-    expect(reads).toBe(0);
-    await h.controller.attachmentCommand("/paste-image");
-    expect(reads).toBe(1); expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
-    h.controller.removeAttachment("all");
-    expect(h.controller.getAttachmentSnapshot().images).toEqual([]);
-    await h.controller.attachmentCommand("/paste-image");
-    expect(h.controller.enqueue("查看剪贴板图片")).toBe(true);
-    expect(h.controller.getAttachmentSnapshot().images).toEqual([]);
-    expect(h.controller.takeQueuedInputsForEditing("", 0)?.value).toContain("查看剪贴板图片");
-    expect(h.controller.getAttachmentSnapshot().images).toEqual([imageReference]);
-    release(); await active;
-});
-
-test("cancelled clipboard preparation cannot publish an attachment", async () => {
-    const h = createHarness({importClipboard: async signal => {
-        await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), {once: true}));
-        return [imageReference];
-    }});
-    const pending = h.controller.attachmentCommand("/paste-image");
-    await Promise.resolve(); await Promise.resolve();
-    expect(h.controller.getAttachmentSnapshot().preparing).toBe(true);
-    h.controller.cancel(); await pending;
-    expect(h.controller.getAttachmentSnapshot()).toEqual({images: [], preparing: false});
-});
-
-test("pasted image failures and cancellation restore text, preserve attachments, and never read clipboard", async () => {
+test("pasted image failures and cancellation restore text and preserve attachments", async () => {
     const drafts: string[] = [];
-    let clipboardReads = 0;
     const h = createHarness({restoreDraft: text => drafts.push(text), importImages: async (paths, signal) => {
         if (paths[0] === "good.png") return [imageReference];
         if (paths[0] === "cancel.png") {
@@ -639,7 +602,7 @@ test("pasted image failures and cancellation restore text, preserve attachments,
             return [imageReference];
         }
         throw new Error("permission denied");
-    }, importClipboard: async () => {clipboardReads++; return [];}});
+    }});
     await h.controller.addImages(["good.png"]);
     expect(h.controller.pasteImage("denied.png", '"denied.png"')).toBe(true);
     await h.controller.waitForSettled();
@@ -652,7 +615,6 @@ test("pasted image failures and cancellation restore text, preserve attachments,
     await h.controller.waitForSettled();
     expect(drafts).toEqual(['"denied.png"', "cancel.png"]);
     expect(h.controller.getAttachmentSnapshot()).toEqual({images: [imageReference], preparing: false});
-    expect(clipboardReads).toBe(0);
     h.controller.dispose();
     expect(h.controller.pasteImage("after-close.png", "after-close.png")).toBe(false);
 });

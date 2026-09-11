@@ -118,7 +118,7 @@ test("Host inline Skill 给出来源身份，不能继承被覆盖文件 Skill �
     });
 });
 
-test("项目覆盖及 bundled 激活指向实际读取的 Markdown 文件", async () => {
+test("项目覆盖激活指向实际读取的 Markdown 文件", async () => {
     await withTempProject(async (cwd, storage) => {
         await writeSkill(join(storage.pillarHome, "skills"), "review", "user");
         await writeSkill(join(cwd, ".pillar/skills"), "review", "project");
@@ -127,9 +127,6 @@ test("项目覆盖及 bundled 激活指向实际读取的 Markdown 文件", asyn
         expect(project.modelContent).toContain('"source":"project"');
         expect(project.modelContent).toContain(join(cwd, ".pillar/skills/review/SKILL.md"));
         expect(project.modelContent).not.toContain(join(storage.pillarHome, "skills/review"));
-        const bundled = await executeToolResult("skill", JSON.stringify({skill: "debug"}), ctx, "bundled");
-        expect(bundled.modelContent).toContain("bundled-files/debug.md");
-        expect(bundled.modelContent).not.toContain("debug/SKILL.md");
     });
 });
 
@@ -148,5 +145,15 @@ test("未知 Skill 通过统一工具链报告 failed，并列出当前实际可
         expect(loaded.outcome).toBe("ok");
         expect(loaded.modelContent).toContain("Args: ");
         expect(loaded.modelContent).not.toContain("$ARGUMENTS");
+    });
+});
+
+test("未配置 Skill 时不注入内置工作流，允许用户自行定义 debug", async () => {
+    await withTempProject(async (cwd, storage) => {
+        expect(loadSkills({storage, cwd, sources: []})).toEqual([]);
+        await writeSkill(join(cwd, ".pillar/skills"), "debug", "project debugging");
+        expect(loadSkills({storage, cwd, sources: ["project"]})).toMatchObject([
+            {name: "debug", source: "project", description: "project debugging"},
+        ]);
     });
 });

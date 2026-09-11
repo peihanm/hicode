@@ -1,10 +1,9 @@
 import {basename} from "node:path";
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import stringWidth from "string-width";
 import type {GitDiffFile, GitDiffSnapshotResult,} from "../../git/index.js";
-import {type DiffHunk, type FileChange, mergeFileChanges,} from "../../fileChanges/index.js";
-import type {PersistedUIEvent} from "../../session/index.js";
+import type {DiffHunk} from "../../fileChanges/index.js";
 import {StructuredDiff} from "../fileChanges/StructuredDiff.js";
 import {COLORS} from "../theme.js";
 import {useTerminalWidth} from "../terminalSize.js";
@@ -20,17 +19,6 @@ interface DiffViewFile {
     label: string;
 }
 
-type DialogSource =
-    | {id: "current"; label: string; kind: "git"}
-    | {
-        id: string;
-        label: string;
-        kind: "turn";
-        turnNumber: number;
-        turnId?: string;
-        changes: FileChange[];
-    };
-
 type ViewMode = "list" | "detail";
 
 type ViewState =
@@ -44,41 +32,6 @@ type ViewState =
         truncated?: boolean;
         head?: string;
     };
-
-function historicalSources(events: readonly PersistedUIEvent[]): DialogSource[] {
-    const groups = new Map<string, FileChange[]>();
-    for (const event of events) {
-        if (event.type !== "file_change") continue;
-        groups.set(event.turnId, [
-            ...(groups.get(event.turnId) ?? []),
-            event.change,
-        ]);
-    }
-    return [...groups.entries()].map(([turnId, changes], index) => ({
-        id: `turn:${turnId}`,
-        label: `任务 ${index + 1}`,
-        kind: "turn" as const,
-        turnNumber: index + 1,
-        turnId,
-        changes: mergeFileChanges(changes),
-    }));
-}
-
-function buildGitDiffDialogSources(
-    events: readonly PersistedUIEvent[]
-): DialogSource[] {
-    const turns = historicalSources(events);
-    return [
-        {id: "current", label: "当前修改", kind: "git"},
-        ...turns,
-    ];
-}
-
-function sourceTitle(source: DialogSource): string {
-    return source.kind === "git"
-        ? "当前未提交修改"
-        : `会话任务 ${source.turnNumber} 的修改`;
-}
 
 function gitFileLabel(kind: GitDiffFile["status"]["kind"]): string {
     if (kind === "untracked" || kind === "added") return "新增";
@@ -100,23 +53,6 @@ function fromGitFile(file: GitDiffFile): DiffViewFile {
         omittedDiffLines: file.omittedDiffLines,
         note: file.unavailableReason,
         label: gitFileLabel(file.status.kind),
-    };
-}
-
-function fromFileChange(change: FileChange): DiffViewFile {
-    return {
-        path: change.path,
-        additions: change.linesAdded,
-        deletions: change.linesRemoved,
-        hunks: change.hunks,
-        diffStatus: change.diffStatus,
-        omittedDiffLines: change.omittedDiffLines,
-        note: change.diffUnavailableReason,
-        label: change.kind === "create"
-            ? "新增"
-            : change.kind === "delete"
-                ? "删除"
-                : "修改",
     };
 }
 
@@ -146,35 +82,20 @@ function truncateStart(value: string, width: number): string {
 
 export function GitDiffDialog({
                                   loadDiff,
-                                  listFileChangeEvents,
                                   onClose,
 }: {
     loadDiff: (signal: AbortSignal) => Promise<GitDiffSnapshotResult>;
-    listFileChangeEvents: () => PersistedUIEvent[];
     onClose: () => void;
 }) {
     const width = useTerminalWidth();
-    const sources = useMemo(
-        () => buildGitDiffDialogSources(listFileChangeEvents()),
-        [listFileChangeEvents]
-    );
-    const [sourceIndex, setSourceIndex] = useState(0);
     const [selectedFile, setSelectedFile] = useState(0);
     const [viewMode, setViewMode] = useState<ViewMode>("list");
     const [reloadRevision, setReloadRevision] = useState(0);
     const [view, setView] = useState<ViewState>({status: "loading"});
-    const source = sources[sourceIndex]!;
 
     useEffect(() => {
         setSelectedFile(0);
         setViewMode("list");
-        if (source.kind === "turn") {
-            setView({
-                status: "ready",
-                files: source.changes.map(fromFileChange),
-            });
-            return;
-        }
         const controller = new AbortController();
         setView({status: "loading"});
         void loadDiff(controller.signal).then((result) => {
@@ -202,8 +123,8 @@ export function GitDiffDialog({
                 });
             }
         });
-        return () => controller.abort("source-changed");
-    }, [loadDiff, reloadRevision, source]);
+        return () => controller.abort("diff-view-reloaded-or-closed");
+    }, [loadDiff, reloadRevision]);
 
     useInput((input, key) => {
         if (key.escape) {
@@ -217,20 +138,13 @@ export function GitDiffDialog({
         if (viewMode === "detail") {
             if (key.leftArrow || (key.ctrl && input === "o")) {
                 setViewMode("list");
-            } else if (input === "r" && source.kind === "git") {
+            } else if (input === "r") {
                 setReloadRevision((current) => current + 1);
             }
             return;
         }
-        if (key.leftArrow || key.rightArrow) {
-            const direction = key.leftArrow ? -1 : 1;
-            setSourceIndex((current) =>
-                (current + direction + sources.length) % sources.length
-            );
-            return;
-        }
         if (view.status !== "ready") {
-            if (input === "r" && source.kind === "git") {
+            if (input === "r") {
                 setReloadRevision((current) => current + 1);
             }
             return;
@@ -246,7 +160,7 @@ export function GitDiffDialog({
             view.files[selectedFile]
         ) {
             setViewMode("detail");
-        } else if (input === "r" && source.kind === "git") {
+        } else if (input === "r") {
             setReloadRevision((current) => current + 1);
         }
     });
@@ -283,23 +197,7 @@ export function GitDiffDialog({
             </Box>
 
             <Box flexDirection="column" marginTop={1}>
-                <Box>
-                    <Text color={COLORS.dim}>{"来源  "}</Text>
-                    {sources.map((item, index) => (
-                        <Text
-                            key={item.id}
-                            bold={index === sourceIndex}
-                            inverse={index === sourceIndex}
-                            dimColor={index !== sourceIndex}
-                        >
-                            {`${index > 0 ? "  " : ""}${item.label}`}
-                        </Text>
-                    ))}
-                </Box>
-            </Box>
-
-            <Box flexDirection="column" marginTop={1}>
-                <Text bold>{sourceTitle(source)}</Text>
+                <Text bold>当前未提交修改</Text>
                 {view.status === "loading" && (
                     <Text color={COLORS.dim}>正在读取 Git 修改…</Text>
                 )}
@@ -323,7 +221,7 @@ export function GitDiffDialog({
 
             {view.status === "ready" && view.files.length === 0 && (
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>当前来源没有文件修改。</Text>
+                    <Text color={COLORS.dim}>当前没有未提交修改。</Text>
                 </Box>
             )}
 
@@ -393,8 +291,8 @@ export function GitDiffDialog({
             <Box marginTop={1}>
                 <Text color={COLORS.dim} italic>
                     {viewMode === "list"
-                        ? `${sources.length > 1 ? "←/→ 切换来源 · " : ""}↑/↓ 选择 · Enter/Ctrl+O 查看${source.kind === "git" ? " · r 刷新" : ""} · Esc 关闭`
-                        : `←/Esc 返回列表 · Ctrl+O 返回${source.kind === "git" ? " · r 刷新" : ""}`}
+                        ? "↑/↓ 选择 · Enter/Ctrl+O 查看 · r 刷新 · Esc 关闭"
+                        : "←/Esc 返回列表 · Ctrl+O 返回 · r 刷新"}
                 </Text>
             </Box>
         </Box>

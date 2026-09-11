@@ -1,16 +1,3 @@
-// Skill 加载器
-// 参考 claude-code src/skills/loadSkillsDir.ts 的 getSkillDirCommands
-//
-// 简化点：
-// - 只 3 个源：bundled（内置）/ user（~/.pillar/skills）/ project（.pillar/skills）
-//   claude-code 还有 managed / additional / legacy / plugin / mcp 共 5+ 源
-// - 不支持动态发现（文件操作时找新 skill）
-// - 不支持条件激活（paths frontmatter）
-// - 不支持单文件 .md，只支持目录格式 `<name>/SKILL.md`
-// - sync 加载（用 readFileSync）：skills 影响 attachment 注入，必须在 runAgent 前完成
-//   Skills 只读取少量本地文件，启动阶段同步加载可以保持调用链简单。
-// - 优先级：project > user > bundled（project 覆盖 user 同名，bundled 最低）
-
 import {existsSync, readdirSync, readFileSync, statSync} from "node:fs";
 import {join} from "node:path";
 import type {PillarStorageLayout} from "../persistence/index.js";
@@ -40,6 +27,7 @@ export function loadSkills({
     const projectSkills = sources.includes("project")
         ? loadSkillsFromDir(projectDir, "project")
         : [];
+
     const bundledSkills = loadBundledSkills();
 
     const contributedSkills: LoadedSkill[] = hostSkills.map((skill) => ({

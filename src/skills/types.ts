@@ -3,7 +3,7 @@
 export type SkillFileSource = "user" | "project";
 
 interface LoadedSkillContent {
-    // skill 名（目录名，bundled 用 registerBundledSkill 的 name）
+    // skill 名（文件来源用目录名，Host 使用声明名称）
     name: string;
 
     // frontmatter.description — skill 用途，展示给 LLM 做选择
@@ -15,8 +15,6 @@ interface LoadedSkillContent {
     // markdown body（frontmatter 之后的全部内容）
     // 调用 skill 时作为 tool_result 返回，LLM 下一轮读到并按它干活
     content: string;
-
-    // skill 来源：bundled（内置）/ user（~/.pillar/skills）/ project（.pillar/skills）
 }
 
 export type LoadedSkill = LoadedSkillContent & (
