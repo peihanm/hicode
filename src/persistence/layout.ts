@@ -34,7 +34,7 @@ export function normalizePillarStorageLayout(
     storage: PillarStorageLayout
 ): PillarStorageLayout {
     if (!storage || typeof storage !== "object") {
-        throw new Error("Pillar storage layout 必须是对象");
+        throw new Error("Pillar storage layout must be an object");
     }
     const pillarHome = requireAbsoluteStoragePath(
         storage.pillarHome,
@@ -46,14 +46,14 @@ export function normalizePillarStorageLayout(
     );
     const expectedProjectsRoot = join(pillarHome, "projects");
     if (projectsRoot !== expectedProjectsRoot) {
-        throw new Error("Pillar projectsRoot 必须由 pillarHome 唯一派生");
+        throw new Error("Pillar projectsRoot must be derived solely from pillarHome");
     }
     return Object.freeze({pillarHome, projectsRoot});
 }
 
 function requireAbsoluteStoragePath(value: string, name: string): string {
     if (typeof value !== "string" || !value.trim() || !isAbsolute(value.trim())) {
-        throw new Error(`Pillar storage ${name} 必须是非空绝对路径`);
+        throw new Error(`Pillar storage ${name} must be a non-empty absolute path`);
     }
     return resolve(value.trim());
 }
@@ -135,7 +135,7 @@ export function getMemoryWorkspacesDirectory(directory: string): string {
 }
 
 export function getMemoryWorkspacePaths(directory: string, leaseId: string): {root: string; draft: string; runtime: string} {
-    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(leaseId)) throw new Error("Memory workspace ID 无效");
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(leaseId)) throw new Error("Invalid Memory workspace ID");
     const root = join(getMemoryWorkspacesDirectory(directory), leaseId);
     return {root, draft: join(root, "draft"), runtime: join(root, "runtime")};
 }

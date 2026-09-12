@@ -46,7 +46,7 @@ describe("running input queue UI", () => {
             await new Promise((resolve) => setTimeout(resolve, 30));
 
             expect(instance.lastFrame()).toContain("❯ 补充要求");
-            expect(instance.lastFrame()).toContain("↑ 编辑排队消息");
+            expect(instance.lastFrame()).toContain("↑ Edit queued message");
             release();
             await new Promise((resolve) => setTimeout(resolve, 30));
             expect(queued).toEqual(["补充要求"]);
@@ -91,7 +91,7 @@ describe("running input queue UI", () => {
             const frame = instance.lastFrame() ?? "";
             expect(frame).toContain("排队补充");
             expect(frame).toContain("当前草稿");
-            expect(frame).not.toContain("↑ 编辑排队消息");
+            expect(frame).not.toContain("↑ Edit queued message");
 
             release();
             await new Promise((resolve) => setTimeout(resolve, 30));
@@ -201,6 +201,6 @@ describe("running input queue UI", () => {
         expect(frame).toContain("第二行…");
         expect(frame).not.toContain("第三行不应展示");
         expect(frame).not.toContain("第四条不应展示");
-        expect(frame).toContain("另有 1 条");
+        expect(frame).toContain("plus 1 more");
     });
 });

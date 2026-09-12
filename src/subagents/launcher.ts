@@ -83,7 +83,7 @@ export function createSubagentLauncher({
 
             if (input.runInBackground) {
                 if (!parentContext.tasks) {
-                    throw new Error("当前运行入口不支持后台 Agent Task");
+                    throw new Error("This entry point does not support background Agent Tasks");
                 }
                 const task = await parentContext.tasks.startAgent({
                     request,
@@ -92,7 +92,7 @@ export function createSubagentLauncher({
                 return {kind: "background", task};
             }
             if (request.kind === "fork") {
-                throw new Error("Fork Agent 必须后台运行");
+                throw new Error("Fork Agents must run in the background");
             }
             return {kind: "foreground", result: await runSubagent(request)};
         },

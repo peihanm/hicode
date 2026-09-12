@@ -28,21 +28,21 @@ test("任务面板区分层级，停止任务不提示停止，窄屏中文标�
     let columns = 100;
     Object.defineProperty(instance.stdout, "columns", {configurable: true, get: () => columns});
     try {
-      await until(() => instance.lastFrame()?.includes("最近结束") === true);
+      await until(() => instance.lastFrame()?.includes("Recently finished") === true);
       for (const width of [100, 40, 24]) {
         columns = width; instance.stdout.emit("resize");
         await new Promise(resolve => setTimeout(resolve, 90));
         const frame = instance.lastFrame() ?? "";
-        expect(frame).toContain("◆ 后台任务");
+        expect(frame).toContain(width < 30 ? "◆ Tasks" : "◆ Background tasks");
         expect(frame).toContain("1 / 1");
-        expect(frame).toContain("○ 已停止");
-        expect(frame).not.toContain("s 停止");
+        expect(frame).toContain("○ Stopped");
+        expect(frame).not.toContain("s stop");
         expect(frame).not.toContain("│");
         expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
       }
-      instance.stdin.write("\r"); await until(() => instance.lastFrame()?.includes("◆ 任务输出") === true);
-      expect(instance.lastFrame()).toContain("暂无输出");
-      expect(instance.lastFrame()).not.toContain("s 停止");
+      instance.stdin.write("\r"); await until(() => instance.lastFrame()?.includes("◆ Task output") === true);
+      expect(instance.lastFrame()).toContain("No output yet");
+      expect(instance.lastFrame()).not.toContain("s stop");
       expect((instance.lastFrame() ?? "").split("\n").every(line => stringWidth(line) <= columns)).toBe(true);
     } finally {instance.unmount(); await runtime.close();}
   });
@@ -54,15 +54,15 @@ test("空任务面板有独立空状态，不展示无效操作", async () => {
     const {rootSession} = createUITurnSessionRuntime(resources);
     const instance = render(<TasksDialog tasks={rootSession.taskSession} stopTask={async () => {}} onClose={() => {}}/>);
     try {
-      await until(() => instance.lastFrame()?.includes("暂无后台任务") === true);
-      expect(instance.lastFrame()).toContain("0 项");
-      expect(instance.lastFrame()).not.toContain("Enter 查看输出");
-      expect(instance.lastFrame()).not.toContain("s 停止");
+      await until(() => instance.lastFrame()?.includes("No background tasks") === true);
+      expect(instance.lastFrame()).toContain("0 tasks");
+      expect(instance.lastFrame()).not.toContain("Enter view output");
+      expect(instance.lastFrame()).not.toContain("s stop");
     } finally {instance.unmount(); await resources.close();}
   });
 });
 for (const denied of [false, true]) {
-  test(`/tasks 列表、输出和停止使用统一工具链（deny=${denied}）`, async () => {
+  test(`/tasks 列表、输出和停止使用统一工具链（deny=${denied})`, async () => {
     await withTempProject(async cwd => {
       const settings = createTestSettings();
       if (denied) settings.permissions.rules.deny.push({toolName: "task", source: "project"});
@@ -78,12 +78,12 @@ for (const denied of [false, true]) {
       try {
         await new Promise(resolve => setTimeout(resolve, 40));
         instance.stdin.write("/tasks"); await new Promise(resolve => setTimeout(resolve, 20)); instance.stdin.write("\r");
-        await until(() => instance.lastFrame()?.includes("Enter 查看输出") === true);
+        await until(() => instance.lastFrame()?.includes("Enter view output") === true);
         expect(instance.lastFrame()).toContain("printf ready; sleep 30");
         const newer = await rootSession.taskSession.startShell({command: "sleep 31", cwd, toolCallId: "newer"});
         await until(() => instance.lastFrame()?.includes("sleep 31") === true);
         expect(instance.lastFrame()).toContain("❯ printf ready");
-        instance.stdin.write("\r"); await until(() => instance.lastFrame()?.includes("当前输出预览") === true);
+        instance.stdin.write("\r"); await until(() => instance.lastFrame()?.includes("current output preview") === true);
         expect(instance.lastFrame()).toContain("ready");
         instance.stdin.write("s"); await until(() => calls.includes("task"));
         if (denied) {
@@ -92,7 +92,7 @@ for (const denied of [false, true]) {
           expect(instance.lastFrame()).toContain("Error:");
         } else {
           await until(async () => (await rootSession.taskSession.get(task.id))?.status === "cancelled");
-          await until(() => instance.lastFrame()?.includes("已停止") === true);
+          await until(() => instance.lastFrame()?.includes("Stopped") === true);
         }
         expect((await rootSession.taskSession.get(newer.id))?.status).toBe("running");
         instance.stdin.write("\u001b"); await new Promise(resolve => setTimeout(resolve, 20));

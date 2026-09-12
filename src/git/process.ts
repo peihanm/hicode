@@ -58,11 +58,11 @@ function terminationMessage(termination: GitProcessTermination): string {
         case "exit":
             return `exit code ${termination.code}`;
         case "aborted":
-            return "Git 操作已取消";
+            return "Git operation cancelled";
         case "timeout":
-            return `Git 操作超过 ${termination.timeoutMs}ms`;
+            return `Git operation exceeded ${termination.timeoutMs}ms`;
         case "output-limit":
-            return `Git 输出超过 ${termination.maxOutputBytes} 字节限制`;
+            return `Git output exceeded ${termination.maxOutputBytes} byte limit`;
         case "spawn-error":
             return termination.error.message;
     }
@@ -74,7 +74,7 @@ export function formatGitProcessError(result: GitProcessResult): string {
     if (result.termination.kind !== "exit") {
         const message = terminationMessage(result.termination);
         const detail = stderr || stdout;
-        return detail && detail !== message ? `${message}：${detail}` : message;
+        return detail && detail !== message ? `${message}:${detail}` : message;
     }
     return stderr || stdout || terminationMessage(result.termination);
 }

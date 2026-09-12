@@ -30,10 +30,10 @@ export class TodoProgress {
         this.roundsSinceReminder = 0;
         return [
             "<system-reminder>",
-            "Todo 进度核对：已有清单至少 10 轮工具执行未更新，请核对它是否仍对应当前实际工作。",
-            "若已进入下一项工作，先用 todo_write 同步已完成项和当前进行项，再继续执行。正文中的进度说明不能替代工具更新。",
-            "若仍在处理同一项，无需为响应提醒而改状态，继续工作即可；不再相关的任务应移除或调整。不要把未完成的任务标为完成。",
-            "当前清单见同一请求中的运行时状态。",
+            "Todo progress check: the list has not been updated for at least 10 tool rounds. Check whether it matches the actual work.",
+            "If the work has moved on, use todo_write to update completed and current items before proceeding. Prose does not update the list.",
+            "If still working on the same item, continue without a redundant update. Remove or adjust obsolete tasks; never mark incomplete work complete.",
+            "The current list appears in this request's runtime state.",
             "</system-reminder>",
         ].join("\n");
     }

@@ -36,7 +36,7 @@ const customAgentFrontmatterSchema = z
             .max(64)
             .regex(
                 /^[A-Za-z][A-Za-z0-9_-]*$/,
-                "必须以字母开头，且只能包含字母、数字、- 和 _"
+                "Must start with a letter and contain only letters, digits, - and _"
             ),
         description: z.string().trim().min(1).max(500),
         tools: z.array(z.string().trim().min(1).max(128)).min(1).max(32),
@@ -108,7 +108,7 @@ function splitFrontmatter(raw: string):
     | {error: string} {
     const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
     if (!match) {
-        return {error: "缺少有效的 YAML frontmatter"};
+        return {error: "Valid YAML frontmatter is required"};
     }
     return {
         frontmatter: match[1] ?? "",
@@ -141,7 +141,7 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
                 issue(
                     input,
                     "error",
-                    `YAML 解析失败: ${error instanceof Error ? error.message : String(error)}`
+                    `YAML parse failed: ${error instanceof Error ? error.message : String(error)}`
                 ),
             ],
         };
@@ -150,14 +150,14 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
     const rawFields = yamlObject(parsedYaml);
     if (!rawFields) {
         return {
-            issues: [issue(input, "error", "frontmatter 顶层必须是对象")],
+            issues: [issue(input, "error", "Frontmatter must be an object")],
         };
     }
 
     const issues = Object.keys(rawFields)
         .filter((key) => !KNOWN_FRONTMATTER_FIELDS.has(key))
         .map((key) =>
-            issue(input, "warning", "当前版本不支持该字段，已忽略", key)
+            issue(input, "warning", "This field is not supported in the current version and was ignored", key)
         );
     const parsed = customAgentFrontmatterSchema.safeParse(rawFields);
     if (!parsed.success) {
@@ -176,7 +176,7 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
 
     const body = separated.body.trim();
     if (!body) {
-        issues.push(issue(input, "error", "Markdown 正文不能为空", "body"));
+        issues.push(issue(input, "error", "Markdown body must not be empty", "body"));
         return {issues};
     }
     if (body.length > MAX_AGENT_PROMPT_CHARS) {
@@ -184,7 +184,7 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
             issue(
                 input,
                 "error",
-                `Markdown 正文超过 ${MAX_AGENT_PROMPT_CHARS} 字符上限`,
+                `Markdown body exceeds the ${MAX_AGENT_PROMPT_CHARS} character limit`,
                 "body"
             )
         );
@@ -241,7 +241,7 @@ export async function loadAgentSourceDirectory(
                 source,
                 path: directory,
                 severity: "error",
-                message: `目录读取失败: ${error instanceof Error ? error.message : String(error)}`,
+                message: `Failed to read directory: ${error instanceof Error ? error.message : String(error)}`,
             }],
         };
     }
@@ -255,7 +255,7 @@ export async function loadAgentSourceDirectory(
             source,
             path: directory,
             severity: "error",
-            message: `Agent 文件超过 ${MAX_AGENT_FILES_PER_SOURCE} 个，只检查前 ${MAX_AGENT_FILES_PER_SOURCE} 个`,
+            message: `Agent files exceed ${MAX_AGENT_FILES_PER_SOURCE} ; only inspecting the first ${MAX_AGENT_FILES_PER_SOURCE} items`,
         });
     }
 
@@ -271,7 +271,7 @@ export async function loadAgentSourceDirectory(
                 source,
                 path,
                 severity: "error",
-                message: `文件读取失败: ${error instanceof Error ? error.message : String(error)}`,
+                message: `Failed to read file: ${error instanceof Error ? error.message : String(error)}`,
             });
             continue;
         }
@@ -286,7 +286,7 @@ export async function loadAgentSourceDirectory(
                 path,
                 severity: "error",
                 field: "name",
-                message: `同一来源存在重复 Agent 名称: ${parsed.definition.agentType}`,
+                message: `Duplicate Agent name in the same source: ${parsed.definition.agentType}`,
             });
             continue;
         }
@@ -318,7 +318,7 @@ function mergeCustomAgentSources(
                     : "<project agent>",
                 severity: "warning",
                 field: "name",
-                message: `项目 Agent ${definition.agentType} 覆盖用户定义 ${replaced.source === "user" || replaced.source === "project" ? basename(replaced.path) : replaced.agentType}`,
+                message: `Project Agent ${definition.agentType} overrides user definition ${replaced.source === "user" || replaced.source === "project" ? basename(replaced.path) : replaced.agentType}`,
             });
         }
         merged.set(key, definition);
@@ -332,7 +332,7 @@ function mergeCustomAgentSources(
                 id: definition.id,
                 severity: "warning",
                 field: "name",
-                message: `Host Agent ${definition.agentType} 覆盖 ${replaced.source} 定义`,
+                message: `Host Agent ${definition.agentType} overrides ${replaced.source} definition`,
             });
         }
         merged.set(key, definition);
@@ -352,7 +352,7 @@ function mergeCustomAgentSources(
             source: "project",
             path: "<agent registry>",
             severity: "error",
-            message: `生效的自定义 Agent 超过 ${MAX_ACTIVE_CUSTOM_AGENTS} 个，其余定义已忽略`,
+            message: `Effective custom Agents exceed ${MAX_ACTIVE_CUSTOM_AGENTS} ; remaining definitions were ignored`,
         });
     }
     definitions.sort((left, right) =>
@@ -374,7 +374,7 @@ export function boundAgentLoadIssues(
         source: "project",
         path: "<agent loader>",
         severity: "warning",
-        message: `其余 ${issues.length - kept.length} 条 Agent 加载问题已省略`,
+        message: `Remaining ${issues.length - kept.length} Agent loading issues omitted`,
     });
     return kept;
 }
@@ -388,7 +388,7 @@ export function validateCustomAgentTools(
     const issues = [...loaded.issues];
     for (const definition of loaded.definitions) {
         if (definition.source === "builtin") {
-            throw new Error("LoadedCustomAgents 不能包含 builtin 定义");
+            throw new Error("LoadedCustomAgents must not include built-in definitions");
         }
         const forbidden = definition.allowedTools.filter((name) =>
             CUSTOM_AGENT_FORBIDDEN_TOOLS.has(name)
@@ -401,7 +401,7 @@ export function validateCustomAgentTools(
                 issues.push(issueForDefinition(
                     definition,
                     "error",
-                    `自定义 Agent 禁止使用工具: ${forbidden.join(", ")}`,
+                    `Custom Agent cannot use tools: ${forbidden.join(", ")}`,
                     "tools"
                 ));
             }
@@ -409,7 +409,7 @@ export function validateCustomAgentTools(
                 issues.push(issueForDefinition(
                     definition,
                     "error",
-                    `当前 Runtime 不存在工具: ${unknown.join(", ")}`,
+                    `Tool does not exist in this Runtime: ${unknown.join(", ")}`,
                     "tools"
                 ));
             }

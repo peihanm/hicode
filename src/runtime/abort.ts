@@ -16,7 +16,7 @@ const TURN_ABORT_REASONS = new Set<TurnAbortReason>([
 export class TurnInterruptedError extends Error {
     readonly reason: TurnAbortReason;
 
-    constructor(reason: TurnAbortReason, message = "任务已中断") {
+    constructor(reason: TurnAbortReason, message = "Task interrupted") {
         super(message);
         this.name = "TurnInterruptedError";
         this.reason = reason;

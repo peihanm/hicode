@@ -32,9 +32,9 @@ export class HandoffFormatError extends Error {
 }
 
 const sections = [
-    ["objective", "目标与当前阶段"], ["constraints", "用户约束与纠正"],
-    ["decisions", "仍适用的决定与理由"], ["files", "当前文件与读取定位"],
-    ["verification", "已执行验证及局限"], ["next", "下一步与暂停位置"],
+    ["objective", "Objective and phase"], ["constraints", "User constraints and corrections"],
+    ["decisions", "Applicable decisions and stated reasons"], ["files", "Active files and read locations"],
+    ["verification", "Executed verification and limits"], ["next", "Next step and stopping point"],
 ] as const;
 
 /** Labels are added only to the summarizer request, never to the stored original. */
@@ -49,9 +49,9 @@ export function labelHandoffSources(messages: readonly Message[], sources: Hando
 }
 
 export function renderHandoff(raw: string, sources: HandoffSources): string {
-    if (Buffer.byteLength(raw) > 32 * 1024) throw new HandoffFormatError("工作交接超过 32 KiB 上限");
+    if (Buffer.byteLength(raw) > 32 * 1024) throw new HandoffFormatError("Task handoff exceeds 32 KiB");
     let parsed: unknown;
-    try {parsed = JSON.parse(raw);} catch {throw new HandoffFormatError("工作交接必须是完整 JSON 对象");}
+    try {parsed = JSON.parse(raw);} catch {throw new HandoffFormatError("Task handoff must be a complete JSON object");}
     const result = schema.safeParse(parsed);
     if (!result.success) {
         const issues = result.error.issues;
@@ -61,7 +61,7 @@ export function renderHandoff(raw: string, sources: HandoffSources): string {
             const path = issue.path.map(part => typeof part === "number" || known.has(part) ? part : "?").join(".");
             return `${path}: ${issue.code}`;
         }).join("; ");
-        throw new HandoffFormatError(`工作交接格式无效（${issues.length} 项问题）: ${details}。每项必须包含 text、sources、basis；每类最多 10 项`);
+        throw new HandoffFormatError(`Invalid task handoff format (${issues.length} issues): ${details}. Each item requires text, sources and basis; at most 10 items per category.`);
     }
     const records = new Map([...sources.previous, sources.current].map(record => [record.id, record]));
     let count = 0;
@@ -74,14 +74,14 @@ export function renderHandoff(raw: string, sources: HandoffSources): string {
                 const [id, ordinal] = ref.split("/");
                 const record = records.get(id!);
                 if (!record || !Number.isSafeInteger(Number(ordinal)) || Number(ordinal) > record.messages.length) {
-                    throw new Error(`工作交接引用不属于当前来源: ${ref}`);
+                    throw new Error(`Task handoff reference is outside the current sources: ${ref}`);
                 }
             }
             // Model text cannot masquerade as framework framing or a checked citation.
             const text = item.text.replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("[[", "［［");
-            return `- [${item.basis === "inferred" ? "推断，未核实" : "来源转述，非当前状态保证"}] ${text} ${item.sources.map(ref => `[[${ref}]]`).join(" ")}`;
+            return `- [${item.basis === "inferred" ? "inferred, unverified" : "reported source, not a guarantee of current state"}] ${text} ${item.sources.map(ref => `[[${ref}]]`).join(" ")}`;
         }), ""];
     });
-    if (!count) throw new Error("工作交接不能为空");
-    return [`工作交接 v1 · 修订 ${sources.revision}`, ...body].join("\n").trim();
+    if (!count) throw new Error("Task handoff must not be empty");
+    return [`Task handoff v1 · revision ${sources.revision}`, ...body].join("\n").trim();
 }

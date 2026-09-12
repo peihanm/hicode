@@ -7,17 +7,17 @@ const inputSchema = z.object({
     action: z
         .enum(["list", "status", "send", "stop"])
         .default("list")
-        .describe("list/status/send/stop 管理任务；send 向 Agent 发送消息或继续"),
+        .describe("list/status/send/stop tasks; send steers or continues an Agent."),
     task_id: z
         .string()
         .optional()
-        .describe("除 list 外必填；由后台 bash 或 Agent Tool 返回"),
+        .describe("Required except for list; returned by background bash or agent."),
     message: z
         .string()
         .min(1)
         .max(32 * 1024)
         .optional()
-        .describe("action=send 时必填；运行中在安全边界注入，已结束时继续同一 Agent Thread"),
+        .describe("Required for send: inject at a safe boundary while running, or continue the same finished Agent thread."),
 });
 
 function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
@@ -37,7 +37,7 @@ function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
 }
 
 function formatTask(task: TaskSnapshot): string {
-    if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"正在提取与整理 Memory"}`;
+    if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"Extracting and consolidating Memory"}`;
     const result = task.outputResult
         ? `\nSaved output: ${JSON.stringify(task.outputResult.path)}`
         : "";
@@ -51,7 +51,7 @@ function formatTask(task: TaskSnapshot): string {
             `Command: ${task.command}`,
             `Cwd: ${task.cwd}`,
             ...(termination ? [`Termination: ${termination}`] : []),
-            task.output ? `Output:\n${task.output}` : "Output: (无输出)",
+            task.output ? `Output:\n${task.output}` : "Output: (no output)",
         ].join("\n") + result + issue;
     }
     const progress = [
@@ -85,7 +85,7 @@ function formatTask(task: TaskSnapshot): string {
 export const taskTool: Tool<typeof inputSchema> = {
     name: "task",
     description:
-        "管理当前 Session 的后台 Shell/Agent Task。Pillar 会主动通知完成结果，不要连续轮询。",
+        "Manage this session's background Shell/Agent tasks with list/status/send/stop. Completion is notified automatically; avoid repeated polling. send steers a running Agent at a safe boundary or continues a finished thread. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "list" || action === "status",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
@@ -95,24 +95,24 @@ export const taskTool: Tool<typeof inputSchema> = {
     },
     async execute({action, task_id, message}, ctx) {
         if (!ctx.tasks) {
-            return {content: "当前 Runtime 不支持后台任务", outcome: "failed"};
+            return {content: "This Runtime does not support background tasks", outcome: "failed"};
         }
         if (action === "list") {
             const tasks = await ctx.tasks.list();
             return tasks.length === 0
-                ? "当前 Session 没有后台任务。"
+                ? "This Session has no background tasks."
                 : tasks.map(formatTask).join("\n\n");
         }
         if (!task_id) {
             return {
-                content: `${action} 需要 task_id`,
+                content: `${action} requires task_id`,
                 outcome: "failed",
             };
         }
         if (action === "send") {
             if (!message?.trim()) {
                 return {
-                    content: "send 需要非空 message",
+                    content: "send requires a non-empty message",
                     outcome: "failed",
                 };
             }
@@ -135,7 +135,7 @@ export const taskTool: Tool<typeof inputSchema> = {
             ? await ctx.tasks.stop(task_id)
             : await ctx.tasks.get(task_id);
         if (!task) {
-            return {content: `后台任务不存在: ${task_id}`, outcome: "failed"};
+            return {content: `Background task not found: ${task_id}`, outcome: "failed"};
         }
         return {
             content: formatTask(task),

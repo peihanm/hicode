@@ -13,9 +13,9 @@ const SHORT_LABELS: Record<PermissionMode, string> = {
 };
 
 const DESCRIPTIONS: Record<PermissionMode, string> = {
-    ask: "工作区内读写和普通命令直接执行；联网及工作区外修改需要你批准。",
-    "auto-review": "额外权限由独立 Agent 审核；需要你的决定时再询问。",
-    "full-access": "按当前系统账户访问文件和网络，不再逐次确认额外访问。",
+    ask: "Workspace reads, edits and ordinary commands run directly; network access and edits outside the workspace require approval.",
+    "auto-review": "An independent Agent reviews extra access; you are asked when a decision is needed.",
+    "full-access": "Access files and the network as the current OS account without confirming each additional access request.",
 };
 
 export function parsePermissionMode(value: string): PermissionMode | null {

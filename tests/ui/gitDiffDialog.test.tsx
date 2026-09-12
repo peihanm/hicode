@@ -61,9 +61,9 @@ describe("GitDiffDialog", () => {
         let loaded = 0;
         const view = render(<GitDiffDialog loadDiff={async () => {loaded++; return result();}} onClose={() => {}} />);
         await waitForRender();
-        expect(view.lastFrame()).toContain("当前未提交修改");
+        expect(view.lastFrame()).toContain("Current uncommitted changes");
         expect(view.lastFrame()).toContain("current.ts");
-        expect(view.lastFrame()).not.toContain("来源");
+        expect(view.lastFrame()).not.toContain("Sources");
         expect(view.lastFrame()).not.toContain("任务 1");
         view.stdin.write("\u001B[C");
         view.stdin.write("\u001B[D");
@@ -98,7 +98,7 @@ describe("GitDiffDialog", () => {
         view.stdin.write("r");
         await waitForRender();
         expect(loaded).toBe(2);
-        expect(view.lastFrame()).toContain("当前没有未提交修改");
+        expect(view.lastFrame()).toContain("No uncommitted changes");
         view.stdin.write("\u001B");
         await waitForRender();
         expect(closed).toBe(1);

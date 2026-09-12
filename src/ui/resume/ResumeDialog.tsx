@@ -10,8 +10,8 @@ function EmptyResumeState({onClose}: {onClose: () => void}) {
     });
     return (
         <Box flexDirection="column">
-            <Text color={COLORS.dim}>没有其他可恢复的历史会话。</Text>
-            <Text color={COLORS.dim}>esc 返回</Text>
+            <Text color={COLORS.dim}>No other previous sessions are available to resume.</Text>
+            <Text color={COLORS.dim}>esc back</Text>
         </Box>
     );
 }
@@ -45,14 +45,14 @@ export function ResumeDialog({
 
     return (
         <Box flexDirection="column">
-            <Text bold>↻ Resume  恢复历史会话</Text>
+            <Text bold>↻ Resume  Previous sessions</Text>
             <Text color={COLORS.dim}>
-                切换前会保存当前会话，并关闭当前会话的后台任务。
+                The current session will be saved and its background tasks closed before switching.
             </Text>
-            {error && <Text color={COLORS.error}>切换失败：{error.slice(0, 500)}</Text>}
+            {error && <Text color={COLORS.error}>Switch failed: {error.slice(0, 500)}</Text>}
             <Box marginTop={1} flexDirection="column">
                 {switching ? (
-                    <Text color={COLORS.dim}>{SYMBOLS.spinner} 正在切换会话…</Text>
+                    <Text color={COLORS.dim}>{SYMBOLS.spinner} Switching session…</Text>
                 ) : available.length === 0 ? (
                     <EmptyResumeState onClose={onClose}/>
                 ) : (
@@ -60,7 +60,7 @@ export function ResumeDialog({
                         sessions={available}
                         onSelect={select}
                         onCancel={onClose}
-                        cancelLabel="返回"
+                        cancelLabel="Back"
                     />
                 )}
             </Box>

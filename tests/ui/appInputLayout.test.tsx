@@ -27,9 +27,9 @@ describe("App input cursor layout", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain("自定义 Agent 加载存在 1 个错误");
-      expect(frame).toContain("输入 /agents 查看详情");
-      expect(frame.match(/自定义 Agent 加载存在/g)).toHaveLength(1);
+      expect(frame).toContain("Custom Agent loading has 1 errors");
+      expect(frame.replace(/\s+/g, " ")).toContain("Use /agents for details");
+      expect(frame.match(/Custom Agent loading has/g)).toHaveLength(1);
     });
   });
 

@@ -3,8 +3,8 @@ import { MEMORY_TYPES } from "./types.js";
 import { memoryKeySchema } from "./schema.js";
 const id = z.string().uuid();
 const text = (max: number) => z.string().trim().min(1).max(max)
-    .refine(value => Buffer.byteLength(value) <= max, `超过 ${max} bytes`);
-const singleLine = (max: number) => text(max).refine(value => !/[\r\n]/.test(value), "必须为单行文本");
+    .refine(value => Buffer.byteLength(value) <= max, `Exceeds ${max} bytes`);
+const singleLine = (max: number) => text(max).refine(value => !/[\r\n]/.test(value), "Must be single-line text");
 export const memoryNoteSchema = z.object({
     operation: z.enum(["remember", "correct"]),
     type: z.enum(MEMORY_TYPES),
@@ -46,23 +46,23 @@ export const memoryPublicationSchema = z.object({
     const keys = new Set(value.topics.map(topic => topic.key));
     const sourceIds = new Set(value.sources.map(source => source.id));
     if (keys.size !== value.topics.length || sourceIds.size !== value.sources.length) {
-        ctx.addIssue({ code: "custom", message: "Memory 包含重复主题或来源" });
+        ctx.addIssue({ code: "custom", message: "Memory contains duplicate topics or sources" });
     }
     for (const topic of value.topics)
         if (topic.sources.some(source => !sourceIds.has(source))) {
-            ctx.addIssue({ code: "custom", message: "Memory 主题引用不存在的来源", path: ["topics", topic.key] });
+            ctx.addIssue({ code: "custom", message: "Memory topic cites a nonexistent source", path: ["topics", topic.key] });
         }
     if (new Set(value.frames.map(frame => frame.id)).size !== value.frames.length)
-        ctx.addIssue({ code: "custom", message: "重复 Memory frame" });
+        ctx.addIssue({ code: "custom", message: "Duplicate Memory frame" });
     if (value.lease) {
         const lease = value.lease;
         if ((lease.phase === "extract" ? (lease.frameIds.length === 0 || lease.sourceIds.length !== 0) : (lease.sourceIds.length === 0 || lease.frameIds.length !== 0)) ||
             new Set(lease.sourceIds).size !== lease.sourceIds.length || new Set(lease.frameIds).size !== lease.frameIds.length) {
-            ctx.addIssue({ code: "custom", message: "Memory lease 阶段或来源集合无效" });
+            ctx.addIssue({ code: "custom", message: "Invalid Memory lease phase or source set" });
         }
     }
     if (value.lease && (value.lease.frameIds.some(id => !value.frames.some(frame => frame.id === id && frame.status === "pending" && frame.epoch === value.epoch)) || value.lease.epoch !== value.epoch || value.lease.sourceIds.some(id => !value.sources.some(source => source.id === id && !source.consumed)))) {
-        ctx.addIssue({ code: "custom", message: "Memory lease 与当前来源/epoch 不一致" });
+        ctx.addIssue({ code: "custom", message: "Memory lease does not match current sources/epoch" });
     }
 });
 export type MemoryPublication = z.infer<typeof memoryPublicationSchema>;

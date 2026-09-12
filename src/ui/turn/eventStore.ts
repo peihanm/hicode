@@ -138,8 +138,8 @@ export class UITurnEventStore {
                     ? {idleMilliseconds: event.idleMilliseconds}
                     : {}),
             };
-            // 与 Claude Code 的 responseLengthRef 相同：每个 delta 都只写 ref，
-            // 同阶段进度不触发根 App 的 external-store 更新。
+            // Like Claude Code's responseLengthRef, each delta updates only the ref;
+            // progress within the same phase does not update the root App external store.
             this.modelStreamProgressRef.current = modelStream;
             const phaseChanged = current?.phase !== event.phase;
             const toolChanged = current?.toolName !== event.toolName;
@@ -201,17 +201,17 @@ export class UITurnEventStore {
         );
         if (threads !== this.snapshot.threads) {
             const nextSnapshot = {...this.snapshot, threads};
-            // 非探索工具在同批 sibling 全部完成后原子转入 Static。尾部成功
-            // 探索则跨 iteration 留在 live 区继续聚合，直到出现语义边界；
-            // 文件修改继续留到 iteration 边界以合并最终净 diff。
+            // Non-exploration tools enter Static atomically after all batch siblings finish.
+            // Successful trailing exploration stays live across iterations for aggregation until a semantic boundary.
+            // File changes remain until the iteration boundary to merge their final net diff.
             const completedToolCallId =
                 event.type === "tool_call_end" &&
                 toolFileChanges(event.uiData, event.outcome).length === 0
                     ? event.toolCallId
                     : undefined;
-            // assistant_text 已经是完整的一段 commentary 或最终文本，不存在后续增量更新。若先放进
-            // live 区、Turn settled 时再转入 Static，长回答可能已经滚进终端
-            // scrollback，Ink 无法擦除旧帧，最终就会看起来输出了两次。
+            // assistant_text is already complete commentary or final text, with no future deltas. Putting it
+            // in the live area until Turn settlement can push a long response into terminal
+            // scrollback, where Ink cannot erase it, causing duplicate output on entry to Static.
             const completedAssistantId =
                 event.type === "assistant_text" ||
                 event.type === "compact_start" ||
@@ -223,9 +223,9 @@ export class UITurnEventStore {
             if (event.type === "hook_completed") {
                 this.update(this.archiveThroughSettledThread(nextSnapshot, `hook:${event.execution.executionId}`));
             } else if (completedAssistantId) {
-                // Slash 等快速命令可能在用户输入尚未进入 Static 时立即返回。
-                // 最终回答必须连同它之前尚未归档的已完成消息一起固化，否则
-                // Static 会先写回答、Turn settle 时再写用户命令，时间顺序反转。
+                // Fast commands such as Slash may return before user input reaches Static.
+                // Freeze the final answer together with preceding completed messages not yet archived;
+                // otherwise Static prints the answer before Turn settlement prints the user command.
                 this.update(
                     this.archiveThroughSettledThread(
                         nextSnapshot,
@@ -279,19 +279,19 @@ export class UITurnEventStore {
             ...this.snapshot,
             threads: [...this.snapshot.threads, thread],
         };
-        // 用户提交的文本不会再更新。若先进入 live 区，长 Prompt 已滚入终端
-        // scrollback 后再迁入 Static 会被物理打印两次；因此与完整 Assistant
-        // 文本一样，在没有未完成前置工具时直接原子固化。
+        // Submitted user text no longer changes. Moving it from live rendering into Static after
+        // a long prompt enters scrollback physically prints it twice. Like complete assistant
+        // text, freeze it atomically when no preceding tools remain unfinished.
         this.update(this.archiveThroughSettledThread(nextSnapshot, thread.id));
     }
 
     appendError(error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);
-        this.appendCompletedAssistant(`出错: ${message}`);
+        this.appendCompletedAssistant(`Error: ${message}`);
     }
 
     appendWarning(message: string): void {
-        this.appendCompletedAssistant(`警告: ${message}`);
+        this.appendCompletedAssistant(`Warning: ${message}`);
     }
 
     appendNotice(message: string): void {
@@ -449,7 +449,7 @@ export class UITurnEventStore {
             try {
                 listener();
             } catch {
-                // UI subscriber 不能破坏 Agent event 链。
+                // UI subscribers cannot disrupt the Agent event chain.
             }
         }
     }

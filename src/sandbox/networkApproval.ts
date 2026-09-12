@@ -33,7 +33,7 @@ export class SandboxNetworkApproval {
     }
 
     private recordDenial(host: string, port: number, reason: string): void {
-        const message = `${host}:${port}（${reason}）`;
+        const message = `${host}:${port}(${reason})`;
         for (const execution of this.executions) {
             if (execution.diagnostics.length < 8 && !execution.diagnostics.includes(message)) {
                 execution.diagnostics.push(message);
@@ -65,7 +65,7 @@ export class SandboxNetworkApproval {
         host = host.toLowerCase().replace(/\.$/, "");
         const access = this.eligible();
         if (!access) {
-            this.recordDenial(host, port, "无交互权限或并发执行的授权来源无法确认");
+            this.recordDenial(host, port, "No interactive permission channel, or the authorization source for concurrent execution is ambiguous");
             return false;
         }
         const signal = this.revision.signal;
@@ -83,7 +83,7 @@ export class SandboxNetworkApproval {
                 (decision.networkScope !== undefined && decision.networkScope !== "once" &&
                     decision.networkScope !== "session")) {
                 for (const entry of this.executions) entry.denied.add(key);
-                this.recordDenial(host, port, decision.behavior === "deny" ? decision.message.slice(0, 1000) : "网络审批返回了无效决定");
+                this.recordDenial(host, port, decision.behavior === "deny" ? decision.message.slice(0, 1000) : "Network approval returned an invalid decision");
                 return false;
             }
             if (decision.networkScope === "session") access.session.grant(host, port);
@@ -97,16 +97,16 @@ export class SandboxNetworkApproval {
         access: NetworkAccessExecution, host: string, port: number, signal: AbortSignal
     ): Promise<PermissionDecision> {
         return new Promise((resolve) => {
-            const abort = () => resolve({behavior: "deny", message: "网络请求已取消"});
+            const abort = () => resolve({behavior: "deny", message: "Network request cancelled"});
             signal.addEventListener("abort", abort, {once: true});
             void Promise.resolve().then(() => {
-                if (signal.aborted) return {behavior: "deny" as const, message: "网络请求已取消"};
+                if (signal.aborted) return {behavior: "deny" as const, message: "Network request cancelled"};
                 return access.canUseTool(
-                    "bash", `允许连接 ${host}:${port}？文件与进程仍受 OS Sandbox 保护。`,
+                    "bash", `Allow connection to ${host}:${port}? Files and processes remain protected by the OS Sandbox.`,
                     {host, port},
                     {allowPersistent: false, presentation: {kind: "network_access", host, port}, signal}
                 );
-            }).then(resolve, () => resolve({behavior: "deny", message: "网络授权失败"}))
+            }).then(resolve, () => resolve({behavior: "deny", message: "Network authorization failed"}))
                 .finally(() => signal.removeEventListener("abort", abort));
         });
     }

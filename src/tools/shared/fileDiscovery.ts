@@ -59,10 +59,10 @@ export function createFileDiscovery(input: {
         const path = join(directory, ".gitignore");
         let handle;
         try {
-            if (!await input.canVisit(path)) throw new Error("搜索权限不允许读取 ignore 规则");
+            if (!await input.canVisit(path)) throw new Error("Search permissions do not allow reading ignore rules");
             handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
             const info = await handle.stat();
-            if (!info.isFile() || info.size > 64 * 1024) throw new Error("ignore 文件不是有界 regular file");
+            if (!info.isFile() || info.size > 64 * 1024) throw new Error("Ignore file is not a bounded regular file");
             const bytes = Buffer.alloc(64 * 1024 + 1);
             let bytesRead = 0;
             while (bytesRead < bytes.length) {
@@ -71,11 +71,11 @@ export function createFileDiscovery(input: {
                 if (chunk.bytesRead === 0) break;
                 bytesRead += chunk.bytesRead;
             }
-            if (bytesRead > 64 * 1024) throw new Error("ignore 文件超过 64 KiB");
+            if (bytesRead > 64 * 1024) throw new Error("Ignore file exceeds 64 KiB");
             return {root: directory, rules: ignore({ignorecase: false}).add(new TextDecoder("utf-8", {fatal: true}).decode(bytes.subarray(0, bytesRead)))};
         } catch (error) {
             if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
-            throw new Error(`无法读取搜索 ignore 规则: ${path}`, {cause: error});
+            throw new Error(`Cannot read search ignore rules: ${path}`, {cause: error});
         } finally { await handle?.close(); }
     };
     const ignored = (path: string, directory: boolean, layers: readonly IgnoreLayer[]) => {
@@ -92,20 +92,20 @@ export function createFileDiscovery(input: {
     };
     async function* walk(directory: string, inherited: readonly IgnoreLayer[], depth: number): AsyncGenerator<string> {
         throwIfTurnAborted(input.signal);
-        if (depth > 64) { issue("目录深度超过 64 层"); return; }
+        if (depth > 64) { issue("Directory depth exceeds 64 levels"); return; }
         const info = await lstat(directory);
         if (info.isSymbolicLink() || !inside(canonicalRoot, await realpath(directory))) {
-            issue(`目录路径发生改变或越出搜索根: ${relative(root, directory) || "."}`);
+            issue(`Directory path changed or escaped the search root: ${relative(root, directory) || "."}`);
             return;
         }
         const local = await readRules(directory);
         const layers = local ? [...inherited, local] : inherited;
         let handle;
         try { handle = await opendir(directory); }
-        catch { issue(`无法枚举目录: ${relative(root, directory) || "."}`); return; }
+        catch { issue(`Cannot enumerate directory: ${relative(root, directory) || "."}`); return; }
         for await (const entry of handle) {
             throwIfTurnAborted(input.signal);
-            if (stats.visitedEntries >= input.maxEntries) { issue(`达到 ${input.maxEntries} 个目录项的扫描上限`); return; }
+            if (stats.visitedEntries >= input.maxEntries) { issue(`Reached the ${input.maxEntries} directory-entry scan limit`); return; }
             stats.visitedEntries++;
             const path = join(directory, entry.name);
             if (entry.name === ".git" || (!input.includeHidden && entry.name.startsWith(".")) ||
@@ -115,7 +115,7 @@ export function createFileDiscovery(input: {
             }
             if (!await input.canVisit(path)) {
                 stats.skippedEntries++;
-                issue("部分路径因 deny/ask 权限规则未扫描；需要确认的路径请单独调用工具");
+                issue("Some paths were skipped by deny/ask rules; invoke the tool separately for paths requiring approval");
                 continue;
             }
             if (entry.isDirectory()) yield* walk(path, layers, depth + 1);
@@ -126,10 +126,10 @@ export function createFileDiscovery(input: {
         throwIfTurnAborted(input.signal);
         if (root.split(/[\\/]/).includes(".git")) return;
         const info = await lstat(root);
-        if (info.isSymbolicLink()) { issue("搜索根路径是符号链接"); return; }
+        if (info.isSymbolicLink()) { issue("Search root is a symbolic link"); return; }
         // An explicit file is an intentional override of the discovery filters.
         if (info.isFile()) { stats.candidateFiles++; yield root; return; }
-        if (!info.isDirectory()) throw new Error("搜索路径不是文件或目录");
+        if (!info.isDirectory()) throw new Error("Search path is neither a file nor a directory");
         canonicalRoot = await realpath(root);
         const layers: IgnoreLayer[] = [{root: inside(cwd, root) ? cwd : root,
             rules: ignore({ignorecase: false}).add("node_modules/")}];

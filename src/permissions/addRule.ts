@@ -1,18 +1,18 @@
-// "don't ask again" 自动写入
-// 用户选 "2. Yes, and don't ask again for this project" 时调用
+// Persist rules for "don't ask again".
+// Called when the user chooses "Yes, and don't ask again for this project".
 //
-// 流程：
-// 1. 生成规则字符串（如 "bash(ls:*)" 或 "write_file"）
-// 2. 写入 .pillar/settings.local.json
-// 3. 更新内存里的 permissionRules
+// Flow:
+// 1. Generate a rule string such as bash(ls:*) or write_file.
+// 2. Write .pillar/settings.local.json.
+// 3. Update in-memory permissionRules.
 
 import {generateShellAllowPattern} from "./shellCommand.js";
 import {parsePermissionRule} from "./rules.js";
 import type {PermissionRule, PermissionRules} from "./types.js";
 import {appendLocalPermissionAllowRule} from "../settings/index.js";
 
-// 生成规则字符串
-// bash: 写 "bash(command_prefix:*)" 或复合规则，其他工具：整工具放行
+// Generate the rule string.
+// Bash uses bash(command_prefix:*) or a compound rule; other tools receive whole-tool rules.
 export function generateRuleForTool(
     toolName: string,
     input: unknown
@@ -49,11 +49,11 @@ export function generateRuleForTool(
             return null;
         }
     }
-    // 其他工具：默认整工具放行
+    // Default to whole-tool rules for other tools.
     return toolName;
 }
 
-// 写入规则到 settings.local.json + 更新内存 rules
+// Persist settings.local.json and update in-memory rules.
 export async function addToAllowList(
     ruleStr: string,
     rules: PermissionRules,

@@ -18,14 +18,14 @@ export async function collectTurnResult(
         ) {
             throw new PillarSDKError(
                 "invalid_event_sequence",
-                `SDK event sequence 不连续: ${previousSequence} -> ${event.sequence}`
+                `SDK event sequence is discontinuous: ${previousSequence} -> ${event.sequence}`
             );
         }
         previousSequence = event.sequence;
         if (terminal || failure) {
             throw new PillarSDKError(
                 "event_after_terminal",
-                "Turn terminal event 后仍收到 SDK event"
+                "SDK event received after the Turn terminal event"
             );
         }
 
@@ -34,7 +34,7 @@ export async function collectTurnResult(
                 if (turnId) {
                     throw new PillarSDKError(
                         "duplicate_turn_start",
-                        "同一事件流包含多个 turn.started"
+                        "Multiple turn.started events in the same stream"
                     );
                 }
                 turnId = event.turnId;
@@ -49,7 +49,7 @@ export async function collectTurnResult(
                 if (activeItems.has(event.item.id)) {
                     throw new PillarSDKError(
                         "duplicate_item_start",
-                        `Item 重复 started: ${event.item.id}`
+                        `Item started twice: ${event.item.id}`
                     );
                 }
                 activeItems.add(event.item.id);
@@ -59,7 +59,7 @@ export async function collectTurnResult(
                 if (!activeItems.has(event.item.id)) {
                     throw new PillarSDKError(
                         "unknown_item_update",
-                        `未 started 的 Item 收到 update: ${event.item.id}`
+                        `Update received for an Item that was not started: ${event.item.id}`
                     );
                 }
                 break;
@@ -68,7 +68,7 @@ export async function collectTurnResult(
                 if (!activeItems.delete(event.item.id)) {
                     throw new PillarSDKError(
                         "unknown_item_completion",
-                        `未 started 的 Item 收到 completed: ${event.item.id}`
+                        `Completion received for an Item that was not started: ${event.item.id}`
                     );
                 }
                 completedItems.push(event.item);
@@ -89,7 +89,7 @@ export async function collectTurnResult(
     if (activeItems.size > 0) {
         throw new PillarSDKError(
             "unclosed_items",
-            `Turn 结束时仍有 ${activeItems.size} 个 Item 未闭合`
+            `Turn ended with ${activeItems.size} unclosed Items`
         );
     }
     if (failure) {
@@ -101,7 +101,7 @@ export async function collectTurnResult(
     if (!turnId || !terminal) {
         throw new PillarSDKError(
             "missing_turn_terminal",
-            "SDK event stream 未包含完整 turn.started/turn.completed"
+            "SDK event stream lacks a complete turn.started/turn.completed pair"
         );
     }
     const finalResponse = [...completedItems].reverse().find(
@@ -126,7 +126,7 @@ function assertTurn(actual: string, expected: string | undefined): void {
     if (!expected || actual !== expected) {
         throw new PillarSDKError(
             "event_turn_mismatch",
-            `SDK event turnId 不匹配: ${actual}`
+            `SDK event turnId mismatch: ${actual}`
         );
     }
 }

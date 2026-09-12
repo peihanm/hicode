@@ -25,12 +25,12 @@ describe("单文件批量编辑", () => {
     });
 
     test.each([
-        {name: "后项缺失", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "missing", new_string: "x"}], error: "第 2 项"},
-        {name: "后项歧义", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "same", new_string: "x"}], error: "匹配到 2 处"},
-        {name: "后项引用前项输出", edits: [{old_string: "alpha", new_string: "generated"}, {old_string: "generated", new_string: "x"}], error: "原版本中找不到"},
-        {name: "范围重叠", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "pha", new_string: "x"}], error: "重叠"},
-        {name: "重复项", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "alpha", new_string: "x"}], error: "重叠"},
-        {name: "replace_all 与其他项重叠", edits: [{old_string: "same", new_string: "x", replace_all: true}, {old_string: "same end", new_string: "y"}], error: "重叠"},
+        {name: "后项缺失", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "missing", new_string: "x"}], error: "Item 2"},
+        {name: "后项歧义", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "same", new_string: "x"}], error: "matched 2 locations"},
+        {name: "后项引用前项输出", edits: [{old_string: "alpha", new_string: "generated"}, {old_string: "generated", new_string: "x"}], error: "was not found in the original version"},
+        {name: "范围重叠", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "pha", new_string: "x"}], error: "overlap"},
+        {name: "重复项", edits: [{old_string: "alpha", new_string: "new"}, {old_string: "alpha", new_string: "x"}], error: "overlap"},
+        {name: "replace_all 与其他项重叠", edits: [{old_string: "same", new_string: "x", replace_all: true}, {old_string: "same end", new_string: "y"}], error: "overlap"},
     ].map(({name, edits, error}) => [name, edits, error] as const))("%s：整次失败，没有文件变化", async (_name, edits, error) => {
         await withTempProject(async cwd => {
             const path = join(cwd, "file.txt");
@@ -41,7 +41,7 @@ describe("单文件批量编辑", () => {
             const result = await executeToolResult("edit_file", JSON.stringify({path, edits}), ctx, "invalid-batch");
             expect(result.outcome).toBe("failed");
             expect(result.modelContent).toContain(error);
-            expect(result.modelContent).toContain("本次未写入文件");
+            expect(result.modelContent).toContain("No file was written");
             expect(result.uiData).toBeUndefined();
             expect(await readFile(path, "utf8")).toBe(original);
         });
@@ -58,23 +58,23 @@ describe("单文件批量编辑", () => {
             expect(await executeTool("edit_file", JSON.stringify({path, edits: [
                 {old_string: "三B", new_string: "三🙂加长"},
                 {old_string: "一A", new_string: "首"},
-            ]}), ctx)).toContain("替换 2 处");
+            ]}), ctx)).toContain("replaced 2 matches");
             const hidden = await executeToolResult("edit_file", JSON.stringify({path, edits: [
                 {old_string: "首", new_string: "changed"},
                 {old_string: "SECRET", new_string: "hidden"},
             ]}), ctx, "hidden-batch");
             expect(hidden.outcome).toBe("failed");
-            expect(hidden.modelContent).toContain("第 2 项");
-            expect(hidden.modelContent).toContain("未展示");
+            expect(hidden.modelContent).toContain("Item 2");
+            expect(hidden.modelContent).toContain("did not show");
             const all = await executeToolResult("edit_file", JSON.stringify({path, edits: [
                 {old_string: "首", new_string: "changed", replace_all: true},
             ]}), ctx, "full-read-required");
             expect(all.outcome).toBe("failed");
-            expect(all.modelContent).toContain("replace_all 必须先完整读取");
+            expect(all.modelContent).toContain("replace_all requires reading the entire file");
             expect(await executeTool("edit_file", JSON.stringify({path, edits: [
                 {old_string: "首", new_string: "头"},
                 {old_string: "三🙂加长", new_string: "尾"},
-            ]}), ctx)).toContain("替换 2 处");
+            ]}), ctx)).toContain("replaced 2 matches");
             expect(await readFile(path, "utf8")).toBe("头\nSECRET\n尾\nEND\n");
         });
     });
@@ -95,7 +95,7 @@ describe("单文件批量编辑", () => {
             ]}), ctx, "noop");
             expect(noop.outcome).toBe("ok");
             expect(noop.uiData).toBeUndefined();
-            expect(noop.modelContent).toContain("无需修改");
+            expect(noop.modelContent).toContain("No changes needed for");
         });
     });
 

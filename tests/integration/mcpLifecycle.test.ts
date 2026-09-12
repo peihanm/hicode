@@ -53,7 +53,7 @@ test.each(["refresh", "disconnect", "invalid", "storm"])("真实 stdio 生命周
             expect(manager.getTools().filter(tool => tool.name.startsWith("mcp__second__"))).toEqual(stable);
         } finally {await manager.closeAll();}
         expect(manager.getTools()).toHaveLength(0);
-        await expect(manager.reconnect("first")).rejects.toThrow("已关闭");
+        await expect(manager.reconnect("first")).rejects.toThrow("is closed");
     });
 });
 
@@ -80,7 +80,7 @@ test("重连重新批准修改后的配置，关闭不等待迟到的批准或�
         await writeFile(path, JSON.stringify({mcpServers: {fixture: {...config, args: [...config.args, "changed"]}}}));
         const reconnect = manager.reconnect("fixture");
         await waiting;
-        await expect(manager.reconnect("fixture")).rejects.toThrow("正在连接");
+        await expect(manager.reconnect("fixture")).rejects.toThrow("is connecting");
         await manager.closeAll();
         allow("always");
         await reconnect;

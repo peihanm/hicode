@@ -23,7 +23,7 @@ function storageRelativePath(
         relativePath.startsWith(`..${sep}`) ||
         isAbsolute(relativePath)
     ) {
-        throw new Error(`Pillar storage 路径越界: ${targetPath}`);
+        throw new Error(`Pillar storage path is out of bounds: ${targetPath}`);
     }
     return {home, relativePath};
 }
@@ -31,7 +31,7 @@ function storageRelativePath(
 function assertDirectory(path: string): void {
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
-        throw new Error(`Pillar storage 目录不安全: ${path}`);
+        throw new Error(`Unsafe Pillar storage directory: ${path}`);
     }
 }
 
@@ -83,10 +83,10 @@ function readPrivateStorageFile(
         descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
         const metadata = fstatSync(descriptor);
         if (!metadata.isFile()) {
-            throw new Error(`Pillar storage 文件不是 regular file: ${path}`);
+            throw new Error(`Pillar storage file is not a regular file: ${path}`);
         }
         if (metadata.size > maxBytes) {
-            throw new Error(`Pillar storage 文件超过大小上限: ${path}`);
+            throw new Error(`Pillar storage file exceeds the size limit: ${path}`);
         }
         return readFileSync(descriptor);
     } catch (error) {

@@ -9,16 +9,16 @@ export async function encodeImageMessages(input: {
 }): Promise<unknown[]> {
     const references = input.messages.flatMap(message => imageReferences(message.content));
     if (references.length) {
-        if (!input.supported || !input.readImage) throw new Error("当前模型/接口或 Session 未提供图片能力；历史保留，未发送请求");
+        if (!input.supported || !input.readImage) throw new Error("This model/interface or Session has no image capability; history is preserved and the request was not sent");
         const seen = new Map<string, string>();
         for (const reference of references) {
             imageReferenceSchema.parse(reference);
             const descriptor = JSON.stringify(reference.image);
-            if (seen.has(reference.imageId) && seen.get(reference.imageId) !== descriptor) throw new Error("同一图片 ID 的元数据不一致");
+            if (seen.has(reference.imageId) && seen.get(reference.imageId) !== descriptor) throw new Error("Inconsistent metadata for the same image ID");
             seen.set(reference.imageId, descriptor);
         }
         if (references.length > IMAGE_MAX_COUNT || references.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) {
-            throw new Error("当前请求图片超过 8 张或 10 MiB 预算；请先压缩历史或减少图片，不会静默丢图");
+            throw new Error("Request exceeds 8 images or 10 MiB; compact history or reduce images first. Images will not be silently dropped.");
         }
     }
     const cache = new Map<string, string>();
@@ -33,7 +33,7 @@ export async function encodeImageMessages(input: {
             let url = cache.get(part.imageId);
             if (!url) {
                 const data = await input.readImage!(part);
-                if (data.length !== part.image.byteLength || createHash("sha256").update(data).digest("hex") !== part.image.sha256) throw new Error("送模图片完整性校验失败");
+                if (data.length !== part.image.byteLength || createHash("sha256").update(data).digest("hex") !== part.image.sha256) throw new Error("Model-input image integrity check failed");
                 url = `data:${part.image.mimeType};base64,${data.toString("base64")}`;
                 cache.set(part.imageId, url);
             }

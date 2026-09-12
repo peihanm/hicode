@@ -66,8 +66,8 @@ test("240 个依赖文件不占用项目候选预算，搜索记录真实扫描�
         await put(cwd, "src/build/b.ts");
         const ctx = createTestContext(cwd);
         const result = await executeToolResult("grep", JSON.stringify({pattern: "DISCOVERY_TOKEN"}), ctx, "count-candidates");
-        expect(result.modelContent).toContain("搜了 2 个文件");
-        expect(result.modelContent).toContain("发现 2 个候选文件");
+        expect(result.modelContent).toContain("Searched 2 files");
+        expect(result.modelContent).toContain("found 2 candidate files");
         const glob = await executeToolResult("glob", JSON.stringify({pattern: "**/*.ts"}), ctx, "glob-candidates");
         expect(contentText(glob.modelContent).split("\n")).toEqual(["src/a.ts", "src/build/b.ts"]);
     });
@@ -79,12 +79,12 @@ test("fast 分页提前停止读取，complete 分页仍统计全部匹配", asy
         const ctx = createTestContext(cwd);
         const input = {pattern: "DISCOVERY_TOKEN", head_limit: 1};
         const fast = await executeToolResult("grep", JSON.stringify(input), ctx, "fast");
-        expect(fast.modelContent).toContain("搜了 1 个文件");
-        expect(fast.modelContent).toContain("搜索未完整覆盖");
+        expect(fast.modelContent).toContain("Searched 1 files");
+        expect(fast.modelContent).toContain("search coverage is incomplete");
         const complete = await executeToolResult("grep", JSON.stringify({...input, search_mode: "complete"}), ctx, "complete");
-        expect(complete.modelContent).toContain("共 10 条匹配");
-        expect(complete.modelContent).toContain("搜了 10 个文件");
-        expect(complete.modelContent).not.toContain("搜索未完整覆盖");
+        expect(complete.modelContent).toContain("Total: 10 matches");
+        expect(complete.modelContent).toContain("Searched 10 files");
+        expect(complete.modelContent).not.toContain("search coverage is incomplete");
     });
 });
 
@@ -92,9 +92,9 @@ test("跳过大文件时未找到不能暗示全范围不存在", async () => {
     await withTempProject(async cwd => {
         await put(cwd, "large.txt", "x".repeat(1024 * 1024 + 1));
         const result = await executeToolResult("grep", JSON.stringify({pattern: "ABSENT"}), createTestContext(cwd), "large-skip");
-        expect(result.modelContent).toContain("未找到匹配");
-        expect(result.modelContent).toContain("跳过 1 个文件");
-        expect(result.modelContent).toContain("搜索未完整覆盖");
+        expect(result.modelContent).toContain("No matches for");
+        expect(result.modelContent).toContain("skipped 1 files");
+        expect(result.modelContent).toContain("search coverage is incomplete");
     });
 });
 

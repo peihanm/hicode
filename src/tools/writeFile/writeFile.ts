@@ -19,12 +19,12 @@ function overwriteStateMessage(
     reason: "not_read" | "partial_read" | "stale"
 ): string {
     if (reason === "partial_read") {
-        return `整体覆盖 ${path} 前必须先完整 read_file，部分读取不足以安全覆盖文件。`;
+        return `Before replacing all of ${path} , read it fully with read_file; a partial read is insufficient for a safe overwrite.`;
     }
     if (reason === "stale") {
-        return `文件 ${path} 自上次 read_file 后已被修改，必须重新读取。`;
+        return `File ${path} has changed since the last read_file; read it again.`;
     }
-    return `覆盖已有文件 ${path} 前必须先用 read_file 完整读取它（防止脏改）。`;
+    return `Before overwriting existing file ${path} , read it fully with read_file (to prevent stale writes).`;
 }
 
 export const writeFileTool: Tool<
@@ -35,10 +35,10 @@ export const writeFileTool: Tool<
 > = {
     name: "write_file",
     description:
-        "创建文件或整体重写文件。整体重写时必须已完整掌握当前版本；此前未读取的已有文件要先用 read_file 完整读取，小范围修改优先用 edit_file。",
+        "Create a file or replace its entire contents. Read an existing file fully before rewriting it; use edit_file for local changes. Provide complete working content, not a placeholder awaiting mechanical follow-up writes. User-supplied text and identifiers retain their intended language.",
     parameters: z.object({
-        path: z.string().describe("文件路径"),
-        content: z.string().describe("完整的文件内容"),
+        path: z.string().describe("File path."),
+        content: z.string().describe("Complete file contents."),
     }),
     isReadOnly: () => false,
     getDefaultApprovalScope: ({path}) => ({kind: "workspace", path}),
@@ -52,7 +52,7 @@ export const writeFileTool: Tool<
 
         return {
             behavior: "ask",
-            message: `${exists ? "即将覆盖已有文件" : "即将写入新文件"}:\n  ${path}\n  (${content.length} 字符)\n是否执行?`,
+            message: `${exists ? "About to overwrite existing file" : "About to write new file"}:\n  ${path}\n  (${content.length} characters)\nProceed?`,
         };
     },
     execute: async (
@@ -60,8 +60,8 @@ export const writeFileTool: Tool<
         ctx,
         invocation
     ) => {
-        // 到这里时权限已经通过，直接执行
-        // 父目录不存在则创建
+        // Permissions already passed; execute directly.
+        // Create missing parent directories.
         const absPath = resolveToolPath(ctx.cwd, path);
         if (ctx.memoryFiles?.classify(absPath)) {
             ctx.memoryFiles.validateWrite(absPath, content);
@@ -74,13 +74,13 @@ export const writeFileTool: Tool<
             });
             if (!state.ok) {
                 return {
-                    content: `写入前置条件未满足: ${overwriteStateMessage(path, state.reason)}`,
+                    content: `Write precondition failed: ${overwriteStateMessage(path, state.reason)}`,
                     outcome: "failed" as const,
                 };
             }
         }
         if (exists && oldContent === content) {
-            return `无需写入 ${path}（内容未发生变化）`;
+            return `No write needed for ${path}(content unchanged)`;
         }
         if (ctx.memoryFiles?.classify(absPath)) {
             await ctx.memoryFiles.write(
@@ -90,7 +90,7 @@ export const writeFileTool: Tool<
                 invocation.toolCallId
             );
             ctx.fileState.forget(absPath);
-            return `Memory note 已记录，立即参与召回，待整理: ${path}。后续修改前重新读取规范化 note；无需维护索引。`;
+            return `Memory note recorded and available for recall; pending consolidation: ${path}. Read the normalized note before further changes; no index maintenance is needed.`;
         }
         const change = createFileChange({
             path: displayToolPath(ctx.cwd, absPath),
@@ -113,7 +113,7 @@ export const writeFileTool: Tool<
             modelKnowsWholeFile: true,
         });
         const result =
-            `已写入 ${path}（${content.length} 字符）`;
+            `Wrote ${path} (${content.length} characters)`;
         return {
             content: result,
             displayContent: result,

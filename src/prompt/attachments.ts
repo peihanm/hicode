@@ -1,39 +1,39 @@
-// UserContext 注入
-// 参考 claude-code src/utils/api.ts:449-474 的 prependUserContext
-// 和 normalizeMessagesForAPI（services/api/claude.ts:1290）合并连续 user msg
+// UserContext injection.
+// Based on Claude Code prependUserContext in src/utils/api.ts
+// and normalizeMessagesForAPI, which merges consecutive user messages.
 //
-// 简化版：同步函数，返回 userContext 的文本片段（不包 user message 外壳）。
-// invokeMessages.ts 会把这些片段拼成一条独立的临时 user message，
-// 插在 system 后、真实用户输入前。
+// A synchronous function returns userContext text fragments without a message wrapper.
+// invokeMessages.ts joins these fragments into one transient user message
+// after system and before real user input.
 //
-// 注入策略：
-// - PILLAR.md：Root Runtime 启动快照，每次注入同样内容
-// - currentDate：每次注入
-// - skills 列表：每次注入（内容固定，字节一致，保证前缀稳定以命中 cache）
+// Injection policy:
+// - PILLAR.md: Root startup snapshot, same content each request.
+// - currentDate: injected each request.
+// - Skill list: same bytes each request for a stable cache prefix.
 //
-// 不做 skills 去重：
-// - skills 内容在启动时加载，会话内不变，每次注入同样字符串
-// - 如果首次注入后续不注入，首次请求有 skills block，后续没有，前缀断裂 cache miss
-// - 每次注入能让 system 后的 userContext message 结构稳定，cache 命中
+// Do not deduplicate Skills across requests:
+// - Skills are loaded at startup and stay stable within the session.
+// - Removing the Skill block after the first request would break the cached prefix.
+// - Repeating it preserves the userContext message structure after system.
 
 import type {LoadedSkill} from "../skills/types.js";
 import {getLocalISODate} from "./date.js";
 import {EMPTY_PROJECT_INSTRUCTIONS, formatProjectInstructions, type ProjectInstructions,} from "./instructions.js";
 
-// 格式化 skills 列表
+// Format the Skill list.
 function formatSkillListing(skills: LoadedSkill[]): string {
     if (skills.length === 0) return "";
     const lines = skills.map((s) => {
         const desc = s.whenToUse ? `${s.description} — ${s.whenToUse}` : s.description;
         return `- ${s.name}: ${desc}`;
     });
-    return `可用 skill（用 skill 工具调用，传 skill 参数）：\n${lines.join("\n")}`;
+    return `Available Skills (invoke skill with the skill parameter):\n${lines.join("\n")}`;
 }
 
-// 构造 userContext 的文本片段。
-// 每个 block 包 <system-reminder>，由 invokeMessages.ts 放入独立的临时 user message。
+// Build userContext text fragments.
+// Each block uses system-reminder tags; invokeMessages.ts wraps them in a transient user message.
 //
-// skills/instructions: Root Runtime 启动快照（每次注入，保证前缀稳定）
+// Skills/instructions are Root startup snapshots, reinjected for prefix stability.
 export function getUserContextBlocks(
     skills: LoadedSkill[],
     instructions: ProjectInstructions = EMPTY_PROJECT_INSTRUCTIONS
@@ -49,7 +49,7 @@ export function getUserContextBlocks(
         );
     }
 
-    // currentDate：每次注入
+    // Inject currentDate on every request.
     blocks.push(
         `<system-reminder>\n` +
         `As you answer the user's questions, you can use the following context:\n` +
@@ -59,7 +59,7 @@ export function getUserContextBlocks(
         `</system-reminder>`
     );
 
-    // Skills 列表：每次注入（内容固定，保证 messages[1] blocks 结构稳定）
+    // Inject the stable Skill list each request to keep messages[1] consistent.
     if (skills.length > 0) {
         blocks.push(
             `<system-reminder>\n` +

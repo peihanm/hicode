@@ -208,7 +208,7 @@ describe("DeepSeek provider", () => {
             cwd: process.cwd(),
             model: "deepseek-pro",
             kind: "main",
-        })).rejects.toThrow("缺少 DEEPSEEK_API_KEY");
+        })).rejects.toThrow("Missing DEEPSEEK_API_KEY");
 
         await expect(createLLMCaller(DEEPSEEK_SOURCE)(
             [{role: "user", origin: "user" as const, content: "hello"}],
@@ -218,7 +218,7 @@ describe("DeepSeek provider", () => {
             "qwen3.6-plus",
             "main"
         )).rejects.toThrow(
-            "缺少 DEEPSEEK_API_KEY"
+            "Missing DEEPSEEK_API_KEY"
         );
     });
 

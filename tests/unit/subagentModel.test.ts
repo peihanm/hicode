@@ -17,9 +17,9 @@ describe("subagent model routing", () => {
             fastModel: "glm-4.7",
         })).toBe("glm-4.7");
         expect(formatSubagentModel("fast")).toBe(
-            "fast（使用配置的快速模型）"
+            "fast (configured fast model)"
         );
-        expect(formatSubagentModel("fast", "继承 Root", "glm-4.7"))
+        expect(formatSubagentModel("fast", "Inherit Root", "glm-4.7"))
             .toBe("fast (glm-4.7)");
     });
 

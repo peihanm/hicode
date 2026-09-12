@@ -36,7 +36,7 @@ function parseSlashInput(input: string): { name: string; args: string } | null {
 
 function formatHelp(): string {
     const commands = [
-        "/help - 显示可用命令",
+        "/help - Show available commands",
         ...getSlashCommands().map((cmd) => {
             const args = cmd.argumentHint ? ` ${cmd.argumentHint}` : "";
             return `/${cmd.name}${args} - ${cmd.description}`;
@@ -44,7 +44,7 @@ function formatHelp(): string {
     ]
         .join("\n");
 
-    return `可用命令:\n${commands}`;
+    return `Available commands:\n ${commands}`;
 }
 
 interface SlashCommandProcessorDependencies {
@@ -68,7 +68,7 @@ export function createSlashCommandProcessor({
             if (!input.trimStart().startsWith("/")) return false;
             await context.onEvent({
                 type: "assistant_text",
-                content: "Slash 命令超过 1,048,576 字符上限。",
+                content: "Slash command exceeds 1,048,576 characters.",
             });
             return true;
         }
@@ -79,7 +79,7 @@ export function createSlashCommandProcessor({
             }
             await context.onEvent({
                 type: "assistant_text",
-                content: "命令格式应为 `/command [args]`。",
+                content: "Expected format: `/command [args]`.",
             });
             return true;
         }
@@ -87,7 +87,7 @@ export function createSlashCommandProcessor({
         if (parsed.name === "help" || parsed.name === "?") {
             await context.onEvent({
                 type: "assistant_text",
-                content: parsed.args ? "用法: /help" : formatHelp(),
+                content: parsed.args ? "Usage: /help" : formatHelp(),
             });
             return true;
         }
@@ -96,7 +96,7 @@ export function createSlashCommandProcessor({
         if (!command) {
             await context.onEvent({
                 type: "assistant_text",
-                content: `未知命令: /${parsed.name}。输入 /help 查看可用命令。`,
+                content: `Unknown command: /${parsed.name}. Use /help for available commands.`,
             });
             return true;
         }

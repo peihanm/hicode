@@ -101,8 +101,8 @@ test("image access survives archive Resume and rejects unreachable references", 
         expect(await access.readSource(ref!)).toEqual(original);
         // References outside the current history and archives are not readable.
         loaded.compactState = createCompactState();
-        expect(() => access.find(ref!.imageId)).toThrow("可达引用");
-        await expect(access.readSource(ref!)).rejects.toThrow("可达引用");
+        expect(() => access.find(ref!.imageId)).toThrow("reachable");
+        await expect(access.readSource(ref!)).rejects.toThrow("reachable");
         const foreign = createImageAccess({storage, store: target, history: () => [], state: createCompactState});
         expect(() => foreign.find(ref!.imageId)).toThrow();
     });
@@ -134,14 +134,14 @@ test("quota cannot truncate images; changed bytes and forged metadata are reject
     await withTempProject(async (cwd, storage) => {
         const prepared = await prepareImage(await png(), signal());
         const tiny = new ToolResultStore(storage, cwd, "tiny", {maxArtifactBytes: 100, maxSessionBytes: 100, previewChars: 100});
-        await expect(tiny.persistBinary({origin: {kind: "tool", toolCallId: "t", toolName: "view_image"}, data: prepared.data, mimeType: prepared.image.mimeType, image: prepared.image})).rejects.toThrow("额度不足");
+        await expect(tiny.persistBinary({origin: {kind: "tool", toolCallId: "t", toolName: "view_image"}, data: prepared.data, mimeType: prepared.image.mimeType, image: prepared.image})).rejects.toThrow("quota exceeded");
         expect((await readdir(tiny.sessionDir)).filter(path => path.endsWith(".bin") || path.endsWith(".json"))).toHaveLength(0);
         const f = fixture(cwd); await writeFile(join(cwd, "s.png"), await png());
         const [ref] = imageReferences((await f.tool({path: "s.png"})).modelContent);
-        await expect(f.ctx.imageAccess!.read({...ref!, image: {...ref!.image, width: 1}})).rejects.toThrow("元数据");
+        await expect(f.ctx.imageAccess!.read({...ref!, image: {...ref!.image, width: 1}})).rejects.toThrow("metadata");
         const path = f.ctx.toolResultStore.imagePath(ref!.imageId), data = await readFile(path);
         data[40] = data[40]! ^ 1; await writeFile(path, data);
-        await expect(f.ctx.imageAccess!.read(ref!)).rejects.toThrow("完整性");
+        await expect(f.ctx.imageAccess!.read(ref!)).rejects.toThrow("integrity");
     });
 });
 
@@ -158,9 +158,9 @@ test("text budget keeps image references; summaries disclose missing pixels; req
         expect(estimateMessageTokens({role: "tool", tool_call_id: "x", content: [ref!]})).toBeGreaterThanOrEqual(8192);
         const summary = selectCompactInput({system: {role: "system", content: "summarize"}, conversation: f.history, prompt: "总结", budget: 100_000});
         expect(summary.messages.flatMap(message => imageReferences(message.content))).toHaveLength(0);
-        expect(JSON.stringify(summary.messages)).toContain("不含像素");
-        await expect(encodeImageMessages({messages: f.history, supported: false, readImage: f.ctx.imageAccess!.read})).rejects.toThrow("未提供图片能力");
-        await expect(encodeImageMessages({messages: Array.from({length: 9}, () => ({role: "tool" as const, tool_call_id: "i", content: [ref!]})), supported: true, readImage: f.ctx.imageAccess!.read})).rejects.toThrow("预算");
+        expect(JSON.stringify(summary.messages)).toContain("has no pixels");
+        await expect(encodeImageMessages({messages: f.history, supported: false, readImage: f.ctx.imageAccess!.read})).rejects.toThrow("has no image capability");
+        await expect(encodeImageMessages({messages: Array.from({length: 9}, () => ({role: "tool" as const, tool_call_id: "i", content: [ref!]})), supported: true, readImage: f.ctx.imageAccess!.read})).rejects.toThrow("exceeds 8 images or 10 MiB");
     });
 });
 
@@ -223,7 +223,7 @@ test("Hook receives text projection and appends context after the original image
         expect(result.modelContent.map(part => part.type)).toEqual(["text", "image", "text"]);
         expect(JSON.stringify(result.modelContent.at(-1))).toContain("image-hook-note");
         expect(observed).toHaveLength(1);
-        expect(observed[0]).toContain("不含像素");
+        expect(observed[0]).toContain("has no pixels");
         expect(observed[0]).not.toContain("base64,");
     });
 });
@@ -250,7 +250,7 @@ test("image retry reuses prepared bytes and HTTP errors cannot echo them into di
             expect(requests[1]).toBe(requests[0]);
             expect(reads).toBe(1);
             globalThis.fetch = (async (_url, init) => new Response(String(init?.body), {status: 400})) as typeof fetch;
-            await expect(call(options, endpoint)).rejects.toThrow("图片请求错误正文已隐藏");
+            await expect(call(options, endpoint)).rejects.toThrow("Image request error body hidden");
             const logs = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
             const logged = (await Promise.all((await readdir(logs)).map(name => readFile(join(logs, name), "utf8")))).join("\n");
             expect(logged).not.toContain("base64,");

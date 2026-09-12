@@ -31,7 +31,7 @@ function isErrorCode(error: unknown, code: string): boolean {
 
 function parseDocument(value: unknown): HookTrustDocument {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw new Error("Hook trust document 格式无效（需要 version 2 的定义级批准；不自动沿用旧项目批准）");
+        throw new Error("Invalid Hook trust document (version 2 definition-level approval required; old project approvals are not reused automatically)");
     }
     const document = value as Partial<HookTrustDocument>;
     if (
@@ -39,7 +39,7 @@ function parseDocument(value: unknown): HookTrustDocument {
         document.version !== 2 ||
         !Array.isArray(document.projects) ||
         document.projects.length > MAX_HOOK_TRUST_PROJECTS
-    ) throw new Error("Hook trust document 格式无效（需要 version 2 的定义级批准；不自动沿用旧项目批准）");
+    ) throw new Error("Invalid Hook trust document (version 2 definition-level approval required; old project approvals are not reused automatically)");
     const projects: HookTrustRecord[] = [];
     const seen = new Set<string>();
     for (const item of document.projects) {
@@ -56,7 +56,7 @@ function parseDocument(value: unknown): HookTrustDocument {
             !Number.isFinite(Date.parse(item.decidedAt)) ||
             typeof item.hookId !== "string" || !/^[a-f0-9]{64}$/.test(item.hookId) ||
             seen.has(`${item.projectPath}:${item.hookId}`)
-        ) throw new Error("Hook trust document 包含非法或重复项目记录");
+        ) throw new Error("Hook trust document contains invalid or duplicate project records");
         seen.add(`${item.projectPath}:${item.hookId}`);
         projects.push(item);
     }
@@ -67,10 +67,10 @@ async function readDocument(path: string): Promise<HookTrustDocument> {
     try {
         const info = await lstat(path);
         if (!info.isFile() || info.isSymbolicLink()) {
-            throw new Error("Hook trust document 不是安全的 regular file");
+            throw new Error("Hook trust document is not a safe regular file");
         }
         if (info.size > MAX_HOOK_TRUST_FILE_BYTES) {
-            throw new Error("Hook trust document 超过大小上限");
+            throw new Error("Hook trust document exceeds the size limit");
         }
         return parseDocument(JSON.parse(await readFile(path, "utf8")));
     } catch (error) {
@@ -86,7 +86,7 @@ async function ensureSafeParent(path: string): Promise<void> {
     await mkdir(directory, {recursive: true, mode: 0o700});
     const info = await lstat(directory);
     if (!info.isDirectory() || info.isSymbolicLink()) {
-        throw new Error("Hook trust directory 不是安全的 directory");
+        throw new Error("Hook trust directory is not a safe directory");
     }
     await chmod(directory, 0o700);
 }
@@ -127,7 +127,7 @@ export async function saveHookTrust(
         const updated = parseDocument({version: 2, projects});
         const content = `${JSON.stringify(updated, null, 2)}\n`;
         if (Buffer.byteLength(content, "utf8") > MAX_HOOK_TRUST_FILE_BYTES) {
-            throw new Error("Hook trust document 超过大小上限");
+            throw new Error("Hook trust document exceeds the size limit");
         }
         await writeFileAtomically(path, content, 0o600);
     });

@@ -21,7 +21,7 @@ describe("/sandbox", () => {
         expect(getSlashCommandSuggestions("/sand")).toEqual([
             {
                 name: "sandbox",
-                description: "显示 Bash OS Sandbox 状态",
+                description: "Show Bash OS Sandbox status",
                 argumentHint: undefined,
             },
         ]);

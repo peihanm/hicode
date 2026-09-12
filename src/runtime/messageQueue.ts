@@ -124,15 +124,15 @@ export class RuntimeMessageQueue {
         const restored = input.messages === undefined
             ? []
             : normalizeRuntimeQueuedMessages(input.messages);
-        if (!restored) throw new Error("无效的运行中消息队列快照");
+        if (!restored) throw new Error("Invalid active message-queue snapshot");
         const receipts = input.taskReceipts ?? [];
         if (receipts.length > 4096 || new Set(receipts).size !== receipts.length || receipts.some(id => !/^[a-f0-9]{64}$/.test(id))) {
-            throw new Error("无效的任务通知接收记录");
+            throw new Error("Invalid task notification receipt");
         }
         for (const id of receipts) this.taskReceipts.add(id);
         this.messages = restored;
         for (const message of restored) if (message.type === "task_notification") this.taskReceipts.add(message.id);
-        if (this.taskReceipts.size > 4096) throw new Error("任务通知接收记录达到上限");
+        if (this.taskReceipts.size > 4096) throw new Error("Task notification receipt limit reached");
         this.publish();
     }
 
@@ -141,9 +141,9 @@ export class RuntimeMessageQueue {
     }
 
     enqueueTask(notification: TaskNotification): boolean {
-        if (!/^[a-f0-9]{64}$/.test(notification.notificationId)) throw new Error("无效的任务通知 ID");
+        if (!/^[a-f0-9]{64}$/.test(notification.notificationId)) throw new Error("Invalid task notification ID");
         if (this.taskReceipts.has(notification.notificationId)) return false;
-        if (this.taskReceipts.size >= 4096) throw new Error("任务通知接收记录达到上限");
+        if (this.taskReceipts.size >= 4096) throw new Error("Task notification receipt limit reached");
         this.enqueue({
             type: "task_notification", content: notification.message, priority: "next",
             taskId: notification.taskId, notificationId: notification.notificationId,
@@ -247,19 +247,19 @@ export class RuntimeMessageQueue {
     }): RuntimeQueuedMessage {
         const parsed = messageContentSchema.parse(input.content);
         const content = typeof parsed === "string" ? parsed.trim() : structuredClone(parsed);
-        if (!contentText(content).trim()) throw new Error("不能排入空消息");
+        if (!contentText(content).trim()) throw new Error("Cannot enqueue an empty message");
         if (byteLength(content) > MAX_MESSAGE_BYTES) {
-            throw new Error(`单条运行中消息不能超过 ${MAX_MESSAGE_BYTES} 字节`);
+            throw new Error(`A single active message must not exceed ${MAX_MESSAGE_BYTES} bytes`);
         }
         if (this.messages.length >= MAX_MESSAGES) {
-            throw new Error(`运行中消息队列已达到上限 ${MAX_MESSAGES}`);
+            throw new Error(`Active message-queue limit reached: ${MAX_MESSAGES}`);
         }
         const total = this.messages.reduce(
             (sum, message) => sum + byteLength(message.content),
             0
         );
         if (total + byteLength(content) > MAX_TOTAL_BYTES) {
-            throw new Error(`运行中消息队列总量不能超过 ${MAX_TOTAL_BYTES} 字节`);
+            throw new Error(`Active message queue must not exceed ${MAX_TOTAL_BYTES} bytes`);
         }
         const base = {
             id: input.type === "task_notification" ? input.notificationId : randomUUID(),
@@ -295,7 +295,7 @@ export class RuntimeMessageQueue {
             try {
                 listener();
             } catch {
-                // 状态订阅者不能反向破坏消息队列 mutation。
+                // State subscribers cannot disrupt message-queue mutations.
             }
         }
     }

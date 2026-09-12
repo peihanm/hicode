@@ -39,7 +39,7 @@ const serverSchema = z.object(serverShape).strict();
 export const hostMcpServerContributionSchema = z
     .object({
         name: z.string().trim().refine(validateMcpServerName, {
-            message: "只能包含字母、数字、_、-、.，且长度为 1–64",
+            message: "Use only letters, digits, _, - and ., with length 1–64",
         }),
         ...serverShape,
     })
@@ -63,9 +63,9 @@ async function readBoundedRegularFile(path: string): Promise<string | undefined>
     }
     try {
         const metadata = await handle.stat();
-        if (!metadata.isFile()) throw new Error("配置必须是普通文件");
+        if (!metadata.isFile()) throw new Error("Configuration must be a regular file");
         if (metadata.size > MAX_CONFIG_BYTES) {
-            throw new Error(`配置超过 ${MAX_CONFIG_BYTES} bytes 上限`);
+            throw new Error(`Configuration exceeds ${MAX_CONFIG_BYTES} byte limit`);
         }
         const buffer = Buffer.alloc(metadata.size + 1);
         let offset = 0;
@@ -80,7 +80,7 @@ async function readBoundedRegularFile(path: string): Promise<string | undefined>
             offset += bytesRead;
         }
         if (offset > MAX_CONFIG_BYTES) {
-            throw new Error(`配置超过 ${MAX_CONFIG_BYTES} bytes 上限`);
+            throw new Error(`Configuration exceeds ${MAX_CONFIG_BYTES} byte limit`);
         }
         return new TextDecoder("utf-8", {fatal: true}).decode(
             buffer.subarray(0, offset)
@@ -106,7 +106,7 @@ async function validateNativeProjectDirectory(
             !metadata.isDirectory() ||
             directoryPath !== join(cwdPath, ".pillar")
         ) {
-            throw new Error("项目 MCP 配置目录不安全");
+            throw new Error("Unsafe project MCP configuration directory");
         }
     } catch (error) {
         if (!isMissing(error)) throw error;
@@ -129,13 +129,13 @@ async function readConfigSource(
         } catch (error) {
             return {
                 servers: [],
-                issues: [{source, path, message: `MCP 配置不是合法 JSON: ${String(error)}`}],
+                issues: [{source, path, message: `MCP configuration is not valid JSON: ${String(error)}`}],
             };
         }
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
             return {
                 servers: [],
-                issues: [{source, path, message: "MCP 配置顶层必须是对象"}],
+                issues: [{source, path, message: "MCP configuration root must be an object"}],
             };
         }
         const top = raw as Record<string, unknown>;
@@ -146,7 +146,7 @@ async function readConfigSource(
         ) {
             return {
                 servers: [],
-                issues: [{source, path, message: "MCP 配置缺少对象字段 mcpServers"}],
+                issues: [{source, path, message: "MCP configuration is missing the mcpServers object"}],
             };
         }
         const issues: McpConfigIssue[] = Object.keys(top)
@@ -154,7 +154,7 @@ async function readConfigSource(
             .map((key) => ({
                 source,
                 path,
-                message: `MCP 配置包含未知顶层字段: ${key.slice(0, 128)}`,
+                message: `MCP configuration contains unknown top-level fields: ${key.slice(0, 128)}`,
             }));
         const entries = Object.entries(
             top.mcpServers as Record<string, unknown>
@@ -163,7 +163,7 @@ async function readConfigSource(
             issues.push({
                 source,
                 path,
-                message: `MCP Server 超过每个来源 ${MAX_SERVERS_PER_SOURCE} 个的上限`,
+                message: `MCP Servers exceed the per-source limit of ${MAX_SERVERS_PER_SOURCE} items`,
             });
         }
         const servers: LoadedMcpServerConfig[] = [];
@@ -173,7 +173,7 @@ async function readConfigSource(
                     source,
                     path,
                     serverName: name.slice(0, 128),
-                    message: "Server 名只能包含字母、数字、_、-、.，且长度为 1–64",
+                    message: "Server name must contain only letters, digits, _, - and ., with length 1–64",
                 });
                 continue;
             }
@@ -183,7 +183,7 @@ async function readConfigSource(
                     source,
                     path,
                     serverName: name,
-                    message: `Server 配置无效: ${parsed.error.issues
+                    message: `Invalid Server configuration: ${parsed.error.issues
                         .map((item) => item.message)
                         .join("; ")}`.slice(0, 2000),
                 });
@@ -194,7 +194,7 @@ async function readConfigSource(
                     source,
                     path,
                     serverName: name,
-                    message: `Server env 超过 ${MAX_ENV_ENTRIES} 项上限`,
+                    message: `Server env exceeds ${MAX_ENV_ENTRIES} entries`,
                 });
                 continue;
             }
@@ -207,7 +207,7 @@ async function readConfigSource(
             issues: [{
                 source,
                 path,
-                message: `无法安全读取 MCP 配置: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000),
+                message: `Cannot safely read MCP configuration: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000),
             }],
         };
     }
@@ -262,7 +262,7 @@ export async function loadMcpConfig(
                     ? {source: "host" as const, id: server.id}
                     : {source: server.source, path: server.path}),
                 serverName: server.name,
-                message: `Server 名规范化后与 ${existing} 冲突`,
+                message: `Normalized Server name conflicts with ${existing} .`,
             });
             continue;
         }

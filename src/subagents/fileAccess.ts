@@ -23,7 +23,7 @@ async function ensureDirectory(path: string, create: boolean): Promise<boolean> 
         throw error;
     }
     if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
-        throw new Error(`Agent 配置目录不安全: ${path}`);
+        throw new Error(`Unsafe Agent configuration directory: ${path}`);
     }
     if (create) await chmod(path, 0o700);
     return true;
@@ -48,10 +48,10 @@ export async function readAgentDefinitionFile(path: string): Promise<string> {
     try {
         const metadata = await handle.stat();
         if (!metadata.isFile()) {
-            throw new Error("Agent 定义必须是普通文件");
+            throw new Error("Agent definition must be a regular file");
         }
         if (metadata.size > MAX_AGENT_DEFINITION_BYTES) {
-            throw new Error(`文件超过 ${MAX_AGENT_DEFINITION_BYTES} bytes 上限`);
+            throw new Error(`File exceeds the ${MAX_AGENT_DEFINITION_BYTES} byte limit`);
         }
         const buffer = Buffer.alloc(MAX_AGENT_DEFINITION_BYTES + 1);
         let offset = 0;
@@ -66,7 +66,7 @@ export async function readAgentDefinitionFile(path: string): Promise<string> {
             offset += bytesRead;
         }
         if (offset > MAX_AGENT_DEFINITION_BYTES) {
-            throw new Error(`文件超过 ${MAX_AGENT_DEFINITION_BYTES} bytes 上限`);
+            throw new Error(`File exceeds the ${MAX_AGENT_DEFINITION_BYTES} byte limit`);
         }
         return new TextDecoder("utf-8", {fatal: true}).decode(buffer.subarray(0, offset));
     } finally {

@@ -18,7 +18,8 @@ import { createPublicationFileAccess } from "./publicationAccess.js";
 import { formatPublicationContext } from "./publicationPrompt.js";
 import { MemoryPublicationStore } from "./publicationStore.js";
 import type { MemoryChange, MemoryContextResult, MemoryEntry, MemoryFileAccess, MemoryRuntimeStatus, MemoryScanResult } from "./types.js";
-const SUPPRESS_MEMORY = [/忽略.{0,8}(?:memory|记忆)/i, /不要.{0,8}(?:使用|读取|参考).{0,8}(?:memory|记忆)/i,
+// Preserve Chinese opt-out phrases (ignore memory; do not use/read/refer to memory) alongside English.
+const SUPPRESS_MEMORY = [/\u5ffd\u7565.{0,8}(?:memory|\u8bb0\u5fc6)/i, /\u4e0d\u8981.{0,8}(?:\u4f7f\u7528|\u8bfb\u53d6|\u53c2\u8003).{0,8}(?:memory|\u8bb0\u5fc6)/i,
     /(?:ignore|do not use|don't use).{0,20}memor/i];
 type FileOwner = Parameters<typeof createPublicationFileAccess>[1];
 interface MemoryMaintenanceResult {
@@ -57,9 +58,9 @@ class MemoryRuntime implements MemoryRuntimeLike {
     constructor(readonly enabled: boolean, readonly autoExtract: boolean, private readonly store: MemoryPublicationStore, private readonly createConsolidator: () => MemoryConsolidator, private readonly storage: PillarStorageLayout, private readonly cwd: string, private readonly createExtractor: (storage: PillarStorageLayout) => MemorySourceExtractor) { this.directory = store.directory; }
     private requireOpen(): void {
         if (!this.enabled)
-            throw new Error("Memory 已关闭");
+            throw new Error("Memory is closed");
         if (this.closed)
-            throw new Error("Memory 已关闭");
+            throw new Error("Memory is closed");
     }
     private record(change: MemoryChange, owner: Pick<FileOwner, "sessionId" | "turnId">): MemoryChange {
         this.changes.push({ revision: ++this.notificationRevision, change, owner });
@@ -79,7 +80,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             createdAt: topic.createdAt, updatedAt: topic.updatedAt, content: topic.content, path: join(getMemoryViewsDirectory(this.directory), `${topic.key}.md`) }));
         for (const source of state.sources.filter(source => !source.consumed)) {
             const existing = entries.findIndex(entry => entry.key === source.key);
-            const pending: MemoryEntry = { version: 2, key: source.key, name: source.key, description: "已记录，待整理",
+            const pending: MemoryEntry = { version: 2, key: source.key, name: source.key, description: "Recorded; pending consolidation",
                 type: source.type, source: source.origin.kind === "explicit" ? "explicit" : "automatic", evidence: [source.origin], createdAt: source.createdAt,
                 updatedAt: source.createdAt, content: source.content, path: join(source.origin.kind === "explicit" ? getMemoryInboxDirectory(this.directory) : getMemoryViewsDirectory(this.directory), `${source.key}.md`) };
             if (existing >= 0)
@@ -111,12 +112,12 @@ class MemoryRuntime implements MemoryRuntimeLike {
             return { ignoredForTurn: false };
         if (SUPPRESS_MEMORY.some(pattern => pattern.test(userInput)))
             return { ignoredForTurn: true,
-                block: "<system-reminder>用户本轮要求忽略 Memory；Memory 文件能力已收窄，不读取、维护或应用已保存记忆。</system-reminder>" };
+                block: "<system-reminder>The user requested no Memory for this turn. Memory file access is restricted: do not read, maintain or apply saved memories.</system-reminder>" };
         try {
             return { ignoredForTurn: false, block: formatPublicationContext(this.directory, this.store.snapshot()) };
         }
         catch {
-            return { ignoredForTurn: true, block: "<system-reminder>Memory 发布状态读取失败，本轮不读取或维护 Memory，不假设存在已保存内容。</system-reminder>" };
+            return { ignoredForTurn: true, block: "<system-reminder>Memory publication could not be read. Do not read or maintain Memory this turn, or assume saved content exists.</system-reminder>" };
         }
     }
     fileAccess(owner: FileOwner): MemoryFileAccess {
@@ -208,7 +209,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
                 });
             }
             catch (error) {
-                await this.store.fail(extraction.lease, "Memory 来源提取失败或取消，未消费来源");
+                await this.store.fail(extraction.lease, "Memory source extraction failed or was cancelled; sources were not consumed");
                 throw error;
             }
             finally {
@@ -231,7 +232,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             return { status: "published", topics: draft.topics.length };
         }
         catch (error) {
-            await this.store.fail(job.lease, signal.aborted ? "Memory 整理已取消，note 保留待处理" : "Memory 整理失败，正式内容未替换，note 保留待处理");
+            await this.store.fail(job.lease, signal.aborted ? "Memory consolidation cancelled; notes remain pending" : "Memory consolidation failed; published content was not replaced and notes remain pending");
             throw error;
         }
     }

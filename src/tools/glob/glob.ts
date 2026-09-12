@@ -9,26 +9,22 @@ import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 const MAX_RESULTS = 200;
 
 const inputSchema = z.object({
-    include_hidden: z.boolean().default(false).describe("包含隐藏文件与目录；.git 始终排除"),
-    include_ignored: z.boolean().default(false).describe("包含 .gitignore 与默认 node_modules 排除的文件"),
+    include_hidden: z.boolean().default(false).describe("Include hidden files/directories; .git is always excluded."),
+    include_ignored: z.boolean().default(false).describe("Include files excluded by .gitignore and the default node_modules filter."),
     pattern: z
         .string()
         .trim()
         .min(1)
-        .describe("文件路径 glob，例如 **/*.ts、src/**/test*.ts 或 *.md"),
+        .describe("File-path glob, e.g. **/*.ts, src/**/test*.ts or *.md."),
     path: z
         .string()
         .default(".")
-        .describe("搜索根目录，默认当前工作目录"),
+        .describe("Search root; defaults to the working directory."),
 });
 
 export const globTool: Tool<typeof inputSchema> = {
     name: "glob",
-    description: [
-        "按文件名或路径 glob 快速查找文件，例如 **/*.ts、src/**/*.test.ts、*.md。",
-        "只查路径，不搜索文件内容；内容搜索使用 grep，单层目录浏览使用 list_files。",
-        `结果按路径排序，最多返回 ${MAX_RESULTS} 个；结果过多时缩小 path 或 pattern。`,
-    ].join("\n"),
+    description: "Find file paths by glob, such as **/*.ts or src/**/*.test.ts. This searches paths, not contents; use grep for content and list_files for one directory. Results are sorted by path and capped at 200; narrow path/pattern when incomplete.",
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
@@ -36,7 +32,7 @@ export const globTool: Tool<typeof inputSchema> = {
     async execute({pattern, path, include_hidden, include_ignored}, ctx) {
         if (isAbsolute(pattern)) {
             return {
-                content: "pattern 必须是相对于搜索根目录的 glob；绝对目录请放在 path 参数中。",
+                content: "pattern must be relative to the search root; put the absolute directory in path.",
                 outcome: "failed",
             };
         }
@@ -47,12 +43,12 @@ export const globTool: Tool<typeof inputSchema> = {
             rootStat = await stat(searchRoot);
         } catch (error) {
             return {
-                content: `搜索目录不存在或无法访问: ${path}（${error instanceof Error ? error.message : String(error)}）`,
+                content: `Search directory does not exist or is inaccessible: ${path}(${error instanceof Error ? error.message : String(error)})`,
                 outcome: "failed",
             };
         }
         if (!rootStat.isDirectory()) {
-            return {content: `搜索路径不是目录: ${path}`, outcome: "failed"};
+            return {content: `Search path is not a directory: ${path}`, outcome: "failed"};
         }
 
         const matches: string[] = [];
@@ -70,16 +66,16 @@ export const globTool: Tool<typeof inputSchema> = {
 
         matches.sort((left, right) => left.localeCompare(right));
         if (matches.length === 0 && !stats.truncated) {
-            return `未找到匹配文件: ${pattern}（搜索目录: ${displayToolPath(ctx.cwd, searchRoot)}）`;
+            return `No matching files: ${pattern}(search directory: ${displayToolPath(ctx.cwd, searchRoot)})`;
         }
 
         const lines = [...matches];
         if (truncated) {
             lines.push(
-                `（结果已截断为 ${MAX_RESULTS} 个，请缩小 path 或 pattern。）`
+                `(results truncated to ${MAX_RESULTS} ; narrow path or pattern.)`
             );
         }
-        if (stats.truncated) lines.push(`（搜索未完成：${stats.issues.join("；")}；已发现 ${stats.candidateFiles} 个候选文件。请缩小 path。）`);
+        if (stats.truncated) lines.push(`(search incomplete: ${stats.issues.join(";")}; found ${stats.candidateFiles} candidate files. Narrow path.)`);
         return lines.join("\n");
     },
 };

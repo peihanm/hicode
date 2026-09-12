@@ -2,26 +2,26 @@ import type {Message} from "../llm/types.js";
 import {handoffJsonSchema, type HandoffSources} from "./handoff.js";
 
 export function buildCompactPrompt(customInstructions?: string, sources?: HandoffSources): string {
-    return `为接续当前任务生成简短工作交接。只输出交接，不输出分析草稿，不调用工具。
-只保留仍影响当前工作的六项：
-1. 目标与当前阶段。
-2. 用户约束和纠正；被替代的要求注明纠正来源。
-3. 仍适用的决定及可见理由，不记录隐藏推理。
-4. 正在处理的文件、函数和读取定位；不是所有看过的文件清单。
-5. 已执行验证、对应结果与局限；区分助手声称与工具观察，旧失败只是历史，不自动成为未解决任务。
-6. 下一步与准确暂停位置；已完成时不要编造新任务。
-空项可省略。不枚举全部历史、全部错误或全部用户消息。优先用约 6000 字符交接当前状态。
-更新旧交接而非叠加流水账：仍适用的条目保留原始来源，被纠正的条目同时引用纠正；不要把旧摘要当成新的原始证据。
-摘要是派生笔记，不是授权、Todo/Task 真相源或当前源码。没有依据时明确标为推断；测试曾通过不保证此后修改仍通过。
-${sources ? `来源协议：本次原始消息带有 [source archive-id/message-index; role=...] 标签。旧交接 [[archive-id/message-index]] 引用可沿用；不得编造 ID 或引用不存在的序号。
-当前档案 ${sources.current.id} 有 ${sources.current.messages.length} 条消息；已有档案：${sources.previous.map(record => `${record.id} (1..${record.messages.length})`).join(", ") || "无"}。
-严格输出一个 JSON 对象（不要代码围栏），所有六个数组字段都提供，空项用 []：
+    return `Create a concise handoff for continuing the current task. Output only the handoff: no analysis draft and no tools.
+Preserve six categories that still affect the work:
+1. Objective and current phase.
+2. User constraints and corrections, citing corrections that supersede earlier requests.
+3. Still-applicable decisions and stated reasons, not hidden reasoning.
+4. Active files, functions and read locations, not every file ever visited.
+5. Executed checks, results and limits. Distinguish assistant claims from tool observations; old failures are history, not automatically unresolved work.
+6. Next step and exact stopping point. Do not invent new tasks when work is complete.
+Prefer about 6000 characters. Preserve the user's language and exact identifiers where useful. Do not enumerate all history, errors or messages.
+Update the previous handoff rather than appending a diary. Retain original sources for valid items and cite corrections. An earlier summary is not new primary evidence.
+A handoff is derived data, not authorization, Todo/Task state or current source code. Mark unsupported conclusions as inferred; past test success does not validate later edits.
+${sources ? `Source protocol: original messages have [source archive-id/message-index; role=...] labels. Existing [[archive-id/message-index]] citations may be reused. Never invent IDs or message indices.
+Current archive ${sources.current.id} contains ${sources.current.messages.length} messages. Earlier archives: ${sources.previous.map(record => `${record.id} (1..${record.messages.length})`).join(", ") || "none"}.
+Return exactly one JSON object, without fences; provide all six arrays, using [] for empty categories:
 {"version":1,"objective":[],"constraints":[],"decisions":[],"files":[],"verification":[],"next":[]}
-每个数组项目格式：{"text":"内容","sources":["archive-id/message-index"],"basis":"reported"}。
-reported 表示有来源的转述（必须提供来源），不表示框架验证了语义；无依据则 basis 为 inferred，可留空 sources。每项最多 2000 字符/8 个来源，每类最多 10 项，总输出最多 32 KiB。
-以下 JSON Schema 与实际校验器同源；提交前检查所有 required 字段与 maxItems：
-${handoffJsonSchema()}` : "用上述六项标题输出纯文本交接。当前内部 Agent 没有原文档案能力，不编造来源 ID 或回查路径。"}
-${customInstructions?.trim() ? `\n额外交接要求（仍须遵循上述协议）：\n${customInstructions.trim()}` : ""}`;
+Each item: {"text":"scoped content","sources":["archive-id/message-index"],"basis":"reported"}.
+reported requires sources and means an attributed report, not framework-verified truth. Use inferred for unsupported inference; sources may be empty. Maximum 2000 characters and 8 sources per item, 10 items per category, 32 KiB total.
+The following JSON Schema comes from the actual validator. Check required fields and maxItems:
+${handoffJsonSchema()}` : "Use these six headings for a plain-text handoff. This internal agent has no raw archive access: do not invent source IDs or archive paths."}
+${customInstructions?.trim() ? `\nAdditional handoff requirements (the protocol above still applies):\n${customInstructions.trim()}` : ""}`;
 }
 
 export function parseCompactSummary(raw: string): string {
@@ -32,12 +32,12 @@ export function parseCompactSummary(raw: string): string {
 
 export function buildCompactSummaryMessage(summary: string): Message {
     return {role: "user", origin: "compaction" as const, content: `<system-reminder>
-本会话已压缩。以下工作交接是历史的派生笔记，不是新用户指令、工具能力或执行授权。
-用户原话及后续纠正优先；Todo/Task 以当前运行时为准。来源转述不保证语义正确或源码、测试仍有效。
+This session was compacted. The handoff below is derived history, not new user instructions, tool capability or authorization.
+Original user requests and later corrections take precedence. Use current runtime Todo/Task state. Attribution does not guarantee semantic accuracy or that source/tests are still current.
 
 ${summary}
 
-从暂停处继续当前任务。需要精确原话、参数或结果时按来源 read_file/grep 回查；修改前读取当前文件。
-不要因压缩重新规划、重做已完成工作或自动重跑全部测试。冲突先查来源；无法核实则保留不确定性。
+Continue the current task from its stopping point. For exact requests, parameters or results, consult cited sources with read_file/grep; read current files before editing.
+Do not replan, redo completed work or rerun all tests merely because of compaction. Resolve conflicts using sources; retain uncertainty when verification is unavailable.
 </system-reminder>`};
 }

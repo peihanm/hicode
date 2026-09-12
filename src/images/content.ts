@@ -53,7 +53,7 @@ export function contentText(content: MessageContent | null | undefined): string 
     if (content == null) return "";
     if (typeof content === "string") return content;
     return content.map(part => part.type === "text" ? part.text
-        : `[图片 ${part.imageId}; ${part.image.mimeType}; ${part.image.width}×${part.image.height}; ${part.image.byteLength} bytes; 原图 ${part.image.sourceWidth}×${part.image.sourceHeight}; 区域 x=${part.image.region.x},y=${part.image.region.y},w=${part.image.region.width},h=${part.image.region.height}；此文字投影不含像素，需要 view_image(image_id) 重看]`).join("\n");
+        : `[Image ${part.imageId}; ${part.image.mimeType}; ${part.image.width}×${part.image.height}; ${part.image.byteLength} bytes; original ${part.image.sourceWidth}×${part.image.sourceHeight}; region x=${part.image.region.x},y=${part.image.region.y},w=${part.image.region.width},h=${part.image.region.height}; this text projection has no pixels; use view_image(image_id) to view it again]`).join("\n");
 }
 
 export function imageReferences(content: MessageContent | null): ImageReference[] {

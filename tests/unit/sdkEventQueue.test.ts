@@ -63,7 +63,7 @@ test("超大事件明确断开并通知取消，不能伪装成正常终态", as
     const queue = new AsyncEventQueue(error => { failures.push(error); });
     await queue.push(event(0, "x".repeat(4 * 1024 * 1024)));
     expect(failures).toHaveLength(1);
-    await expect(queue.iterate().next()).rejects.toThrow("单个事件超过");
+    await expect(queue.iterate().next()).rejects.toThrow("event exceeds");
 });
 
 test("不遵守背压的并发生产者同样有界并显式失败", async () => {
@@ -72,5 +72,5 @@ test("不遵守背压的并发生产者同样有界并显式失败", async () =>
     const writes = Array.from({length: 400}, (_, i) => queue.push(event(i)));
     await Promise.all(writes);
     expect(failures).toHaveLength(1);
-    await expect(queue.iterate().next()).rejects.toThrow("并发等待上限");
+    await expect(queue.iterate().next()).rejects.toThrow("concurrent wait limit");
 });

@@ -508,7 +508,7 @@ describe("Hooks", () => {
         expect(result.executions[0]).toMatchObject({
             type: "prompt",
             outcome: "error",
-            message: "Prompt Hook 执行失败: Prompt Hook Executor 未配置",
+            message: "Prompt Hook execution failed: Prompt Hook Executor is not configured",
         });
     });
 
@@ -576,7 +576,7 @@ describe("Hooks", () => {
             childEnvironment: testChildEnvironment,
             headless: true,
         }))
-            .rejects.toThrow("Hook 定义尚未信任");
+            .rejects.toThrow("Hook definitions are not trusted");
         const runtime = await createRuntime({
             cwd: "/project",
             childEnvironment: testChildEnvironment,
@@ -828,7 +828,7 @@ describe("Hook tool boundary", () => {
                     "invalid"
                 );
             expect(invalid.outcome).toBe("failed");
-            expect(invalid.modelContent).toContain("修改后的参数校验失败");
+            expect(invalid.modelContent).toContain("modified by PreToolUse Hook failed validation");
             expect(permissionCalls).toBe(0);
 
             const events: string[] = [];
@@ -903,7 +903,7 @@ describe("Hook tool boundary", () => {
             expect(events).toEqual(["PreToolUse", "PostToolUseFailure"]);
             expect(failures[0]).toEqual({
                 outcome: "failed",
-                content: "工具执行出错: fixture exploded",
+                content: "Tool execution error: fixture exploded",
             });
 
             events.length = 0;

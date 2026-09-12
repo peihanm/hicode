@@ -139,8 +139,8 @@ body`,
 
         expect(validated.definitions).toEqual([]);
         expect(validated.issues).toHaveLength(2);
-        expect(validated.issues[0]?.message).toContain("禁止使用工具");
-        expect(validated.issues[1]?.message).toContain("不存在工具");
+        expect(validated.issues[0]?.message).toContain("cannot use tools");
+        expect(validated.issues[1]?.message).toContain("Tool does not exist");
     });
 
     test("生产 loader 从项目 .pillar/agents 读取定义并隔离坏文件", async () => {
@@ -240,7 +240,7 @@ project prompt`, "utf8");
                 ["user-only", "user"],
             ]);
             expect(loaded.issues.some((item) =>
-                item.message.includes("覆盖用户定义")
+                item.message.includes("overrides user definition")
             )).toBe(true);
         });
     });
@@ -259,7 +259,7 @@ project prompt`, "utf8");
             const oversized = loaded.issues.find((item) =>
                 item.source !== "host" && item.path.endsWith("oversized.md")
             );
-            expect(oversized?.message).toContain("64000 bytes");
+            expect(oversized?.message).toContain("64000 byte limit");
             expect(loaded.definitions.some((item) =>
                 item.agentType === "oversized"
             )).toBe(false);
@@ -338,7 +338,7 @@ changed project prompt`, "utf8");
                 item.agentType === "project-agent"
             )).toBe(true);
             expect(loaded.issues.some((item) =>
-                item.message.includes("超过 64 个")
+                item.message.includes("exceed 64")
             )).toBe(true);
         });
     });

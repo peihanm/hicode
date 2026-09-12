@@ -1,11 +1,11 @@
 import type {SlashCommand} from "../types.js";
 
 export const hooksCommand: SlashCommand = {
-    name: "hooks", description: "查看 Hook 配置、批准与最近执行；空闲时重载", argumentHint: "[reload]", busyBehavior: "immediate",
+    name: "hooks", description: "View Hook configuration, approvals and recent runs; reload when idle", argumentHint: "[reload]", busyBehavior: "immediate",
     async execute(args, {ctx, onEvent}) {
         let content: string;
-        if (!ctx.hookControl) content = "当前 Runtime 不提供 Hook 管理能力。";
-        else if (args && args !== "reload") content = "用法: /hooks [reload]";
+        if (!ctx.hookControl) content = "This Runtime has no Hook management capability.";
+        else if (args && args !== "reload") content = "Usage: /hooks [reload]";
         else {
             try {
                 if (args === "reload") await ctx.hookControl.reload(ctx.signal);
@@ -20,13 +20,13 @@ export const hooksCommand: SlashCommand = {
                         ` · handler≤${item.timeoutMs}ms / dispatch≤${item.dispatchTimeoutMs}ms`;
                 });
                 const recent = ctx.hookSession?.recent().slice(-20) ?? [];
-                content = `${args === "reload" ? "Hooks 已重载。\n" : ""}${lines.join("\n") || "当前没有配置 Hook。"}`;
-                if (recent.length) content += "\n\n最近执行：\n" + recent.map(item =>
+                content = `${args === "reload" ? "Hooks reloaded.\n" : ""}${lines.join("\n") || "No Hooks configured."}`;
+                if (recent.length) content += "\n\nRecent runs:\n" + recent.map(item =>
                     `- ${item.startedAt} · ${item.event} · ${item.outcome} · ${Math.round(item.durationMs ?? 0)}ms` +
                     `${item.userMessage || item.message ? `\n  ${item.userMessage ?? item.message}` : ""}` +
                     `${item.artifact ? `\n  ${item.artifact.path}` : ""}`).join("\n");
-                content += "\n\n批准绑定 Hook 定义，不追踪命令引用脚本的正文；once 在真正匹配后尝试执行前消耗。";
-            } catch (error) {content = `Hooks 操作失败（原配置保留）：${error instanceof Error ? error.message : String(error)}`;}
+                content += "\n\nApproval binds Hook definitions, not the contents of referenced scripts; once is consumed after a match, before execution is attempted.";
+            } catch (error) {content = `Hook operation failed (previous configuration preserved): ${error instanceof Error ? error.message : String(error)}`;}
         }
         await onEvent({type: "assistant_text", content});
     },

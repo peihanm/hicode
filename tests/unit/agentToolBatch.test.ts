@@ -286,7 +286,7 @@ describe("Agent tool-call batch", () => {
         "safe-2",
         "unsafe-tail",
       ]);
-      expect(toolMessages(history).every((message) => contentText(message.content).includes("已取消")))
+      expect(toolMessages(history).every((message) => contentText(message.content).includes("cancelled")))
         .toBe(true);
     });
   });

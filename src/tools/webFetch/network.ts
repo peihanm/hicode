@@ -54,18 +54,18 @@ function normalizedHostname(hostname: string): string {
 }
 
 export function parsePublicWebUrl(value: string): URL {
-    if (value.length > 2_000) throw new Error("URL 不能超过 2000 个字符");
+    if (value.length > 2_000) throw new Error("URL must not exceed 2000 characters");
     let url: URL;
     try {
         url = new URL(value);
     } catch {
-        throw new Error("URL 格式无效");
+        throw new Error("Invalid URL format");
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-        throw new Error("仅支持 http:// 或 https:// URL");
+        throw new Error("Only http:// and https:// URLs are supported");
     }
     if (url.username || url.password) {
-        throw new Error("URL 不得包含用户名或密码");
+        throw new Error("URL must not contain a username or password");
     }
     const hostname = normalizedHostname(url.hostname);
     if (
@@ -77,10 +77,10 @@ export function parsePublicWebUrl(value: string): URL {
         hostname.endsWith(".home.arpa") ||
         (isIP(hostname) === 0 && !hostname.includes("."))
     ) {
-        throw new Error("web_fetch 只能访问公共互联网地址，不能访问 localhost 或内网主机");
+        throw new Error("web_fetch can only access the public internet, not localhost or private hosts");
     }
     if (isIP(hostname) !== 0 && !isPublicAddress(hostname)) {
-        throw new Error("web_fetch 禁止访问私网、回环、链路本地或保留地址");
+        throw new Error("web_fetch blocks private, loopback, link-local and reserved addresses");
     }
     return url;
 }
@@ -98,18 +98,18 @@ async function resolvePublicAddresses(hostname: string) {
     const normalized = normalizedHostname(hostname);
     if (isIP(normalized) !== 0) {
         if (!isPublicAddress(normalized)) {
-            throw new Error("目标地址解析到私网、回环、链路本地或保留地址");
+            throw new Error("Target resolves to a private, loopback, link-local or reserved address");
         }
         return [{address: normalized, family: isIP(normalized) as 4 | 6}];
     }
     const addresses = await lookup(normalized, {all: true, order: "verbatim"});
-    if (addresses.length === 0) throw new Error(`无法解析域名: ${normalized}`);
-    // CDN、企业 DNS 和本地代理有时会同时返回公网与保留地址。过滤掉
-    // 不可访问的结果并固定到剩余公网地址；只有完全没有公网地址时才拒绝。
-    // 这样不会把真实的公网站点误判成私网，同时请求仍不会连接到私有地址。
+    if (addresses.length === 0) throw new Error(`Cannot resolve domain: ${normalized}`);
+    // CDNs, corporate DNS and local proxies may return both public and reserved addresses.
+    // Filter inaccessible results and pin to remaining public addresses; deny only if none remain.
+    // This avoids rejecting public sites while ensuring requests never connect to private addresses.
     const publicAddresses = addresses.filter(({address}) => isPublicAddress(address));
     if (publicAddresses.length === 0) {
-        throw new Error("目标域名解析到私网、回环、链路本地或保留地址");
+        throw new Error("Target domain resolves to a private, loopback, link-local or reserved address");
     }
     return publicAddresses;
 }
@@ -129,7 +129,7 @@ function createPinnedLookup(
             ? addresses
             : addresses.filter(({family}) => family === requestedFamily);
         if (candidates.length === 0) {
-            callback(Object.assign(new Error("没有符合请求地址族的公共 IP"), {code: "ENOTFOUND"}), "", 0);
+            callback(Object.assign(new Error("No public IP matches the requested address family"), {code: "ENOTFOUND"}), "", 0);
             return;
         }
         if (options.all) callback(null, candidates);
@@ -138,7 +138,7 @@ function createPinnedLookup(
 }
 
 function requestAbortError(signal: AbortSignal): Error {
-    return signal.reason instanceof Error ? signal.reason : new Error("网页请求已取消");
+    return signal.reason instanceof Error ? signal.reason : new Error("Web request cancelled");
 }
 
 // DNS lookup cannot be cancelled, but its late result must never start a request.
@@ -189,15 +189,15 @@ async function requestOnce(url: URL, signal: AbortSignal): Promise<WebFetchRespo
             }, (incoming) => {
                 response = incoming;
                 response.on("error", fail);
-                response.on("aborted", () => fail(new Error("网页响应在完成前中断")));
+                response.on("aborted", () => fail(new Error("Web response was interrupted before completion")));
                 response.on("close", () => {
-                    if (!settled) fail(new Error("网页响应在完成前关闭"));
+                    if (!settled) fail(new Error("Web response closed before completion"));
                 });
                 if (settled) { response.destroy(); return; }
                 let bytes = 0;
                 const declaredLength = Number(response.headers["content-length"] ?? 0);
                 if (Number.isFinite(declaredLength) && declaredLength > WEB_FETCH_MAX_BYTES) {
-                    fail(new Error(`响应超过 ${WEB_FETCH_MAX_BYTES} 字节限制`));
+                    fail(new Error(`Response exceeds the ${WEB_FETCH_MAX_BYTES} byte limit`));
                     return;
                 }
                 response.on("data", (chunk: Buffer | string) => {
@@ -205,7 +205,7 @@ async function requestOnce(url: URL, signal: AbortSignal): Promise<WebFetchRespo
                     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                     bytes += buffer.length;
                     if (bytes > WEB_FETCH_MAX_BYTES) {
-                        fail(new Error(`响应超过 ${WEB_FETCH_MAX_BYTES} 字节限制`));
+                        fail(new Error(`Response exceeds the ${WEB_FETCH_MAX_BYTES} byte limit`));
                         return;
                     }
                     chunks.push(buffer);
@@ -233,7 +233,7 @@ async function requestOnce(url: URL, signal: AbortSignal): Promise<WebFetchRespo
             });
             req.on("error", fail);
             req.on("close", () => {
-                if (!response) fail(new Error("网页请求在收到响应前关闭"));
+                if (!response) fail(new Error("Web request closed before a response was received"));
             });
             req.end();
         } catch (error) {
@@ -251,7 +251,7 @@ export async function fetchPublicWebUrl(
     const abort = () => controller.abort(requestAbortError(signal));
     signal.addEventListener("abort", abort, {once: true});
     const deadline = setTimeout(() => {
-        controller.abort(new Error(`请求超过 ${WEB_FETCH_TIMEOUT_MS}ms 未完成`));
+        controller.abort(new Error(`Request did not complete within ${WEB_FETCH_TIMEOUT_MS} ms`));
     }, WEB_FETCH_TIMEOUT_MS);
     deadline.unref?.();
     try {
@@ -267,7 +267,7 @@ export async function fetchPublicWebUrl(
             }
             current = next;
         }
-        throw new Error(`重定向次数超过 ${MAX_REDIRECTS} 次`);
+        throw new Error(`Redirect count exceeds ${MAX_REDIRECTS} attempts`);
     } finally {
         clearTimeout(deadline);
         signal.removeEventListener("abort", abort);

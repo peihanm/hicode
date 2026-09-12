@@ -4,8 +4,8 @@ import {useTerminalWidth} from "../terminalSize.js";
 
 const MAX_CONTENT_WIDTH = 58;
 
-// 常驻欢迎框只负责品牌和最小使用引导。
-// model/cwd 已由 StatusBar 展示，这里不重复占用视觉空间。
+// The persistent welcome panel contains branding and minimal usage guidance.
+// StatusBar already shows model/cwd; do not duplicate them here.
 export function getWelcomeLayout(terminalWidth: number) {
     const contentWidth = Math.min(
         MAX_CONTENT_WIDTH,

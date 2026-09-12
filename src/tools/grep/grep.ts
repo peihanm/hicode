@@ -39,65 +39,65 @@ const FILE_TYPE_EXTENSIONS: Record<string, readonly string[]> = {
 };
 
 const inputSchema = z.object({
-    include_ignored: z.boolean().default(false).describe("包含 .gitignore 与默认 node_modules 排除的文件"),
-    search_mode: z.enum(["fast", "complete"]).default("fast").describe("fast 达到 head_limit 后停止；complete 继续统计全部匹配。两者都有文件数和读取字节硬上限，未覆盖部分会明确标注"),
-    pattern: z.string().max(4_000).describe("JavaScript 正则表达式；独立 worker 执行，单文件最多 5 秒、整次搜索最多 30 秒"),
-    path: z.string().default(".").describe("搜索起始目录或文件"),
+    include_ignored: z.boolean().default(false).describe("Include files excluded by .gitignore and the default node_modules filter."),
+    search_mode: z.enum(["fast", "complete"]).default("fast").describe("fast stops at head_limit; complete continues counting matches. Both have file/byte caps and report incomplete coverage."),
+    pattern: z.string().max(4_000).describe("JavaScript regex in an isolated worker; capped at 5 seconds per file and 30 seconds per search."),
+    path: z.string().default(".").describe("Directory or file to search."),
     glob: z
         .string()
         .optional()
-        .describe("文件名或路径 glob，如 *.ts、src/**/*.{ts,tsx}；支持逗号分隔多个模式"),
+        .describe("Filename/path glob such as *.ts or src/**/*.{ts,tsx}; supports comma-separated patterns."),
     type: z
         .string()
         .optional()
-        .describe("按常见文件类型过滤，如 ts、js、py、rust、go、html、css"),
+        .describe("Filter by common type: ts, js, py, rust, go, html, css."),
     output_mode: z
         .enum(["content", "files_with_matches", "count"])
         .default("content")
-        .describe("输出匹配内容、匹配文件路径，或每个文件的匹配数"),
+        .describe("Return matching content, matching file paths or counts per file."),
     context: z
         .number()
         .int()
         .min(0)
         .max(MAX_CONTEXT)
         .default(0)
-        .describe("匹配行前后各显示多少行上下文。默认 0，最大 10"),
+        .describe("Context lines before and after each match; default 0, maximum 10."),
     before: z
         .number()
         .int()
         .min(0)
         .max(MAX_CONTEXT)
         .optional()
-        .describe("匹配行前显示多少行；传入后覆盖 context 的前置行数"),
+        .describe("Lines before each match; overrides context for preceding lines."),
     after: z
         .number()
         .int()
         .min(0)
         .max(MAX_CONTEXT)
         .optional()
-        .describe("匹配行后显示多少行；传入后覆盖 context 的后置行数"),
-    ignore_case: z.boolean().default(false).describe("是否忽略大小写"),
+        .describe("Lines after each match; overrides context for following lines."),
+    ignore_case: z.boolean().default(false).describe("Case-insensitive matching."),
     multiline: z
         .boolean()
         .default(false)
-        .describe("是否允许正则跨行匹配；开启后 . 可匹配换行"),
+        .describe("Allow multiline matches; dot can match newlines when enabled."),
     head_limit: z
         .number()
         .int()
         .min(0)
         .max(MAX_HEAD_LIMIT)
         .optional()
-        .describe("最多显示多少条结果；0 或不传使用 10000 条安全上限，大范围搜索建议设置更小值"),
+        .describe("Maximum displayed results; 0 or omitted uses the 10000 safety cap. Prefer smaller limits for broad searches."),
     offset: z
         .number()
         .int()
         .min(0)
         .default(0)
-        .describe("跳过前 N 条结果，与 head_limit 组合分页"),
+        .describe("Skip N results; combine with head_limit for pagination."),
     include_hidden: z
         .boolean()
         .default(false)
-        .describe("是否搜索隐藏文件和隐藏目录（如 .github/.pillar）。默认 false；.git 始终跳过"),
+        .describe("Search hidden paths such as .github/.pillar; default false. Always excludes .git."),
 });
 
 type Input = z.infer<typeof inputSchema>;
@@ -113,7 +113,7 @@ function linePreview(content: string, start: number, end: number, match = start)
     const splitsPair = (index: number) => /[\uD800-\uDBFF]/.test(content.charAt(index - 1)) && /[\uDC00-\uDFFF]/.test(content.charAt(index));
     if (splitsPair(from)) from++;
     if (splitsPair(to)) to--;
-    return `[长行片段，UTF-16 列 ${from - start + 1}–${to - start}/${end - start}] ${from > start ? "…" : ""}${content.slice(from, to)}${to < end ? "…" : ""}`;
+    return `[Long-line excerpt, UTF-16 columns ${from - start + 1}–${to - start}/${end - start}] ${from > start ? "…" : ""}${content.slice(from, to)}${to < end ? "…" : ""}`;
 }
 
 function formatHit(rel: string, content: string, hit: SearchHit, before: number, after: number): string {
@@ -148,12 +148,7 @@ function matchesFileType(file: string, type: string | undefined): boolean {
 
 export const grepTool: Tool<typeof inputSchema> = {
     name: "grep",
-    description: [
-        "强大的文件内容正则搜索工具。当任务是寻找代码位置、字面量、配置值或大文件中的目标时，先用 grep 缩小范围，不要盲目分段读取。",
-        "目录扫描跳过超过 1 MiB 的文件；明确指定文件可搜索至 64 MiB。超长行显示命中附近的 2000 字符窗口和行内列范围。",
-        "默认 content 模式返回文件、行号和匹配行；支持 files_with_matches/count、glob/type、上下文、分页和 multiline。",
-        "已经明确具体小文件且需要整体理解时，可以直接 read_file；需要类型语义时运行项目已有的类型检查、编译器或测试。",
-    ].join("\n"),
+    description: "Search file contents with a regular expression. Use targeted searches to locate symbols, configuration and failures in saved output, then read relevant source. Directory scans skip files over 1 MiB; an explicit file supports up to 64 MiB. Long lines show a 2000-character window around the match and column ranges. content returns paths, lines and matches; files_with_matches/count, glob/type filters, context, pagination and multiline are available. Known small files can be read directly. Regex search is not type-aware analysis; use project compilers/checks when needed.",
     parameters: inputSchema,
     maxResultSizeChars: 20_000,
     isReadOnly: () => true,
@@ -182,7 +177,7 @@ export const grepTool: Tool<typeof inputSchema> = {
         const searchRoot = resolveToolPath(ctx.cwd, path);
         await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, searchRoot);
         if (await checkMemoryStoragePath(ctx.storage, searchRoot)) {
-            if (!ctx.memoryFiles) throw new Error("当前 Agent 无 Memory 读取能力");
+            if (!ctx.memoryFiles) throw new Error("This Agent has no Memory read capability");
             await ctx.memoryFiles.prepare(searchRoot, "grep");
         }
         const explicitFile = (await lstat(searchRoot)).isFile();
@@ -262,10 +257,10 @@ export const grepTool: Tool<typeof inputSchema> = {
         const engine = createGrepMatcher(ctx.signal);
         try {
             const validated = await engine.search({content: "", pattern, ignoreCase: ignore_case, multiline, offset: 0, limit: 0}, SEARCH_DEADLINE_MS);
-            if (validated.kind === "invalid_pattern") return {content: `正则表达式不合法: ${validated.message}`, outcome: "failed"};
+            if (validated.kind === "invalid_pattern") return {content: `Invalid regular expression: ${validated.message}`, outcome: "failed"};
             for await (const file of discovery.files) {
                 throwIfTurnAborted(ctx.signal);
-                if (performance.now() - startedAt >= SEARCH_DEADLINE_MS) { searchError = "Grep 搜索达到 30 秒时限，未完成扫描"; searchIncomplete = true; break; }
+                if (performance.now() - startedAt >= SEARCH_DEADLINE_MS) { searchError = "Grep reached the 30-second limit; scan incomplete"; searchIncomplete = true; break; }
                 await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, file);
                 await ctx.toolResultFiles.resolveFile(file);
                 if (await checkMemoryStoragePath(ctx.storage, file)) {
@@ -340,27 +335,27 @@ export const grepTool: Tool<typeof inputSchema> = {
 
             const stats = discovery.getStats();
             searchIncomplete ||= stats.truncated || skippedCount > 0;
-            const coverage = `搜了 ${scannedFiles} 个文件（${scannedBytes} 字节），发现 ${stats.candidateFiles} 个候选文件`;
+            const coverage = `Searched ${scannedFiles} files (${scannedBytes} bytes); found ${stats.candidateFiles} candidate files`;
             const incomplete = searchIncomplete
-                ? `；搜索未完整覆盖，仅报告已扫描范围${stats.issues.length ? `：${stats.issues.join("；")}` : ""}。${oversizedCount ? `跳过 ${oversizedCount} 个超过 ${maxFileSize / 1024 / 1024} MiB 的文件${explicitFile ? "，需先缩小文件" : "，可指定具体文件（上限 64 MiB）"}。` : ""}${explicitFile ? "" : "可缩小 path 或使用 search_mode=complete"}`
+                ? `; search coverage is incomplete; only scanned paths are reported ${stats.issues.length ? `:${stats.issues.join(";")}` : ""}.${oversizedCount ? `Skipped ${oversizedCount} files exceeding ${maxFileSize / 1024 / 1024} MiB ${explicitFile ? "; narrow the file first" : "; specify an exact file (up to 64 MiB)"}.` : ""}${explicitFile ? "" : "Narrow path or use search_mode=complete"}`
                 : "";
-            if (totalMatches === 0 && searchError) return {content: `${searchError}（${coverage}）；不能据此判断没有匹配`, outcome: "failed"};
+            if (totalMatches === 0 && searchError) return {content: `${searchError}(${coverage}); this does not establish that no matches exist`, outcome: "failed"};
             if (totalMatches === 0) {
-                return `未找到匹配 /${pattern}/（${coverage}${skippedCount ? `，跳过 ${skippedCount} 个文件` : ""}${incomplete}）`;
+                return `No matches for /${pattern}/(${coverage}${skippedCount ? `; skipped ${skippedCount} files` : ""}${incomplete})`;
             }
 
             const pagination = displayedEntries < resultEntries
-                ? `，显示 offset=${offset} 后的 ${displayedEntries}/${resultEntries} 条结果`
+                ? `; showing offset=${offset}: ${displayedEntries}/${resultEntries} results`
                 : "";
             const modeSummary = output_mode === "content"
-                ? `共 ${totalMatches} 条匹配`
-                : `共 ${matchedFiles} 个匹配文件、${totalMatches} 条匹配`;
-            const summary = `${modeSummary}，${coverage}${pagination}${skippedCount > 0 ? `，跳过 ${skippedCount} 个文件` : ""}${complete ? "" : "；达到结果存储上限，结果不完整"}${incomplete}${searchError ? `；${searchError}` : ""}`;
+                ? `Total: ${totalMatches} matches`
+                : `Total: ${matchedFiles} matching files,${totalMatches} matches`;
+            const summary = `${modeSummary},${coverage}${pagination}${skippedCount > 0 ? `; skipped ${skippedCount} files` : ""}${complete ? "" : "; result storage limit reached; results are incomplete"}${incomplete}${searchError ? `;${searchError}` : ""}`;
             if (displayedEntries === 0) {
-                return {content: `${summary}；当前分页没有可显示结果`, outcome: searchError ? "failed" : "ok"};
+                return {content: `${summary}; no results on this page`, outcome: searchError ? "failed" : "ok"};
             }
             if (!capturePath) {
-                return {content: `${inlineOutput}\n\n（${summary}）`, outcome: searchError ? "failed" : "ok"};
+                return {content: `${inlineOutput}\n\n(${summary})`, outcome: searchError ? "failed" : "ok"};
             }
 
             const persisted = await ctx.toolResultStore.promoteFile({
@@ -373,7 +368,7 @@ export const grepTool: Tool<typeof inputSchema> = {
             return {
                 content: summary,
                 outcome: searchError ? "failed" : "ok",
-                displayContent: `${persisted.preview}\n\n（${summary}）`,
+                displayContent: `${persisted.preview}\n\n(${summary})`,
                 persisted,
             };
         } finally {

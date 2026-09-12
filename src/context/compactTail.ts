@@ -17,17 +17,17 @@ export function findCompactTailStart(history: Message[], options: CompactTailOpt
         if (history[groupStart]?.role === "tool") {
             while (groupStart > 1 && history[groupStart]?.role === "tool") groupStart--;
             const assistant = history[groupStart];
-            if (assistant?.role !== "assistant" || !assistant.tool_calls) throw new Error("Compact tail 包含未配对的 tool result");
+            if (assistant?.role !== "assistant" || !assistant.tool_calls) throw new Error("Compact tail contains an unpaired tool result");
             const ids = new Set(assistant.tool_calls.map(call => call.id));
             for (let index = groupStart + 1; index < start; index++) {
                 const result = history[index]!;
-                if (result.role !== "tool" || !ids.delete(result.tool_call_id)) throw new Error("Compact tail 的 tool result 配对非法");
+                if (result.role !== "tool" || !ids.delete(result.tool_call_id)) throw new Error("Compact tail has an invalid tool-result pairing");
             }
-            if (ids.size) throw new Error("Compact tail 缺少 tool result");
+            if (ids.size) throw new Error("Compact tail is missing a tool result");
         }
         const first = history[groupStart];
         if (groupStart === start - 1 && first?.role === "assistant" && first.tool_calls?.length) {
-            throw new Error("Compact tail 缺少 tool result");
+            throw new Error("Compact tail is missing a tool result");
         }
         const group = history.slice(groupStart, start);
         const cost = group.reduce((sum, message) => sum + estimateMessageTokens(message), 0);

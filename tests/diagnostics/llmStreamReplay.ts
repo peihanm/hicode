@@ -39,7 +39,7 @@ interface ReplayConnection {
 }
 
 const USAGE = [
-    "用法：",
+    "Usage:",
     "  bun tests/diagnostics/llmStreamReplay.ts --prompt-log <path> [--stall-ms 180000]",
     "",
     "该诊断只发起一次真实请求，复用 Prompt Log 中的完整 request。",
@@ -105,7 +105,7 @@ function parseOptions(argv: readonly string[]): DiagnosticOptions {
             console.log(USAGE);
             process.exit(0);
         }
-        throw new Error(`未知参数: ${argument ?? "<empty>"}`);
+        throw new Error(`Unknown argument: ${argument ?? "<empty>"}`);
     }
     if (!promptLogPath) throw new Error("缺少 --prompt-log");
     return {
@@ -226,14 +226,14 @@ function printSummary({
     console.log("\n诊断摘要");
     console.log(`- 总时长: ${elapsed(startedAt)}`);
     console.log(`- 原始传输: ${state.byteChunks} chunks / ${state.bytes} bytes / ${state.dataEvents} SSE data events`);
-    console.log(`- 原始有效输出: ${state.outputCharacters} chars（reasoning ${state.reasoningCharacters}, content ${state.contentCharacters}, tool arguments ${state.toolArgumentCharacters}）`);
+    console.log(`- 原始有效输出: ${state.outputCharacters} chars(reasoning ${state.reasoningCharacters}, content ${state.contentCharacters}, tool arguments ${state.toolArgumentCharacters})`);
     console.log(`- Pillar parser 有效输出: ${parserCharacters} chars`);
     console.log(`- finish_reason: ${state.finishReason ?? "未收到"}`);
     if (state.lastByteAt) {
         console.log(`- 最后原始字节: ${elapsed(startedAt, state.lastByteAt)}`);
     }
     if (state.lastOutputAt) {
-        console.log(`- 最后有效输出: ${elapsed(startedAt, state.lastOutputAt)}（已空闲 ${Math.round((rawIdleMs ?? 0) / 1000)}s）`);
+        console.log(`- 最后有效输出: ${elapsed(startedAt, state.lastOutputAt)}（已空闲 ${Math.round((rawIdleMs ?? 0) / 1000)}s)`);
     }
     if (state.invalidEvents > 0) {
         console.log(`- 无法解析的 SSE data events: ${state.invalidEvents}`);
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
     const provider = settings.values.models.primary.source;
     const connection = getReplayConnection(provider);
     if (!connection.apiKey) {
-        throw new Error(`缺少 ${connection.apiKeyVariable}`);
+        throw new Error(`Missing ${connection.apiKeyVariable}`);
     }
     const url = completionsUrl(connection.baseUrl);
     const request = {...document.request, model, stream: true};

@@ -15,7 +15,7 @@ test("实际输入用量影响下一次模型请求前的压缩，重试计费�
     await withTempProject(async (cwd, storage) => {
         const call = assistantToolCall("list_files", {path: "."}, "list");
         const fake = createFakeLLM([{...call, usage: {prompt_tokens: 999999, completion_tokens: 100, total_tokens: 1000099},
-            contextUsage: {inputTokens: 7900, tokenCount: 7920, contextWindow: 10000}}, assistantText("完成")]);
+            contextUsage: {inputTokens: 7900, tokenCount: 7920, contextWindow: 10000}}, assistantText("completed")]);
         const f = continuityFixture(cwd, storage, fake.callLLM, past());
         try {
             await runRootTurn({resources: f.resources, session: f.session, prompt: "继续", signal: new AbortController().signal,

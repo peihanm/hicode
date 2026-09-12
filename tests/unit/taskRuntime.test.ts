@@ -11,7 +11,7 @@ import {createTaskNotificationDelivery} from "../../src/runtime/taskNotification
 
 describe("TaskRuntime", () => {
     for (const outputFailure of [false, true]) {
-        test(`shutdown 保留任务记录，正常清理不通知，输出异常仍通知（异常=${outputFailure}）`, async () => {
+        test(`shutdown 保留任务记录，正常清理不通知，输出异常仍通知（异常=${outputFailure})`, async () => {
             await withTempProject(async cwd => {
                 let runs = 0;
                 const runner: ShellRunnerLike = {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, async run(request) {
@@ -107,7 +107,7 @@ describe("TaskRuntime", () => {
             const rejected = settled.find((result) => result.status === "rejected");
             expect(rejected?.status === "rejected" ? rejected.reason : undefined)
                 .toEqual(expect.objectContaining({
-                    message: expect.stringContaining("已达到上限 4"),
+                    message: expect.stringContaining("limit: 4"),
                 }));
             expect(created).toBe(4);
             expect(session.getRunningSummary()).toEqual({
@@ -145,7 +145,7 @@ describe("TaskRuntime", () => {
                     parentToolCallId: "policy-call",
                 },
                 parentContext: context,
-            })).rejects.toThrow("未知 Agent 类型");
+            })).rejects.toThrow("Unknown Agent type");
             await runtime.close();
         });
     });
@@ -280,7 +280,7 @@ describe("TaskRuntime", () => {
                 outputResult: {resultId: `task_${started.id}`},
             });
             await expect(first.send(started.id, "继续"))
-                .rejects.toThrow(`Task ${started.id} 不是 Agent`);
+                .rejects.toThrow(`Task ${started.id} is not an Agent`);
             expect(await second.get(started.id)).toBeUndefined();
             expect(events.map((event) => event.sequence)).toEqual([1, 2]);
             const concurrentClaims = await Promise.all([

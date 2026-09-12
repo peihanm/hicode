@@ -98,7 +98,7 @@ test("定义变化重新批准、未变 once 不重跑、重载失败不半更�
         expect(decisions).toBe(2); expect(runs).toBe(2);
         expect(runtime.inspect()[0]!.hookId).not.toBe(firstId);
         const before = runtime.inspect();
-        await expect(runtime.reload(settings, signal)).rejects.toThrow("未获批准");
+        await expect(runtime.reload(settings, signal)).rejects.toThrow("not approved");
         expect(runtime.inspect()).toEqual(before);
         expect(session.recent()).toHaveLength(2);
     });

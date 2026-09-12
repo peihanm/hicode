@@ -35,13 +35,13 @@ function optionalString(
     if (value === undefined || value === null || typeof value === "string") {
         return value;
     }
-    throw new Error(`OpenAI-compatible stream 的 ${field} 必须是字符串或 null`);
+    throw new Error(`OpenAI-compatible stream field ${field} must be a string or null`);
 }
 
 function decodeUsage(value: unknown): TokenUsage | undefined {
     if (value === undefined || value === null) return undefined;
     if (!isRecord(value)) {
-        throw new Error("OpenAI-compatible stream 的 usage 必须是对象");
+        throw new Error("OpenAI-compatible stream usage must be an object");
     }
     const fields = ["prompt_tokens", "completion_tokens", "total_tokens"] as const;
     const result = {} as Record<(typeof fields)[number], number>;
@@ -49,7 +49,7 @@ function decodeUsage(value: unknown): TokenUsage | undefined {
         const count = value[field];
         if (!Number.isSafeInteger(count) || (count as number) < 0) {
             throw new Error(
-                `OpenAI-compatible stream 的 usage.${field} 必须是非负整数`
+                `OpenAI-compatible stream usage.${field} must be a non-negative integer`
             );
         }
         result[field] = count as number;
@@ -63,13 +63,13 @@ function decodeToolCalls(
     if (value === undefined) return undefined;
     if (!Array.isArray(value) || value.length > MAX_TOOL_CALLS) {
         throw new Error(
-            `OpenAI-compatible stream 的 delta.tool_calls 必须是不超过 ${MAX_TOOL_CALLS} 项的数组`
+            `OpenAI-compatible stream delta.tool_calls must be an array of at most ${MAX_TOOL_CALLS} items`
         );
     }
     return value.map((item, position) => {
         if (!isRecord(item)) {
             throw new Error(
-                `OpenAI-compatible stream 的 tool_calls[${position}] 必须是对象`
+                `OpenAI-compatible stream tool_calls[${position}] must be an object`
             );
         }
         const index = item.index;
@@ -80,19 +80,19 @@ function decodeToolCalls(
                 (index as number) >= MAX_TOOL_CALLS)
         ) {
             throw new Error(
-                `OpenAI-compatible stream 的 tool_calls[${position}].index 非法`
+                `OpenAI-compatible stream tool_calls[${position}].index is invalid`
             );
         }
         const fn = item.function;
         if (fn !== undefined && !isRecord(fn)) {
             throw new Error(
-                `OpenAI-compatible stream 的 tool_calls[${position}].function 必须是对象`
+                `OpenAI-compatible stream tool_calls[${position}].function must be an object`
             );
         }
         const type = optionalString(item.type, `tool_calls[${position}].type`);
         if (type !== undefined && type !== null && type !== "function") {
             throw new Error(
-                `OpenAI-compatible stream 的 tool_calls[${position}].type 非法`
+                `OpenAI-compatible stream tool_calls[${position}].type is invalid`
             );
         }
         return {
@@ -136,17 +136,17 @@ export function decodeOpenAICompatibleStreamChunk(
     value: unknown
 ): OpenAICompatibleStreamChunk {
     if (!isRecord(value)) {
-        throw new Error("OpenAI-compatible stream 的数据事件必须是对象");
+        throw new Error("OpenAI-compatible stream data events must be objects");
     }
     const usage = decodeUsage(value.usage);
     if (value.choices === undefined) return usage ? {usage} : {};
     if (!Array.isArray(value.choices)) {
-        throw new Error("OpenAI-compatible stream 的 choices 必须是数组");
+        throw new Error("OpenAI-compatible stream choices must be an array");
     }
     const choices = value.choices.map((rawChoice, position) => {
         if (!isRecord(rawChoice)) {
             throw new Error(
-                `OpenAI-compatible stream 的 choices[${position}] 必须是对象`
+                `OpenAI-compatible stream choices[${position}] must be an object`
             );
         }
         const finishReason = optionalString(
@@ -156,7 +156,7 @@ export function decodeOpenAICompatibleStreamChunk(
         const rawDelta = rawChoice.delta;
         if (rawDelta !== undefined && !isRecord(rawDelta)) {
             throw new Error(
-                `OpenAI-compatible stream 的 choices[${position}].delta 必须是对象`
+                `OpenAI-compatible stream choices[${position}].delta must be an object`
             );
         }
         return {

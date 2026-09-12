@@ -3,7 +3,7 @@ import {shouldAutoCompact} from "../context/compact.js";
 import {getAutoCompactThreshold, getModelInputBudget, getTokenWarningState,} from "../context/window.js";
 import {getUserContextBlocks} from "../prompt/attachments.js";
 import {buildInvokeMessages} from "../prompt/invokeMessages.js";
-import {withCollaborationMode} from "../prompt/collaboration.js";
+import {withExecutionContext} from "../prompt/collaboration.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "./types.js";
@@ -53,7 +53,7 @@ export async function prepareAgentInvoke({
         ...getUserContextBlocks(ctx.skills, ctx.instructions),
         ...runtimeBlocks,
     ];
-    let invokeMessages = withCollaborationMode(buildInvokeMessages(history, userContextBlocks), ctx.collaborationMode);
+    let invokeMessages = withExecutionContext(buildInvokeMessages(history, userContextBlocks), ctx);
     const tools = getToolSchemas();
     const scope = () => ({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
     contextWindow ??= ctx.contextUsage.contextWindow(scope());
@@ -99,7 +99,7 @@ export async function prepareAgentInvoke({
                 ...getUserContextBlocks(ctx.skills, ctx.instructions),
                 ...runtimeBlocks,
             ];
-            invokeMessages = withCollaborationMode(buildInvokeMessages(history, userContextBlocks), ctx.collaborationMode);
+            invokeMessages = withExecutionContext(buildInvokeMessages(history, userContextBlocks), ctx);
             estimatedTokens = ctx.contextUsage.estimate(scope(), invokeMessages, tools);
             await onEvent({
                 type: "compact_end",
@@ -114,11 +114,11 @@ export async function prepareAgentInvoke({
                 trigger: "auto",
             });
         }
-        if (forceCompact && !compactResult.compacted) throw new Error(`超长上下文恢复失败：${compactResult.message ?? "未能压缩"}；已停止重发请求，原历史保留`);
+        if (forceCompact && !compactResult.compacted) throw new Error(`Context overflow recovery failed: ${compactResult.message ?? "Compaction failed"}; request retries stopped and original history preserved`);
     }
 
     if (estimatedTokens > getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)) {
-        throw new Error(`当前请求估算 ${estimatedTokens} tokens，超过可用输入预算 ${getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)}；已停止调用模型。请缩短最新输入、减少固定指令/工具，或用新 Session 继续；原历史已保留。`);
+        throw new Error(`Current request is estimated at ${estimatedTokens} tokens, exceeding the available input budget of ${getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)}; model request stopped. Shorten the latest input, reduce fixed instructions/tools or continue in a new Session. Original history is preserved.`);
     }
     return {invokeMessages, tools, estimatedTokens};
 }

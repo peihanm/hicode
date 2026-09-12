@@ -7,7 +7,7 @@ import {parseFrontmatter} from "./frontmatter.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLED_DIR = join(__dirname, "bundled-files");
 
-// 内置 skill 名字 → markdown 文件名
+// Built-in Skill name to Markdown filename mapping.
 const BUNDLED_SKILLS: readonly string[] = [];
 
 export function loadBundledSkills(): LoadedSkill[] {

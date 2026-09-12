@@ -60,7 +60,7 @@ describe("background Explore", () => {
                 run_in_background: true,
             }), ctx, "background-agent-call");
             expect(launched.outcome).toBe("ok");
-            expect(launched.modelContent).toContain("Agent Task 已启动");
+            expect(launched.modelContent).toContain("Agent Task started");
             const running = await tasks.list();
             expect(running).toHaveLength(1);
             expect(running[0]).toMatchObject({
@@ -159,7 +159,7 @@ describe("background Explore", () => {
                 status: "cancelled",
             });
             await expect(tasks.send(running!.id, "取消后继续"))
-                .rejects.toThrow("已取消的 Agent 不能继续");
+                .rejects.toThrow("cancelled Agent cannot continue");
             expect(await tasks.pendingNotifications()).toHaveLength(0);
             await taskRuntime.close();
         });
@@ -431,7 +431,7 @@ describe("background Explore", () => {
                 resultPreview: "恢复前报告",
             });
             await expect(restoredTasks.send(started!.id, "恢复后继续"))
-                .rejects.toThrow("仅有持久化状态");
+                .rejects.toThrow("has only persisted state");
             await secondRuntime.close();
         });
     });

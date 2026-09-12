@@ -46,7 +46,7 @@ const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value =
     const declaredName = value.split("(")[0]!;
     if (isFilePermissionTool(declaredName) && declaredName !== rule.toolName) return false;
     return !isFilePermissionTool(rule.toolName) || rule.content === undefined || validateFilePattern(rule.content);
-}, "文件权限内容必须是路径 glob，不接受 JSON、~ 或 Bash 前缀语法"));
+}, "File permission content must be a path glob; JSON, ~ and Bash-prefix syntax are not accepted"));
 
 export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
     .object({
@@ -97,7 +97,7 @@ export const pillarSettingsFileSchema: z.ZodType<PillarSettingsFile> = z
             .optional(),
         sandbox: z
             .object({
-                enabled: z.never({invalid_type_error: "sandbox.enabled 已移除；请使用 permissions.defaultMode 选择 ask、auto-review 或 full-access"}).optional(),
+                enabled: z.never({invalid_type_error: "sandbox.enabled was removed; use permissions.defaultMode to select ask, auto-review or full-access"}).optional(),
                 filesystem: z
                     .object({
                         denyRead: z.array(z.string().trim().min(1)).optional(),
@@ -159,7 +159,7 @@ export const pillarHostSettingsSchema: z.ZodType<PillarSettingsFile> = z
         }).strict().optional(),
         sandbox: z
             .object({
-                enabled: z.never({invalid_type_error: "sandbox.enabled 已移除；请使用 permissions.defaultMode 选择 ask、auto-review 或 full-access"}).optional(),
+                enabled: z.never({invalid_type_error: "sandbox.enabled was removed; use permissions.defaultMode to select ask, auto-review or full-access"}).optional(),
                 filesystem: z.object({
                     denyRead: z.array(z.string().trim().min(1)).optional(),
                     denyWrite: z.array(z.string().trim().min(1)).optional(),

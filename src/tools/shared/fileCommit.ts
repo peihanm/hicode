@@ -28,7 +28,7 @@ interface FileVersion {
 function readVersion(path: string): FileVersion {
     try {
         const entry = lstatSync(path);
-        if (!entry.isFile()) throw new Error(`文件提交仅支持普通文件，不接受 Symlink: ${path}`);
+        if (!entry.isFile()) throw new Error(`File commits require regular files; symlinks are not allowed: ${path}`);
     } catch (error) {
         if (missing(error)) return {content: null, identity: "missing"};
         throw error;
@@ -36,18 +36,18 @@ function readVersion(path: string): FileVersion {
     const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
         const before = fstatSync(fd, {bigint: true});
-        if (!before.isFile()) throw new Error(`文件提交目标不是普通文件: ${path}`);
+        if (!before.isFile()) throw new Error(`File commit target is not a regular file: ${path}`);
         const content = readFileSync(fd);
         const after = fstatSync(fd, {bigint: true});
         const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.size, stat.mode, stat.mtimeNs, stat.ctimeNs].join(":");
-        if (identity(before) !== identity(after)) throw new Error(`文件在读取期间发生变化，请重新 read_file: ${path}`);
+        if (identity(before) !== identity(after)) throw new Error(`File changed while reading; use read_file again: ${path}`);
         return {content, identity: identity(after), mode: Number(after.mode) & 0o7777};
     } finally { closeSync(fd); }
 }
 
 function assertContent(version: FileVersion, expected: string | Buffer | null, path: string): void {
     if (expected === null ? version.content !== null : !version.content?.equals(Buffer.from(expected))) {
-        throw new Error(`文件在提交前发生变化，已保留外部内容；请重新 read_file: ${path}`);
+        throw new Error(`File changed before commit; external content was preserved. Use read_file again: ${path}`);
     }
 }
 
@@ -83,14 +83,14 @@ export class FileCommitCoordinator {
 }
 
 export function prepareFileCommit(path: string, canonical: string, expected: string | Buffer | null, targetMode?: number) {
-    if (canonicalPath(path) !== canonical) throw new Error(`文件路径在等待期间发生变化: ${path}`);
+    if (canonicalPath(path) !== canonical) throw new Error(`File path changed while waiting: ${path}`);
     const version = readVersion(path);
     assertContent(version, expected, path);
     return async (content: string | Buffer | null, signal: AbortSignal): Promise<string | undefined> => {
         let temporary: string | undefined;
         try {
             throwIfTurnAborted(signal);
-            if (canonicalPath(path) !== canonical) throw new Error(`文件路径在提交前发生变化: ${path}`);
+            if (canonicalPath(path) !== canonical) throw new Error(`File path changed before commit: ${path}`);
             if (content !== null) {
                 // Stage on the same filesystem; final rename cannot expose a partial file.
                 await mkdir(dirname(canonical), {recursive: true});
@@ -103,10 +103,10 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
                 } finally { await file.close(); }
             }
             // No await from the final path/version/signal check through the commit.
-            if (canonicalPath(path) !== canonical) throw new Error(`文件路径在提交前发生变化: ${path}`);
+            if (canonicalPath(path) !== canonical) throw new Error(`File path changed before commit: ${path}`);
             const current = readVersion(path);
             assertContent(current, expected, path);
-            if (current.identity !== version.identity) throw new Error(`文件身份在提交前发生变化，请重新 read_file: ${path}`);
+            if (current.identity !== version.identity) throw new Error(`File identity changed before commit; use read_file again: ${path}`);
             throwIfTurnAborted(signal);
             if (content === null) unlinkSync(canonical);
             else if (expected === null) {

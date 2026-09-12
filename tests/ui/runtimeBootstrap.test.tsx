@@ -72,7 +72,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("项目请求启动 MCP Server：fixture");
+      expect(instance.lastFrame()).toContain("Project requests an MCP Server: fixture");
       instance.stdin.write("1");
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(decision).toBe("once");
@@ -98,7 +98,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("Runtime 初始化失败");
+      expect(instance.lastFrame()).toContain("Runtime initialization failed");
       expect(instance.lastFrame()).toContain("runtime fixture failed");
     });
   });
@@ -143,7 +143,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("会执行命令或调用模型的 Hooks");
+      expect(instance.lastFrame()).toContain("Hooks that execute commands or call models");
       expect(instance.lastFrame()).toContain("PreToolUse · command: ./hooks/check.sh");
       expect(instance.lastFrame()).toContain(
         "UserPromptSubmit · prompt: Reject requests for production secrets"
@@ -210,7 +210,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 40));
-      expect(instance.lastFrame()).toContain("没有其他可恢复的历史会话");
+      expect(instance.lastFrame()).toContain("No other previous sessions are available to resume");
 
       instance.stdin.write("\u001b");
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -276,7 +276,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 40));
-      expect(instance.lastFrame()).toContain("Resume  恢复历史会话");
+      expect(instance.lastFrame()).toContain("Resume  Previous sessions");
       expect(instance.lastFrame()).toContain("恢复这段历史");
 
       instance.stdin.write("\r");
@@ -317,7 +317,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(instance.lastFrame()).toContain("正在初始化运行时");
+      expect(instance.lastFrame()).toContain("Initializing Runtime");
       instance.unmount();
       release();
       await new Promise((resolve) => setTimeout(resolve, 20));

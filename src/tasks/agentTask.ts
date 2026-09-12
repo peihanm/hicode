@@ -13,13 +13,13 @@ export function validateAgentTaskInput(
 ): void {
     if (input.request.kind === "fork") {
         if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(input.request.name)) {
-            throw new Error("Fork name 只能包含小写字母、数字和连字符，长度 1–40");
+            throw new Error("Fork name must contain only lowercase letters, digits and hyphens, with length 1–40");
         }
         return;
     }
     const registration = subagents.get(input.request.agentType);
     if (!registration) {
-        throw new Error(`未知 Agent 类型: ${input.request.agentType}`);
+        throw new Error(`Unknown Agent type: ${input.request.agentType}`);
     }
 
 }
@@ -115,7 +115,7 @@ export async function runAgentTask(
             if (finalStatus === "cancelled") break;
             const queued = task.messageQueue.dequeueNextUserInput();
             if (!queued) break;
-            if (typeof queued.content !== "string") throw new Error("后台 Agent steering 只接受文本");
+            if (typeof queued.content !== "string") throw new Error("Background Agent steering accepts text only");
             nextPrompt = queued.content;
             resetAgentRun(task, task.runCount + 1);
         }

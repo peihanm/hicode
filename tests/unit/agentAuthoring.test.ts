@@ -41,7 +41,7 @@ describe("agent authoring", () => {
     test("拒绝正文、未知工具和重名候选", async () => {
         await expect(runtime(createFakeLLM([
             assistantText("{\"name\":\"bad\"}"),
-        ])).generate("create")).rejects.toThrow("普通正文");
+        ])).generate("create")).rejects.toThrow("ordinary text");
 
         await expect(runtime(createFakeLLM([assistantToolCall(
             "submit_agent_definition",
@@ -53,7 +53,7 @@ describe("agent authoring", () => {
                 model: "inherit",
                 max_iterations: 8,
             }
-        )])).generate("create")).rejects.toThrow("不存在");
+        )])).generate("create")).rejects.toThrow("tools unavailable in this Runtime");
 
         await expect(runtime(createFakeLLM([assistantToolCall(
             "submit_agent_definition",
@@ -65,7 +65,7 @@ describe("agent authoring", () => {
                 model: "inherit",
                 max_iterations: 8,
             }
-        )])).generate("create")).rejects.toThrow("已经存在");
+        )])).generate("create")).rejects.toThrow("already exists");
     });
 
     test("拒绝同时返回正文和候选工具调用", async () => {
@@ -83,6 +83,6 @@ describe("agent authoring", () => {
             content: "我已经生成好了。",
         };
         await expect(runtime(createFakeLLM([response])).generate("create"))
-            .rejects.toThrow("普通正文");
+            .rejects.toThrow("ordinary text");
     });
 });

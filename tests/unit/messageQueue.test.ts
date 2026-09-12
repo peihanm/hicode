@@ -109,7 +109,7 @@ describe("RuntimeMessageQueue", () => {
             })
         );
         expect(() => new RuntimeMessageQueue({messages})).toThrow(
-            "无效的运行中消息队列快照"
+            "Invalid active message-queue snapshot"
         );
     });
 

@@ -1,4 +1,4 @@
-// 工具域公共入口。实现按 Catalog、Discovery、Execute 与 Runtime 分层。
+// Tool domain entry point, layered into Catalog, Discovery, Execute and Runtime.
 export {formatInterruptedToolResult} from "./execute.js";
 export {
     createToolRuntime,

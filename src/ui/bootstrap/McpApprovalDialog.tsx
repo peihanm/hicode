@@ -40,8 +40,8 @@ export function McpApprovalDialog({
     return (
         <DialogFrame
             title="MCP Server request"
-            subtitle={<Text>项目请求启动 MCP Server：{request.serverName}</Text>}
-            footer="↑↓ 选择 · Enter 确认"
+            subtitle={<Text>Project requests an MCP Server: {request.serverName}</Text>}
+            footer="↑↓ select · Enter confirm"
         >
             <Box marginTop={1} flexDirection="column">
                 <Text>Command: {request.command.slice(0, 512)}</Text>

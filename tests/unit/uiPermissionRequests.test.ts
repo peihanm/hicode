@@ -4,7 +4,7 @@ import { UIPermissionRequests } from "../../src/ui/turn/permissionRequests.js";
 describe("UIPermissionRequests", () => {
   test("暴露 request、返回 decision，并用 identity 清理", async () => {
     const requests = new UIPermissionRequests();
-    const decision = requests.request("bash", "需要确认", { command: "pwd" });
+    const decision = requests.request("bash", "requires approval", { command: "pwd" });
     const current = requests.getSnapshot();
     expect(current).not.toBeNull();
     expect(current?.allowAddToAllowList).toBe(true);
@@ -53,11 +53,11 @@ describe("UIPermissionRequests", () => {
     const requests = new UIPermissionRequests();
     const firstDecision = requests.request("bash", "first", {});
     const first = requests.getSnapshot();
-    expect(requests.denyPending("任务已取消")).toBe(true);
+    expect(requests.denyPending("Task cancelled")).toBe(true);
     expect(requests.denyPending("again")).toBe(false);
     expect(await firstDecision).toEqual({
       behavior: "deny",
-      message: "任务已取消",
+      message: "Task cancelled",
     });
 
     const secondDecision = requests.request("write_file", "second", {});
@@ -89,7 +89,7 @@ describe("UIPermissionRequests", () => {
     requests.dispose();
     expect(await decision).toEqual({
       behavior: "deny",
-      message: "应用正在关闭",
+      message: "Application is shutting down",
     });
     expect(requests.getSnapshot()).toBeNull();
   });

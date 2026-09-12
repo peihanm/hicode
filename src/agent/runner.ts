@@ -27,11 +27,11 @@ export interface AgentToolBindings {
 export interface AgentRunOptions extends AgentToolBindings {
     inputOrigin?: "user" | "agent";
     maxIterations?: number;
-    /** 读取 Host-owned Todo 真相源，供进度提醒与最终状态校验。 */
+    /** Read Host-owned Todo truth for progress reminders and completion checks. */
     getTodos?: () => readonly Todo[];
-    /** 连续权限拒绝达到该值时停止工具阶段，供无交互子 Runtime 使用。 */
+    /** Stop the tool stage after this many consecutive permission denials, for non-interactive child runtimes. */
     maxConsecutiveDeniedToolCalls?: number;
-    /** 当前 turn 的宿主上下文，不写入持久 history。 */
+    /** Host context for this Turn; not persisted in History. */
     additionalUserContextBlocks?: readonly string[];
     getAdditionalUserContextBlocks?: () => Promise<readonly string[]>;
 }
@@ -85,15 +85,15 @@ function assertFreshToolCallIds(
     }
     const duplicate = toolCalls.find((call) => existing.has(call.id));
     if (duplicate) {
-        throw new Error(`模型重复使用历史 Tool Call ID: ${duplicate.id}`);
+        throw new Error(`Model reused a historical Tool Call ID: ${duplicate.id}`);
     }
 }
 
-// Agent 主循环：调 LLM → 执行工具 → 回喂结果 → 循环，直到 LLM 给出最终回答
-// needsFollowUp 模式：LLM 调了工具就继续，没调就停（参考 claude-code query.ts）
+// Agent loop: call LLM, execute tools, feed results back, repeat until a final answer.
+// needsFollowUp continues after tool calls and stops otherwise, following Claude Code query.ts.
 //
-// onEvent 回调：把进度流给 UI 层（替代 console.log），让 UI 自己决定怎么渲染
-// ctx：注入 confirm 等依赖，避免工具直接耦合 readline / Ink
+// onEvent streams progress to the UI instead of console.log; the UI decides rendering.
+// ctx injects confirmation and other dependencies so tools do not couple to readline/Ink.
 
 async function runAgentCore(
     userInput: MessageContent,
@@ -159,7 +159,7 @@ async function runAgentCore(
         const abortReason = normalizeTurnAbortReason(ctx.signal.reason);
         await onEvent({type: "turn_interrupted", reason: abortReason});
         return {
-            reply: "(任务已取消)",
+            reply: "(Task cancelled)",
             reason: "interrupted",
             iterations,
             abortReason,
@@ -173,9 +173,9 @@ async function runAgentCore(
         }
     };
 
-    // 已完成任务的通知先于新问题注入；它们是临时运行时消息，不触发独立 LLM turn。
+    // Completed-task notifications precede new questions as transient runtime messages, not separate LLM turns.
     appendQueuedInputs(inputChannel.drainInitial());
-    // push 真实用户输入到 history（userContext 不入 history）
+    // Append real user input to History; userContext stays transient.
     history.push({role: "user", origin: options.inputOrigin ?? "user", content: userInput});
 
     try {
@@ -220,7 +220,7 @@ async function runAgentCore(
             // This request's exposure is immutable even if discovery changes during the batch.
             const offeredToolNames = new Set(tools.map(tool => tool.function.name));
 
-            // 调 LLM（用 invokeMessages，不是 history）
+            // Call the LLM with invokeMessages, not raw History.
             await onEvent({type: "model_stream_start"});
             let llmResult;
             try {
@@ -256,7 +256,7 @@ async function runAgentCore(
             throwIfTurnAborted(ctx.signal);
             ctx.fileState.commitVisible(invokeMessages);
             assertFreshToolCallIds(history, toolCalls);
-            // assistant message 和 tool result 入 history（真实对话内容）
+            // Append assistant messages and tool results as actual conversation content.
             history.push(message);
             const rawTextContent =
                 typeof message.content === "string" ? message.content : "";
@@ -264,9 +264,9 @@ async function runAgentCore(
                 ? rawTextContent
                 : "";
 
-            // OpenAI-compatible 中转站不一定返回流式 usage。prompt_tokens=0 对
-            // 当前非空请求不可能是有效统计；此时保留 preparation 的上下文估算，
-            // 不能把“缺失 usage”伪装成真实的 0 tokens。
+            // OpenAI-compatible gateways may omit streaming usage. prompt_tokens=0 cannot be valid
+            // for a nonempty request; retain the preparation estimate rather than
+            // presenting missing usage as an actual zero-token measurement.
             const hasActualUsage =
                 Number.isFinite(usage.prompt_tokens) && usage.prompt_tokens > 0;
             const contextTokenCount = contextUsage?.tokenCount;
@@ -313,14 +313,14 @@ async function runAgentCore(
                     : "estimated",
             });
 
-            // needsFollowUp = false：LLM 没调工具，应该是给最终回答了
+            // Without tool calls, the response is expected to be the final answer.
             if (toolCalls.length === 0) {
                 if (!textContent && !emptyResponseRetryUsed && hasNextIteration) {
                     history.pop();
                     emptyResponseRetryUsed = true;
                     completionNudge = [
                         "<system-reminder>",
-                        "上一次模型响应没有有效正文或工具调用。请从当前任务状态继续：需要操作就调用合适的工具；已经完成就输出完整最终回答。不要返回空白内容。",
+                        "The previous response had neither valid text nor tool calls. Continue from the current task state: use an appropriate tool if work remains, or give a complete final answer in the user's language if finished. Do not return blank content.",
                         "</system-reminder>",
                     ].join("\n");
                     continue;
@@ -362,7 +362,7 @@ async function runAgentCore(
                             completionNudge = formatHookContext("Stop", [hook.continueReason!, ...hook.additionalContexts]).join("\n");
                             continue;
                         }
-                        const reply = `${textContent}\n\nHook ${hook.error ? "检查失败" : "续跑上限已到"}: ${hook.error ?? hook.continueReason}`;
+                        const reply = `${textContent}\n\nHook ${hook.error ? "Check failed" : "Continuation limit reached"}: ${hook.error ?? hook.continueReason}`;
                         // Keep the candidate as evidence, with the failed acceptance explicitly attached.
                         history[history.length - 1] = {role: "assistant", content: reply};
                         await onEvent({type: "assistant_text", content: reply, phase: "final"});
@@ -372,7 +372,7 @@ async function runAgentCore(
                 if (textContent) {
                     await onEvent({type: "assistant_text", content: textContent, phase: "final"});
                 }
-                let reply = textContent || "模型连续两次未返回有效正文或工具调用，已停止本轮。";
+                let reply = textContent || "Model returned no valid text or tool calls twice in a row; this turn has stopped.";
                 if (!textContent) {
                     await onEvent({
                         type: "assistant_text",
@@ -381,7 +381,7 @@ async function runAgentCore(
                     });
                 }
                 if (postState.critical) {
-                    reply += `\n\n⚠️ 上下文已用 ${Math.round(postState.percentUsed * 100)}%，建议结束本轮后开新会话。`;
+                    reply += `\n\n⚠️ Context usage is ${Math.round(postState.percentUsed * 100)}%; consider starting a new session after this turn.`;
                 }
                 return {
                     reply,
@@ -412,7 +412,7 @@ async function runAgentCore(
                 executeTool: (name, args, context, callId) => offeredToolNames.has(name)
                     ? executeToolImpl(name, args, context, callId)
                     : Promise.resolve(inlineToolResult(
-                        "工具 " + name + " 未在本次模型请求中提供，未执行。请仅使用本次提供的工具；没有工具时直接总结已有证据。",
+                        "Tool " + name + " was not provided in this model request and was not executed. Use only the provided tools; if none are available, summarize existing evidence.",
                         "denied",
                     )),
                 isToolConcurrencySafe: (name, args) => offeredToolNames.has(name) && isToolConcurrencySafeImpl(name, args),
@@ -441,7 +441,7 @@ async function runAgentCore(
             }
             if (denialLimitReached) {
                 return {
-                    reply: `(连续 ${maxConsecutiveDeniedToolCalls} 次工具调用被权限策略拒绝，已停止工具阶段)`,
+                    reply: `(After ${maxConsecutiveDeniedToolCalls} consecutive tool calls were denied by permission policy, the tool stage stopped)`,
                     reason: "permission_denied",
                     iterations: i + 1,
                     ...resultUsage(),
@@ -453,9 +453,9 @@ async function runAgentCore(
         }
 
         if (maxIterations === undefined) {
-            throw new Error("未设迭代上限的 Agent 主循环意外退出");
+            throw new Error("Agent loop without an iteration limit exited unexpectedly");
         }
-        const reply = `(达到最大迭代次数 ${maxIterations}，已停止)`;
+        const reply = `(Maximum iterations reached: ${maxIterations}; stopped)`;
         await onEvent({type: "assistant_text", content: reply, phase: "final"});
         return {
             reply,
@@ -468,7 +468,7 @@ async function runAgentCore(
             return interruptedResult();
         }
         if (error instanceof HookControlError) {
-            const reply = `Hook 检查故障，已停止本轮: ${error.message}`;
+            const reply = `Hook check failed; this turn stopped: ${error.message}`;
             await onEvent({type: "assistant_text", content: reply, phase: "final"});
             return {reply, reason: "hook_error", iterations, ...resultUsage()};
         }

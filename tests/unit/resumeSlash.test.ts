@@ -34,8 +34,8 @@ describe("/resume slash command", () => {
             expect(await processSlashCommand("/resume session-1", context)).toBe(true);
             expect(await processSlashCommand("/resume", context)).toBe(true);
             expect(messages).toEqual([
-                "用法：/resume",
-                "当前宿主不支持交互式 /resume。",
+                "Usage: /resume",
+                "This Host does not support interactive /resume.",
             ]);
         });
     });

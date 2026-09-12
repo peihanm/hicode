@@ -19,6 +19,6 @@ test("CLI 与 SDK 共用 Session seed，恢复时保留来源/模式/工具发�
 }));
 test("Headless 在创建 Root 前拒绝 picker 和不存在的恢复目标",async()=>withTempProject(async(cwd)=>{
  for(const resumeMode of [{kind:"picker"},{kind:"continue"},{kind:"session",sessionId:"missing"}] as const){
-  await expect(runHeadlessForTest({cwd,settings:createTestSettings(),prompt:"hi",resumeMode,outputFormat:"json"},{createResources:async()=>{throw new Error("should not initialize");}})).rejects.toThrow(resumeMode.kind==="picker"?"headless 模式不能使用交互式":"没有找到可恢复");
+  await expect(runHeadlessForTest({cwd,settings:createTestSettings(),prompt:"hi",resumeMode,outputFormat:"json"},{createResources:async()=>{throw new Error("should not initialize");}})).rejects.toThrow(resumeMode.kind==="picker"?"Headless mode cannot use interactive":"No previous session available to resume");
  }
 }));

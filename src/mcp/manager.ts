@@ -48,7 +48,7 @@ class McpManager implements McpManagerLike {
             try {
                 listener();
             } catch {
-                // 状态观察者不能破坏 Server 生命周期。
+                // State observers cannot disrupt the Server lifecycle.
             }
         }
     }
@@ -149,7 +149,7 @@ class McpManager implements McpManagerLike {
             if (!(await this.isApproved(connection.server))) {
                 if (this.closed || this.options.signal?.aborted) break;
                 connection.snapshot.status = "pending-approval";
-                connection.snapshot.error = "MCP Server 尚未批准";
+                connection.snapshot.error = "MCP Server has not been approved";
                 continue;
             }
             active.push(connection);
@@ -182,7 +182,7 @@ class McpManager implements McpManagerLike {
         const version = connection.catalogVersion + 1;
         const adapted = adaptMcpTools({...connected, callTool: async (name, args, signal) => {
             if (this.closed || this.options.signal?.aborted || connection.controller?.signal.aborted || connection.generation !== generation || connection.catalogVersion !== version ||
-                connection.snapshot.status !== "connected") throw new Error("MCP 工具能力已失效，请重新发现工具");
+                connection.snapshot.status !== "connected") throw new Error("MCP tool capability expired; discover the tools again");
             return connected.callTool(name, args, signal);
         }});
         if (strict && adapted.issues.length) throw new Error(adapted.issues.join("; ").slice(0, 2000));
@@ -228,10 +228,10 @@ class McpManager implements McpManagerLike {
     }
 
     async reconnect(name: string): Promise<void> {
-        if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+        if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
         const connection = this.connections.find(item => item.snapshot.name === name);
-        if (!connection) throw new Error(`未知 MCP Server: ${name}`);
-        if (connection.pending || connection.connecting) throw new Error("MCP Server 正在连接");
+        if (!connection) throw new Error(`Unknown MCP Server: ${name}`);
+        if (connection.pending || connection.connecting) throw new Error("MCP Server is connecting");
         // Reserve this server across configuration and approval awaits too.
         const pending = Promise.resolve().then(() => this.reconnectConnection(connection));
         connection.pending = pending;
@@ -250,14 +250,14 @@ class McpManager implements McpManagerLike {
             const issue = loaded.issues.find(item => item.serverName === connection.server.name || !item.serverName);
             if (issue) throw new Error(issue.message);
             const server = loaded.servers.find(item => item.name === connection.server.name);
-            if (!server) throw new Error("MCP Server 配置已移除");
-            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+            if (!server) throw new Error("MCP Server configuration was removed");
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
             connection.server = server;
             connection.snapshot.source = server.source;
             if (server.config.disabled) { connection.snapshot.status = "disabled"; this.emit(); return; }
-            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
             if (!(await this.isApproved(server))) { if (!this.closed) {connection.snapshot.status = "pending-approval"; this.emit();} return; }
-            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager 已关闭");
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
             await this.connect(connection);
         } catch (error) {
             if (!this.closed) this.invalidate(connection, "failed", error);

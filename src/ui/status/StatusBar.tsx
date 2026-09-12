@@ -13,10 +13,10 @@ function getBackgroundTaskLabel(
     summary: RunningTaskSummary | undefined
 ): string | undefined {
     if (!summary || summary.total === 0) return undefined;
-    return `后台 ${summary.total} · /tasks`;
+    return `Background ${summary.total} · /tasks`;
 }
 
-// 两行底部 chrome：第一行保留完整运行上下文，第二行保留常用快捷键说明。
+// Two footer rows: runtime context first, common shortcuts second.
 export function StatusBar({
                               cwd,
                               model,
@@ -45,7 +45,7 @@ export function StatusBar({
     backgroundTasks?: RunningTaskSummary;
 }) {
     const width = Math.max(1, useTerminalWidth() - 1);
-    // token 颜色：warning 红色，>60% 黄色，其他灰色
+    // Token colors: red on warning, yellow above 60%, otherwise gray.
     const tokenColor = warning
         ? COLORS.error
         : percentUsed > 0.6

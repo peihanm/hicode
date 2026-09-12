@@ -24,8 +24,8 @@ describe("Agents dialog", () => {
             const dialog = instance.lastFrame() ?? "";
             expect(dialog).toContain("◆ Agents");
             expect(dialog).not.toContain("GeneralPurpose");
-            expect(dialog).toContain("创建新 Agent");
-            expect(dialog).toContain("重新加载 Agent 文件");
+            expect(dialog).toContain("Create Agent");
+            expect(dialog).toContain("Reload Agent files");
 
             instance.stdin.write("\u001b");
             await new Promise((resolve) => setTimeout(resolve, 20));
@@ -42,7 +42,7 @@ describe("Agents dialog", () => {
                     path: `${cwd}/.pillar/agents/broken.md`,
                     severity: "error",
                     field: "tools",
-                    message: "当前 Runtime 不存在工具: missing",
+                    message: "Tool does not exist in this Runtime: missing",
                 }],
             });
             const instance = render(
@@ -55,7 +55,7 @@ describe("Agents dialog", () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
             instance.stdin.write("\r");
             await new Promise((resolve) => setTimeout(resolve, 30));
-            expect(instance.lastFrame()).toContain("加载问题 (1)");
+            expect(instance.lastFrame()).toContain("Loading issues (1)");
         });
     });
 });

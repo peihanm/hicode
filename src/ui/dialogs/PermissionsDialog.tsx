@@ -74,14 +74,14 @@ export function PermissionsDialog({
     });
 
     if (confirmFullAccess) {
-        const actions = ["启用 Full Access", "返回"];
+        const actions = ["Enable Full Access", "Back"];
         return (
             <Box flexDirection="column" paddingLeft={2} width={rowWidth + 2}>
-                <Text color={COLORS.error} bold>◆ 启用 Full Access？</Text>
+                <Text color={COLORS.error} bold>◆ Enable Full Access?</Text>
                 <Box marginTop={1} flexDirection="column">
-                    <Text>将允许当前会话按系统账户权限访问文件和网络。</Text>
+                    <Text>Allow this session to access files and the network as the current OS account.</Text>
                     <Text color={COLORS.dim}>
-                        命令将不受 Pillar 沙箱隔离。系统权限、MCP 启用审批和 Hook 信任仍然生效。
+                        Commands will run outside Pillar sandbox isolation. OS permissions, MCP activation approval and Hook trust still apply.
                     </Text>
                 </Box>
                 <Box marginTop={1} flexDirection="column">
@@ -97,7 +97,7 @@ export function PermissionsDialog({
                     ))}
                 </Box>
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>↑↓ 选择  ·  enter 确认  ·  esc 返回</Text>
+                    <Text color={COLORS.dim}>↑↓ select · enter confirm · esc back</Text>
                 </Box>
             </Box>
         );
@@ -105,8 +105,8 @@ export function PermissionsDialog({
 
     return (
         <Box flexDirection="column" paddingLeft={2} width={rowWidth + 2}>
-            <Text color={COLORS.accent} bold>◆ 执行权限</Text>
-            <Text color={COLORS.dim}>选择额外访问权限的审批方式。</Text>
+            <Text color={COLORS.accent} bold>◆ Execution permissions</Text>
+            <Text color={COLORS.dim}>Choose how additional access is approved.</Text>
             <Box marginTop={1} flexDirection="column">
                 {OPTIONS.map((option, index) => {
                     const focused = index === selectedIndex;
@@ -120,8 +120,8 @@ export function PermissionsDialog({
                                 <Text color={focused ? COLORS.accent : undefined} bold={focused}>
                                     {getPermissionModeShortLabel(option)}
                                     <Text color={COLORS.dim} bold={false}>
-                                        {active ? "  (当前)" : ""}
-                                        {option === "full-access" && !allowFullAccess ? "  (Host 禁用)" : ""}
+                                        {active ? "  (current)" : ""}
+                                        {option === "full-access" && !allowFullAccess ? "  (disabled by Host)" : ""}
                                     </Text>
                                 </Text>
                                 <Text color={COLORS.dim}>{getPermissionModeDescription(option)}</Text>
@@ -131,8 +131,8 @@ export function PermissionsDialog({
                 })}
             </Box>
             <Box marginTop={1} flexDirection="column">
-                <Text color={COLORS.dim}>Build/Plan 决定工作方式；此处决定访问范围和审批方式。</Text>
-                <Text color={COLORS.dim}>↑↓ 选择  ·  enter 切换  ·  esc 返回</Text>
+                <Text color={COLORS.dim}>Build/Plan controls the work mode; this controls access and approval.</Text>
+                <Text color={COLORS.dim}>↑↓ select · enter switch · esc back</Text>
             </Box>
         </Box>
     );

@@ -61,10 +61,10 @@ export function formatAgentLoadWarning(
     const errorCount = issues.filter((issue) => issue.severity === "error").length;
     const warningCount = issues.length - errorCount;
     const counts = [
-        errorCount > 0 ? `${errorCount} 个错误` : "",
-        warningCount > 0 ? `${warningCount} 个警告` : "",
+        errorCount > 0 ? `${errorCount} errors` : "",
+        warningCount > 0 ? `${warningCount} warnings` : "",
     ].filter(Boolean).join("、");
-    return `自定义 Agent 加载存在 ${counts}，无效定义已跳过。输入 /agents 查看详情。`;
+    return `Custom Agent loading has ${counts}; invalid definitions were skipped. Use /agents for details.`;
 }
 
 export function formatAgentRegistryReport(
@@ -75,32 +75,32 @@ export function formatAgentRegistryReport(
     const active = definitions.flatMap((definition, index) => {
         const model = formatSubagentModel(
             definition.model,
-            "继承 Root",
+            "Inherit Root",
             fastModel
         );
         const iterations = definition.maxIterations === undefined
-            ? "跟随 Root"
+            ? "Follow Root"
             : String(definition.maxIterations);
         return [
             ...(index > 0 ? [""] : []),
             `  ${definition.agentType} · ${definition.source}`,
             ...wrapDetail(definition.whenToUse),
-            `    模型 ${model} · 最大轮次 ${iterations}`,
+            `    Model ${model} · maximum turns ${iterations}`,
             ...wrapDetail(
-                `工具 (${definition.allowedTools.length}) ${definition.allowedTools.join(" · ")}`
+                `Tools (${definition.allowedTools.length}) ${definition.allowedTools.join(" · ")}`
             ),
         ];
     });
     const issues = registry.issues.length === 0
-        ? ["加载问题 · 无"]
+        ? ["Loading issues · none"]
         : [
-            `加载问题 · ${registry.issues.length}`,
+            `Loading issues · ${registry.issues.length}`,
             ...registry.issues.flatMap((issue) =>
                 wrapDetail(formatAgentLoadIssue(issue), "  ")
             ),
         ];
     return [
-        `Agents · ${definitions.length} 个可用`,
+        `Agents · ${definitions.length} available`,
         ...active,
         "",
         ...issues,

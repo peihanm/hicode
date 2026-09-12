@@ -29,10 +29,7 @@ export function normalizeTerminalHeight(rows: number | undefined): number {
         : DEFAULT_TERMINAL_HEIGHT;
 }
 
-/**
- * Ink 会在 stdout resize 时重算 Yoga，但直接读取 stdout.columns/rows 不会触发
- * React render。Provider 以单一订阅发布宽高，避免各组件各自监听 resize。
- */
+/** Ink recomputes Yoga on stdout resize, but reading columns/rows does not trigger React render. One Provider subscription publishes dimensions instead of per-component listeners. */
 const TerminalSizeContext = createContext<TerminalSize | undefined>(undefined);
 
 function useObservedTerminalSize(

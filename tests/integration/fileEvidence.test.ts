@@ -1,3 +1,4 @@
+import {createToolCatalog} from "../../src/tools/catalog.js";
 import {expect, test} from "bun:test";
 import {readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -48,7 +49,7 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结
                 return blind();
             }
             if (last?.tool_call_id === "blind") {
-                expect(last.content).toContain("前置条件未满足");
+                expect(last.content).toContain("Write precondition failed");
                 if (mode === "save-failure" || mode === "tampered") return assistantText("日志不授权覆盖");
                 return readSource();
             }
@@ -59,11 +60,11 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结
                 return assistantToolCall("write_file", {path: "a.txt", content: "KNOWN"}, "known");
             }
             if (last?.tool_call_id === "hidden") {
-                expect(last.content).toContain("未展示");
+                expect(last.content).toContain("did not show");
                 return assistantToolCall("edit_file", {path: "a.txt", edits: [{old_string: "a0:", new_string: "visible:"}]}, "visible");
             }
-            if (last?.tool_call_id === "visible") expect(last.content).toContain("已修改");
-            if (last?.tool_call_id === "known") expect(last.content).toContain(mode === "stale-source" ? "前置条件未满足" : "已写入");
+            if (last?.tool_call_id === "visible") expect(last.content).toContain("Modified");
+            if (last?.tool_call_id === "known") expect(last.content).toContain(mode === "stale-source" ? "Write precondition failed" : "Wrote");
             return assistantText("证据验证结束");
         }));
         await runAgentForTest("读三个文件，再修改 a", [], () => {}, ctx, {callLLM: fake.callLLM});
@@ -94,6 +95,7 @@ test.each(["failed", "cancelled", "iteration-limit", "compacted"])("未交付的
         ]);
         const running = runAgentForTest("读取", [], () => {}, ctx, {
             callLLM: fake.callLLM,
+            getToolSchemas: () => createToolCatalog({allowedToolNames: ["read_file"]}).registrations.map(tool => tool.schema()),
             ...(mode === "iteration-limit" ? {maxIterations: 1} : {}),
             compactHistory: async ({history, preTokenCount}) => {
                 compacted = true;

@@ -54,11 +54,11 @@ describe("fork subagent", () => {
                     return assistantToolCall("read_file", {path: hidden.path}, "read-hidden");
                 },
                 options => {
-                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-hidden")?.content).toMatch(/无权|无法验证|ENOENT/);
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-hidden")?.content).toMatch(/Access denied|Cannot validate|ENOENT/);
                     return assistantToolCall("read_file", {path: missing.path}, "read-missing");
                 },
                 options => {
-                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-missing")?.content).toMatch(/无权|无法验证|ENOENT/);
+                    expect(options.messages.find(m => m.role === "tool" && m.tool_call_id === "read-missing")?.content).toMatch(/Access denied|Cannot validate|ENOENT/);
                     return assistantText("evidence checked");
                 },
                 () => assistantText("evidence checked"),
@@ -97,6 +97,12 @@ describe("fork subagent", () => {
             ];
             const child = createFakeLLM([
                 (options) => {
+                    const system = contentText(options.messages[0]!.content);
+                    expect(system).toContain("Pillar worker");
+                    expect(system).toContain("restricted to read-only tools");
+                    expect(system).toContain("no interactive approval channel");
+                    expect(system).not.toContain("root system");
+                    expect(history[0]?.content).toBe("root system");
                     expect(options.messages.some((message) =>
                         message.role === "user" &&
                         contentText(message.content).includes("主题为白色")
@@ -215,7 +221,7 @@ describe("fork subagent", () => {
                         expect(options.messages.find((message) =>
                             message.role === "tool" &&
                             message.tool_call_id === "fork-write"
-                        )?.content).toContain("已写入 fork-feature.txt");
+                        )?.content).toContain("Wrote fork-feature.txt");
                         return assistantText("frontend Fork 已完成文件修改");
                     },
                 ]);
@@ -311,7 +317,7 @@ describe("fork subagent", () => {
                 run_in_background: true,
             }), ctx, "missing-name");
             expect(missingName.outcome).toBe("failed");
-            expect(missingName.modelContent).toContain("需要 name");
+            expect(missingName.modelContent).toContain("requires name");
 
             const foreground = await executeToolResult("agent", JSON.stringify({
                 description: "fork",

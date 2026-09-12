@@ -94,7 +94,7 @@ test("ACK 失败后恢复持久接收记录，已经消费的通知不重新注�
 test("批量第二条遇到满队列不吞第一条，释放空间后可继续交付", async () => {
     const fixture = deliveryFixture();
     for (let index = 0; index < 31; index++) fixture.queue.enqueueUser(`user-${index}`);
-    await expect(fixture.delivery.drain()).rejects.toThrow("上限 32");
+    await expect(fixture.delivery.drain()).rejects.toThrow("limit reached: 32");
     expect(fixture.pending.map(item => item.taskId)).toEqual(["b"]);
     expect(fixture.saved()?.messages).toHaveLength(32);
     fixture.queue.dequeueNextUserInput();

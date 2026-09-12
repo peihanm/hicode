@@ -90,7 +90,7 @@ export interface LLMCallOptions {
     model: string;
     kind: LLMCallKind;
     signal?: AbortSignal;
-    /** 收到文本、推理或 Function Calling 参数增量时报告累计进度。 */
+    /** Report cumulative progress when receiving text, reasoning or function-argument deltas. */
     onStreamProgress?: (progress: LLMStreamProgress) => void;
     onText?: (update: LLMTextUpdate) => void | Promise<void>;
     readImage?: (reference: ImageReference) => Promise<Buffer>;

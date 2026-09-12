@@ -29,7 +29,7 @@ describe("effective execution capabilities", () => {
             expect(await Bun.file(`${cwd}/hidden.txt`).exists()).toBe(false);
             ctx.permissionRules.deny.push({toolName: "bash", content: "sort -oout:*", source: "local"});
             const deny = await rt.executeTool("bash", JSON.stringify({command: 's"ort" "-oout" input'}), ctx, "deny");
-            expect(deny.modelContent).toContain("deny 规则");
+            expect(deny.modelContent).toContain("Denied by rule");
             ctx.setPermissionMode("full-access");
             const opaque = await rt.executeTool("bash", JSON.stringify({command: 'printf "$(touch hidden.txt)"'}), ctx, "opaque");
             expect(opaque.outcome).toBe("denied");
@@ -52,7 +52,7 @@ describe("effective execution capabilities", () => {
                 assistantToolCall("write_file", {path: "inside.txt", content: "approved"}, "inside"),
                 assistantToolCall("write_file", {path: "../outside.txt", content: "escape"}, "outside"),
                 (options) => {
-                    expect(options.messages.find(item => item.role === "tool" && item.tool_call_id === "outside")?.content).toContain("权限拒绝");
+                    expect(options.messages.find(item => item.role === "tool" && item.tool_call_id === "outside")?.content).toContain("Permission denied");
                     return assistantText("done");
                 },
             ]);
@@ -77,7 +77,7 @@ describe("effective execution capabilities", () => {
                 assistantToolCall("write_file", {path: "allowed/ok.txt", content: "ok"}, "ok"),
                 assistantToolCall("write_file", {path: "root.txt", content: "wrong"}, "wrong"),
                 options => {
-                    expect(options.messages.find(item => item.role === "tool" && item.tool_call_id === "wrong")?.content).toContain("权限拒绝");
+                    expect(options.messages.find(item => item.role === "tool" && item.tool_call_id === "wrong")?.content).toContain("Permission denied");
                     return assistantText("done");
                 },
             ]);
@@ -107,7 +107,7 @@ describe("effective execution capabilities", () => {
             const child = createFakeLLM([
                 assistantToolCall(toolName, toolName === "bash" ? {command: "printf escaped > escaped.txt"} : {}, "write"),
                 options => {
-                    expect(options.messages.find(item => item.role === "tool" && item.tool_call_id === "write")?.content).toContain("权限拒绝");
+                    expect(options.messages.find(item => item.role === "tool" && item.tool_call_id === "write")?.content).toContain("Permission denied");
                     return assistantText("denied");
                 },
             ]);

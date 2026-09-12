@@ -150,7 +150,7 @@ describe("RootRuntimeResources", () => {
       expect(resources.memory.enabled).toBe(true);
       expect(resources.subagents.has("memory-reader")).toBe(false);
       expect(resources.subagents.issues.some((issue) =>
-        issue.message.includes("当前 Runtime 不存在工具: memory")
+        issue.message.includes("Tool does not exist in this Runtime: memory")
       )).toBe(true);
       await resources.close();
     });

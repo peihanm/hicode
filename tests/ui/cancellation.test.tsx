@@ -99,7 +99,7 @@ describe("App cancellation", () => {
       expect(instance.frames.length).toBeLessThanOrEqual(
         settledFrameCount + 12
       );
-      expect(instance.lastFrame()).toContain("思考中");
+      expect(instance.lastFrame()).toContain("Thinking");
 
       release();
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -129,7 +129,7 @@ describe("App cancellation", () => {
           const reason = normalizeTurnAbortReason(ctx.signal.reason);
           onEvent({ type: "turn_interrupted", reason });
           return {
-            reply: "(任务已取消)",
+            reply: "(Task cancelled)",
             reason: "interrupted",
             iterations: 1,
             abortReason: reason,
@@ -148,16 +148,16 @@ describe("App cancellation", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
       await didStart;
-      expect(instance.lastFrame()).toContain("思考中");
+      expect(instance.lastFrame()).toContain("Thinking");
       await new Promise((resolve) => setTimeout(resolve, 30));
 
       instance.stdin.write("\u001B");
       await new Promise((resolve) => setTimeout(resolve, 30));
 
       expect(observedSignal?.aborted).toBe(true);
-      expect(instance.lastFrame()).toContain("任务已取消（user-cancel）");
+      expect(instance.lastFrame()).toContain("Task cancelled (user-cancel)");
       expect(instance.lastFrame()).toContain("❯");
-      expect(instance.lastFrame()).not.toContain("正在停止");
+      expect(instance.lastFrame()).not.toContain("Stopping");
     });
   });
 
@@ -203,8 +203,8 @@ describe("App cancellation", () => {
       await didRenderProgress;
       await new Promise((resolve) => setTimeout(resolve, 20));
 
-      expect(instance.lastFrame()).toContain("正在构造 write_file 参数");
-      expect(instance.lastFrame()).toContain("4936 字符");
+      expect(instance.lastFrame()).toContain("Building write_file arguments");
+      expect(instance.lastFrame()).toContain("4936 characters");
       release();
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
@@ -252,7 +252,7 @@ describe("App cancellation", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(instance.lastFrame()).toContain(
-        "模型暂无流数据，可能仍在服务端处理"
+        "No streaming data yet; the server may still be processing"
       );
       release();
       await new Promise((resolve) => setTimeout(resolve, 20));

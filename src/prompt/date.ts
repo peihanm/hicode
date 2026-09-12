@@ -1,4 +1,4 @@
-// 获取本地日期（YYYY-MM-DD），用于 currentDate attachment。
+// Local date in YYYY-MM-DD format for the currentDate attachment.
 export function getLocalISODate(): string {
     const now = new Date();
     const y = now.getFullYear();

@@ -48,7 +48,7 @@ test("real stdio MCP delivers ordered tool pixels, structured text and immutable
             expect(meta.origin).toEqual(origin); expect(meta.complete).toBe(true);
             ctx.imageModelSupported = false;
             const unsupported = await runtime.executeTool(origin.toolName, "{}", ctx, "unsupported");
-            expect(unsupported.outcome).toBe("failed"); expect(contentText(unsupported.modelContent)).toContain("不支持 MCP 图片");
+            expect(unsupported.outcome).toBe("failed"); expect(contentText(unsupported.modelContent)).toContain("does not support MCP images");
         } finally {await manager.closeAll();}
     });
 });
@@ -63,7 +63,7 @@ test("MCP rejects malformed, forged, excessive and cancelled images without publ
             [{...image, data: Buffer.from("not an image").toString("base64")}],
             [{...image, mimeType: "image/jpeg"}], [{type: "image", url: "https://example.test/a.png"}],
             Array.from({length: 9}, () => image), [{...image, data: "A".repeat(28 * 1024 * 1024)}],
-        ]) await expect(normalizeMcpResultWithArtifacts({content}, input)).rejects.toThrow("MCP 图片");
+        ]) await expect(normalizeMcpResultWithArtifacts({content}, input)).rejects.toThrow("MCP image");
         await expect(normalizeMcpResultWithArtifacts({content: [image]}, {...input, signal: AbortSignal.abort()})).rejects.toThrow();
         await expect(normalizeMcpResultWithArtifacts({isError: true, content: [{type: "text", text: "capture failed"}, image]}, input)).rejects.toThrow("capture failed");
         expect((await readdir(ctx.toolResultStore.sessionDir).catch(() => [])).filter(name => name.endsWith(".bin"))).toHaveLength(0);
@@ -75,7 +75,7 @@ test("MCP validates decoding, preserves multiple images and verifies repaired bi
         const ctx = createTestContext(cwd), bytes = await png();
         const input = {store: ctx.toolResultStore, origin, imageModelSupported: true, signal: ctx.signal};
         const broken = Buffer.concat([bytes.subarray(0, 8), Buffer.from("broken")]);
-        await expect(normalizeMcpResultWithArtifacts({content: [{type: "image", mimeType: "image/png", data: broken.toString("base64")}]}, input)).rejects.toThrow("解码失败");
+        await expect(normalizeMcpResultWithArtifacts({content: [{type: "image", mimeType: "image/png", data: broken.toString("base64")}]}, input)).rejects.toThrow("decoding failed");
         const image = {type: "image", mimeType: "image/png", data: bytes.toString("base64")};
         const output = await normalizeMcpResultWithArtifacts({content: [{type: "text", text: "before"}, image, {type: "text", text: "after"}, image], structuredContent: {ok: true}}, input);
         expect(typeof output !== "string" && imageReferences(output.content)).toHaveLength(2);

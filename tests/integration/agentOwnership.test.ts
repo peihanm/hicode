@@ -81,8 +81,8 @@ describe("root task ownership", () => {
         {
           callLLM: main.callLLM,
           executeTool: async () => ({
-            modelContent: "后台任务已启动。Task: server-1",
-            displayContent: "后台任务已启动。Task: server-1",
+            modelContent: "Background task started.Task: server-1",
+            displayContent: "Background task started.Task: server-1",
             outcome: "ok",
           }),
         }

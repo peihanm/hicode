@@ -35,7 +35,7 @@ describe("/memory slash command", () => {
             expect(events.some((line) => line.includes("Memory: enabled"))).toBe(true);
             expect(events.some((line) => line.includes("直接回答"))).toBe(true);
             expect(events).toContain("memory_update");
-            expect(events).toContain("Memory 已忘记: user-response-style");
+            expect(events).toContain("Memory forgotten: user-response-style");
             expect(await memory.read("user-response-style")).toBeUndefined();
             await memory.close();
         });

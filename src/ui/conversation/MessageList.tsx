@@ -150,7 +150,7 @@ function TaskNotificationView({
                 {thread.resultId && (
                     <ResultLine
                         marker=""
-                        line="完整输出见任务详情"
+                        line="Full output is available in task details"
                         color={COLORS.dim}
                     />
                 )}
@@ -416,8 +416,8 @@ function ThreadView({
     );
 }
 
-// 消息列表：codebuddy 风格标记
-// 用户：    ❯ {text}
+// Message list with Codebuddy-style markers.
+// User: ❯ {text}
 // assistant：● {text}
 export function MessageList({
                                 threads,
@@ -450,10 +450,7 @@ type StaticListItem =
     | {kind: "welcome"; id: "welcome"}
     | {kind: "thread"; id: string; item: ConversationItem};
 
-/**
- * 已完成输出只追加到主屏幕 scrollback；进行中的内容留在 live 区更新。
- * 这样 resume 后使用终端原生滚轮、滚动条和文本选择，不接管鼠标协议。
- */
+/** Completed output is appended to the main-screen scrollback; active content stays live. After resume, native terminal scrolling and selection work without taking over the mouse protocol. */
 export function StaticMessageList({
                                       threads,
                                       showWelcome = false,

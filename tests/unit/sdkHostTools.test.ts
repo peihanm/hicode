@@ -43,7 +43,7 @@ describe("SDK Host Tools", () => {
                 "invalid-call"
             );
             expect(invalid.outcome).toBe("failed");
-            expect(invalid.modelContent).toContain("参数校验失败");
+            expect(invalid.modelContent).toContain("Argument validation failed");
 
             let permissionCalls = 0;
             const result = await runtime.executeTool(
@@ -148,7 +148,7 @@ describe("SDK Host Tools", () => {
                 "invalid-output"
             );
             expect(failed.outcome).toBe("failed");
-            expect(failed.modelContent).toContain("返回值必须是字符串或结果对象");
+            expect(failed.modelContent).toContain("must return a string or result object");
         });
     });
 
@@ -179,11 +179,11 @@ describe("SDK Host Tools", () => {
         expect(() => adaptPillarHostTools([{
             ...mutable,
             name: "read_file",
-        }])).toThrow("重复工具名");
+        }])).toThrow("Duplicate tool name");
         expect(() => adaptPillarHostTools([{
             ...mutable,
             name: "mcp__forbidden",
-        }])).toThrow("mcp__ 前缀");
+        }])).toThrow("mcp__ prefix");
         expect(() => adaptPillarHostTools([{
             ...mutable,
             name: "host_write_parallel",
@@ -194,6 +194,6 @@ describe("SDK Host Tools", () => {
             ...mutable,
             name: "host_primitive",
             parameters: z.string(),
-        }])).toThrow("顶层 object JSON Schema");
+        }])).toThrow("top-level object JSON Schema");
     });
 });

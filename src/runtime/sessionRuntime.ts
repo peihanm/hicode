@@ -213,7 +213,7 @@ export function createRootSessionRuntime({
                 },
             };
             ctx.commitToolBatch = async () => {
-                if (!hasCompleteToolPairs(history)) throw new Error("工具批次未完整配对，拒绝继续请求模型");
+                if (!hasCompleteToolPairs(history)) throw new Error("Tool batch is not completely paired; refusing another model request");
                 await persistence.save(snapshot(getSnapshotState()));
             };
             ctx.holdHookConfiguration = resources.holdHookConfiguration;
@@ -224,7 +224,7 @@ export function createRootSessionRuntime({
                 return result;
             };
             ctx.hookControl = {inspect: () => resources.hooks.inspect(), reload: async hookSignal => {
-                if (turnActive) throw new Error("本轮尚未结束，不能重载 Hooks");
+                if (turnActive) throw new Error("Cannot reload Hooks before the turn ends");
                 await resources.reloadHooks(hookSignal);
             }};
             const runSubagent = resources.agentRuntime.createSubagentRunner({
@@ -243,7 +243,7 @@ export function createRootSessionRuntime({
         flushSnapshots: persistence.drain,
         async beginTurn(prompt, state) {
             await this.initialize();
-            if (turnActive) throw new Error("当前 Session 已在运行中");
+            if (turnActive) throw new Error("This Session is already running");
             turnActive = true;
             try {
                 await persistence.save({...snapshot(state),

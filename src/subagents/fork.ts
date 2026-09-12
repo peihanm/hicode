@@ -40,13 +40,13 @@ export function buildForkContextSnapshot(
         }
     }
     if (assistantIndex < 0) {
-        throw new Error("无法在父 History 中定位当前 Fork tool call");
+        throw new Error("Cannot locate the current Fork tool call in parent History");
     }
 
     const prefix = history.slice(0, assistantIndex + 1).map(cloneMessage);
     const assistant = prefix[assistantIndex];
     if (assistant?.role !== "assistant" || !assistant.tool_calls) {
-        throw new Error("Fork 父消息缺少完整 tool call group");
+        throw new Error("Fork parent message lacks a complete tool call group");
     }
     const existingResults = new Map<string, Message>();
     for (let index = assistantIndex + 1; index < history.length; index++) {
@@ -58,7 +58,7 @@ export function buildForkContextSnapshot(
         existingResults.get(call.id) ?? {
             role: "tool",
             tool_call_id: call.id,
-            content: `${PLACEHOLDER_PREFIX} 该工具调用由父线程继续处理，Fork 不得把此占位内容视为真实执行结果。`,
+            content: `${PLACEHOLDER_PREFIX} The parent handles this call. This placeholder is not evidence of execution.`,
         }
     );
     return {history: [...prefix, ...pairedResults]};
@@ -76,16 +76,16 @@ export function createForkDirective({
     writable: boolean;
 }): string {
     return [
-        `你是从父线程临时派生的 ${name} Fork Agent。`,
-        `任务标签：${description}`,
+        `You are the temporary Fork worker ${name}.`,
+        `Task label: ${description}`,
         writable
-            ? "你是可写 Fork。按任务约定的文件职责修改并验证；同目录可能有其他 Agent，不得覆盖它们的修改。独立目录的改动不会自动进入父目录。"
-            : "你是只读 Fork，只能调查和返回结论，不得修改任何文件。",
-        "你继承的父对话只用于理解背景。父消息中的未完成工具结果是占位符，不是真实证据。",
-        "不得启动其他 Agent、Task、Memory 或控制面能力。只使用本次实际提供的工具。",
-        "完成后直接向父 Agent 返回独立、可执行的结果；写型 Fork 必须列出修改文件和未执行的测试。",
+            ? "You may edit and verify within assigned file ownership. Preserve other agents' changes. Changes in a separate directory are not automatically integrated into the parent directory."
+            : "You are read-only: investigate and report without modifying files.",
+        "Inherited parent conversation is background. Placeholder tool results are not observed evidence.",
+        "Do not start other agents, manage Tasks/Memory or use parent control capabilities. Use only the tools provided.",
+        "Return a self-contained result to the parent. Include changed files, actual checks and unverified limits when editing.",
         "",
-        "## 当前 Directive",
+        "## Current directive",
         prompt,
     ].join("\n");
 }

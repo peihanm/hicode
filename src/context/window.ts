@@ -1,19 +1,19 @@
 import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "./config.js";
 
-// 上下文窗口配置 + token 阈值状态
-// 参考 claude-code src/utils/context.ts（getContextWindowForModel）
-// 和 src/services/compact/autoCompact.ts:93-145（calculateTokenWarningState）
+// Context-window configuration and token-threshold state.
+// Based on Claude Code src/utils/context.ts getContextWindowForModel
+// and services/compact/autoCompact.ts calculateTokenWarningState.
 
-// 预留给压缩时 summary 输出的 token（claude-code COMPACT_MAX_OUTPUT_TOKENS = 20_000）
+// Reserve tokens for summary output during compaction; Claude Code uses COMPACT_MAX_OUTPUT_TOKENS=20_000.
 const RESERVED_FOR_SUMMARY = 20_000;
 
-// Auto-Compact 阈值参考 claude-code services/compact/autoCompact.ts：
+// Auto-Compact thresholds follow Claude Code services/compact/autoCompact.ts.
 // effectiveWindow = contextWindow - summaryReserve
 // autoCompactThreshold = effectiveWindow - 13_000
 const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
 const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
 
-// 按模型名推断上下文窗口大小
+// Infer context-window size from the model name.
 function getContextWindowForModel(model: string): number | undefined {
     const normalizedModel = model.toLowerCase();
     if (normalizedModel.includes("glm-5.2")) return 1_000_000;
@@ -34,7 +34,7 @@ function getContextWindowForModel(model: string): number | undefined {
     return undefined;
 }
 
-// 有效上下文窗口 = 总窗口 - 预留给 summary 的部分
+// Effective context window excludes the summary reserve.
 function resolveContextWindow(model: string, reportedWindow: number | undefined, settings: ContextSettings): number {
     if (
         reportedWindow !== undefined &&
@@ -77,12 +77,12 @@ function getTokenWarningThreshold(model: string, reportedWindow: number | undefi
 
 export interface TokenWarningState {
     percentUsed: number; // 0-1
-    warning: boolean; // 接近 auto-compact 阈值
-    critical: boolean; // 已超过 auto-compact 阈值
+    warning: boolean; // Approaching the auto-compaction threshold.
+    critical: boolean; // Above the auto-compaction threshold.
 }
 
-// 根据 token 数算警告状态
-// warning/critical 使用固定 token buffer，比百分比更贴近真实窗口余量。
+// Compute warning state from token usage.
+// Fixed warning/critical token buffers reflect remaining capacity better than percentages.
 export function getTokenWarningState(
     tokenCount: number,
     model: string,

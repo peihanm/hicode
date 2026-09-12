@@ -36,7 +36,7 @@ function sandboxFailure(
         termination: {
             kind: "spawn_error",
             error: new Error(
-                `Sandbox 准备失败: ${error instanceof Error ? error.message : String(error)}`
+                `Sandbox preparation failed: ${error instanceof Error ? error.message : String(error)}`
             ),
         },
     };
@@ -111,8 +111,8 @@ export function createShellRunner(
                 } catch {
                 }
                 if (wrapped.networkDenials?.length) {
-                    stderr += `\nPillar Sandbox: 网络代理拒绝 ${wrapped.networkDenials.join("；")}。` +
-                        "这是本地网络权限限制，不代表远端服务故障；用户拒绝后不要自动换源或提权绕过。";
+                    stderr += `\nPillar Sandbox: network proxy denied ${wrapped.networkDenials.join(";")}.` +
+                        "This is a local network permission restriction, not a remote service failure. Do not change sources or escalate to bypass a user denial.";
                 }
                 return {...result, stderr};
             } finally {

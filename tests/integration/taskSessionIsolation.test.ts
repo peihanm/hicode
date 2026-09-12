@@ -33,7 +33,7 @@ test("task 跨 Session 不停止 Agent、不确认通知，恢复后仍隔离", 
             const other = createTestContext(cwd, {sessionId: "other"});
             other.tasks = runtime.forSession({sessionId: other.sessionId, toolResultStore: other.toolResultStore});
             const hidden = await tools.executeTool("task", JSON.stringify({task_id: task.id, action: "stop"}), other, "other-session");
-            expect(hidden.modelContent).toContain("不存在");
+            expect(hidden.modelContent).toContain("Background task not found");
             let completed!: () => void;
             const done = new Promise<void>(resolve => { completed = resolve; });
             const unsubscribe = session.subscribe(event => {

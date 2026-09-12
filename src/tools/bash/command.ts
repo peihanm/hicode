@@ -14,7 +14,7 @@ export function bashExecutable(): string {
         // System32's WSL launcher does not implement the native Bash contract.
         if (!candidate.toLowerCase().includes("\\windows\\system32\\") && existsSync(candidate)) return candidate;
     }
-    throw new Error("Bash 执行需要原生 bash.exe（例如 Git Bash）；未找到，不回退到 cmd.exe。");
+    throw new Error("Bash execution requires native bash.exe (such as Git Bash); none was found. No fallback to cmd.exe.");
 }
 
 export function bashCommand(command: string): string {

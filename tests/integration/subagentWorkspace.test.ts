@@ -47,7 +47,7 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
             options => {
                 const output = options.messages.find(message => message.role === "tool" && message.tool_call_id === "check-first");
                 expect(output?.content).toContain("packages/worker");
-                expect(output?.content).not.toContain("权限拒绝");
+                expect(output?.content).not.toContain("Permission denied");
                 return assistantText("first implementation verified");
             },
             options => {
@@ -102,7 +102,7 @@ test.each(["file-deny", "shell-deny", "read-only", "plan", "elevated", "tool-sco
             () => assistantToolCall(name, args, "blocked"),
             options => {
                 const result = options.messages.find(message => message.role === "tool" && message.tool_call_id === "blocked");
-                expect(result?.content).toMatch(/拒绝|未在本次模型请求中提供/);
+                expect(result?.content).toMatch(/denied|not provided in this model request/i);
                 expect(result?.content).not.toContain("SECRET_CONTENT");
                 return assistantText("blocked as expected");
             },
@@ -127,12 +127,12 @@ test("cwd 外部目录需已有授权，继续前拒绝 Symlink 换向，不改�
             parentToolCallId: "spawn", cwd: other, readOnly: true, contextSnapshot: {history: [{role: "system" as const, content: "parent"}]}};
         const create = () => createSubagentThreadForTest({parentContext: parent, agentId: "cwd-check", onEvent() {}, agentOptions: {callLLM: child.callLLM}}, request);
         const run = {prompt: "run", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL};
-        await expect(create().run(run)).rejects.toThrow("已授权目录");
+        await expect(create().run(run)).rejects.toThrow("authorized director");
         expect(child.calls).toHaveLength(0);
         await directoryAccess.grantDirectory(other, "session");
         const thread = create(); await thread.run(run);
         await rename(other, join(root, "moved")); await symlink(main, other);
-        await expect(thread.run(run)).rejects.toThrow("工作目录在继续前发生变化");
+        await expect(thread.run(run)).rejects.toThrow("working directory changed before continuation");
         expect(child.calls).toHaveLength(1);
         expect(parent.cwd).toBe(main);
     });
@@ -149,7 +149,7 @@ test("模型生成期间工作目录被换向时，旧工具调用不能写入�
             },
             options => {
                 expect(options.messages.find(message => message.role === "tool" && message.tool_call_id === "stale-cwd")?.content)
-                    .toContain("工作目录在工具执行前发生变化");
+                    .toContain("working directory changed before tool execution");
                 return assistantText("directory changed; stopped");
             },
         ]);

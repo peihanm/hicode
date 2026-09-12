@@ -25,11 +25,11 @@ export function createImageAccess(input: {
             const ref = readArchiveMessages(record, blocks).flatMap(message => imageReferences(message.content)).find(ref => ref.imageId === imageId);
             if (ref) return ref;
         }
-        throw new Error("图片 ID 不属于当前会话/恢复分支的可达引用");
+        throw new Error("Image ID is not reachable in the current session/resumed branch");
     };
     function authorized(reference: ImageReference): ImageReference {
         const allowed = find(reference.imageId);
-        if (JSON.stringify(allowed.image) !== JSON.stringify(reference.image)) throw new Error("图片引用元数据不一致");
+        if (JSON.stringify(allowed.image) !== JSON.stringify(reference.image)) throw new Error("Image reference metadata does not match");
         return allowed;
     }
     return {find,

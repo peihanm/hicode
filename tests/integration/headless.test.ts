@@ -92,7 +92,7 @@ describe("headless integration", () => {
 
   test("输出写入失败仍关闭本轮 Root resources", async () => {
     await withTempProject(async (cwd) => {
-      const fake = createFakeLLM([assistantText("完成")]);
+      const fake = createFakeLLM([assistantText("completed")]);
       await expect(
         runHeadless(options(cwd), {
           mcpManager: false,
@@ -107,7 +107,7 @@ describe("headless integration", () => {
 
   test("正常完成返回 exit 0，并输出可解析 JSON", async () => {
     await withTempProject(async (cwd) => {
-      const fake = createFakeLLM([assistantText("完成")]);
+      const fake = createFakeLLM([assistantText("completed")]);
       let captured: HeadlessRunSummary | undefined;
       const summary = await runHeadless(options(cwd), {
         mcpManager: false,
@@ -117,7 +117,7 @@ describe("headless integration", () => {
         },
       });
 
-      expect(summary).toMatchObject({ ok: true, exitCode: 0, finalResponse: "完成" });
+      expect(summary).toMatchObject({ ok: true, exitCode: 0, finalResponse: "completed" });
       expect(captured).toBe(summary);
       expect(JSON.parse(formatHeadlessOutput(summary, "json"))).toMatchObject({
         ok: true,
@@ -236,8 +236,8 @@ describe("headless integration", () => {
           callLLM: fake.callLLM,
           getToolSchemas: () => fixtureToolSchemas("broken"),
           executeTool: async () => ({
-            modelContent: "工具执行出错: boom",
-            displayContent: "工具执行出错: boom",
+            modelContent: "Tool execution error: boom",
+            displayContent: "Tool execution error: boom",
             outcome: "failed",
           }),
         },
@@ -267,8 +267,8 @@ describe("headless integration", () => {
         agent: {
           callLLM: fake.callLLM,
           executeTool: async () => ({
-            modelContent: "权限拒绝: test policy",
-            displayContent: "权限拒绝: test policy",
+            modelContent: "Permission denied: test policy",
+            displayContent: "Permission denied: test policy",
             outcome: "denied",
           }),
         },
@@ -401,7 +401,7 @@ describe("headless integration", () => {
           { ...options(cwd), resumeMode: { kind: "picker" } },
           { mcpManager: false, writeOutput: ignoreOutput }
         )
-      ).rejects.toThrow("headless 模式不能使用交互式 -r");
+      ).rejects.toThrow("Headless mode cannot use interactive -r");
     });
   });
 
@@ -419,7 +419,7 @@ describe("headless integration", () => {
               message.role === "tool" &&
               message.tool_call_id === "write-created"
           );
-          expect(toolResult?.content).toContain("已写入 created.txt");
+          expect(toolResult?.content).toContain("Wrote created.txt");
           expect(toolResult?.content).not.toContain("+ alpha");
           return assistantText("创建完成");
         },
@@ -619,7 +619,7 @@ describe("headless integration", () => {
           path: `${cwd}/.pillar/agents/broken.md`,
           severity: "error",
           field: "tools",
-          message: "当前 Runtime 不存在工具: missing",
+          message: "Tool does not exist in this Runtime: missing",
         }],
       });
       const resources = createTestRuntimeResources(cwd, {subagents});
@@ -640,7 +640,7 @@ describe("headless integration", () => {
       });
 
       expect(diagnostics).toEqual([
-        "Agent 配置: ERROR · project · broken.md · tools · 当前 Runtime 不存在工具: missing",
+        "Agent configuration: ERROR · project · broken.md · tools · Tool does not exist in this Runtime: missing",
       ]);
       expect(JSON.stringify(output)).not.toContain("broken.md");
       expect(output?.finalResponse).toBe("done");

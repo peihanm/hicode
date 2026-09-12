@@ -32,14 +32,14 @@ export interface SubagentRegistry {
 function validateRegistration(registration: SubagentRegistration): void {
     const {definition} = registration;
     if (definition.allowedTools.length === 0) {
-        throw new Error(`Agent ${definition.agentType} 没有可用工具`);
+        throw new Error(`Agent ${definition.agentType} has no available tools`);
     }
     if (
         definition.maxIterations !== undefined &&
         (!Number.isInteger(definition.maxIterations) ||
             definition.maxIterations < 2)
     ) {
-        throw new Error(`Agent ${definition.agentType} 的 maxIterations 无效`);
+        throw new Error(`Agent ${definition.agentType} has an invalid maxIterations`);
     }
 }
 
@@ -54,7 +54,7 @@ export function createSubagentRegistry(
         const key = normalizeAgentName(registration.definition.agentType);
         if (registrationMap.has(key)) {
             throw new Error(
-                `重复的内置 Agent 类型: ${registration.definition.agentType}`
+                `Duplicate built-in Agent type: ${registration.definition.agentType}`
             );
         }
         registrationMap.set(key, registration);
@@ -62,7 +62,7 @@ export function createSubagentRegistry(
 
     for (const definition of custom.definitions) {
         if (definition.source === "builtin") {
-            throw new Error("LoadedCustomAgents 不能包含 builtin 定义");
+            throw new Error("LoadedCustomAgents must not include built-in definitions");
         }
         const key = normalizeAgentName(definition.agentType);
         const existing = registrationMap.get(key);
@@ -70,7 +70,7 @@ export function createSubagentRegistry(
             const details = {
                 severity: "error",
                 field: "name",
-                message: `自定义 Agent 不能覆盖内置类型 ${existing.definition.agentType}`,
+                message: `Custom Agents cannot override built-in type ${existing.definition.agentType}`,
             } as const;
             issues.push(definition.source === "host"
                 ? {...details, source: "host", id: definition.id}

@@ -44,31 +44,31 @@ export async function executeCommandHook(options: {
             stdin: `${JSON.stringify(envelope)}\n`, signal, timeoutMs: options.timeoutMs, environment: options.environment});
     } catch (error) {
         return {execution: {...identity, outcome: "error", durationMs: performance.now() - started,
-            message: boundedHookMessage(`Hook 启动失败: ${error instanceof Error ? error.message : String(error)}`)}};
+            message: boundedHookMessage(`Hook failed to start: ${error instanceof Error ? error.message : String(error)}`)}};
     }
     const base = {...identity, durationMs: performance.now() - started};
     const diagnostic = `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`;
     const fail = (message: string): HookHandlerResult => ({diagnostic,
         execution: {...base, outcome: "error", message: boundedHookMessage(message)}});
     if (run.termination.kind === "aborted") return {diagnostic, interrupted: true,
-        execution: {...base, outcome: "interrupted", message: "Hook 执行已取消"}};
-    if (run.termination.kind === "timeout") return fail(`Hook 超时 (${run.termination.timeoutMs}ms)`);
+        execution: {...base, outcome: "interrupted", message: "Hook execution cancelled"}};
+    if (run.termination.kind === "timeout") return fail(`Hook timed out (${run.termination.timeoutMs}ms)`);
     if (run.termination.kind === "output_limit" || Buffer.byteLength(run.stdout) + Buffer.byteLength(run.stderr) > 64 * 1024)
-        return fail("Hook 输出超过 65536 bytes 上限");
-    if (run.termination.kind === "spawn_error") return fail(`Hook 启动失败: ${run.termination.message}`);
+        return fail("Hook output exceeds 65536 bytes");
+    if (run.termination.kind === "spawn_error") return fail(`Hook failed to start: ${run.termination.message}`);
     const exitCode = run.termination.code;
     let raw: unknown;
     if (exitCode === 2 && hook.purpose === "control") {
         raw = {decision: envelope.event.hook_event_name === "Stop" ? "continue" : "block",
-            reason: boundedHookMessage((run.stderr || run.stdout).trim() || "Hook 阻止了操作")};
-    } else if (exitCode !== 0) return fail(run.stderr.trim() || `Hook 退出码 ${exitCode}`);
+            reason: boundedHookMessage((run.stderr || run.stdout).trim() || "Hook blocked the operation")};
+    } else if (exitCode !== 0) return fail(run.stderr.trim() || `Hook exit code ${exitCode}`);
     else {
         try {raw = run.stdout.trim() ? JSON.parse(run.stdout) : hook.purpose === "observe" ? {}
             : {decision: envelope.event.hook_event_name === "Stop" ? "accept" : "pass"};}
-        catch {return fail("Hook stdout 不是合法 JSON");}
+        catch {return fail("Hook stdout is not valid JSON");}
     }
     const parsed = hookOutputSchema(envelope.event.hook_event_name, hook.purpose).safeParse(raw);
-    if (!parsed.success) return fail(`Hook ${envelope.event.hook_event_name}/${hook.purpose} 输出校验失败: ${parsed.error.message}`);
+    if (!parsed.success) return fail(`Hook ${envelope.event.hook_event_name}/${hook.purpose} output validation failed: ${parsed.error.message}`);
     return {diagnostic, output: parsed.data, execution: {...base, exitCode,
         outcome: parsed.data.decision === "block" || parsed.data.decision === "continue" ? "blocking" : "success",
         ...(parsed.data.reason ? {message: parsed.data.reason} : {}),

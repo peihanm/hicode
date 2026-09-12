@@ -28,7 +28,7 @@ describe("automatic approval through the production tool chain", () => {
             ctx.approvalReviewer = async () => {calls++; throw new Error("provider unavailable");};
             for (let i = 0; i < 3; i++) expect((await requestApproval(ctx, "bash", {command: "true"}, "review", `error-${i}`)).code).toBe("review_failed");
             expect(ctx.approvalBudget.stopped).toBe(true);
-            expect(ctx.approvalBudget.stopMessage).toContain("连续未完成");
+            expect(ctx.approvalBudget.stopMessage).toContain("repeatedly failed to complete");
             const result = await createToolRuntime().executeTool("bash", '{"command":"true"}', ctx, "fourth");
             expect(result.outcome).toBe("denied");
             expect(calls).toBe(3);

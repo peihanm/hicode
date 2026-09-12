@@ -328,7 +328,7 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
             } catch (error) {
                 return unavailableDiff(
                     "command-failed",
-                    `无法解析 Git diff: ${error instanceof Error ? error.message : String(error)}`
+                    `Cannot parse Git diff: ${error instanceof Error ? error.message : String(error)}`
                 );
             }
         }
@@ -349,14 +349,14 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
             return unavailableDiff(
                 signal.aborted ? "cancelled" : "command-failed",
                 signal.aborted
-                    ? "Git 操作已取消"
-                    : `无法读取独立文件差异: ${
+                    ? "Git operation cancelled"
+                    : `Cannot read individual file diff: ${
                         error instanceof Error ? error.message : String(error)
                     }`
             );
         }
         if (signal.aborted) {
-            return unavailableDiff("cancelled", "Git 操作已取消");
+            return unavailableDiff("cancelled", "Git operation cancelled");
         }
         const files = applyHunkBudget([
             ...trackedFiles,

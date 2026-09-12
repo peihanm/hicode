@@ -386,7 +386,7 @@ export class ToolResultStore {
                 metadataPath
             );
             if (existing) {
-                if (input.image && JSON.stringify(existing.image) !== JSON.stringify(input.image)) throw new ToolResultStoreError("图片 ID 冲突");
+                if (input.image && JSON.stringify(existing.image) !== JSON.stringify(input.image)) throw new ToolResultStoreError("Image ID conflict");
                 return existing;
             }
             await this.removePair(contentPath, metadataPath);
@@ -400,8 +400,8 @@ export class ToolResultStore {
             if (input.image) {
                 const image = storedImageSchema.parse(input.image);
                 if (image.byteLength !== input.data.length || image.mimeType !== input.mimeType ||
-                    image.sha256 !== createHash("sha256").update(input.data).digest("hex")) throw new ToolResultStoreError("图片内容与元数据不匹配");
-                if (input.data.length > allowed) throw new ToolResultStoreError("图片存储额度不足，未截断或提交图片");
+                    image.sha256 !== createHash("sha256").update(input.data).digest("hex")) throw new ToolResultStoreError("Image content does not match metadata");
+                if (input.data.length > allowed) throw new ToolResultStoreError("Image storage quota exceeded; no image was truncated or committed");
             }
             const stored = input.data.subarray(0, allowed);
             const metadata: PersistedBinaryArtifact = {
@@ -545,7 +545,7 @@ export class ToolResultStore {
         if (!isAbsolute(storagePath) && !storagePath.startsWith("..") &&
             /(?:^|\/)sessions\/session-[^/]+\/tool-results(?:\/|$)/.test(storagePath) &&
             dirname(target) !== resolve(this.sessionDir)) {
-            throw new ToolResultStoreError("无权读取未授权的会话结果文件");
+            throw new ToolResultStoreError("Access denied to unauthorized session result files");
         }
         if (dirname(target) !== resolve(this.sessionDir) || !/^[a-f0-9]{32}\.txt$/.test(basename(target))) return null;
         const metadataPath = target.slice(0, -4) + ".meta.json";
@@ -567,23 +567,23 @@ export class ToolResultStore {
     private async resolveBinaryReference(path: string): Promise<PersistedBinaryArtifact> {
         const resolved = resolve(path);
         if (dirname(resolved) !== resolve(this.sessionDir) || !/^[a-f0-9]{32}\.bin$/.test(basename(resolved))) {
-            throw new ToolResultStoreError("无权复制其他 Session 的二进制结果");
+            throw new ToolResultStoreError("Cannot copy binary results from another Session");
         }
         const metadataPath = resolved.slice(0, -4) + ".binary.json";
         const handle = await open(metadataPath, constants.O_RDONLY | constants.O_NOFOLLOW);
         try {
             const info = await handle.stat();
-            if (!info.isFile() || info.size > MAX_TOOL_RESULT_METADATA_BYTES) throw new ToolResultStoreError("二进制结果元数据无效");
+            if (!info.isFile() || info.size > MAX_TOOL_RESULT_METADATA_BYTES) throw new ToolResultStoreError("Invalid binary result metadata");
             const content = Buffer.alloc(info.size);
             const {bytesRead} = await handle.read(content, 0, content.length, 0);
-            if (bytesRead !== content.length) throw new ToolResultStoreError("二进制结果元数据不完整");
+            if (bytesRead !== content.length) throw new ToolResultStoreError("Incomplete binary result metadata");
             const value: unknown = JSON.parse(content.toString("utf8"));
             if (!value || typeof value !== "object" || !("artifactId" in value) || typeof value.artifactId !== "string" ||
                 value.artifactId.length > 4096 || basename(resolved) !== `${getArtifactKey(this.sessionId, value.artifactId)}.bin`) {
-                throw new ToolResultStoreError("二进制结果路径与元数据不匹配");
+                throw new ToolResultStoreError("Binary result path does not match metadata");
             }
             const result = parseBinaryArtifactMetadata(content.toString("utf8"), value.artifactId);
-            if (!result || result.byteLength > this.maxArtifactBytes) throw new ToolResultStoreError("二进制结果元数据无效");
+            if (!result || result.byteLength > this.maxArtifactBytes) throw new ToolResultStoreError("Invalid binary result metadata");
             return {...result, path: resolved};
         } finally {await handle.close();}
     }
@@ -591,31 +591,31 @@ export class ToolResultStore {
     async copyReferenceTo(path: string, target: ToolResultStore): Promise<PersistedToolResult | PersistedBinaryArtifact> {
         await this.ensureDir();
         const result = path.endsWith(".bin") ? await this.resolveBinaryReference(path) : await this.resolveFile(path);
-        if (!result) throw new ToolResultStoreError("对话引用不是本 Session 的结果");
+        if (!result) throw new ToolResultStoreError("Conversation reference is not a result of this Session");
         const handle = await open(result.path, constants.O_RDONLY | constants.O_NOFOLLOW);
         try {
             const before = await handle.stat();
-            if (!before.isFile() || before.size !== result.byteLength || before.size > this.maxArtifactBytes) throw new ToolResultStoreError("结果在复制前发生变化");
+            if (!before.isFile() || before.size !== result.byteLength || before.size > this.maxArtifactBytes) throw new ToolResultStoreError("Result changed before copying");
             const bytes = Buffer.alloc(before.size);
             let offset = 0;
             while (offset < bytes.length) {
                 const read = await handle.read(bytes, offset, bytes.length - offset, offset);
-                if (!read.bytesRead) throw new ToolResultStoreError("结果复制不完整");
+                if (!read.bytesRead) throw new ToolResultStoreError("Incomplete result copy");
                 offset += read.bytesRead;
             }
             const after = await handle.stat();
-            if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new ToolResultStoreError("结果在复制期间发生变化");
-            if (result.encoding === "binary" && result.image && createHash("sha256").update(bytes).digest("hex") !== result.image.sha256) throw new ToolResultStoreError("图片完整性校验失败");
+            if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new ToolResultStoreError("Result changed while copying");
+            if (result.encoding === "binary" && result.image && createHash("sha256").update(bytes).digest("hex") !== result.image.sha256) throw new ToolResultStoreError("Image integrity check failed");
             return await target.withMutation(async () => {
                 if (bytes.length > target.maxArtifactBytes || await target.currentUsage() + bytes.length > target.maxSessionBytes) {
-                    throw new ToolResultStoreError("分支存储额度不足，无法完整复制已保存结果");
+                    throw new ToolResultStoreError("Branch storage quota exceeded; saved results cannot be copied in full");
                 }
                 const key = getArtifactKey(target.sessionId, result.encoding === "binary" ? result.artifactId : result.resultId);
                 const contentPath = join(target.sessionDir, `${key}.${result.encoding === "binary" ? "bin" : "txt"}`);
                 const metadataPath = join(target.sessionDir, `${key}.${result.encoding === "binary" ? "binary" : "meta"}.json`);
                 for (const path of [contentPath, metadataPath]) {
                     try {await lstat(path);} catch (error) {if (isCode(error, "ENOENT")) continue; throw error;}
-                    throw new ToolResultStoreError("分支结果目标已存在");
+                    throw new ToolResultStoreError("Branch result destination already exists");
                 }
                 const copied = {...result, path: contentPath};
                 const tempContent = join(target.sessionDir, `.tmp-${randomUUID()}`);
@@ -644,7 +644,7 @@ export class ToolResultStore {
     }
 
     imagePath(imageId: string): string {
-        if (!/^image-[a-f0-9]{64}$/.test(imageId)) throw new ToolResultStoreError("图片 ID 无效");
+        if (!/^image-[a-f0-9]{64}$/.test(imageId)) throw new ToolResultStoreError("Invalid image ID");
         return join(this.sessionDir, `${getArtifactKey(this.sessionId, imageId)}.bin`);
     }
 
@@ -663,22 +663,22 @@ export class ToolResultStore {
         const path = this.imagePath(imageId);
         const raw = readPrivateStorageTextFile(this.storage, path.slice(0, -4) + ".binary.json", MAX_TOOL_RESULT_METADATA_BYTES);
         const metadata = raw ? parseBinaryArtifactMetadata(raw, imageId) : null;
-        if (!metadata?.image || JSON.stringify(metadata.image) !== JSON.stringify(image)) throw new ToolResultStoreError("图片引用与存储不一致");
+        if (!metadata?.image || JSON.stringify(metadata.image) !== JSON.stringify(image)) throw new ToolResultStoreError("Image reference does not match storage");
         const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         const content = Buffer.alloc(image.byteLength);
         try {
             const before = await handle.stat({bigint: true});
-            if (!before.isFile() || before.size !== BigInt(content.length)) throw new ToolResultStoreError("图片文件类型或大小无效");
+            if (!before.isFile() || before.size !== BigInt(content.length)) throw new ToolResultStoreError("Invalid image file type or size");
             let offset = 0;
             while (offset < content.length) {
                 const {bytesRead} = await handle.read(content, offset, content.length - offset, offset);
-                if (!bytesRead) throw new ToolResultStoreError("图片内容不完整");
+                if (!bytesRead) throw new ToolResultStoreError("Incomplete image content");
                 offset += bytesRead;
             }
             const after = await handle.stat({bigint: true});
-            if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new ToolResultStoreError("图片在读取期间发生变化");
+            if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new ToolResultStoreError("Image changed while reading");
         } finally {await handle.close();}
-        if (content.length !== image.byteLength || createHash("sha256").update(content).digest("hex") !== image.sha256) throw new ToolResultStoreError("图片缺失或完整性校验失败");
+        if (content.length !== image.byteLength || createHash("sha256").update(content).digest("hex") !== image.sha256) throw new ToolResultStoreError("Image missing or integrity check failed");
         return content;
     }
 

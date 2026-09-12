@@ -37,20 +37,20 @@ function createRootState(
         const session = loadLatestSession(storage, cwd, model);
         return session
             ? {view: "app", session}
-            : {view: "error", message: "没有找到可继续的历史会话。"};
+            : {view: "error", message: "No previous session available to continue."};
     }
 
     if (resumeMode.kind === "session") {
         const session = loadSession(storage, cwd, resumeMode.sessionId, model);
         return session
             ? {view: "app", session}
-            : {view: "error", message: `没有找到会话: ${resumeMode.sessionId}`};
+            : {view: "error", message: `Session not found: ${resumeMode.sessionId}`};
     }
 
     const sessions = listSessionIndex(storage, cwd);
     return sessions.length > 0
         ? {view: "picker", sessions}
-        : {view: "error", message: "没有找到可恢复的历史会话。"};
+        : {view: "error", message: "No previous session available to resume."};
 }
 
 export function Root({
@@ -83,7 +83,7 @@ export function Root({
             if (active) {
                 setState({
                     view: "error",
-                    message: `读取会话失败: ${error instanceof Error ? error.message : String(error)}`,
+                    message: `Failed to read session: ${error instanceof Error ? error.message : String(error)}`,
                 });
             }
         });
@@ -114,12 +114,12 @@ export function Root({
                         setState(
                             session
                                 ? {view: "app", session}
-                                : {view: "error", message: `没有找到会话: ${sessionId}`}
+                                : {view: "error", message: `Session not found: ${sessionId}`}
                         );
                     } catch (error) {
                         setState({
                             view: "error",
-                            message: `读取会话失败: ${error instanceof Error ? error.message : String(error)}`,
+                            message: `Failed to read session: ${error instanceof Error ? error.message : String(error)}`,
                         });
                     }
                 }}
@@ -132,13 +132,13 @@ export function Root({
         return (
             <Box flexDirection="column">
                 <Text color={COLORS.assistant}>● {state.message}</Text>
-                <Text color={COLORS.dim}>请直接运行 pillar 开始新会话。</Text>
+                <Text color={COLORS.dim}>Run pillar directly to start a new session.</Text>
             </Box>
         );
     }
 
     if (state.view === "loading") {
-        return <Text color={COLORS.dim}>正在读取会话…</Text>;
+        return <Text color={COLORS.dim}>Reading session…</Text>;
     }
 
     return (

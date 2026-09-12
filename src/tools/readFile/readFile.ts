@@ -14,14 +14,14 @@ const MAX_LIMIT = 2000;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 const inputSchema = z.object({
-    path: z.string().describe("文件的绝对或相对路径"),
+    path: z.string().describe("Absolute or relative file path."),
     offset: z
         .number()
         .int()
         .min(1)
         .optional()
         .describe(
-            "可选的起始行（1-based）。普通文件不要传；仅在已知目标区间，或文件超过单次读取上限时使用"
+            "Optional 1-based start line. Omit for ordinary files; use for a known range or files exceeding one read."
         ),
     limit: z
         .number()
@@ -30,7 +30,7 @@ const inputSchema = z.object({
         .max(MAX_LIMIT)
         .optional()
         .describe(
-            `可选的读取行数。普通文件不要传，默认一次读取完整文件（最多 ${DEFAULT_LIMIT} 行）；仅在已知目标区间，或文件超过单次读取上限时使用，最大 ${MAX_LIMIT} 行`
+            "Optional line count; omit for ordinary files (up to 2000 lines by default). Use for a known range or larger file, maximum 2000."
         ),
 });
 
@@ -42,16 +42,7 @@ function formatLineNumber(lineNumber: number): string {
 
 export const readFileTool: Tool<typeof inputSchema> = {
     name: "read_file",
-    description: [
-        "读取指定路径文件的内容，返回带行号的文本。",
-        "也可读取工具返回的已保存结果路径，offset/limit 同样使用行号；结果文件按预算展示，超长单行会标记省略。日志不作为源码当前版本的读取记录。",
-        "二进制资产和超过 5 MiB 的文本仅返回目标摘要，可用于确认删除，不能授权正文编辑；超过 20 MiB 拒绝读取。",
-        "需要理解图片内容时使用 view_image；本工具的二进制摘要不会将图片像素提供给模型。",
-        "",
-        "行号格式为 `     1\\t内容`，仅用于定位，不是文件真实内容；调用 edit_file 时不要把行号复制进 old_string。",
-        `普通文件不要传 offset/limit，默认一次读取完整文件（最多 ${DEFAULT_LIMIT} 行）；不要人为切成小页连续扫描。`,
-        "仅当已经知道所需行段，或文件超过单次读取上限时，才使用 offset/limit 定点或分段读取。",
-    ].join("\n"),
+    description: "Read a local file with line numbers. For a known ordinary file, omit offset/limit to read it in one call (up to 2000 lines); use ranges only for known locations or larger files. Line-number prefixes are not file content: exclude them from edit_file replacements. Saved tool-result/archive paths also accept line-based offset/limit, but reading a log does not establish the current source-file version. Binary assets or text over 5 MiB return metadata only, sufficient to identify a deletion target but not to authorize text editing; files over 20 MiB are rejected. Use view_image for pixels: a binary summary is not image understanding.",
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
@@ -59,7 +50,7 @@ export const readFileTool: Tool<typeof inputSchema> = {
     execute: async ({path, offset, limit}: Input, ctx, invocation) => {
         const absPath = resolveToolPath(ctx.cwd, path);
         if (isMemoryStoragePath(ctx.storage, absPath)) {
-            if (!ctx.memoryFiles) throw new Error("当前 Agent 没有 Memory 文件能力");
+            if (!ctx.memoryFiles) throw new Error("This Agent has no Memory file capability");
             await ctx.memoryFiles.prepare(absPath, "read_file");
         }
         const archive = await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, absPath);
@@ -70,11 +61,11 @@ export const readFileTool: Tool<typeof inputSchema> = {
         const binary = !isUtf8(snapshot.content) || snapshot.content.includes(0);
         if (snapshot.content.length > MAX_FILE_SIZE || binary) {
             const output = [
-                `文件: ${path}`,
-                `类型: ${binary ? "二进制" : "大型文本"}`,
-                `大小: ${snapshot.content.length} bytes`,
+                `File: ${path}`,
+                `Type: ${binary ? "binary" : "large text"}`,
+                `Size: ${snapshot.content.length} bytes`,
                 `SHA256: ${createHash("sha256").update(snapshot.content).digest("hex")}`,
-                "已确认目标版本；未展示正文，不能据此 edit_file/write_file。可按权限策略使用 delete_file 删除此版本。",
+                "Target version confirmed; contents were not shown and cannot authorize edit_file/write_file. delete_file may remove this version if permitted.",
             ].join("\n");
             ctx.fileState.stageRead({toolCallId: invocation.toolCallId, path: absPath, content: snapshot.content,
                 normalizedBytes: snapshot.content.length, output, segments: [], identity: snapshot.identity});
@@ -86,7 +77,7 @@ export const readFileTool: Tool<typeof inputSchema> = {
         const startLine = offset ?? 1;
         const lineLimit = limit ?? DEFAULT_LIMIT;
         if (startLine > lines.length) {
-            return `文件 ${path} 共有 ${lines.length} 行，offset=${startLine} 超出范围。`;
+            return `File ${path} has ${lines.length} lines; offset=${startLine} is out of range.`;
         }
 
         const startIndex = startLine - 1;
@@ -97,14 +88,14 @@ export const readFileTool: Tool<typeof inputSchema> = {
             .join("\n");
 
         const header = [
-            `文件: ${path}`,
-            `行范围: ${startLine}-${endIndex} / ${lines.length}`,
-            "注意: 左侧行号不是文件内容，edit_file.edits[].old_string 不要包含这些行号。",
+            `File: ${path}`,
+            `Line range: ${startLine}-${endIndex} / ${lines.length}`,
+            "Note: left-hand line numbers are not file content; exclude them from edit_file.edits[].old_string.",
         ].join("\n");
 
         const more =
             endIndex < lines.length
-                ? `\n\n...（本次未返回后续 ${lines.length - endIndex} 行）`
+                ? `\n\n... (remaining lines omitted: ${lines.length - endIndex} )`
                 : "";
 
         const output = `${header}\n\n${body}${more}`;

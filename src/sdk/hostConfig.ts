@@ -42,7 +42,7 @@ export function loadPillarHostConfig(
     if (!isAbsolute(pillarHome)) {
         throw new PillarSDKError(
             "invalid_pillar_home",
-            "loadPillarHostConfig 需要绝对 pillarHome"
+            "loadPillarHostConfig requires an absolute pillarHome"
         );
     }
     const resolvedCwd = resolve(cwd);
@@ -53,7 +53,7 @@ export function loadPillarHostConfig(
     } catch (error) {
         throw new PillarSDKError(
             "invalid_configuration",
-            `Root Configuration 无效: ${error instanceof Error ? error.message : String(error)}`,
+            `Invalid Root Configuration: ${error instanceof Error ? error.message : String(error)}`,
             {cause: error}
         );
     }
@@ -68,7 +68,7 @@ export function loadPillarHostConfig(
     } catch (error) {
         throw new PillarSDKError(
             "invalid_settings",
-            `Settings 解析失败: ${error instanceof Error ? error.message : String(error)}`,
+            `Settings parsing failed: ${error instanceof Error ? error.message : String(error)}`,
             {cause: error}
         );
     }
@@ -76,7 +76,7 @@ export function loadPillarHostConfig(
     if (errors.length > 0) {
         throw new PillarSDKError(
             "invalid_settings",
-            `Settings 加载失败: ${errors.map(formatSettingsIssue).join("; ")}`
+            `Settings loading failed: ${errors.map(formatSettingsIssue).join("; ")}`
         );
     }
     let configuration: PillarRootConfiguration;
@@ -93,7 +93,7 @@ export function loadPillarHostConfig(
     } catch (error) {
         throw new PillarSDKError(
             "invalid_configuration",
-            `Root Configuration 无效: ${error instanceof Error ? error.message : String(error)}`,
+            `Invalid Root Configuration: ${error instanceof Error ? error.message : String(error)}`,
             {cause: error}
         );
     }
@@ -108,7 +108,7 @@ function requireNonEmptyPath(value: string, name: string): string {
     if (typeof value !== "string" || !value.trim()) {
         throw new PillarSDKError(
             `invalid_${name.toLowerCase()}`,
-            `loadPillarHostConfig 需要非空 ${name}`
+            `loadPillarHostConfig requires a non-empty ${name}`
         );
     }
     return value.trim();
@@ -123,7 +123,7 @@ function requireAbsolutePath(
     if (!isAbsolute(path)) {
         throw new PillarSDKError(
             code,
-            `loadPillarHostConfig 需要绝对 ${name}`
+            `loadPillarHostConfig requires an absolute ${name}`
         );
     }
     return path;

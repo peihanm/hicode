@@ -33,8 +33,8 @@ describe("/diff slash command", () => {
             await processSlashCommand("/diff invalid", context);
             await processSlashCommand("/diff", context);
             expect(messages).toEqual([
-                "用法: /diff",
-                "当前宿主不支持交互式 /diff。请在交互式 TUI 中使用，或通过 Bash 运行只读的 git diff。",
+                "Usage: /diff",
+                "This Host does not support interactive /diff. Use the interactive TUI or run read-only git diff through Bash.",
             ]);
         });
     });

@@ -83,10 +83,10 @@ async function readJournal(
         throw error;
     }
     if (!info.isFile() || info.isSymbolicLink()) {
-        throw new Error(`Task Journal 不是安全的 regular file: ${path}`);
+        throw new Error(`Task Journal is not a safe regular file: ${path}`);
     }
     if (info.size > MAX_TASK_JOURNAL_BYTES) {
-        throw new Error(`Task Journal 超过大小上限: ${path}`);
+        throw new Error(`Task Journal exceeds the size limit: ${path}`);
     }
     const content = await readFile(path, "utf8");
     const lines = content.split("\n");
@@ -100,7 +100,7 @@ async function readJournal(
         if (
             nonEmptyLines > MAX_TASK_JOURNAL_ENTRIES ||
             Buffer.byteLength(line, "utf8") > MAX_TASK_JOURNAL_LINE_BYTES
-        ) throw new Error(`Task Journal 超过条目或单行上限: ${path}`);
+        ) throw new Error(`Task Journal exceeds the entry or line limit: ${path}`);
         let parsed: unknown;
         try {
             parsed = JSON.parse(line);
@@ -109,10 +109,10 @@ async function readJournal(
             if (partialTail) {
                 return {entries, requiresRewrite: true};
             }
-            throw new Error(`Task Journal 包含损坏记录: ${path}`, {cause: error});
+            throw new Error(`Task Journal contains corrupt records: ${path}`, {cause: error});
         }
         const entry = decodeTaskJournalEntry(parsed, sessionId);
-        if (!entry) throw new Error(`Task Journal 包含非法记录: ${path}`);
+        if (!entry) throw new Error(`Task Journal contains invalid records: ${path}`);
         entries.push(entry);
     }
     return {
@@ -143,7 +143,7 @@ function compactEntries(entries: readonly TaskJournalEntry[]): TaskJournalEntry[
         ...retained.values(),
         ...[...claims].filter(([id]) => retainedNotificationIds.has(id)).map(([, entry]) => entry),
     ].sort((left, right) => left.sequence - right.sequence);
-    if (result.length > MAX_TASK_JOURNAL_ENTRIES) throw new Error("Task Journal 未交付通知超过条目上限");
+    if (result.length > MAX_TASK_JOURNAL_ENTRIES) throw new Error("Task Journal undelivered notifications exceed the entry limit");
     return result;
 }
 
@@ -212,7 +212,7 @@ class TaskJournal implements TaskJournalLike {
         try {
             const info = await lstat(path);
             if (!info.isFile() || info.isSymbolicLink()) {
-                throw new Error(`Task Journal 不是安全的 regular file: ${path}`);
+                throw new Error(`Task Journal is not a safe regular file: ${path}`);
             }
             if (
                 cached &&
@@ -251,7 +251,7 @@ class TaskJournal implements TaskJournalLike {
                 const path = journalPath(this.storage, this.cwd, entry.sessionId);
                 const line = `${serializeTaskJournalEntry(entry)}\n`;
                 if (Buffer.byteLength(line, "utf8") > MAX_TASK_JOURNAL_LINE_BYTES) {
-                    throw new Error(`Task Journal 单行超过大小上限: ${path}`);
+                    throw new Error(`Task Journal line exceeds the size limit: ${path}`);
                 }
                 await withFileLock(`${path}.lock`, async () => {
                     await mkdir(dirname(path), {recursive: true, mode: 0o700});
@@ -265,7 +265,7 @@ class TaskJournal implements TaskJournalLike {
                             entry,
                         ]));
                         if (Buffer.byteLength(content, "utf8") > MAX_TASK_JOURNAL_BYTES) {
-                            throw new Error(`Task Journal 压缩后仍超过大小上限: ${path}`);
+                            throw new Error(`Task Journal still exceeds the size limit after compaction: ${path}`);
                         }
                         await writeFileAtomically(path, content, 0o600);
                         await this.remember(path, {
@@ -281,7 +281,7 @@ class TaskJournal implements TaskJournalLike {
                             entry,
                         ]));
                         if (Buffer.byteLength(content, "utf8") > MAX_TASK_JOURNAL_BYTES) {
-                            throw new Error(`Task Journal 压缩后仍超过大小上限: ${path}`);
+                            throw new Error(`Task Journal still exceeds the size limit after compaction: ${path}`);
                         }
                         await writeFileAtomically(path, content, 0o600);
                         await this.remember(path, {

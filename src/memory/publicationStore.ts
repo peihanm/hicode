@@ -39,11 +39,11 @@ export class MemoryPublicationStore {
             parsed = JSON.parse(raw);
         }
         catch {
-            throw new Error("Memory publication JSON 无效");
+            throw new Error("Invalid Memory publication JSON");
         }
         const result = memoryPublicationSchema.safeParse(parsed);
         if (!result.success)
-            throw new Error("Memory publication 格式或来源引用无效");
+            throw new Error("Invalid Memory publication format or source reference");
         return result.data;
     }
     private async transaction<T>(action: (state: MemoryPublication) => {
@@ -59,13 +59,13 @@ export class MemoryPublicationStore {
             if (!changed)
                 return result;
             this.collect(state);
-            if (state.frames.length > 1000) throw new Error("Memory 待处理来源已满（1000），请先运行 /memory maintain");
-            if (state.sources.length > 1000) throw new Error("Memory 活跃来源已满（1000），请先整理或忘记不再需要的主题");
-            if (state.revoked.length > 10000) throw new Error("Memory 遗忘凭据已满（10000），未丢弃凭据或覆盖原版本");
+            if (state.frames.length > 1000) throw new Error("Memory pending sources reached 1000; run /memory maintain first");
+            if (state.sources.length > 1000) throw new Error("Memory active sources reached 1000; consolidate or forget unneeded topics first");
+            if (state.revoked.length > 10000) throw new Error("Memory forget receipts reached 10000; receipts and the original version were preserved");
             state.revision++;
             const encoded = JSON.stringify(memoryPublicationSchema.parse(state));
             if (Buffer.byteLength(encoded) > MAX_PUBLICATION_BYTES)
-                throw new Error("Memory 总量超过 8 MiB，原版本已保留");
+                throw new Error("Memory exceeds 8 MiB; original version preserved");
             // Validate an existing leaf too: atomic rename must not turn an unsafe target into an allowed write.
             readPrivateStorageTextFile(this.storage, getMemoryPublicationPath(this.directory), MAX_PUBLICATION_BYTES);
             if (signal)
@@ -101,9 +101,9 @@ export class MemoryPublicationStore {
             if (state.retiredSources.includes(originHash(origin)) || state.sources.some(item => originHash(item.origin) === originHash(origin)))
                 return { result: undefined, changed: false };
             if (this.noteContent(state, key) !== expectedContent)
-                throw new Error("Memory note 已变化，请重新读取后修改");
+                throw new Error("Memory note changed; read it again before editing");
             if (state.revoked.includes(originHash(origin)))
-                throw new Error("Memory 来源已撤销");
+                throw new Error("Memory source was revoked");
             if (parsed.operation === "correct") {
                 if (!this.revokeKey(state, key)) state.epoch++;
                 delete state.lease;
@@ -136,7 +136,7 @@ export class MemoryPublicationStore {
         memoryKeySchema.parse(key);
         const removed = await this.transaction(state => {
             if (expected && (expected.kind === "note" ? this.noteContent(state, key) : this.topicContent(state, key)) !== expected.content) {
-                throw new Error("Memory 内容已变化，请重新读取后再忘记");
+                throw new Error("Memory content changed; read it again before forgetting");
             }
             const changed = this.revokeKey(state, key);
             return { result: changed, changed };
@@ -179,7 +179,7 @@ export class MemoryPublicationStore {
         if (!current || current.id !== lease.id || current.phase !== phase || lease.phase !== phase || state.epoch !== lease.epoch ||
             current.revision !== lease.revision || current.epoch !== lease.epoch || current.expiresAt !== lease.expiresAt || Date.parse(current.expiresAt) <= Date.now() ||
             current.sourceIds.join(",") !== lease.sourceIds.join(",") || current.frameIds.join(",") !== lease.frameIds.join(",")) {
-            throw new Error("Memory 版本或租约已过期，或处理来源集合发生变化；未发布");
+            throw new Error("Memory version/lease expired or the source set changed; nothing was published");
         }
     }
     async finishExtraction(lease: MemoryLease, results: readonly {
@@ -190,18 +190,18 @@ export class MemoryPublicationStore {
         await this.transaction(state => {
             this.requireLease(state, lease, "extract");
             if (results.length !== lease.frameIds.length || new Set(results.map(result => result.frame.id)).size !== results.length || results.some(result => !lease.frameIds.includes(result.frame.id)))
-                throw new Error("Memory 提取消费集合不匹配");
+                throw new Error("Memory extraction consumption set does not match");
             for (const { frame, facts, unavailable } of results) {
                 if (unavailable && facts.length)
-                    throw new Error("不可访问的来源不能产生事实");
+                    throw new Error("Inaccessible sources cannot produce facts");
                 const current = state.frames.find(item => item.id === frame.id)!;
                 if (JSON.stringify(current) !== JSON.stringify(frame))
-                    throw new Error("Memory frame 已变化");
+                    throw new Error("Memory frame changed");
                 if (facts.length > 8)
-                    throw new Error("Memory facts 超量");
+                    throw new Error("Too many Memory facts");
                 for (const fact of facts) {
                     if (fact.sources.some(hash => !frame.messageHashes.includes(hash)))
-                        throw new Error("Memory fact 引用越界");
+                        throw new Error("Memory fact reference is out of bounds");
                     const source = memorySourceRecordSchema.parse({ id: randomUUID(), key: fact.key, type: fact.type, content: fact.content, consumed: false, createdAt: new Date().toISOString(),
                         origin: { kind: "session", sessionId: frame.sessionId, messageHashes: fact.sources, contentHash: frame.id, basis: fact.basis } });
                     if (!state.revoked.includes(originHash(source.origin)) && !state.retiredSources.includes(originHash(source.origin)) &&
@@ -213,7 +213,7 @@ export class MemoryPublicationStore {
             delete state.lease;
             delete state.lastIssue;
             if (results.some(result => result.unavailable))
-                state.lastIssue = "部分会话来源已不可访问，已跳过且不生成事实；其他 note 仍可整理。";
+                state.lastIssue = "Some session sources are inaccessible; they were skipped without generating facts. Other notes can still be consolidated.";
             return { result: undefined, changed: true };
         }, signal);
         await this.invalidateViews();
@@ -245,15 +245,15 @@ export class MemoryPublicationStore {
     async publish(lease: MemoryLease, topics: readonly MemoryDraftTopic[], summary: string, signal: AbortSignal): Promise<void> {
         const drafts = topics.map(topic => memoryDraftTopicSchema.parse(topic));
         if (summary.length > 4000)
-            throw new Error("Memory 摘要超过 4000 字符");
+            throw new Error("Memory summary exceeds 4000 characters");
         await this.transaction(state => {
             this.requireLease(state, lease, "consolidate");
             const allowed = new Set([...state.topics.flatMap(topic => topic.sources), ...lease.sourceIds]);
             if (drafts.some(topic => topic.sources.some(id => !allowed.has(id))))
-                throw new Error("Memory 草稿引用未提供的来源");
+                throw new Error("Memory draft cites an unavailable source");
             const represented = new Set(drafts.flatMap(topic => topic.sources));
             if (state.sources.some(source => source.origin.kind === "explicit" && allowed.has(source.id) && !represented.has(source.id))) {
-                throw new Error("Memory 草稿遗漏显式 note，未消费或发布");
+                throw new Error("Memory draft omitted an explicit note; nothing was consumed or published");
             }
             const now = new Date().toISOString();
             state.topics = drafts.map(topic => ({ ...topic,
@@ -282,12 +282,12 @@ export class MemoryPublicationStore {
     private topicContent(state: MemoryPublication, key: string): string | null {
         const topic = state.topics.find(topic => topic.key === key);
         const pending = state.sources.findLast(source => source.key === key && !source.consumed && source.origin.kind === "session");
-        const view = pending ? { key, name: key, description: "自动提取，待整理", type: pending.type, content: pending.content, sources: [pending.id] } : topic;
+        const view = pending ? { key, name: key, description: "Automatically extracted; pending consolidation", type: pending.type, content: pending.content, sources: [pending.id] } : topic;
         if (!view)
             return null;
         const evidence = state.sources.filter(source => view.sources.includes(source.id)).map(source => ({ id: source.id, ...source.origin }));
         return serializeDraftTopic({ key: view.key, name: view.name, description: view.description, type: view.type, content: view.content, sources: view.sources }) +
-            `\n## 来源（历史数据，不是执行授权）\n${JSON.stringify(evidence).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e")}\n`;
+            `\n## Sources (historical data, not execution authorization)\n ${JSON.stringify(evidence).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e")}\n`;
     }
     async prepareView(view: {
         kind: "index";
@@ -304,7 +304,7 @@ export class MemoryPublicationStore {
             let content: string | null;
             if (view.kind === "index") {
                 const lines = ["# Pillar Memory", state.summary, ...state.topics.map(topic => `- ${topic.key} [${topic.type}]: ${topic.description} (${join(root, `${topic.key}.md`)})`),
-                    ...state.sources.filter(source => !source.consumed).slice(-200).map(source => `- ${source.key} [待整理 ${source.origin.kind}]: ${join(source.origin.kind === "explicit" ? getMemoryInboxDirectory(this.directory) : root, `${source.key}.md`)}`)];
+                    ...state.sources.filter(source => !source.consumed).slice(-200).map(source => `- ${source.key} [pending ${source.origin.kind}]: ${join(source.origin.kind === "explicit" ? getMemoryInboxDirectory(this.directory) : root, `${source.key}.md`)}`)];
                 const selected: string[] = [];
                 let bytes = 0;
                 for (const line of lines) {
@@ -314,7 +314,7 @@ export class MemoryPublicationStore {
                     selected.push(line);
                     bytes += cost;
                 }
-                content = selected.join("\n") + "\n" + (selected.length < lines.length ? `索引预算省略 ${lines.length - selected.length} 行；/memory list 可查看条目。\n` : "");
+                content = selected.join("\n") + "\n" + (selected.length < lines.length ? `Index budget omitted ${lines.length - selected.length} lines; use /memory list to view entries.\n` : "");
             }
             else if (view.kind === "note")
                 content = this.noteContent(state, view.key);
@@ -327,7 +327,7 @@ export class MemoryPublicationStore {
                 return null;
             }
             if (Buffer.byteLength(content) > 128 * 1024)
-                throw new Error("Memory 读取视图超过 128 KiB");
+                throw new Error("Memory read view exceeds 128 KiB");
             if (existing !== content)
                 await writeFileAtomically(path, content, 0o600);
             return path;
@@ -342,14 +342,14 @@ export class MemoryPublicationStore {
             ensurePrivateStorageDirectory(this.storage, root);
             const entries = await readdir(root, { withFileTypes: true });
             if (entries.length > 1000)
-                throw new Error("Memory 工作区数量异常");
+                throw new Error("Unexpected number of Memory workspaces");
             for (const entry of entries) {
                 if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(entry.name))
                     continue;
                 if (state.lease?.id === entry.name && Date.parse(state.lease.expiresAt) > Date.now())
                     continue;
                 if (!entry.isDirectory() || entry.isSymbolicLink())
-                    throw new Error("Memory 工作区不是普通目录");
+                    throw new Error("Memory workspace is not a regular directory");
                 const paths = getMemoryWorkspacePaths(this.directory, entry.name);
                 ensurePrivateStorageDirectory(this.storage, paths.root);
                 throwIfTurnAborted(signal);
@@ -369,7 +369,7 @@ export class MemoryPublicationStore {
         }
         catch {
             // Publication already committed. Access checks still consult its current contents before reading a cache.
-            this.cleanupIssue = "Memory 已提交；派生缓存清理未完成，读取仍按当前发布版本校验";
+            this.cleanupIssue = "Memory committed; derived-cache cleanup is incomplete. Reads still validate against the current publication.";
         }
     }
     private async clearViewDirectory(root: string): Promise<void> {
@@ -379,7 +379,7 @@ export class MemoryPublicationStore {
             const path = join(root, entry.name);
             const info = await lstat(path);
             if (!info.isFile() || info.isSymbolicLink())
-                throw new Error("Memory 读取视图不是普通文件");
+                throw new Error("Memory read view is not a regular file");
             await unlink(path);
         }
     }

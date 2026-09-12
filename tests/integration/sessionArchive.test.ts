@@ -85,7 +85,7 @@ test("连续五次压缩保留原文、工具配对及大结果，Resume 可用 
             const indexPath = archiveIndexPath(storage, cwd, loaded.sessionId, records[0]!.id);
             const index = await f.resources.toolRuntime.executeTool("read_file", JSON.stringify({path: indexPath}), ctx, "archive-index");
             expect(index.outcome).toBe("ok");
-            expect(index.modelContent).toContain("其他当前分支档案索引");
+            expect(index.modelContent).toContain("Other archive indexes in the current branch");
             const part = indexPath.replace("-index.txt", "-1.txt");
             const found = await f.resources.toolRuntime.executeTool("grep", JSON.stringify({path: part, pattern: "禁止默认丢弃", context: 1}), ctx, "archive-grep");
             expect(found.outcome).toBe("ok");
@@ -223,7 +223,7 @@ test("生产交接链校验引用、保留纠正原话，Resume 保持可回查�
             ]).callLLM})});
             const result = await bad({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true});
             expect(result.compacted).toBe(false);
-            expect(result.message).toContain("不属于当前来源");
+            expect(result.message).toContain("outside the current sources");
             expect(f.session.history).toEqual(beforeFailure);
             expect(f.session.compactState.archives).toHaveLength(1);
             expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")!.history.slice(1)).toEqual(before.slice(1));

@@ -59,7 +59,7 @@ describe("session persistence", () => {
       const history: Message[] = [
         { role: "system", content: "不会持久化" },
         { role: "user", origin: "user" as const, content: "第一个任务" },
-        { role: "assistant", content: "已完成" },
+        { role: "assistant", content: "Completed" },
       ];
       await saveSessionSnapshot(storage, {
         cwd,
@@ -358,7 +358,7 @@ describe("session persistence", () => {
               function: { name: "edit_file", arguments: "{}" },
             }],
           },
-          { role: "tool", content: "已修改", tool_call_id: "edit-a" },
+          { role: "tool", content: "Modified", tool_call_id: "edit-a" },
         ],
         todos: [],
         permissionMode: "ask",
@@ -537,7 +537,7 @@ describe("session persistence", () => {
         todos: [],
         permissionMode: "ask",
         collaborationMode: "build",
-      })).rejects.toThrow("Pillar storage 目录不安全");
+      })).rejects.toThrow("Unsafe Pillar storage directory");
     });
 
     await withTempProject(async (cwd, storage) => {

@@ -34,9 +34,9 @@ export function HookApprovalDialog({
         <DialogFrame
             title="Hook definition request"
             subtitle={
-                <Text>当前项目配置了会执行命令或调用模型的 Hooks</Text>
+                <Text>This project configures Hooks that execute commands or call models</Text>
             }
-            footer="↑↓ 选择 · ←→ 查看定义 · Enter 确认 · Esc 拒绝"
+            footer="↑↓ select · ←→ view definition · Enter confirm · Esc deny"
         >
             <Box marginTop={1} flexDirection="column">
                 {request.hooks.slice(page * 8, (page + 1) * 8).map((hook, index) => (
@@ -61,12 +61,12 @@ export function HookApprovalDialog({
                 ))}
                 {request.hooks.length > 8 && (
                     <Text color={COLORS.dim}>
-                        定义 {page + 1}/{pages} 页 · 共 {request.hooks.length} 个 Hook（←→ 翻页）
+                        Definition {page + 1}/{pages} pages · total {request.hooks.length} Hooks (←→ pages)
                     </Text>
                 )}
                 <Text color={COLORS.dim}>Project: {request.projectPath}</Text>
                 <Text color={COLORS.dim}>
-                    批准绑定以上定义；引用脚本正文的变化不在指纹范围内。
+                    Approval binds these definitions; changes to referenced script contents are not covered by the fingerprint.
                 </Text>
             </Box>
             <Box marginTop={1}>

@@ -30,7 +30,7 @@ export async function resolveFilePermissionPath(cwd: string, path: string): Prom
 }
 
 async function patternMatcher(cwd: string, pattern: string): Promise<(path: string) => boolean> {
-    if (!validateFilePattern(pattern)) throw new Error("文件权限规则必须是绝对路径或相对项目的路径 glob，不接受 JSON、~ 或 Bash 前缀语法");
+    if (!validateFilePattern(pattern)) throw new Error("File permission rules must be absolute paths or project-relative globs; JSON, ~ and Bash-prefix syntax are not accepted");
     const normalized = posix.normalize(pattern.replaceAll("\\", "/"));
     const magic = normalized.search(/[*?\[\]{}(]/);
     if (magic < 0) {
@@ -57,7 +57,7 @@ async function prepareFileMatcher(cwd: string, patterns: readonly string[]) {
         const paths = [...new Set([resolve(cwd, path), await resolveFilePermissionPath(cwd, path)])];
         return (pattern, behavior) => {
             const match = compiled.get(pattern);
-            if (!match) throw new Error("文件规则未经过权限匹配准备");
+            if (!match) throw new Error("File rule was not prepared for permission matching");
             return behavior === "allow" ? paths.every(match) : paths.some(match);
         };
     };

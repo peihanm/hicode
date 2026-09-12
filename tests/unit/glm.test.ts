@@ -127,7 +127,7 @@ describe("GLM cancellation", () => {
           "utf8"
         )
       ) as { response: { error?: string } };
-      expect(cancelled.response.error).toContain("fetch 已取消");
+      expect(cancelled.response.error).toContain("fetch cancelled");
     });
   });
 
@@ -161,7 +161,7 @@ describe("GLM cancellation", () => {
             kind: "main",
             onStreamProgress: (item) => progress.push(item.phase),
           })
-        ).rejects.toThrow("LLM stream 连续 2ms 没有收到数据");
+        ).rejects.toThrow("LLM stream has received no data for 2 ms");
         expect(fetchCalls).toBe(1);
         expect(progress).toContain("stalled");
       });
@@ -395,8 +395,8 @@ describe("GLM cancellation", () => {
       const first = JSON.parse(
         await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8")
       ) as { response: { error?: string } };
-      expect(first.response.error).toContain("LLM 返回空响应");
-      expect(first.response.error).toContain("已尝试 1/3 次");
+      expect(first.response.error).toContain("LLM returned an empty response");
+      expect(first.response.error).toContain("attempted 1/3 times");
     });
   });
 
@@ -489,7 +489,7 @@ describe("GLM cancellation", () => {
           kind: "main",
         })
       ).rejects.toThrow(
-        /LLM 返回空响应.*已尝试 3\/3 次.*本次响应的工具未执行，重试额度已耗尽/
+        /LLM returned an empty response.*attempted 3\/3 times.*tools from this response were not executed; retry budget exhausted/
       );
       expect(fetchCalls).toBe(3);
       expect(
@@ -641,7 +641,7 @@ describe("GLM cancellation", () => {
         };
       };
       expect(logged.response.error).toContain(
-        "LLM 输出连续 20ms 没有新增量，将按原参数安全重试一次"
+        "LLM output has had no new delta for 20 ms; retrying once with the original parameters"
       );
       expect(logged.response).not.toHaveProperty("streamDiagnostics");
     });
@@ -747,7 +747,7 @@ describe("GLM cancellation", () => {
           kind: "main",
         })
       ).rejects.toThrow(
-        /LLM 输出连续 20ms 没有新增量.*已尝试 3\/3 次.*本次响应的工具未执行，重试额度已耗尽/
+        /LLM output has had no new delta for 20 ms.*attempted 3\/3 times.*tools from this response were not executed; retry budget exhausted/
       );
       expect(fetchCalls).toBe(3);
       expect(requestBodies[0]?.thinking).toEqual({ type: "enabled" });
@@ -778,7 +778,7 @@ describe("GLM cancellation", () => {
                 setTimeout(() => {
                   controller.enqueue(
                     encoder.encode(
-                      `data: ${JSON.stringify({ choices: [{ delta: { content: "完成" }, finish_reason: "stop" }] })}\n\n`
+                      `data: ${JSON.stringify({ choices: [{ delta: { content: "completed" }, finish_reason: "stop" }] })}\n\n`
                     )
                   );
                   controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -805,7 +805,7 @@ describe("GLM cancellation", () => {
       });
 
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(40);
-      expect(result.message.content).toBe("完成");
+      expect(result.message.content).toBe("completed");
     });
   });
 

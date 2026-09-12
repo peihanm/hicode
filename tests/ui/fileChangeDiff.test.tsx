@@ -26,7 +26,7 @@ function addChange(
     type: "tool_call_end",
     turnId: "turn-1",
     toolCallId,
-    result: `已修改 ${path}`,
+    result: `Modified ${path}`,
     outcome: "ok",
     uiData: {
       type: "file_change",
@@ -138,12 +138,12 @@ describe("file change diff UI", () => {
       type: "tool_call_end",
       turnId: "turn-failed",
       toolCallId: "failed-edit",
-      result: "权限拒绝",
+      result: "Permission denied",
       outcome: "denied",
     });
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
     expect(frame).toContain("● Edit a.ts");
-    expect(frame).toContain("权限拒绝");
+    expect(frame).toContain("Permission denied");
     expect(frame).not.toContain("Edited 1 file");
   });
 
@@ -159,7 +159,7 @@ describe("file change diff UI", () => {
           function: { name: "edit_file", arguments: "{}" },
         }],
       },
-      { role: "tool", content: "已修改", tool_call_id: "restore-edit" },
+      { role: "tool", content: "Modified", tool_call_id: "restore-edit" },
     ];
     const change = createFileChange({
       path: "restored.ts",

@@ -6,7 +6,7 @@ import type {SlashCommand} from "../types.js";
 export const compactCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "compact",
-    description: "压缩当前会话上下文；可追加自定义总结要求",
+    description: "Compact session context; optionally specify summary requirements",
     argumentHint: "[summary instructions]",
     async execute(
         args,
@@ -41,7 +41,7 @@ export const compactCommand: SlashCommand = {
         if (!result.compacted) {
             await onEvent({
                 type: "compact_error",
-                message: result.message || "未执行压缩",
+                message: result.message || "Compaction was not performed",
                 trigger: "manual",
             });
             return;

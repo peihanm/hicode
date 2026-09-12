@@ -126,7 +126,7 @@ describe("subagent UI", () => {
           result: "审查完成",
           outcome: "ok",
         });
-        return { reply: "完成", reason: "completed", iterations: 1 };
+        return { reply: "completed", reason: "completed", iterations: 1 };
       };
       const instance = render(
         <App
@@ -143,7 +143,7 @@ describe("subagent UI", () => {
 
       const frame = instance.lastFrame() ?? "";
       expect(frame).toContain("● project-reviewer Agent · 独立审查本轮实现");
-      expect(frame).toContain("正在运行 project-reviewer Agent...");
+      expect(frame).toContain("Running project-reviewer Agent...");
       expect(frame).not.toContain("✻ project-reviewer Agent");
       expect(frame).not.toContain("project-reviewer: 独立审查本轮实现");
 
@@ -194,7 +194,7 @@ describe("subagent UI", () => {
           result: "可展开的 Explore 报告",
           outcome: "ok",
         });
-        return { reply: "完成", reason: "completed", iterations: 1 };
+        return { reply: "completed", reason: "completed", iterations: 1 };
       };
       const instance = render(
         <App
@@ -288,7 +288,7 @@ describe("subagent UI", () => {
           result: "调查完成",
           outcome: "ok",
         });
-        return { reply: "完成", reason: "completed", iterations: 1 };
+        return { reply: "completed", reason: "completed", iterations: 1 };
       };
       const instance = render(
         <App
@@ -393,9 +393,9 @@ describe("subagent UI", () => {
       turnId: "turn-1",
       toolCallId: "read-readme",
       result: [
-        "文件: /project/README.md",
-        "行范围: 1-60 / 60",
-        "注意: 左侧行号不是文件内容，edit_file.edits[].old_string 不要包含这些行号。",
+        "File: /project/README.md",
+        "Line range: 1-60 / 60",
+        "Note: left-hand line numbers are not file content; exclude them from edit_file.edits[].old_string.",
         "",
         "     1\t# README",
       ].join("\n"),
@@ -405,14 +405,14 @@ describe("subagent UI", () => {
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
     expect(frame).toContain("● Inspecting project");
     expect(frame).toContain("✓ Read /project/README.md · 60 lines");
-    expect(frame).not.toContain("左侧行号不是文件内容");
+    expect(frame).not.toContain("left-hand line numbers are not file content");
 
     const transcript = render(
       <MessageList threads={threads} transcript />
     ).lastFrame() ?? "";
     expect(transcript).toContain("Read /project/README.md");
-    expect(transcript).toContain("行范围: 1-60 / 60");
-    expect(transcript).toContain("左侧行号不是文件内容");
+    expect(transcript).toContain("Line range: 1-60 / 60");
+    expect(transcript).toContain("left-hand line numbers are not file content");
   });
 
   test("Assistant 常用 Markdown 转为终端层级且标记间距稳定", () => {

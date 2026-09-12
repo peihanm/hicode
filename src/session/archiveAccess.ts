@@ -22,13 +22,13 @@ export async function checkSessionArchivePath(storage: PillarStorageLayout, path
             const root = await realpath(storage.projectsRoot);
             const rel = relative(root, canonical);
             if (!rel.startsWith("..") && !rel.startsWith("/") && /(?:^|\/)sessions\/session-[^/]+\/archives(?:\/|$)/.test(rel)) {
-                throw new Error("压缩档案禁止通过路径别名访问，请使用框架提供的原始路径");
+                throw new Error("Compaction archives cannot be accessed through path aliases; use the original framework-provided path");
             }
             return false;
         } catch (error) {
             if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
             const parent = dirname(probe);
-            if (parent === probe || missing.length >= 256) throw new Error("无法验证档案路径");
+            if (parent === probe || missing.length >= 256) throw new Error("Cannot validate archive path");
             missing.unshift(basename(probe));
             probe = parent;
         }
@@ -37,9 +37,9 @@ export async function checkSessionArchivePath(storage: PillarStorageLayout, path
 
 export async function resolveSessionArchiveFile(storage: PillarStorageLayout, access: SessionArchiveAccess | undefined, path: string) {
     if (!isSessionArchivePath(storage, path)) return null;
-    if (!access) throw new Error("当前 Agent 未获授 Session 压缩档案读取能力");
+    if (!access) throw new Error("This Agent has no Session compaction archive read capability");
     const file = await access.resolve(path);
-    if (!file) throw new Error("无法验证压缩档案");
+    if (!file) throw new Error("Cannot validate compaction archive");
     return file;
 }
 

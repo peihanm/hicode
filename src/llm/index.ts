@@ -22,9 +22,9 @@ const providers: Record<LLMProviderName, LLMProvider> = {
     deepseek: deepseekProvider,
 };
 
-// LLM 对外统一入口。
-// Provider 由配置显式选择，model 只用于能力校验和远端路由。
-// agent/context 层不感知具体 endpoint API。
+// Public LLM domain entry point.
+// Configuration explicitly selects the Provider; model is used only for capabilities and remote routing.
+// Agent/context layers do not depend on concrete endpoint APIs.
 export function createLLMCaller(
     source: LLMSourceConnection
 ): LLMCaller {

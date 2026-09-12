@@ -25,25 +25,25 @@ describe("PermissionsDialog", () => {
         await flush();
 
         const frame = instance.lastFrame() ?? "";
-        expect(frame).toContain("◆ 执行权限");
+        expect(frame).toContain("◆ Execution permissions");
         expect(frame).toContain("Ask for approval");
         expect(frame).toContain("Approve for me");
         expect(frame).toContain("Full Access");
-        expect(frame).toContain("› Ask for approval  (当前)");
+        expect(frame).toContain("› Ask for approval  (current)");
         expect(frame).not.toContain("●");
         const lines = frame.split("\n");
         const title = lines.find(line => line.includes("Ask for approval"))!;
-        const description = lines.find(line => line.includes("工作区内读写"))!;
-        expect(title.indexOf("Ask")).toBe(description.indexOf("工作区"));
-        expect(frame).toMatch(/需要你批准。\n\s*\n/);
-        expect(frame).toContain("此处决定访问范围和审批方式");
+        const description = lines.find(line => line.includes("Workspace reads"))!;
+        expect(title.indexOf("Ask")).toBe(description.indexOf("Workspace"));
+        expect(frame).toMatch(/require approval\.\n\s*\n/);
+        expect(frame).toContain("this controls access and approval");
         expect(frame).not.toContain("Read Only");
         expect(frame).not.toContain("Bypass");
 
         instance.stdin.write(DOWN);
         await flush();
         expect(instance.lastFrame()).toContain("› Approve for me");
-        expect(instance.lastFrame()).toContain("Ask for approval  (当前)");
+        expect(instance.lastFrame()).toContain("Ask for approval  (current)");
         instance.stdin.write(ENTER);
         await flush();
         expect(onSelect).toHaveBeenCalledWith("auto-review");
@@ -65,12 +65,12 @@ describe("PermissionsDialog", () => {
         instance.stdin.write(ENTER);
         await flush();
 
-        expect(instance.lastFrame()).toContain("◆ 启用 Full Access？");
-        expect(instance.lastFrame()).toContain("命令将不受 Pillar 沙箱隔离");
+        expect(instance.lastFrame()).toContain("◆ Enable Full Access?");
+        expect(instance.lastFrame()).toContain("Commands will run outside Pillar sandbox isolation");
         instance.stdin.write(ENTER);
         await flush();
         expect(onSelect).not.toHaveBeenCalled();
-        expect(instance.lastFrame()).toContain("◆ 执行权限");
+        expect(instance.lastFrame()).toContain("◆ Execution permissions");
 
         instance.stdin.write(ENTER);
         await flush();

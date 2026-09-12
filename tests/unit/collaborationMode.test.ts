@@ -9,8 +9,8 @@ describe("Host-owned collaboration mode", () => {
     test("每次请求从当前模式生成指令，原始 History 不累积模式记录", () => {
         const history = createInitialHistory("/project", "fixture");
         const before = JSON.stringify(history);
-        expect(withCollaborationMode(history, "plan")[0]?.content).toContain("当前工作方式：Plan");
-        expect(withCollaborationMode(history, "build")[0]?.content).toContain("当前工作方式：Build");
+        expect(withCollaborationMode(history, "plan")[0]?.content).toContain("Current mode: Plan");
+        expect(withCollaborationMode(history, "build")[0]?.content).toContain("Current mode: Build");
         expect(JSON.stringify(history)).toBe(before);
     });
     test("模型不存在进入或退出 Plan 的工具，写入拒绝无需弹窗", async () => {

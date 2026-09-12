@@ -9,14 +9,14 @@ const DEFAULT_MAX_CHARS = 50_000;
 const MAX_CHARS = 100_000;
 
 const inputSchema = z.object({
-    url: z.string().trim().min(1).describe("要读取的公共 http(s) URL"),
+    url: z.string().trim().min(1).describe("Public HTTP(S) URL to fetch."),
     max_chars: z
         .number()
         .int()
         .min(1_000)
         .max(MAX_CHARS)
         .default(DEFAULT_MAX_CHARS)
-        .describe(`正文预览字符数，默认 ${DEFAULT_MAX_CHARS}，最大 ${MAX_CHARS}；超出部分保存后可分页读取`),
+        .describe("Body preview character limit, default 50000, maximum 100000; excess content is saved for line-based reading."),
 });
 
 export function htmlToReadableText(html: string): string {
@@ -61,12 +61,7 @@ function permissionContent(url: string): string {
 
 export const webFetchTool: Tool<typeof inputSchema> = {
     name: "web_fetch",
-    description: [
-        "读取用户提供或已知的公共网页、文档或文本 API，并把 HTML 转成紧凑可读文本。",
-        "仅执行 GET；不支持登录态、Cookie、localhost、私网地址或二进制下载。交互式页面和本地 UI 请使用浏览器工具。",
-        "首次访问每个域名需要权限确认；跨域重定向不会自动跟随，必须对新域名重新调用。",
-        "长正文保存为固定结果，用 read_file 读取返回的保存路径，offset/limit 使用行号。",
-    ].join("\n"),
+    description: "Fetch a supplied or reliably known public HTTP(S) page/document/text API using GET and convert HTML to readable text. This is not a search engine or browser. No login state, cookies, localhost/private networks or binary downloads. Interactive pages require an actually provided browser capability; do not invent one. Domain access follows runtime approval; cross-domain redirects require a separate request. Read long saved results with read_file using line-based offset/limit.",
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
@@ -76,7 +71,7 @@ export const webFetchTool: Tool<typeof inputSchema> = {
             const parsed = parsePublicWebUrl(url);
             return {
                 behavior: "ask",
-                message: `需要联网读取 ${parsed.hostname} 的公开内容`,
+                message: `Network access required to read public content from ${parsed.hostname} .`,
             };
         } catch (error) {
             return {
@@ -101,15 +96,15 @@ export const webFetchTool: Tool<typeof inputSchema> = {
             response.redirectUrl
         ) {
             return [
-                `跨域重定向未自动跟随（HTTP ${response.status}）。`,
-                `原 URL: ${response.url}`,
-                `目标 URL: ${response.redirectUrl}`,
-                "如需继续，请对目标 URL 再调用 web_fetch，以单独检查并授权新域名。",
+                `Cross-domain redirect was not followed automatically (HTTP ${response.status}).`,
+                `Original URL: ${response.url}`,
+                `Target URL: ${response.redirectUrl}`,
+                "To continue, call web_fetch on the target URL to check and authorize the new domain separately.",
             ].join("\n");
         }
         if (!isTextContentType(response.contentType)) {
             return {
-                content: `不支持的响应类型: ${response.contentType || "unknown"}（${response.body.length} bytes）`,
+                content: `Unsupported response type: ${response.contentType || "unknown"}(${response.body.length} bytes)`,
                 outcome: "failed",
             };
         }
@@ -128,7 +123,7 @@ export const webFetchTool: Tool<typeof inputSchema> = {
         const content = [
             ...header,
             "",
-            visibleBody || "（响应正文为空）",
+            visibleBody || "(empty response body)",
         ].join("\n");
         if (truncated) {
             try {

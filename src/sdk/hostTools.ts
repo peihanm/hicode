@@ -36,10 +36,10 @@ export function adaptPillarHostTools(
 ): readonly Tool[] {
     if (input === undefined) return [];
     if (!Array.isArray(input)) {
-        throw invalidTool("tools 必须是数组");
+        throw invalidTool("tools must be an array");
     }
     if (input.length > MAX_HOST_TOOLS) {
-        throw invalidTool(`最多允许 ${MAX_HOST_TOOLS} 个 Host Tool`);
+        throw invalidTool(`Maximum allowed: ${MAX_HOST_TOOLS} Host Tools`);
     }
 
     const tools: Tool[] = [];
@@ -47,14 +47,14 @@ export function adaptPillarHostTools(
     let totalSchemaChars = 0;
     for (const [index, candidate] of input.entries()) {
         if (!isRecord(candidate)) {
-            throw invalidTool(`tools[${index}] 必须是对象`);
+            throw invalidTool(`tools[${index}] must be an object`);
         }
         const unknownKeys = Object.keys(candidate).filter(
             (key) => !HOST_TOOL_KEYS.has(key)
         );
         if (unknownKeys.length > 0) {
             throw invalidTool(
-                `tools[${index}] 包含未知字段: ${unknownKeys.join(", ")}`
+                `tools[${index}] contains unknown fields: ${unknownKeys.join(", ")}`
             );
         }
         if (
@@ -63,11 +63,11 @@ export function adaptPillarHostTools(
             candidate.name.startsWith("mcp__")
         ) {
             throw invalidTool(
-                `tools[${index}].name 必须是 1-64 位字母开头的字母、数字或下划线，且不能使用 mcp__ 前缀`
+                `tools[${index}].name must be 1–64 letters, digits or underscores, start with a letter and not use the mcp__ prefix`
             );
         }
         if (names.has(candidate.name)) {
-            throw invalidTool(`重复 Host Tool 名称: ${candidate.name}`);
+            throw invalidTool(`Duplicate Host Tool name: ${candidate.name}`);
         }
         names.add(candidate.name);
         if (
@@ -76,17 +76,17 @@ export function adaptPillarHostTools(
             candidate.description.length > MAX_DESCRIPTION_CHARS
         ) {
             throw invalidTool(
-                `Host Tool ${candidate.name} 的 description 必须是 1-${MAX_DESCRIPTION_CHARS} 字符`
+                `Host Tool ${candidate.name} description must contain 1–${MAX_DESCRIPTION_CHARS} characters`
             );
         }
         if (!(candidate.parameters instanceof z.ZodType)) {
             throw invalidTool(
-                `Host Tool ${candidate.name} 的 parameters 必须是 Zod Schema`
+                `Host Tool ${candidate.name} parameters must be a Zod Schema`
             );
         }
         if (typeof candidate.readOnly !== "boolean") {
             throw invalidTool(
-                `Host Tool ${candidate.name} 必须显式声明 readOnly`
+                `Host Tool ${candidate.name} must explicitly declare readOnly`
             );
         }
         if (
@@ -94,12 +94,12 @@ export function adaptPillarHostTools(
             typeof candidate.concurrencySafe !== "boolean"
         ) {
             throw invalidTool(
-                `Host Tool ${candidate.name} 的 concurrencySafe 必须是 boolean`
+                `Host Tool ${candidate.name} concurrencySafe must be boolean`
             );
         }
         if (candidate.concurrencySafe === true && !candidate.readOnly) {
             throw invalidTool(
-                `Host Tool ${candidate.name} 只有 readOnly=true 时才能声明 concurrencySafe=true`
+                `Host Tool ${candidate.name} may declare concurrencySafe=true only when readOnly=true`
             );
         }
         const resultLimit = candidate.maxResultSizeChars;
@@ -111,12 +111,12 @@ export function adaptPillarHostTools(
                 resultLimit > DEFAULT_MAX_RESULT_CHARS)
         ) {
             throw invalidTool(
-                `Host Tool ${candidate.name} 的 maxResultSizeChars 必须是 1-${DEFAULT_MAX_RESULT_CHARS} 的整数`
+                `Host Tool ${candidate.name} maxResultSizeChars must be an integer from 1 to ${DEFAULT_MAX_RESULT_CHARS} .`
             );
         }
         if (typeof candidate.execute !== "function") {
             throw invalidTool(
-                `Host Tool ${candidate.name} 必须提供 execute 函数`
+                `Host Tool ${candidate.name} must provide an execute function`
             );
         }
 
@@ -151,25 +151,25 @@ export function adaptPillarHostTools(
             schema = schemaForTool(tool).function.parameters;
         } catch (error) {
             throw invalidTool(
-                `Host Tool ${name} 的参数 Schema 无法转换为 JSON Schema`,
+                `Host Tool ${name} parameter Schema cannot be converted to JSON Schema`,
                 error
             );
         }
         if (schema.type !== "object") {
             throw invalidTool(
-                `Host Tool ${name} 的 parameters 必须生成顶层 object JSON Schema`
+                `Host Tool ${name} parameters must produce a top-level object JSON Schema`
             );
         }
         const schemaChars = stringifySchema(name, schema).length;
         if (schemaChars > MAX_SCHEMA_CHARS) {
             throw invalidTool(
-                `Host Tool ${name} 的参数 Schema 超过 ${MAX_SCHEMA_CHARS} 字符`
+                `Host Tool ${name} parameter Schema exceeds ${MAX_SCHEMA_CHARS} characters`
             );
         }
         totalSchemaChars += schemaChars;
         if (totalSchemaChars > MAX_TOTAL_SCHEMA_CHARS) {
             throw invalidTool(
-                `Host Tool 参数 Schema 合计超过 ${MAX_TOTAL_SCHEMA_CHARS} 字符`
+                `Combined Host Tool parameter schemas exceed ${MAX_TOTAL_SCHEMA_CHARS} characters`
             );
         }
         tools.push(tool);
@@ -189,21 +189,21 @@ export function adaptPillarHostTools(
 function normalizeOutput(name: string, output: PillarHostToolOutput): ToolOutput {
     if (typeof output === "string") return output;
     if (!isRecord(output)) {
-        throw new Error(`Host Tool ${name} 返回值必须是字符串或结果对象`);
+        throw new Error(`Host Tool ${name} must return a string or result object`);
     }
     const keys = Object.keys(output);
     if (keys.some((key) => key !== "content" && key !== "outcome")) {
-        throw new Error(`Host Tool ${name} 返回了未知结果字段`);
+        throw new Error(`Host Tool ${name} returned unknown result fields`);
     }
     if (typeof output.content !== "string") {
-        throw new Error(`Host Tool ${name} 返回值的 content 必须是字符串`);
+        throw new Error(`Host Tool ${name} result content must be a string`);
     }
     if (
         output.outcome !== undefined &&
         output.outcome !== "ok" &&
         output.outcome !== "failed"
     ) {
-        throw new Error(`Host Tool ${name} 返回值的 outcome 必须是 ok 或 failed`);
+        throw new Error(`Host Tool ${name} result outcome must be ok or failed`);
     }
     return {
         content: output.content,
@@ -215,7 +215,7 @@ function stringifySchema(name: string, schema: Record<string, unknown>): string 
     try {
         return JSON.stringify(schema);
     } catch (error) {
-        throw invalidTool(`Host Tool ${name} 的参数 Schema 无法序列化`, error);
+        throw invalidTool(`Host Tool ${name} parameter Schema cannot be serialized`, error);
     }
 }
 

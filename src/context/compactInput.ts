@@ -19,7 +19,7 @@ export function selectCompactInput(input: {
     });
     const full: Message[] = [system, ...labelled, {role: "user", origin: "runtime" as const, content: prompt}];
     if (tokenCountWithEstimation(full) <= budget) return {messages: full, coverage: ""};
-    if (!sources) throw new Error("compact prompt too long: 估算已超过输入预算；内部 Agent 无来源档案，原历史已保留");
+    if (!sources) throw new Error("compact prompt too long: estimated input exceeds budget; internal Agent has no source archive. Original history was preserved.");
 
     const mandatory = new Set<number>();
     // The prior handoff is part of History, not a second mutable state object.
@@ -30,7 +30,7 @@ export function selectCompactInput(input: {
         [...mandatory].reduce((sum, index) => sum + estimateMessageTokens(labelled[index]!), 0);
     // At most three omitted ranges: a suffix plus the two required messages above.
     const remaining = budget - fixed - 512;
-    if (remaining <= 0) throw new Error("交接输入预算无法容纳当前请求、上一份交接与固定指令，原历史已保留");
+    if (remaining <= 0) throw new Error("Handoff input budget cannot fit the current request, prior handoff and fixed instructions. Original history was preserved.");
     const start = findCompactTailStart([system, ...labelled], {
         minTokens: Number.MAX_SAFE_INTEGER, minTextMessages: Number.MAX_SAFE_INTEGER, maxTokens: remaining,
     }) - 1;
@@ -42,9 +42,9 @@ export function selectCompactInput(input: {
         while (index < labelled.length && !selected.has(index)) index++;
         omitted.push(`[[${sources.current.id}/${begin + 1}]]..[[${sources.current.id}/${index}]]`);
     }
-    const coverage = `交接覆盖限制：本次未提交给摘要模型的原文范围为 ${omitted.join(", ")}。这些内容仍在来源索引中；本交接不代表已总结全部会话，精确细节需回查。`;
+    const coverage = `Handoff coverage limit: original ranges omitted from this summarization request: ${omitted.join(", ")}. They remain in the source index. This handoff does not cover the entire conversation; consult sources for exact details.`;
     const messages: Message[] = [system, ...labelled.filter((_, index) => selected.has(index)),
         {role: "user", origin: "runtime" as const, content: `${prompt}\n\n${coverage}`}];
-    if (tokenCountWithEstimation(messages) > budget) throw new Error("交接输入及覆盖说明超过预算，原历史已保留");
+    if (tokenCountWithEstimation(messages) > budget) throw new Error("Handoff input and coverage notice exceed the budget. Original history was preserved.");
     return {messages, coverage};
 }

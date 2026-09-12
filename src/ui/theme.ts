@@ -1,5 +1,5 @@
-// 颜色主题：统一管理 ANSI 颜色，方便以后改主题
-// 用 ink 的 color prop，不直接写 ANSI 转义码
+// Centralized color theme for consistent ANSI colors and future theme changes.
+// Use Ink's color prop rather than raw ANSI escapes.
 
 export const COLORS = {
     user: "#0369A1",
@@ -26,12 +26,12 @@ export const COLORS = {
     diffText: "#202124",
 } as const;
 
-// 视觉符号常量：codebuddy/claude code 风格
+// Visual symbols in the Codebuddy/Claude Code style.
 export const SYMBOLS = {
-    prompt: "❯",        // 输入框提示符
-    userMark: "❯",      // 用户消息标记
-    assistantMark: "●", // assistant 消息标记
-    spinner: "✻",      // 思考中 spinner
-    bullet: "•",       // 列表项
-    timer: "◷",        // turn 耗时
+    prompt: "❯",        // Input prompt
+    userMark: "❯",      // User message marker
+    assistantMark: "●", // Assistant message marker
+    spinner: "✻",      // Thinking spinner
+    bullet: "•",       // List bullet
+    timer: "◷",        // Turn elapsed time
 } as const;

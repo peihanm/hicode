@@ -27,12 +27,12 @@ test("提取事实保留角色来源，阶段二发布；忘记后同一 frame �
 }));
 test("来源已从当前会话移除则跳过，不生成事实或阻挡显式 note",async()=>withTempProject(async(cwd,storage)=>{
  const memory=createTestMemoryRuntime(cwd,{autoExtract:true});await persist(storage,cwd,[{role:"user", origin: "user" as const,content:"旧会话内容"}]);const hashes=readSessionSourceIds(storage,cwd,"source-session");await memory.captureSource("source-session",[],memoryOwner().signal);
- await persist(storage,cwd,[{role:"user", origin: "user" as const,content:"新会话内容"}]);expect(()=>readSessionSourceMessages(storage,cwd,"source-session",hashes)).toThrow("当前 Session");expect((await memory.maintain(memoryOwner())).status).toBe("empty");expect(new MemoryPublicationStore(storage,cwd).snapshot().frames[0]?.status).toBe("unavailable");await remember(memory,"fresh","新偏好");expect((await memory.maintain(memoryOwner())).status).toBe("published");await memory.close();
+ await persist(storage,cwd,[{role:"user", origin: "user" as const,content:"新会话内容"}]);expect(()=>readSessionSourceMessages(storage,cwd,"source-session",hashes)).toThrow("current Session");expect((await memory.maintain(memoryOwner())).status).toBe("empty");expect(new MemoryPublicationStore(storage,cwd).snapshot().frames[0]?.status).toBe("unavailable");await remember(memory,"fresh","新偏好");expect((await memory.maintain(memoryOwner())).status).toBe("published");await memory.close();
 }));
 test("阶段一无工具，伪造来源或把助手声称升级为工具观察均拒绝",async()=>withTempProject(async(cwd,storage)=>{
  const hash="a".repeat(64);const fake=createFakeLLM([assistantText(JSON.stringify({facts:[{key:"result",type:"project",content:"测试通过",basis:"tool-observed",sources:[hash]}]}))]);
  const extractor=createMemorySourceExtractorFactory(fake.callLLM)({cwd,storage,target:{source:"glm",model:"glm-test",label:"GLM"},source:{id:"glm",label:"GLM",apiKeyEnv:"GLM_API_KEY"}});
- await expect(extractor.extract([{id:hash,role:"assistant",content:"测试通过"}],memoryOwner().signal,0)).rejects.toThrow("证据类别");expect(fake.calls[0]?.tools).toHaveLength(0);
+ await expect(extractor.extract([{id:hash,role:"assistant",content:"测试通过"}],memoryOwner().signal,0)).rejects.toThrow("evidence category");expect(fake.calls[0]?.tools).toHaveLength(0);
 }));
 
 test("超大工具输出与派生压缩摘要不冒充完整证据，窗口声明省略数量",async()=>withTempProject(async(cwd,storage)=>{

@@ -70,7 +70,7 @@ export function getSettingsPath(
 ): string {
     if (source === "user") {
         if (!userSettingsPath) {
-            throw new Error("用户 Settings 路径必须由 PillarStorageLayout 提供");
+            throw new Error("User Settings path must be provided by PillarStorageLayout");
         }
         return resolve(userSettingsPath);
     }
@@ -110,7 +110,7 @@ function appendUnknownFieldIssues(
         issues.push(issueForDocument(document, {
             field,
             severity: "warning",
-            message: bounded(`未知 Settings 字段 ${field}，已保留但不会生效`),
+            message: bounded(`Unknown Settings field ${field}; preserved but ignored`),
         }));
     }
 }
@@ -159,7 +159,7 @@ function collectUnknownFieldIssues(
             issues.push(issueForDocument(document, {
                 field: "sources",
                 severity: "warning",
-                message: "sources 只允许在用户级 Settings 中定义；当前来源已忽略",
+                message: "sources may only be defined in user Settings; this definition was ignored",
             }));
         }
     }
@@ -244,7 +244,7 @@ function loadSettingsDocument(
                 path: location.path,
                 severity: "error",
                 message: bounded(
-                    `读取 Settings 失败: ${error instanceof Error ? error.message : String(error)}`
+                    `Failed to read Settings: ${error instanceof Error ? error.message : String(error)}`
                 ),
             }],
         };
@@ -261,7 +261,7 @@ function loadSettingsDocument(
                     path: location.path,
                     severity: "error",
                     message: bounded(
-                        `Settings JSON 无法解析: ${error instanceof Error ? error.message : String(error)}`
+                        `Failed to parse Settings JSON: ${error instanceof Error ? error.message : String(error)}`
                     ),
                 }],
             };
@@ -279,7 +279,7 @@ function loadSettingsDocument(
                 severity: "error",
                 message: first
                     ? formatSchemaIssue(first.path, first.message)
-                    : "Settings 格式无效",
+                    : "Invalid Settings format",
             }],
         };
     }

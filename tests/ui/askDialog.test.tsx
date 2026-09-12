@@ -16,16 +16,16 @@ test("AskDialog 多题收集完毕后才回流完整答案", async () => {
         ]}, resolve: decision => decisions.push(decision),
     }} onDone={() => {}}/>);
     await flush();
-    expect(instance.lastFrame()).toContain("需要你确认 · 问题 1/2");
+    expect(instance.lastFrame()).toContain("Confirmation needed · Question 1/2");
     expect(instance.lastFrame()).not.toContain("│");
     instance.stdin.write("\r");
     await flush();
-    expect(instance.lastFrame()).toContain("需要你确认 · 问题 2/2");
+    expect(instance.lastFrame()).toContain("Confirmation needed · Question 2/2");
     expect(decisions).toEqual([]);
     instance.stdin.write("\r");
     await flush();
-    expect(instance.lastFrame()).toContain("确认回答 · 2/2 已回答");
-    expect(instance.lastFrame()).toContain("提交回答");
+    expect(instance.lastFrame()).toContain("Confirm answers · 2/2 answered");
+    expect(instance.lastFrame()).toContain("Submit answers");
     expect(instance.lastFrame()).not.toContain("│");
     expect(decisions).toEqual([]);
     instance.stdin.write("\r");
@@ -77,7 +77,7 @@ test("AskDialog 无边框且长中文说明随终端宽度换行", async () => {
         expect(frame).not.toContain("Pillar needs your input");
         expect(frame).not.toContain("Type something");
         expect(frame).toContain("❯ 1. 整页全白");
-        expect(frame).toContain("自己填写…");
+        expect(frame).toContain("Enter your own answer…");
         expect(frame.replace(/\s/g, "")).toContain(description);
         expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
     }
@@ -94,12 +94,12 @@ test("AskDialog 自由输入的中文提示、返回选项和提交行为一致"
     await flush();
     instance.stdin.write("\r");
     await flush();
-    expect(instance.lastFrame()).toContain("输入你的回答…");
-    expect(instance.lastFrame()).toContain("Esc 返回选项");
+    expect(instance.lastFrame()).toContain("Enter your answer…");
+    expect(instance.lastFrame()).toContain("Esc back to options");
     expect(instance.lastFrame()).not.toContain("│");
     instance.stdin.write("\u001b");
     await flush();
-    expect(instance.lastFrame()).toContain("自己填写…");
+    expect(instance.lastFrame()).toContain("Enter your own answer…");
     expect(decisions).toEqual([]);
     instance.stdin.write("\r");
     await flush();
@@ -108,7 +108,7 @@ test("AskDialog 自由输入的中文提示、返回选项和提交行为一致"
     instance.stdin.write("\r");
     await flush();
     expect(decisions).toEqual([]);
-    expect(instance.lastFrame()).toContain("❯ 确认输入");
+    expect(instance.lastFrame()).toContain("❯ Confirm input");
     instance.stdin.write("\r");
     await flush();
     expect(decisions).toEqual([{behavior: "allow", answers: {"页面是什么样的？": "只有标题，没有网格"}}]);

@@ -8,7 +8,9 @@ describe("Function parameter JSON Schema", () => {
     test("所有内置工具满足 JSON Schema Draft 7 元规范", () => {
         const validator = new Ajv({strict: false});
         for (const registration of createToolCatalog({}).registrations) {
-            const schema = registration.schema().function.parameters;
+            const definition = registration.schema().function;
+            expect(JSON.stringify(definition), registration.tool.name).not.toMatch(/[\u3400-\u9fff]/u);
+            const schema = definition.parameters;
             expect(validator.validateSchema(schema), registration.tool.name).toBe(true);
         }
     });

@@ -1,5 +1,5 @@
-// permissions 模块的统一出口
-// 方便其他文件 import：from "../permissions/index.js"
+// Public permissions entry point.
+// Other modules import from ../permissions/index.js.
 
 export type {
     PermissionResult,

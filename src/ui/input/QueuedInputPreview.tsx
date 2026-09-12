@@ -49,8 +49,8 @@ export function QueuedInputPreview({
                 );
             })}
             <Text color={COLORS.dim}>
-                ↑ 编辑排队消息
-                {remaining > 0 ? ` · 另有 ${remaining} 条` : ""}
+                ↑ Edit queued message
+                {remaining > 0 ? ` · plus ${remaining} more` : ""}
             </Text>
         </Box>
     );

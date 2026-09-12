@@ -24,11 +24,11 @@ test.each(["", "\n\n", "\r\n  \r\n", "\n".repeat(10)])("草稿尾部空白 %j �
     </Box>);
     const lines = (view.lastFrame() ?? "").split("\n");
     const bodyLine = lines.findIndex(line => line.includes(body));
-    const statusLine = lines.findIndex(line => line.includes("正在构造 write_file 参数"));
+    const statusLine = lines.findIndex(line => line.includes("Building write_file arguments"));
     expect(bodyLine).toBeGreaterThanOrEqual(0);
     expect(statusLine - bodyLine).toBe(2);
-    expect(view.lastFrame()).toContain("回复说明");
-    expect(view.lastFrame()).not.toContain("正在生成");
+    expect(view.lastFrame()).toContain("Response commentary");
+    expect(view.lastFrame()).not.toContain("Generating");
     expect(lines[bodyLine + 1]?.trim()).toBe("");
     expect(store.getDraftSnapshot()?.text).toBe(text);
 });
@@ -96,9 +96,9 @@ test("进入工具参数阶段补齐正文尾部，回到正文阶段再显示�
         view.rerender(<AssistantDraftView store={store} phase="tool_input"/>);
         await flush();
         expect(view.lastFrame()).toContain("我已经了解全貌，现在写一份说明文档。");
-        expect(view.lastFrame()).toContain("回复说明");
-        expect(view.lastFrame()).not.toContain("正在生成");
+        expect(view.lastFrame()).toContain("Response commentary");
+        expect(view.lastFrame()).not.toContain("Generating");
         view.rerender(<AssistantDraftView store={store} phase="content"/>);
-        expect(view.lastFrame()).toContain("正在生成");
+        expect(view.lastFrame()).toContain("Generating");
     } finally {await draft.finish("discarded");}
 });

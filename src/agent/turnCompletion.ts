@@ -16,14 +16,14 @@ export function formatTodoCompletionReminder(
 
     return [
         "<system-reminder>",
-        "当前 Session 仍有标记为 in_progress 的 Todo：",
+        "This session still has in_progress todos:",
         ...inProgressTodos.map((todo) => `- ${todo.content}`),
-        "本轮结束后不会再有工作实际执行，因此不能保留『正在进行』状态。若任务已经完成，先调用 todo_write 标记 completed；若尚未完成则继续执行；若决定暂缓，改为 pending 并在最终回答中准确说明。不要直接提交最终回答。",
-        "上一版候选回答如下：",
+        "No further foreground work runs after this turn ends. If done, call todo_write to mark completed; if unfinished, continue working; if deferred, mark pending and explain the remaining work accurately. Resolve this state before submitting the final answer.",
+        "Previous candidate answer:",
         "<candidate-reply>",
         sanitizeCandidateReply(candidateReply),
         "</candidate-reply>",
-        "请保留候选回答中的有效信息，在其基础上修正上面的缺失；不要缩减成只补充一条说明，也不要仅重复完成声明。",
+        "Preserve valid information from the candidate and correct the missing state. Provide a complete final answer in the user's language, not just an addendum or repeated completion claim.",
         "</system-reminder>",
     ].join("\n");
 }

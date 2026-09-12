@@ -42,7 +42,7 @@ function absolutePath(cwd: string, path: string): string {
 async function requireDirectory(path: string): Promise<string> {
     const info = await lstat(path);
     if (!info.isDirectory() || info.isSymbolicLink()) {
-        throw new Error(`授权目标不是普通目录: ${path}`);
+        throw new Error(`Authorization target is not a regular directory: ${path}`);
     }
     return realpath(path);
 }
@@ -64,7 +64,7 @@ async function nearestExistingDirectory(path: string): Promise<string> {
         }
         const parent = dirname(candidate);
         if (parent === candidate) {
-            throw new Error(`找不到可授权的父目录: ${path}`);
+            throw new Error(`Cannot find a parent directory to authorize: ${path}`);
         }
         candidate = parent;
     }
@@ -107,7 +107,7 @@ export function createDirectoryAccessRuntime(
     const validateWithinBoundary = async (path: string): Promise<string> => {
         const candidate = await canonicalTarget(absolutePath(cwd, path));
         if (!isPathInside(hardBoundary, candidate)) {
-            throw new Error(`路径越过 Host 边界: ${path}`);
+            throw new Error(`Path crosses the Host boundary: ${path}`);
         }
         return candidate;
     };
@@ -116,7 +116,7 @@ export function createDirectoryAccessRuntime(
         const candidate = absolutePath(cwd, path);
         const normalized = await requireDirectory(candidate);
         if (!isPathInside(hardBoundary, normalized)) {
-            throw new Error(`路径越过 Host 边界: ${path}`);
+            throw new Error(`Path crosses the Host boundary: ${path}`);
         }
         return normalized;
     };
@@ -157,13 +157,13 @@ export function createDirectoryAccessRuntime(
         },
         async grantDirectory(directory, scope) {
             if (!allowGrants) {
-                throw new Error("当前 Runtime 不允许扩大目录访问范围");
+                throw new Error("This Runtime cannot expand directory access");
             }
             await this.initialize();
             const normalized = await normalizeDirectory(directory);
             if (scope === "project") {
                 if (!options.persistDirectory) {
-                    throw new Error("当前 Host 不支持持久化目录授权");
+                    throw new Error("This Host does not support persistent directory grants");
                 }
                 await options.persistDirectory(normalized);
             }

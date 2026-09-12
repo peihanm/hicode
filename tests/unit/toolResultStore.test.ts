@@ -190,7 +190,7 @@ describe("ToolResultStore", () => {
         toolName: "test",
         content: "private session output",
       });
-      await expect(second.resolveFile(persisted.path)).rejects.toThrow("无权");
+      await expect(second.resolveFile(persisted.path)).rejects.toThrow("Access denied");
     });
   });
 

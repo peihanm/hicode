@@ -107,7 +107,7 @@ const TOOLS = [
 ];
 
 const USAGE = [
-    "用法：",
+    "Usage:",
     "  bun tests/diagnostics/qwenToolStream.ts",
     "  bun tests/diagnostics/qwenToolStream.ts --compare-glm",
     "  bun tests/diagnostics/qwenToolStream.ts --glm-only",
@@ -160,7 +160,7 @@ function parseOptions(argv: readonly string[]): ProbeOptions {
             console.log(USAGE);
             process.exit(0);
         }
-        throw new Error(`未知参数: ${argument ?? "<empty>"}`);
+        throw new Error(`Unknown argument: ${argument ?? "<empty>"}`);
     }
 
     if (compareGlm && glmOnly) {
@@ -265,7 +265,7 @@ async function runProbe(
     const startedAt = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => {
-        controller.abort(new Error(`${config.label} 请求超过 ${timeoutMs}ms`));
+        controller.abort(new Error(`${config.label} Request did not complete within ${timeoutMs}ms`));
     }, timeoutMs);
     timeout.unref?.();
 
@@ -435,7 +435,7 @@ function printResult(result: ProbeResult): void {
     );
     console.log(`- finish_reason: ${result.finishReason ?? "未收到"}`);
     console.log(`- [DONE]: ${result.doneReceived ? "收到" : "未收到"}`);
-    console.log(`- 完整参数 JSON: ${result.argumentsAreValidJson ? "有效" : "无效"}`);
+    console.log(`- 完整参数 JSON: ${result.argumentsAreValidJson ? "有效" : "Invalid"}`);
     console.log(`- 工具名与参数原文: ${result.toolCallMatchesProbe ? "一致" : "不一致"}`);
     if (result.usage) {
         console.log(`- usage: ${JSON.stringify(result.usage)}`);

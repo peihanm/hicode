@@ -7,7 +7,7 @@ export interface ToolCallBatch {
     calls: ToolCall[];
 }
 
-// 与 Claude Code 一致：连续安全工具合并为并发批次，非安全工具各自独占一个批次。
+// Like Claude Code, group adjacent concurrency-safe tools; unsafe tools get exclusive batches.
 export function partitionToolCalls(
     calls: ToolCall[],
     isConcurrencySafe: (name: string, argsJson: string) => boolean

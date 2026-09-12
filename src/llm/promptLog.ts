@@ -18,7 +18,7 @@ import {
 import type {LLMCallKind, PromptLogPendingResponse, PromptLogRequest, PromptLogResponse,} from "./types.js";
 
 // Prompt logs are project runtime diagnostics, not repository configuration.
-// 失败不致命，避免影响 agent 主流程。
+// Failure is nonfatal to avoid interrupting the main Agent workflow.
 const PROMPT_LOG_DIR = "prompt-logs";
 const MAX_PROMPT_LOG_BYTES = 64 * 1024 * 1024;
 const MAX_PROMPT_LOG_FILES = 200;
@@ -81,7 +81,7 @@ function ensureDirectory(path: string): void {
     }
     const info = lstatSync(path);
     if (!info.isDirectory() || info.isSymbolicLink()) {
-        throw new Error(`Prompt Log 目录不安全: ${path}`);
+        throw new Error(`Unsafe Prompt Log directory: ${path}`);
     }
     chmodSync(path, 0o700);
 }
@@ -162,7 +162,7 @@ export function beginPromptLog(
             const directory = dirname(filepath);
             const directoryInfo = lstatSync(directory);
             if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
-                throw new Error("Prompt Log 目录在请求期间变得不安全");
+                throw new Error("Prompt Log directory became unsafe during the request");
             }
             const serialized = redactSerializedLog(JSON.stringify(
                 {
@@ -177,7 +177,7 @@ export function beginPromptLog(
                 2
             ), secrets);
             if (Buffer.byteLength(serialized, "utf8") > MAX_PROMPT_LOG_BYTES) {
-                throw new Error("Prompt Log 超过 64 MiB 上限");
+                throw new Error("Prompt Log exceeds the 64 MiB limit");
             }
             writeFileSync(
                 temporaryPath!,

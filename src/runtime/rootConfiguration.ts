@@ -67,8 +67,8 @@ export function createPillarRootConfiguration(
         "workspaceBoundary"
     );
     assertContains(workspaceBoundary, cwd);
-    if (options.allowFullAccess !== undefined && typeof options.allowFullAccess !== "boolean") throw new Error("allowFullAccess 必须是 boolean");
-    if (options.settings.permissions.defaultMode === "full-access" && !options.allowFullAccess) throw new Error("当前 Host 不允许 Full Access");
+    if (options.allowFullAccess !== undefined && typeof options.allowFullAccess !== "boolean") throw new Error("allowFullAccess must be boolean");
+    if (options.settings.permissions.defaultMode === "full-access" && !options.allowFullAccess) throw new Error("This Host does not allow Full Access");
     const configuration: PillarRootConfiguration = {
         [rootConfigurationBrand]: true,
         allowFullAccess: options.allowFullAccess ?? false,
@@ -100,7 +100,7 @@ export function normalizePillarFileSources(
     sources: PillarFileSources
 ): PillarFileSources {
     if (!sources || typeof sources !== "object") {
-        throw new Error("fileSources 必须是对象");
+        throw new Error("fileSources must be an object");
     }
     return freezeFileSources({
         settings: normalizeSources(
@@ -137,16 +137,16 @@ function normalizeSources<T extends string>(
     domain: string
 ): readonly T[] {
     if (!Array.isArray(values)) {
-        throw new Error(`fileSources.${domain} 必须是数组`);
+        throw new Error(`fileSources.${domain} must be an array`);
     }
     const allowedSet = new Set<string>(allowed);
     const seen = new Set<string>();
     for (const value of values) {
         if (!allowedSet.has(value)) {
-            throw new Error(`fileSources.${domain} 包含无效来源 ${String(value)}`);
+            throw new Error(`fileSources.${domain} contains invalid source ${String(value)}`);
         }
         if (seen.has(value)) {
-            throw new Error(`fileSources.${domain} 包含重复来源 ${value}`);
+            throw new Error(`fileSources.${domain} contains duplicate source ${value}`);
         }
         seen.add(value);
     }
@@ -166,11 +166,11 @@ function freezeFileSources(sources: PillarFileSources): PillarFileSources {
 
 function requireAbsolutePath(value: string, name: string): string {
     if (typeof value !== "string" || !value.trim()) {
-        throw new Error(`${name} 必须是非空绝对路径`);
+        throw new Error(`${name} must be a non-empty absolute path`);
     }
     const path = resolve(value.trim());
     if (!isAbsolute(value.trim())) {
-        throw new Error(`${name} 必须是绝对路径`);
+        throw new Error(`${name} must be an absolute path`);
     }
     return path;
 }
@@ -182,7 +182,7 @@ function assertContains(boundary: string, cwd: string): void {
         relation.startsWith(`..${sep}`) ||
         isAbsolute(relation)
     ) {
-        throw new Error("workspaceBoundary 不包含 cwd");
+        throw new Error("workspaceBoundary does not contain cwd");
     }
 }
 

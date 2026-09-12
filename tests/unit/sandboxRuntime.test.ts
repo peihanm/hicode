@@ -120,7 +120,7 @@ describe("Sandbox Runtime lease", () => {
         const second = await createRuntime({storage, cwd: "/project-b", settings});
         expect(second.status).toMatchObject({
             kind: "unavailable",
-            reason: expect.stringContaining("另一个 Root Runtime"),
+            reason: expect.stringContaining("Another Root Runtime"),
         });
 
         finishInitialization?.();
@@ -151,7 +151,7 @@ test("真实依赖的 reset 保留 enabled 标记，不可用作活动 owner 判
     expect(JSON.parse(output)).toEqual({before: false, after: true});
 });
 
-test("关闭等待 reset 完成，清理失败后禁止新 Root 接管", async () => {
+test("关闭等待 reset 完成，cleanup failed后禁止新 Root 接管", async () => {
     await withTempProject(async (cwd, storage) => {
         let configured = false, resets = 0;
         let rejectReset!: (error: Error) => void;
@@ -168,12 +168,12 @@ test("关闭等待 reset 完成，清理失败后禁止新 Root 接管", async (
         expect(first.status.kind).toBe("ready");
         const closing = first.close();
         expect(first.close() === closing).toBe(true);
-        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("另一个 Root")});
-        await expect(first.wrapCommand("true", cwd, new AbortController().signal)).rejects.toThrow("已关闭");
+        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("Another Root")});
+        await expect(first.wrapCommand("true", cwd, new AbortController().signal)).rejects.toThrow("is closed");
         const outcome = closing.catch(error => error);
         rejectReset(new Error("reset failed"));
         expect(await outcome).toMatchObject({message: "reset failed"});
-        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("清理失败")});
+        expect((await factory({cwd, storage, settings})).status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("cleanup failed")});
         expect(resets).toBe(1);
     });
 });
@@ -221,7 +221,7 @@ test.each(["bun", "npm"] as const)("受管 %s 缓存拒绝 symlink，初始化�
             annotateStderrWithSandboxFailures: (_command, stderr) => stderr, cleanupAfterCommand() {},
             async reset() {active = false; resets++;}});
         const rejected = await factory({cwd, storage, settings});
-        expect(rejected.status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("不安全")});
+        expect(rejected.status).toMatchObject({kind: "unavailable", reason: expect.stringContaining("Unsafe")});
         expect(resets).toBe(1);
         await unlink(cache);
         const runtime = await factory({cwd, storage, settings: {...settings, filesystem: {denyRead: [], denyWrite: [cache]}}});

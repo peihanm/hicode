@@ -5,14 +5,14 @@ import {COLORS} from "../theme.js";
 import type {LLMRetryInfo} from "../../llm/types.js";
 
 const RETRY_REASONS: Record<LLMRetryInfo["reason"], string> = {
-    connection: "连接失败",
-    http: "服务暂时不可用",
-    empty_response: "模型返回空回复",
-    output_stall: "生成停滞",
-    stream_disconnected: "响应连接中断",
-    empty_stream: "未收到响应数据",
-    invalid_json: "响应数据损坏",
-    protocol: "响应格式不完整",
+    connection: "Connection failed",
+    http: "Service temporarily unavailable",
+    empty_response: "Model returned an empty response",
+    output_stall: "Generation stalled",
+    stream_disconnected: "Response connection interrupted",
+    empty_stream: "No response data received",
+    invalid_json: "Corrupt response data",
+    protocol: "Incomplete response format",
 };
 
 const DEFAULT_ANIMATION_INTERVAL_MS = 120;
@@ -31,22 +31,22 @@ function streamLabel(
     modelStream: UIModelStreamInfo | null,
     activityLabel?: string
 ): string {
-    if (!modelStream) return activityLabel ?? "思考中...";
+    if (!modelStream) return activityLabel ?? "Thinking...";
     switch (modelStream.phase) {
         case "requesting":
-            return "等待模型响应...";
+            return "Waiting for model response...";
         case "stalled":
-            return "模型暂无流数据，可能仍在服务端处理...";
+            return "No streaming data yet; the server may still be processing...";
         case "retrying":
             return modelStream.retry
-                ? `${RETRY_REASONS[modelStream.retry.reason]}，正在重新请求模型（${modelStream.retry.attempt}/${modelStream.retry.maxAttempts}）...`
-                : "正在重新请求模型...";
+                ? `${RETRY_REASONS[modelStream.retry.reason]}, retrying the model request (${modelStream.retry.attempt}/${modelStream.retry.maxAttempts})...`
+                : "Retrying the model request...";
         case "reasoning":
-            return "正在生成推理...";
+            return "Generating reasoning...";
         case "tool_input":
-            return `正在构造 ${modelStream.toolName ?? "工具调用"} 参数...`;
+            return `Building ${modelStream.toolName ?? "tool call"} arguments...`;
         case "content":
-            return "正在生成回复...";
+            return "Generating response...";
     }
 }
 
@@ -98,9 +98,9 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
                 <Text color={COLORS.assistant}>{spinner}</Text>
             </Box>
             <Text color={COLORS.dim}>
-                {stopping ? "正在停止..." : streamLabel(modelStream, activityLabel)}
+                {stopping ? "Stopping..." : streamLabel(modelStream, activityLabel)}
                 {!stopping && modelStream && animation.displayedCharacters > 0
-                    ? ` · ${animation.displayedCharacters} 字符`
+                    ? ` · ${animation.displayedCharacters} characters`
                     : ""}
             </Text>
         </Box>

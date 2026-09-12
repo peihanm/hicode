@@ -27,7 +27,7 @@ describe("/agents slash command", () => {
                     path: "/home/.pillar/agents/broken.md",
                     severity: "error",
                     field: "tools",
-                    message: "当前 Runtime 不存在工具: missing",
+                    message: "Tool does not exist in this Runtime: missing",
                 }],
             });
             const processSlashCommand = createSlashCommandProcessor({
@@ -53,11 +53,11 @@ describe("/agents slash command", () => {
 
             expect(handled).toBe(true);
             expect(messages).toHaveLength(1);
-            expect(messages[0]).toContain("Agents · 2 个可用");
+            expect(messages[0]).toContain("Agents · 2 available");
             expect(messages[0]).toContain("reviewer · project");
-            expect(messages[0]).toContain("模型 fast (glm-fast-test) · 最大轮次 7");
-            expect(messages[0]).toContain("工具 (2) read_file · grep");
-            expect(messages[0]).toContain("加载问题 · 1");
+            expect(messages[0]).toContain("Model fast (glm-fast-test) · maximum turns 7");
+            expect(messages[0]).toContain("Tools (2) read_file · grep");
+            expect(messages[0]).toContain("Loading issues · 1");
             expect(messages[0]).toContain("ERROR · user · broken.md · tools");
             expect(messages[0]).not.toMatch(/Ag\n\s*ent/);
             expect(messages[0]).not.toMatch(/\n\s*[、。，；：！？]/);

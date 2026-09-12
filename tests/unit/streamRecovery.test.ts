@@ -73,14 +73,14 @@ test("残缺工具响应只重试模型请求，重置草稿并累加已报告 u
 test("重复协议失败最多两次；不能无限重试", async () => withTempProject(async (cwd, storage) => {
     let count = 0;
     mockFetch(async () => {count++; return response(malformed);});
-    await expect(caller(options(cwd, storage), endpoint)).rejects.toThrow("重试额度已耗尽");
+    await expect(caller(options(cwd, storage), endpoint)).rejects.toThrow("retry budget exhausted");
     expect(count).toBe(2);
 }));
 
 test("协议恢复与 HTTP 重试共享三次总预算", async () => withTempProject(async (cwd, storage) => {
     let count = 0;
     mockFetch(async () => ++count === 1 ? new Response("busy", {status: 503}) : response(malformed));
-    await expect(caller(options(cwd, storage), endpoint)).rejects.toThrow("重试额度已耗尽");
+    await expect(caller(options(cwd, storage), endpoint)).rejects.toThrow("retry budget exhausted");
     expect(count).toBe(3);
 }));
 
@@ -153,7 +153,7 @@ test.each([
 test("不同流故障共享一次恢复额度，不按故障种类叠加", async () => withTempProject(async (cwd, storage) => {
     let count = 0;
     mockFetch(async () => ++count === 1 ? disconnectedResponse("") : response(malformed));
-    await expect(caller(options(cwd, storage), endpoint)).rejects.toThrow("本次响应的工具未执行，重试额度已耗尽");
+    await expect(caller(options(cwd, storage), endpoint)).rejects.toThrow("tools from this response were not executed; retry budget exhausted");
     expect(count).toBe(2);
 }));
 
@@ -165,7 +165,7 @@ test("网络、HTTP 和流恢复共用总预算，并统一报告次数", async 
         if (count === 1) throw new TypeError("connection reset");
         return count === 2 ? new Response("busy", {status: 503}) : disconnectedResponse("");
     });
-    await expect(caller({...options(cwd, storage), onStreamProgress(item) {progress.push(item);}}, endpoint)).rejects.toThrow("已尝试 3/3 次");
+    await expect(caller({...options(cwd, storage), onStreamProgress(item) {progress.push(item);}}, endpoint)).rejects.toThrow("attempted 3/3 times");
     expect(count).toBe(3);
     expect(progress.map(item => item.retry)).toEqual([
         {reason: "connection", attempt: 2, maxAttempts: 3},

@@ -10,10 +10,7 @@ export function isValidHookMatcher(matcher: string): boolean {
     }
 }
 
-/**
- * 简单名称和 `a|b` 使用精确匹配；包含正则元字符时才编译为正则。
- * query 是有界的事件元数据，而不是命令输出或用户大文本。
- */
+/** Simple names and a|b match exactly; compile regex only when metacharacters are present. The query is bounded event metadata, not command output or large user text. */
 export function matchesHookMatcher(
     query: string | undefined,
     matcher: string | undefined

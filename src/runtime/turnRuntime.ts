@@ -107,11 +107,11 @@ export function createRootTurnRunnerFactory(
                 try {
                     await onLifecycleIssue({
                         scope: "host",
-                        message: "Turn 投影收尾失败",
+                        message: "Turn projection finalization failed",
                         error,
                     });
                 } catch {
-                    // Host 诊断 sink 不能阻止 Session 保存。
+                    // Host diagnostic sinks cannot prevent Session saves.
                 }
             }
         };
@@ -124,10 +124,10 @@ export function createRootTurnRunnerFactory(
                 turn_id: turnId, prompt: contentText(prompt), permission_mode: initialState.permissionMode});
             await onHookResult(promptHooks);
 
-            result = promptHooks.error ? {reply: `UserPromptSubmit Hook 故障: ${promptHooks.error}`, reason: "hook_error", iterations: 0}
+            result = promptHooks.error ? {reply: `UserPromptSubmit Hook error: ${promptHooks.error}`, reason: "hook_error", iterations: 0}
                 : promptHooks.blocked
                 ? {
-                    reply: `UserPromptSubmit Hook 阻止了请求: ${promptHooks.blockReason ?? "未提供原因"}`,
+                    reply: `UserPromptSubmit Hook blocked the request: ${promptHooks.blockReason ?? "No reason provided"}`,
                     reason: "hook_blocked",
                     iterations: 0,
                 }
@@ -160,7 +160,7 @@ export function createRootTurnRunnerFactory(
             sessionSaved = true;
             if(result.reason==="completed"&&!signal.aborted&&memoryBaseline&&host.getCollaborationMode()!=="plan"){
                 try {await session.taskSession.startMemory({turnId,signal,background:true,baseline:memoryBaseline});}
-                catch(error){try{await onLifecycleIssue({scope:"host",message:"Memory 来源调度失败，主任务结果已保存",error});}catch{}}
+                catch(error){try{await onLifecycleIssue({scope:"host",message:"Memory source scheduling failed; main task result was saved",error});}catch{}}
             }
             return result;
         } catch (error) {
@@ -190,11 +190,11 @@ export function createRootTurnRunnerFactory(
                     try {
                         await onLifecycleIssue({
                             scope: "session",
-                            message: "异常路径保存失败",
+                            message: "Failed to save on the error path",
                             error,
                         });
                     } catch {
-                        // 诊断 sink 失败不能覆盖原始 Turn 错误。
+                        // Diagnostic sink failures must not replace the original Turn error.
                     }
                 }
             }
@@ -215,7 +215,7 @@ export function createRootTurnRunnerFactory(
                     await onHookResult(await ctx.runHook!(input));
                 }
             } catch (error) {
-                try {await onLifecycleIssue({scope: "host", message: "TurnEnd Hook 诊断失败", error});} catch {}
+                try {await onLifecycleIssue({scope: "host", message: "TurnEnd Hook diagnostics failed", error});} catch {}
             } finally {releaseHookTurn();}
         }
     };

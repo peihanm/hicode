@@ -4,12 +4,12 @@ import type {SlashCommand} from "../types.js";
 export const permissionsCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "permissions",
-    description: "选择哪些操作需要确认",
+    description: "Choose which actions require approval",
     async execute(args, context) {
         if (args.trim()) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "用法：/permissions",
+                content: "Usage: /permissions",
             });
             return;
         }
@@ -20,7 +20,7 @@ export const permissionsCommand: SlashCommand = {
         await context.onEvent({
             type: "assistant_text",
             content: [
-                `操作审批：${getPermissionModeShortLabel(context.ctx.permissionMode)}`,
+                `Action approval: ${getPermissionModeShortLabel(context.ctx.permissionMode)}`,
                 getPermissionModeDescription(context.ctx.permissionMode),
             ].join("\n"),
         });

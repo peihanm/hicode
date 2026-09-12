@@ -100,7 +100,7 @@ test("激活 Skill 提供真实资源根且不会把参数替换串当 replaceme
         expect(result.modelContent).toContain(JSON.stringify(root));
         expect(result.modelContent).toContain("user");
         expect(result.modelContent).toContain("Args: $&");
-        expect(result.modelContent).toContain("项目路径");
+        expect(result.modelContent).toContain("Project paths remain relative to the working directory");
         const resource = await executeToolResult("read_file", JSON.stringify({path: join(root, "references/schema.md")}), ctx, "resource");
         expect(resource.modelContent).toContain("RESOURCE_BODY");
     });
@@ -114,7 +114,7 @@ test("Host inline Skill 给出来源身份，不能继承被覆盖文件 Skill �
         expect(result.modelContent).toContain('"source":"host"');
         expect(result.modelContent).toContain('"id":"review"');
         expect(result.modelContent).not.toContain(join(cwd, ".pillar/skills/review"));
-        expect(result.modelContent).toContain("没有本地资源目录");
+        expect(result.modelContent).toContain("no local resource directory");
     });
 });
 
@@ -135,7 +135,7 @@ test("未知 Skill 通过统一工具链报告 failed，并列出当前实际可
     await withTempProject(async (cwd, storage) => {
         const empty = await executeToolResult("skill", '{"skill":"verify"}', {...createTestContext(cwd), skills: []}, "missing-empty");
         expect(empty.outcome).toBe("failed");
-        expect(empty.modelContent).toContain("可用 skill: (无)");
+        expect(empty.modelContent).toContain("Available skills: (none)");
         const skills = loadSkills({storage, cwd, sources: [], hostSkills: [{name: "project-review", description: "review", content: "Args: $ARGUMENTS"}]});
         const ctx = {...createTestContext(cwd), skills};
         const missing = await executeToolResult("skill", '{"skill":"verify"}', ctx, "missing");

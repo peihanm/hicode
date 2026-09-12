@@ -30,8 +30,8 @@ export interface FileChangeContents {
     newContent: string;
 }
 
-// 完整内容只用于当前进程内合并连续修改。WeakMap 不会进入 Session、
-// Headless JSON 或 Tool Result，持久化边界仍然只有受限的结构化 diff。
+// Full contents exist only to merge consecutive changes in the current process. WeakMap is not serialized
+// into Sessions, Headless JSON or Tool Results; only bounded structured diffs cross persistence boundaries.
 const fileChangeContents = new WeakMap<FileChange, FileChangeContents>();
 
 export function getFileChangeContents(

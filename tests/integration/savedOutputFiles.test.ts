@@ -39,7 +39,7 @@ test("超过普通 Read 大小上限的结果仍可按行读尾部，长行明�
         expect(read.modelContent).toContain("START");
         expect(read.modelContent).toContain("END");
         expect(read.modelContent).toContain("[middle omitted]");
-        expect(read.modelContent).toContain("不是完整行内容");
+        expect(read.modelContent).toContain("not shown in full");
         expect(read.modelContent).toContain("offset=2");
         expect(Buffer.from(contentText(read.modelContent)).toString("utf8")).toBe(contentText(read.modelContent));
     });

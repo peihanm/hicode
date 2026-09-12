@@ -403,7 +403,7 @@ export class SDKEventAdapter {
             await this.emitItem("item.completed", {
                 ...this.activeCompact,
                 status: danglingStatus,
-                error: "Turn 在 Compact 完成前结束",
+                error: "Turn ended before Compact completed",
             });
             this.activeCompact = undefined;
         }

@@ -53,7 +53,7 @@ class InactiveSandboxRuntime implements SandboxRuntimeLike {
     async wrapCommand(): Promise<SandboxedCommand> {
         const reason = this.status.kind === "unavailable"
             ? this.status.reason
-            : "Sandbox 未启用";
+            : "Sandbox is not enabled";
         throw new Error(reason);
     }
 
@@ -86,7 +86,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         signal: AbortSignal,
         options?: SandboxCommandOptions
     ): Promise<SandboxedCommand> {
-        if (this.closePromise) throw new Error("Sandbox Runtime 已关闭");
+        if (this.closePromise) throw new Error("Sandbox Runtime is closed");
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
             .map((path) => resolve(path));
@@ -98,7 +98,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             this.status.platform === "windows" &&
             writableRoots.some((path) => !baseWritableRoots.includes(path))
         ) {
-            throw new Error("Windows Sandbox 不支持在 Session 中动态增加 writable root");
+            throw new Error("Windows Sandbox does not support adding writable roots dynamically within a Session");
         }
         const customConfig = writableRoots.length === 0
             ? undefined
@@ -166,7 +166,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         if (!platform || !backend.isSupportedPlatform()) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
-                reason: `当前平台 ${process.platform} 不支持 OS Sandbox`,
+                reason: `Current platform ${process.platform} does not support OS Sandbox`,
                 warnings: [],
             });
         }
@@ -177,14 +177,14 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         } catch (error) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
-                reason: `Sandbox 依赖检查失败: ${errorMessage(error)}`,
+                reason: `Sandbox dependency check failed: ${errorMessage(error)}`,
                 warnings: [],
             });
         }
         if (dependencies.errors.length > 0) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
-                reason: dependencies.errors.join("；"),
+                reason: dependencies.errors.join(";"),
                 warnings: dependencies.warnings,
             });
         }
@@ -196,7 +196,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         if (ownership.kind === "owned" || (ownership.kind === "unclaimed" && backend.isSandboxingEnabled())) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
-                reason: "当前进程已有另一个 Root Runtime 持有 OS Sandbox",
+                reason: "Another Root Runtime in this process already owns the OS Sandbox",
                 warnings: dependencies.warnings,
             });
         }
@@ -213,7 +213,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                     await backend.reset();
                     ownership = {kind: "idle"};
                 } catch (error) {
-                    ownership = {kind: "failed", reason: `Sandbox 清理失败，请重启 Pillar：${errorMessage(error)}`};
+                    ownership = {kind: "failed", reason: `Sandbox cleanup failed; restart Pillar: ${errorMessage(error)}`};
                     throw error;
                 }
             })();
@@ -233,7 +233,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 await release();
                 return new InactiveSandboxRuntime({
                     kind: "unavailable",
-                    reason: "Sandbox Runtime 初始化后未进入启用状态",
+                    reason: "Sandbox Runtime did not become enabled after initialization",
                     warnings: dependencies.warnings,
                 });
             }

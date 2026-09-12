@@ -24,7 +24,7 @@ export function isToolCall(item: UIThread): item is ToolCallThread {
     return item.role === "tool_call";
 }
 
-/** 默认投影按确定性 Tool 语义折叠成功阶段；失败、拒绝和取消保留原始行。 */
+/** Default projection folds successful stages using deterministic tool semantics; failures, denials and cancellations retain raw rows. */
 export function projectDefaultThreads(threads: UIThread[]): ConversationItem[] {
     const items: ConversationItem[] = [];
     for (let index = 0; index < threads.length;) {

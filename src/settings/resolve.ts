@@ -18,7 +18,7 @@ export const DEFAULT_MODEL = "qwen3.8-flash";
 const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
     glm: {
         id: "glm",
-        label: "智谱 GLM",
+        label: "Zhipu GLM",
         apiKeyEnv: "GLM_API_KEY",
         models: [
             {id: "glm-5.2", label: "GLM 5.2"},
@@ -27,7 +27,7 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
     },
     qwen: {
         id: "qwen",
-        label: "阿里云百炼",
+        label: "Alibaba Bailian",
         apiKeyEnv: "DASHSCOPE_API_KEY",
         models: [
             {id: "qwen3.8-flash", label: "Qwen 3.8 Flash"},
@@ -89,7 +89,7 @@ function mergeUserSources(
         const ids = new Set<string>();
         for (const model of source.models) {
             if (ids.has(model.id)) {
-                throw new Error(`模型来源 ${source.id} 重复定义模型 ${model.id}`);
+                throw new Error(`Model source ${source.id} defines a duplicate model ${model.id}`);
             }
             ids.add(model.id);
         }
@@ -107,7 +107,7 @@ function resolveModelTarget(
     const model = source.models.find((candidate) => candidate.id === modelId);
     if (!model) {
         throw new Error(
-            `${slot} 模型 ${sourceName}/${modelId} 未在 sources.${sourceName}.models 中定义`
+            `${slot} model ${sourceName}/${modelId} is not defined in sources.${sourceName}.models`
         );
     }
     return {
@@ -217,9 +217,9 @@ export function resolvePillarSettings(
         const value = document.value;
         context = {...context, ...value.context};
         if (value.models?.reviewer) {
-            if (document.source === "project" || document.source === "local") throw new Error("项目 Settings 不能替换审核模型");
+            if (document.source === "project" || document.source === "local") throw new Error("Project Settings cannot replace the review model");
             const {model, source} = value.models.reviewer;
-            if (!model || !source) throw new Error("models.reviewer 需要 model 和 source");
+            if (!model || !source) throw new Error("models.reviewer requires model and source");
             reviewerTarget = {model, source};
         }
         if (value.models?.primary?.model !== undefined) {
@@ -239,7 +239,7 @@ export function resolvePillarSettings(
             origins.fastSource = document.source;
         }
         const documentMode = value.permissions?.defaultMode;
-        if (documentMode === "full-access" && (document.source === "project" || document.source === "local")) throw new Error("项目 Settings 不能选择 Full Access；请由用户或 Host 明确授权");
+        if (documentMode === "full-access" && (document.source === "project" || document.source === "local")) throw new Error("Project Settings cannot select Full Access; explicit user or Host authorization is required");
         if (documentMode !== undefined) {
             permissionMode = documentMode;
             origins.permissionMode = document.source;

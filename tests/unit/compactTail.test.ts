@@ -70,8 +70,8 @@ describe("Compact recent tail", () => {
         maxTokens: 0,
       })
     ).toBe(history.length);
-    expect(() => findCompactTailStart(history, {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("未配对");
+    expect(() => findCompactTailStart(history, {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("unpaired");
     expect(() => findCompactTailStart([history[0]!, {role: "assistant", content: null, tool_calls: [toolCall("missing")]}],
-      {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("缺少");
+      {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("missing");
   });
 });

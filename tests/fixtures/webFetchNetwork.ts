@@ -141,9 +141,9 @@ if (mode === "redirect" || mode === "late-error" || mode === "dns-mixed") {
 } else {
     assert.ok(error instanceof Error, `expected failure for ${mode}`);
     assert.doesNotMatch(error.message, /watchdog/);
-    if (mode === "declared-limit" || mode === "body-limit") assert.match(error.message, /字节限制/);
+    if (mode === "declared-limit" || mode === "body-limit") assert.match(error.message, /byte limit/);
     if (mode === "dns-deadline" || mode === "redirect-deadline") {
-        assert.match(error.message, /30000ms/);
+        assert.match(error.message, /30000 ms/);
         assert.equal(deadlines.length, 1, "redirects must share one deadline");
     }
     assert.ok(responses.every(response => response.destroyed));

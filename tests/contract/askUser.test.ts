@@ -37,7 +37,7 @@ describe("ask_user answer provenance", () => {
                 const ctx = createTestContext(cwd, {canUseTool: async () => ({behavior: "allow", answers})});
                 const result = await runtime.executeTool("ask_user", JSON.stringify({questions}), ctx, "missing-answers");
                 expect(result.outcome).toBe("failed");
-                expect(result.modelContent).not.toContain("用户回答:");
+                expect(result.modelContent).not.toContain("User answers:");
             }
             const ctx = createTestContext(cwd, {canUseTool: async () => ({behavior: "allow", answers: {"选择方案": "自定义方案"}})});
             const result = await runtime.executeTool("ask_user", JSON.stringify({questions}), ctx, "answered");
@@ -78,7 +78,7 @@ describe("ask_user answer provenance", () => {
             })});
             const result = await runtime.executeTool("ask_user", JSON.stringify({questions: [...questions, second]}), answered, "two-answers");
             expect(result.outcome).toBe("ok");
-            expect(result.modelContent).toBe('用户回答: "选择方案"="A", "选择环境"="B"');
+            expect(result.modelContent).toBe('User answers: "选择方案"="A", "选择环境"="B"');
         });
     });
 });

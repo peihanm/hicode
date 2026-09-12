@@ -19,7 +19,7 @@ const hookSettingsSchema = z.union([
 ]);
 const hookMatcherSettingsSchema = z.object({
     matcher: z.string().trim().min(1).max(200).refine(isValidHookMatcher,
-        "matcher 必须是完整名称、a|b、* 或合法正则").optional(),
+        "matcher must be a full name, a|b, *, or a valid regex").optional(),
     timeoutMs: z.number().int().min(100).max(30_000).optional(),
     hooks: z.array(hookSettingsSchema).min(1).max(20),
 }).strict();
@@ -29,16 +29,16 @@ export const hooksSettingsFileSchema: z.ZodType<HooksSettingsFile> = z.object(sh
     for (const event of HOOK_EVENTS) settings[event]?.forEach((matcher, mi) => {
         const cleanup = event === "TurnEnd" || event === "SessionEnd";
         if (matcher.timeoutMs && matcher.timeoutMs > (event === "TurnEnd" ? 5000 : event === "SessionEnd" ? 1500 : 30000)) {
-            ctx.addIssue({code: "custom", path: [event, mi, "timeoutMs"], message: "事件总期限超过该生命周期允许的上限"});
+            ctx.addIssue({code: "custom", path: [event, mi, "timeoutMs"], message: "Event deadline exceeds the limit allowed for this lifecycle"});
         }
         matcher.hooks.forEach((hook, hi) => {
             const path = [event, mi, "hooks", hi];
             if (hook.if && !["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(event))
-                ctx.addIssue({code: "custom", path: [...path, "if"], message: "if 只允许用于 Tool 事件"});
+                ctx.addIssue({code: "custom", path: [...path, "if"], message: "if is only allowed for Tool events"});
             if (hook.purpose === "control" && !["PreToolUse", "UserPromptSubmit", "Stop"].includes(event))
-                ctx.addIssue({code: "custom", path: [...path, "purpose"], message: `${event} 只允许 observe`});
+                ctx.addIssue({code: "custom", path: [...path, "purpose"], message: `${event} only allows observe`});
             if (cleanup && hook.type === "prompt")
-                ctx.addIssue({code: "custom", path: [...path, "type"], message: `${event} 不允许 Prompt 处理器`});
+                ctx.addIssue({code: "custom", path: [...path, "type"], message: `${event} does not allow Prompt handlers`});
         });
     });
 });

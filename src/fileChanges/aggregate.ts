@@ -35,11 +35,7 @@ function coalesceFileChanges(
     return merged;
 }
 
-/**
- * 将同一 turn、同一路径的连续修改折叠成 baseline -> final diff。
- * scope=turn 的持久化 change 会直接替换该路径之前的工具级 change，
- * 因此 Session 恢复不依赖仅存在于进程内的完整内容。
- */
+/** Fold consecutive changes for the same turn/path into a baseline-to-final diff. A persisted turn-scoped change replaces earlier tool-scoped changes, so Session recovery does not depend on process-local full contents. */
 export function mergeFileChange(
     changes: FileChange[],
     incoming: FileChange

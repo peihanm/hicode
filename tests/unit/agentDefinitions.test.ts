@@ -17,9 +17,9 @@ describe("agent definitions", () => {
     expect(explore.allowedTools).not.toContain("agent");
     expect(explore.allowedTools).not.toContain("bash");
     expect(explore.allowedTools).not.toContain("write_file");
-    expect(explore.whenToUse).toContain("可独立完成");
-    expect(explore.whenToUse).toContain("可并发推进");
-    expect(explore.whenToUse).toContain("Root 必须等待结果才能继续");
+    expect(explore.whenToUse).toContain("Independent read-only investigation");
+    expect(explore.whenToUse).toContain("can run alongside other work");
+    expect(explore.whenToUse).toContain("immediately blocks Root");
     expect(explore.whenToUse).not.toContain("3 个以上文件");
     expect(explore.model).toBe("fast");
 
@@ -35,9 +35,9 @@ describe("agent definitions", () => {
   test("Agent Tool 不按文件数量机械要求委派", () => {
     const description = createAgentTool(BUILTIN_SUBAGENT_REGISTRY).description;
 
-    expect(description).toContain("Root 默认亲自完成顺序性的调查、实现和验证");
-    expect(description).toContain("本身都不是委派理由");
-    expect(description).toContain("若 Root 必须等待结果才能继续");
+    expect(description).toContain("Keep immediate blocking work local");
+    expect(description).toContain("Complexity or many files alone do not justify delegation");
+    expect(description).toContain("Keep immediate blocking work local");
     expect(description).not.toContain("3 个以上文件");
     expect(description).not.toContain("必须优先使用 Explore");
   });

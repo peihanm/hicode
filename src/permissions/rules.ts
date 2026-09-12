@@ -1,6 +1,6 @@
-// 权限规则字符串的唯一解析入口。
+// Single parser entry point for permission rule strings.
 // "bash(git status:*)" → { toolName: "bash", content: "git status:*" }
-// "read_file" / "read_file(*)" / "read_file()" → 整工具匹配。
+// "read_file", "read_file(*)" and "read_file()" all match the whole tool.
 export function parsePermissionRule(rule: string): {
     toolName: string;
     content?: string;

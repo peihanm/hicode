@@ -1,8 +1,8 @@
-// 权限系统类型定义
-// 参考 claude-code src/types/permissions.ts:240-266
+// Permission-system types.
+// Based on Claude Code src/types/permissions.ts:240-266.
 
-// 权限意向：工具通过 checkPermissions 声明自己需要什么级别的权限
-// executeTool 拿到意向后决定是否弹窗、是否直接执行、是否拒绝
+// Tools declare permission intent through checkPermissions.
+// executeTool uses that intent to request approval, execute directly or deny.
 import type {DirectoryAccessRequest, DirectoryGrantScope} from "./directoryAccess.js";
 
 export type PermissionPromptPresentation =
@@ -14,48 +14,48 @@ export type PermissionPromptPresentation =
     | ({kind: "filesystem_access"} & DirectoryAccessRequest);
 
 export type PermissionResult =
-    | { behavior: "allow" } // 放行，不问用户
-    | { behavior: "deny"; message: string } // 拒绝，不执行
+    | { behavior: "allow" } // Allow without asking the user.
+    | { behavior: "deny"; message: string } // Deny without executing.
     | {
         behavior: "ask";
         message: string;
         allowPersistent?: boolean;
         presentation?: PermissionPromptPresentation;
-    } // 需要问用户
-    | { behavior: "passthrough" }; // 交给默认规则（根据 isReadOnly 决定）
+    } // Ask the user.
+    | { behavior: "passthrough" }; // Defer to default rules based on isReadOnly.
 
-// 权限决策：canUseTool 的返回值（用户裁决的结果）
-// 当工具 checkPermissions 返回 ask 时，由调用方弹窗让用户决定
-// answers 只承载 Host 对原问题的回答，不能替换模型提问或普通工具参数。
+// Permission decision returned by canUseTool.
+// When checkPermissions returns ask, the caller asks the user.
+// answers carries only Host answers to original questions; it cannot replace questions or ordinary arguments.
 export type PermissionDecision =
     | {
         behavior: "allow";
         answers?: Record<string, string>;
         directoryScope?: "once" | DirectoryGrantScope;
         networkScope?: "once" | "session";
-    } // 用户同意，可携带原问题的答案
-    | { behavior: "deny"; message: string }; // 用户拒绝
+    } // User approved; may include answers to the original questions.
+    | { behavior: "deny"; message: string }; // User denied.
 
-// ─── 配置规则相关类型 ───
+// Configuration rule types.
 
-// 工具审批策略；文件/网络隔离由独立的执行边界负责。
-export type PermissionMode = "ask" | "auto-review" | "full-access"; // 自动批准普通操作，仍受 deny/ask、用户交互和 Sandbox 约束
+// Tool approval policy; separate execution boundaries enforce file/network isolation.
+export type PermissionMode = "ask" | "auto-review" | "full-access"; // Automatically approve ordinary operations, still subject to deny/ask, user interaction and Sandbox limits.
 
-// Host 是否能够处理权限交互。never 只把 ask 收窄为 deny，不扩大权限。
+// Whether Host supports permission interaction. never only narrows ask to deny and cannot widen access.
 export type PermissionPromptPolicy = "onRequest" | "never";
 
-// 权限规则来源
+// Permission rule source.
 type PermissionRuleSource = "user" | "project" | "local" | "host";
 
-// 单条权限规则
-// 参考 claude-code src/types/permissions.ts:67-79
+// One permission rule.
+// Based on Claude Code src/types/permissions.ts:67-79.
 export interface PermissionRule {
     toolName: string;
-    content?: string; // undefined = 整工具匹配；有值 = 按参数模式匹配
+    content?: string; // undefined matches the whole tool; otherwise match the argument pattern.
     source: PermissionRuleSource;
 }
 
-// 规则集合（按 behavior 分桶）
+// Rule sets grouped by behavior.
 export interface PermissionRules {
     allow: PermissionRule[];
     ask: PermissionRule[];

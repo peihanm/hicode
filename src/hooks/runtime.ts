@@ -79,7 +79,7 @@ class ConfiguredHookRuntime implements HookRuntime {
         ));
     }
     async reload(settings: ResolvedHookSettings, signal: AbortSignal): Promise<void> {
-        if (this.active || this.reloading) throw new Error("Hook 正在执行或重载，不能更换配置");
+        if (this.active || this.reloading) throw new Error("Hooks are executing or reloading; configuration cannot be replaced");
         this.reloading = true;
         try {
             const next = validatedSettings(settings);
@@ -97,12 +97,12 @@ class ConfiguredHookRuntime implements HookRuntime {
                     if (decision === "allow") approved.add(definition.hookId);
                     else if (decision === "pending") pending.push(definition);
                 }
-                if (signal.aborted) throw new Error("Hook 配置批准已取消");
+                if (signal.aborted) throw new Error("Hook configuration approval cancelled");
                 if (this.options.headless && definitions.some(item => !approved.has(item.hookId)))
-                    throw new Error(`工作区 Hook 定义尚未信任，不能在 Headless 模式执行: ${project}`);
+                    throw new Error(`Workspace Hook definitions are not trusted and cannot run in Headless mode: ${project}`);
                 if (pending.length && this.options.requestTrust) {
                     const decision = await this.options.requestTrust({projectPath: project, hooks: pending});
-                    if (signal.aborted) throw new Error("Hook 配置批准已取消");
+                    if (signal.aborted) throw new Error("Hook configuration approval cancelled");
                     for (const item of pending) {
                         if (decision !== "deny") approved.add(item.hookId);
                         if (decision !== "once") await (this.dependencies.saveTrust?.(project, item.hookId, decision)
@@ -110,16 +110,16 @@ class ConfiguredHookRuntime implements HookRuntime {
                     }
                 }
                 for (const item of definitions) if (!approved.has(item.hookId)) {
-                    if (item.purpose === "control") throw new HookControlError(`Control Hook 未获批准: ${item.event} ${item.hookId.slice(0, 12)}`);
-                    issues.push({severity: "warning", message: `Observe Hook 未获批准，已禁用: ${item.event} ${item.hookId.slice(0, 12)}`});
+                    if (item.purpose === "control") throw new HookControlError(`Control Hook not approved: ${item.event} ${item.hookId.slice(0, 12)}`);
+                    issues.push({severity: "warning", message: `Observe Hook not approved; disabled: ${item.event} ${item.hookId.slice(0, 12)}`});
                 }
             }
-            if (signal.aborted) throw new Error("Hook 配置重载已取消");
+            if (signal.aborted) throw new Error("Hook configuration reload cancelled");
             this.settings = next; this.definitions = definitions; this.approved = approved; this.runtimeIssues = issues;
         } finally {this.reloading = false;}
     }
     async execute(input: HookInput, signal: AbortSignal, context?: HookExecutionContext): Promise<HookBatchResult> {
-        if (this.reloading) throw new HookControlError("Hook 正在重载，拒绝开始新的执行");
+        if (this.reloading) throw new HookControlError("Hooks are reloading; new execution rejected");
         this.active++;
         try {return await this.dispatch(input, signal, context);} finally {this.active--;}
     }
@@ -158,15 +158,15 @@ class ConfiguredHookRuntime implements HookRuntime {
                     if (expired()) {
                         handled.output = undefined;
                         execution = {...execution, outcome: signal.aborted ? "interrupted" : execution.outcome === "skipped_budget" ? "skipped_budget" : "error",
-                            message: signal.aborted ? "Hook 执行已取消" : `Hook dispatch 超时 (${budget}ms)`};
+                            message: signal.aborted ? "Hook execution cancelled" : `Hook dispatch timed out (${budget}ms)`};
                     }
                     if (handled.diagnostic && context?.store) {
                         try {execution.artifact = await context.store.persistText({toolCallId: `hook:${identity.executionId}`,
                             toolName: `hook:${input.hook_event_name}`, content: handled.diagnostic.slice(0, 65536)});}
-                        catch {execution = {...execution, outcome: "error", message: "Hook 诊断保存失败"}; handled.output = undefined;}
+                        catch {execution = {...execution, outcome: "error", message: "Failed to save Hook diagnostics"}; handled.output = undefined;}
                     }
                     if (execution.outcome === "error" || execution.outcome === "skipped_budget") {
-                        if (hook.purpose === "control") result.error ??= execution.message ?? "Control Hook 执行失败";
+                        if (hook.purpose === "control") result.error ??= execution.message ?? "Control Hook execution failed";
                     }
                     result.executions.push(execution);
                     await emit({type: "hook_completed", execution});
@@ -175,7 +175,7 @@ class ConfiguredHookRuntime implements HookRuntime {
                 const fail = async (message: string, outcome: HookExecution["outcome"] = "error") => finish({execution: {
                     ...identity, outcome, durationMs: performance.now() - started, message}});
                 if (expired()) {
-                    await fail(signal.aborted ? "Hook 执行已取消" : "Hook dispatch 期限已耗尽", signal.aborted ? "interrupted" : "skipped_budget");
+                    await fail(signal.aborted ? "Hook execution cancelled" : "Hook dispatch deadline exhausted", signal.aborted ? "interrupted" : "skipped_budget");
                     continue;
                 }
                 const effectiveInput: HookInput = input.hook_event_name === "PreToolUse"
@@ -183,15 +183,15 @@ class ConfiguredHookRuntime implements HookRuntime {
                 if (hook.if) {
                     try {
                         if (!("tool_input" in effectiveInput) || !context?.matchesToolCondition)
-                            throw new Error("Tool Hook 缺少 if 匹配上下文");
+                            throw new Error("Tool Hook is missing if-matching context");
                         if (!await context.matchesToolCondition(hook.if, effectiveInput.tool_input)) continue;
                     } catch (error) {
-                        await fail(boundedHookMessage(`Hook if 匹配失败: ${error instanceof Error ? error.message : String(error)}`));
+                        await fail(boundedHookMessage(`Hook if matching failed: ${error instanceof Error ? error.message : String(error)}`));
                         if (result.error) return result;
                         continue;
                     }
                 }
-                if (expired()) {await fail(signal.aborted ? "Hook 已取消" : "Hook dispatch 期限已耗尽"); continue;}
+                if (expired()) {await fail(signal.aborted ? "Hook cancelled" : "Hook dispatch deadline exhausted"); continue;}
                 let envelope: HookEnvelope = {version: 2, cwd: this.options.cwd, hook_id: identity.hookId,
                     dispatch_id: dispatchId, execution_id: identity.executionId, purpose: hook.purpose,
                     source: matcher.source === "host" ? {source: "host", id: matcher.id} : {source: matcher.source, path: matcher.path},
@@ -201,23 +201,23 @@ class ConfiguredHookRuntime implements HookRuntime {
                 const inputLimit = hook.type === "command" && hook.purpose === "control" ? 16 * 1024 * 1024 : 65536;
                 if (bytes + 1 > inputLimit) {
                     if (hook.purpose === "control") {
-                        await fail(`${hook.type === "command" ? "Command" : "Prompt"} Control Hook [${hookHandler(hook).slice(0, 120)}] 完整输入 ${bytes} bytes 超过 ${inputLimit} bytes，未截断或执行判定`);
+                        await fail(`${hook.type === "command" ? "Command" : "Prompt"} Control Hook [${hookHandler(hook).slice(0, 120)}] Complete input of ${bytes} bytes exceeds ${inputLimit} bytes; input was not truncated and no decision was executed`);
                         return result;
                     }
                     envelope = {...envelope, event: summarize(effectiveInput), truncated: true, original_bytes: bytes};
                     if (context?.store) {
                         try {const saved = await context.store.persistText({toolCallId: `hook-input:${identity.executionId}`,
                             toolName: `hook:${input.hook_event_name}`, content: serialized}); envelope.input_result_id = saved.resultId;}
-                        catch {await fail("Hook 输入归档失败"); continue;}
+                        catch {await fail("Hook input archival failed"); continue;}
                     }
-                    if (Buffer.byteLength(JSON.stringify(envelope)) > 65536) {await fail("Hook 事件元数据仍超过输入预算"); continue;}
+                    if (Buffer.byteLength(JSON.stringify(envelope)) > 65536) {await fail("Hook event metadata still exceeds input budget"); continue;}
                 }
                 if (hook.once) {
-                    if (!context?.session) {await fail("once Hook 缺少 Session Runtime"); if (result.error) return result; continue;}
+                    if (!context?.session) {await fail("once Hook requires a Session Runtime"); if (result.error) return result; continue;}
                     if (!context.session.claimOnce(definition.hookId)) continue;
                 }
                 await emit({type: "hook_started", execution: identity});
-                if (expired()) {await fail(signal.aborted ? "Hook 已取消" : "Hook dispatch 期限已耗尽"); continue;}
+                if (expired()) {await fail(signal.aborted ? "Hook cancelled" : "Hook dispatch deadline exhausted"); continue;}
                 const timeoutMs = Math.max(1, Math.min(hook.timeoutMs ?? 10000, deadline - performance.now()));
                 const handled = hook.type === "command" ? await executeCommandHook({hook, envelope,
                     signal: controller.signal, timeoutMs, executeCommand: this.dependencies.executeCommand,

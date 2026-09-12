@@ -58,7 +58,7 @@ describe("phase-based tool presentation", () => {
             id: "read",
             name: "read_file",
             args: {path: "src/runtime/resources.ts"},
-            result: "文件: src/runtime/resources.ts\n行范围: 1-20 / 20\n\n内容",
+            result: "File: src/runtime/resources.ts\nLine range: 1-20 / 20\n\n内容",
         });
 
         expect(projectDefaultThreads(threads)).toHaveLength(1);
@@ -87,7 +87,7 @@ describe("phase-based tool presentation", () => {
             {
                 role: "tool",
                 tool_call_id: "read-1",
-                content: "文件: src/a.ts\n行范围: 1-1 / 1\n\n1\ta",
+                content: "File: src/a.ts\nLine range: 1-1 / 1\n\n1\ta",
             },
         ], [{
             version: 1,
@@ -108,7 +108,7 @@ describe("phase-based tool presentation", () => {
             id: "read-one",
             name: "read_file",
             args: {path: "src/server.ts"},
-            result: "文件: src/server.ts\n行范围: 1-20 / 20\n\n内容",
+            result: "File: src/server.ts\nLine range: 1-20 / 20\n\n内容",
         });
         const singleFrame = render(
             <MessageList threads={single}/>
@@ -120,7 +120,7 @@ describe("phase-based tool presentation", () => {
             id: "read-two",
             name: "read_file",
             args: {path: "src/client.ts"},
-            result: "文件: src/client.ts\n行范围: 1-10 / 10\n\n内容",
+            result: "File: src/client.ts\nLine range: 1-10 / 10\n\n内容",
         });
         const multipleFrame = render(
             <MessageList threads={multiple}/>
@@ -137,7 +137,7 @@ describe("phase-based tool presentation", () => {
             id: "read-before",
             name: "read_file",
             args: {path: "before.ts"},
-            result: "文件: before.ts\n行范围: 1-1 / 1\n\n1\tbefore",
+            result: "File: before.ts\nLine range: 1-1 / 1\n\n1\tbefore",
         });
         threads = completeTool(threads, {
             id: "grep-failed",
@@ -150,7 +150,7 @@ describe("phase-based tool presentation", () => {
             id: "read-after",
             name: "read_file",
             args: {path: "after.ts"},
-            result: "文件: after.ts\n行范围: 1-1 / 1\n\n1\tafter",
+            result: "File: after.ts\nLine range: 1-1 / 1\n\n1\tafter",
         });
 
         const projected = projectDefaultThreads(threads);
@@ -199,11 +199,11 @@ describe("phase-based tool presentation", () => {
             id: "background-worker",
             name: "bash",
             args: {command: "node worker.js", run_in_background: true},
-            result: "后台任务已启动。\nTask: worker-123\nLifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。\nStatus: running\nCwd: .\n使用 task 查询输出、完成状态或停止任务。",
+            result: "Background task started.\nTask: worker-123\nLifecycle: managed by the current Pillar Runtime; terminates when Pillar exits.\nStatus: running\nCwd: .\nUse task to inspect output, completion status or stop the task.",
         });
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("worker-123");
-        expect(frame).toContain("退出 Pillar 后会终止");
+        expect(frame).toContain("terminates when Pillar exits");
     });
 
     test("curl 批次即使 exit 0 也不会把 000FAIL 包装成验证通过", () => {
@@ -233,7 +233,7 @@ describe("phase-based tool presentation", () => {
 
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("⎿ 权限拒绝: 文件已存在，请先读取后再修改。");
-        expect(frame).not.toContain("⎿权限拒绝");
+        expect(frame).not.toContain("⎿Permission denied");
         expect(frame).toContain("● Write /tmp/existing.txt");
         expect(frame).not.toContain("content=content");
     });
@@ -355,7 +355,7 @@ describe("phase-based tool presentation", () => {
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("● Background task failed · node server.js");
         expect(frame).toContain("⎿ exit 1 · Error: listen EADDRINUSE :::3000");
-        expect(frame).toContain("完整输出见任务详情");
+        expect(frame).toContain("Full output is available in task details");
         expect(frame).not.toContain("完整输出可通过");
     });
 });

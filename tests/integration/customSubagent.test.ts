@@ -147,7 +147,7 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "blocked-write"
                     );
-                    expect(denied?.content).toContain("当前 Agent 仅允许只读工具调用");
+                    expect(denied?.content).toContain("This Agent only allows read-only tool calls");
                     return assistantText("写入被安全拒绝，审查结束。");
                 },
             ]);
@@ -211,7 +211,7 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "allowed-write"
                     );
-                    expect(result?.content).toContain("当前 Agent 仅允许只读工具调用");
+                    expect(result?.content).toContain("This Agent only allows read-only tool calls");
                     return assistantText("写入被拒绝");
                 },
             ]);
@@ -245,7 +245,7 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "plan-write"
                     );
-                    expect(result?.content).toContain("当前 Agent 仅允许只读工具调用");
+                    expect(result?.content).toContain("This Agent only allows read-only tool calls");
                     return assistantText("plan 写入未执行");
                 },
             ]);
@@ -295,7 +295,7 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "denied-write"
                     );
-                    expect(result?.content).toContain("deny 规则");
+                    expect(result?.content).toContain("Denied by rule");
                     return assistantText("deny 生效");
                 },
             ]);
@@ -389,7 +389,7 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "mcp-write"
                     );
-                    expect(result?.content).toContain("当前 Agent 仅允许只读工具调用");
+                    expect(result?.content).toContain("This Agent only allows read-only tool calls");
                     return assistantText("MCP 权限边界正常");
                 },
             ]);

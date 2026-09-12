@@ -34,10 +34,10 @@ export function loadPillarSettings(
     // Invalid rules must not disappear with a skipped settings document.
     const invalidPermissions = issues.find(issue => issue.severity === "error" &&
         (issue.field === "permissions" || issue.field?.startsWith("permissions.")));
-    if (invalidPermissions) throw new Error("权限配置无效，已停止加载: " + invalidPermissions.message);
+    if (invalidPermissions) throw new Error("Invalid permission configuration; loading stopped: " + invalidPermissions.message);
     const invalidContext = issues.find(issue => issue.severity === "error" &&
         (issue.field === "context" || issue.field?.startsWith("context.")));
-    if (invalidContext) throw new Error("上下文配置无效，已停止加载: " + invalidContext.message);
+    if (invalidContext) throw new Error("Invalid context configuration; loading stopped: " + invalidContext.message);
     const resolved = resolvePillarSettings(
         documents,
         options.cliOverrides ?? {}

@@ -41,16 +41,16 @@ type ChatCompletionsRequest = {
 };
 
 export interface OpenAICompatibleEndpoint {
-    /** 只用于可操作的错误消息，不会发给远端。 */
+    /** For actionable error messages only; never sent remotely. */
     displayName: string;
     toolImages?: boolean;
     baseUrl: string;
     apiKey: string;
-    /** 厂商扩展字段；不能覆盖 model/messages/tools/stream。 */
+    /** Vendor extensions cannot override model/messages/tools/stream. */
     requestFields?: Record<string, unknown>;
-    /** 工具调用轮次在 History 和后续请求中保留 reasoning_content。 */
+    /** Preserve reasoning_content for tool-call turns in History and subsequent requests. */
     preserveToolCallReasoning?: boolean;
-    /** 深度推理连续两次停滞后，最后一次请求关闭 thinking。 */
+    /** After two deep-reasoning stalls, disable thinking for the final request. */
     disableThinkingOnFinalStallRetry?: boolean;
 }
 
@@ -135,7 +135,7 @@ async function readErrorResponse(response: Response): Promise<string> {
     }
     const text = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
         .toString("utf8");
-    return truncated ? `${text}\n[响应已截断]` : text;
+    return truncated ? `${text}\n[response truncated]` : text;
 }
 
 function retryDelayMs(
@@ -307,7 +307,7 @@ async function callOpenAICompatibleCore(
         );
         requestBody.messages = wireMessages;
         const requestJson = JSON.stringify(requestBody);
-        if (hasImages && Buffer.byteLength(requestJson) > 20 * 1024 * 1024) throw new Error("图文请求编码后超过 20 MiB，未发送请求");
+        if (hasImages && Buffer.byteLength(requestJson) > 20 * 1024 * 1024) throw new Error("Encoded multimodal request exceeds 20 MiB; request was not sent");
         const promptLog = beginPromptLog(
             options.storage,
             options.cwd,
@@ -348,7 +348,7 @@ async function callOpenAICompatibleCore(
         }): Promise<void> => {
             const canRetry = failure.allowed && attempt < LLM_MAX_ATTEMPTS;
             requestSignal.cleanup();
-            const message = `${failure.message}（已尝试 ${attempt}/${LLM_MAX_ATTEMPTS} 次）；本次响应的工具未执行${canRetry ? "，将重新请求模型" : "，重试额度已耗尽"}`;
+            const message = `${failure.message} (attempted ${attempt}/${LLM_MAX_ATTEMPTS} times); tools from this response were not executed${canRetry ? "; retrying the model request" : "; retry budget exhausted"}`;
             finishPromptLog({
                 ...failure.details,
                 error: message,
@@ -382,17 +382,17 @@ async function callOpenAICompatibleCore(
             const timedOut = requestSignal.didTimeOut();
             requestSignal.cleanup();
             if (userInterrupted) {
-                finishPromptLog({error: "fetch 已取消"});
+                finishPromptLog({error: "fetch cancelled"});
                 throw new TurnInterruptedError(
                     normalizeTurnAbortReason(options.signal?.reason)
                 );
             }
-            // 生成超时重放同一个长请求通常只会重复耗时；只重试真正的连接失败。
+            // Replaying a long request after a generation timeout usually repeats the delay; retry actual connection failures only.
             if (timedOut) {
-                finishPromptLog({error: `等待首个流事件超时（${requestTimeoutMs}ms）`});
-                throw new Error(`LLM 等待首个流事件超时（${requestTimeoutMs}ms）`);
+                finishPromptLog({error: `Timed out waiting for the first stream event (${requestTimeoutMs}ms)`});
+                throw new Error(`LLM timed out waiting for the first stream event (${requestTimeoutMs}ms)`);
             }
-            await recover({reason: "connection", message: `LLM fetch 失败: ${redactSecret(formatError(error), endpoint.apiKey)}`, allowed: true});
+            await recover({reason: "connection", message: `LLM fetch failed: ${redactSecret(formatError(error), endpoint.apiKey)}`, allowed: true});
             continue;
         }
 
@@ -401,12 +401,12 @@ async function callOpenAICompatibleCore(
                 const errorBody = await readErrorResponse(response);
                 const contextLengthExceeded = isContextLengthResponse(response.status, errorBody);
                 const text = redactSecret(
-                    hasImages ? "[图片请求错误正文已隐藏，避免接口回显图片数据]" : errorBody,
+                    hasImages ? "[Image request error body hidden to prevent echoed image data from leaking]" : errorBody,
                     endpoint.apiKey
                 );
                 const retryable = isRetryableStatus(response.status);
                 if (retryable) {
-                    await recover({reason: "http", message: `LLM API 错误: ${response.status} - ${text.slice(0, 500)}`, allowed: true});
+                    await recover({reason: "http", message: `LLM API error: ${response.status} - ${text.slice(0, 500)}`, allowed: true});
                     continue;
                 }
                 finishPromptLog({
@@ -415,13 +415,13 @@ async function callOpenAICompatibleCore(
                 failureLogged = true;
                 if (contextLengthExceeded) throw new ContextLengthError();
                 throw new Error(
-                    `LLM API 错误: ${response.status} - ${text.slice(0, 500)}`
+                    `LLM API error: ${response.status} - ${text.slice(0, 500)}`
                 );
             }
 
             if (!response.body) {
                 const allowed = responseRetries++ < 1;
-                await recover({reason: "empty_stream", message: `${endpoint.displayName} stream 响应缺少 body`, allowed});
+                await recover({reason: "empty_stream", message: `${endpoint.displayName} stream response has no body`, allowed});
                 continue;
             }
             requestSignal.reset();
@@ -458,7 +458,7 @@ async function callOpenAICompatibleCore(
                 );
                 await recover({
                     reason: "empty_response", allowed: true,
-                    message: "LLM 返回空响应：没有有效正文或工具调用（推理内容不能替代正文）",
+                    message: "LLM returned an empty response: no valid text or tool calls (reasoning is not a substitute for text)",
                     details: {usage: streamed.usage, rawResponse: responseDetails},
                 });
                 continue;
@@ -497,7 +497,7 @@ async function callOpenAICompatibleCore(
             };
         } catch (error) {
             if (options.signal?.aborted) {
-                if (!failureLogged) finishPromptLog({error: "请求已取消"});
+                if (!failureLogged) finishPromptLog({error: "Request cancelled"});
                 throw new TurnInterruptedError(
                     normalizeTurnAbortReason(options.signal.reason)
                 );
@@ -506,8 +506,8 @@ async function callOpenAICompatibleCore(
             if (failureLogged) throw error;
             if (requestSignal.didOutputStall()) {
                 const progressDescription = lastStreamProgress
-                    ? `（最后阶段 ${lastStreamProgress.phase}${lastStreamProgress.toolName ? `:${lastStreamProgress.toolName}` : ""}，已接收约 ${lastStreamProgress.estimatedOutputTokens} tokens）`
-                    : "（尚未收到有效输出增量）";
+                    ? ` (last phase: ${lastStreamProgress.phase}${lastStreamProgress.toolName ? `:${lastStreamProgress.toolName}` : ""}; received approximately ${lastStreamProgress.estimatedOutputTokens} tokens)`
+                    : "(no valid output delta received yet)";
                 const canRetry =
                     outputStallRetries < LLM_MAX_OUTPUT_STALL_RETRIES &&
                     attempt < LLM_MAX_ATTEMPTS;
@@ -516,20 +516,20 @@ async function callOpenAICompatibleCore(
                     endpoint.disableThinkingOnFinalStallRetry === true &&
                     outputStallRetries + 1 >= LLM_MAX_OUTPUT_STALL_RETRIES;
                 const retryDescription = nextRetryDisablesThinking
-                    ? "，将关闭深度推理进行最后一次重试"
+                    ? "; disabling deep reasoning for one final retry"
                     : canRetry
-                      ? "，将按原参数安全重试一次"
+                      ? "; retrying once with the original parameters"
                       : "";
                 if (canRetry) outputStallRetries += 1;
                 await recover({reason: "output_stall", allowed: canRetry, immediate: true,
-                    message: `LLM 输出连续 ${outputStallTimeoutMs}ms 没有新增量${retryDescription}${progressDescription}`});
+                    message: `LLM output has had no new delta for ${outputStallTimeoutMs} ms${retryDescription}${progressDescription}`});
                 continue;
             }
             if (requestSignal.didTimeOut()) {
                 finishPromptLog({
-                    error: `流空闲超时 ${requestTimeoutMs}ms: ${formatError(error)}`,
+                    error: `Stream idle timeout: ${requestTimeoutMs}ms: ${formatError(error)}`,
                 });
-                throw new Error(`LLM stream 连续 ${requestTimeoutMs}ms 没有收到数据`);
+                throw new Error(`LLM stream has received no data for ${requestTimeoutMs} ms`);
             }
             if (error instanceof OpenAICompatibleProtocolError) {
                 const allowed = responseRetries++ < 1;
@@ -542,14 +542,14 @@ async function callOpenAICompatibleCore(
                 });
                 continue;
             }
-            finishPromptLog({error: `stream 失败: ${formatError(error)}`});
+            finishPromptLog({error: `Stream failed: ${formatError(error)}`});
             throw error;
         } finally {
             requestSignal.cleanup();
         }
     }
 
-    throw new Error("LLM API 错误: retry loop exhausted unexpectedly");
+    throw new Error("LLM API error: retry loop exhausted unexpectedly");
 }
 
 export function createOpenAICompatibleCaller(

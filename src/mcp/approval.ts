@@ -32,7 +32,7 @@ function isMissing(error: unknown): boolean {
 
 function parseApprovalDocument(value: unknown): ApprovalDocument {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw new Error("MCP approval document 格式无效");
+        throw new Error("Invalid MCP approval document format");
     }
     const document = value as Partial<ApprovalDocument>;
     if (
@@ -43,13 +43,13 @@ function parseApprovalDocument(value: unknown): ApprovalDocument {
         !Array.isArray(document.approvals) ||
         document.approvals.length > MAX_APPROVAL_RECORDS
     ) {
-        throw new Error("MCP approval document 格式无效");
+        throw new Error("Invalid MCP approval document format");
     }
     const approvals: ApprovalRecord[] = [];
     const seen = new Set<string>();
     for (const raw of document.approvals) {
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-            throw new Error("MCP approval document 包含非法记录");
+            throw new Error("MCP approval document contains invalid records");
         }
         const item = raw as Partial<ApprovalRecord>;
         const keys = Object.keys(item);
@@ -75,7 +75,7 @@ function parseApprovalDocument(value: unknown): ApprovalDocument {
             !Number.isFinite(Date.parse(item.decidedAt)) ||
             seen.has(identity)
         ) {
-            throw new Error("MCP approval document 包含非法或重复记录");
+            throw new Error("MCP approval document contains invalid or duplicate records");
         }
         seen.add(identity);
         approvals.push(item as ApprovalRecord);
@@ -89,10 +89,10 @@ async function readDocument(path: string): Promise<ApprovalDocument> {
         handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
         const metadata = await handle.stat();
         if (!metadata.isFile()) {
-            throw new Error("MCP approval document 不是安全的 regular file");
+            throw new Error("MCP approval document is not a safe regular file");
         }
         if (metadata.size > MAX_APPROVAL_FILE_BYTES) {
-            throw new Error("MCP approval document 超过大小上限");
+            throw new Error("MCP approval document exceeds the size limit");
         }
         const buffer = Buffer.alloc(metadata.size + 1);
         let offset = 0;
@@ -107,7 +107,7 @@ async function readDocument(path: string): Promise<ApprovalDocument> {
             offset += bytesRead;
         }
         if (offset > MAX_APPROVAL_FILE_BYTES) {
-            throw new Error("MCP approval document 超过大小上限");
+            throw new Error("MCP approval document exceeds the size limit");
         }
         const text = new TextDecoder("utf-8", {fatal: true}).decode(
             buffer.subarray(0, offset)
@@ -126,7 +126,7 @@ async function ensureSafeParent(path: string): Promise<void> {
     await mkdir(directory, {recursive: true, mode: 0o700});
     const metadata = await lstat(directory);
     if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
-        throw new Error("MCP approval directory 不是安全的 directory");
+        throw new Error("MCP approval directory is not a safe directory");
     }
 }
 
@@ -201,7 +201,7 @@ export async function saveMcpApproval(
         const updated = parseApprovalDocument({version: 1, approvals});
         const content = `${JSON.stringify(updated, null, 2)}\n`;
         if (Buffer.byteLength(content, "utf8") > MAX_APPROVAL_FILE_BYTES) {
-            throw new Error("MCP approval document 超过大小上限");
+            throw new Error("MCP approval document exceeds the size limit");
         }
         await writeFileAtomically(path, content, 0o600);
     });

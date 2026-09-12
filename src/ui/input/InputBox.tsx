@@ -75,7 +75,7 @@ function padCommandLabel(label: string): string {
     return label.length >= width ? `${label}  ` : label.padEnd(width, " ");
 }
 
-// 输入框：单条下边界与状态栏形成输入区域。disabled 只用于取消收尾等短暂阶段。
+// The input's bottom border joins the status bar. Disable input only during brief cancellation cleanup.
 export function createInputBox(
     overrides: Partial<InputBoxDependencies> = {}
 ) {
@@ -238,7 +238,7 @@ export function createInputBox(
                     return merged;
                 });
             }).catch(() => {
-                // 输入历史是 best-effort，读取失败不阻止主输入框使用。
+                // Input history is best-effort; read failure must not block the main input.
             });
             return () => {
                 active = false;
@@ -342,7 +342,7 @@ export function createInputBox(
                         </Text>
                     )}
                     <Box paddingTop={1}>
-                        <Text color={COLORS.dim}>{imagePreparing ? `${SYMBOLS.prompt} ${leadingContent}正在读取图片…` : "..."}</Text>
+                        <Text color={COLORS.dim}>{imagePreparing ? `${SYMBOLS.prompt} ${leadingContent} Reading image…` : "..."}</Text>
                     </Box>
                     <Text color={COLORS.dim}>{line}</Text>
                 </Box>
@@ -434,7 +434,7 @@ export function createInputBox(
                                         sessionId,
                                         submitted
                                     ).catch(() => {
-                                        // 持久化失败不能影响已经提交的 turn。
+                                        // Persistence failure must not affect an already submitted Turn.
                                     });
                                 }
                                 historyIndexRef.current = null;
@@ -470,7 +470,7 @@ export function createInputBox(
                         })}
                         {suggestions.length > MAX_VISIBLE_SLASH_SUGGESTIONS && (
                             <Text color={COLORS.dim}>
-                                {"  ↑/↓ 选择 · Tab 补全 · "}
+                                {"  ↑/↓ select · Tab complete · "}
                                 {suggestionWindowStart + 1}–{suggestionWindowStart + visibleSuggestions.length}
                                 {` / ${suggestions.length}`}
                             </Text>

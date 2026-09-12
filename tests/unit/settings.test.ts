@@ -390,7 +390,7 @@ describe("Unified Settings", () => {
                     (issue) =>
                         issue.field === "mode" &&
                         issue.severity === "warning" &&
-                        issue.message.includes("未知 Settings 字段")
+                        issue.message.includes("Unknown Settings field")
                 )
             ).toBe(true);
             expect(
@@ -463,7 +463,7 @@ test("context 默认 50 万窗口、45 万压缩，可由各层分别覆盖", ()
         {source: "host", id: "host", value: {context: {autoCompactTokenLimit: 700_000}}},
     ]);
     expect(resolved.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 700_000});
-    expect(() => resolvePillarSettings([document("user", {context: {windowTokens: 100_000}})])).toThrow("输入预算");
+    expect(() => resolvePillarSettings([document("user", {context: {windowTokens: 100_000}})])).toThrow("input budget");
 });
 
 test("非法 context 不静默回退到默认，Host 同样校验", async () => {
@@ -471,12 +471,12 @@ test("非法 context 不静默回退到默认，Host 同样校验", async () => 
         await mkdir(join(cwd, ".pillar"), {recursive: true});
         for (const context of [{windowTokens: -1}, {windowTokens: 1.5}, {autoCompactTokenLimit: 0}, {windowTokens: "500000"}, {typo: 10}]) {
             await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({context}));
-            expect(() => loadPillarSettings({storage, cwd, sources: ["project"]})).toThrow("上下文配置无效");
+            expect(() => loadPillarSettings({storage, cwd, sources: ["project"]})).toThrow("Invalid context configuration");
         }
         await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({context: {windowTokens: 1_000_000}}));
         const loaded = loadPillarSettings({storage, cwd, sources: ["project"], hostSettings: {context: {autoCompactTokenLimit: 800_000}}});
         expect(loaded.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 800_000});
         expect(loaded.issues).toEqual([]);
-        expect(() => loadPillarSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("上下文配置无效");
+        expect(() => loadPillarSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("Invalid context configuration");
     });
 });

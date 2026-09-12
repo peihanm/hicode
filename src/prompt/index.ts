@@ -1,18 +1,3 @@
-// Prompt 构造入口
-// 参考 claude-code src/constants/prompts.ts:445 的 getSystemPrompt
-//
-// 拼接顺序（对齐 claude-code 的章节结构）：
-// - 身份声明 + 安全策略
-// - # System（框架机制）
-// - # Doing tasks（任务执行原则）
-// - # Using your tools（工具规范）
-// - # Executing actions with care（危险操作）
-// - # Tone and style + Output efficiency（输出风格）
-// - # Environment（稳定宿主信息）
-//
-// 全段保持静态，利于模型前缀缓存。
-// PILLAR.md/currentDate/skills 走 attachment 注入，每次 runAgent 重新注入。
-
 import type {Message} from "../llm/types.js";
 import {detectEnv} from "./env.js";
 import {
@@ -25,8 +10,8 @@ import {
     getToolGuidanceSection,
 } from "./sections.js";
 
-// 构造初始 history：只有一条 system message
-// cwd、model 只用于构造稳定宿主信息；这里不执行 I/O。
+// Create initial History with one system message.
+// cwd/model provide stable host facts; no I/O occurs here.
 export function createInitialHistory(cwd: string, model: string): Message[] {
     const env = detectEnv(cwd, model);
     const systemContent = [
@@ -56,6 +41,6 @@ export function updateInitialHistoryModel(
     if (!system || system.role !== "system") return [...history];
     return [{
         role: "system",
-        content: system.content.replace(/^模型：.*$/m, `模型：${model}`),
+        content: system.content.replace(/^Model:.*$/m, `Model: ${model}`),
     }, ...conversation];
 }

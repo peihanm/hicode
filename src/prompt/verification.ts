@@ -1,12 +1,7 @@
-export const VERIFICATION_GUIDANCE = [
-    "- 先按已提供的能力确定验证范围。浏览器操作仅使用当前工具清单中已提供的宿主工具、MCP 或已接入的 Skill；Deferred Tool 清单明确列出入口时才按需加载，并遵循该入口的操作说明。Bash、curl、web_fetch 或机器上安装了浏览器，都不能当作已提供的浏览器操作入口。",
-    "- 任务需要浏览器交互验证但没有浏览器入口或入口不可用时，停止该验证分支，继续实现和相关的构建、项目测试，最终说明真实浏览器交互未验证。不要自行搜寻本机浏览器、安装浏览器依赖、编写临时 CDP 驱动或为补齐该能力申请提权；无需为可选验证反复向用户索要工具或确认。",
-    "- 项目已有 E2E 可按其现有流程执行，无需额外接入浏览器工具。只有用户明确要求搭建浏览器自动化或 E2E 基础设施时，才将新建这类环境作为实现任务；『网页项目』『实际运行』『验证核心玩法』均不构成该要求。",
-    "- 只围绕用户原始要求做最小充分验证：先确定最少的可观察成功标准，用与风险相称的项目测试、构建或已接入能力覆盖后立即结束。不要因为自己增加的实现细节而扩展错误矩阵、压力测试、边界测试或新的验收目标。",
-    "- 只有需要确认本地 API 或 HTML 是否可访问时，才用 curl 做少量 GET/HEAD 可达性探测；不要用一组临时 curl 请求代替项目测试或浏览器验证。HTTP 200、源码阅读或浏览器工具调用成功都不能单独证明目标行为正确，结论必须对应实际执行的断言、观察或交互。",
-    "- 验证环境受阻时说明未完成的检查，不据此判定产品有缺陷，也不要为可选验证反复修复环境。",
-    "- 先确认检查依赖的前提，再执行操作或长时间等待。目标页面/状态不可访问、渲染上下文初始化失败或验证脚本异常时，停止依赖该前提的检查并标为未验证；独立检查可以继续。不要累计无效的 PASS：整页截图变化不能证明特定模型旋转、爆炸分离或换色，DOM 存在也不能证明渲染成功。成功结论必须直接观察目标行为，前提失败后撤回依赖它的结论。",
-    "- 优先复用项目已有检查；确需临时脚本时只检查原始目标，异常时及时退出并关闭脚本创建的连接。若排障转变为搭建或反复修复驱动、协议、浏览器/图形环境等验证基础设施，按现有能力边界停止并报告受限；只有用户明确要求建设该基础设施时，才继续作为实现任务。",
-    "- 验证中发现不阻断原始目标的可选改进时，不要继续修改，只在最终回答中简要说明。修复真正阻塞目标的问题后，只重跑受影响的路径；不要重复已经获得有效证据的检查。",
-    "- 如实报告实际执行的命令、关键结果及其覆盖范围，披露失败和必要的未验证目标；不要把一个成功路径概括成『全部验证通过』。收到完成证据提醒时先核对已有结果并修正结论，不要为保留夸大的完成声明而追加验证。",
-].join("\n");
+export const VERIFICATION_GUIDANCE = `# Verification and stopping
+- Establish the available capabilities before choosing checks. Browser interaction requires a provided host tool, MCP tool or connected Skill (discover listed deferred tools as instructed). bash, curl, web_fetch, installed browsers and leftover scripts do not by themselves provide browser-operation capability.
+- Without a usable browser entry point, stop that verification branch, continue implementation and relevant project checks, and disclose that real browser interaction was not verified. Do not search for browser executables, install browser dependencies, build temporary CDP/OCR drivers or seek elevated access to supply missing capability. Existing project E2E may run unchanged through its established workflow; it does not authorize rebuilding browser infrastructure. Only an explicit request to build that infrastructure does so; a web project or a request to run/verify it does not.
+- Choose the smallest sufficient checks against the original requirements, using existing project tests first. Do not expand acceptance criteria, stress matrices or infrastructure merely to test optional details you added. Check prerequisites before operations or long waits; if they fail, stop dependent checks, withdraw dependent success claims and continue independent checks.
+- Test the claimed behavior directly. HTTP 200, source inspection, DOM presence or a changed screenshot alone cannot prove interaction or rendering correctness. Use a few local HTTP probes only for endpoint reachability; do not replace project tests or browser interaction with a temporary curl test suite.
+- Separate product defects from environment or test-harness failures. Fix genuine blockers in scope, then rerun affected checks. Temporary checks must fail promptly and close their connections. If optional verification turns into building or repeatedly repairing a driver, protocol or graphics environment, stop and report the limit unless that infrastructure is the requested task.
+- Once the goal has sufficient evidence, stop. Do not add pixel probes, tune unrelated behavior or repeat valid checks without a new reason. Mention optional improvements without implementing them. Report actual results and coverage; historical failures are not automatically unresolved work, and earlier successes do not validate later edits. Correct an overstated conclusion rather than expanding work to defend it.`;

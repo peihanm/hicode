@@ -2,59 +2,47 @@ import {z} from "zod";
 import type {Tool, ToolContext} from "../types.js";
 import type {PermissionResult} from "../../permissions/index.js";
 
-// TodoWrite 工具：agent 用全量替换更新任务清单
-// 参考 claude-code src/tools/TodoWriteTool/TodoWriteTool.ts
+// TodoWrite replaces the complete task list.
+// Based on Claude Code src/tools/TodoWriteTool/TodoWriteTool.ts.
 //
-// 关键设计：全量替换，不是增量。每次调用传完整 todos 数组。
+// Each call provides the complete todos array, not a delta.
 //
-// checkPermissions 直接 allow：todo 操作无副作用，只是更新 UI state。
-// setTodos 通过 ToolContext 注入，避免工具耦合 React。
+// checkPermissions allows directly: todos only update UI state.
+// Inject setTodos through ToolContext to avoid coupling tools to React.
 
 const todoSchema = z.object({
-    content: z.string().describe("任务描述（祈使句，如 'Fix the auth bug'）"),
+    content: z.string().describe("Task description in imperative form, e.g. 'Fix the auth bug'; use the user's language."),
     status: z.enum(["pending", "in_progress", "completed"]),
     activeForm: z.string().describe(
-        "进行时描述（如 'Fixing the auth bug'），spinner 显示用"
+        "In-progress wording for the spinner, e.g. 'Fixing the auth bug'; use the user's language."
     ),
 });
 
 const inputSchema = z.object({
-    todos: z.array(todoSchema).describe("完整任务清单（全量替换，不是增量）"),
+    todos: z.array(todoSchema).describe("Complete task list; replaces the list rather than appending a delta."),
 });
 
 type Input = z.infer<typeof inputSchema>;
 
 export const todoWriteTool: Tool<typeof inputSchema> = {
     name: "todo_write",
-    description: [
-        "更新任务清单。每次调用传完整 todos 数组（全量替换）。",
-        "",
-        "使用场景：",
-        "1. 复杂多步任务（3+ 步骤）— 拆解 + 追踪进度",
-        "2. 用户给了多个任务 — 立即捕获为 todos",
-        "3. 开始任务前 — 标记 in_progress（同时只能有一个 in_progress）",
-        "4. 阶段切换前 — 在一次更新中将已完成项标记 completed、下一项标记 in_progress，再开始下一项工作；不要到最终回复前集中补记。",
-        "例如：项目骨架已完成、接下来实现核心逻辑 → 先更新骨架 completed、核心逻辑 in_progress（保留其余项）→ 再写核心逻辑。",
-        "正文中的进度说明不能替代工具更新。同一项仍在处理中时无需重复更新；范围改变时调整或移除不再相关的项。发现漏更新时按真实进度纠正，不要伪造完成。",
-        "",
-        "不要在单步任务或纯信息查询时使用。",
-    ].join("\n"),
+    description: "Replace the complete task list. Use for multi-step work or multiple requested tasks, not trivial questions. Keep at most one item in_progress. At each meaningful transition, mark finished work completed and the next item in_progress before doing it; do not postpone all updates until the final answer. Prose does not update state. Keep unfinished items honest; adjust/remove obsolete scope and avoid redundant updates while still doing the same step. Write user-facing content/activeForm in the user's language.",
     parameters: inputSchema,
 
     isReadOnly: () => true,
 
     async checkPermissions(): Promise<PermissionResult> {
-        // todo 操作无副作用，直接放行
+        // Todo updates have no external side effects; allow directly.
         return {behavior: "allow"};
     },
 
     async execute({todos}: Input, ctx: ToolContext): Promise<string> {
-        // 全部完成时清空 todos（跟 claude-code TodoWriteTool.ts:69 一致）
-        // 避免"全部 ✓ 还显示在屏幕上"，任务完成后列表自动消失
+        // Clear todos when all are complete, following Claude Code TodoWriteTool.
+        // Hide the completed list instead of leaving all checkmarks on screen.
         const allDone = todos.length > 0 && todos.every((t) => t.status === "completed");
         await ctx.setTodos(allDone ? [] : todos);
         return allDone
-            ? "所有任务已完成，清单已清空。"
-            : "Todos 已更新。开始下一项工作前，先同步已完成项和下一进行项。";
+            ? "All tasks completed; the list has been cleared."
+            : "Todos updated. Before starting the next task, update completed items and the next in-progress item.";
     },
 };

@@ -43,9 +43,9 @@ interface SubagentRunnerDependencies {
 }
 
 const DEFAULT_FINALIZE_PROMPT = [
-    "工具执行阶段已经结束。",
-    "现在禁止继续调用工具，请只根据当前 history 中已经获得的证据输出最终任务报告。",
-    "报告应回答原始任务，列出已完成修改、验证结果和未完成部分，不得把未执行的检查声称为通过。",
+    "The tool execution stage has ended.",
+    "Do not call tools. Produce the final task report from evidence already in History.",
+    "Answer the assigned task in the user's language. Report completed changes, actual verification and unfinished work; never claim unperformed checks passed.",
 ].join("\n");
 
 const READONLY_FORK_TOOLS = [
@@ -77,7 +77,7 @@ function createForkRegistration(
         definition: {
             agentType: "fork",
             whenToUse: request.description,
-            systemPrompt: "临时 Fork 继承父 History，不使用持久 Agent Prompt。",
+            systemPrompt: "Complete the current Fork directive. The inherited conversation provides background; only the current assignment and worker capabilities govern execution.",
             allowedTools,
             model: "inherit",
             maxIterations: 12,
@@ -135,7 +135,7 @@ export function createSubagentFactories(
                 .map((definition) => definition.agentType)
                 .join(", ");
             throw new Error(
-                `未知 Agent 类型: ${request.agentType}。当前可用: ${available}`
+                `Unknown Agent type: ${request.agentType}. Currently available: ${available}`
             );
         }
         const {definition} = registration;
@@ -200,7 +200,7 @@ export function createSubagentFactories(
             agentId,
             async run(input) {
                 if (running) {
-                    throw new Error(`Agent Thread 正在运行: ${agentId}`);
+                    throw new Error(`Agent Thread is running: ${agentId}`);
                 }
                 running = true;
                 let hookStart: Extract<HookInput, {hook_event_name: "SubagentStart"}> | undefined;
@@ -210,18 +210,22 @@ export function createSubagentFactories(
                     throwIfTurnAborted(input.signal);
                     const cwd = await resolveSubagentDirectory(parentContext, request.cwd);
                     throwIfTurnAborted(input.signal);
-                    if (childCwd !== undefined && cwd !== childCwd) throw new Error("子 Agent 工作目录在继续前发生变化");
+                    if (childCwd !== undefined && cwd !== childCwd) throw new Error("Child Agent working directory changed before continuation");
                     if (childCwd === undefined) {
                         childCwd = cwd;
                         instructions = await subagentInstructions(parentContext, cwd);
-                        if (request.kind !== "fork") childHistory.push({role: "system",
-                            content: createAgentSystemPrompt(definition, cwd, childModel, initialToolNames)});
+                        const workerSystem: Message = {role: "system",
+                            content: createAgentSystemPrompt(definition, cwd, childModel, initialToolNames)};
+                        if (request.kind === "fork") {
+                            if (childHistory[0]?.role !== "system") throw new Error("Fork History is missing a system message");
+                            childHistory[0] = workerSystem;
+                        } else childHistory.push(workerSystem);
                     }
                     if (runCount === 0 && request.kind === "fork") {
                         const copied = new Set<string>();
                         for (const ref of childHistory.flatMap(message => imageReferences(message.content))) {
                             if (copied.has(ref.imageId)) continue;
-                            if (!parentContext.imageAccess) throw new Error("父线程没有图片读取能力");
+                            if (!parentContext.imageAccess) throw new Error("Parent thread has no image-read capability");
                             const data = await parentContext.imageAccess.read(ref);
                             const sourceData = await parentContext.imageAccess.readSource(ref);
                             await persistPreparedImage({store: childToolResultStore, origin: {kind: "tool", toolCallId: request.parentToolCallId, toolName: "agent"},
@@ -233,12 +237,12 @@ export function createSubagentFactories(
                     runCount += 1;
                     const childContext: ToolContext = createToolContext({
                         signal: input.signal,
-                        // 逐字段构造，禁止未来 capability 被 Root resources 自动扩散到 Child。
+                        // Construct fields explicitly so future Root capabilities cannot leak into children automatically.
                         resources: {
                             ...runtimeConfig.contextResources,
                             cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames,
                             fileCommits: parentContext.fileCommits,
-                            // Child 只能凭自己实际读取过的内容获得编辑授权。
+                            // Children gain edit authority only from their own actual reads.
                             model: childModel,
                             provider: childProvider,
                             fastModel: dependencies.fastModel,
@@ -256,7 +260,7 @@ export function createSubagentFactories(
                         host: {
                             canUseTool: async () => ({
                                 behavior: "deny",
-                                message: "子 Agent 不允许交互式权限确认",
+                                message: "Child Agents cannot request interactive permission approval",
                             }),
                             getPermissionRules: () => runtimeConfig.permissionRules,
                             getPermissionMode: () => runtimeConfig.permissionMode,
@@ -270,13 +274,13 @@ export function createSubagentFactories(
                     const executeChildTool: typeof runtime.executeTool = async (name, args, context, callId) => {
                         try {
                             const current = await resolveSubagentDirectory(parentContext, request.cwd);
-                            if (current !== cwd) return inlineToolResult("子 Agent 工作目录在工具执行前发生变化，未执行", "denied");
+                            if (current !== cwd) return inlineToolResult("Child Agent working directory changed before tool execution; tool was not executed", "denied");
                         } catch (error) {
-                            return inlineToolResult(`子 Agent 目录权限拒绝: ${error instanceof Error ? error.message : String(error)}`, "denied");
+                            return inlineToolResult(`Child Agent directory permission denied: ${error instanceof Error ? error.message : String(error)}`, "denied");
                         }
                         return runtime.executeTool(name, args, context, callId);
                     };
-                    // subagentLauncher 故意缺失，形成不可递归的运行时边界。
+                    // Omitting subagentLauncher enforces the no-recursion boundary.
                     if (!transcriptStarted && !transcriptDisabled) {
                         try {
                             await transcript.append({
@@ -371,7 +375,7 @@ export function createSubagentFactories(
                         ? createForkDirective({
                             name: request.name,
                             description: request.description,
-                            prompt: `当前实际工作目录：${cwd}。路径以此目录为准，继承历史中的其他目录不授予访问权限。\n${input.prompt}`,
+                            prompt: `Current working directory: ${cwd}. Resolve paths relative to this directory; other directories in inherited history do not grant access.\n ${input.prompt}`,
                             writable,
                         })
                         : input.prompt;
@@ -474,7 +478,7 @@ export function createSubagentFactories(
                                 },
                             });
                         } catch {
-                            // 保留原始运行错误。
+                            // Preserve the original execution error.
                         }
                     }
                     await emit(onEvent, {

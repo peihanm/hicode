@@ -45,9 +45,9 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
                     todos: [{content: "完成任务", activeForm: "正在完成任务", status: calls === 1 ? "in_progress" : "completed"}],
                 }, `todo-${calls}`);
                 await onText?.({type: "reset"});
-                await onText?.({type: "delta", text: "正在生成"});
+                await onText?.({type: "delta", text: "Generating"});
                 expect(events.at(-1)?.type).toBe("assistant_draft");
-                expect(history.some(message => message.content === "正在生成")).toBe(false);
+                expect(history.some(message => message.content === "Generating")).toBe(false);
                 if (mode === "failure") throw new Error("truncated response");
                 if (mode === "cancel") controller.abort("user-cancel");
                 if (mode === "retry") {

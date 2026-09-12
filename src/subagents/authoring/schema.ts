@@ -4,7 +4,7 @@ import type {OpenAITool} from "../../llm/types.js";
 export const generatedAgentDefinitionSchema = z.object({
     name: z.string().trim().min(1).max(64).regex(
         /^[A-Za-z][A-Za-z0-9_-]*$/,
-        "必须以字母开头，且只能包含字母、数字、- 和 _"
+        "Must start with a letter and contain only letters, digits, - and _"
     ),
     description: z.string().trim().min(1).max(500),
     system_prompt: z.string().trim().min(1).max(40_000),
@@ -17,7 +17,7 @@ export const submitAgentDefinitionTool: OpenAITool = {
     type: "function",
     function: {
         name: "submit_agent_definition",
-        description: "提交一个经过最小权限设计的自定义 Agent 候选定义",
+        description: "Submit a custom Agent candidate designed with minimal tool permissions.",
         parameters: {
             type: "object",
             additionalProperties: false,

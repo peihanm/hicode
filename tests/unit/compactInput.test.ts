@@ -26,14 +26,14 @@ test("输入预算保留旧交接和最新原话，大工具组整体转为明�
     expect(JSON.stringify(selected.messages)).toContain("原始约束仍适用");
     expect(JSON.stringify(selected.messages)).toContain("纠正：不得默认丢弃");
     expect(selected.coverage).toContain(`[[${"a".repeat(64)}/2]]..[[${"a".repeat(64)}/4]]`);
-    expect(selected.coverage).toContain("不代表已总结全部会话");
+    expect(selected.coverage).toContain("does not cover the entire conversation");
     expect(conversation).toEqual(before);
 });
 
 test("无档案或必须保留的原文过长时失败，不能伪造已覆盖", () => {
     const conversation: Message[] = [{role: "user", origin: "user" as const, content: "x".repeat(30_000)}];
-    expect(() => selectCompactInput({system, conversation, prompt: "交接", budget: 1000})).toThrow("无来源档案");
-    expect(() => selectCompactInput({system, conversation, prompt: "交接", budget: 1000, sources: sources(1)})).toThrow("无法容纳");
+    expect(() => selectCompactInput({system, conversation, prompt: "交接", budget: 1000})).toThrow("no source archive");
+    expect(() => selectCompactInput({system, conversation, prompt: "交接", budget: 1000, sources: sources(1)})).toThrow("cannot fit");
 });
 
 test("正常输入完整覆盖且不携带隐藏推理，压缩目标独立于触发阈值", () => {

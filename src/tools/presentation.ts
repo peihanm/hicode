@@ -158,7 +158,7 @@ export function summarizePhaseToolCall(input: {
             input.name === "glob" ||
             input.name === "list_files")
     ) {
-        const noResults = /^\s*(?:未找到|目录\s+.+\s+为空)/.test(input.result);
+        const noResults = /^\s*(?:No match|Directory\s+.+\s+is empty)/.test(input.result);
         if (noResults) return `${phase.success} · No results`;
         const count = normalizeDisplayLines(input.result).filter(
             (line) => line.trim().length > 0
@@ -168,10 +168,7 @@ export function summarizePhaseToolCall(input: {
     return phase.success;
 }
 
-/**
- * 把稳定的 Tool Schema 转成与终端无关的用户语义。这里不决定颜色、缩进或
- * 折叠方式；UI 只消费 label/detail，不再猜任意 JSON 字段。
- */
+/** Project stable Tool Schema into terminal-independent user semantics. Color, indentation and folding belong elsewhere; the UI consumes label/detail rather than guessing arbitrary JSON fields. */
 export function describeToolCall(
     name: string,
     argsJson: string
@@ -296,7 +293,7 @@ export function summarizeToolResult(
 ): string[] {
     if (name === "read_file") {
         const match = result.match(
-            /^文件:\s*[^\n]+\n行范围:\s*(\d+)-(\d+)\s*\/\s*(\d+)/
+            /^File:\s*[^\n]+\nLine range:\s*(\d+)-(\d+)\s*\/\s*(\d+)/
         );
         if (match) {
             const start = Number(match[1]);

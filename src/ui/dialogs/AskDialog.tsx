@@ -4,30 +4,30 @@ import TextInput from "ink-text-input";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
 
-// 多选题对话框：LLM 调 ask_user 工具时弹出
+// Multiple-choice dialog shown when the LLM calls ask_user.
 //
-// 设计参考 claude-code AskUserQuestionPermissionRequest：
-//   - 支持 1-4 个问题，逐个显示（不是一次全显示）
-//   - 单选选了自动跳下一个（auto-advance）
-//   - Type something 选了进入输入模式 + Submit 按钮
-//   - 最后一个问题答完 → 进入 Submit 视图（回顾所有 Q&A + Submit/Cancel）
-//   - 单问题时 short-circuit：答完直接提交，跳过 Submit 视图
+// Based on Claude Code's AskUserQuestionPermissionRequest:
+// - Supports 1-4 questions, displayed individually.
+// - Choosing an option advances automatically.
+// - Type something opens text entry with a Submit button.
+// - After the last answer, show a review screen with Submit/Cancel.
+// - For a single question, submit immediately without the review screen.
 //
-// 简化点（相对 claude-code）：
-//   - 不做 multiSelect（所有问题单选，选了就跳下一个）
-//   - 不做 QuestionNavigationBar（进度条 tab）
-//   - 不做 Tab/Shift+Tab 在问题间跳转（只能向前）
-//   - 不做 preview / annotations
-//   - 不做 "Chat about this" / "Respond to Claude" 额外选项
+// Simplifications relative to Claude Code:
+// - Single choice only; no multiSelect.
+// - No QuestionNavigationBar tabs.
+// - No Tab/Shift+Tab navigation between questions; forward only.
+// - No preview or annotations.
+// - No extra Chat about this / Respond to Claude options.
 //
-// 数据流：
-//   LLM 调 ask_user({questions: [...]})
-//     → checkPermissions 返回 ask
-//     → canUseTool 弹窗（App.tsx 按 toolName 分发到 AskDialog）
-//     → 用户逐个回答
+// Data flow:
+// LLM calls ask_user({questions: [...]})
+// -> checkPermissions returns ask
+// -> canUseTool opens the dialog (App.tsx dispatches to AskDialog by toolName)
+// -> the user answers each question
 //     → resolve({ behavior: 'allow', answers: {Q: A} })
-//     → executeTool 经 invocation 提供答案，不替换原问题
-//     → tool.execute 返回 "用户回答: ..."
+// -> executeTool supplies answers through invocation without replacing the questions
+// -> tool.execute returns "User answers: ..."
 
 type Option = { label: string; description?: string };
 type Question = {
@@ -48,21 +48,21 @@ export function AskDialog({
     const questions = askInput.questions;
     const totalQuestions = questions.length;
 
-    // 当前问题索引：0..totalQuestions-1 是问题，totalQuestions 是 Submit 视图
+    // Question index: 0..totalQuestions-1; totalQuestions selects the Submit screen.
     const [currentIndex, setCurrentIndex] = useState(0);
-    // 已提交的答案：Record<question_text, answer>
+    // Submitted answers: Record<question_text, answer>.
     const [answers, setAnswers] = useState<Record<string, string>>({});
 
-    // Type something 输入模式状态
+    // State for Type something text entry.
     const [isTyping, setIsTyping] = useState(false);
     const [typedValue, setTypedValue] = useState("");
-    // 输入模式下焦点：'input'（输入框）或 'submit'（Submit 按钮，用于提交当前问题的输入）
+    // Text-entry focus: input or submit (submits text for the current question).
     const [focus, setFocus] = useState<"input" | "submit">("input");
 
-    // 当前问题的选择索引（每个问题都从 0 开始，useReset 重置由 key 变化触发）
+    // Each question starts at selection index 0; the key change triggers useReset.
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // 提交所有答案给 executeTool
+    // Submit all answers to executeTool.
     const submitAll = (finalAnswers: Record<string, string>) => {
         req.resolve({
             behavior: "allow",
@@ -71,13 +71,13 @@ export function AskDialog({
         onDone();
     };
 
-    // 记录当前问题答案并前进到下一个
+    // Record the current answer and advance.
     const recordAnswerAndAdvance = (answer: string) => {
         const currentQ = questions[currentIndex];
         const newAnswers = {...answers, [currentQ.question]: answer};
 
-        // 单问题 short-circuit：答完直接提交，跳过 Submit 视图
-        // 参考 claude-code handleQuestionAnswer 的 isSingleQuestion 分支
+        // Single-question shortcut: submit directly without the review screen.
+        // See the isSingleQuestion branch in Claude Code's handleQuestionAnswer.
         if (totalQuestions === 1) {
             submitAll(newAnswers);
             return;
@@ -85,11 +85,11 @@ export function AskDialog({
 
         setAnswers(newAnswers);
         setCurrentIndex((i) => i + 1);
-        // 重置选择索引：新问题从第一个选项开始
+        // Reset selection so each new question starts at its first option.
         setSelectedIndex(0);
     };
 
-    // ── 输入模式（Type something 被选中后）──
+    // Text entry after selecting Type something.
     const exitTyping = () => {
         setIsTyping(false);
         setTypedValue("");
@@ -97,7 +97,7 @@ export function AskDialog({
     };
 
     useInput((_input, key) => {
-        // ── 输入模式 ──
+        // Text-entry mode.
         if (isTyping) {
             if (focus === "input") {
                 if (key.downArrow || key.tab) {
@@ -108,9 +108,9 @@ export function AskDialog({
                     exitTyping();
                     return;
                 }
-                return; // 其他按键由 TextInput 处理
+                return; // TextInput handles other keys.
             }
-            // 焦点在 Submit 按钮（提交当前问题的输入）
+            // Focus is on the Submit button for the current answer.
             if (key.upArrow) {
                 setFocus("input");
                 return;
@@ -132,22 +132,22 @@ export function AskDialog({
             return;
         }
 
-        // ── Submit 视图（所有问题答完）──
+        // Submit screen after all questions are answered.
         if (currentIndex === totalQuestions) {
             if (key.escape) {
-                // 当前 turn 的取消由 App 统一处理，确保同时 abort 模型/工具链。
+                // App owns Turn cancellation so model and tool execution abort together.
                 return;
             }
             if (key.return) {
                 submitAll(answers);
                 return;
             }
-            return; // Submit 视图不响应其他键
+            return; // The Submit screen ignores other keys.
         }
 
-        // ── 选择模式（当前问题）──
+        // Selection mode for the current question.
         if (key.escape) {
-            // 当前 turn 的取消由 App 统一处理。
+            // App owns cancellation of the current Turn.
             return;
         }
 
@@ -161,24 +161,24 @@ export function AskDialog({
             setSelectedIndex((i) => (i + 1) % totalOptions);
         } else if (key.return) {
             if (selectedIndex === typeSomethingIndex) {
-                // 选了 Type something，进入输入模式
+                // Type something was selected; enter text-entry mode.
                 setIsTyping(true);
                 setFocus("input");
             } else {
-                // 预设选项：记录答案并前进
+                // Record the preset answer and advance.
                 recordAnswerAndAdvance(currentQ.options[selectedIndex].label);
             }
         }
     });
 
-    // 切换问题时重置选中索引：recordAnswerAndAdvance 里调 setSelectedIndex(0)
-    // 这样新问题从第一个选项开始，不会带上一题的 index 过来
+    // recordAnswerAndAdvance calls setSelectedIndex(0) when changing questions.
+    // This starts the new question at its first option rather than retaining the previous index.
 
-    // ── Submit 视图 ──
+    // Submit screen.
     if (currentIndex === totalQuestions) {
         return (
             <Box flexDirection="column" paddingLeft={2} paddingRight={1}>
-                <Text color={COLORS.dim}>确认回答 · {totalQuestions}/{totalQuestions} 已回答</Text>
+                <Text color={COLORS.dim}>Confirm answers · {totalQuestions}/{totalQuestions} answered</Text>
                 <Box marginTop={1} flexDirection="column">
                     {questions.map((q, i) => (
                         <Box key={i} flexDirection="column" marginTop={i > 0 ? 1 : 0}>
@@ -187,43 +187,43 @@ export function AskDialog({
                             </Text>
                             <Box marginLeft={2}>
                                 <Text color={COLORS.dim}>→ </Text>
-                                <Text>{answers[q.question] ?? "(未回答)"}</Text>
+                                <Text>{answers[q.question] ?? "(unanswered)"}</Text>
                             </Box>
                         </Box>
                     ))}
                 </Box>
                 <Box marginTop={1}>
                     <Text color={COLORS.accent} bold>
-                        ❯ 提交回答
+                        ❯ Submit answers
                     </Text>
                 </Box>
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>Enter 提交 · Esc 取消</Text>
+                    <Text color={COLORS.dim}>Enter submit · Esc cancel</Text>
                 </Box>
             </Box>
         );
     }
 
-    // ── 当前问题视图 ──
+    // Current question screen.
     const currentQ = questions[currentIndex];
     const typeSomethingIndex = currentQ.options.length;
 
-    // 快捷键提示（根据状态动态显示）
+    // Shortcut hints depend on the current state.
     const hint = isTyping
         ? focus === "input"
-            ? "Enter/↓ 下一步 · Esc 返回选项"
-            : "↑ 编辑 · Enter 确认 · Esc 返回选项"
-        : "↑↓ 选择 · Enter 确认 · Esc 取消";
+            ? "Enter/↓ next · Esc back to options"
+            : "↑ edit · Enter confirm · Esc back to options"
+        : "↑↓ select · Enter confirm · Esc cancel";
 
-    // 进度提示（多问题时显示）
+    // Show question progress for multiple questions.
     const progress =
         totalQuestions > 1
-            ? `问题 ${currentIndex + 1}/${totalQuestions}`
+            ? `Question ${currentIndex + 1}/${totalQuestions}`
             : null;
 
     return (
         <Box flexDirection="column" paddingLeft={2} paddingRight={1}>
-            <Text color={COLORS.dim}>需要你确认{progress ? ` · ${progress}` : ""}</Text>
+            <Text color={COLORS.dim}>Confirmation needed{progress ? ` · ${progress}` : ""}</Text>
             <Box marginTop={1}>
                 <Text bold>{currentQ.question}</Text>
             </Box>
@@ -267,11 +267,11 @@ export function AskDialog({
                                             )
                                         }
                                         onSubmit={() => setFocus("submit")}
-                                        placeholder="输入你的回答…"
+                                        placeholder="Enter your answer…"
                                     />
                                 ) : (
                                     <Text color={COLORS.dim}>
-                                        {typedValue || "输入你的回答…"}
+                                        {typedValue || "Enter your answer…"}
                                     </Text>
                                 )}
                             </Box>
@@ -283,7 +283,7 @@ export function AskDialog({
                                     color={focus === "submit" ? COLORS.accent : COLORS.dim}
                                     bold={focus === "submit"}
                                 >
-                                    确认输入
+                                    Confirm input
                                 </Text>
                             </Box>
                         </>
@@ -306,7 +306,7 @@ export function AskDialog({
                                 }
                                 bold={selectedIndex === typeSomethingIndex}
                             >
-                                {typeSomethingIndex + 1}. 自己填写…
+                                {typeSomethingIndex + 1}. Enter your own answer…
                             </Text>
                         </Box>
                     )}

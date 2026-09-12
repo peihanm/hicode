@@ -57,7 +57,7 @@ async function readInstructionFile(
     try {
         const info = await handle.stat();
         if (!info.isFile()) {
-            throw new Error("PILLAR.md 必须是普通文件，不能是目录或符号链接");
+            throw new Error("PILLAR.md must be a regular file, not a directory or symlink");
         }
         const buffer = Buffer.allocUnsafe(Math.min(info.size, maxBytes));
         const {bytesRead} = buffer.length > 0
@@ -78,7 +78,7 @@ function discoveryDirectories(cwd: string, boundary?: string): string[] {
     const root = boundary === undefined ? parse(current).root : resolve(boundary);
     const relation = relative(resolve(root), current);
     if (relation.startsWith("..") || isAbsolute(relation)) {
-        throw new Error("PILLAR.md discovery boundary 不包含 cwd");
+        throw new Error("PILLAR.md discovery boundary does not contain cwd");
     }
     while (true) {
         directories.push(current);
@@ -185,7 +185,7 @@ export function createProjectInstructionLoader(
                 if (!raw.trim()) continue;
                 const bounded = boundedFileContent(raw, maxFileChars);
                 if (bounded.truncated || byteTruncated) {
-                    issues.push(`${path} 超过 ${maxFileChars} 字符，已截断`);
+                    issues.push(`${path} exceeds ${maxFileChars} characters; truncated`);
                 }
                 discovered.push({
                     path,
@@ -197,7 +197,7 @@ export function createProjectInstructionLoader(
                 const code = (error as NodeJS.ErrnoException | undefined)?.code;
                 if (code !== "ENOENT" && code !== "ENOTDIR") {
                     const message = error instanceof Error ? error.message : String(error);
-                    issues.push(`${path} 读取失败: ${message}`);
+                    issues.push(`${path} read failed: ${message}`);
                 }
             }
         }
@@ -221,10 +221,10 @@ export function createProjectInstructionLoader(
             if (remaining > 0) {
                 const bounded = boundedFileContent(file.content, remaining);
                 budgeted.set(index, {...file, ...bounded, truncated: true});
-                issues.push(`${instructionLabel(file)} 因指令总预算 ${maxTotalChars} 字符被进一步截断`);
+                issues.push(`${instructionLabel(file)} was further truncated by the total instruction budget of ${maxTotalChars} characters`);
                 remaining = 0;
             } else {
-                issues.push(`${instructionLabel(file)} 因指令总预算 ${maxTotalChars} 字符未注入`);
+                issues.push(`${instructionLabel(file)} was further truncated by the total instruction budget of ${maxTotalChars} characters were not injected`);
             }
         }
 
@@ -294,6 +294,6 @@ export function formatProjectInstructions(
 
 function instructionLabel(instruction: LoadedInstructionFile): string {
     return instruction.scope === "host"
-        ? `Host 指令 ${instruction.id}`
+        ? `Host instructions ${instruction.id}`
         : instruction.path;
 }

@@ -69,7 +69,7 @@ describe("primary model catalog", () => {
             source: "glm",
             model: "glm-5.2",
             label: "GLM 5.2",
-        })).toThrow("当前不可用");
+        })).toThrow("is unavailable");
     });
 });
 
@@ -79,5 +79,5 @@ test("可信来源声明的别名不会被模型家族前缀过滤，未声明�
     const available = listConfiguredPrimaryModels(sources, {DASHSCOPE_API_KEY: "fixture"});
     expect(available).toEqual([{source: "qwen", model: "vendor/custom-alias", label: "Alias"}]);
     const runtime = createPrimaryModelRuntime(available[0]!, sources, available);
-    expect(() => runtime.select({...available[0]!, model: "undeclared"})).toThrow("当前不可用");
+    expect(() => runtime.select({...available[0]!, model: "undeclared"})).toThrow("is unavailable");
 });

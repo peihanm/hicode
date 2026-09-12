@@ -32,7 +32,7 @@ export interface AgentUsage {
     estimated: boolean;
 }
 
-/** Agent 主循环向宿主发布的运行事件。 */
+/** Runtime events published by the Agent loop to the Host. */
 export type AgentEvent =
     | ApprovalEvent
     | HookLifecycleEvent
@@ -40,7 +40,7 @@ export type AgentEvent =
     | {
         type: "assistant_text";
         content: string;
-        /** 省略时视为本地命令产生的最终文本。 */
+        /** Omission means final text produced by a local command. */
         phase?: "commentary" | "final";
         responseId?: string;
     }

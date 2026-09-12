@@ -1,3 +1,4 @@
+import {getWorkerInstructions} from "../prompt/sections.js";
 import type {AgentDefinition} from "./types.js";
 
 export function createAgentSystemPrompt(
@@ -7,11 +8,12 @@ export function createAgentSystemPrompt(
     allowedTools: readonly string[] = definition.allowedTools
 ): string {
     return [
+        getWorkerInstructions(),
         definition.systemPrompt,
         "",
-        "## 运行环境",
-        `工作目录：${cwd}`,
-        `模型：${model}`,
-        `可用工具：${allowedTools.join(", ")}`,
+        "## Worker environment",
+        `Working directory: ${cwd}`,
+        `Model: ${model}`,
+        `Available tools: ${allowedTools.join(", ")}`,
     ].join("\n");
 }

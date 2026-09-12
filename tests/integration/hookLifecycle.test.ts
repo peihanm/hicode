@@ -259,7 +259,7 @@ test("Root /hooks reload 仅重读声明来源，活动 Turn 禁止重载，坏�
             const session = sessionFor(resources);
             const ctx = session.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"}),host, signal: new AbortController().signal, onEvent() {}});
             const release = resources.holdHookConfiguration();
-            await expect(ctx.hookControl!.reload(ctx.signal)).rejects.toThrow("尚未结束");
+            await expect(ctx.hookControl!.reload(ctx.signal)).rejects.toThrow("still active");
             release();
             await ctx.hookControl!.reload(ctx.signal);
             expect(approvals).toBe(1);

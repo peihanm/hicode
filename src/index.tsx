@@ -107,7 +107,7 @@ if (cliOptions.printPrompt !== undefined) {
         await app.waitUntilExit();
     } finally {
         const timeout = setTimeout(() => {
-            process.stderr.write("Pillar 退出清理超时，正在结束进程。\n");
+            process.stderr.write("Pillar shutdown cleanup timed out; terminating the process.\n");
             process.exit(process.exitCode || 1);
         }, 10_000);
         await shutdown.close();

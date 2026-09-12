@@ -26,7 +26,7 @@ test("无工具总结拒绝模型的写调用，保留对应结果并可继续�
         expect(executions).toBe(0);
         expect(result.reason).toBe("completed");
         expect(history.filter(message => message.role === "tool" && message.tool_call_id === "write")).toHaveLength(1);
-        expect(history.find(message => message.role === "tool")?.content).toContain("未在本次模型请求中提供");
+        expect(history.find(message => message.role === "tool")?.content).toContain("was not provided in this model request");
         await expect(access(join(cwd, "forbidden.txt"))).rejects.toThrow();
     });
 });

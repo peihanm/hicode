@@ -23,14 +23,14 @@ export class AsyncEventQueue {
         if (this.closed) return Promise.resolve();
         const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
         if (bytes > MAX_BYTES) {
-            this.fail(new Error(`SDK 单个事件超过 ${MAX_BYTES} 字节，事件流已中断`));
+            this.fail(new Error(`SDK event exceeds ${MAX_BYTES} bytes; event stream interrupted`));
             return Promise.resolve();
         }
         const entry = {value, bytes};
         if (this.writers.length === 0 && this.admit(entry)) return Promise.resolve();
         if (value.type === "turn.progress" || value.type === "turn.draft") return Promise.resolve();
         if (this.writers.length >= MAX_WAITING_WRITERS || this.waitingBytes + bytes > MAX_BYTES) {
-            this.fail(new Error("SDK 事件生产者超过并发等待上限，事件流已中断"));
+            this.fail(new Error("SDK event producers exceeded the concurrent wait limit; event stream interrupted"));
             return Promise.resolve();
         }
         this.waitingBytes += bytes;

@@ -67,8 +67,8 @@ export class UITurnController {
     private readonly taskActions = new Map<AbortController, Promise<void>>();
 
     async stopTask(id: string): Promise<void> {
-        if (this.disposed) throw new Error("会话正在关闭");
-        if (this.taskActions.size) throw new Error("正在处理另一项任务操作");
+        if (this.disposed) throw new Error("Session is closing");
+        if (this.taskActions.size) throw new Error("Another task operation is in progress");
         const controller = createTurnAbortController();
         const operation = (async () => {
             await this.dependencies.initialize();
@@ -126,7 +126,7 @@ export class UITurnController {
 
     private async prepareImages(count: number, prepare: (signal: AbortSignal) => Promise<ImageReference[]>): Promise<boolean> {
         if (this.disposed || this.imageImport) return false;
-        if (count + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("最多添加 8 张图片")); return false;}
+        if (count + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("Up to 8 images may be attached")); return false;}
         const controller = createTurnAbortController();
         this.setAttachments(this.attachmentState.images, true);
         const settled = (async () => {
@@ -135,7 +135,7 @@ export class UITurnController {
                 const images = await prepare(controller.signal);
                 if (controller.signal.aborted || this.disposed) return false;
                 const all = [...this.attachmentState.images, ...images];
-                if (all.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 10 MiB 预算");
+                if (all.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("Attachments exceed the 10 MiB budget");
                 this.setAttachments(all);
                 return true;
             } catch (error) {if (!controller.signal.aborted) this.dependencies.onUnexpectedError(error); return false;}
@@ -155,7 +155,7 @@ export class UITurnController {
         const content = input.trim().startsWith("/") ? input : this.withAttachments(input);
         try {
             const images = imageReferences(content);
-            if (images.length > IMAGE_MAX_COUNT || images.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("附件超过 8 张或 10 MiB，请在输入框退格移除部分图片");
+            if (images.length > IMAGE_MAX_COUNT || images.reduce((sum, ref) => sum + ref.image.byteLength, 0) > IMAGE_REQUEST_BYTES) throw new Error("Attachments exceed 8 images or 10 MiB; remove some images with Backspace in the input");
             this.dependencies.validateImages(content);
         } catch (error) {
             this.dependencies.restoreDraft(input); this.dependencies.onUnexpectedError(error); return false;
@@ -279,7 +279,7 @@ export class UITurnController {
         if (!active || active.controller.signal.aborted) return false;
         this.publish({...this.snapshot, busy: true, stopping: true});
         active.controller.abort(reason);
-        this.dependencies.denyPendingPermission("任务已取消");
+        this.dependencies.denyPendingPermission("Task cancelled");
         return true;
     }
 
@@ -311,7 +311,7 @@ export class UITurnController {
         }
         this.immediateSlashController?.abort("shutdown");
         this.immediateSlashController = null;
-        this.dependencies.denyPendingPermission("应用正在关闭");
+        this.dependencies.denyPendingPermission("Application is shutting down");
         this.listeners.clear();
     }
 
@@ -352,7 +352,7 @@ export class UITurnController {
                     setCollaborationMode: this.dependencies.setCollaborationMode,
         }).then((result) => {
             if (result !== true) {
-                throw new Error(`运行中 Slash 未按本地命令完成: ${input}`);
+                throw new Error(`Running Slash did not finish as a local command: ${input}`);
             }
         }).catch((error) => {
             if (!controller.signal.aborted) {
@@ -384,7 +384,7 @@ export class UITurnController {
             try {
                 listener();
             } catch {
-                // UI subscriber 不能破坏 Turn 生命周期。
+                // UI subscribers cannot disrupt the Turn lifecycle.
             }
         }
     }

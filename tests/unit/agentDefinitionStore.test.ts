@@ -58,7 +58,7 @@ describe("agent definition store", () => {
                 created.definition.agentType,
                 created.contentHash,
                 draft("旧表单覆盖")
-            )).rejects.toThrow("已被外部修改");
+            )).rejects.toThrow("was modified externally");
         });
     });
 
@@ -69,7 +69,7 @@ describe("agent definition store", () => {
             await expect(store.create("project", {
                 ...draft(),
                 name: "Project-Reviewer",
-            })).rejects.toThrow("同一作用域已存在 Agent");
+            })).rejects.toThrow("Agent already exists in this scope");
             expect((await readdir(`${cwd}/.pillar/agents`)).filter(
                 (name) => name.endsWith(".md")
             )).toEqual(["project-reviewer.md"]);
@@ -89,7 +89,7 @@ describe("agent definition store", () => {
             await expect(store.create("project", {
                 ...draft(),
                 name: "over-limit",
-            })).rejects.toThrow("64 个的上限");
+            })).rejects.toThrow("64 items");
         });
     });
 
@@ -115,7 +115,7 @@ describe("agent definition store", () => {
             const store = createAgentDefinitionStore(storage, cwd);
 
             await expect(store.create("project", draft())).rejects.toThrow(
-                "Agent 配置目录不安全"
+                "Unsafe Agent configuration directory"
             );
             expect(await Bun.file(`${outside}/agents/project-reviewer.md`).exists())
                 .toBe(false);

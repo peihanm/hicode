@@ -22,7 +22,7 @@ export interface FileChange {
     version: 1;
     path: string;
     kind: "create" | "update" | "delete";
-    /** 本轮内多次文件工具调用合并后的初始状态到最终状态。 */
+    /** Initial-to-final state after merging file-tool changes in this Turn. */
     scope?: "turn";
     hunks: DiffHunk[];
     linesAdded: number | null;

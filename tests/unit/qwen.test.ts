@@ -222,7 +222,7 @@ describe("Qwen provider", () => {
             cwd: process.cwd(),
             model: "qwen3.6-plus",
             kind: "main",
-        })).rejects.toThrow("缺少 DASHSCOPE_API_KEY");
+        })).rejects.toThrow("Missing DASHSCOPE_API_KEY");
 
         const callQwen = createLLMCaller(QWEN_SOURCE);
         await expect(callQwen(
@@ -232,7 +232,7 @@ describe("Qwen provider", () => {
             process.cwd(),
             "glm-5.2",
             "main"
-        )).rejects.toThrow("缺少 DASHSCOPE_API_KEY");
+        )).rejects.toThrow("Missing DASHSCOPE_API_KEY");
     });
 });
 

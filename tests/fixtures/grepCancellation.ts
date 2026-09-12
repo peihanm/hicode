@@ -9,7 +9,7 @@ await withTempProject(async cwd => {
     await writeFile(join(cwd, "danger.txt"), ("a".repeat(32) + "!\n").repeat(100));
     if (process.argv[2] === "deadline") {
         const result = await executeToolResult("grep", '{"path":"danger.txt","pattern":"(a+)+$"}', createTestContext(cwd), "deadline");
-        if (result.outcome !== "failed" || contentText(result.modelContent).includes("未找到匹配")) throw new Error(JSON.stringify(result));
+        if (result.outcome !== "failed" || contentText(result.modelContent).includes("No matches for")) throw new Error(JSON.stringify(result));
         process.stdout.write("GREP_FAILED_WITHOUT_FALSE_NEGATIVE");
         return;
     }

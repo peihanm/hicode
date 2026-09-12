@@ -868,7 +868,7 @@ for (const action of ["resume", "return", "close", "abort"] as const) {
                 } else {
                     if (action === "abort") controller.abort("user-cancel");
                     await thread.close();
-                    await expect(iterator.next()).rejects.toThrow("事件流已断开");
+                    await expect(iterator.next()).rejects.toThrow("event stream disconnected");
                 }
                 expect(loadSession(storage, cwd, thread.id, resources.model)?.history.at(-1)?.content).toBe("done");
             } finally {
@@ -897,7 +897,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
             options => {
                 expect(options.kind).toBe("compact");
                 expect(options.tools).toEqual([]);
-                expect(JSON.stringify(options.messages)).toContain("交接覆盖限制");
+                expect(JSON.stringify(options.messages)).toContain("Handoff coverage limit");
                 return assistantText(JSON.stringify({version: 1,
                     objective: [{text: "继续当前任务，原始细节待回查", sources: [], basis: "inferred"}],
                     constraints: [], decisions: [], files: [], verification: [], next: []}));
@@ -923,7 +923,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
             await first.close();
             const loaded = loadSession(storage, cwd, sessionId, resources.model)!;
             expect(loaded.compactState!.archives).toHaveLength(1);
-            expect(JSON.stringify(loaded.history)).toContain("交接覆盖限制");
+            expect(JSON.stringify(loaded.history)).toContain("Handoff coverage limit");
             indexPath = archiveIndexPath(storage, cwd, sessionId, loaded.compactState!.archives![0]!.id);
             const second = await createSDKThread({resources, seed: {...loaded, compactState: loaded.compactState!},
                 state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: loaded.uiEvents}, resumed: true, onClose() {}});

@@ -74,17 +74,17 @@ describe("StatusBar background tasks", () => {
   });
   test("用后台服务数量代替容易误解的运行中提示", () => {
     const frame = renderStatusBar("actual", {total: 1, shell: 1, agent: 0, memory: 0});
-    expect(frame).toContain("后台 1 · /tasks");
+    expect(frame).toContain("Background 1 · /tasks");
     expect(frame).not.toContain("Tasks running");
   });
 
   test("区分后台 Agent 与混合任务", () => {
     expect(
       renderStatusBar("actual", {total: 2, shell: 0, agent: 2, memory: 0})
-    ).toContain("后台 2 · /tasks");
+    ).toContain("Background 2 · /tasks");
     expect(
       renderStatusBar("actual", {total: 3, shell: 1, agent: 2, memory: 0})
-    ).toContain("后台 3 · /tasks");
+    ).toContain("Background 3 · /tasks");
   });
 
   test("没有后台任务时不显示摘要", () => {

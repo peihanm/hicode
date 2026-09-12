@@ -24,7 +24,7 @@ export class UIPermissionRequests {
         }
     ): Promise<PermissionDecision> {
         if (this.disposed || options?.signal?.aborted) {
-            return Promise.resolve({behavior: "deny", message: "权限请求已取消"});
+            return Promise.resolve({behavior: "deny", message: "Permission request cancelled"});
         }
 
         return new Promise<PermissionDecision>((resolve) => {
@@ -56,7 +56,7 @@ export class UIPermissionRequests {
                 },
             };
             const abort = () => {
-                request.resolve({behavior: "deny", message: "权限请求已取消"});
+                request.resolve({behavior: "deny", message: "Permission request cancelled"});
                 if (!this.clear(request)) {
                     this.queue = this.queue.filter((entry) => entry !== request);
                 }
@@ -87,7 +87,7 @@ export class UIPermissionRequests {
 
     dispose(): void {
         this.disposed = true;
-        this.denyPending("应用正在关闭");
+        this.denyPending("Application is shutting down");
         this.listeners.clear();
     }
 
@@ -103,7 +103,7 @@ export class UIPermissionRequests {
             try {
                 listener();
             } catch {
-                // UI subscriber 不能卡住权限 Promise。
+                // UI subscribers cannot stall the permission Promise.
             }
         }
     }

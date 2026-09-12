@@ -3,10 +3,10 @@ import type {SlashCommand} from "../types.js";
 
 function usage(): string {
     return [
-        "用法：",
-        "  /add-dir                 查看当前 Session 可写目录",
-        "  /add-dir <path>          允许当前 Session 访问目录",
-        "  /add-dir --project <path> 为当前项目记住目录",
+        "Usage:",
+        "  /add-dir                  List writable directories in this Session",
+        "  /add-dir <path>           Grant directory access for this Session",
+        "  /add-dir --project <path> Remember a directory grant for this project",
     ].join("\n");
 }
 
@@ -14,19 +14,19 @@ function parseArgs(args: string): {path?: string; scope: DirectoryGrantScope} {
     const trimmed = args.trim();
     if (!trimmed) return {scope: "session"};
     if (trimmed === "--project") {
-        throw new Error("--project 后需要目录路径");
+        throw new Error("--project requires a directory path");
     }
     if (trimmed.startsWith("--project ")) {
         return {scope: "project", path: trimmed.slice("--project ".length).trim()};
     }
-    if (trimmed.startsWith("-")) throw new Error(`未知参数: ${trimmed}`);
+    if (trimmed.startsWith("-")) throw new Error(`Unknown argument: ${trimmed}`);
     return {scope: "session", path: trimmed};
 }
 
 export const addDirCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "add-dir",
-    description: "查看或授权项目外目录",
+    description: "View or authorize directories outside the project",
     argumentHint: "[--project] <path>",
     async execute(args, context) {
         let parsed;
@@ -45,10 +45,10 @@ export const addDirCommand: SlashCommand = {
             await context.onEvent({
                 type: "assistant_text",
                 content: [
-                    "当前 Session 可写目录：",
+                    "Writable directories in this Session:",
                     ...directories.map((directory) => `- ${directory}`),
                     "",
-                    "使用 /add-dir <path> 临时增加，或 /add-dir --project <path> 为当前项目记住。",
+                    "Use /add-dir <path> for temporary access, or /add-dir --project <path> to remember it for this project.",
                 ].join("\n"),
             });
             return;
@@ -62,13 +62,13 @@ export const addDirCommand: SlashCommand = {
             await context.onEvent({
                 type: "assistant_text",
                 content: parsed.scope === "project"
-                    ? `已为当前项目记住目录：${directory}`
-                    : `已允许当前 Session 访问目录：${directory}`,
+                    ? `Directory grant saved for this project: ${directory}`
+                    : `Directory access granted for this Session: ${directory}`,
             });
         } catch (error) {
             await context.onEvent({
                 type: "assistant_text",
-                content: `目录授权失败：${error instanceof Error ? error.message : String(error)}`,
+                content: `Directory authorization failed: ${error instanceof Error ? error.message : String(error)}`,
             });
         }
     },

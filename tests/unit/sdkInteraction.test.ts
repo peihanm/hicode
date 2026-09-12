@@ -3,13 +3,13 @@ import {normalizeInteractionResponse, raceInteractionWithAbort} from "../../src/
 
 describe("SDK network response validation", () => {
     test("答案使用独立字段，拒绝无效答案和问题参数替换", () => {
-        expect(normalizeInteractionResponse({behavior: "allow", answers: {"问题": "回答"}}))
-            .toEqual({behavior: "allow", answers: {"问题": "回答"}});
-        for (const answers of [null, [], {}, {"问题": 42}, {"问题": " "}, {"问题": "a".repeat(16_385)}]) {
+        expect(normalizeInteractionResponse({behavior: "allow", answers: {"Question": "回答"}}))
+            .toEqual({behavior: "allow", answers: {"Question": "回答"}});
+        for (const answers of [null, [], {}, {"Question": 42}, {"Question": " "}, {"Question": "a".repeat(16_385)}]) {
             expect(normalizeInteractionResponse({behavior: "allow", answers}).behavior).toBe("deny");
         }
         expect(normalizeInteractionResponse({behavior: "allow", updatedInput: {questions: []}}).behavior).toBe("deny");
-        expect(normalizeInteractionResponse({behavior: "allow", networkScope: "once", answers: {"问题": "回答"}}).behavior).toBe("deny");
+        expect(normalizeInteractionResponse({behavior: "allow", networkScope: "once", answers: {"Question": "回答"}}).behavior).toBe("deny");
     });
     test("允许单连接和会话 scope，不静默扩展范围", () => {
         for (const networkScope of ["once", "session"] as const) {
@@ -35,8 +35,8 @@ test("预取消和调用前取消均不打开 Host 交互", async () => {
     const operation = async () => { calls++; return "allow"; };
     const pending = raceInteractionWithAbort(operation, controller.signal);
     controller.abort("shutdown");
-    await expect(pending).rejects.toThrow("取消");
-    await expect(raceInteractionWithAbort(operation, controller.signal)).rejects.toThrow("取消");
+    await expect(pending).rejects.toThrow("cancelled");
+    await expect(raceInteractionWithAbort(operation, controller.signal)).rejects.toThrow("cancelled");
     expect(calls).toBe(0);
 });
 
@@ -73,6 +73,6 @@ test("等待中取消通知 Host，迟到批准不能完成请求", async () => 
     await started;
     owner.abort("shutdown");
     finish("allow");
-    await expect(pending).rejects.toThrow("取消");
+    await expect(pending).rejects.toThrow("cancelled");
     expect(closed).toBe(1);
 });

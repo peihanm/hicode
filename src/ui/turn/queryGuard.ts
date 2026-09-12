@@ -1,6 +1,6 @@
 type QueryGuardStatus = "idle" | "dispatching" | "running";
 
-/** 同步占有 UI query，避免 React batched state 允许重复 submit。 */
+/** Claim the UI query synchronously to prevent duplicate submissions through batched React state. */
 export class QueryGuard {
     private statusValue: QueryGuardStatus = "idle";
     private generationValue = 0;

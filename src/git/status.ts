@@ -26,7 +26,7 @@ interface FixedFields {
 const cancelledRepositoryResult = {
     status: "unavailable",
     reason: "cancelled",
-    message: "Git 操作已取消",
+    message: "Git operation cancelled",
 } as const;
 
 function takeFixedFields(value: string, count: number): FixedFields | undefined {
@@ -47,7 +47,7 @@ function statusCode(value: string): GitStatusCode | null {
         value === "M" || value === "T" || value === "A" ||
         value === "D" || value === "R" || value === "C" || value === "U"
     ) return value;
-    throw new Error(`未知 Git status code: ${value}`);
+    throw new Error(`Unknown Git status code: ${value}`);
 }
 
 function changeKind(
@@ -72,7 +72,7 @@ function fileStatus(input: {
     forcedKind?: "renamed" | "copied" | "conflicted";
 }): GitFileStatus {
     if (input.xy.length !== 2) {
-        throw new Error(`无效 Git XY status: ${input.xy}`);
+        throw new Error(`Invalid Git XY status: ${input.xy}`);
     }
     const indexStatus = statusCode(input.xy[0]!);
     const worktreeStatus = statusCode(input.xy[1]!);
@@ -132,7 +132,7 @@ export function parseGitStatusPorcelainV2(
         }
         if (record.startsWith("1 ")) {
             const fixed = takeFixedFields(record.slice(2), 7);
-            if (!fixed) throw new Error(`无效 Git ordinary status: ${record}`);
+            if (!fixed) throw new Error(`Invalid Git ordinary status: ${record}`);
             files.push(fileStatus({
                 path: fixed.remainder,
                 xy: fixed.fields[0]!,
@@ -144,13 +144,13 @@ export function parseGitStatusPorcelainV2(
             const fixed = takeFixedFields(record.slice(2), 8);
             const originalPath = records[index + 1];
             if (!fixed || originalPath === undefined || originalPath === "") {
-                throw new Error(`无效 Git rename/copy status: ${record}`);
+                throw new Error(`Invalid Git rename/copy status: ${record}`);
             }
             index += 1;
             const score = fixed.fields[7]!;
             const forcedKind = score.startsWith("R") ? "renamed" :
                 score.startsWith("C") ? "copied" : undefined;
-            if (!forcedKind) throw new Error(`未知 Git rename/copy score: ${score}`);
+            if (!forcedKind) throw new Error(`Unknown Git rename/copy score: ${score}`);
             files.push(fileStatus({
                 path: fixed.remainder,
                 originalPath,
@@ -162,7 +162,7 @@ export function parseGitStatusPorcelainV2(
         }
         if (record.startsWith("u ")) {
             const fixed = takeFixedFields(record.slice(2), 9);
-            if (!fixed) throw new Error(`无效 Git unmerged status: ${record}`);
+            if (!fixed) throw new Error(`Invalid Git unmerged status: ${record}`);
             files.push(fileStatus({
                 path: fixed.remainder,
                 xy: fixed.fields[0]!,
@@ -184,7 +184,7 @@ export function parseGitStatusPorcelainV2(
             continue;
         }
         if (record.startsWith("! ")) continue;
-        throw new Error(`未知 Git porcelain v2 record: ${record}`);
+        throw new Error(`Unknown Git porcelain v2 record: ${record}`);
     }
 
     files.sort((left, right) => compareGitText(left.path, right.path) ||
@@ -201,10 +201,10 @@ function readSingleGitLine(output: Buffer): string {
 
 function parseNumstatCount(value: string): number | null {
     if (value === "-") return null;
-    if (!/^\d+$/.test(value)) throw new Error(`无效 Git numstat 数值: ${value}`);
+    if (!/^\d+$/.test(value)) throw new Error(`Invalid Git numstat value: ${value}`);
     const count = Number(value);
     if (!Number.isSafeInteger(count)) {
-        throw new Error(`Git numstat 数值超过安全范围: ${value}`);
+        throw new Error(`Git numstat value exceeds the safe range: ${value}`);
     }
     return count;
 }
@@ -219,12 +219,12 @@ export function parseGitNumstatZ(output: Buffer | string): readonly GitNumstatEn
         const firstTab = record.indexOf("\t");
         const secondTab = record.indexOf("\t", firstTab + 1);
         if (firstTab < 0 || secondTab < 0) {
-            throw new Error(`无效 Git numstat record: ${record}`);
+            throw new Error(`Invalid Git numstat record: ${record}`);
         }
         const additions = parseNumstatCount(record.slice(0, firstTab));
         const deletions = parseNumstatCount(record.slice(firstTab + 1, secondTab));
         if ((additions === null) !== (deletions === null)) {
-            throw new Error(`Git binary numstat 必须同时使用 '-'：${record}`);
+            throw new Error(`Git binary numstat must use '-' for both values: ${record}`);
         }
         const path = record.slice(secondTab + 1);
         let originalPath: string | undefined;
@@ -233,7 +233,7 @@ export function parseGitNumstatZ(output: Buffer | string): readonly GitNumstatEn
             originalPath = records[index + 1];
             finalPath = records[index + 2] ?? "";
             if (!originalPath || !finalPath) {
-                throw new Error(`无效 Git rename/copy numstat record: ${record}`);
+                throw new Error(`Invalid Git rename/copy numstat record: ${record}`);
             }
             index += 2;
         }
@@ -282,7 +282,7 @@ async function resolveGitRepositoryRoot(
         return {
             status: "unavailable",
             reason: "command-failed",
-            message: "Git 未返回 repository root",
+            message: "Git returned no repository root",
         };
     }
     try {
@@ -296,7 +296,7 @@ async function resolveGitRepositoryRoot(
         return {
             status: "unavailable",
             reason: "command-failed",
-            message: `无法解析 Git repository root: ${
+            message: `Cannot resolve Git repository root: ${
                 error instanceof Error ? error.message : String(error)
             }`,
         };
@@ -370,7 +370,7 @@ export async function readGitRepositorySnapshot(
             .split(/\r?\n/)
             .filter(Boolean);
         const gitDirectory = gitPaths[0];
-        if (!gitDirectory) throw new Error("Git 未返回 absolute git dir");
+        if (!gitDirectory) throw new Error("Git returned no absolute git dir");
         const operation = await readOperationState(gitDirectory);
         if (signal?.aborted) return cancelledRepositoryResult;
         return {

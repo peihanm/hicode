@@ -39,7 +39,7 @@ export interface SlashCommandSuggestion {
 const BUILTIN_SUGGESTIONS: readonly SlashCommandSuggestion[] = [
     {
         name: "help",
-        description: "显示可用命令",
+        description: "Show available commands",
     },
 ];
 

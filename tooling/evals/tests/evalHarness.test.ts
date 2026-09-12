@@ -388,7 +388,7 @@ describe("SDK Eval Harness", () => {
             });
             expect(report.passed).toBe(false);
             expect(report.failureKind).toBe("provider");
-            expect(report.error?.message).toContain("缺少");
+            expect(report.error?.message).toContain("Missing");
             expect(report.retained).toEqual({
                 workspace: false,
                 pillarHome: false,

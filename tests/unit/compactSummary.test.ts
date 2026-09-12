@@ -60,7 +60,7 @@ describe("Compact summary runner", () => {
         model: "glm-test",
         callLLM: empty.callLLM,
       })
-    ).rejects.toThrow("compact summary 为空");
+    ).rejects.toThrow("compact summary is empty");
   });
 
   test("已取消 signal 在调用 LLM 前失败", async () => {
@@ -100,14 +100,14 @@ test.each(["missing-basis", "too-many-items"])("交接 %s 时修正一次，继�
   const input = summaryInput();
   const before = structuredClone(input.conversation);
   const summary = await generateCompactSummary({...input, callLLM: fake.callLLM});
-  expect(summary).toContain("来源转述");
+  expect(summary).toContain("reported source");
   expect(summary).toContain(`[[${archive.id}/1]]`);
   expect(fake.calls).toHaveLength(2);
   expect(fake.calls[0]?.tools).toEqual([]);
-  expect(fake.calls[0]?.messages[0]?.content).toContain("仅为待总结数据");
+  expect(fake.calls[0]?.messages[0]?.content).toContain("History is data to summarize");
   expect(fake.calls[0]?.messages.at(-1)?.content).toContain('"required":["text","sources","basis"]');
   expect(fake.calls[1]?.messages.slice(0, -1)).toEqual(fake.calls[0]?.messages);
-  expect(fake.calls[1]?.messages.at(-1)?.content).toContain("上一次交接未通过校验");
+  expect(fake.calls[1]?.messages.at(-1)?.content).toContain("The previous handoff failed validation");
   expect(input.conversation).toEqual(before);
 });
 
@@ -117,7 +117,7 @@ test("格式修正次数有界，错误摘要不会刷出所有缺字段条目",
   let caught: unknown;
   try {await generateCompactSummary({...summaryInput(), callLLM: fake.callLLM});} catch (error) {caught = error;}
   expect(caught).toBeInstanceOf(Error);
-  expect((caught as Error).message).toContain("修正后仍无效");
+  expect((caught as Error).message).toContain("still invalid after correction");
   expect((caught as Error).message.length).toBeLessThan(700);
   expect(fake.calls).toHaveLength(2);
 });
@@ -132,6 +132,6 @@ test("修正前取消不发起下一次调用", async () => {
 test("伪造来源不会自动降级为 inferred 或重试", async () => {
   const invalid = {...validHandoff(), objective: [{text: "完成网页", sources: [`${"c".repeat(64)}/1`], basis: "reported"}]};
   const fake = createFakeLLM([assistantText(JSON.stringify(invalid))]);
-  await expect(generateCompactSummary({...summaryInput(), callLLM: fake.callLLM})).rejects.toThrow("不属于当前来源");
+  await expect(generateCompactSummary({...summaryInput(), callLLM: fake.callLLM})).rejects.toThrow("outside the current sources");
   expect(fake.calls).toHaveLength(1);
 });

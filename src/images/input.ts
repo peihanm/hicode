@@ -22,14 +22,14 @@ const inputSchema = z.union([
 /** Copy synchronously before the first await, so callers cannot mutate deferred input. */
 export function snapshotTurnInput(input: TurnInput): TurnInput {
     const parsed = inputSchema.safeParse(input);
-    if (!parsed.success) throw new Error("无效图文输入：需要非空文本或静态图片 bytes；最多 8 张、单图 20 MiB、输入总图片 40 MiB、文字 100 万字符");
+    if (!parsed.success) throw new Error("Invalid multimodal input: provide non-empty text or static image bytes; at most 8 images, 20 MiB per image, 40 MiB total images and 1 million text characters");
     return typeof parsed.data === "string" ? parsed.data : parsed.data.map(part => part.type === "text" ? {...part} : {type: "image", data: Buffer.from(part.data)});
 }
 
 export async function importUserInput(input: TurnInput, store: ToolResultStore, supported: boolean, signal: AbortSignal): Promise<MessageContent> {
     throwIfTurnAborted(signal);
     if (typeof input === "string") return input;
-    if (input.some(part => part.type === "image") && !supported) throw new Error("当前模型/接口不支持图片输入；请选择已支持的 Qwen 3.8 Flash trial 接口");
+    if (input.some(part => part.type === "image") && !supported) throw new Error("This model/interface does not support images; select the supported Qwen 3.8 Flash trial interface");
     const inputId = randomUUID();
     const parts: ContentPart[] = [];
     let bytes = 0;
@@ -38,7 +38,7 @@ export async function importUserInput(input: TurnInput, store: ToolResultStore, 
         if (part.type === "text") {parts.push({...part}); continue;}
         const prepared = await prepareImage(Buffer.from(part.data), signal);
         bytes += prepared.data.length;
-        if (bytes > IMAGE_REQUEST_BYTES) throw new Error("归一化图片超过 10 MiB 输入预算");
+        if (bytes > IMAGE_REQUEST_BYTES) throw new Error("Normalized images exceed the 10 MiB input budget");
         const reference = await persistPreparedImage({store, origin: {kind: "user", inputId},
             sourceData: Buffer.from(part.data), prepared, signal});
         parts.push(reference);

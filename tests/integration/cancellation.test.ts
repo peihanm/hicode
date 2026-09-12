@@ -57,7 +57,7 @@ describe("runtime cancellation", () => {
 
       const result = await running;
       expect(result).toEqual({
-        reply: "(任务已取消)",
+        reply: "(Task cancelled)",
         reason: "interrupted",
         iterations: 1,
         abortReason: "user-cancel",
@@ -130,7 +130,7 @@ describe("runtime cancellation", () => {
         "cancel-1",
         "cancel-2",
       ]);
-      expect(toolMessages.every((message) => contentText(message.content).includes("已取消"))).toBe(
+      expect(toolMessages.every((message) => contentText(message.content).includes("cancelled"))).toBe(
         true
       );
     });
@@ -187,7 +187,7 @@ describe("runtime cancellation", () => {
         "safe-2",
         "unsafe-tail",
       ]);
-      expect(toolMessages.every((message) => contentText(message.content).includes("已取消"))).toBe(
+      expect(toolMessages.every((message) => contentText(message.content).includes("cancelled"))).toBe(
         true
       );
     });

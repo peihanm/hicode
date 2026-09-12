@@ -38,9 +38,9 @@ export function createAgentDefinitionGenerator(
         return {
             async generate(requirement, signal) {
                 const normalized = requirement.trim();
-                if (!normalized) throw new Error("请先描述需要创建的 Agent");
+                if (!normalized) throw new Error("Describe the Agent to create first");
                 if (normalized.length > 8_000) {
-                    throw new Error("Agent 创建需求超过 8000 字符上限");
+                    throw new Error("Agent creation request exceeds 8000 characters");
                 }
                 const result = await dependencies.callLLM(
                     [{
@@ -63,42 +63,42 @@ export function createAgentDefinitionGenerator(
                     : undefined;
                 if (text) {
                     throw new Error(
-                        "模型同时返回了普通正文；Agent 候选必须只通过提交工具返回"
+                        "The model also returned ordinary text; Agent candidates must be returned only through the submission tool"
                     );
                 }
                 if (result.toolCalls.length !== 1) {
-                    throw new Error("模型没有提交唯一的 Agent 候选定义");
+                    throw new Error("The model did not submit exactly one Agent candidate");
                 }
                 const call = result.toolCalls[0]!;
                 if (call.function.name !== "submit_agent_definition") {
-                    throw new Error(`模型调用了未知的候选提交工具: ${call.function.name}`);
+                    throw new Error(`The model called an unknown candidate submission tool: ${call.function.name}`);
                 }
                 let raw: unknown;
                 try {
                     raw = JSON.parse(call.function.arguments);
                 } catch {
-                    throw new Error("模型返回的 Agent 候选参数不是合法 JSON");
+                    throw new Error("Agent candidate arguments are not valid JSON");
                 }
                 const parsed = generatedAgentDefinitionSchema.safeParse(raw);
                 if (!parsed.success) {
-                    throw new Error(`Agent 候选校验失败: ${parsed.error.message}`);
+                    throw new Error(`Agent candidate validation failed: ${parsed.error.message}`);
                 }
                 const suggestedTools = [...new Set(parsed.data.suggested_tools)];
                 const forbidden = suggestedTools.filter((tool) =>
                     CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool)
                 );
                 if (forbidden.length > 0) {
-                    throw new Error(`模型建议了禁止工具: ${forbidden.join(", ")}`);
+                    throw new Error(`The model suggested forbidden tools: ${forbidden.join(", ")}`);
                 }
                 const unknown = suggestedTools.filter((tool) => !allowedTools.has(tool));
                 if (unknown.length > 0) {
-                    throw new Error(`模型建议了当前 Runtime 不存在的工具: ${unknown.join(", ")}`);
+                    throw new Error(`The model suggested tools unavailable in this Runtime: ${unknown.join(", ")}`);
                 }
                 if (getExistingAgentNames().some((name) =>
                     name.toLocaleLowerCase("en-US") ===
                     parsed.data.name.toLocaleLowerCase("en-US")
                 )) {
-                    throw new Error(`Agent 名称已经存在: ${parsed.data.name}`);
+                    throw new Error(`Agent name already exists: ${parsed.data.name}`);
                 }
                 return {
                     name: parsed.data.name,

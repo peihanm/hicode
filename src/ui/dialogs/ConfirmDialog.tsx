@@ -37,13 +37,13 @@ function boundedErrorMessage(error: unknown): string {
     const normalized = message.replace(/\s+/g, " ").trim();
     return normalized.length > 300
         ? `${normalized.slice(0, 297)}...`
-        : normalized || "未知错误";
+        : normalized || "Unknown error";
 }
 
-// 菜单式确认对话框：上下箭头切换，回车确认
-// 仿 codebuddy 风格
-// resolve 返回 PermissionDecision（allow/deny），不是 boolean
-// 选 "yes_no_ask" 时调 onAddToAllowList 生成规则 + 写入配置文件
+// Menu confirmation dialog: arrow keys select and Enter confirms.
+// Codebuddy-style presentation.
+// resolve returns a PermissionDecision (allow/deny), not a boolean.
+// yes_no_ask invokes onAddToAllowList to generate and persist a rule.
 export function ConfirmDialog({
                                   req,
                                   onDone,
@@ -62,7 +62,7 @@ export function ConfirmDialog({
     const handleSelect = async (opt: ConfirmOption) => {
         if (savingRef.current || completedRef.current) return;
 
-        // 选 "yes_no_ask" 时：生成规则 + 写入配置 + 视为 allow
+        // yes_no_ask generates a rule, writes configuration and permits execution.
         if (
             opt.value === "yes_no_ask" &&
             req.allowAddToAllowList !== false &&
@@ -88,9 +88,9 @@ export function ConfirmDialog({
         completedRef.current = true;
         const decision: PermissionDecision =
             opt.value === "no"
-                ? {behavior: "deny", message: "用户拒绝"}
+                ? {behavior: "deny", message: "User denied"}
                 : {behavior: "allow"};
-        // yes / yes_no_ask 都当 allow 处理
+        // Both yes and yes_no_ask resolve to allow.
         req.resolve(decision);
         onDone();
     };
@@ -114,21 +114,21 @@ export function ConfirmDialog({
             </Box>
             {saving && (
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>正在保存项目权限规则…</Text>
+                    <Text color={COLORS.dim}>Saving project permission rules…</Text>
                 </Box>
             )}
             {saveError && (
                 <Box marginTop={1} flexDirection="column">
                     <Text color={COLORS.error}>
-                        未能保存项目权限规则：{saveError}
+                        Failed to save project permission rules: {saveError}
                     </Text>
                     <Text color={COLORS.dim}>
-                        可以重试，或选择 1 仅允许本次调用。
+                        Retry, or choose option 1 to allow this call only.
                     </Text>
                 </Box>
             )}
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ 选择 · Enter 确认 · Esc 取消</Text>
+                <Text color={COLORS.dim}>↑↓ select · Enter confirm · Esc cancel</Text>
             </Box>
         </Box>
     );

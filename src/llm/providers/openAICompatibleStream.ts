@@ -74,7 +74,7 @@ export async function consumeOpenAICompatibleSSE({
     body: ReadableStream<Uint8Array>;
     signal: AbortSignal;
     onActivity: () => void;
-    /** finish_reason 后继续短暂读取 usage 与 [DONE]，同时停止生成阶段 watchdog。 */
+    /** After finish_reason, briefly continue reading usage and [DONE], while stopping the generation watchdog. */
     onCompletionSignal?: () => void;
     onProgress?: (progress: LLMStreamProgress) => void;
     onText?: (text: string) => void | Promise<void>;
@@ -144,7 +144,7 @@ export async function consumeOpenAICompatibleSSE({
         retainedCharacters += fragment.length;
         if (retainedCharacters > MAX_STREAM_OUTPUT_CHARACTERS) {
             throw new Error(
-                `OpenAI-compatible stream 累计输出超过 ${MAX_STREAM_OUTPUT_CHARACTERS} 字符（${field}）`
+                `OpenAI-compatible stream cumulative output exceeds ${MAX_STREAM_OUTPUT_CHARACTERS} characters (${field})`
             );
         }
     };
@@ -152,7 +152,7 @@ export async function consumeOpenAICompatibleSSE({
     const processEvent = async (event: string) => {
         if (event.length > MAX_SSE_EVENT_CHARACTERS) {
             throw new Error(
-                `OpenAI-compatible stream 单个 SSE 事件超过 ${MAX_SSE_EVENT_CHARACTERS} 字符`
+                `OpenAI-compatible stream single SSE event exceeds ${MAX_SSE_EVENT_CHARACTERS} characters`
             );
         }
         const data = getEventData(event);
@@ -165,7 +165,7 @@ export async function consumeOpenAICompatibleSSE({
         dataEventCount += 1;
         if (dataEventCount > MAX_DATA_EVENTS) {
             throw new Error(
-                `OpenAI-compatible stream 数据事件超过 ${MAX_DATA_EVENTS} 个`
+                `OpenAI-compatible stream data events exceed ${MAX_DATA_EVENTS} items`
             );
         }
 
@@ -174,7 +174,7 @@ export async function consumeOpenAICompatibleSSE({
             value = JSON.parse(data);
         } catch {
             // JSON parser messages can include raw model output or secrets.
-            throw protocolError("invalid_json", "OpenAI-compatible stream 数据事件不是合法 JSON");
+            throw protocolError("invalid_json", "OpenAI-compatible stream data event is not valid JSON");
         }
         const chunk: OpenAICompatibleStreamChunk = decodeOpenAICompatibleStreamChunk(value);
 
@@ -230,7 +230,7 @@ export async function consumeOpenAICompatibleSSE({
             }
         }
 
-        // 最后一个 delta 也可能带真实内容；先完整消费，再停止生成阶段 watchdog。
+        // The final delta may contain content; consume it fully before stopping the generation watchdog.
         if (eventFinishReason && !completionSignaled) {
             completionSignaled = true;
             onCompletionSignal?.();
@@ -245,7 +245,7 @@ export async function consumeOpenAICompatibleSSE({
                 part = await reader.read();
             } catch (error) {
                 if (signal.aborted) throw error;
-                throw protocolError("stream_disconnected", "OpenAI-compatible stream 读取响应时连接中断");
+                throw protocolError("stream_disconnected", "OpenAI-compatible stream connection interrupted while reading the response");
             }
             if (part.done) break;
             // Transport activity and model progress are separate signals.
@@ -264,7 +264,7 @@ export async function consumeOpenAICompatibleSSE({
             }
             if (buffer.length > MAX_SSE_EVENT_CHARACTERS) {
                 throw new Error(
-                    `OpenAI-compatible stream 未终止事件超过 ${MAX_SSE_EVENT_CHARACTERS} 字符`
+                    `OpenAI-compatible stream unterminated event exceeds ${MAX_SSE_EVENT_CHARACTERS} characters`
                 );
             }
         }
@@ -281,10 +281,10 @@ export async function consumeOpenAICompatibleSSE({
     if (aborted) {
         throw signal.reason instanceof Error
             ? signal.reason
-            : new Error(`OpenAI-compatible stream 已中止: ${JSON.stringify(signal.reason)}`);
+            : new Error(`OpenAI-compatible stream aborted: ${JSON.stringify(signal.reason)}`);
     }
     if (dataEventCount === 0) {
-        throw protocolError("empty_stream", "OpenAI-compatible stream 已结束，但没有收到任何数据事件");
+        throw protocolError("empty_stream", "OpenAI-compatible stream ended without any data events");
     }
 
     const toolCalls = [...tools.entries()]
@@ -292,7 +292,7 @@ export async function consumeOpenAICompatibleSSE({
         .map(([, toolCall]) => toolCall);
     if (!finishReason) {
         throw protocolError("missing_completion",
-            "OpenAI-compatible stream 在明确完成前已结束，拒绝使用可能截断的响应"
+            "OpenAI-compatible stream ended before explicit completion; rejecting a potentially truncated response"
         );
     }
     if (
@@ -300,19 +300,19 @@ export async function consumeOpenAICompatibleSSE({
         (toolCalls.length === 0 && finishReason !== "stop")
     ) {
         if (finishReason === "stop" || finishReason === "tool_calls") {
-            throw protocolError("inconsistent_completion", "OpenAI-compatible stream 完成原因与工具调用不一致");
+            throw protocolError("inconsistent_completion", "OpenAI-compatible stream finish reason does not match tool calls");
         }
         throw new Error(
-            `OpenAI-compatible stream 以 ${finishReason} 结束，响应不完整或与工具调用不一致`
+            `OpenAI-compatible stream ended with ${finishReason} ; response is incomplete or inconsistent with tool calls`
         );
     }
     const toolCallIds = new Set<string>();
     for (const toolCall of toolCalls) {
         if (!toolCall.id || !toolCall.function.name) {
-            throw protocolError("missing_tool_identity", "OpenAI-compatible stream 返回了缺少 id 或函数名的 tool call");
+            throw protocolError("missing_tool_identity", "OpenAI-compatible stream returned a tool call without an id or function name");
         }
         if (toolCallIds.has(toolCall.id)) {
-            throw protocolError("duplicate_tool_id", "OpenAI-compatible stream 返回了重复 id 的 tool call");
+            throw protocolError("duplicate_tool_id", "OpenAI-compatible stream returned duplicate tool call IDs");
         }
         toolCallIds.add(toolCall.id);
     }

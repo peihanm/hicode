@@ -17,7 +17,7 @@ test("按工具批次计数，10 轮提醒一次，继续同一项不会被强�
         const reminder = progress.takeReminder(todos, true);
         expect(Boolean(reminder)).toBe(round % 10 === 0);
         if (reminder) {
-            expect(reminder).toContain("无需为响应提醒而改状态");
+            expect(reminder).toContain("continue without a redundant update");
             expect(progress.takeReminder(todos, true)).toBeUndefined();
         }
     }
@@ -32,7 +32,7 @@ test("成功更新重置停滞计数，失败更新不伪造进度", () => {
     for (let i = 0; i < 9; i++) progress.recordToolBatch([work], todos);
     expect(progress.takeReminder(todos, true)).toBeUndefined();
     progress.recordToolBatch([{...work, name: "todo_write", outcome: "failed"}], todos);
-    expect(progress.takeReminder(todos, true)).toContain("Todo 进度核对");
+    expect(progress.takeReminder(todos, true)).toContain("Todo progress check");
 });
 
 test("无清单、清空、全部完成、工具不可用和新 Turn 均不产生无效提醒", () => {
@@ -55,7 +55,7 @@ test("空批次不计数，纯 pending 清单也能提醒", () => {
     for (let i = 0; i < 20; i++) progress.recordToolBatch([], pending);
     expect(progress.takeReminder(pending, true)).toBeUndefined();
     for (let i = 0; i < 10; i++) progress.recordToolBatch([work], pending);
-    expect(progress.takeReminder(pending, true)).toContain("Todo 进度核对");
+    expect(progress.takeReminder(pending, true)).toContain("Todo progress check");
 });
 
 test("提醒大小有界、优先当前项，任务内容不能闭合 reminder 标签", () => {
@@ -68,7 +68,7 @@ test("提醒大小有界、优先当前项，任务内容不能闭合 reminder �
     const context = buildLiveStateContext(large, undefined).join("\n");
     expect(context).toContain("in_progress");
     expect(context).toContain("当前");
-    expect(context).toContain("另有 21 项未展开");
+    expect(context).toContain("21 additional items omitted");
     expect(context.match(/<\/system-reminder>/g)).toHaveLength(1);
     expect(reminder.match(/<\/system-reminder>/g)).toHaveLength(1);
 });

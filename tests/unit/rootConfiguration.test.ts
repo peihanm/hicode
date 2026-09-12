@@ -51,7 +51,7 @@ describe("Root Configuration", () => {
                 storage,
                 settings: createTestSettings(),
                 fileSources: sources(),
-            })).toThrow("workspaceBoundary 不包含 cwd");
+            })).toThrow("workspaceBoundary does not contain cwd");
 
             expect(() => createPillarRootConfiguration({
                 cwd,
@@ -62,7 +62,7 @@ describe("Root Configuration", () => {
                     ...sources(),
                     settings: ["user", "user"],
                 },
-            })).toThrow("fileSources.settings 包含重复来源 user");
+            })).toThrow("fileSources.settings contains duplicate source user");
         });
     });
 
@@ -95,7 +95,7 @@ describe("Root Configuration", () => {
                 storage: {...storage, projectsRoot: join(cwd, "elsewhere")},
                 settings: createTestSettings(),
                 fileSources: sources(),
-            })).toThrow("projectsRoot 必须由 pillarHome 唯一派生");
+            })).toThrow("projectsRoot must be derived solely from pillarHome");
 
             expect(() => createPillarRootConfiguration({
                 cwd,
@@ -103,7 +103,7 @@ describe("Root Configuration", () => {
                 storage: {pillarHome: "relative", projectsRoot: "relative/projects"},
                 settings: createTestSettings(),
                 fileSources: sources(),
-            })).toThrow("pillarHome 必须是非空绝对路径");
+            })).toThrow("pillarHome must be a non-empty absolute path");
         });
     });
 
@@ -157,7 +157,7 @@ describe("Root Configuration", () => {
                         {name: "same", description: "b", content: "b"},
                     ],
                 },
-            })).toThrow("重复名称");
+            })).toThrow("duplicate name");
         });
     });
 });

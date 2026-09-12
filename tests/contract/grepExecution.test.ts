@@ -48,7 +48,7 @@ test("1.2 MiB 单行中部命中与 10 MiB 多行日志可通过原结果路径�
         expect(result.outcome).toBe("ok");
         const text = contentText(result.modelContent);
         expect(text).toContain("NEEDLE_MIDDLE");
-        expect(text).toContain("UTF-16 列");
+        expect(text).toContain("UTF-16 columns");
         expect(text.length).toBeLessThan(4_000);
         expect(Buffer.from(text).toString("utf8")).toBe(text);
         const lines = ("ordinary output".padEnd(1023, "x") + "\n").repeat(5120);

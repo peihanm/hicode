@@ -7,11 +7,11 @@ import {useTerminalWidth} from "../terminalSize.js";
 import {stripVTControlCharacters} from "node:util";
 import stringWidth from "string-width";
 
-const labels = {running: "运行中", completed: "已完成", failed: "失败", cancelled: "已停止"};
+const labels = {running: "Running", completed: "Completed", failed: "Failed", cancelled: "Stopped"};
 const markers = {running: "●", completed: "✓", failed: "!", cancelled: "○"};
 const statusColors = {running: COLORS.accent, completed: COLORS.diffAdded, failed: COLORS.error, cancelled: COLORS.dim};
 const visibleTasks = 5;
-const title = (task: TaskSnapshot) => (task.kind === "shell" ? task.command : task.kind === "memory" ? "Memory 整理" : task.description).replace(/\s+/g, " ").trim();
+const title = (task: TaskSnapshot) => (task.kind === "shell" ? task.command : task.kind === "memory" ? "Memory consolidation" : task.description).replace(/\s+/g, " ").trim();
 const clean = (value: string) => stripVTControlCharacters(value).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
 const graphemes = new Intl.Segmenter(undefined, {granularity: "grapheme"});
 
@@ -26,12 +26,12 @@ function fit(value: string, width: number): string {
 }
 
 function metadata(task: TaskSnapshot): string {
-    const kind = task.kind === "shell" ? "命令" : task.kind === "agent" ? "Agent" : "Memory";
+    const kind = task.kind === "shell" ? "Command" : task.kind === "agent" ? "Agent" : "Memory";
     const elapsed = Math.max(0, Math.floor(((task.completedAt ? Date.parse(task.completedAt) : Date.now()) - Date.parse(task.startedAt)) / 1000));
     if (!Number.isFinite(elapsed)) return kind;
     const duration = elapsed < 60 ? `${elapsed}s` : elapsed < 3600
         ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed / 60) % 60}m`;
-    return `${kind} · ${task.status === "running" ? "已运行" : "运行"} ${duration}`;
+    return `${kind} · ${task.status === "running" ? "Elapsed" : "Run"} ${duration}`;
 }
 
 export function TasksDialog({tasks, stopTask, onClose}: {
@@ -74,7 +74,7 @@ export function TasksDialog({tasks, stopTask, onClose}: {
     const index = Math.max(0, items.findIndex(task => task.id === selectedId));
     const active = detail ?? items[index];
     const output = detail?.kind === "shell" ? detail.output : detail?.resultPreview;
-    const rows = layoutInputRows(clean(output || detail?.outputIssue || "暂无输出"), Math.max(8, panelWidth - 2));
+    const rows = layoutInputRows(clean(output || detail?.outputIssue || "No output yet"), Math.max(8, panelWidth - 2));
     const start = Math.min(offset, Math.max(0, rows.length - 12));
     useInput((input, key) => {
         if (key.escape) {if (detailId.current) {detailId.current = undefined; setDetail(undefined); setOffset(0);} else onClose(); return;}
@@ -97,25 +97,25 @@ export function TasksDialog({tasks, stopTask, onClose}: {
     const running = items.filter(task => task.status === "running").length;
     const rule = "─".repeat(panelWidth);
     const badge = (task: TaskSnapshot) => `${markers[task.status]} ${labels[task.status]}`;
-    const actions = detail ? "↑/↓ 滚动 · r 刷新" : items.length ? "Enter 查看输出 · ↑/↓ 选择" : "r 刷新";
-    const secondaryActions = `${active?.status === "running" ? "s 停止 · " : ""}${!detail && items.length ? "r 刷新 · " : ""}Esc 返回`;
+    const actions = detail ? "↑/↓ scroll · r refresh" : items.length ? "Enter view output · ↑/↓ select" : "r refresh";
+    const secondaryActions = `${active?.status === "running" ? "s stop · " : ""}${!detail && items.length ? "r refresh · " : ""} Esc back`;
     return <Box flexDirection="column" marginTop={1} marginBottom={1} paddingLeft={2} width={panelWidth + 2}>
         <Box justifyContent="space-between">
-            <Text bold color={COLORS.accent}>{detail ? "◆ 任务输出" : "◆ 后台任务"}</Text>
-            <Text color={COLORS.dim}>{items.length ? `${index + 1} / ${items.length}` : "0 项"}</Text>
+            <Text bold color={COLORS.accent}>{detail ? "◆ Task output" : panelWidth < 28 ? "◆ Tasks" : "◆ Background tasks"}</Text>
+            <Text color={COLORS.dim}>{items.length ? `${index + 1} / ${items.length}` : "0 tasks"}</Text>
         </Box>
-        {!detail && <Text color={COLORS.dim} wrap="truncate-end">{loaded ? `${running} 运行中 · ${items.length - running} 已结束` : "正在加载任务…"}</Text>}
+        {!detail && <Text color={COLORS.dim} wrap="truncate-end">{loaded ? `${running} running · ${items.length - running} finished` : "Loading tasks…"}</Text>}
         <Text color={COLORS.border}>{rule}</Text>
         {error && <Box marginTop={1}><Text color={COLORS.error}>{clean(error)}</Text></Box>}
         {detail ? <>
             <Box marginTop={1}><Text bold>{clean(title(detail))}</Text></Box>
-            {detail.kind === "shell" && <Text color={COLORS.dim}>{`启动环境：${detail.executionMode === "host" ? "宿主执行" : "沙箱执行"}（后续切换权限不改变已启动进程）`}</Text>}
+            {detail.kind === "shell" && <Text color={COLORS.dim}>{`Launch environment: ${detail.executionMode === "host" ? "Host execution" : "Sandbox execution"}(later permission changes do not affect an already running process)`}</Text>}
             <Text><Text color={statusColors[detail.status]}>{badge(detail)}</Text><Text color={COLORS.dim}>{` · ${metadata(detail)}`}</Text></Text>
-            {detail.kind === "agent" && <Text color={COLORS.dim}>{`${detail.progress.iterations} 轮 · ${detail.progress.toolUseCount} 次工具调用 · ${clean(detail.progress.lastActivity ?? "")}`}</Text>}
+            {detail.kind === "agent" && <Text color={COLORS.dim}>{`${detail.progress.iterations} rounds · ${detail.progress.toolUseCount} tool calls · ${clean(detail.progress.lastActivity ?? "")}`}</Text>}
             <Box flexDirection="column" marginTop={1} marginBottom={1} paddingLeft={1}>
                 {rows.slice(start, start + 12).map((row, rowIndex) => <Text key={rowIndex}>{row.text}</Text>)}
             </Box>
-            <Text color={COLORS.dim}>{`${start + 1}–${Math.min(rows.length, start + 12)} / ${rows.length} 行 · 当前输出预览`}</Text>
+            <Text color={COLORS.dim}>{`${start + 1}–${Math.min(rows.length, start + 12)} / ${rows.length} lines · current output preview`}</Text>
         </> : items.length ? items.slice(listStart, listStart + visibleTasks).map((task, position) => {
             const focused = index === listStart + position;
             const previous = position > 0 ? items[listStart + position - 1] : undefined;
@@ -123,7 +123,7 @@ export function TasksDialog({tasks, stopTask, onClose}: {
             const status = badge(task);
             const commandWidth = panelWidth - stringWidth(status) - 5;
             return <Box key={task.id} flexDirection="column">
-                {groupStart && <Box marginTop={1} marginBottom={1}><Text color={COLORS.dim} bold>{task.status === "running" ? "运行中" : "最近结束"}</Text></Box>}
+                {groupStart && <Box marginTop={1} marginBottom={1}><Text color={COLORS.dim} bold>{task.status === "running" ? "Running" : "Recently finished"}</Text></Box>}
                 <Text backgroundColor={focused ? COLORS.surface : undefined}>
                     <Text color={focused ? COLORS.accent : COLORS.dim}>{focused ? "❯ " : "  "}</Text>
                     <Text bold={focused} color={focused ? COLORS.accent : undefined}>{fit(clean(title(task)), commandWidth)}</Text>
@@ -132,11 +132,11 @@ export function TasksDialog({tasks, stopTask, onClose}: {
                 <Text backgroundColor={focused ? COLORS.surface : undefined} color={COLORS.dim}>{fit(`  ${metadata(task)}`, panelWidth)}</Text>
             </Box>;
         }) : loaded && !error ? <Box flexDirection="column" marginTop={1} marginBottom={1}>
-            <Text>○ 暂无后台任务</Text>
-            <Text color={COLORS.dim}>后台命令和 Agent 会显示在这里。</Text>
+            <Text>○ No background tasks</Text>
+            <Text color={COLORS.dim}>Background commands and Agents will appear here.</Text>
         </Box> : null}
         <Box marginTop={1}><Text color={COLORS.border}>{rule}</Text></Box>
-        {busy ? <Text color={COLORS.accent}>正在停止所选任务…</Text> : compact ? <>
+        {busy ? <Text color={COLORS.accent}>Stopping the selected task…</Text> : compact ? <>
             <Text color={COLORS.dim}>{actions}</Text><Text color={COLORS.dim}>{secondaryActions}</Text>
         </> : <Text color={COLORS.dim}>{`${actions} · ${secondaryActions}`}</Text>}
     </Box>;

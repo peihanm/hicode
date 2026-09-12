@@ -20,15 +20,15 @@ describe("web_fetch boundaries", () => {
   test("只接受不含凭据的公共 HTTP(S) URL", () => {
     expect(parsePublicWebUrl("https://example.com/docs").hostname)
       .toBe("example.com");
-    expect(() => parsePublicWebUrl("file:///etc/passwd")).toThrow("仅支持");
+    expect(() => parsePublicWebUrl("file:///etc/passwd")).toThrow("Only");
     expect(() => parsePublicWebUrl("https://user:secret@example.com"))
-      .toThrow("用户名或密码");
+      .toThrow("username or password");
     expect(() => parsePublicWebUrl("http://localhost:3000"))
-      .toThrow("公共互联网地址");
+      .toThrow("public internet");
     expect(() => parsePublicWebUrl("http://10.0.0.8"))
-      .toThrow("禁止访问私网");
+      .toThrow("blocks private");
     expect(() => parsePublicWebUrl("http://[::1]"))
-      .toThrow("禁止访问私网");
+      .toThrow("blocks private");
   });
 
   test("IP 分类拒绝私网、链路本地和保留地址", () => {

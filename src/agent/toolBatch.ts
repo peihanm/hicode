@@ -110,7 +110,7 @@ export async function executeToolCallBatch({
     ): Promise<void> => {
         const content = outcome === "interrupted"
             ? formatInterruptedToolResult(ctx.signal)
-            : `工具执行出错: ${error instanceof Error ? error.message : String(error)}`;
+            : `Tool execution error: ${error instanceof Error ? error.message : String(error)}`;
         for (const toolCall of toolCalls.slice(startIndex)) {
             const alreadyPaired = history.some(
                 (message) =>

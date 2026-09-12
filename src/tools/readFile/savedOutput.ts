@@ -12,7 +12,7 @@ export async function readSavedOutput(
     const handle = await open(file.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
         const before = await handle.stat({bigint: true});
-        if (!before.isFile() || before.size !== BigInt(file.byteLength)) throw new Error("结果文件已改变");
+        if (!before.isFile() || before.size !== BigInt(file.byteLength)) throw new Error("Result file changed");
         const buffer = Buffer.alloc(64 * 1024);
         const decoder = new TextDecoder("utf-8", {fatal: true, ignoreBOM: true});
         const lines: string[] = [];
@@ -47,7 +47,7 @@ export async function readSavedOutput(
         scan: while (position < file.byteLength) {
             throwIfTurnAborted(signal);
             const {bytesRead} = await handle.read(buffer, 0, Math.min(buffer.length, file.byteLength - position), position);
-            if (!bytesRead) throw new Error("结果文件提前结束");
+            if (!bytesRead) throw new Error("Result file ended early");
             position += bytesRead;
             const text = decoder.decode(buffer.subarray(0, bytesRead), {stream: true});
             let start = 0;
@@ -70,16 +70,16 @@ export async function readSavedOutput(
         }
         const after = await handle.stat({bigint: true});
         if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
-            throw new Error("结果文件在读取期间发生变化");
+            throw new Error("Result file changed while reading");
         }
         return [
             `${kind === "archive" ? "Session archive" : "Saved output"}: ${JSON.stringify(file.path)}`,
             `Complete artifact: ${file.complete ? "yes" : "no (only the saved portion is available)"}`,
-            "保存结果仅是历史日志；编辑源码前请 read_file 原文件确认当前版本。",
+            "Saved results are historical logs; use read_file on the source file before editing to confirm its current version.",
             "",
-            lines.length ? lines.join("\n") : `offset=${startLine} 超出已保存内容的行范围。`,
-            ...(shortened ? ["\n单行过长，省略部分已标记；这不是完整行内容。"] : []),
-            ...(more ? [`\n继续读取：read_file 使用相同 path，offset=${line}（行号）。`] : []),
+            lines.length ? lines.join("\n") : `offset=${startLine} is outside the saved content line range.`,
+            ...(shortened ? ["\nOverlong lines contain marked omissions; they are not shown in full."] : []),
+            ...(more ? [`\nContinue with read_file on the same path, offset=${line}(line number).`] : []),
         ].join("\n");
     } finally {
         await handle.close();

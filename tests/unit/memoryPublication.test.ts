@@ -39,7 +39,7 @@ test("纠正立即撤销旧内容，跨进程旧租约不能覆盖新 note；忘
         await a.acceptNote("structure", note, origin("first"), null, signal());
         const job = (await a.claim(signal()))!;
         await b.acceptNote("structure", {...note, operation: "correct", content: "修正后的偏好"}, origin("second"), serializeMemoryNote(note), signal());
-        await expect(a.publish(job.lease, [], "旧总结", signal())).rejects.toThrow("租约已过期");
+        await expect(a.publish(job.lease, [], "旧总结", signal())).rejects.toThrow("lease expired");
         expect(a.snapshot().sources.map(source => source.content)).toEqual(["修正后的偏好"]);
         expect(await b.forget("structure", signal())).toBe(true);
         const raw = await readFile(getMemoryPublicationPath(a.directory), "utf8");
@@ -54,12 +54,12 @@ test("过期观察、取消、伪造引用与 publication symlink 均保留原�
     await withTempProject(async (cwd, storage) => {
         const store = new MemoryPublicationStore(storage, cwd);
         await store.acceptNote("structure", note, origin("first"), null, signal());
-        await expect(store.acceptNote("structure", note, origin("stale"), null, signal())).rejects.toThrow("已变化");
+        await expect(store.acceptNote("structure", note, origin("stale"), null, signal())).rejects.toThrow("changed");
         const controller = new AbortController(); controller.abort();
         await expect(store.acceptNote("other", note, origin("cancelled"), null, controller.signal)).rejects.toThrow();
         const job = (await store.claim(signal()))!;
         await expect(store.publish(job.lease, [{key: "structure", name: "伪造", description: "伪造", type: "feedback", content: "伪造",
-            sources: ["aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"]}], "", signal())).rejects.toThrow("未提供的来源");
+            sources: ["aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"]}], "", signal())).rejects.toThrow("unavailable source");
         const before = store.snapshot();
         const path = getMemoryPublicationPath(store.directory);
         const outside = join(cwd, "untouched"); await writeFile(outside, "sentinel");
@@ -83,8 +83,8 @@ test("恢复只清理私有失效 UUID 工作区，不删除当前租约或旧 M
 
 test("持有 lease ID 也不能更改领取的来源集合或时限",async()=>withTempProject(async(cwd,storage)=>{
  const store=new MemoryPublicationStore(storage,cwd);await store.acceptNote("brief",note,origin("claim"),null,signal());const job=(await store.claim(signal()))!;
- await expect(store.publish({...job.lease,sourceIds:[]},[],"伪造消费",signal())).rejects.toThrow("来源集合");
- await expect(store.publish({...job.lease,expiresAt:"2099-01-01T00:00:00.000Z"},[],"延长期限",signal())).rejects.toThrow("租约");
+ await expect(store.publish({...job.lease,sourceIds:[]},[],"伪造消费",signal())).rejects.toThrow("source set");
+ await expect(store.publish({...job.lease,expiresAt:"2099-01-01T00:00:00.000Z"},[],"延长期限",signal())).rejects.toThrow("lease");
  expect(store.snapshot().sources[0]?.consumed).toBe(false);expect(store.snapshot().lease?.id).toBe(job.lease.id);
 }));
 

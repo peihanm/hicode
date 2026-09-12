@@ -67,7 +67,7 @@ export function isShellTask(task: ManagedTask): task is ManagedShellTask {
 
 export function appendTaskIssue(task: ManagedTask, issue: string): void {
     if (task.outputIssue?.includes(issue)) return;
-    task.outputIssue = [task.outputIssue, issue].filter(Boolean).join("；");
+    task.outputIssue = [task.outputIssue, issue].filter(Boolean).join(";");
 }
 
 export async function readOutputPreview(path: string): Promise<string> {
@@ -80,7 +80,7 @@ export async function readOutputPreview(path: string): Promise<string> {
         const {bytesRead} = await handle.read(buffer, 0, buffer.length, start);
         const selected = selectUtf8Range(buffer.subarray(0, bytesRead), bytesRead);
         const output = selected.content.toString("utf8");
-        return start > 0 ? `[前 ${start} 字节已省略]\n${output}` : output;
+        return start > 0 ? `[First ${start} bytes omitted]\n ${output}` : output;
     } catch {
         return "";
     } finally {

@@ -51,32 +51,32 @@ export function parseCliArgs(args: string[]): CliOptions {
 
     const setResumeMode = (resumeMode: ResumeMode) => {
         if (options.resumeMode.kind !== "none") {
-            throw new Error("只能指定一个恢复参数: -r/--resume 或 -c/--continue");
+            throw new Error("Specify only one resume option: -r/--resume or -c/--continue");
         }
         options.resumeMode = resumeMode;
     };
 
     const setPrintPrompt = (prompt: string) => {
         if (options.printPrompt !== undefined) {
-            throw new Error("只能指定一个 -p/--print prompt");
+            throw new Error("Specify only one -p/--print prompt");
         }
         const trimmed = prompt.trim();
         if (!trimmed) {
-            throw new Error("-p/--print 需要提供非空 prompt");
+            throw new Error("-p/--print requires a non-empty prompt");
         }
         options.printPrompt = trimmed;
     };
 
     const setOutputFormat = (value: string) => {
         if (value !== "text" && value !== "json") {
-            throw new Error(`未知 output format: ${value}`);
+            throw new Error(`Unknown output format: ${value}`);
         }
         options.outputFormat = value;
     };
 
     const setModel = (value: string) => {
         const model = value.trim();
-        if (!model) throw new Error("--model 需要提供非空 model");
+        if (!model) throw new Error("--model requires a non-empty model");
         options.model = model;
     };
 
@@ -84,7 +84,7 @@ export function parseCliArgs(args: string[]): CliOptions {
         const source = value.trim().toLowerCase();
         if (!isLLMProviderName(source)) {
             throw new Error(
-                `未知模型来源: ${value}。可选值：${formatLLMProviderNames()}`
+                `Unknown model source: ${value}. Available values: ${formatLLMProviderNames()}`
             );
         }
         options.source = source;
@@ -98,16 +98,16 @@ export function parseCliArgs(args: string[]): CliOptions {
         }
         if (arg === "-i" || arg === "--image" || arg.startsWith("--image=")) {
             const path = arg.startsWith("--image=") ? arg.slice(8) : args[++i];
-            if (!path?.trim() || path.startsWith("-")) throw new Error("--image 需要提供本地图片路径");
+            if (!path?.trim() || path.startsWith("-")) throw new Error("--image requires a local image path");
             options.images ??= [];
-            if (options.images.length >= 8) throw new Error("--image 最多 8 张图片");
+            if (options.images.length >= 8) throw new Error("--image allows at most 8 images");
             options.images.push(path);
             continue;
         }
         if (arg === "-p" || arg === "--print") {
             const value = args[i + 1];
             if (!value) {
-                throw new Error(`${arg} 需要提供 prompt`);
+                throw new Error(`${arg} requires a prompt`);
             }
             setPrintPrompt(value);
             i++;
@@ -120,7 +120,7 @@ export function parseCliArgs(args: string[]): CliOptions {
         if (arg === "--output-format") {
             const value = args[i + 1];
             if (!value) {
-                throw new Error("--output-format 需要提供 format");
+                throw new Error("--output-format requires a format");
             }
             setOutputFormat(value);
             i++;
@@ -136,7 +136,7 @@ export function parseCliArgs(args: string[]): CliOptions {
         }
         if (arg === "--model") {
             const value = args[i + 1];
-            if (!value) throw new Error("--model 需要提供 model");
+            if (!value) throw new Error("--model requires a model");
             setModel(value);
             i++;
             continue;
@@ -147,7 +147,7 @@ export function parseCliArgs(args: string[]): CliOptions {
         }
         if (arg === "--source") {
             const value = args[i + 1];
-            if (!value) throw new Error("--source 需要提供 source");
+            if (!value) throw new Error("--source requires a source");
             setSource(value);
             i++;
             continue;
@@ -169,7 +169,7 @@ export function parseCliArgs(args: string[]): CliOptions {
         if (arg.startsWith("--resume=")) {
             const value = arg.slice("--resume=".length).trim();
             if (!value) {
-                throw new Error("--resume= 需要提供 sessionId");
+                throw new Error("--resume= requires a sessionId");
             }
             setResumeMode({kind: "session", sessionId: value});
             continue;
@@ -177,11 +177,11 @@ export function parseCliArgs(args: string[]): CliOptions {
         if (arg === "--permission-mode") {
             const value = args[i + 1];
             if (!value) {
-                throw new Error("--permission-mode 需要提供 mode");
+                throw new Error("--permission-mode requires a mode");
             }
             const mode = parsePermissionMode(value);
             if (!mode) {
-                throw new Error(`未知权限模式: ${value}`);
+                throw new Error(`Unknown permission mode: ${value}`);
             }
             options.permissionMode = mode;
             i++;
@@ -190,11 +190,11 @@ export function parseCliArgs(args: string[]): CliOptions {
         if (arg === "--collaboration-mode") {
             const value = args[i + 1];
             if (!value) {
-                throw new Error("--collaboration-mode 需要提供 mode");
+                throw new Error("--collaboration-mode requires a mode");
             }
             const mode = parseCollaborationMode(value);
             if (!mode) {
-                throw new Error(`未知协作模式: ${value}`);
+                throw new Error(`Unknown collaboration mode: ${value}`);
             }
             options.collaborationMode = mode;
             i++;
@@ -204,7 +204,7 @@ export function parseCliArgs(args: string[]): CliOptions {
             const value = arg.slice("--collaboration-mode=".length);
             const mode = parseCollaborationMode(value);
             if (!mode) {
-                throw new Error(`未知协作模式: ${value}`);
+                throw new Error(`Unknown collaboration mode: ${value}`);
             }
             options.collaborationMode = mode;
             continue;
@@ -213,16 +213,16 @@ export function parseCliArgs(args: string[]): CliOptions {
             const value = arg.slice("--permission-mode=".length);
             const mode = parsePermissionMode(value);
             if (!mode) {
-                throw new Error(`未知权限模式: ${value}`);
+                throw new Error(`Unknown permission mode: ${value}`);
             }
             options.permissionMode = mode;
             continue;
         }
-        throw new Error(`未知参数: ${arg}`);
+        throw new Error(`Unknown argument: ${arg}`);
     }
 
     if (options.outputFormat !== "text" && options.printPrompt === undefined) {
-        throw new Error("--output-format 只能用于 -p/--print headless 模式");
+        throw new Error("--output-format is only available in -p/--print headless mode");
     }
 
     return options;

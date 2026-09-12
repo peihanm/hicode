@@ -7,11 +7,11 @@ const MAX_INLINE_CONTENT_CHARS = 40_000;
 const MAX_INSTRUCTION_TOTAL_CHARS = 120_000;
 const contributionIdSchema = z.string().trim().min(1).max(128).regex(
     /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
-    "只能包含字母、数字、点、- 和 _，且必须以字母或数字开头"
+    "Use only letters, digits, dots, - and _, starting with a letter or digit"
 );
 const agentNameSchema = z.string().trim().min(1).max(64).regex(
     /^[A-Za-z][A-Za-z0-9_-]*$/,
-    "必须以字母开头，且只能包含字母、数字、- 和 _"
+    "Must start with a letter and contain only letters, digits, - and _"
 );
 
 export interface HostInstructionContribution {
@@ -80,7 +80,7 @@ export function normalizePillarRootContributions(
         const problem = parsed.error.issues[0];
         const field = problem?.path.join(".") || "<root>";
         throw new Error(
-            `rootContributions.${field}: ${problem?.message ?? "格式无效"}`
+            `rootContributions.${field}: ${problem?.message ?? "Invalid format"}`
         );
     }
     assertUnique(
@@ -109,7 +109,7 @@ export function normalizePillarRootContributions(
     );
     if (instructionChars > MAX_INSTRUCTION_TOTAL_CHARS) {
         throw new Error(
-            `rootContributions.instructions 总内容超过 ${MAX_INSTRUCTION_TOTAL_CHARS} 字符上限`
+            `Total rootContributions.instructions content exceeds ${MAX_INSTRUCTION_TOTAL_CHARS} character limit`
         );
     }
     return parsed.data;
@@ -125,7 +125,7 @@ function assertUnique<T>(
         const id = identify(value);
         const key = id.toLocaleLowerCase("en-US");
         if (seen.has(key)) {
-            throw new Error(`rootContributions.${domain} 包含重复名称 ${id}`);
+            throw new Error(`rootContributions.${domain} contains duplicate name ${id}`);
         }
         seen.add(key);
     }

@@ -208,7 +208,7 @@ describe("multiline input box", () => {
   });
 
   for (const chunkDelay of [0, 5]) {
-    test(`长 Prompt 的短尾块全部折叠且立即提交无损（分块间隔 ${chunkDelay}ms）`, async () => {
+    test(`长 Prompt 的短尾块全部折叠且立即提交无损（分块间隔 ${chunkDelay}ms)`, async () => {
       const submissions: string[] = [];
       const first = "做一个 TypeScript 和 Canvas 霓虹赛车游戏。\n" +
         "包含 60 秒挑战、驾驶、收集能量、加速、暂停和重新开始。\n" +
@@ -324,7 +324,7 @@ describe("multiline input box", () => {
     expect(initial).toContain("/plan");
     expect(initial).not.toContain("/agents");
     expect(initial).not.toContain("/tasks");
-    expect(initial).toContain("↑/↓ 选择 · Tab 补全");
+    expect(initial).toContain("↑/↓ select · Tab complete");
 
     const tasksIndex = getSlashCommandSuggestions("/")
       .findIndex((suggestion) => suggestion.name === "tasks");

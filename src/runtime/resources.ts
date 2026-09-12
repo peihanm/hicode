@@ -336,13 +336,13 @@ export function createRootRuntimeResourcesFactory(
             let hooksReloading = false;
             return {
                 holdHookConfiguration() {
-                    if (hooksReloading) throw new Error("Hooks 正在重载，不能开始 Turn");
+                    if (hooksReloading) throw new Error("Hooks are reloading; cannot start a Turn");
                     hookUsers++;
                     let released = false;
                     return () => {if (!released) {released = true; hookUsers--;}};
                 },
                 async reloadHooks(signal) {
-                    if (hookUsers || hooksReloading || createdTaskRuntime.hasRunning()) throw new Error("Turn、后台任务或 Hook 重载尚未结束");
+                    if (hookUsers || hooksReloading || createdTaskRuntime.hasRunning()) throw new Error("A Turn, background task or Hook reload is still active");
                     hooksReloading = true;
                     try {
                         const loaded = loadPillarSettings({storage, cwd, sources: options.configuration.fileSources.settings});

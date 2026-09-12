@@ -87,7 +87,7 @@ describe("bash tool contract", () => {
       try {
         const result = await executeToolResult("bash", JSON.stringify({command: "echo once >> marker; sleep 30", yield_time_ms: 100, timeout_ms: 500}), ctx, "yield-call");
         expect(result.outcome).toBe("ok");
-        expect(contentText(result.modelContent)).toContain("同一进程");
+        expect(contentText(result.modelContent)).toContain("same process");
         const task = (await tasks.list())[0]!;
         expect(task.status).toBe("running");
         controller.abort("user-cancel");
@@ -339,7 +339,7 @@ describe("bash tool contract", () => {
         "denied-elevated-bash"
       );
       expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("当前 Host 不支持权限交互");
+      expect(result.modelContent).toContain("This Host does not support permission interaction");
     });
   });
 
@@ -372,7 +372,7 @@ describe("bash tool contract", () => {
         "outside-cwd"
       );
       expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("Bash cwd 必须位于当前项目目录内");
+      expect(result.modelContent).toContain("Bash cwd must be inside the current project");
     });
   });
 
@@ -388,7 +388,7 @@ describe("bash tool contract", () => {
         "unmanaged-background"
       );
       expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("禁止使用 shell 后台操作符 &");
+      expect(result.modelContent).toContain("cannot contain shell background operator &");
       expect(result.modelContent).toContain("run_in_background=true");
       expect(result.modelContent).toContain("task stop");
     });
@@ -403,7 +403,7 @@ describe("bash tool contract", () => {
         }),
         createTestContext(cwd)
       );
-      expect(result).toContain("执行失败 (exit code 7)");
+      expect(result).toContain("Execution failed (exit code 7)");
       expect(result).toContain("stdout");
       expect(result).toContain("stderr");
     });
@@ -422,7 +422,7 @@ describe("bash tool contract", () => {
       );
       expect(result.outcome).toBe("failed");
       expect(result.modelContent).toContain("timeout 100ms");
-      expect(result.modelContent).toContain("命令及其子进程已经终止");
+      expect(result.modelContent).toContain("command and its child processes have terminated");
       expect(result.modelContent).toContain("run_in_background=true");
     });
   });
@@ -442,7 +442,7 @@ describe("bash tool contract", () => {
           "background-bash"
         );
         expect(started.outcome).toBe("ok");
-        expect(started.modelContent).toContain("启动观察期内已完成");
+        expect(started.modelContent).toContain("completed during the startup observation window");
         const taskId = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 
@@ -457,7 +457,7 @@ describe("bash tool contract", () => {
         expect(status.modelContent).toContain("Status: completed");
         expect(status.modelContent).toContain(`Cwd: ${await realpath(cwd)}`);
         expect(status.modelContent).toContain("Termination: exit code 0");
-        expect(status.modelContent).toContain("字节已省略");
+        expect(status.modelContent).toContain("bytes omitted");
         expect(status.modelContent.length).toBeLessThan(22_000);
         expect(status.modelContent).toContain("done");
       } finally {
@@ -496,7 +496,7 @@ describe("bash tool contract", () => {
         );
 
         expect(result.outcome).toBe("failed");
-        expect(result.modelContent).toContain("启动观察期内已失败");
+        expect(result.modelContent).toContain("failed during the startup observation window");
         expect(result.modelContent).toContain("Status: failed");
         expect(result.modelContent).toContain("Termination: exit 1");
         expect(result.modelContent).toContain("listen EPERM");
@@ -524,9 +524,9 @@ describe("bash tool contract", () => {
           "background-ignores-foreground-timeout"
         );
         expect(started.outcome).toBe("ok");
-        expect(started.modelContent).toContain("已忽略 timeout_ms");
-        expect(contentText(started.modelContent).split("\n").slice(0, 3).join("\n")).toContain("退出 Pillar 后会终止");
-        expect(started.displayContent).toContain("退出 Pillar 后会终止");
+        expect(started.modelContent).toContain("Ignored timeout_ms");
+        expect(contentText(started.modelContent).split("\n").slice(0, 3).join("\n")).toContain("terminates when Pillar exits");
+        expect(started.displayContent).toContain("terminates when Pillar exits");
         const taskId = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 

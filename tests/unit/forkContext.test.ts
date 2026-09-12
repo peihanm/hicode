@@ -24,10 +24,10 @@ describe("fork context snapshot", () => {
             const files = createForkResultFiles(history, parent, local);
             history.push({role: "tool", tool_call_id: "task", content: `Saved output: ${JSON.stringify(hidden!.path)}`});
             for (const result of results.slice(0, 3)) expect((await files.resolveFile(result.path))?.path).toBe(result.path);
-            await expect(files.resolveFile(hidden!.path)).rejects.toThrow("无权");
+            await expect(files.resolveFile(hidden!.path)).rejects.toThrow("Access denied");
             const child = await local.persistText({toolCallId: "child", toolName: "test", content: "child"});
             expect((await files.resolveFile(child.path))?.path).toBe(child.path);
-            await expect(parent.resolveFile(child.path)).rejects.toThrow("无权");
+            await expect(parent.resolveFile(child.path)).rejects.toThrow("Access denied");
             expect(Object.keys(files)).toEqual(["resolveFile"]);
         });
     });
@@ -60,7 +60,7 @@ describe("fork context snapshot", () => {
             message.role === "tool" ? message.tool_call_id : ""
         )).toEqual(["fork-frontend", "fork-backend"]);
         expect(results.every((message) =>
-            message.role === "tool" && contentText(message.content).includes("父线程继续处理")
+            message.role === "tool" && contentText(message.content).includes("The parent handles this call")
         )).toBe(true);
         expect(history).toHaveLength(3);
     });

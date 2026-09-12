@@ -3,18 +3,18 @@ import {useEffect, useState} from "react";
 import type {Todo} from "../../todos.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 
-// TodoList 渲染：固定在输入框上方，展示当前进度
+// TodoList stays above the input and shows current progress.
 //
-// pending     → ☐ 灰色
-// in_progress → ● 主题色（agent 在跑时加 spinner）
-// completed   → ✓ 绿色，30 秒后自动隐藏
+// pending -> gray checkbox
+// in_progress -> themed dot, with a spinner while the agent runs
+// completed -> green check, hidden after 30 seconds
 //
-// 30 秒隐藏参考 claude-code TaskListV2.tsx:27 RECENT_COMPLETED_TTL_MS
-// 让用户看到完成反馈，但不堆积历史完成项
+// The 30-second expiry follows Claude Code TaskListV2.tsx RECENT_COMPLETED_TTL_MS.
+// Show completion feedback without accumulating old completed items.
 
-// pending     → ☐ 灰色
-// in_progress → ● 主题色（paused 时静态，否则 spinner）
-// completed   → ✓ 绿色（30 秒后隐藏）
+// pending -> gray checkbox
+// in_progress -> themed dot; static when paused, otherwise a spinner
+// completed -> green check, hidden after 30 seconds
 function TodoItem({todo, paused}: { todo: Todo; paused: boolean }) {
     if (todo.status === "completed") {
         return (
@@ -41,7 +41,7 @@ function TodoItem({todo, paused}: { todo: Todo; paused: boolean }) {
     );
 }
 
-// 30 秒后隐藏 completed 项
+// Hide completed items after 30 seconds.
 const COMPLETED_TTL_MS = 30_000;
 
 export function TodoList({
@@ -51,8 +51,8 @@ export function TodoList({
     todos: Todo[];
     paused?: boolean;
 }) {
-    // key = content（当前 Todo 协议没有 id）。只在 effect 中更新 UI 状态，
-    // 避免 Ink render 本身产生 mutation。
+    // Key by content because Todo has no ID. Update UI state only inside effects,
+    // avoiding mutations during Ink render.
     const [completionTimes, setCompletionTimes] = useState<Map<string, number>>(
         () => new Map()
     );
@@ -83,15 +83,15 @@ export function TodoList({
         });
     }, [todos]);
 
-    // 过滤掉 30 秒前完成的
+    // Filter items completed more than 30 seconds ago.
     const visibleTodos = todos.filter((t) => {
         if (t.status !== "completed") return true;
         const ts = completionTimes.get(t.content);
-        if (!ts) return true; // 没记录的先显示（防御）
+        if (!ts) return true; // Show items without a recorded completion time initially.
         return now - ts < COMPLETED_TTL_MS;
     });
 
-    // 如果有即将过期的 completed，设定时器触发重渲染
+    // Schedule a redraw when a visible completed item is about to expire.
     useEffect(() => {
         if (completionTimes.size === 0) return;
         let earliestExpiry = Infinity;

@@ -44,7 +44,7 @@ export function NetworkAccessDialog({
         completedRef.current = true;
         req.resolve(scope
             ? {behavior: "allow", networkScope: scope}
-            : {behavior: "deny", message: "用户拒绝临时网络授权"});
+            : {behavior: "deny", message: "User denied temporary network access"});
         onDone();
     };
 
@@ -68,11 +68,11 @@ export function NetworkAccessDialog({
             <Text color={COLORS.warning} bold>◆ NETWORK ACCESS</Text>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>REQUEST</Text>
-                <Text>连接 {presentation.host}:{presentation.port}</Text>
+                <Text>Connect to {presentation.host}:{presentation.port}</Text>
             </Box>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
-                <Text>仅允许此域名与端口；文件与进程仍受 Sandbox 保护。</Text>
-                <Text color={COLORS.dim}>会话授权不会写入项目配置，关闭会话后失效。</Text>
+                <Text>Allows only this domain and port; files and processes remain protected by the Sandbox.</Text>
+                <Text color={COLORS.dim}>Session grants are not saved to project configuration and expire when the session closes.</Text>
             </Box>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>ACTION</Text>
@@ -91,7 +91,7 @@ export function NetworkAccessDialog({
                 })}
             </Box>
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ 选择  ·  enter 确认  ·  esc 取消</Text>
+                <Text color={COLORS.dim}>↑↓ select · enter confirm · esc cancel</Text>
             </Box>
         </Box>
     );

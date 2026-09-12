@@ -109,7 +109,7 @@ export function createSubagentCatalog({
                     source: "project",
                     path: "<agent catalog>",
                     severity: "error",
-                    message: `Agent Reload 失败，继续使用 revision ${revision}: ${
+                    message: `Agent Reload failed; continuing with revision ${revision}: ${
                         error instanceof Error ? error.message : String(error)
                     }`,
                 }]));

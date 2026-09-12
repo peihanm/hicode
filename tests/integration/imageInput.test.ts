@@ -88,7 +88,7 @@ test("selected local images obey policy and queue immutable snapshots through pe
         const path = join(cwd, "截图 with spaces.png"); await writeFile(path, await png());
         try {
             ctx.permissionRules.deny.push({toolName: "view_image", source: "host"});
-            await expect(importSelectedImages([path], resources, ctx)).rejects.toThrow("deny");
+            await expect(importSelectedImages([path], resources, ctx)).rejects.toThrow("Denied by rule");
             ctx.permissionRules.deny.length = 0;
             const images = await importSelectedImages([path], resources, ctx);
             expect(images[0]!.label).toBe("截图 with spaces.png");
@@ -118,9 +118,9 @@ test("bad, unsupported, forged and cancelled input cannot become user image refe
     await withTempProject(async (cwd, storage) => {
         const store = createToolResultStore(storage, cwd, "invalid-images");
         const data = await png();
-        expect(() => snapshotTurnInput([])).toThrow("无效");
-        expect(() => snapshotTurnInput(Array.from({length: 9}, () => ({type: "image" as const, data})))).toThrow("无效");
-        await expect(importUserInput([{type: "image", data}], store, false, new AbortController().signal)).rejects.toThrow("不支持");
+        expect(() => snapshotTurnInput([])).toThrow("Invalid");
+        expect(() => snapshotTurnInput(Array.from({length: 9}, () => ({type: "image" as const, data})))).toThrow("Invalid");
+        await expect(importUserInput([{type: "image", data}], store, false, new AbortController().signal)).rejects.toThrow("does not support");
         await expect(importUserInput([{type: "image", data: Buffer.from("not png")}], store, true, new AbortController().signal)).rejects.toThrow();
         await expect(importUserInput([{type: "image", data}], store, true, AbortSignal.abort())).rejects.toThrow();
         expect(normalizeRuntimeQueuedMessages([{id: "x", type: "user_input", priority: "next", createdAt: new Date().toISOString(), content: [{type: "image_url", image_url: {url: "data:image/png;base64,aaaa"}}]}])).toBeUndefined();

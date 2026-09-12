@@ -64,21 +64,21 @@ export class ApprovalBudget {
     get stopped(): boolean { return this.stoppedFor !== undefined; }
     get stopMessage(): string {
         return this.stoppedFor === "failed"
-            ? "自动审核连续未完成，已停止执行；请检查审核服务或由 Host 提供决定"
-            : "自动审核连续拒绝，已停止执行；请确认被拒绝的操作和授权范围";
+            ? "Automatic review repeatedly failed to complete; execution stopped. Check the review service or provide a Host decision."
+            : "Automatic review repeatedly denied actions; execution stopped. Check the rejected action and authorization scope.";
     }
 
     async acquire(signal: AbortSignal): Promise<() => void> {
         signal.throwIfAborted();
         if (this.stopped) throw new Error(this.stopMessage);
         if (this.active >= 2) {
-            if (this.queue.length >= 16) throw new Error("自动审核队列已满");
+            if (this.queue.length >= 16) throw new Error("Automatic review queue is full");
             await new Promise<void>((resolve, reject) => {
                 const start = () => { signal.removeEventListener("abort", abort); resolve(); };
                 const abort = () => {
                     const index = this.queue.indexOf(start);
                     if (index >= 0) this.queue.splice(index, 1);
-                    reject(new Error("审核排队已取消"));
+                    reject(new Error("Review queue wait cancelled"));
                 };
                 this.queue.push(start);
                 signal.addEventListener("abort", abort, {once: true});
@@ -105,7 +105,7 @@ export class ApprovalBudget {
 
 function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
     return new Promise((resolve, reject) => {
-        const abort = () => reject(new Error("审核已取消或超时"));
+        const abort = () => reject(new Error("Review cancelled or timed out"));
         if (signal.aborted) { abort(); return; }
         signal.addEventListener("abort", abort, {once: true});
         promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
@@ -128,7 +128,7 @@ export async function requestApproval(
         if (ctx.permissionPromptPolicy === "never") {
             await ctx.onApprovalEvent?.({type: "approval_review", phase: "end", requestId, turnId: ctx.turnId, toolCallId,
                 source: "user", outcome: "needs_user", code, reason: message.slice(0, 4000)});
-            return {source: "user", code, decision: {behavior: "deny", message: `[${code}] 当前 Host 不支持权限交互：${message}`}};
+            return {source: "user", code, decision: {behavior: "deny", message: `[${code}] This Host does not support permission interaction: ${message}`}};
         }
         const decision = await withAbort(ctx.canUseTool(toolName, message, structuredClone(input), {...options, signal}), signal);
         signal.throwIfAborted();
@@ -154,7 +154,7 @@ export async function requestApproval(
         release = await ctx.approvalBudget.acquire(signal);
         signal.throwIfAborted();
         await emit({phase: "start"});
-        if (!ctx.approvalReviewer) throw new Error("当前 Runtime 没有自动审核能力");
+        if (!ctx.approvalReviewer) throw new Error("This Runtime has no automatic review capability");
         const timeout = AbortSignal.timeout(60_000);
         const reviewSignal = AbortSignal.any([signal, timeout]);
         verdict = await withAbort(ctx.approvalReviewer(request, ctx, reviewSignal), reviewSignal);
@@ -165,12 +165,12 @@ export async function requestApproval(
     } catch (error) {
         if (signal.aborted) throw error;
         ctx.approvalBudget.recordFailure();
-        const message = `自动审核未完成：${error instanceof Error ? error.message : String(error)}`;
+        const message = `Automatic review did not complete: ${error instanceof Error ? error.message : String(error)}`;
         await emit({phase: "end", outcome: "error", reason: message, code: "review_failed"});
         return human("review_failed", message);
     } finally { release?.(); }
     if (verdict.decision === "needs_user") return human("approval_required", verdict.reason);
     return verdict.decision === "allow" ? {source: "auto-review", decision: {behavior: "allow"}}
         : {source: "auto-review", code: "policy_denied", decision: {behavior: "deny",
-            message: `${verdict.reason}。不得换工具或改写命令绕过；只能采用实质更安全的方案或向用户说明。`}};
+            message: `${verdict.reason}. Do not switch tools or rewrite commands to bypass this; use a materially safer approach or explain the limit to the user.`}};
 }

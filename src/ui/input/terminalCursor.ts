@@ -85,9 +85,9 @@ export function createTerminalCursorOutput(
             }
             if (property === "on" || property === "addListener") {
                 return (event: string, listener: (...args: unknown[]) => void) => {
-                    // createTerminalCursorOutput 只作为 Ink 的 stdout。Ink constructor
-                    // 会最先订阅 resize；保留引用供 off 使用，但不注册它。Pillar 的
-                    // TerminalSizeProvider 随后订阅并负责一次有序、去抖的重绘。
+                    // createTerminalCursorOutput is used only as Ink stdout. Ink's constructor
+                    // subscribes to resize first; retain the callback for off without registering it. Pillar's
+                    // TerminalSizeProvider subscribes afterwards and owns ordered, debounced redraws.
                     if (event === "resize" && !inkResizeListener) {
                         inkResizeListener = listener;
                         return object;

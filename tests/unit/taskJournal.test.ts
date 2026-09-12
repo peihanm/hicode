@@ -108,9 +108,9 @@ describe("TaskJournal", () => {
             await journal.append(shellEvent({sequence: 1}));
             await appendFile(pathFor(storage, cwd), "{bad-json}\n");
 
-            await expect(journal.load("session-a")).rejects.toThrow("损坏记录");
+            await expect(journal.load("session-a")).rejects.toThrow("corrupt records");
             await expect(journal.append(shellEvent({sequence: 2})))
-                .rejects.toThrow("损坏记录");
+                .rejects.toThrow("corrupt records");
             expect(await readFile(pathFor(storage, cwd), "utf8"))
                 .not.toContain('"sequence":2');
         });

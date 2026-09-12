@@ -10,9 +10,9 @@ test.each(["\n", "\r\n"])("局部读取后连续修改保留未改区间并映�
         await writeFile(join(cwd, "file.txt"), ["first中文", "second😀", "UNREAD", ""].join(lineEnding));
         const ctx = createTestContext(cwd);
         await executeTool("read_file", JSON.stringify({path: "file.txt", limit: 2}), ctx);
-        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "first中文", new_string: "longer中文\nnew line"}]}), ctx)).toContain("已修改");
-        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "second😀", new_string: "changed😀"}]}), ctx)).toContain("已修改");
-        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "UNREAD", new_string: "blind"}]}), ctx)).toContain("未展示");
+        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "first中文", new_string: "longer中文\nnew line"}]}), ctx)).toContain("Modified");
+        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "second😀", new_string: "changed😀"}]}), ctx)).toContain("Modified");
+        expect(await executeTool("edit_file", JSON.stringify({path: "file.txt", edits: [{old_string: "UNREAD", new_string: "blind"}]}), ctx)).toContain("did not show");
         expect(await readFile(join(cwd, "file.txt"), "utf8")).toBe(["longer中文", "new line", "changed😀", "UNREAD", ""].join(lineEnding));
     });
 });
@@ -23,9 +23,9 @@ test("2100 行分两页完整读取才可整体替换", async () => {
         await writeFile(join(cwd, "file.txt"), content);
         const ctx = createTestContext(cwd);
         await executeTool("read_file", JSON.stringify({path: "file.txt"}), ctx);
-        expect(await executeTool("write_file", JSON.stringify({path: "file.txt", content: "blind"}), ctx)).toContain("完整 read_file");
+        expect(await executeTool("write_file", JSON.stringify({path: "file.txt", content: "blind"}), ctx)).toContain("read it fully with read_file");
         await executeTool("read_file", JSON.stringify({path: "file.txt", offset: 2001}), ctx);
-        expect(await executeTool("write_file", JSON.stringify({path: "file.txt", content: "known"}), ctx)).toContain("已写入");
+        expect(await executeTool("write_file", JSON.stringify({path: "file.txt", content: "known"}), ctx)).toContain("Wrote");
         expect(await readFile(join(cwd, "file.txt"), "utf8")).toBe("known");
     });
 });

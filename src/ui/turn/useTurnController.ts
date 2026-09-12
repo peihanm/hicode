@@ -42,13 +42,7 @@ export interface UseTurnControllerOptions {
     openPermissions?: () => void;
 }
 
-/**
- * 只把仍需动态更新的线程交给 Ink live 区。
- *
- * 文件 diff 会在同一 iteration 内持续合并；如果合并期间也把完整 diff
- * 渲染到 live 区，长 diff 可能已经进入终端滚动历史，随后转入 Static 时
- * 就会看起来像重复输出。它们因此只在 iteration/turn 固化后展示一次。
- */
+/** Only threads needing updates belong in Ink's live area. File diffs merge within an iteration; rendering them live can push them into scrollback and duplicate them when moved to Static. Show each final diff once at the iteration/turn boundary. */
 export function selectLiveThreads(
     threads: UIThread[],
     staticThreads: UIThread[]
@@ -172,7 +166,7 @@ export function useTurnController({
                     ? error.message
                     : String(error);
                 eventStore.appendWarning(
-                    `SessionStart Hook 执行失败: ${message.slice(0, 300)}`
+                    `SessionStart Hook failed: ${message.slice(0, 300)}`
                 );
                 return {
                     blocked: false,
@@ -196,7 +190,7 @@ export function useTurnController({
                 lastSaveError.current = undefined;
             } catch (error) {
                 const detail = error instanceof Error ? error.message : String(error);
-                if (lastSaveError.current !== detail) eventStore.appendWarning(`会话保存失败，本次对话可能无法通过 /resume 恢复：${detail.slice(0, 240)}`);
+                if (lastSaveError.current !== detail) eventStore.appendWarning(`Session save failed; this conversation may not be available through /resume: ${detail.slice(0, 240)}`);
                 lastSaveError.current = detail;
             }
         }, [rootSession, eventStore]);
@@ -245,7 +239,7 @@ export function useTurnController({
                         setSessionInitializationError(message.slice(0, 500));
                     }
                     eventStore.appendError(
-                        new Error(`Session Runtime 初始化失败：${message}`)
+                        new Error(`Session Runtime initialization failed: ${message}`)
                     );
                 });
             return () => {
@@ -347,7 +341,7 @@ export function useTurnController({
                         },
                         onLifecycleIssue: (issue) => {
                             eventStore.appendWarning(
-                                `${issue.message}：${issue.error instanceof Error ? issue.error.message : String(issue.error)}`
+                                `${issue.message}:${issue.error instanceof Error ? issue.error.message : String(issue.error)}`
                             );
                         },
                         onTurnSettled: () => eventStore.settleTurn(),
@@ -373,7 +367,7 @@ export function useTurnController({
                 validateImages: content => {
                     const target = resources.primaryModel.target;
                     if (imageReferences(content).length && !supportsToolImages(resources.settings.sources[target.source], target.model))
-                        throw new Error("当前模型不支持图片；附件与输入已保留，请先切换模型");
+                        throw new Error("This model does not support images. Attachments and input are preserved; switch models first.");
                 },
                 restoreDraft: value => setInputReplacement(current => ({value, revision: (current?.revision ?? 0) + 1, appendCurrent: true})),
                 messageQueue,
@@ -445,7 +439,7 @@ export function useTurnController({
                 observed = operation;
                 void operation.then(() => { lastError = undefined; }).catch((error) => {
                     const message = error instanceof Error ? error.message : String(error);
-                    if (message !== lastError) eventStore.appendNotice(`后台任务通知等待重投：${message}`);
+                    if (message !== lastError) eventStore.appendNotice(`Background task notification awaiting redelivery: ${message}`);
                     lastError = message;
                     if (!disposed && retry === undefined) retry = setTimeout(() => { retry = undefined; drain(); }, 1_000);
                 });
@@ -497,7 +491,7 @@ export function useTurnController({
                     resources.settings.context
                 ));
                 eventStore.appendNotice(
-                    `已切换主模型：${formatModelTarget(target)}。`
+                    `Main model switched to: ${formatModelTarget(target)}.`
                 );
                 void persistSnapshot();
             },

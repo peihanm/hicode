@@ -38,7 +38,7 @@ export async function processToolOutput(input: {
         };
     }
     const content = normalized.content.trim().length === 0
-        ? `（${input.toolName} 执行完成，无输出）`
+        ? `(${input.toolName} executed with no output)`
         : normalized.content;
     const threshold = input.maxResultSizeChars ?? DEFAULT_MAX_RESULT_CHARS;
     if (!Number.isFinite(threshold) || content.length <= threshold) {
@@ -66,7 +66,7 @@ export async function processToolOutput(input: {
     } catch (error) {
         return {
             modelContent: replaceContentText(original.content, buildPersistFailureMessage(input.toolName, preview, error)),
-            displayContent: `${preview}\n\n（完整结果保存失败）`,
+            displayContent: `${preview}\n\n(Failed to save full result)`,
             outcome,
             ...(uiData ? {uiData} : {}),
         };

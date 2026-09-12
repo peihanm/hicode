@@ -16,7 +16,7 @@ import {resolveFilePermissionPath} from "../permissions/filePattern.js";
 import {toolPathInput} from "../permissions/pathGuard.js";
 
 export function formatInterruptedToolResult(signal: AbortSignal): string {
-    return `工具调用已取消（${normalizeTurnAbortReason(signal.reason)}）`;
+    return `Tool call cancelled (${normalizeTurnAbortReason(signal.reason)})`;
 }
 
 export function inlineToolResult(
@@ -61,18 +61,18 @@ export async function executeRegisteredTool(
         return interruptedToolResult(ctx.signal);
     }
     const tool = toolMap.get(name);
-    if (!tool) return inlineToolResult(`未知工具: ${name}`, "failed");
+    if (!tool) return inlineToolResult(`Unknown tool: ${name}`, "failed");
 
     let rawArgs: unknown;
     try {
         rawArgs = JSON.parse(argsJson || "{}");
     } catch {
-        return inlineToolResult(`工具参数不是合法 JSON: ${argsJson}`, "failed");
+        return inlineToolResult(`Tool arguments are not valid JSON: ${argsJson}`, "failed");
     }
 
     const parsed = tool.parameters.safeParse(rawArgs);
     if (!parsed.success) {
-        return inlineToolResult(`参数校验失败: ${parsed.error.message}`, "failed");
+        return inlineToolResult(`Argument validation failed: ${parsed.error.message}`, "failed");
     }
     let input = parsed.data;
     let userAnswers: Readonly<Record<string, string>> | undefined;
@@ -103,7 +103,7 @@ export async function executeRegisteredTool(
         if (preHookResult.blocked) {
             return hookDecoratedResult(
                 inlineToolResult(
-                    `PreToolUse Hook 阻止了工具调用: ${preHookResult.blockReason ?? "未提供原因"}`,
+                    `PreToolUse Hook blocked the tool call: ${preHookResult.blockReason ?? "No reason provided"}`,
                     "denied"
                 ),
                 "PreToolUse",
@@ -115,7 +115,7 @@ export async function executeRegisteredTool(
             if (!reparsed.success) {
                 return hookDecoratedResult(
                     inlineToolResult(
-                        `PreToolUse Hook 修改后的参数校验失败: ${reparsed.error.message}`,
+                        `Arguments modified by PreToolUse Hook failed validation: ${reparsed.error.message}`,
                         "failed"
                     ),
                     "PreToolUse",
@@ -145,7 +145,7 @@ export async function executeRegisteredTool(
         }
         return hookDecoratedResult(
             inlineToolResult(
-                `工具执行出错: 权限检查失败: ${error instanceof Error ? error.message : String(error)}`,
+                `Tool execution error: permission check failed: ${error instanceof Error ? error.message : String(error)}`,
                 "failed"
             ),
             "PreToolUse",
@@ -157,7 +157,7 @@ export async function executeRegisteredTool(
     }
     if (permission.behavior === "deny") {
         return hookDecoratedResult(
-            inlineToolResult(`权限拒绝: ${permission.message}`, "denied"),
+            inlineToolResult(`Permission denied: ${permission.message}`, "denied"),
             "PreToolUse",
             preHookResult
         );
@@ -175,13 +175,13 @@ export async function executeRegisteredTool(
             );
             decision = resolution.decision;
         } catch (error) {
-            if (approvalEpoch.aborted && !ctx.signal.aborted) return inlineToolResult("审批期间工作方式或权限发生变化，请重新调用工具", "denied");
+            if (approvalEpoch.aborted && !ctx.signal.aborted) return inlineToolResult("Mode or permissions changed during approval; invoke the tool again", "denied");
             if (isTurnInterruptedError(error, ctx.signal)) {
                 return interruptedToolResult(ctx.signal);
             }
             return hookDecoratedResult(
                 inlineToolResult(
-                    `工具执行出错: 权限交互失败: ${error instanceof Error ? error.message : String(error)}`,
+                    `Tool execution error: permission interaction failed: ${error instanceof Error ? error.message : String(error)}`,
                     "failed"
                 ),
                 "PreToolUse",
@@ -193,21 +193,21 @@ export async function executeRegisteredTool(
         }
         if (decision.behavior === "deny") {
             return hookDecoratedResult(
-                inlineToolResult(`${resolution.source === "auto-review" ? "自动审核拒绝" : "审批拒绝"}${resolution.code ? ` [${resolution.code}]` : ""}: ${decision.message}`, "denied"),
+                inlineToolResult(`${resolution.source === "auto-review" ? "Automatic review denied" : "Approval denied"}${resolution.code ? ` [${resolution.code}]` : ""}: ${decision.message}`, "denied"),
                 "PreToolUse",
                 preHookResult
             );
         }
         if (decision.behavior !== "allow") {
-            return inlineToolResult("权限交互没有返回有效的 allow/deny 决定", "denied");
+            return inlineToolResult("Permission interaction did not return a valid allow/deny decision", "denied");
         }
         if (Object.keys(decision).some(key => !["behavior", "answers", "directoryScope", "networkScope"].includes(key))) {
-            return inlineToolResult("权限交互不能修改工具输入或返回未知字段", "denied");
+            return inlineToolResult("Permission interaction cannot modify tool input or return unknown fields", "denied");
         }
         if (decision.answers !== undefined) {
             if (tool.acceptsUserAnswers !== true || decision.directoryScope !== undefined || decision.networkScope !== undefined) {
                 return hookDecoratedResult(
-                    inlineToolResult(`工具 ${name} 不接收该请求中的用户答案`, "denied"),
+                    inlineToolResult(`Tool ${name} does not accept user answers in this request`, "denied"),
                     "PreToolUse", preHookResult
                 );
             }
@@ -215,7 +215,7 @@ export async function executeRegisteredTool(
         }
         if (decision.networkScope !== undefined) {
             return hookDecoratedResult(
-                inlineToolResult("网络授权不能用于批准工具执行", "denied"),
+                inlineToolResult("Network authorization cannot approve tool execution", "denied"),
                 "PreToolUse",
                 preHookResult
             );
@@ -231,7 +231,7 @@ export async function executeRegisteredTool(
                 } catch (error) {
                     return hookDecoratedResult(
                         inlineToolResult(
-                            `目录授权失败: ${error instanceof Error ? error.message : String(error)}`,
+                            `Directory authorization failed: ${error instanceof Error ? error.message : String(error)}`,
                             "failed"
                         ),
                         "PreToolUse",
@@ -242,7 +242,7 @@ export async function executeRegisteredTool(
         } else if (decision.directoryScope !== undefined) {
             return hookDecoratedResult(
                 inlineToolResult(
-                    "权限交互返回了不适用于当前请求的目录授权",
+                    "Permission interaction returned a directory grant that does not apply to this request",
                     "denied"
                 ),
                 "PreToolUse",
@@ -257,9 +257,9 @@ export async function executeRegisteredTool(
     let result;
     try {
         if (inputPath !== undefined && await resolveFilePermissionPath(ctx.cwd, inputPath) !== authorizedPath) {
-            return inlineToolResult("文件目标在权限检查期间发生变化，请重新调用工具", "denied");
+            return inlineToolResult("File target changed during the permission check; invoke the tool again", "denied");
         }
-        if (approvalEpoch.aborted) return inlineToolResult("审批期间工作方式或权限发生变化，请重新调用工具", "denied");
+        if (approvalEpoch.aborted) return inlineToolResult("Mode or permissions changed during approval; invoke the tool again", "denied");
         if (ctx.approvalBudget.stopped) return inlineToolResult(ctx.approvalBudget.stopMessage, "denied");
         result = await tool.execute(input, {...ctx, permissionMode: executionMode, collaborationMode}, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(permissionApproved ? {permissionApproved} : {})});
     } catch (error) {
@@ -267,7 +267,7 @@ export async function executeRegisteredTool(
             return interruptedToolResult(ctx.signal);
         }
         const failed = inlineToolResult(
-            `工具执行出错: ${error instanceof Error ? error.message : String(error)}`,
+            `Tool execution error: ${error instanceof Error ? error.message : String(error)}`,
             "failed"
         );
         const postFailureResult = await executePostToolHooks({
@@ -406,7 +406,7 @@ function hookDecoratedResult(
             ? appendContentText(result.modelContent, contexts.join("\n\n"))
             : result.modelContent,
         displayContent: issues.length > 0
-            ? `${result.displayContent}\n\nHook 警告:\n${issues.map((issue) => `- ${issue}`).join("\n")}`
+            ? `${result.displayContent}\n\nHook warning:\n ${issues.map((issue) => `- ${issue}`).join("\n")}`
             : result.displayContent,
     };
 }

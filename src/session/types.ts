@@ -75,8 +75,8 @@ export interface SaveSessionSnapshotInput {
     queuedInputs?: readonly RuntimeQueuedMessage[];
     taskNotificationReceipts?: readonly string[];
     toolDiscovery?: ToolDiscoverySnapshot;
-    /** 允许保存尚无完整回复的会话。 */
+    /** Allow saving a session before any complete response exists. */
     allowEmpty?: boolean;
-    /** 空 conversation 的 Session index 标题。 */
+    /** Session index title for an empty conversation. */
     summaryHint?: string;
 }

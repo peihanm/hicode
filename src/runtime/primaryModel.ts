@@ -31,7 +31,7 @@ export function createPrimaryModelRuntime(
         },
         select(next) {
             if (!allowed.has(targetKey(next))) {
-                throw new Error(`模型 ${next.label} 当前不可用`);
+                throw new Error(`Model ${next.label} is unavailable`);
             }
             target = {...next};
         },

@@ -4,7 +4,7 @@ import type {SlashCommand} from "../types.js";
 export const agentsCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "agents",
-    description: "创建、管理或重新加载 Agent",
+    description: "Create, manage or reload Agents",
     argumentHint: "[reload]",
     async execute(args, context) {
         if (args === "reload") {
@@ -12,7 +12,7 @@ export const agentsCommand: SlashCommand = {
             if (!("reload" in catalog) || typeof catalog.reload !== "function") {
                 await context.onEvent({
                     type: "assistant_text",
-                    content: "当前运行入口不支持 Agent 热重载。",
+                    content: "This entry point does not support Agent hot reload.",
                 });
                 return;
             }
@@ -21,7 +21,7 @@ export const agentsCommand: SlashCommand = {
                 type: "assistant_text",
                 content: [
                     `Agents Reload · revision ${result.revision}`,
-                    `新增 ${result.added.length} · 更新 ${result.updated.length} · 移除 ${result.removed.length} · 加载问题 ${result.issues.length}`,
+                    `Added ${result.added.length} · updated ${result.updated.length} · removed ${result.removed.length} · loading issues ${result.issues.length}`,
                     formatAgentRegistryReport(
                         context.subagents,
                         context.ctx.fastModel
@@ -33,7 +33,7 @@ export const agentsCommand: SlashCommand = {
         if (args) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "用法：/agents 或 /agents reload",
+                content: "Usage: /agents or /agents reload",
             });
             return;
         }

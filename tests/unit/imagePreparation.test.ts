@@ -26,8 +26,8 @@ test("reject invalid bytes, truncation, unsupported formats, animation, input by
     for (const bytes of [Buffer.from("invalid"), source.subarray(0, 50), Buffer.alloc(20 * 1024 * 1024 + 1)]) {
         await expect(prepareImage(bytes, active())).rejects.toThrow();
     }
-    await expect(prepareImage(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'), active())).rejects.toThrow("仅支持静态");
-    await expect(prepareImage(await sharp(source).gif().toBuffer(), active())).rejects.toThrow("仅支持静态");
+    await expect(prepareImage(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'), active())).rejects.toThrow("Only static");
+    await expect(prepareImage(await sharp(source).gif().toBuffer(), active())).rejects.toThrow("Only static");
     // acTL signals animation even when libvips reports only the PNG default frame.
     const animationControl = Buffer.alloc(20);
     animationControl.writeUInt32BE(8, 0);
@@ -36,7 +36,7 @@ test("reject invalid bytes, truncation, unsupported formats, animation, input by
     await expect(prepareImage(Buffer.concat([source.subarray(0, 33), animationControl, source.subarray(33)]), active())).rejects.toThrow("APNG");
     const animated = await sharp({create: {width: 8, height: 16, pageHeight: 8, channels: 3, background: "red"}})
         .composite([{input: {create: {width: 8, height: 8, channels: 3, background: "blue"}}, top: 8, left: 0}]).webp({delay: [100, 100]}).toBuffer();
-    await expect(prepareImage(animated, active())).rejects.toThrow("仅支持静态");
+    await expect(prepareImage(animated, active())).rejects.toThrow("Only static");
     const huge = await sharp({create: {width: 8000, height: 6000, channels: 3, background: "red"}}).png().toBuffer();
     await expect(prepareImage(huge, active())).rejects.toThrow("pixel limit");
     await expect(prepareImage(source, AbortSignal.abort("user-cancel"))).rejects.toThrow();

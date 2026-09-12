@@ -80,7 +80,7 @@ describe("resolvePermission", () => {
     });
     await expect(resolvePermission(createTool(), {}, ctx)).resolves.toEqual({
       behavior: "ask",
-      message: "工具 synthetic 需要确认",
+      message: "Tool synthetic requires approval",
     });
   });
 
@@ -93,7 +93,7 @@ describe("resolvePermission", () => {
     )).resolves.toEqual({behavior: "allow"});
     await expect(resolvePermission(createTool(), {}, ctx)).resolves.toEqual({
       behavior: "ask",
-      message: "工具 synthetic 需要确认",
+      message: "Tool synthetic requires approval",
     });
   });
 
@@ -215,7 +215,7 @@ describe("resolvePermission", () => {
     });
     await expect(resolvePermission(tool, {}, planContext)).resolves.toEqual({
       behavior: "deny",
-      message: "Plan 模式不执行 synthetic 的修改操作；请由用户切换 Build 后再实施",
+      message: "Plan mode does not execute modifying operations for synthetic ; the user must switch to Build before implementation",
     });
   });
 
@@ -226,7 +226,7 @@ describe("resolvePermission", () => {
     });
     await expect(resolvePermission(createTool(), {}, context)).resolves.toEqual({
       behavior: "deny",
-      message: "Plan 模式不执行 synthetic 的修改操作；请由用户切换 Build 后再实施",
+      message: "Plan mode does not execute modifying operations for synthetic ; the user must switch to Build before implementation",
     });
   });
 });

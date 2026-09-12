@@ -21,5 +21,5 @@ test("Root 使用标准工具单次接收 note，下一轮直接召回，不维�
 test("忽略 Memory 后即使模型试图读索引也被真实工具链拒绝",async()=>withTempProject(async cwd=>{
  const memory=createTestMemoryRuntime(cwd);const fake=createFakeLLM([assistantToolCall("read_file",{path:join(memory.directory,"views/MEMORY.md")},"read"),assistantText("本轮不使用")]);const tools=createToolRuntime();
  await createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory)("忽略记忆",createInitialHistory(cwd,"glm-test"),()=>{},(()=>{const ctx=createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);return ctx;})(),EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
- expect(JSON.stringify(fake.calls[1]?.messages)).toContain("没有 Memory");await memory.close();
+ expect(JSON.stringify(fake.calls[1]?.messages)).toContain("no Memory");await memory.close();
 }));

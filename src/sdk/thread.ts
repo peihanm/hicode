@@ -77,7 +77,7 @@ export function createSDKThreadFactory(
     return async function createSDKThread(
         options: CreateSDKThreadOptions
     ): Promise<SessionThread> {
-        if (options.state.permissionMode === "full-access" && !options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "当前 Host 不允许 Full Access");
+        if (options.state.permissionMode === "full-access" && !options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         const session = createRootSessionRuntime({
             resources: options.resources,
             seed: options.seed,
@@ -160,8 +160,8 @@ class SDKThreadImpl implements SessionThread {
         options: TurnOptions = {}
     ): Promise<StreamedTurn> {
         validateTurnOptions(options);
-        if (this.closed) throw new PillarSDKError("thread_closed", `Thread 已关闭: ${this.id}`);
-        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread 已有 Turn 正在运行: ${this.id}`);
+        if (this.closed) throw new PillarSDKError("thread_closed", `Thread is closed: ${this.id}`);
+        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
         let copied: TurnInput;
         try {copied = snapshotTurnInput(input);} catch (error) {throw new PillarSDKError("invalid_input", error instanceof Error ? error.message : String(error));}
         if (typeof copied === "string") return {events: this.streamTurn(copied, options)};
@@ -184,8 +184,8 @@ class SDKThreadImpl implements SessionThread {
 
     private async prepareImageInput(prepare: (signal: AbortSignal) => Promise<MessageContent>, options: TurnOptions): Promise<StreamedTurn> {
         validateTurnOptions(options);
-        if (this.closed) throw new PillarSDKError("thread_closed", `Thread 已关闭: ${this.id}`);
-        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread 已有 Turn 正在运行: ${this.id}`);
+        if (this.closed) throw new PillarSDKError("thread_closed", `Thread is closed: ${this.id}`);
+        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
         const controller = new AbortController();
         const unlink = linkAbortSignal(options.signal, controller);
         const settled = prepare(controller.signal);
@@ -193,11 +193,11 @@ class SDKThreadImpl implements SessionThread {
         this.preparing = preparing;
         try {
             const prompt = await settled;
-            if (this.closed || controller.signal.aborted) throw new PillarSDKError("interrupted", "图片输入已取消");
+            if (this.closed || controller.signal.aborted) throw new PillarSDKError("interrupted", "Image input cancelled");
             return {events: this.streamTurn(prompt, options)};
         } catch (error) {
             throw new PillarSDKError(controller.signal.aborted ? "interrupted" : "invalid_image",
-                controller.signal.aborted ? "图片输入已取消" : error instanceof Error ? error.message : String(error));
+                controller.signal.aborted ? "Image input cancelled" : error instanceof Error ? error.message : String(error));
         } finally {unlink(); if (this.preparing === preparing) this.preparing = undefined;}
     }
 
@@ -213,13 +213,13 @@ class SDKThreadImpl implements SessionThread {
         if (this.closed) {
             throw new PillarSDKError(
                 "thread_closed",
-                `Thread 已关闭: ${this.id}`
+                `Thread is closed: ${this.id}`
             );
         }
         if (this.activeRun) {
             throw new PillarSDKError(
                 "thread_busy",
-                `Thread 已有 Turn 正在运行: ${this.id}`
+                `Thread already has an active Turn: ${this.id}`
             );
         }
 
@@ -228,7 +228,7 @@ class SDKThreadImpl implements SessionThread {
         const queue = new AsyncEventQueue(() => controller.abort("user-cancel"));
         let cancelTimer: ReturnType<typeof setTimeout> | undefined;
         const expireCancelledStream = () => {
-            cancelTimer ??= setTimeout(() => queue.discard(new Error("SDK 消费者未及时接收取消事件，事件流已断开")), 1_000);
+            cancelTimer ??= setTimeout(() => queue.discard(new Error("SDK consumer did not receive cancellation events in time; event stream disconnected")), 1_000);
         };
         controller.signal.addEventListener("abort", expireCancelledStream, {once: true});
         const removeExternalAbort = linkAbortSignal(
@@ -294,7 +294,7 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
-        if ((turnOptions.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "当前 Host 不允许 Full Access");
+        if ((turnOptions.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         if (turnOptions.permissionMode !== undefined || turnOptions.collaborationMode !== undefined) this.options.session.invalidateApprovals();
         if (turnOptions.permissionMode !== undefined) {
             this.options.state.permissionMode = turnOptions.permissionMode;
@@ -401,7 +401,7 @@ class SDKThreadImpl implements SessionThread {
                     response.persistence === "always" || response.directoryScope !== undefined ||
                     response.answers !== undefined
                 )) {
-                    response = {behavior: "deny", message: "网络连接不支持永久工具授权、目录授权或修改输入"};
+                    response = {behavior: "deny", message: "Network connections do not support permanent tool grants, directory grants or input changes"};
                 }
                 const status = signal.aborted
                     ? "interrupted"
@@ -433,7 +433,7 @@ class SDKThreadImpl implements SessionThread {
         if (!callback) {
             return {
                 behavior: "deny",
-                message: "SDK Host 未提供 onInteraction，已拒绝需要交互的操作",
+                message: "SDK Host did not provide onInteraction; interaction-required operation denied",
             };
         }
         try {
@@ -451,8 +451,8 @@ class SDKThreadImpl implements SessionThread {
             return {
                 behavior: "deny",
                 message: signal.aborted
-                    ? "Turn 已取消"
-                    : `SDK Host interaction 失败: ${error instanceof Error ? error.message : String(error)}`,
+                    ? "Turn cancelled"
+                    : `SDK Host interaction failed: ${error instanceof Error ? error.message : String(error)}`,
             };
         }
     }
@@ -481,7 +481,7 @@ class SDKThreadImpl implements SessionThread {
         try {
             await this.options.host?.onDiagnostic?.(diagnostic);
         } catch {
-            // Host diagnostic sink 不能改变 Turn 生命周期。
+            // Host diagnostic sinks cannot alter the Turn lifecycle.
         }
     }
 
@@ -506,7 +506,7 @@ class SDKThreadImpl implements SessionThread {
                 await this.reportDiagnostic({
                     severity: "warning",
                     scope: "hook",
-                    message: `SessionEnd 执行失败: ${error instanceof Error ? error.message : String(error)}`,
+                    message: `SessionEnd failed: ${error instanceof Error ? error.message : String(error)}`,
                 });
             }
             await this.options.session.saveSnapshot(
@@ -532,7 +532,7 @@ function validateTurnOptions(options: TurnOptions): void {
     ) {
         throw new PillarSDKError(
             "invalid_permission_mode",
-            `无效 permissionMode: ${String(options.permissionMode)}`
+            `Invalid permissionMode: ${String(options.permissionMode)}`
         );
     }
     if (
@@ -541,7 +541,7 @@ function validateTurnOptions(options: TurnOptions): void {
     ) {
         throw new PillarSDKError(
             "invalid_collaboration_mode",
-            `无效 collaborationMode: ${String(options.collaborationMode)}`
+            `Invalid collaborationMode: ${String(options.collaborationMode)}`
         );
     }
     if (
@@ -552,7 +552,7 @@ function validateTurnOptions(options: TurnOptions): void {
     ) {
         throw new PillarSDKError(
             "invalid_max_iterations",
-            `maxIterations 必须是 1-${MAX_SDK_ITERATIONS} 的整数`
+            `maxIterations must be an integer from 1 to ${MAX_SDK_ITERATIONS} .`
         );
     }
 }
@@ -606,7 +606,7 @@ function toSDKErrorInfo(
     if (signal.aborted) {
         return {
             code: "turn_interrupted",
-            message: `Turn 已取消: ${normalizeTurnAbortReason(signal.reason)}`,
+            message: `Turn cancelled: ${normalizeTurnAbortReason(signal.reason)}`,
         };
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -633,7 +633,7 @@ async function reportHookIssues(
                 message: issue,
             });
         } catch {
-            // Host diagnostic sink 不能破坏 Session 生命周期。
+            // Host diagnostic sinks cannot disrupt the Session lifecycle.
         }
     }
 }

@@ -24,7 +24,7 @@ export function createGlmProvider(
         async call(options, source) {
             const apiKey = process.env[source.apiKeyEnv];
             if (!apiKey) {
-                throw new Error(`缺少 ${source.apiKeyEnv}，请检查当前项目 .env 或 ~/.pillar/.env`);
+                throw new Error(`Missing ${source.apiKeyEnv}; check the project .env or ~/.pillar/.env`);
             }
 
             return callEndpoint(options, {

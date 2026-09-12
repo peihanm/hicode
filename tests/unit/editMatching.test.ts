@@ -17,7 +17,7 @@ test.each([
         const result = await executeTool("edit_file", JSON.stringify({
             path: "text.txt", edits: [{old_string: '"hello"', new_string: "updated", replace_all: item.all}],
         }), ctx);
-        expect(result).toContain(`替换 ${item.count} 处`);
+        expect(result).toContain(`replaced ${item.count} matches`);
         expect(await readFile(join(cwd, "text.txt"), "utf8")).toBe(item.expected);
     });
 });

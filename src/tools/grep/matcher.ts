@@ -19,7 +19,7 @@ export function createGrepMatcher(signal: AbortSignal) {
     const onAbort = () => stop(new TurnInterruptedError(normalizeTurnAbortReason(signal.reason)));
     const onError = (error: Error) => stop(error);
     const onExit = (code: number) => {
-        if (!closing) stop(new Error(`Grep 搜索进程提前退出（${code}），未完成扫描`));
+        if (!closing) stop(new Error(`Grep search process exited early (${code}); scan incomplete`));
     };
     const onMessage = (result: SearchResponse) => {
         pending?.resolve(result);
@@ -34,8 +34,8 @@ export function createGrepMatcher(signal: AbortSignal) {
         async search(input: SearchRequest, remainingMs: number): Promise<SearchResponse> {
             throwIfTurnAborted(signal);
             if (failure) throw failure;
-            if (closing || pending) throw new Error("Grep worker 当前不可接受搜索");
-            const timeout = setTimeout(() => stop(new Error("Grep 搜索超时，未完成扫描；请缩小范围或简化正则")), Math.max(1, Math.min(5_000, remainingMs)));
+            if (closing || pending) throw new Error("Grep worker cannot accept searches right now");
+            const timeout = setTimeout(() => stop(new Error("Grep search timed out; scan incomplete. Narrow the scope or simplify the regex.")), Math.max(1, Math.min(5_000, remainingMs)));
             try {
                 return await new Promise<SearchResponse>((resolve, reject) => {
                     pending = {resolve, reject};
@@ -45,7 +45,7 @@ export function createGrepMatcher(signal: AbortSignal) {
         },
         async close(): Promise<void> {
             signal.removeEventListener("abort", onAbort);
-            stop(new Error("Grep worker 已关闭"));
+            stop(new Error("Grep worker is closed"));
             await closing;
             worker.removeListener("error", onError);
             worker.removeListener("exit", onExit);

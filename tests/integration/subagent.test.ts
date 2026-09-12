@@ -43,7 +43,7 @@ describe("synchronous subagent", () => {
           expect(options.messages.find((message) =>
             message.role === "tool" &&
             message.tool_call_id === "general-write"
-          )?.content).toContain("已写入 general-purpose.txt");
+          )?.content).toContain("Wrote general-purpose.txt");
           return assistantText("结构化文件修改完成，测试尚未运行。");
         },
       ]);
@@ -100,8 +100,8 @@ describe("synchronous subagent", () => {
             message.role === "tool" &&
             message.tool_call_id === "child-edit-without-read"
           );
-          expect(result?.content).toContain("必须先用 read_file");
-          expect(result?.content).toContain("编辑失败");
+          expect(result?.content).toContain("Use read_file to read");
+          expect(result?.content).toContain("Edit failed");
           return assistantText("子 Agent 没有自己的读取证据，因此未修改文件。");
         },
       ]);
@@ -302,7 +302,7 @@ describe("synchronous subagent", () => {
             (message) =>
               message.role === "tool" && message.tool_call_id === "guarded-read"
           );
-          expect(toolResult?.content).toContain("当前 Host 不支持权限交互");
+          expect(toolResult?.content).toContain("This Host does not support permission interaction");
           return assistantText("读取被父规则收窄");
         },
       ]);
@@ -351,7 +351,7 @@ describe("synchronous subagent", () => {
               options.messages.some(
                 (message) =>
                   message.role === "user" &&
-                  contentText(message.content).includes("工具执行阶段已经结束")
+                  contentText(message.content).includes("The tool execution stage has ended")
               )
             ).toBe(true);
             return assistantText("根据已有证据完成最终报告");

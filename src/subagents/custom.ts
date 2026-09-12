@@ -15,7 +15,7 @@ export function createCustomSubagentRegistration(
     definition: AgentDefinition
 ): SubagentRegistration {
     if (definition.source === "builtin") {
-        throw new Error("内置 Agent 不能使用通用 Custom Registration");
+        throw new Error("Built-in Agents cannot use a generic Custom Registration");
     }
     return {
         definition,

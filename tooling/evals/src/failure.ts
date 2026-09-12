@@ -10,7 +10,7 @@ export function classifyEvalFailure(
         return "verifier";
     }
     if (error) {
-        return /provider|stream|usage|api[_ ]?key|api\s+\d{3}|llm api|http|qwen|deepseek|glm|dashscope|余额不足|资源包|缺少\s+\w+_KEY/i.test(
+        return /provider|stream|usage|api[_ ]?key|api\s+\d{3}|llm api|http|qwen|deepseek|glm|dashscope|余额不足|资源包|缺少\s+\w+_KEY|missing\s+\w+_KEY/i.test(
             `${error.code} ${error.message}`
         )
             ? "provider"

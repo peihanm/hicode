@@ -43,20 +43,20 @@ interface ToolSearchSource {
     description?: string;
 }
 
-// 工具运行时上下文：注入权限裁决、规则、模式等依赖
-// 避免工具直接耦合 UI / 配置加载
+// Tool runtime context injects permission decisions, rules, modes and other dependencies.
+// Tools do not depend directly on UI or configuration loading.
 export interface ToolContext {
     readonly toolNames: readonly string[];
     imageModelSupported?: boolean;
     imageAccess?: ImageAccess;
     /** Root Turn observes actual execute intervals, excluding permission and batch queues. */
     storage: PillarStorageLayout;
-    // 当前 turn 的取消信号。每轮必须创建新的 signal，不能复用已取消 signal。
+    // Cancellation signal for this Turn; create a fresh signal for each Turn.
     signal: AbortSignal;
 
-    // 权限裁决：当工具 checkPermissions 返回 ask 时调用
-    // 返回 allow/deny，由调用方（App.tsx）实现弹窗
-    // toolName + input 用于 "don't ask again" 时生成 allow 规则
+    // Called when tool checkPermissions returns ask.
+    // Returns allow/deny; the caller owns the dialog.
+    // toolName and input generate allow rules for "don't ask again".
     canUseTool: (
         tool: string,
         message: string,
@@ -68,10 +68,10 @@ export interface ToolContext {
         }
     ) => Promise<PermissionDecision>;
 
-    // 配置文件加载的权限规则（allow/ask/deny 三桶）
+    // Configuration permission rules, grouped by allow/ask/deny.
     permissionRules: PermissionRules;
 
-    // 执行权限预设；由 Host 选择，不向模型暴露修改入口。
+    // Host-selected execution permission preset; the model cannot change it.
     readonly permissionMode: PermissionMode;
     readonly allowFullAccess: boolean;
     readonly readOnlyTools: boolean;
@@ -82,49 +82,49 @@ export interface ToolContext {
     approvalEvidence?: () => readonly Message[];
     onApprovalEvent?: (event: ApprovalEvent) => void | Promise<void>;
 
-    // Build/Plan 与权限 Profile 独立；Plan 只收窄能力，不改变 permissionMode。
+    // Build/Plan is independent of permission profiles; Plan narrows capabilities without changing permissionMode.
     readonly collaborationMode: CollaborationMode;
 
-    // 非交互 Host 把 ask 收窄为 deny；它不是用户权限 Profile。
+    // A non-interactive Host narrows ask to deny; this is not a user permission profile.
     permissionPromptPolicy: PermissionPromptPolicy;
 
-    // TodoWrite 工具用：更新 React state 驱动 TodoList UI
+    // TodoWrite updates React state through this callback to drive TodoList.
     setTodos: (todos: Todo[]) => void | Promise<void>;
 
-    // Skill 工具用：启动时加载的 skill 列表
+    // Skills loaded at startup for the Skill tool.
     skills: LoadedSkill[];
     instructions: ProjectInstructions;
 
-    // 当前模型名（env 探测 + context window 判断用）
+    // Current model name for environment and context-window calculations.
     model: string;
 
-    // 当前主模型对应的 Provider。每个 Turn 固化一次，运行中切换不会改变旧 Turn。
+    // Provider for the current main model, frozen per Turn; switching cannot alter an active Turn.
     provider: LLMProviderName;
 
-    // 当前 Runtime 配置的快速模型名（Agent 描述与 model=fast 路由说明用）
+    // Configured fast model for Agent descriptions and model=fast routing.
     fastModel: string;
 
     fastProvider: LLMProviderName;
 
-    // 当前工作目录（工具路径解析、attachment 探测与项目 identity 用）
+    // Working directory for tool paths, attachments and project identity.
     cwd: string;
 
-    // 子 Agent 的执行层文件边界；Root Runtime 默认不设置。
+    // Enforced child Agent file boundary; unset by default for Root.
     workspaceBoundary?: string;
 
-    // 当前 Session 已授权的工作目录；不能替代 Host/子 Agent hard boundary。
+    // Directories authorized for this Session; cannot override Host/child hard boundaries.
     directoryAccess: DirectoryAccessRuntimeLike;
     networkAccess?: NetworkAccessSession;
 
-    // Root-only 文件式 Memory capability。子 Agent 不得继承。
+    // Root-only file-based Memory capability; children must not inherit it.
     memoryFiles?: MemoryFileAccess;
 
-    // Auto-Compact 会话状态（失败熔断 / 次数统计）
+    // Session Auto-Compact state: failure breaker and counters.
     compactState: CompactState;
     readonly contextSettings: ContextSettings;
     contextUsage: ContextUsageTracker;
 
-    // 当前 Session 的大工具结果存储。由 UI / Headless / tests 注入。
+    // Session large-result storage, injected by UI, Headless or tests.
     sessionId: string;
     toolResultStore: ToolResultStore;
     toolResultFiles: Pick<ToolResultStore, "resolveFile">;
@@ -133,27 +133,27 @@ export interface ToolContext {
     /** Root Session only: commit complete paired batches before the next model request. */
     commitToolBatch?: () => Promise<void>;
 
-    // Session 级的文件观测状态，供 Read/Edit/Write 做 stale
-    // 和部分读取范围检查。不得使用进程级全局状态代替。
+    // Session file observations for Read/Edit/Write stale-version
+    // and partial-read checks; never replace with process-global state.
     fileState: FileStateTracker;
     fileCommits: FileCommitCoordinator;
 
 
-    // 当前 Session 的 Git Baseline 与来源提示。它包装 gitWorkspace，
-    // 但状态随 Session Snapshot 持久化，不能做成 Root 进程级全局。
+    // Session Git baseline and provenance hints wrap gitWorkspace;
+    // state persists with the Session snapshot, not a Root process global.
 
-    // Root turn 注入统一子 Agent launcher；子 Agent context 不注入，阻止递归。
+    // Root Turn injects the shared launcher; child contexts omit it to prevent recursion.
     subagentLauncher?: SubagentLauncher;
 
-    // Root runtime 的 MCP 状态；供 /mcp 和子 Agent 能力收窄读取。
-    // 自定义 child 按定义筛选工具，不继承 manager 本身。
+    // Root MCP state for /mcp and child capability narrowing.
+    // Custom children filter tools by definition and do not inherit the manager.
     mcpManager?: McpManagerLike;
 
-    // 当前 Session 的任务视图；任务状态归 Root Runtime 管理，子 Agent 默认不继承。
+    // Session task view; Root owns task state and children do not inherit it by default.
     tasks?: TaskSessionLike;
 
-    // 当前 Session 的 Hook 生命周期状态，用于 once 原子 claim。
-    // 状态归 Session Runtime，不得放入 Root Hook Runtime。
+    // Session Hook lifecycle state for atomic once claims.
+    // Session Runtime owns this state, not Root Hook Runtime.
     hookSession?: HookSessionRuntime;
     turnId: string;
     holdHookConfiguration?: () => () => void;
@@ -161,8 +161,8 @@ export interface ToolContext {
     runHook?: (input: HookInput, signal?: AbortSignal) => Promise<HookBatchResult>;
     hookControl?: {inspect: HookRuntime["inspect"]; reload(signal: AbortSignal): Promise<void>};
 
-    // Root Runtime 统一持有的 Shell 执行边界。前台、后台和子 Agent
-    // 通过同一 Runner 获得一致的 Sandbox、取消和输出语义。
+    // Root owns the shared Shell execution boundary. Foreground, background and child Agents
+    // use the same Runner for consistent Sandbox, cancellation and output semantics.
     shellRunner: ShellRunnerLike;
 }
 
@@ -172,71 +172,71 @@ interface ToolInvocation {
     userAnswers?: Readonly<Record<string, string>>;
 }
 
-// 工具抽象：名字 + 描述 + Zod 参数 schema + 权限声明 + 执行函数
-// Zod schema 一处定义，既能自动生成给 LLM 的 JSON Schema，又能运行时校验参数
+// Tool contract: name, description, Zod input schema, permission declaration and execution.
+// One Zod schema generates model JSON Schema and validates runtime arguments.
 export interface Tool<T extends z.ZodType = z.ZodType> {
     name: string;
     description: string;
-    /** 当前 Runtime 中会变化的模型说明，例如热重载后的 Agent Catalog。 */
+    /** Runtime-dependent model guidance, such as a hot-reloaded Agent Catalog. */
     getDescription?(): string;
     parameters: T; // Zod schema
 
-    // 控制完整 Schema 是否在首次模型请求中出现。省略时保持 direct。
-    // deferred 只影响模型可见性，不改变权限、并发或真实执行能力。
+    // Whether full Schema appears in the first model request; defaults to direct.
+    // Deferred loading affects visibility only, not permissions, concurrency or execution capabilities.
     exposure?: ToolExposure;
 
-    // Tool Search 的补充检索词与来源摘要。外部文本仅用于检索，不能参与权限判断。
+    // Additional search terms and source summary. External text is for discovery, never permission decisions.
     searchHint?: string;
     searchSource?: ToolSearchSource;
 
-    // 外部工具（目前为 MCP）可以直接提供 JSON Schema。
-    // 内置工具省略该字段，继续从 Zod schema 生成。
+    // External tools, currently MCP, may provide JSON Schema directly.
+    // Built-ins omit this field and derive JSON Schema from Zod.
     inputJsonSchema?: Record<string, unknown>;
 
 
-    // 权限意向声明：返回 allow/deny/ask/passthrough
-    // 不写时默认 passthrough，由 executeTool 按 isReadOnly 决定
+    // Permission intent returns allow/deny/ask/passthrough.
+    // Defaults to passthrough; executeTool decides using isReadOnly.
     checkPermissions?(
         input: z.infer<T>,
         ctx: ToolContext
     ): Promise<PermissionResult>;
 
-    // 给权限规则匹配用的 matcher 工厂
-    // 把 input 转成"能跟规则 pattern 匹配的字符串"
-    // 默认实现：JSON.stringify(input)
-    // bash 覆盖：拆子命令，并按 allow/ask/deny 使用不同匹配策略
+    // Matcher factory for permission rules.
+    // Converts input into a string that can match rule patterns.
+    // Default: JSON.stringify(input).
+    // Bash splits subcommands and uses different allow/ask/deny strategies.
     preparePermissionMatcher?(
         input: z.infer<T>
     ): Promise<PermissionMatcher>;
 
-    // 元信息：用于默认权限规则
-    // isReadOnly 不写时默认 false（写操作）
+    // Metadata used by default permission rules.
+    // isReadOnly defaults to false, meaning a write operation.
     isReadOnly?(input: z.infer<T>): boolean;
 
-    // 同一 assistant message 中可否与相邻安全工具并发执行。
-    // 必须显式声明；只读不自动等于并发安全（例如 ask_user / todo_write）。
+    // Whether this tool may run concurrently with adjacent safe tools in one assistant message.
+    // Must be explicit: read-only does not imply concurrency safety, e.g. ask_user/todo_write.
     isConcurrencySafe?(input: z.infer<T>): boolean;
 
-    // 普通 allow 规则不能静默批准这些操作；交给当前审核者或 Full Access 预授权。
-    // ask_user 的答案仍只能由 Host 提供。
+    // Ordinary allow rules cannot silently approve these actions; use the reviewer or Full Access preauthorization.
+    // ask_user answers still come only from the Host.
     requiresExplicitApproval?(input: z.infer<T>, ctx: ToolContext): boolean;
 
-    // Host 回答经 invocation 传入，不属于模型参数，也不能改写原提问。
+    // Host answers arrive through invocation, not model parameters, and cannot replace original questions.
     acceptsUserAnswers?: boolean;
 
-    // Default 只自动批准能证明副作用范围的调用。workspace 路径仍会由
-    // permission resolver 做 canonical path 校验；sandboxed 只应由确认
-    // 当前 OS Sandbox 已 ready 的执行边界声明。省略表示副作用范围未知。
+    // Default approval requires a provable side-effect scope. Workspace paths still undergo
+    // canonical validation by the permission resolver. Only an execution boundary that knows
+    // the OS Sandbox is ready may declare sandboxed. Omission means unknown scope.
     getDefaultApprovalScope?(
         input: z.infer<T>,
         ctx: ToolContext
     ): DefaultApprovalScope | undefined;
 
-    // 模型可见结果超过该字符数时进入 Tool Result Store。
-    // Infinity 表示工具已经自行保证输出有界，禁止递归落盘。
+    // Model-visible results above this character limit enter Tool Result Store.
+    // Infinity means the tool already bounds output; do not recursively persist it.
     maxResultSizeChars?: number;
 
-    // 执行：只在权限通过后调用，不再需要自己调 confirm
+    // Execution occurs only after permission approval; no additional confirm call is needed.
     execute(
         args: z.infer<T>,
         ctx: ToolContext,

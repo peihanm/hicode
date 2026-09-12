@@ -75,8 +75,8 @@ export class Pillar {
     }
 
     async reconnectMcpServer(name: string): Promise<void> {
-        if (this.closed) throw new Error("Pillar 已关闭");
-        if (!this.resources.mcpManager) throw new Error("没有配置 MCP Server");
+        if (this.closed) throw new Error("Pillar is closed");
+        if (!this.resources.mcpManager) throw new Error("No MCP Servers configured");
         await this.resources.mcpManager.reconnect(name);
     }
 
@@ -90,7 +90,7 @@ export class Pillar {
         ) {
             throw new PillarSDKError(
                 "invalid_permission_mode",
-                `无效 permissionMode: ${String(options.permissionMode)}`
+                `Invalid permissionMode: ${String(options.permissionMode)}`
             );
         }
         if (
@@ -99,10 +99,10 @@ export class Pillar {
         ) {
             throw new PillarSDKError(
                 "invalid_collaboration_mode",
-                `无效 collaborationMode: ${String(options.collaborationMode)}`
+                `Invalid collaborationMode: ${String(options.collaborationMode)}`
             );
         }
-        if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "当前 Host 不允许 Full Access");
+        if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         const initial = prepareThreadSession(this.resources);
         initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;
         initial.state.collaborationMode = options.collaborationMode ?? initial.state.collaborationMode;
@@ -114,7 +114,7 @@ export class Pillar {
         if (typeof sessionId !== "string" || !sessionId.trim()) {
             throw new PillarSDKError(
                 "invalid_session_id",
-                "resumeThread 需要非空 sessionId"
+                "resumeThread requires a non-empty sessionId"
             );
         }
         const loaded = loadSession(
@@ -126,7 +126,7 @@ export class Pillar {
         if (!loaded) {
             throw new PillarSDKError(
                 "session_not_found",
-                `没有找到会话: ${sessionId}`
+                `Session not found: ${sessionId}`
             );
         }
         return this.openThread(prepareThreadSession(this.resources, loaded));
@@ -158,7 +158,7 @@ export class Pillar {
                 await created.close();
                 throw new PillarSDKError(
                     "pillar_closed",
-                    "Pillar 在 Thread 初始化期间被关闭"
+                    "Pillar was closed during Thread initialization"
                 );
             }
             this.activeThread = created;
@@ -170,19 +170,19 @@ export class Pillar {
                 this.pendingThread = undefined;
             }
         }).catch(() => {
-            // 调用方持有原始 operation；这里只消费 finally 派生 Promise。
+            // The caller owns the original operation; consume only the Promise derived from finally here.
         });
         return operation;
     }
 
     private assertCanOpenThread(): void {
         if (this.closed) {
-            throw new PillarSDKError("pillar_closed", "Pillar 已关闭");
+            throw new PillarSDKError("pillar_closed", "Pillar is closed");
         }
         if (this.activeThread || this.pendingThread) {
             throw new PillarSDKError(
                 "thread_already_open",
-                "一个 Pillar 实例同时只允许一个打开的 Thread"
+                "A Pillar instance allows only one open Thread at a time"
             );
         }
     }
@@ -215,7 +215,7 @@ export class Pillar {
         try {
             await this.options.host?.onDiagnostic?.(diagnostic);
         } catch {
-            // Host diagnostic sink 不能破坏 Root 生命周期。
+            // Host diagnostic sinks cannot disrupt the Root lifecycle.
         }
     }
 
@@ -238,7 +238,7 @@ function validatePillarOptions(options: PillarOptions): void {
     if (!isPillarRootConfiguration(options.configuration)) {
         throw new PillarSDKError(
             "invalid_options",
-            "Pillar 需要由 loadPillarHostConfig 生成的 Root Configuration"
+            "Pillar requires a Root Configuration created by loadPillarHostConfig"
         );
     }
 }
@@ -266,10 +266,10 @@ async function requestRootApproval(
             await options.host?.onDiagnostic?.({
                 severity: "warning",
                 scope: "runtime",
-                message: `Root interaction 失败，已拒绝: ${error instanceof Error ? error.message : String(error)}`,
+                message: `Root interaction failed; denied: ${error instanceof Error ? error.message : String(error)}`,
             });
         } catch {
-            // Host diagnostic sink 不能扩大审批结果。
+            // Host diagnostic sinks cannot broaden approval results.
         }
         return "deny";
     }

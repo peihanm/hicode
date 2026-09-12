@@ -54,7 +54,7 @@ export function FileAccessDialog({
 
     const handleSelect = (option: FileAccessOption) => {
         const decision: PermissionDecision = option.value === "deny"
-            ? {behavior: "deny", message: "用户拒绝目录访问"}
+            ? {behavior: "deny", message: "User denied directory access"}
             : {behavior: "allow", directoryScope: option.value};
         req.resolve(decision);
         onDone();
@@ -77,7 +77,7 @@ export function FileAccessDialog({
                 />
             </Box>
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ 选择 · Enter 确认 · Esc 取消</Text>
+                <Text color={COLORS.dim}>↑↓ select · Enter confirm · Esc cancel</Text>
             </Box>
         </Box>
     );

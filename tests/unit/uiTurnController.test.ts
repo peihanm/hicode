@@ -79,7 +79,7 @@ function createHarness(overrides: {
         if (hookResult.blocked) {
           events.push({
             type: "assistant_text",
-            content: `UserPromptSubmit Hook 阻止了请求: ${hookResult.blockReason ?? "未提供原因"}`,
+            content: `UserPromptSubmit Hook blocked the request: ${hookResult.blockReason ?? "No reason provided"}`,
           });
           return;
         }
@@ -150,7 +150,7 @@ describe("UITurnController", () => {
         expect(options?.getTodos?.()).toEqual(todos);
         todos = [{...todos[0]!, status: "completed"}];
         expect(options?.getTodos?.()).toEqual(todos);
-        return {reply: "完成", reason: "completed", iterations: 1};
+        return {reply: "completed", reason: "completed", iterations: 1};
       }) as AgentRunner,
     });
 
@@ -374,7 +374,7 @@ describe("UITurnController", () => {
     expect(harness.agentCalls).toBe(0);
     expect(harness.events).toContainEqual({
       type: "assistant_text",
-      content: "UserPromptSubmit Hook 阻止了请求: prompt policy",
+      content: "UserPromptSubmit Hook blocked the request: prompt policy",
     });
   });
 

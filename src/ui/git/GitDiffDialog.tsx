@@ -33,13 +33,13 @@ type ViewState =
     };
 
 function gitFileLabel(kind: GitDiffFile["status"]["kind"]): string {
-    if (kind === "untracked" || kind === "added") return "新增";
-    if (kind === "deleted") return "删除";
-    if (kind === "renamed") return "重命名";
-    if (kind === "copied") return "复制";
-    if (kind === "conflicted") return "冲突";
-    if (kind === "type-changed") return "类型变化";
-    return "修改";
+    if (kind === "untracked" || kind === "added") return "Added";
+    if (kind === "deleted") return "Delete";
+    if (kind === "renamed") return "Renamed";
+    if (kind === "copied") return "Copied";
+    if (kind === "conflicted") return "Conflict";
+    if (kind === "type-changed") return "Type changed";
+    return "Modified";
 }
 
 function fromGitFile(file: GitDiffFile): DiffViewFile {
@@ -191,42 +191,42 @@ export function GitDiffDialog({
         >
             <Box>
                 <Text bold color={COLORS.accent}>± Changes</Text>
-                <Text color={COLORS.dim}>  查看代码修改</Text>
+                <Text color={COLORS.dim}>  View code changes</Text>
             </Box>
 
             <Box flexDirection="column" marginTop={1}>
-                <Text bold>当前未提交修改</Text>
+                <Text bold>Current uncommitted changes</Text>
                 {view.status === "loading" && (
-                    <Text color={COLORS.dim}>正在读取 Git 修改…</Text>
+                    <Text color={COLORS.dim}>Reading Git changes…</Text>
                 )}
                 {view.status === "error" && (
-                    <Text color={COLORS.error}>无法读取修改：{view.message}</Text>
+                    <Text color={COLORS.error}>Cannot read changes: {view.message}</Text>
                 )}
                 {view.status === "ready" && (
                     <Text color={COLORS.dim}>
                         {view.repository
                             ? `${basename(view.repository)} · ${view.branch ?? "unknown"} · `
                             : ""}
-                        {view.files.length} 个文件
+                        {view.files.length} files
                         {" · "}
                         <Text color={COLORS.diffAdded}>+{totalAdditions ?? "?"}</Text>
                         {" "}
                         <Text color={COLORS.diffRemoved}>-{totalDeletions ?? "?"}</Text>
-                        {view.truncated ? " · 结果已截断" : ""}
+                        {view.truncated ? " · results truncated" : ""}
                     </Text>
                 )}
             </Box>
 
             {view.status === "ready" && view.files.length === 0 && (
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>当前没有未提交修改。</Text>
+                    <Text color={COLORS.dim}>No uncommitted changes.</Text>
                 </Box>
             )}
 
             {view.status === "ready" && view.files.length > 0 && viewMode === "list" && (
                 <Box flexDirection="column" marginTop={1}>
                     {fileWindow.start > 0 && (
-                        <Text color={COLORS.dim}>↑ 上方还有 {fileWindow.start} 个文件</Text>
+                        <Text color={COLORS.dim}>↑ Above: {fileWindow.start} files</Text>
                     )}
                     {fileWindow.files.map((file, offset) => {
                         const index = fileWindow.start + offset;
@@ -258,7 +258,7 @@ export function GitDiffDialog({
                     })}
                     {fileWindow.start + fileWindow.files.length < view.files.length && (
                         <Text color={COLORS.dim}>
-                            ↓ 下方还有 {view.files.length - fileWindow.start - fileWindow.files.length} 个文件
+                            ↓ Below: {view.files.length - fileWindow.start - fileWindow.files.length} files
                         </Text>
                     )}
                 </Box>
@@ -273,7 +273,7 @@ export function GitDiffDialog({
                     <Text color={COLORS.dim}>{"─".repeat(contentWidth)}</Text>
                     {selected.diffStatus === "unavailable" ? (
                         <Text color={COLORS.dim}>
-                            无法展示 Diff（{selected.note ?? "unknown error"}）
+                            Cannot display diff ({selected.note ?? "unknown error"})
                         </Text>
                     ) : (
                         <StructuredDiff
@@ -289,8 +289,8 @@ export function GitDiffDialog({
             <Box marginTop={1}>
                 <Text color={COLORS.dim} italic>
                     {viewMode === "list"
-                        ? "↑/↓ 选择 · Enter/Ctrl+O 查看 · r 刷新 · Esc 关闭"
-                        : "←/Esc 返回列表 · Ctrl+O 返回 · r 刷新"}
+                        ? "↑/↓ select · Enter/Ctrl+O view · r refresh · Esc close"
+                        : "←/Esc back to list · Ctrl+O back · r refresh"}
                 </Text>
             </Box>
         </Box>

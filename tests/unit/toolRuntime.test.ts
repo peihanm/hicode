@@ -31,14 +31,14 @@ describe("scoped tool runtime", () => {
         "forbidden-call"
       );
       expect(result.outcome).toBe("failed");
-      expect(result.modelContent).toContain("未知工具");
+      expect(result.modelContent).toContain("Unknown tool");
       expect(existsSync(join(cwd, "forbidden.txt"))).toBe(false);
     });
   });
 
   test("未知白名单配置立即失败", () => {
     expect(() => createToolRuntime({allowedToolNames: ["not-a-tool"]}))
-      .toThrow("未知工具");
+      .toThrow("unknown tool");
   });
 
   test("内置 web_fetch 直接暴露，无 deferred 工具时不提供 tool_search", async () => {
@@ -58,7 +58,7 @@ describe("scoped tool runtime", () => {
         "blocked-web-fetch"
       );
       expect(blocked.outcome).toBe("denied");
-      expect(blocked.modelContent).toContain("禁止访问私网");
+      expect(blocked.modelContent).toContain("blocks private");
     });
   });
 
@@ -89,7 +89,7 @@ describe("scoped tool runtime", () => {
         "early"
       );
       expect(hidden.outcome).toBe("failed");
-      expect(hidden.modelContent).toContain("尚未加载");
+      expect(hidden.modelContent).toContain("is not loaded");
 
       const search = await runtime.executeTool(
         "tool_search",

@@ -95,7 +95,7 @@ export function ElevatedBashDialog({
         completedRef.current = true;
         req.resolve(allow
             ? {behavior: "allow"}
-            : {behavior: "deny", message: "用户拒绝脱离 Sandbox 执行命令"});
+            : {behavior: "deny", message: "User denied execution outside the Sandbox"});
         onDone();
     };
 
@@ -146,7 +146,7 @@ export function ElevatedBashDialog({
             </Box>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>RISK</Text>
-                <Text>本次命令可直接访问宿主文件、网络及子进程。</Text>
+                <Text>This command can access host files, network and child processes directly.</Text>
             </Box>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>ACTION</Text>
@@ -169,7 +169,7 @@ export function ElevatedBashDialog({
             </Box>
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>
-                    ↑↓ 选择  ·  enter 确认  ·  e {expanded ? "收起" : "展开命令"}  ·  esc 取消
+                    ↑↓ select · enter confirm · e {expanded ? "Collapse" : "Expand command"}  · esc cancel
                 </Text>
             </Box>
         </Box>

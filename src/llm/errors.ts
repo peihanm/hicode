@@ -1,5 +1,5 @@
 export class ContextLengthError extends Error {
-    constructor() { super("模型拒绝了超出上下文窗口的请求"); this.name = "ContextLengthError"; }
+    constructor() { super("Model rejected a request exceeding the context window"); this.name = "ContextLengthError"; }
 }
 
 /** Only an explicit machine code qualifies; a generic 400/message is not enough. */

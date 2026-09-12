@@ -15,8 +15,8 @@ function randomThreadId(): string {
     return `thread-${randomUUID()}`;
 }
 
-// 构造单条 UI 线程（user 输入 / assistant 文本 / 错误信息）
-// ID 生成封装在内部，调用方不直接接触 nextId
+// Build one UI thread for user input, assistant text or errors.
+// ID generation is internal; callers never access nextId directly.
 export function createUserThread(
     content: MessageContent,
     createId: ThreadIdFactory = randomThreadId
@@ -118,7 +118,7 @@ export function threadsFromHistory(
             type: "tool_call_end",
             turnId: event.turnId,
             toolCallId: event.toolCallId,
-            result: target.result ?? "文件已修改",
+            result: target.result ?? "File modified",
             outcome: "ok",
             uiData: {type: "file_change", change: event.change},
         }, createId);
@@ -172,12 +172,12 @@ function updateSubagentProgress(
     );
 }
 
-// AgentEvent → UIThread 的纯 reducer
-// App.tsx 调用：setThreads((prev) => reduceThreads(prev, event))
+// Pure reducer from AgentEvent to UIThread state.
+// App.tsx calls setThreads(prev => reduceThreads(prev, event)).
 //
-// 为什么用 reducer 而不是 eventToThread(event): UIThread | null：
-//   tool_call_end 不是"新增一条"，而是"更新已有的一条"，
-//   形态是 (threads, event) → threads，reducer 天然对齐
+// A reducer is needed instead of eventToThread(event): UIThread | null because
+// tool_call_end updates an existing entry rather than adding a new one.
+// The (threads, event) -> threads shape naturally fits a reducer.
 export function reduceThreads(
     threads: UIThread[],
     event: AgentEvent,
@@ -186,7 +186,7 @@ export function reduceThreads(
     switch (event.type) {
         case "approval_review":
             return threads.map(thread => thread.role === "tool_call" && thread.toolCallId === event.toolCallId
-                ? {...thread, approvalReview: event.phase === "start" ? "正在自动审核权限" : undefined} : thread);
+                ? {...thread, approvalReview: event.phase === "start" ? "Reviewing permissions automatically" : undefined} : thread);
         case "iteration":
             return threads;
         case "assistant_draft":
@@ -196,11 +196,11 @@ export function reduceThreads(
         case "model_stream_end":
             return threads;
         case "token_update":
-            // token_update 只更新 StatusBar，不影响消息列表
+            // token_update changes StatusBar only, not the message list.
             return threads;
         case "memory_update":
-            // Memory 工具和 slash command 已经拥有可见反馈。该事件只负责
-            // Runtime/Headless 状态通知，TUI 不再额外插入重复的 assistant 消息。
+            // Memory tools and Slash commands already provide visible feedback. This event only
+            // notifies Runtime/Headless state; the TUI does not add a duplicate assistant message.
             return threads;
         case "turn_interrupted":
             return [
@@ -208,7 +208,7 @@ export function reduceThreads(
                 {
                     id: createId(),
                     role: "assistant",
-                    text: `任务已取消（${event.reason}）`,
+                    text: `Task cancelled (${event.reason})`,
                 },
             ];
         case "subagent_start":
@@ -220,8 +220,8 @@ export function reduceThreads(
                         subagentId: event.agentId,
                         subagentType: event.agentType,
                         ...(event.agentName ? {subagentName: event.agentName} : {}),
-                        // 标题已经包含 Agent 类型和 description；运行中不再用 result
-                        // 重复一遍。唯一动态进度由底部 ModelStreamStatus 承担。
+                        // The title already contains Agent type and description; do not repeat them in result
+                        // while running. ModelStreamStatus at the bottom owns dynamic progress.
                         result: "",
                     }
                     : thread
@@ -284,7 +284,7 @@ export function reduceThreads(
                 {
                     id: createId(),
                     role: "assistant",
-                    text: `${label}: ${formatTokens(event.tokenCount)} / ${formatTokens(event.threshold)} tokens，正在压缩上下文...`,
+                    text: `${label}: ${formatTokens(event.tokenCount)} / ${formatTokens(event.threshold)} tokens; compacting context...`,
                 },
             ];
         }
@@ -295,7 +295,7 @@ export function reduceThreads(
                 {
                     id: createId(),
                     role: "assistant",
-                    text: `${label} 完成: ${formatTokens(event.preTokenCount)} -> ${formatTokens(event.postTokenCount)} tokens`,
+                    text: `${label} completed: ${formatTokens(event.preTokenCount)} -> ${formatTokens(event.postTokenCount)} tokens`,
                 },
             ];
         }
@@ -306,7 +306,7 @@ export function reduceThreads(
                 {
                     id: createId(),
                     role: "assistant",
-                    text: `${label} 失败: ${event.message}`,
+                    text: `${label} failed: ${event.message}`,
                 },
             ];
         }

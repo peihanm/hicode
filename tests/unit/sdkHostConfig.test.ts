@@ -97,7 +97,7 @@ describe("SDK Host config", () => {
                 expect(error).toBeInstanceOf(PillarSDKError);
                 if (!(error instanceof PillarSDKError)) return;
                 expect(error.code).toBe("invalid_settings");
-                expect(error.message).toContain("Settings JSON 无法解析");
+                expect(error.message).toContain("Failed to parse Settings JSON");
             }
         });
     });

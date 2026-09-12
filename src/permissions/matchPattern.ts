@@ -1,28 +1,28 @@
-// 通配符匹配
-// 参考 claude-code src/utils/permissions/shellRuleMatching.ts
+// Wildcard matching.
+// Based on Claude Code src/utils/permissions/shellRuleMatching.ts.
 //
-// 两种模式：
-// 1. "prefix:*" 前缀规则语法（prefix matching）
-//    "git add:*" → 匹配以 "git add" 开头的命令（包括 "git add" 本身）
-// 2. "*" 通配符（wildcard matching）
-//    "*" → 匹配任意
-//    "git *" → 匹配 "git" 开头 + 空格 + 任意
+// Two modes:
+// 1. prefix:* prefix-rule syntax.
+// git add:* matches commands starting with git add, including git add itself.
+// 2. * wildcard matching.
+// * matches anything.
+// git * matches git followed by a space and arbitrary content.
 //
-// 算法：
-// - 如果 pattern 以 :* 结尾 → 提取前缀，判断 input 是否以 prefix 开头
-// - 否则用通配符正则匹配
+// Algorithm:
+// If pattern ends in :*, extract the prefix and test the input prefix.
+// Otherwise use a wildcard-derived regex.
 
 export function matchPattern(pattern: string, input: string): boolean {
-    // 1. prefix:* → 前缀匹配
+    // 1. prefix:* matches a command prefix.
     const prefixMatch = pattern.match(/^(.+):\*$/);
     if (prefixMatch) {
         const prefix = prefixMatch[1];
-        // input 以 prefix 开头，或者 input === prefix
+        // Input starts with prefix or equals prefix.
         return input === prefix || input.startsWith(prefix + " ");
     }
 
-    // 2. 通配符 * → 正则匹配
-    // 用占位符防止 * 被转义
+    // 2. Convert wildcard * to regex matching.
+    // Use a placeholder to keep * from being escaped.
     const PLACEHOLDER = "\u0000";
     const step1 = pattern.replace(/\*/g, PLACEHOLDER);
     const step2 = step1.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

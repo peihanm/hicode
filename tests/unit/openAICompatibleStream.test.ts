@@ -115,7 +115,7 @@ describe("OpenAI-compatible stream consumption", () => {
             ]),
             signal: new AbortController().signal,
             onActivity() {},
-        })).rejects.toThrow("在明确完成前已结束");
+        })).rejects.toThrow("ended before explicit completion");
     });
 
     test("工具调用必须由 tool_calls 完成原因确认", async () => {
@@ -126,7 +126,7 @@ describe("OpenAI-compatible stream consumption", () => {
             ]),
             signal: new AbortController().signal,
             onActivity() {},
-        })).rejects.toThrow("与工具调用不一致");
+        })).rejects.toThrow("does not match tool calls");
     });
 
     test("拒绝非法 usage，避免污染 token 状态", async () => {

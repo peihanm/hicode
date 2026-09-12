@@ -38,14 +38,14 @@ function runningActivityLabel(
     subagents: SubagentRegistry
 ): string | undefined {
     const hook = [...threads].reverse().find(thread => thread.role === "hook" && thread.status === "running");
-    if (hook?.role === "hook") return `正在执行 Hook ${hook.execution.event}...`;
+    if (hook?.role === "hook") return `Running Hook ${hook.execution.event}...`;
     const running = [...threads].reverse().find(
         (thread): thread is Extract<UIThread, { role: "tool_call" }> =>
             thread.role === "tool_call" && thread.status === "running"
     );
     if (!running) return undefined;
     if (running.approvalReview) return running.approvalReview;
-    if (running.name !== "agent") return `正在执行 ${running.name}...`;
+    if (running.name !== "agent") return `Executing ${running.name}...`;
 
     let agentType = running.subagentType;
     if (!agentType) {
@@ -58,7 +58,7 @@ function runningActivityLabel(
                 agentType = parsed.subagent_type;
             }
         } catch {
-            // 非法参数最终会由工具层报告；状态行退回通用 Agent 名称。
+            // The tool layer reports invalid arguments; the status line falls back to a generic Agent name.
         }
     }
     let forkName: string | undefined;
@@ -68,9 +68,9 @@ function runningActivityLabel(
             forkName = `${parsed.name} (fork)`;
         }
     } catch {
-        // 非法参数最终会由工具层报告。
+        // The tool layer reports invalid arguments.
     }
-    return `正在运行 ${forkName ?? agentType ?? "Agent"} Agent...`;
+    return `Running ${forkName ?? agentType ?? "Agent"} Agent...`;
 }
 
 export function App({
@@ -175,7 +175,7 @@ export function App({
             registerSessionShutdown?.(turn.shutdown);
         }, [registerSessionShutdown, turn.shutdown]);
         const requestExit = useCallback(() => {
-            // 先同步触发后台任务 abort，避免 CLI 的有界强制退出留下 detached 进程。
+            // Abort background tasks synchronously so bounded CLI shutdown cannot leave detached processes.
             resources.beginShutdown();
             exit();
         }, [exit, resources]);
@@ -344,7 +344,7 @@ export function App({
                     <Box marginTop={1} flexDirection="column">
                         {turn.sessionInitializationError && (
                             <Text color={COLORS.error}>
-                                Session 初始化失败：{turn.sessionInitializationError}
+                                Session initialization failed: {turn.sessionInitializationError}
                             </Text>
                         )}
                         <QueuedInputPreview messages={turn.queuedMessages}/>

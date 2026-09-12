@@ -74,7 +74,7 @@ class TaskSession implements TaskSessionLike {
 
     async startShell(input: StartShellTaskInput): Promise<ShellTaskSnapshot> {
         if (this.binding.allowBackgroundTasks === false) {
-            throw new Error("当前运行模式不支持后台任务");
+            throw new Error("This execution mode does not support background tasks");
         }
         await this.ready;
         return this.runtime.startShell(this.binding, input);
@@ -82,7 +82,7 @@ class TaskSession implements TaskSessionLike {
 
     async startAgent(input: StartAgentTaskInput): Promise<AgentTaskSnapshot> {
         if (this.binding.allowBackgroundTasks === false) {
-            throw new Error("当前运行模式不支持后台任务");
+            throw new Error("This execution mode does not support background tasks");
         }
         await this.ready;
         return this.runtime.startAgent(this.binding, input);
@@ -193,11 +193,11 @@ class TaskRuntime implements TaskRuntimeLike {
                     const result = await this.memory.maintain({sessionId: binding.sessionId, signal});
                     const {pending} = await this.memory.status();
                     task.status = "completed";
-                    task.resultPreview = result.status === "published" ? `Memory 已发布 ${result.topics} 个主题` :
-                        result.status === "busy" ? "已有其他进程整理" : "本批来源已处理";
-                    if (pending > 0) task.resultPreview += `；${pending} 个来源待后续维护`;
+                    task.resultPreview = result.status === "published" ? `Memory published ${result.topics} topics` :
+                        result.status === "busy" ? "Another process is consolidating" : "Sources in this batch already processed";
+                    if (pending > 0) task.resultPreview += `;${pending} sources await later maintenance`;
                 }
-                catch{task.status=signal.aborted?"cancelled":"failed";task.outputIssue="Memory 维护未完成，未消费的来源保留；用 /memory 查看状态";}
+                catch{task.status=signal.aborted?"cancelled":"failed";task.outputIssue="Memory maintenance is incomplete; unconsumed sources are retained. Use /memory for status.";}
                 finally{task.completedAt=new Date().toISOString();task.notificationPending=!task.suppressTerminalNotification;await this.publish("task_finished",task);}
             })();
             // All failures stay attached to this owned Task, including a terminal journal failure.
@@ -215,15 +215,15 @@ class TaskRuntime implements TaskRuntimeLike {
         input: StartShellTaskInput
     ): Promise<ShellTaskSnapshot> {
         this.assertOpen();
-        if (input.waitMs !== undefined && (!Number.isInteger(input.waitMs) || input.waitMs < 100 || input.waitMs > 30_000)) throw new Error("等待时间必须在 100–30000ms 内");
-        if (input.timeoutMs !== undefined && (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 100 || input.timeoutMs > 600_000)) throw new Error("执行超时必须在 100–600000ms 内");
+        if (input.waitMs !== undefined && (!Number.isInteger(input.waitMs) || input.waitMs < 100 || input.waitMs > 30_000)) throw new Error("Wait time must be 100–30000ms");
+        if (input.timeoutMs !== undefined && (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 100 || input.timeoutMs > 600_000)) throw new Error("Execution timeout must be 100–600000ms");
         input.signal?.throwIfAborted();
         const releaseSlot = this.reserveTaskSlot();
         try {
             const task = await createShellTask(binding, input);
             if (this.closed) {
                 await task.store.removeTemporaryFile(task.outputPath);
-                throw new Error("Task Runtime 已关闭");
+                throw new Error("Task Runtime is closed");
             }
             this.tasks.set(task.id, task);
             try {
@@ -310,15 +310,15 @@ class TaskRuntime implements TaskRuntimeLike {
             if (archived?.owner.sessionId === binding.sessionId) {
                 throw new Error(
                     archived.kind === "agent"
-                        ? "该 Agent 仅有持久化状态，当前进程不能继续；请重新启动 Agent"
-                        : `Task ${id} 不是 Agent`
+                        ? "This Agent has only persisted state and cannot continue in this process; start a new Agent"
+                        : `Task ${id} is not an Agent`
                 );
             }
-            throw new Error(`Agent Task 不存在: ${id}`);
+            throw new Error(`Agent Task not found: ${id}`);
         }
-        if (!isAgentTask(task)) throw new Error(`Task ${id} 不是 Agent`);
+        if (!isAgentTask(task)) throw new Error(`Task ${id} is not an Agent`);
         if (task.status === "cancelled") {
-            throw new Error("已取消的 Agent 不能继续，请重新启动 Agent");
+            throw new Error("A cancelled Agent cannot continue; start a new Agent");
         }
         if (task.status === "running") {
             task.messageQueue.enqueueUser(message);
@@ -329,7 +329,7 @@ class TaskRuntime implements TaskRuntimeLike {
         await task.completion;
         task = this.ownedTask(binding.sessionId, id);
         if (!task || !isAgentTask(task)) {
-            throw new Error(`Agent Task 不存在: ${id}`);
+            throw new Error(`Agent Task not found: ${id}`);
         }
         if (task.status === "running") {
             task.messageQueue.enqueueUser(message);
@@ -337,12 +337,12 @@ class TaskRuntime implements TaskRuntimeLike {
             return snapshotAgent(task);
         }
         if (task.status === "cancelled") {
-            throw new Error("已取消的 Agent 不能继续，请重新启动 Agent");
+            throw new Error("A cancelled Agent cannot continue; start a new Agent");
         }
         if (this.runningAgentCount(binding.sessionId) >=
             MAX_RUNNING_AGENT_TASKS_PER_SESSION) {
             throw new Error(
-                `当前 Session 同时运行的后台 Agent 已达到上限 ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
+                `Concurrent background Agents in this Session reached the limit: ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
             );
         }
 
@@ -400,8 +400,8 @@ class TaskRuntime implements TaskRuntimeLike {
             throw error;
         }
         const queued = task.messageQueue.dequeueNextUserInput();
-        if (!queued) throw new Error("Agent continuation 消息意外丢失");
-        if (typeof queued.content !== "string") throw new Error("后台 Agent steering 只接受文本");
+        if (!queued) throw new Error("Agent continuation message was unexpectedly lost");
+        if (typeof queued.content !== "string") throw new Error("Background Agent steering accepts text only");
         task.completion = runAgentTask(
             task,
             queued.content,
@@ -543,7 +543,7 @@ class TaskRuntime implements TaskRuntimeLike {
     };
 
     private assertOpen(): void {
-        if (this.closed) throw new Error("Task Runtime 已关闭");
+        if (this.closed) throw new Error("Task Runtime is closed");
     }
 
     private ownedTask(sessionId: string, id: string): ManagedTask | undefined {
@@ -582,7 +582,7 @@ class TaskRuntime implements TaskRuntimeLike {
             }
             if (!evicted) {
                 throw new Error(
-                    `后台任务数量已达到上限 ${MAX_TRACKED_TASKS}，请先停止任务`
+                    `Background task limit reached: ${MAX_TRACKED_TASKS}; stop a task first`
                 );
             }
         }
@@ -602,7 +602,7 @@ class TaskRuntime implements TaskRuntimeLike {
             MAX_RUNNING_AGENT_TASKS_PER_SESSION
         ) {
             throw new Error(
-                `当前 Session 同时运行的后台 Agent 已达到上限 ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
+                `Concurrent background Agents in this Session reached the limit: ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
             );
         }
         this.pendingAgentStarts.set(sessionId, pending + 1);
@@ -626,7 +626,7 @@ class TaskRuntime implements TaskRuntimeLike {
             await this.journal.append(event);
         } catch (error) {
             if (journalRequired) throw error;
-            appendTaskIssue(task, `Task Journal 写入失败：${
+            appendTaskIssue(task, `Task Journal write failed: ${
                 error instanceof Error ? error.message : String(error)
             }`);
             event = {...event, task: await snapshotTask(task)};
@@ -652,7 +652,7 @@ class TaskRuntime implements TaskRuntimeLike {
             try {
                 listener(event);
             } catch {
-                // 订阅者只消费状态；不能反向破坏 Task 生命周期。
+                // Subscribers only consume state; they cannot disrupt the Task lifecycle.
             }
         }
     }
@@ -683,8 +683,8 @@ class TaskRuntime implements TaskRuntimeLike {
                     },
                     outputIssue: [
                         restored.outputIssue,
-                        "上次进程中的 Agent 消息正文未持久化，待处理消息已丢弃",
-                    ].filter(Boolean).join("；"),
+                        "Agent message contents from the previous process were not persisted; pending messages were discarded",
+                    ].filter(Boolean).join(";"),
                 };
             }
             if (snapshot.status === "running") {
@@ -694,8 +694,8 @@ class TaskRuntime implements TaskRuntimeLike {
                     completedAt: new Date().toISOString(),
                     outputIssue: [
                         restored.outputIssue,
-                        "上次 Pillar 进程结束或崩溃，任务不会自动重跑",
-                    ].filter(Boolean).join("；"),
+                        "The previous Pillar process exited or crashed; tasks will not restart automatically",
+                    ].filter(Boolean).join(";"),
                 };
                 await this.journal.append(
                     this.createEvent("task_finished", restored)

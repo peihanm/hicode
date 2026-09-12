@@ -53,7 +53,7 @@ export async function checkMemoryStoragePath(storage: PillarStorageLayout, path:
                 return false;
             const rel = relative(root, canonical);
             if (!rel.startsWith("..") && /^[^/]+\/memory(?:\/|$)/.test(rel))
-                throw new Error("Memory 禁止路径别名访问，请使用框架提供的路径");
+                throw new Error("Memory cannot be accessed through path aliases; use the framework-provided path");
             return false;
         }
         catch (error) {
@@ -61,7 +61,7 @@ export async function checkMemoryStoragePath(storage: PillarStorageLayout, path:
                 throw error;
             const parent = dirname(probe);
             if (parent === probe || missing.length >= 256)
-                throw new Error("无法验证 Memory 路径");
+                throw new Error("Cannot validate Memory path");
             missing.unshift(basename(probe));
             probe = parent;
         }
@@ -75,7 +75,7 @@ export function createPublicationFileAccess(store: MemoryPublicationStore, owner
     const requirePath = (path: string) => {
         const managed = classifyPublicationPath(store.directory, path);
         if (!managed)
-            throw new Error("Memory 路径不属于当前项目的公开 note/主题视图");
+            throw new Error("Memory path is not a public note/topic view in the current project");
         return managed;
     };
     return {
@@ -87,20 +87,20 @@ export function createPublicationFileAccess(store: MemoryPublicationStore, owner
             const writingNote = managed.kind === "note" && (toolName === "write_file" || toolName === "edit_file");
             const forgetting = managed.kind !== "index" && toolName === "delete_file";
             if (!reading && !writingNote && !forgetting)
-                throw new Error("Memory 正式内容只读；记住/纠正写 inbox note，忘记可删除已读取主题");
+                throw new Error("Published Memory is read-only. Write inbox notes to remember/correct; delete a previously read topic to forget.");
             const view = await store.prepareView(managed);
             if (!view && !writingNote)
-                throw new Error("Memory 内容不存在或已撤销");
+                throw new Error("Memory content does not exist or was revoked");
         },
         validateWrite(path, content) {
             if (requirePath(path).kind !== "note")
-                throw new Error("请通过 inbox note 提交 Memory，不直接修改正式主题或索引");
+                throw new Error("Submit Memory through inbox notes; do not edit published topics or indexes directly");
             parseMemoryNote(content);
         },
         async write(path, content, expectedContent, toolCallId) {
             const managed = requirePath(path);
             if (managed.kind !== "note")
-                throw new Error("只能写 Memory note");
+                throw new Error("Only Memory notes can be written");
             const note = parseMemoryNote(content);
             await store.acceptNote(managed.key, note, { kind: "explicit", sessionId: owner.sessionId, turnId: owner.turnId, toolCallId }, expectedContent, owner.signal);
             return { action: expectedContent === null ? "created" : "updated", key: managed.key, memoryType: note.type };
@@ -108,7 +108,7 @@ export function createPublicationFileAccess(store: MemoryPublicationStore, owner
         async delete(path, expectedContent) {
             const managed = requirePath(path);
             if (managed.kind === "index")
-                throw new Error("不能删除 Memory 索引");
+                throw new Error("Cannot delete the Memory index");
             const snapshot = store.snapshot();
             const type = snapshot.sources.findLast(source => source.key === managed.key)?.type ?? snapshot.topics.find(topic => topic.key === managed.key)?.type;
             const removed = await store.forget(managed.key, owner.signal, { kind: managed.kind, content: expectedContent });

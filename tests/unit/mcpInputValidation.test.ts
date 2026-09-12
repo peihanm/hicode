@@ -82,7 +82,7 @@ test.each([
     const {server} = fixture({type: "object", ...additions});
     const adapted = adaptMcpTools(server);
     expect(adapted.tools).toHaveLength(0);
-    expect(adapted.issues[0]).toContain("inputSchema 无法加载");
+    expect(adapted.issues[0]).toContain("inputSchema cannot be loaded");
 });
 
 test("安全 pattern、format 和非变异输入；编译后 Server 对象修改不改变契约", () => {
@@ -110,7 +110,7 @@ test("Hook 最终改写后再次校验，失败不请求权限也不调用 Serve
             return {blocked: false, additionalContexts: [], executions: [], updatedInput: {n: 0}};
         }});
         expect(result.outcome).toBe("failed");
-        expect(result.modelContent).toContain("Hook 修改后的参数校验失败");
+        expect(result.modelContent).toContain("modified by PreToolUse Hook failed validation");
         expect(approvals).toBe(0);
         expect(calls).toHaveLength(0);
     });
@@ -129,7 +129,7 @@ test("输入与引用展开预算超限明确拒绝；超深 Schema 不影响其
     let previous = "leaf";
     for (let i = 0; i < 15; i++) {defs[`node${i}`] = {allOf: [{$ref: `#/$defs/${previous}`}, {$ref: `#/$defs/${previous}`}]}; previous = `node${i}`;}
     server.tools = [{name: "wide", inputSchema: {type: "object", $defs: defs, properties: {x: {$ref: `#/$defs/${previous}`}}}}];
-    expect(adaptMcpTools(server).issues[0]).toContain("预算");
+    expect(adaptMcpTools(server).issues[0]).toContain("2048 nodes or 32 levels");
 });
 
 test("多个 patternProperties 分别执行，本地 Pointer 转义与 JSON 保留字段不丢失", () => {

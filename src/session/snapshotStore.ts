@@ -168,19 +168,19 @@ export function readSessionSourceIds(storage: PillarStorageLayout, cwd: string, 
 }
 
 export function readSessionSourceMessages(storage: PillarStorageLayout, cwd: string, sessionId: string, hashes: readonly string[]) {
-    if (!hashes.length || hashes.length > 64 || hashes.some(hash => !isSessionContentId(hash))) throw new Error("Memory 来源数量或 hash 无效");
+    if (!hashes.length || hashes.length > 64 || hashes.some(hash => !isSessionContentId(hash))) throw new Error("Invalid Memory source count or hash");
     const allowed = new Set(readSessionSourceIds(storage, cwd, sessionId));
-    if (hashes.some(hash => !allowed.has(hash))) throw new Error("Memory 来源不在当前 Session");
+    if (hashes.some(hash => !allowed.has(hash))) throw new Error("Memory source is outside the current Session");
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     const result = hashes.map(hash => {
         const block = blocks.read(hash);
-        if (block.kind !== "message") throw new Error("Memory 来源不是消息");
+        if (block.kind !== "message") throw new Error("Memory source is not a message");
         const value = block.value;
         return value.role === "user"
             ? {id: hash, role: value.role, origin: value.origin, content: value.content}
             : {id: hash, role: value.role, content: value.content};
     });
-    if (Buffer.byteLength(JSON.stringify(result)) > 32 * 1024) throw new Error("Memory 来源超过 32 KiB，未送入模型");
+    if (Buffer.byteLength(JSON.stringify(result)) > 32 * 1024) throw new Error("Memory source exceeds 32 KiB and was not sent to the model");
     return result;
 }
 
@@ -193,7 +193,7 @@ export function selectSessionMemorySource(storage:PillarStorageLayout,cwd:string
     const selected:string[]=[];let bytes=2;
     for(const id of candidates.toReversed()){
         const block=blocks.read(id);
-        if(block.kind!=="message")throw new Error("Memory 来源不是消息");
+        if(block.kind!=="message")throw new Error("Memory source is not a message");
         const message=block.value;
         if(!message.content||(message.role==="user"&&(message.origin==="compaction"||message.origin==="runtime")))continue;
         const cost=Buffer.byteLength(JSON.stringify({id,role:message.role,...(message.role==="user"?{origin:message.origin}:{}),content:message.content}))+1;

@@ -142,7 +142,7 @@ describe("Prompt Hook executor", () => {
             }),
             signal: new AbortController().signal,
             timeoutMs: 5,
-        })).rejects.toThrow("Prompt Hook 超时 (5ms)");
+        })).rejects.toThrow("Prompt Hook timed out (5ms)");
 
         const parent = new AbortController();
         const pending = executor.execute({

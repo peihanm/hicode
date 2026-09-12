@@ -8,14 +8,14 @@ function isMemoryType(value: string): value is MemoryType {
 export const memoryCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "memory",
-    description: "查看和维护跨 Session 的持久 Memory",
+    description: "View and maintain persistent Memory across Sessions",
     argumentHint: "[list [type] | show <key> | forget <key> | maintain]",
     async execute(args, context) {
         const memory = context.memory;
         if (!memory) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "当前 Runtime 没有 Memory 能力。",
+                content: "This Runtime has no Memory capability.",
             });
             return;
         }
@@ -23,7 +23,7 @@ export const memoryCommand: SlashCommand = {
         if (rest.length > 0) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "用法: /memory [list [type] | show <key> | forget <key> | maintain]",
+                content: "Usage: /memory [list [type] | show <key> | forget <key> | maintain]",
             });
             return;
         }
@@ -46,7 +46,7 @@ export const memoryCommand: SlashCommand = {
                 );
             }
             if (!status.enabled) {
-                lines.push("可在 Settings 中配置 memory.enabled。修改后请重启 Pillar。");
+                lines.push("Configure memory.enabled in Settings, then restart Pillar.");
             }
             await context.onEvent({type: "assistant_text", content: lines.join("\n")});
             return;
@@ -55,7 +55,7 @@ export const memoryCommand: SlashCommand = {
         if (!memory.enabled) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "Memory 已关闭。请在 Settings 中启用后重启 Pillar。",
+                content: "Memory is disabled. Enable it in Settings and restart Pillar.",
             });
             return;
         }
@@ -64,7 +64,7 @@ export const memoryCommand: SlashCommand = {
             if (value && !isMemoryType(value)) {
                 await context.onEvent({
                     type: "assistant_text",
-                    content: `未知 Memory 类型: ${value}。可选: ${MEMORY_TYPES.join(", ")}`,
+                    content: `Unknown Memory type: ${value}. Available: ${MEMORY_TYPES.join(", ")}`,
                 });
                 return;
             }
@@ -77,33 +77,33 @@ export const memoryCommand: SlashCommand = {
             );
             await context.onEvent({
                 type: "assistant_text",
-                content: lines.length > 0 ? lines.join("\n") : "没有持久 Memory。",
+                content: lines.length > 0 ? lines.join("\n") : "No persistent Memory.",
             });
             return;
         }
 
         if (action === "show") {
             if (!value) {
-                await context.onEvent({type: "assistant_text", content: "用法: /memory show <key>"});
+                await context.onEvent({type: "assistant_text", content: "Usage: /memory show <key>"});
                 return;
             }
             const entry = await memory.read(value);
             await context.onEvent({
                 type: "assistant_text",
                 content: entry
-                    ? `# ${entry.name}\n\n${entry.description}\n\n${entry.content}\n\n来源: ${JSON.stringify(entry.evidence)}\n\nPath: ${entry.path}`
-                    : `Memory 不存在: ${value}`,
+                    ? `# ${entry.name}\n\n${entry.description}\n\n${entry.content}\n\nSources: ${JSON.stringify(entry.evidence)}\n\nPath: ${entry.path}`
+                    : `Memory not found: ${value}`,
             });
             return;
         }
 
         if (action === "forget") {
             if (!value) {
-                await context.onEvent({type: "assistant_text", content: "用法: /memory forget <key>"});
+                await context.onEvent({type: "assistant_text", content: "Usage: /memory forget <key>"});
                 return;
             }
             if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
-                await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能删除 Memory。"}); return;
+                await context.onEvent({type: "assistant_text", content: "Cannot delete Memory in read-only/Plan mode."}); return;
             }
             const change = await memory.forget(value, context.ctx.signal);
             if (change) {
@@ -114,12 +114,12 @@ export const memoryCommand: SlashCommand = {
                 });
                 await context.onEvent({
                     type: "assistant_text",
-                    content: `Memory 已忘记: ${change.key}`,
+                    content: `Memory forgotten: ${change.key}`,
                 });
             } else {
                 await context.onEvent({
                     type: "assistant_text",
-                    content: `Memory 不存在: ${value}`,
+                    content: `Memory not found: ${value}`,
                 });
             }
             return;
@@ -127,17 +127,17 @@ export const memoryCommand: SlashCommand = {
 
         if (action === "maintain") {
             if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
-                await context.onEvent({type: "assistant_text", content: "当前只读/Plan 模式不能整理 Memory。"}); return;
+                await context.onEvent({type: "assistant_text", content: "Cannot consolidate Memory in read-only/Plan mode."}); return;
             }
-            if(!context.ctx.tasks) {await context.onEvent({type:"assistant_text",content:"当前 Runtime 未提供 Memory 维护任务能力。"});return;}
+            if(!context.ctx.tasks) {await context.onEvent({type:"assistant_text",content:"This Runtime has no Memory maintenance task capability."});return;}
             const task=await context.ctx.tasks.startMemory({turnId:context.ctx.turnId,signal:context.ctx.signal,background:false});
-            await context.onEvent({type:"assistant_text",content:task?task.resultPreview??task.outputIssue??`Memory 任务 ${task.status}`:"没有待处理来源或当前已在整理；未启动新的模型调用。"});
+            await context.onEvent({type:"assistant_text",content:task?task.resultPreview??task.outputIssue??`Memory task ${task.status}`:"No pending sources, or consolidation is already running; no new model call was started."});
             return;
         }
 
         await context.onEvent({
             type: "assistant_text",
-            content: "用法: /memory [list [type] | show <key> | forget <key> | maintain]",
+            content: "Usage: /memory [list [type] | show <key> | forget <key> | maintain]",
         });
     },
 };

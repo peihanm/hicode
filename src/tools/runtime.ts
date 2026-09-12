@@ -32,12 +32,9 @@ export interface CreateToolRuntimeOptions {
     additionalTools?: readonly Tool[];
     /** Root-owned live capabilities; sampled before discovery and execution. */
     getAdditionalTools?: () => readonly Tool[];
-    /**
-     * 用于受限 Runtime 对内置工具收窄权限或能力。只能覆盖已经存在的工具名，
-     * 避免子 Runtime 通过同名 additional tool 意外扩大能力。
-     */
+    /** Restricted runtimes may narrow existing tools' permissions/capabilities only. Overriding an existing name prevents an additional tool from accidentally widening child capabilities. */
     toolOverrides?: readonly Tool[];
-    /** Root Runtime 的可信 Command Hook；受限子 Runtime 不传入。 */
+    /** Trusted Command Hooks owned by Root; restricted child runtimes do not receive them. */
     hooks?: HookRuntime;
 }
 
@@ -84,7 +81,7 @@ export function createToolRuntime(
             const executionDiscovery = discovery;
             if (discovery.isDeferred(name) && !discovery.isExposed(name)) {
                 return inlineToolResult(
-                    `工具 ${name} 尚未加载。请先调用 ${TOOL_SEARCH_NAME}（可使用 query="select:${name}"），并在下一次模型请求中调用该工具。`,
+                    `Tool ${name} is not loaded. Call ${TOOL_SEARCH_NAME} first (query=\"select: ${name}\"), then invoke the tool on the next model request.`,
                     "failed"
                 );
             }

@@ -2,7 +2,7 @@ import type {TaskSnapshot} from "../../tasks/index.js";
 import type {SlashCommand} from "../types.js";
 
 function formatTask(task: TaskSnapshot): string {
-    if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"正在提取与整理 Memory"}`;
+    if(task.kind==="memory")return `Task: ${task.id} · memory · ${task.status}\n${task.resultPreview??task.outputIssue??"Extracting and consolidating Memory"}`;
     const result = task.outputResult?.resultId
         ? ` · result ${task.outputResult.resultId}`
         : "";
@@ -21,19 +21,19 @@ function formatTask(task: TaskSnapshot): string {
 export const tasksCommand: SlashCommand = {
     busyBehavior: "immediate",
     name: "tasks",
-    description: "查看当前 Session 的后台任务",
+    description: "View background tasks in this Session",
     async execute(args, {ctx, onEvent, openTasks}) {
         if (args) {
             await onEvent({
                 type: "assistant_text",
-                content: "用法: /tasks",
+                content: "Usage: /tasks",
             });
             return;
         }
         if (!ctx.tasks) {
             await onEvent({
                 type: "assistant_text",
-                content: "当前 Runtime 不支持后台任务。",
+                content: "This Runtime does not support background tasks.",
             });
             return;
         }
@@ -42,8 +42,8 @@ export const tasksCommand: SlashCommand = {
         await onEvent({
             type: "assistant_text",
             content: tasks.length === 0
-                ? "当前 Session 没有后台任务。"
-                : `当前 Session 的后台任务：\n${tasks.map(formatTask).join("\n")}`,
+                ? "This Session has no background tasks."
+                : `Background tasks in this Session:\n ${tasks.map(formatTask).join("\n")}`,
         });
     },
 };

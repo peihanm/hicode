@@ -44,6 +44,6 @@ test.each(["user", "task_notification", "runtime", "compaction", "agent"] satisf
             target: {source: "glm", model: "glm-test", label: "Fixture"}, source: {id: "glm", label: "Fixture", apiKeyEnv: "UNUSED"}});
         const result = extractor.extract([{id, role: "user", origin, content: "偏好简洁"}], new AbortController().signal, 0);
         if (origin === "user") expect(await result).toHaveLength(1);
-        else await expect(result).rejects.toThrow("真实用户输入");
+        else await expect(result).rejects.toThrow("actual user input");
     });
 });

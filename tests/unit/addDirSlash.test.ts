@@ -43,7 +43,7 @@ describe("/add-dir", () => {
 
             const canonicalShared = await realpath(shared);
             expect(runtime.listDirectories()).toContain(canonicalShared);
-            expect(events[0]).toContain("当前 Session");
+            expect(events[0]).toContain("this Session");
             expect(events[1]).toContain(canonicalShared);
         });
     });
@@ -81,7 +81,7 @@ describe("/add-dir", () => {
             });
 
             expect(persisted).toEqual([await realpath(shared)]);
-            expect(events).toEqual([expect.stringContaining("为当前项目记住")]);
+            expect(events).toEqual([expect.stringContaining("saved for this project")]);
         });
     });
 });

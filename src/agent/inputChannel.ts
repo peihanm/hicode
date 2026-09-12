@@ -5,13 +5,11 @@ export interface QueuedAgentInput {
     id: string;
     source: AgentInputSource;
     content: MessageContent;
-    /** 仅 task_notification 携带，用于消费任务终态而不解析展示文案。 */
+    /** Only task_notification carries this; consume terminal task state without parsing display text. */
     taskId?: string;
 }
 
-/**
- * Agent 只在安全边界读取该通道。通道不知道 UI，也不能中断工具批次。
- */
+/** The Agent reads this channel only at safe boundaries. It has no UI dependency and cannot interrupt tool batches. */
 export interface AgentInputChannel {
     drainInitial(): readonly QueuedAgentInput[];
 

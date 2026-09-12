@@ -60,7 +60,7 @@ async function ensurePrivateDirectory(path: string, recursive = false): Promise<
     }
     const metadata = await lstat(path);
     if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
-        throw new Error(`Subagent transcript 目录不安全: ${path}`);
+        throw new Error(`Unsafe subagent transcript directory: ${path}`);
     }
     await chmod(path, 0o700);
 }
@@ -76,13 +76,13 @@ async function ensureTranscriptDirectory(
         relativePath.startsWith(`..${sep}`) ||
         isAbsolute(relativePath)
     ) {
-        throw new Error("Subagent transcript 路径超出 Pillar storage");
+        throw new Error("Subagent transcript path is outside Pillar storage");
     }
     await ensurePrivateDirectory(storage.pillarHome, true);
     let current = storage.pillarHome;
     for (const component of relativePath.split(sep)) {
         if (!component || component === "." || component === "..") {
-            throw new Error("Subagent transcript 目录包含非法路径片段");
+            throw new Error("Subagent transcript directory contains an invalid path segment");
         }
         current = join(current, component);
         await ensurePrivateDirectory(current);
@@ -112,7 +112,7 @@ export class SubagentTranscriptWriter {
     private async appendOne(entry: SubagentTranscriptEntry): Promise<void> {
         const line = Buffer.from(`${JSON.stringify(entry)}\n`, "utf8");
         if (line.byteLength > MAX_TRANSCRIPT_ENTRY_BYTES) {
-            throw new Error("Subagent transcript 单条记录超过上限");
+            throw new Error("Subagent transcript record exceeds the limit");
         }
         if (!this.initialized) {
             await ensureTranscriptDirectory(this.storage, dirname(this.path));
@@ -129,10 +129,10 @@ export class SubagentTranscriptWriter {
         try {
             const metadata = await handle.stat();
             if (!metadata.isFile()) {
-                throw new Error("Subagent transcript 必须是普通文件");
+                throw new Error("Subagent transcript must be a regular file");
             }
             if (metadata.size + line.byteLength > MAX_TRANSCRIPT_BYTES) {
-                throw new Error("Subagent transcript 已达到大小上限");
+                throw new Error("Subagent transcript reached the size limit");
             }
             await handle.chmod(0o600);
             await handle.writeFile(line);

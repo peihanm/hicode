@@ -237,7 +237,7 @@ describe("UITurnEventStore", () => {
       type: "tool_call_end",
       turnId: "turn-1",
       toolCallId: "read-1",
-      result: "文件: README.md\n行范围: 1-60 / 60\n\n内容",
+      result: "File: README.md\nLine range: 1-60 / 60\n\n内容",
       outcome: "ok",
     });
     const completed = store.getSnapshot();
@@ -348,7 +348,7 @@ describe("UITurnEventStore", () => {
     store.appendUser("/agents");
     store.handleEvent({
       type: "assistant_text",
-      content: "Agents · 2 个可用",
+      content: "Agents · 2 available",
     });
 
     const snapshot = store.getSnapshot();
@@ -360,7 +360,7 @@ describe("UITurnEventStore", () => {
       thread.role === "user" || thread.role === "assistant"
         ? thread.text
         : undefined
-    )).toEqual(["/agents", "Agents · 2 个可用"]);
+    )).toEqual(["/agents", "Agents · 2 available"]);
     expect(selectLiveThreads(snapshot.threads, snapshot.staticThreads))
       .toEqual([]);
   });
@@ -529,7 +529,7 @@ describe("UITurnEventStore", () => {
     store.appendError(new Error("boom"));
     expect(store.getSnapshot().threads[0]).toMatchObject({
       role: "assistant",
-      text: "出错: boom",
+      text: "Error: boom",
     });
     expect(store.getSnapshot().staticThreads).toHaveLength(1);
   });
@@ -539,7 +539,7 @@ describe("UITurnEventStore", () => {
     store.appendWarning("session save failed");
     expect(store.getSnapshot().threads[0]).toMatchObject({
       role: "assistant",
-      text: "警告: session save failed",
+      text: "Warning: session save failed",
     });
     expect(store.getPersistedUIEvents()).toEqual([]);
     expect(store.getSnapshot().staticThreads).toHaveLength(1);

@@ -14,11 +14,11 @@ export const contextSettingsFileSchema = schema.partial();
 
 export function validateContextSettings(value: unknown): ContextSettings {
     const parsed = schema.safeParse(value);
-    if (!parsed.success) throw new Error("context 配置必须包含有效的整数 windowTokens 和 autoCompactTokenLimit");
+    if (!parsed.success) throw new Error("Context configuration requires valid integer windowTokens and autoCompactTokenLimit");
     const settings = parsed.data;
     const reserve = Math.min(20_000, Math.floor(settings.windowTokens * 0.2));
     if (settings.autoCompactTokenLimit > settings.windowTokens - reserve) {
-        throw new Error(`context.autoCompactTokenLimit 不能超过输入预算 ${settings.windowTokens - reserve}（窗口已预留输出空间）`);
+        throw new Error(`context.autoCompactTokenLimit cannot exceed the input budget of ${settings.windowTokens - reserve}(output capacity is reserved)`);
     }
     return Object.freeze(settings);
 }

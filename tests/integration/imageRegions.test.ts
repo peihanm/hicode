@@ -21,7 +21,7 @@ import {loadSession} from "../../src/session/storage.js";
 
 function fixture(cwd: string) {
     const ctx = createTestContext(cwd, {toolResultStore: createToolResultStore(createTestStorage(cwd), cwd, "test-session")});
-    const history: Message[] = [{role: "user", origin: "user" as const, content: "查看图片细节"}];
+    const history: Message[] = [{role: "system", content: "image test system"}, {role: "user", origin: "user" as const, content: "查看图片细节"}];
     const runtime = createToolRuntime();
     ctx.imageModelSupported = true;
     ctx.imageAccess = createImageAccess({storage: ctx.storage, store: ctx.toolResultStore, history: () => history, state: () => ctx.compactState});
@@ -59,7 +59,7 @@ test("long image detail comes from immutable original pixels, including cropping
         for (const region of [{x: -1, y: 0, width: 2, height: 2}, {x: 4090, y: 0, width: 40, height: 20}, {x: 0, y: 0, width: 0, height: 2}])
             expect((await f.view({image_id: child.imageId, region})).outcome).toBe("failed");
         f.history.splice(0, f.history.length, {role: "user", origin: "user" as const, content: "rewound"});
-        await expect(f.ctx.imageAccess!.readSource(child)).rejects.toThrow("可达");
+        await expect(f.ctx.imageAccess!.readSource(child)).rejects.toThrow("reachable");
         expect((await f.view({image_id: child.imageId, region})).outcome).toBe("failed");
     });
 });

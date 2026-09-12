@@ -80,7 +80,7 @@ test("Grep/Glob 根目录搜索不会读取或展示 deny/ask 候选", async () 
             expect(result.modelContent).toContain("public");
             expect(result.modelContent).not.toContain("hidden.txt");
             expect(result.modelContent).not.toContain("ask.txt");
-            expect(result.modelContent).toContain("权限");
+            expect(result.modelContent).toContain("deny/ask rules");
         }
         // An explicit path can ask once; parent-directory traversal cannot silently grant it.
         const explicit = await runtime.executeTool("grep", JSON.stringify({path: "ask.txt", pattern: "pending"}), ctx, "explicit");
@@ -103,7 +103,7 @@ test("批准期间目录别名改变后拒绝读取新目标", async () => {
         ctx.permissionRules.ask.push({toolName: "read_file", content: "public/**", source: "local"});
         const result = await createToolRuntime().executeTool("read_file", JSON.stringify({path: "alias/data.txt"}), ctx, "read");
         expect(result.outcome).toBe("denied");
-        expect(result.modelContent).toContain("目标");
+        expect(result.modelContent).toContain("target");
     });
 });
 
@@ -138,6 +138,6 @@ test("无效文件权限规则不能被跳过后按默认权限启动", async ()
             models: {primary: {model: 42}},
             permissions: {deny: ['read_file({"path":"private.txt"})']},
         }));
-        expect(() => loadPillarSettings({cwd, storage, sources: ["project"]})).toThrow("权限配置无效");
+        expect(() => loadPillarSettings({cwd, storage, sources: ["project"]})).toThrow("Invalid permission configuration");
     });
 });

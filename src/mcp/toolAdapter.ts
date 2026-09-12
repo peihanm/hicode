@@ -19,7 +19,7 @@ export function adaptMcpTools(server: McpConnectedServer): {
     const names = new Map<string, string>();
     let totalSchemaChars = 0;
     if (server.tools.length > MAX_TOOLS_PER_SERVER) {
-        issues.push(`Server 返回 ${server.tools.length} 个工具，只加载前 ${MAX_TOOLS_PER_SERVER} 个`);
+        issues.push(`Server returned ${server.tools.length} tools; loading only the first ${MAX_TOOLS_PER_SERVER} items`);
     }
     for (const remote of server.tools.slice(0, MAX_TOOLS_PER_SERVER)) {
         if (
@@ -27,7 +27,7 @@ export function adaptMcpTools(server: McpConnectedServer): {
             remote.name.length === 0 ||
             remote.name.length > MAX_REMOTE_TOOL_NAME_CHARS
         ) {
-            issues.push("Server 返回了无效或过长的工具名");
+            issues.push("Server returned an invalid or overly long tool name");
             continue;
         }
         const originalName = remote.name;
@@ -37,26 +37,26 @@ export function adaptMcpTools(server: McpConnectedServer): {
         );
         const existing = names.get(qualifiedName);
         if (existing) {
-            issues.push(`工具 ${remote.name} 与 ${existing} 规范化后名称冲突`);
+            issues.push(`Tool ${remote.name} and ${existing} have conflicting normalized names`);
             continue;
         }
         names.set(qualifiedName, remote.name);
         if (!remote.inputSchema || remote.inputSchema.type !== "object") {
-            issues.push(`工具 ${remote.name} 的 inputSchema 不是 object`);
+            issues.push(`Tool ${remote.name} inputSchema is not an object`);
             continue;
         }
         let schemaChars: number;
         try {schemaChars = JSON.stringify(remote.inputSchema).length;}
         catch {
-            issues.push(`工具 ${remote.name} 的 inputSchema 不是有界 JSON`);
+            issues.push(`Tool ${remote.name} inputSchema is not bounded JSON`);
             continue;
         }
         if (schemaChars > MAX_SCHEMA_CHARS) {
-            issues.push(`工具 ${remote.name} 的 inputSchema 超过 ${MAX_SCHEMA_CHARS} 字符`);
+            issues.push(`Tool ${remote.name} inputSchema exceeds ${MAX_SCHEMA_CHARS} characters`);
             continue;
         }
         if (totalSchemaChars + schemaChars > MAX_TOTAL_SCHEMA_CHARS) {
-            issues.push(`Server 工具 schema 合计超过 ${MAX_TOTAL_SCHEMA_CHARS} 字符`);
+            issues.push(`Combined Server tool schemas exceed ${MAX_TOTAL_SCHEMA_CHARS} characters`);
             break;
         }
         totalSchemaChars += schemaChars;
@@ -64,7 +64,7 @@ export function adaptMcpTools(server: McpConnectedServer): {
         try {
             compiled = compileMcpInputSchema(remote.inputSchema);
         } catch (error) {
-            issues.push(`工具 ${remote.name} 的 inputSchema 无法加载: ${error instanceof Error ? error.message.slice(0, 500) : "校验编译失败"}`);
+            issues.push(`Tool ${remote.name} inputSchema cannot be loaded: ${error instanceof Error ? error.message.slice(0, 500) : "Validation compilation failed"}`);
             continue;
         }
         const description = (remote.description ?? "")
@@ -85,7 +85,7 @@ export function adaptMcpTools(server: McpConnectedServer): {
             async checkPermissions() {
                 return annotationReadOnly
                     ? {behavior: "passthrough"}
-                    : {behavior: "ask", message: `MCP 工具 ${qualifiedName} 需要确认`};
+                    : {behavior: "ask", message: `MCP tool ${qualifiedName} requires approval`};
             },
             isReadOnly: () => annotationReadOnly,
             isConcurrencySafe: () => annotationReadOnly,

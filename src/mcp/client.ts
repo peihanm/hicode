@@ -51,7 +51,7 @@ export async function connectMcpServer(
         let pages = 0;
         do {
             if (pages >= MAX_TOOL_LIST_PAGES) {
-                throw new Error("MCP Tools/List 分页超过安全上限");
+                throw new Error("MCP Tools/List pagination exceeds the safety limit");
             }
             pages += 1;
             const result = await client.listTools(cursor ? {cursor} : undefined, {
@@ -60,10 +60,10 @@ export async function connectMcpServer(
             });
             tools.push(...result.tools);
             if (tools.length > MAX_DISCOVERED_TOOLS || (tools.length === MAX_DISCOVERED_TOOLS && result.nextCursor))
-                throw new Error("MCP Tools/List 工具数量超过安全上限");
+                throw new Error("MCP Tools/List tool count exceeds the safety limit");
             cursor = result.nextCursor;
             if (cursor && cursors.has(cursor)) {
-                throw new Error("MCP Tools/List 返回重复 cursor");
+                throw new Error("MCP Tools/List returned a duplicate cursor");
             }
             if (cursor) cursors.add(cursor);
         } while (cursor);
@@ -78,7 +78,7 @@ export async function connectMcpServer(
             try {
                 // Coalesce bursts, but stop a server that never settles its catalog.
                 for (let attempt = 0; dirty; attempt++) {
-                    if (attempt >= 3) throw new Error("MCP 工具列表持续变化，请显式重连");
+                    if (attempt >= 3) throw new Error("MCP tool list keeps changing; reconnect explicitly");
                     dirty = false;
                     const tools = await listTools();
                     if (closed || signal?.aborted) return;
@@ -98,12 +98,12 @@ export async function connectMcpServer(
         await client.connect(transport, {timeout: server.config.timeoutMs, signal});
         let tools: McpSdkTool[] = [];
         for (let attempt = 0; ; attempt++) {
-            if (attempt >= 3) throw new Error("MCP 初始工具列表持续变化");
+            if (attempt >= 3) throw new Error("Initial MCP tool list keeps changing");
             dirty = false;
             tools = await listTools();
             if (!dirty) break;
         }
-        if (closed || signal?.aborted) throw new Error("MCP 连接已关闭");
+        if (closed || signal?.aborted) throw new Error("MCP connection is closed");
         connected = {
             config: server,
             client,
@@ -113,7 +113,7 @@ export async function connectMcpServer(
             },
             async callTool(toolName, args, callSignal) {
                 const requestSignal = AbortSignal.any([callSignal, ...(signal ? [signal] : [])]);
-                if (closed || requestSignal.aborted) throw new Error("MCP 连接已关闭或调用已取消");
+                if (closed || requestSignal.aborted) throw new Error("MCP connection is closed or the call was cancelled");
                 return client.callTool(
                     {name: toolName, arguments: args},
                     undefined,
@@ -144,7 +144,7 @@ export async function connectMcpServer(
                             try {
                                 process.kill(pid, "SIGTERM");
                             } catch {
-                                // 进程可能已经退出。
+                                // The process may have already exited.
                             }
                         }
                         await transport.close().catch(() => {

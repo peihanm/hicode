@@ -40,7 +40,8 @@ function shellOutputSummary(output: string): string | undefined {
         .map((line) => line.trim())
         .filter(Boolean);
     const relevant = lines.find((line) =>
-        /(?:\bError\b|EADDRINUSE|ERR_|\berror\b|failed|失败)/i.test(line)
+        // External process output may report failure in English or Chinese.
+        /(?:\bError\b|EADDRINUSE|ERR_|\berror\b|failed|\u5931\u8d25)/i.test(line)
     ) ?? lines.at(-1);
     return relevant ? compactLine(relevant) : undefined;
 }
@@ -62,13 +63,13 @@ function notificationSummary(task: TaskSnapshot): string {
 }
 
 function notificationFor(task: TaskSnapshot): TaskNotification {
-    const label = task.kind === "memory"?"Memory 维护":task.kind === "shell"
+    const label = task.kind === "memory"?"Memory maintenance":task.kind === "shell"
         ? task.command
         : `${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType} · ${task.description}`;
     const result = task.kind==="memory"?undefined:task.outputResult;
     const resultId = result?.resultId;
     const output = resultId
-        ? `，完整输出见保存文件 ${JSON.stringify(result?.path)}，可用 read_file 读取`
+        ? `; full output saved at ${JSON.stringify(result?.path)}; read with read_file`
         : "";
     const summary = notificationSummary(task);
     return {
@@ -81,13 +82,13 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
         status: task.status as TaskNotification["status"],
         summary,
         ...(resultId ? {resultId} : {}),
-        message: `后台${task.kind === "shell" ? "任务" : " Agent"} ${task.id}（${label}）已${
+        message: `Background ${task.kind === "shell" ? "task" : "Agent"} ${task.id}(${label}) is ${
             task.status === "completed"
-                ? "完成"
+                ? "completed"
                 : task.status === "cancelled"
-                    ? "取消"
-                    : "失败"
-        }：${summary}${output}。`,
+                    ? "cancelled"
+                    : "failed"
+        }:${summary}${output}.`,
     };
 }
 
@@ -97,7 +98,7 @@ export class TaskNotificationCenter {
     rememberPrevious(snapshot: TaskSnapshot): void {
         const id = taskNotificationId(snapshot.id, snapshot.kind === "agent" ? snapshot.progress.runCount : 1);
         if (!this.previousRuns.has(id) && [...this.previousRuns.values()].filter(task => task.owner.sessionId === snapshot.owner.sessionId).length >= 32) {
-            throw new Error("未交付的 Agent 运行通知已达到上限，请先接收任务通知");
+            throw new Error("Undelivered Agent notifications reached the limit; receive task notifications first");
         }
         this.previousRuns.set(id, snapshot);
     }

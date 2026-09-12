@@ -35,11 +35,11 @@ function validateTools(
         CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool)
     );
     if (forbidden.length > 0) {
-        throw new Error(`Agent 禁止使用控制面工具: ${forbidden.join(", ")}`);
+        throw new Error(`Agent cannot use control-plane tools: ${forbidden.join(", ")}`);
     }
     const unknown = draft.tools.filter((tool) => !availableTools.has(tool));
     if (unknown.length > 0) {
-        throw new Error(`当前 Runtime 不存在工具: ${unknown.join(", ")}`);
+        throw new Error(`Tool does not exist in this Runtime: ${unknown.join(", ")}`);
     }
 }
 
@@ -58,7 +58,7 @@ export function createAgentDefinitionManager({
             validateTools(draft, new Set(getAvailableToolNames()));
             const builtin = catalog.get(draft.name);
             if (builtin?.definition.source === "builtin") {
-                throw new Error(`自定义 Agent 不能覆盖内置类型 ${builtin.definition.agentType}`);
+                throw new Error(`Custom Agents cannot override built-in type ${builtin.definition.agentType}`);
             }
             const file = await store.create(scope, draft);
             const update = await catalog.reload();

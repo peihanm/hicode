@@ -48,7 +48,7 @@ export function ResumePicker({
                                  sessions,
                                  onSelect,
                                  onCancel,
-                                 cancelLabel = "退出",
+                                 cancelLabel = "Exit",
                              }: {
     sessions: SessionIndexEntry[];
     onSelect: (sessionId: string) => void;
@@ -80,7 +80,7 @@ export function ResumePicker({
                 itemComponent={DialogItem}
             />
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ 选择 · enter 恢复 · esc {cancelLabel}</Text>
+                <Text color={COLORS.dim}>↑↓ select · enter resume · esc {cancelLabel}</Text>
             </Box>
         </Box>
     );

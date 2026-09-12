@@ -192,8 +192,8 @@ export function createRuntimeBootstrap(
         if (error) {
             return (
                 <Box flexDirection="column">
-                    <Text color={COLORS.error}>Runtime 初始化失败：{error}</Text>
-                    <Text color={COLORS.dim}>按 Ctrl+C 退出。</Text>
+                    <Text color={COLORS.error}>Runtime initialization failed: {error}</Text>
+                    <Text color={COLORS.dim}>Press Ctrl+C to exit.</Text>
                 </Box>
             );
         }
@@ -202,7 +202,7 @@ export function createRuntimeBootstrap(
             return (
                 <Box flexDirection="column">
                     <Welcome/>
-                    <Text color={COLORS.dim}>{SYMBOLS.spinner} 正在初始化运行时…</Text>
+                    <Text color={COLORS.dim}>{SYMBOLS.spinner} Initializing Runtime…</Text>
                 </Box>
             );
         }
@@ -231,11 +231,11 @@ export function createRuntimeBootstrap(
                             settings.models.primary.model
                         );
                         if (!target) {
-                            throw new Error(`没有找到会话: ${sessionId}`);
+                            throw new Error(`Session not found: ${sessionId}`);
                         }
                         const shutdownSession = sessionShutdownRef.current;
                         if (!shutdownSession) {
-                            throw new Error("当前 Session Runtime 尚未准备好");
+                            throw new Error("Session Runtime is not ready");
                         }
                         await shutdownSession();
                         await closeResources(ready.resources);

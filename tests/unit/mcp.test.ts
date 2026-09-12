@@ -110,7 +110,7 @@ describe("MCP config and normalization", () => {
       expect(loaded.servers.some((server) => server.name === "leaked"))
         .toBe(false);
       expect(loaded.issues.some((issue) =>
-        issue.message.includes("安全读取")
+        issue.message.includes("safely read")
       )).toBe(true);
     });
   });

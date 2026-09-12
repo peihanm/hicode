@@ -38,7 +38,7 @@ import {withTempProject} from "../helpers/tempProject.js";
                 other.tasks = runtime.forSession({sessionId: other.sessionId, toolResultStore: other.toolResultStore});
                 const hidden = await tools.executeTool(toolName, input, other, "foreign-stop");
                 expect(hidden.outcome).toBe("denied");
-                expect(hidden.modelContent).toContain("不存在");
+                expect(hidden.modelContent).toContain("Background task not found");
                 expect(hidden.modelContent).not.toContain("fixture-worker");
                 expect((await session.get(task.id))?.status).toBe("running");
 

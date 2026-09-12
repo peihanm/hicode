@@ -26,7 +26,7 @@ export type HookSettings = HandlerSettings & (
 );
 interface HookMatcherSettings {
     matcher?: string;
-    /** 匹配组参与的 dispatch 总期限，最大 30 秒（清理事件更短）。 */
+    /** Total dispatch deadline for matching groups, at most 30 seconds and shorter for cleanup events. */
     timeoutMs?: number;
     hooks: HookSettings[];
 }

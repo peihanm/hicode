@@ -3,12 +3,12 @@ import type {SlashCommand} from "../types.js";
 export const modelCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "model",
-    description: "查看或切换当前主模型",
+    description: "View or switch the main model",
     async execute(args, context) {
         if (args) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "用法：/model",
+                content: "Usage: /model",
             });
             return;
         }
@@ -18,7 +18,7 @@ export const modelCommand: SlashCommand = {
         }
         await context.onEvent({
             type: "assistant_text",
-            content: `当前主模型：${context.ctx.model}`,
+            content: `Current main model: ${context.ctx.model}`,
         });
     },
 };

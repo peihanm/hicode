@@ -18,11 +18,11 @@ export function resolveSubagentModel({
 
 export function formatSubagentModel(
     selection: SubagentModelOverride,
-    inheritLabel = "继承父模型",
+    inheritLabel = "Inherit parent model",
     fastModel?: string
 ): string {
     if (selection === "inherit") return inheritLabel;
     return fastModel
         ? `fast (${fastModel})`
-        : "fast（使用配置的快速模型）";
+        : "fast (configured fast model)";
 }

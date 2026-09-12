@@ -3,19 +3,19 @@ import type {SlashCommand} from "../types.js";
 export const diffCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "diff",
-    description: "查看当前 Git 未提交修改",
+    description: "View current uncommitted Git changes",
     async execute(args, context) {
         if (args) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "用法: /diff",
+                content: "Usage: /diff",
             });
             return;
         }
         if (!context.openGitDiff) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "当前宿主不支持交互式 /diff。请在交互式 TUI 中使用，或通过 Bash 运行只读的 git diff。",
+                content: "This Host does not support interactive /diff. Use the interactive TUI or run read-only git diff through Bash.",
             });
             return;
         }

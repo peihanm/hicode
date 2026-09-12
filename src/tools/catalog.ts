@@ -39,8 +39,8 @@ export interface CreateToolCatalogOptions {
 }
 
 function createBuiltinTools(): Tool[] {
-    // Agent 的默认实现只用于基础 Catalog 和能力校验。Root Runtime 会用当前
-    // Subagent Catalog 生成同名 override，因此这里不导出一份隐式全局 Tool。
+    // The default Agent implementation is for the base Catalog and capability validation. Root
+    // builds an override from the current Subagent Catalog; do not export a global Tool instance.
     return [
         listFilesTool,
         readFileTool,
@@ -101,17 +101,17 @@ export function createToolCatalog(
         (name) => !builtinNames.has(name)
     );
     if (unknownOverrides.length > 0) {
-        throw new Error(`覆盖了未知工具: ${unknownOverrides.join(", ")}`);
+        throw new Error(`Override targets an unknown tool: ${unknownOverrides.join(", ")}`);
     }
 
     const combinedTools = builtins.map((tool) => overrides.get(tool.name) ?? tool);
     const names = new Set(combinedTools.map((tool) => tool.name));
     for (const tool of options.additionalTools ?? []) {
         if (tool.name === TOOL_SEARCH_NAME) {
-            throw new Error(`工具名 ${TOOL_SEARCH_NAME} 由 Runtime 保留`);
+            throw new Error(`Tool name ${TOOL_SEARCH_NAME} is reserved by the Runtime`);
         }
         if (names.has(tool.name)) {
-            throw new Error(`重复工具名: ${tool.name}`);
+            throw new Error(`Duplicate tool name: ${tool.name}`);
         }
         names.add(tool.name);
         combinedTools.push(tool);
@@ -123,7 +123,7 @@ export function createToolCatalog(
     if (allowed) {
         const unknown = [...allowed].filter((name) => !names.has(name));
         if (unknown.length > 0) {
-            throw new Error(`Agent 配置了未知工具: ${unknown.join(", ")}`);
+            throw new Error(`Agent configured an unknown tool: ${unknown.join(", ")}`);
         }
     }
     const availableTools = options.skillsAvailable === false ? combinedTools.filter(tool => tool.name !== "skill") : combinedTools;

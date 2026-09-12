@@ -102,7 +102,7 @@ export function createProcessTreeKiller(
         }
 
         try {
-            // detached=true 为命令创建独立 process group；负 pid 终止整个组。
+            // detached=true creates a process group; a negative PID terminates the entire group.
             process.kill(-pid, "SIGKILL");
         } catch {
             try {
@@ -206,7 +206,7 @@ function runProcess({
                 });
             } else {
                 const [program, ...args] = launch.argv;
-                if (!program) throw new Error("命令 argv 不能为空");
+                if (!program) throw new Error("Command argv must not be empty");
                 child = spawn(program, args, {
                     ...spawnOptions,
                     shell: false,
@@ -272,7 +272,7 @@ function runProcess({
             if (settled || forcedTermination) return;
             forcedTermination = termination;
             void killProcessTree(child);
-            // 极端情况下子进程不发 close，也要保证取消路径有界结束。
+            // Bound cancellation even if a child never emits close.
             killFallback = setTimeout(() => finish(termination), 1_000);
             killFallback.unref?.();
         };
@@ -327,8 +327,8 @@ function runProcess({
         child.stdout?.on("data", (chunk) => append("stdout", chunk));
         child.stderr?.on("data", (chunk) => append("stderr", chunk));
         if (stdin !== undefined) {
-            // Hook 等短命令可能在父进程写完前退出；忽略 EPIPE，由 close/exit
-            // 统一表达命令结果，避免产生未处理的 stream error。
+            // Short commands such as Hooks can exit before stdin is fully written. Ignore EPIPE;
+            // close/exit expresses the command result and prevents unhandled stream errors.
             child.stdin?.on("error", () => undefined);
             child.stdin?.end(stdin, "utf8");
         }

@@ -90,18 +90,18 @@ describe("agent loop", () => {
       });
       const fake = createFakeLLM([
         assistantToolCall("edit_file", {}, "edit-event"),
-        assistantText("完成"),
+        assistantText("completed"),
       ]);
       await runAgent(
-        "修改",
+        "Modified",
         initialHistory(),
         (event) => events.push(event),
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
           executeTool: async () => ({
-            modelContent: "已修改",
-            displayContent: "已修改",
+            modelContent: "Modified",
+            displayContent: "Modified",
             outcome: "ok",
             uiData: { type: "file_change", change },
           }),
@@ -166,7 +166,7 @@ describe("agent loop", () => {
         createTestContext(cwd),
         {
           callLLM: async () => ({
-            message: { role: "assistant", content: "完成" },
+            message: { role: "assistant", content: "completed" },
             toolCalls: [],
             usage: {
               prompt_tokens: 0,
@@ -193,7 +193,7 @@ describe("agent loop", () => {
         createTestContext(cwd, {model: "qwen3.6-flash"}),
         {
           callLLM: async () => ({
-            message: {role: "assistant", content: "完成"},
+            message: {role: "assistant", content: "completed"},
             toolCalls: [],
             usage: {
               prompt_tokens: 300,
@@ -246,7 +246,7 @@ describe("agent loop", () => {
             estimatedOutputTokens: 100,
             toolName: "write_file",
           });
-          return assistantText("完成");
+          return assistantText("completed");
         };
 
       await runAgent(
@@ -369,7 +369,7 @@ describe("agent loop", () => {
             return "first result";
           },
         }
-      )).rejects.toThrow("重复使用历史 Tool Call ID");
+      )).rejects.toThrow("reused a historical Tool Call ID");
       expect(executions).toBe(1);
       expect(history.filter((message) =>
         message.role === "assistant" &&
@@ -479,7 +479,7 @@ describe("agent loop", () => {
           const result = options.messages.find(
             (message) => message.role === "tool" && message.tool_call_id === "broken-1"
           );
-          expect(result?.content).toContain("工具执行出错");
+          expect(result?.content).toContain("Tool execution error");
           return assistantText("已处理失败");
         },
       ]);
@@ -491,7 +491,7 @@ describe("agent loop", () => {
         createTestContext(cwd),
         {
           callLLM: fake.callLLM,
-          executeTool: async () => "工具执行出错: synthetic failure",
+          executeTool: async () => "Tool execution error: synthetic failure",
           getToolSchemas: () => fixtureToolSchemas("broken_tool"),
         }
       );
@@ -543,7 +543,7 @@ describe("agent loop", () => {
         assistantToolCall("bash", {}, "failed-bash"),
         (options) => {
           expect(options.messages.find(message => message.role === "tool" &&
-            message.tool_call_id === "failed-bash")?.content).toBe("执行失败 (timeout 30000ms)");
+            message.tool_call_id === "failed-bash")?.content).toBe("Execution failed (timeout 30000ms)");
           expect(JSON.stringify(options.messages)).not.toContain("未解决");
           return assistantText("启动验证失败，程序没有保持运行");
         },
@@ -557,8 +557,8 @@ describe("agent loop", () => {
         {
           callLLM: fake.callLLM,
           executeTool: async () => ({
-            modelContent: "执行失败 (timeout 30000ms)",
-            displayContent: "执行失败 (timeout 30000ms)",
+            modelContent: "Execution failed (timeout 30000ms)",
+            displayContent: "Execution failed (timeout 30000ms)",
             outcome: "failed",
           }),
         }
@@ -567,7 +567,7 @@ describe("agent loop", () => {
       expect(result.reply).toBe("启动验证失败，程序没有保持运行");
       expect(fake.calls).toHaveLength(2);
       expect(history.some(
-        (message) => message.role === "tool" && message.content === "执行失败 (timeout 30000ms)"
+        (message) => message.role === "tool" && message.content === "Execution failed (timeout 30000ms)"
       )).toBe(true);
       expect(history.some(
         (message) =>
@@ -585,7 +585,7 @@ describe("agent loop", () => {
     await withTempProject(async (cwd) => {
       const history = initialHistory();
       const events: AgentEvent[] = [];
-      const lifecycle = "后台任务已启动。\nTask: server-123\nLifecycle: 由当前 Pillar Runtime 管理；退出 Pillar 后会终止。\nStatus: running";
+      const lifecycle = "Background task started.\nTask: server-123\nLifecycle: managed by the current Pillar Runtime; terminates when Pillar exits.\nStatus: running";
       const fake = createFakeLLM([
         assistantToolCall("edit_file", {}, "old-edit-failure"),
         assistantToolCall("bash", {command: "node server.js", run_in_background: true}, "server-bash"),
@@ -629,9 +629,9 @@ describe("agent loop", () => {
           expect(options.messages.some(
             (message) =>
               typeof message.content === "string" &&
-              message.content.includes("仍有标记为 in_progress 的 Todo") &&
+              message.content.includes("still has in_progress todos") &&
               message.content.includes(activeTodo.content) &&
-              message.content.includes("先调用 todo_write 标记 completed") &&
+              message.content.includes("call todo_write to mark completed") &&
               message.content.includes(
                 "<candidate-reply>\n网站已经完成，验证全部通过。\n</candidate-reply>"
               )
@@ -744,7 +744,7 @@ describe("agent loop", () => {
         assistantToolCall("mcp__chrome__navigate", {url: "http://localhost:8765"}, "browser-failed"),
         (options) => {
           expect(options.messages.find(message => message.role === "tool" &&
-            message.tool_call_id === "browser-failed")?.content).toBe("CDP 连接失败");
+            message.tool_call_id === "browser-failed")?.content).toBe("CDP Connection failed");
           return assistantText(reply);
         },
       ]);
@@ -753,7 +753,7 @@ describe("agent loop", () => {
         getToolSchemas: () => fixtureToolSchemas("mcp__chrome__navigate"),
         executeTool: async (name) => {
           invoked.push(name);
-          return {modelContent: "CDP 连接失败", displayContent: "CDP 连接失败", outcome: "failed"};
+          return {modelContent: "CDP Connection failed", displayContent: "CDP Connection failed", outcome: "failed"};
         },
       });
       expect(result.reply).toBe(reply);
@@ -858,7 +858,7 @@ describe("agent loop", () => {
       );
 
       expect(result).toEqual({
-        reply: "(达到最大迭代次数 2，已停止)",
+        reply: "(Maximum iterations reached: 2; stopped)",
         reason: "max_turns",
         iterations: 2,
         usage: {
@@ -871,7 +871,7 @@ describe("agent loop", () => {
       expect(fake.calls).toHaveLength(2);
       expect(events).toContainEqual({
         type: "assistant_text",
-        content: "(达到最大迭代次数 2，已停止)",
+        content: "(Maximum iterations reached: 2; stopped)",
         phase: "final",
       });
     });
@@ -914,7 +914,7 @@ describe("agent loop", () => {
           expect(options.messages.some(
             (message) =>
               typeof message.content === "string" &&
-              message.content.includes("上一次模型响应没有有效正文或工具调用")
+              message.content.includes("The previous response had neither valid text nor tool calls")
           )).toBe(true);
           return assistantText("恢复后的完整回答");
         },
@@ -947,10 +947,10 @@ describe("agent loop", () => {
       );
 
       expect(result.reason).toBe("no_tool_calls");
-      expect(result.reply).toBe("模型连续两次未返回有效正文或工具调用，已停止本轮。");
+      expect(result.reply).toBe("Model returned no valid text or tool calls twice in a row; this turn has stopped.");
       expect(events).toContainEqual({
         type: "assistant_text",
-        content: "模型连续两次未返回有效正文或工具调用，已停止本轮。",
+        content: "Model returned no valid text or tool calls twice in a row; this turn has stopped.",
         phase: "final",
       });
     });

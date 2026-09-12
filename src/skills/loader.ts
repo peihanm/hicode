@@ -20,7 +20,7 @@ export function loadSkills({
     const userDir = join(storage.pillarHome, "skills");
     const projectDir = join(cwd, ".pillar", "skills");
 
-    // 目录不存在时静默返回空数组（用户没装 skill 不报错）
+    // A missing directory yields an empty list; absent user Skills are not errors.
     const userSkills = sources.includes("user")
         ? loadSkillsFromDir(userDir, "user")
         : [];
@@ -39,7 +39,7 @@ export function loadSkills({
         id: skill.name,
     }));
 
-    // 合并：bundled → user → project → host，后者覆盖前者同名
+    // Merge bundled, user, project, then Host; later sources override names.
     const merged = new Map<string, LoadedSkill>();
     for (const s of [
         ...bundledSkills,
@@ -67,8 +67,8 @@ function loadSkillsFromDir(
 
     const skills: LoadedSkill[] = [];
     for (const entry of entries) {
-        // 只支持目录格式：<basePath>/<skill-name>/SKILL.md
-        // 不支持单文件 .md（跟 claude-code 一致）
+        // Only directory-form Skills are supported: <basePath>/<skill-name>/SKILL.md.
+        // Standalone .md Skills are unsupported, matching Claude Code.
         if (!entry.isDirectory()) continue;
 
         const skillDir = join(basePath, entry.name);
@@ -78,7 +78,7 @@ function loadSkillsFromDir(
         try {
             stat = statSync(skillFile);
         } catch {
-            continue; // 没有 SKILL.md，跳过
+            continue; // Skip directories without SKILL.md.
         }
         if (!stat.isFile()) continue;
 

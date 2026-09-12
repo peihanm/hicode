@@ -30,7 +30,7 @@ describe("parseCliArgs", () => {
   });
 
   test("删除的回退和分支参数不再接受", () => {
-    for (const option of ["--rewind", "--fork-from"]) expect(() => parseCliArgs(["-r", "session", option, "old"])).toThrow("未知参数");
+    for (const option of ["--rewind", "--fork-from"]) expect(() => parseCliArgs(["-r", "session", option, "old"])).toThrow("Unknown argument");
   });
 
   test("解析本次启动的 model 和 source 覆盖", () => {
@@ -56,16 +56,16 @@ describe("parseCliArgs", () => {
 
   test("拒绝互斥或不完整参数", () => {
     expect(() => parseCliArgs(["--continue", "--resume", "abc"])).toThrow(
-      "只能指定一个恢复参数"
+      "Specify only one resume option"
     );
     expect(() => parseCliArgs(["--output-format", "json"])).toThrow(
-      "--output-format 只能用于"
+      "--output-format is only available"
     );
     expect(() => parseCliArgs(["--permission-mode", "unknown"])).toThrow(
-      "未知权限模式"
+      "Unknown permission mode"
     );
     expect(() => parseCliArgs(["--source", "CODEX"])).toThrow(
-      "未知模型来源"
+      "Unknown model source"
     );
     for (const legacyMode of [
       "acceptEdits",
@@ -82,28 +82,28 @@ describe("parseCliArgs", () => {
     ]) {
       expect(() =>
         parseCliArgs(["--permission-mode", legacyMode])
-      ).toThrow("未知权限模式");
+      ).toThrow("Unknown permission mode");
     }
     expect(() => parseCliArgs(["--collaboration-mode", "unknown"])).toThrow(
-      "未知协作模式"
+      "Unknown collaboration mode"
     );
     expect(() => parseCliArgs(["--collaboration-mode", "PLAN"])).toThrow(
-      "未知协作模式"
+      "Unknown collaboration mode"
     );
-    expect(() => parseCliArgs(["--model="])).toThrow("--model 需要提供非空");
+    expect(() => parseCliArgs(["--model="])).toThrow("--model requires a non-empty");
     expect(() => parseCliArgs(["--source", "unknown"])).toThrow(
-      "未知模型来源"
+      "Unknown model source"
     );
     expect(() =>
       parseCliArgs(["--rewind", "checkpoint-1"])
-    ).toThrow("未知参数");
+    ).toThrow("Unknown argument");
   });
 });
 
 test("--image accepts repeated explicit paths, keeps spaces and rejects overflow and removed flags", () => {
     expect(parseCliArgs(["--image", "截图 with space.png", "-i", "b.jpg", "--image=c.webp"]).images).toEqual(["截图 with space.png", "b.jpg", "c.webp"]);
     expect(parseCliArgs(["-p", "compare", "--image", "x.png"]).printPrompt).toBe("compare");
-    expect(() => parseCliArgs(["--image"])).toThrow("路径");
-    expect(() => parseCliArgs(Array.from({length: 9}, () => "--image=x.png"))).toThrow("8 张");
-    expect(() => parseCliArgs(["--image=x.png", "-r", "s", "--rewind", "c"])).toThrow("未知参数");
+    expect(() => parseCliArgs(["--image"])).toThrow("path");
+    expect(() => parseCliArgs(Array.from({length: 9}, () => "--image=x.png"))).toThrow("8 images");
+    expect(() => parseCliArgs(["--image=x.png", "-r", "s", "--rewind", "c"])).toThrow("Unknown argument");
 });

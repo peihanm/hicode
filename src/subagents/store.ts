@@ -78,7 +78,7 @@ function parseStoredDefinition(
     const parsed = parseCustomAgentDocument({source: scope, path, raw});
     const error = parsed.issues.find((item) => item.severity === "error");
     if (!parsed.definition || error) {
-        throw new Error(error?.message ?? "Agent 定义无效");
+        throw new Error(error?.message ?? "Invalid Agent definition");
     }
     return parsed.definition;
 }
@@ -122,10 +122,10 @@ export function createAgentDefinitionStore(
             normalizeAgentName(candidate.agentType) === normalizeAgentName(name)
         );
         if (!definition || (definition.source !== "user" && definition.source !== "project")) {
-            throw new Error(`找不到 ${scope} Agent: ${name}`);
+            throw new Error(`Not found: ${scope} Agent: ${name}`);
         }
         if (!isInside(root, definition.path)) {
-            throw new Error("Agent 定义路径超出受管目录");
+            throw new Error("Agent definition path is outside the managed directory");
         }
         return definition;
     };
@@ -136,7 +136,7 @@ export function createAgentDefinitionStore(
     ): Promise<StoredAgentFile> => {
         const definition = await findDefinition(scope, name);
         if (definition.source !== "user" && definition.source !== "project") {
-            throw new Error(`找不到 ${scope} Agent: ${name}`);
+            throw new Error(`Not found: ${scope} Agent: ${name}`);
         }
         const path = definition.path;
         const raw = await readAgentDefinitionFile(path);
@@ -154,12 +154,12 @@ export function createAgentDefinitionStore(
             const root = directory(scope);
             await ensureAgentDefinitionDirectory(root, true);
             const safeName = draft.name.trim();
-            // parseCustomAgentDocument 负责完整协议校验；这里先阻断文件名注入。
+            // parseCustomAgentDocument validates the full protocol; block filename injection here first.
             if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(safeName)) {
-                throw new Error("Agent 名称必须以字母开头，且只能包含字母、数字、- 和 _");
+                throw new Error("Agent name must start with a letter and contain only letters, digits, - and _");
             }
             const path = join(root, `${safeName}.md`);
-            if (!isInside(root, path)) throw new Error("Agent 文件名无效");
+            if (!isInside(root, path)) throw new Error("Invalid Agent filename");
             const {content} = validateDraft(scope, path, draft);
             await withFileLock(join(root, ".agents.lock"), async () => {
                 const entries = await readdir(root, {withFileTypes: true});
@@ -168,7 +168,7 @@ export function createAgentDefinitionStore(
                 ).length;
                 if (fileCount >= MAX_AGENT_FILES_PER_SOURCE) {
                     throw new Error(
-                        `Agent 文件已达到每个作用域 ${MAX_AGENT_FILES_PER_SOURCE} 个的上限`
+                        `Agent files reached the per-scope limit of ${MAX_AGENT_FILES_PER_SOURCE} items`
                     );
                 }
                 const loaded = await loadAgentSourceDirectory(root, scope);
@@ -176,7 +176,7 @@ export function createAgentDefinitionStore(
                     normalizeAgentName(definition.agentType) ===
                     normalizeAgentName(safeName)
                 )) {
-                    throw new Error(`同一作用域已存在 Agent: ${safeName}`);
+                    throw new Error(`Agent already exists in this scope: ${safeName}`);
                 }
                 await writeExclusive(path, content);
             });
@@ -185,14 +185,14 @@ export function createAgentDefinitionStore(
         async update(scope, name, expectedHash, draft) {
             const current = await readStored(scope, name);
             if (normalizeAgentName(draft.name) !== normalizeAgentName(name)) {
-                throw new Error("编辑时不能重命名 Agent；请新建定义后删除旧定义");
+                throw new Error("Cannot rename an Agent while editing; create a new definition, then delete the old one");
             }
             const {content} = validateDraft(scope, current.path, draft);
             await withFileLock(join(dirname(current.path), ".agents.lock"), async () => {
                 const latest = await readAgentDefinitionFile(current.path);
                 if (contentHash(latest) !== expectedHash) {
                     throw new Error(
-                        `Agent ${name} 已被外部修改；请 Reload 后重新编辑`
+                        `Agent ${name} was modified externally; Reload before editing again`
                     );
                 }
                 await writeFileAtomically(current.path, content, AGENT_FILE_MODE);
@@ -205,7 +205,7 @@ export function createAgentDefinitionStore(
                 const latest = await readAgentDefinitionFile(current.path);
                 if (contentHash(latest) !== expectedHash) {
                     throw new Error(
-                        `Agent ${name} 已被外部修改；请 Reload 后重试删除`
+                        `Agent ${name} was modified externally; Reload before retrying deletion`
                     );
                 }
                 await unlink(current.path);

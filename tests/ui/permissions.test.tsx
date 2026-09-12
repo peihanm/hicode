@@ -68,7 +68,7 @@ describe("permission confirmation UI", () => {
       <ConfirmDialog
         req={{
           id: 1,
-          question: "bash 需要确认",
+          question: "bash requires approval",
           toolName: "bash",
           input: { command: "git status" },
           resolve: () => {},
@@ -82,9 +82,9 @@ describe("permission confirmation UI", () => {
     expect(frame).toContain("◆ PERMISSION REQUIRED");
     expect(frame).toContain("REQUEST");
     expect(frame).toContain("ACTION");
-    expect(frame).toContain("bash 需要确认");
+    expect(frame).toContain("bash requires approval");
     expect(frame).toContain("❯ 1. Yes");
-    expect(frame).toContain("↑↓ 选择 · Enter 确认 · Esc 取消");
+    expect(frame).toContain("↑↓ select · Enter confirm · Esc cancel");
     expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
   });
 
@@ -113,11 +113,11 @@ describe("permission confirmation UI", () => {
     await flush();
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("◆ NETWORK ACCESS");
-    expect(frame).toContain("连接");
+    expect(frame).toContain("Connect to");
     expect(frame).toContain("registry.npmjs.org");
     expect(frame).not.toContain("脱离 OS Sandbox");
     expect(frame).toContain("› Allow for this session");
-    expect(frame).toContain("文件与进程仍受 Sandbox 保护");
+    expect(frame).toContain("files and processes remain protected by the Sandbox");
     expect(frame).not.toContain("fallback text");
     expect(frame.split("\n").some((line) => line.startsWith("│"))).toBe(false);
 
@@ -190,7 +190,7 @@ describe("permission confirmation UI", () => {
     expect(compact).toContain("Verify local service");
     expect(compact).toContain("COMMAND");
     expect(compact).toContain("+3 more lines · e to expand");
-    expect(compact).toContain("本次命令可直接访问宿主文件、网络及子进程。");
+    expect(compact).toContain("This command can access host files, network and child processes directly.");
     expect(compact).toContain("› Verify once");
     expect(compact).not.toContain("for f in / /index.html");
     expect(compact).not.toContain("Permission request");
@@ -199,7 +199,7 @@ describe("permission confirmation UI", () => {
     instance.stdin.write("e");
     await flush();
     expect(instance.lastFrame()).toContain("for f in / /index.html");
-    expect(instance.lastFrame()).toContain("e 收起");
+    expect(instance.lastFrame()).toContain("e Collapse");
 
     instance.stdin.write("\u001B[B");
     await flush();
@@ -207,7 +207,7 @@ describe("permission confirmation UI", () => {
     await flush();
     expect(decisions).toEqual([{
       behavior: "deny",
-      message: "用户拒绝脱离 Sandbox 执行命令",
+      message: "User denied execution outside the Sandbox",
     }]);
     expect(onDone).toHaveBeenCalledTimes(1);
   });
@@ -267,7 +267,7 @@ describe("permission confirmation UI", () => {
       <ConfirmDialog
         req={{
           id: 1,
-          question: "bash 需要确认",
+          question: "bash requires approval",
           toolName: "bash",
           input: { command: "git status" },
           resolve: (decision) => decisions.push(decision),
@@ -281,7 +281,7 @@ describe("permission confirmation UI", () => {
     instance.stdin.write("2");
     await flush();
 
-    expect(instance.lastFrame()).toContain("未能保存项目权限规则");
+    expect(instance.lastFrame()).toContain("Failed to save project permission rules");
     expect(instance.lastFrame()).toContain("disk unavailable");
     expect(decisions).toEqual([]);
     expect(onDone).not.toHaveBeenCalled();
@@ -312,7 +312,7 @@ describe("permission confirmation UI", () => {
       <ConfirmDialog
         req={{
           id: 1,
-          question: "bash 需要确认",
+          question: "bash requires approval",
           toolName: "bash",
           input: { command: "git status" },
           resolve: (decision) => decisions.push(decision),
@@ -327,7 +327,7 @@ describe("permission confirmation UI", () => {
     instance.stdin.write("2");
     await flush();
     expect(persist).toHaveBeenCalledTimes(1);
-    expect(instance.lastFrame()).toContain("正在保存项目权限规则");
+    expect(instance.lastFrame()).toContain("Saving project permission rules");
 
     finishFirst();
     await flush();
@@ -363,12 +363,12 @@ describe("permission confirmation UI", () => {
       ) => {
         await ctx.canUseTool(
           "synthetic_write",
-          "synthetic_write 需要确认",
+          "synthetic_write requires approval",
           { path: "a.ts" }
         );
         secondDecision = await resolvePermission(writeTool, { path: "b.ts" }, ctx);
         completed();
-        return { reply: "完成", reason: "completed", iterations: 1 };
+        return { reply: "completed", reason: "completed", iterations: 1 };
       };
 
       const instance = render(
@@ -382,13 +382,13 @@ describe("permission confirmation UI", () => {
       await flush(10);
       instance.stdin.write(ENTER);
       await flush();
-      expect(instance.lastFrame()).toContain("synthetic_write 需要确认");
+      expect(instance.lastFrame()).toContain("synthetic_write requires approval");
 
       instance.stdin.write("2");
       await done;
 
       expect(secondDecision).toEqual({ behavior: "allow" });
-      expect(instance.lastFrame()).not.toContain("synthetic_write 需要确认");
+      expect(instance.lastFrame()).not.toContain("synthetic_write requires approval");
     });
   });
 

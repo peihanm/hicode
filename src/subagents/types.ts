@@ -15,7 +15,7 @@ interface AgentDefinitionContent {
     systemPrompt: string;
     allowedTools: readonly string[];
     model: SubagentModelOverride;
-    // 未设置时继承主运行时的安全上限；内置 Explore 不声明专属上限。
+    // When unset, inherit the runtime safety limit; built-in Explore declares no dedicated limit.
     maxIterations?: number;
 }
 
@@ -105,11 +105,11 @@ export interface CreateSubagentRunnerOptions {
 }
 
 export interface CreateSubagentThreadOptions extends CreateSubagentRunnerOptions {
-    /** 后台 Task 使用稳定 task identity 作为 agent identity。 */
+    /** Background Tasks use their stable task identity as the Agent identity. */
     agentId: string;
-    /** 仅供 Task Runtime 汇总 child progress；同步 UI 不展开内部工具事件。 */
+    /** Task Runtime aggregates child progress; synchronous UI does not expand internal tool events. */
     onChildEvent?: (event: AgentEvent) => void | Promise<void>;
-    /** 指定目录的 Agent transcript/tool artifacts 仍归父项目存储。 */
+    /** Agent transcripts and tool artifacts remain in parent-project storage, even with a separate cwd. */
     storageCwd?: string;
 }
 

@@ -21,7 +21,7 @@ export interface HookPromptExecutor {
 
 class HookPromptTimeoutError extends Error {
     constructor(timeoutMs: number) {
-        super(`Prompt Hook 超时 (${timeoutMs}ms)`);
+        super(`Prompt Hook timed out (${timeoutMs}ms)`);
         this.name = "HookPromptTimeoutError";
     }
 }
@@ -38,7 +38,7 @@ export async function executePromptHook(options: {
     const identity = {event: envelope.event.hook_event_name, source: envelope.source.source,
         type: "prompt" as const, handler: `prompt: ${hook.prompt}`};
     try {
-        if (!options.executor) throw new Error("Prompt Hook Executor 未配置");
+        if (!options.executor) throw new Error("Prompt Hook Executor is not configured");
         const output = await options.executor.execute({prompt: hook.prompt, envelope, signal, timeoutMs: options.timeoutMs});
         const parsed = hookOutputSchema(envelope.event.hook_event_name, hook.purpose).parse(output);
         return {output: parsed, diagnostic: JSON.stringify(parsed), execution: {...identity,
@@ -49,8 +49,8 @@ export async function executePromptHook(options: {
     } catch (error) {
         return {interrupted: signal.aborted, execution: {...identity,
             outcome: signal.aborted ? "interrupted" : "error", durationMs: performance.now() - started,
-            message: boundedHookMessage(signal.aborted ? "Hook 执行已取消" :
-                `Prompt Hook 执行失败: ${error instanceof Error ? error.message : String(error)}`)}};
+            message: boundedHookMessage(signal.aborted ? "Hook execution cancelled" :
+                `Prompt Hook execution failed: ${error instanceof Error ? error.message : String(error)}`)}};
     }
 }
 
@@ -90,7 +90,7 @@ export function createHookPromptExecutorFactory(
             async execute(input) {
                 const schema = hookOutputSchema(input.envelope.event.hook_event_name, input.envelope.purpose);
                 const submitDecisionTool: OpenAITool = {type: "function", function: {
-                    name: "submit_hook_decision", description: "提交当前 Hook 唯一结构化决定",
+                    name: "submit_hook_decision", description: "Submit the single structured decision for this Hook",
                     parameters: zodToJsonSchema(schema, {target: "openApi3", $refStrategy: "none"}) as Record<string, unknown>,
                 }};
                 const controller = createTurnAbortController();
@@ -116,27 +116,27 @@ export function createHookPromptExecutorFactory(
                         ? result.message.content?.trim()
                         : undefined;
                     if (text) {
-                        throw new Error("Prompt Hook 同时返回了普通正文");
+                        throw new Error("Prompt Hook also returned ordinary text");
                     }
                     if (result.toolCalls.length !== 1) {
-                        throw new Error("Prompt Hook 没有返回唯一结构化决定");
+                        throw new Error("Prompt Hook did not return exactly one structured decision");
                     }
                     const call = result.toolCalls[0]!;
                     if (call.function.name !== "submit_hook_decision") {
-                        throw new Error(`Prompt Hook 调用了未知工具: ${call.function.name}`);
+                        throw new Error(`Prompt Hook called an unknown tool: ${call.function.name}`);
                     }
                     let raw: unknown;
                     if (Buffer.byteLength(call.function.arguments) > MAX_HOOK_DECISION_BYTES) {
-                        throw new Error("Prompt Hook 返回的决定超过 65536 bytes 上限");
+                        throw new Error("Prompt Hook decision exceeds 65536 bytes");
                     }
                     try {
                         raw = JSON.parse(call.function.arguments || "{}");
                     } catch {
-                        throw new Error("Prompt Hook 返回的决定不是合法 JSON");
+                        throw new Error("Prompt Hook decision is not valid JSON");
                     }
                     const parsed = schema.safeParse(raw);
                     if (!parsed.success) {
-                        throw new Error(`Prompt Hook 决定校验失败: ${parsed.error.issues[0]?.message ?? "未知错误"}`);
+                        throw new Error(`Prompt Hook decision validation failed: ${parsed.error.issues[0]?.message ?? "Unknown error"}`);
                     }
                     return parsed.data;
                 } catch (error) {

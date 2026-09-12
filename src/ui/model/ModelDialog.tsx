@@ -109,13 +109,13 @@ export function ModelDialog({
             ) : (
                 <Box marginTop={1}>
                     <Text color={COLORS.warning}>
-                        没有可用模型，请检查 Settings 和模型凭证。
+                        No models available; check Settings and model credentials.
                     </Text>
                 </Box>
             )}
 
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ 选择  ·  enter 切换  ·  esc 返回</Text>
+                <Text color={COLORS.dim}>↑↓ select · enter switch · esc back</Text>
             </Box>
         </Box>
     );

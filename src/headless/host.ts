@@ -27,18 +27,18 @@ export function createHeadlessRunner(overrides: Partial<HeadlessRunnerDependenci
     const createThread = createSDKThreadFactory({runTurn: createRootTurnRunnerFactory({saveSession: dependencies.saveSession})});
     return async (options: HeadlessOptions, signal?: AbortSignal): Promise<HeadlessRunSummary> => {
         const {configuration, resumeMode} = options;
-        if (resumeMode.kind === "picker") throw new Error("headless 模式不能使用交互式 -r；请使用 -c 或 -r <sessionId>");
+        if (resumeMode.kind === "picker") throw new Error("Headless mode cannot use interactive -r; use -c or -r <sessionId>");
         const {storage, cwd, settings} = configuration;
         const model = settings.models.primary.model;
         const loaded = resumeMode.kind === "continue" ? loadLatestSession(storage, cwd, model) :
             resumeMode.kind === "session" ? loadSession(storage, cwd, resumeMode.sessionId, model) : null;
-        if (resumeMode.kind !== "none" && !loaded) throw new Error("没有找到可恢复的历史会话");
+        if (resumeMode.kind !== "none" && !loaded) throw new Error("No previous session available to resume");
         const activeSignal = signal ?? createTurnAbortController().signal;
         const resources = await dependencies.createResources({configuration, signal: activeSignal, headless: true});
         let thread: Awaited<ReturnType<typeof createThread>> | undefined;
         try {
             if (resources.sandbox.status.kind === "unavailable") await dependencies.writeDiagnostic(`Sandbox unavailable: ${resources.sandbox.status.reason}`);
-            for (const issue of resources.subagents.issues) await dependencies.writeDiagnostic(`Agent 配置: ${formatAgentLoadIssue(issue)}`);
+            for (const issue of resources.subagents.issues) await dependencies.writeDiagnostic(`Agent configuration: ${formatAgentLoadIssue(issue)}`);
             for (const issue of resources.hooks.issues) await dependencies.writeDiagnostic(`Hook: ${issue.message}`);
             const initial = prepareThreadSession(resources, loaded ?? undefined);
             initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;

@@ -27,7 +27,7 @@ describe("tool registry contract", () => {
         subagent_type: "Verification", description: "验证", prompt: "检查项目",
       }), ctx, "unknown-agent");
       expect(result.outcome).toBe("failed");
-      expect(result.modelContent).toContain("未知 Agent 类型");
+      expect(result.modelContent).toContain("Unknown Agent type");
       expect(launched).toBe(false);
     });
   });
@@ -52,23 +52,23 @@ describe("tool registry contract", () => {
       (tool) => tool.function.name === "bash"
     );
     expect(bash?.function.description).toContain(
-      "按共同验证原则选择项目已有检查"
+      "Run a minimal existing syntax/build/test check"
     );
-    expect(bash?.function.description).toContain("不得通过 Bash 补造缺失的浏览器能力");
-    expect(bash?.function.description).toContain("项目既有 E2E 和用户明确要求搭建自动化的任务");
+    expect(bash?.function.description).toContain("Do not create missing browser capability");
+    expect(bash?.function.description).toContain("existing E2E runs unchanged, and new automation infrastructure requires an explicit user request");
     expect(JSON.stringify(bash?.function.parameters)).toContain(
-      "管道任一段失败会保留非零状态"
+      "failed pipeline stages retain a nonzero status"
     );
-    expect(bash?.function.description).toContain("每次调用都是独立进程");
-    expect(bash?.function.description).toContain("拒绝 shell 后台操作符 &");
+    expect(bash?.function.description).toContain("Each call is a separate process");
+    expect(bash?.function.description).toContain("Do not use shell &");
     expect(bash?.function.description).toContain(
-      "run_in_background 并省略 timeout_ms"
+      "run_in_background for services, GUIs and watchers, omit timeout_ms"
     );
     expect(JSON.stringify(bash?.function.parameters)).toContain(
-      "不要假设上一次 cd 会保留"
+      "previous cd state is not retained"
     );
     expect(JSON.stringify(bash?.function.parameters)).toContain(
-      "timeout_ms 不是启动等待时间"
+      "Returns a task ID immediately"
     );
   });
 
@@ -111,7 +111,7 @@ describe("tool registry contract", () => {
         "agent-no-runner"
       );
       expect(missingRunner.outcome).toBe("failed");
-      expect(missingRunner.modelContent).toContain("没有配置子 Agent launcher");
+      expect(missingRunner.modelContent).toContain("No subagent launcher is configured");
     });
   });
 
@@ -120,9 +120,9 @@ describe("tool registry contract", () => {
       (tool) => tool.function.name === "agent"
     );
 
-    expect(agent?.function.description).toContain("Root 默认亲自完成顺序性的调查、实现和验证");
-    expect(agent?.function.description).toContain("本身都不是委派理由");
-    expect(agent?.function.description).toContain("若 Root 必须等待结果才能继续");
+    expect(agent?.function.description).toContain("Keep immediate blocking work local");
+    expect(agent?.function.description).toContain("Complexity or many files alone do not justify delegation");
+    expect(agent?.function.description).toContain("Keep immediate blocking work local");
     expect(agent?.function.description).not.toContain("3 个以上文件");
     expect(JSON.stringify(agent?.function.parameters)).toContain("fast");
     expect(JSON.stringify(agent?.function.parameters)).toContain("run_in_background");
@@ -166,12 +166,12 @@ describe("tool registry contract", () => {
   test("未知工具、非法 JSON 和 schema 错误会变成工具结果", async () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd);
-      expect(await executeTool("missing", "{}", ctx)).toStartWith("未知工具:");
+      expect(await executeTool("missing", "{}", ctx)).toStartWith("Unknown tool:");
       expect(await executeTool("read_file", "{", ctx)).toStartWith(
-        "工具参数不是合法 JSON:"
+        "Tool arguments are not valid JSON:"
       );
       expect(await executeTool("read_file", JSON.stringify({}), ctx)).toStartWith(
-        "参数校验失败:"
+        "Argument validation failed:"
       );
     });
   });
@@ -232,7 +232,7 @@ describe("tool registry contract", () => {
         createTestContext(cwd)
       );
 
-      expect(result).toContain("行范围: 1-367 / 367");
+      expect(result).toContain("Line range: 1-367 / 367");
       expect(result).toContain("   367\tline-367");
       expect(result).not.toContain("本次未返回后续");
     });
@@ -247,9 +247,9 @@ describe("tool registry contract", () => {
         createTestContext(cwd)
       );
 
-      expect(result).toContain("行范围: 2-3 / 4");
+      expect(result).toContain("Line range: 2-3 / 4");
       expect(result).toContain("     2\tbeta");
-      expect(result).toContain("本次未返回后续 1 行");
+      expect(result).toContain("remaining lines omitted: 1");
       expect(result).not.toContain("继续读取请用");
     });
   });
@@ -299,7 +299,7 @@ describe("tool registry contract", () => {
         "large-grep"
       );
       expect(result.persisted?.complete).toBe(true);
-      expect(result.modelContent).toContain("共 320 条匹配");
+      expect(result.modelContent).toContain("Total: 320 matches");
 
       const recovered = await executeTool("read_file", JSON.stringify({path: result.persisted!.path}), ctx);
       expect(recovered).toContain("MATCH-100");
@@ -345,7 +345,7 @@ describe("tool registry contract", () => {
       );
       expect(paged.modelContent).toContain("theme.ts:3");
       expect(paged.modelContent).not.toContain("theme.ts:1");
-      expect(paged.modelContent).toContain("显示 offset=1 后的 1/3");
+      expect(paged.modelContent).toContain("showing offset=1: 1/3");
 
       const counted = await executeToolResult(
         "grep",
@@ -375,9 +375,9 @@ describe("tool registry contract", () => {
         "write-unread"
       );
       expect(unread.outcome).toBe("failed");
-      expect(unread.modelContent).toContain("写入前置条件未满足");
-      expect(unread.modelContent).toContain("必须先用 read_file 完整读取");
-      expect(unread.modelContent).not.toContain("权限拒绝");
+      expect(unread.modelContent).toContain("Write precondition failed");
+      expect(unread.modelContent).toContain("read it fully with read_file");
+      expect(unread.modelContent).not.toContain("Permission denied");
       expect(await readFile(path, "utf8")).toBe("before");
 
       await executeTool("read_file", JSON.stringify({ path: "existing.txt" }), ctx);
@@ -388,7 +388,7 @@ describe("tool registry contract", () => {
         "write-after-read"
       );
       expect(written.outcome).toBe("ok");
-      expect(written.modelContent).toContain("已写入 existing.txt");
+      expect(written.modelContent).toContain("Wrote existing.txt");
       expect(await readFile(path, "utf8")).toBe("after");
     });
   });
@@ -426,7 +426,7 @@ describe("tool registry contract", () => {
       );
 
       expect(rewritten.outcome).toBe("ok");
-      expect(rewritten.modelContent).toContain("已写入 created.txt");
+      expect(rewritten.modelContent).toContain("Wrote created.txt");
       expect(await readFile(join(cwd, "created.txt"), "utf8")).toBe("second");
     });
   });
@@ -447,7 +447,7 @@ describe("tool registry contract", () => {
       );
 
       expect(stale.outcome).toBe("failed");
-      expect(stale.modelContent).toContain("自上次 read_file 后已被修改");
+      expect(stale.modelContent).toContain("has changed since the last read_file");
       expect(await readFile(path, "utf8")).toBe("changed elsewhere\n");
     });
   });
@@ -469,10 +469,10 @@ describe("tool registry contract", () => {
         "edit-wrong-keyword"
       );
       expect(failed.outcome).toBe("failed");
-      expect(failed.modelContent).toContain("编辑失败");
-      expect(failed.modelContent).toContain("找不到 old_string");
-      expect(failed.modelContent).toContain("重新 read_file");
-      expect(failed.modelContent).not.toContain("权限拒绝");
+      expect(failed.modelContent).toContain("Edit failed");
+      expect(failed.modelContent).toContain("old_string was not found");
+      expect(failed.modelContent).toContain("Use read_file");
+      expect(failed.modelContent).not.toContain("Permission denied");
       expect(failed.uiData).toBeUndefined();
       expect(await readFile(path, "utf8")).toBe(original);
 
@@ -500,8 +500,8 @@ describe("tool registry contract", () => {
         ctx, "edit-ambiguous"
       );
       expect(result.outcome).toBe("failed");
-      expect(result.modelContent).toContain("匹配到 2 处");
-      expect(result.modelContent).not.toContain("权限拒绝");
+      expect(result.modelContent).toContain("matched 2 locations");
+      expect(result.modelContent).not.toContain("Permission denied");
       expect(result.uiData).toBeUndefined();
       expect(await readFile(path, "utf8")).toBe("same\nsame\n");
     });
@@ -528,7 +528,7 @@ describe("tool registry contract", () => {
       );
       expect(approvals).toBe(1);
       expect(result.outcome).toBe("failed");
-      expect(result.modelContent).toContain("自上次 read_file 后已被修改");
+      expect(result.modelContent).toContain("has changed since the last read_file");
       expect(result.uiData).toBeUndefined();
       expect(await readFile(path, "utf8")).toBe("external\n");
     });
@@ -551,7 +551,7 @@ describe("tool registry contract", () => {
       ctx.permissionRules.deny.push({toolName: "edit_file", source: "host"});
       const denied = await executeToolResult("edit_file", args, ctx, "edit-rule-denied");
       expect(denied.outcome).toBe("denied");
-      expect(denied.modelContent).toContain("被 deny 规则拒绝");
+      expect(denied.modelContent).toContain("Denied by rule");
       expect(await readFile(path, "utf8")).toBe("before\n");
     });
   });
@@ -577,7 +577,7 @@ describe("tool registry contract", () => {
         "edit-structured"
       );
 
-      expect(result.modelContent).toContain("已修改 edit-me.txt");
+      expect(result.modelContent).toContain("Modified edit-me.txt");
       expect(result.modelContent).not.toContain("- before");
       expect(result.uiData).toMatchObject({
         type: "file_change",
@@ -615,7 +615,7 @@ describe("tool registry contract", () => {
         "edit-unobserved"
       );
       expect(hidden.outcome).toBe("failed");
-      expect(hidden.modelContent).toContain("未展示要修改的完整内容");
+      expect(hidden.modelContent).toContain("did not show all content to edit");
 
       const visible = await executeTool(
         "edit_file",
@@ -626,7 +626,7 @@ describe("tool registry contract", () => {
         }),
         first
       );
-      expect(visible).toContain("已修改 partial.txt");
+      expect(visible).toContain("Modified partial.txt");
 
       const leaked = await executeToolResult(
         "edit_file",
@@ -639,7 +639,7 @@ describe("tool registry contract", () => {
         "edit-unread"
       );
       expect(leaked.outcome).toBe("failed");
-      expect(leaked.modelContent).toContain("必须先用 read_file");
+      expect(leaked.modelContent).toContain("Use read_file to read");
     });
   });
 
@@ -664,7 +664,7 @@ describe("tool registry contract", () => {
         }),
         ctx
       );
-      expect(denied).toContain("replace_all 必须先完整读取");
+      expect(denied).toContain("replace_all requires reading the entire file");
 
       await executeTool(
         "read_file",
@@ -681,7 +681,7 @@ describe("tool registry contract", () => {
         }),
         ctx
       );
-      expect(edited).toContain("替换 2 处");
+      expect(edited).toContain("replaced 2 matches");
       expect(await readFile(path, "utf8")).toBe("one\r\nTWO\r\nTWO\r\n");
     });
   });
@@ -708,7 +708,7 @@ describe("tool registry contract", () => {
         }),
         ctx
       );
-      expect(result).toContain("自上次 read_file 后已被修改");
+      expect(result).toContain("has changed since the last read_file");
       expect(await readFile(path, "utf8")).toBe("changed elsewhere\n");
     });
   });
@@ -732,7 +732,7 @@ describe("tool registry contract", () => {
         ctx
       );
 
-      expect(result).toContain("当前 Host 不支持权限交互");
+      expect(result).toContain("This Host does not support permission interaction");
       expect(asked).toBe(false);
     });
   });
@@ -792,7 +792,7 @@ describe("tool registry contract", () => {
       controller.abort("user-cancel");
       resolveDecision({ behavior: "allow" });
 
-      expect(await running).toBe("工具调用已取消（user-cancel）");
+      expect(await running).toBe("Tool call cancelled (user-cancel)");
       expect(existsSync(join(cwd, "cancelled.txt"))).toBe(false);
     });
   });
@@ -820,7 +820,7 @@ describe("tool registry contract", () => {
       );
 
       expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("权限交互不能修改工具");
+      expect(result.modelContent).toContain("Permission interaction cannot modify tool");
       expect(existsSync(join(cwd, "original.txt"))).toBe(false);
       expect(existsSync(join(cwd, "mutated.txt"))).toBe(false);
     });
@@ -849,7 +849,7 @@ describe("tool registry contract", () => {
 
       expect(result.outcome).toBe("failed");
       expect(result.modelContent).toContain(
-        "权限交互失败: interaction unavailable"
+        "permission interaction failed: interaction unavailable"
       );
       expect(existsSync(join(cwd, "not-created.txt"))).toBe(false);
     });

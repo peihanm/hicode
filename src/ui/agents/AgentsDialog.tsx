@@ -56,9 +56,9 @@ const EDIT_FIELDS = [
 type EditField = typeof EDIT_FIELDS[number];
 
 function sourceLabel(definition: AgentDefinition): string {
-    if (definition.source === "builtin") return "内置 · 只读";
-    if (definition.source === "host") return "Host · 只读";
-    return definition.source === "project" ? "项目" : "个人";
+    if (definition.source === "builtin") return "Built-in · read-only";
+    if (definition.source === "host") return "Host · read-only";
+    return definition.source === "project" ? "Project" : "Personal";
 }
 
 function draftFromStored(file: StoredAgentFile): AgentDefinitionDraft {
@@ -74,12 +74,12 @@ function draftFromStored(file: StoredAgentFile): AgentDefinitionDraft {
 
 function fieldLabel(field: EditField): string {
     return {
-        name: "名称",
-        description: "使用说明",
-        tools: "工具（逗号分隔）",
-        model: "模型（inherit 或 fast）",
-        maxIterations: "最大轮次（2–30）",
-        systemPrompt: "System Prompt（Shift+Enter 换行）",
+        name: "Name",
+        description: "Usage instructions",
+        tools: "Tools (comma-separated)",
+        model: "Model (inherit or fast)",
+        maxIterations: "Maximum turns (2–30)",
+        systemPrompt: "System Prompt (Shift+Enter for newline)",
     }[field];
 }
 
@@ -151,11 +151,11 @@ export function AgentsDialog({
             value: `agent:${definition.agentType}`,
         })),
         ...(catalog.issues.length > 0
-            ? [{label: `⚠ 加载问题 (${catalog.issues.length})`, value: "issues"}]
+            ? [{label: `⚠ Loading issues (${catalog.issues.length})`, value: "issues"}]
             : []),
-        {label: "＋ 创建新 Agent", value: "create"},
-        {label: "↻ 重新加载 Agent 文件", value: "reload"},
-        {label: "关闭", value: "close"},
+        {label: "＋ Create Agent", value: "create"},
+        {label: "↻ Reload Agent files", value: "reload"},
+        {label: "Close", value: "close"},
     ], [definitions, catalog.revision, catalog.issues.length]);
 
     useInput((_input, key) => {
@@ -196,7 +196,7 @@ export function AgentsDialog({
         try {
             const result = await manager.reload();
             setNotice(
-                `Reload revision ${result.revision} · 新增 ${result.added.length} · 更新 ${result.updated.length} · 移除 ${result.removed.length} · 问题 ${result.issues.length}`
+                `Reload revision ${result.revision} · added ${result.added.length} · updated ${result.updated.length} · removed ${result.removed.length} · issues ${result.issues.length}`
             );
             setStage("list");
         } catch (reason) {
@@ -241,7 +241,7 @@ export function AgentsDialog({
                 )
                 : await manager.create(scope, finalDraft);
             setNotice(
-                `${stored ? "已更新" : "已创建"} ${result.file.definition.agentType} · revision ${result.update.revision}`
+                `${stored ? "Updated" : "Created"} ${result.file.definition.agentType} · revision ${result.update.revision}`
             );
             setSelected(undefined);
             setStored(undefined);
@@ -260,7 +260,7 @@ export function AgentsDialog({
                 stored.definition.agentType,
                 stored.contentHash
             );
-            setNotice(`已删除 ${stored.definition.agentType} · revision ${result.revision}`);
+            setNotice(`Deleted ${stored.definition.agentType} · revision ${result.revision}`);
             setSelected(undefined);
             setStored(undefined);
             setStage("list");
@@ -289,7 +289,7 @@ export function AgentsDialog({
             >
                 <Box>
                     <Text bold color={COLORS.accent}>◆ Agents</Text>
-                    <Text color={COLORS.dim}>  创建和管理子 Agent</Text>
+                    <Text color={COLORS.dim}>  Create and manage subagents</Text>
                 </Box>
 
                 {notice && stage === "list" && (
@@ -299,7 +299,7 @@ export function AgentsDialog({
                 {stage === "list" && (
                     <Box marginTop={1} flexDirection="column">
                         <Text color={COLORS.dim}>
-                            当前 revision {catalog.revision} · {definitions.length} 个可用 · {catalog.issues.length} 个加载问题
+                            Current revision {catalog.revision} · {definitions.length} available · {catalog.issues.length} loading issues
                         </Text>
                         <SelectInput
                             items={listItems}
@@ -330,7 +330,7 @@ export function AgentsDialog({
 
                 {stage === "issues" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>Agent 加载问题</Text>
+                        <Text bold>Agent loading issues</Text>
                         {catalog.issues.map((issue, index) => (
                             <Box
                                 key={`${issue.source === "host" ? issue.id : issue.path}:${issue.field ?? ""}:${index}`}
@@ -348,7 +348,7 @@ export function AgentsDialog({
                             </Box>
                         ))}
                         <SelectInput
-                            items={[{label: "返回", value: "back"}]}
+                            items={[{label: "Back", value: "back"}]}
                             onSelect={() => setStage("list")}
                             indicatorComponent={DialogIndicator}
                             itemComponent={DialogItem}
@@ -358,10 +358,10 @@ export function AgentsDialog({
 
                 {stage === "scope" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>选择保存范围</Text>
+                        <Text bold>Choose save scope</Text>
                         <SelectInput
                             items={[
-                                {label: "Project · 当前项目 .pillar/agents", value: "project"},
+                                {label: "Project · .pillar/agents in this project", value: "project"},
                                 {label: "Personal · ~/.pillar/agents", value: "user"},
                             ]}
                             indicatorComponent={DialogIndicator}
@@ -376,11 +376,11 @@ export function AgentsDialog({
 
                 {stage === "method" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>创建方式</Text>
+                        <Text bold>Creation method</Text>
                         <SelectInput
                             items={[
-                                {label: "Generate with Pillar · 根据描述生成候选", value: "generate"},
-                                {label: "Manual · 手工填写", value: "manual"},
+                                {label: "Generate with Pillar · create a candidate from a description", value: "generate"},
+                                {label: "Manual · enter the definition yourself", value: "manual"},
                             ]}
                             indicatorComponent={DialogIndicator}
                             itemComponent={DialogItem}
@@ -394,9 +394,9 @@ export function AgentsDialog({
 
                 {stage === "generate" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>描述需要的 Agent</Text>
+                        <Text bold>Describe the Agent you need</Text>
                         <Text color={COLORS.dim}>
-                            生成结果只会进入编辑页，不会自动保存或授权。
+                            Generated candidates open in the editor; they are not saved or authorized automatically.
                         </Text>
                         <MultilineTextInput
                             value={generateInput}
@@ -424,9 +424,9 @@ export function AgentsDialog({
 
                 {stage === "edit" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>{stored ? "编辑" : "创建"} Agent · {fieldLabel(field)}</Text>
+                        <Text bold>{stored ? "Edit" : "Create"} Agent · {fieldLabel(field)}</Text>
                         <Text color={COLORS.dim}>
-                            第 {fieldIndex + 1}/{EDIT_FIELDS.length} 项 · Enter 下一步 · Shift+Tab 上一步 · Esc 取消
+                            Step {fieldIndex + 1}/{EDIT_FIELDS.length} · Enter next · Shift+Tab previous · Esc cancel
                         </Text>
                         {field === "systemPrompt" ? (
                             <MultilineTextInput
@@ -454,16 +454,16 @@ export function AgentsDialog({
                         <Text bold>{selected.agentType} · {sourceLabel(selected)}</Text>
                         <Text>{selected.whenToUse}</Text>
                         <Text color={COLORS.dim}>
-                            模型 {formatSubagentModel(selected.model, "继承 Root", fastModel)} · 最大轮次 {selected.maxIterations ?? "跟随 Root"}
+                            Model {formatSubagentModel(selected.model, "Inherit Root", fastModel)} · maximum turns {selected.maxIterations ?? "Follow Root"}
                         </Text>
-                        <Text color={COLORS.dim}>工具 · {selected.allowedTools.join(", ")}</Text>
+                        <Text color={COLORS.dim}>Tools · {selected.allowedTools.join(", ")}</Text>
                         <SelectInput
                             items={selected.source === "builtin" || selected.source === "host"
-                                ? [{label: "返回", value: "back"}]
+                                ? [{label: "Back", value: "back"}]
                                 : [
-                                    {label: "编辑", value: "edit"},
-                                    {label: "删除", value: "delete"},
-                                    {label: "返回", value: "back"},
+                                    {label: "Edit", value: "edit"},
+                                    {label: "Delete", value: "delete"},
+                                    {label: "Back", value: "back"},
                                 ]}
                             indicatorComponent={DialogIndicator}
                             itemComponent={DialogItem}
@@ -481,12 +481,12 @@ export function AgentsDialog({
                 {stage === "delete" && selected && (
                     <Box marginTop={1} flexDirection="column">
                         <Text color={COLORS.warning}>
-                            确认删除 {selected.agentType}？该操作会删除对应 Markdown 文件。
+                            Confirm deletion of {selected.agentType}? This deletes the corresponding Markdown file.
                         </Text>
                         <SelectInput
                             items={[
-                                {label: "取消", value: "cancel"},
-                                {label: "确认删除", value: "delete"},
+                                {label: "Cancel", value: "cancel"},
+                                {label: "Confirm deletion", value: "delete"},
                             ]}
                             indicatorComponent={DialogIndicator}
                             itemComponent={DialogItem}
@@ -499,28 +499,28 @@ export function AgentsDialog({
                 )}
 
                 {stage === "busy" && (
-                    <Box marginTop={1}><Text color={COLORS.dim}>正在处理…</Text></Box>
+                    <Box marginTop={1}><Text color={COLORS.dim}>Processing…</Text></Box>
                 )}
 
                 {stage === "generating" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text color={COLORS.dim}>正在生成 Agent 候选…</Text>
-                        <Text color={COLORS.dim}>Esc 取消生成</Text>
+                        <Text color={COLORS.dim}>Generating Agent candidate…</Text>
+                        <Text color={COLORS.dim}>Esc cancel generation</Text>
                     </Box>
                 )}
 
                 {stage === "error" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text color={COLORS.error}>操作失败：{error}</Text>
+                        <Text color={COLORS.error}>Operation failed: {error}</Text>
                         <SelectInput
                             items={[{
                                 label: errorReturnStage === "edit"
-                                    ? "返回继续编辑"
+                                    ? "Back to editing"
                                     : errorReturnStage === "generate"
-                                        ? "返回生成输入"
+                                        ? "Back to generation input"
                                         : errorReturnStage === "detail"
-                                            ? "返回 Agent 详情"
-                                            : "返回 Agent 列表",
+                                            ? "Back to Agent details"
+                                            : "Back to Agent list",
                                 value: "back",
                             }]}
                             indicatorComponent={DialogIndicator}
@@ -533,7 +533,7 @@ export function AgentsDialog({
                     </Box>
                 )}
             </Box>
-            <Text color={COLORS.dim}>Esc 返回或关闭</Text>
+            <Text color={COLORS.dim}>Esc back or close</Text>
         </Box>
     );
 }

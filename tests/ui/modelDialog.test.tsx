@@ -63,7 +63,7 @@ describe("Model dialog", () => {
             expect(primaryModel.target).toEqual(deepseek);
             expect(resources.fastModel).toBe(fastBefore);
             expect(instance.lastFrame()).toContain("DeepSeek Pro");
-            expect(instance.lastFrame()).toContain("已切换主模型：DeepSeek Pro。");
+            expect(instance.lastFrame()).toContain("Main model switched to: DeepSeek Pro.");
             expect(instance.lastFrame()).not.toContain("Fast model");
 
             instance.stdin.write("验证真实上下文");
