@@ -1,3 +1,5 @@
+import {withFileLock} from "../persistence/fileLock.js";
+import {getSessionIndexLockPath} from "./paths.js";
 import {
     readPrivateStorageTextFile,
     type PillarStorageLayout,
@@ -23,33 +25,19 @@ function emptySessionIndex(): SessionIndexFile {
     return {version: SESSION_INDEX_VERSION, sessions: []};
 }
 
-/** Read-only callers treat a missing or invalid index as an empty picker. */
-export function readSessionIndex(
-    storage: PillarStorageLayout,
-    cwd: string
-): SessionIndexFile {
+/** A corrupt directory is not an empty history. Repair preserves the original evidence. */
+export function readSessionIndex(storage: PillarStorageLayout, cwd: string): SessionIndexFile {
     const path = getSessionIndexPath(storage, cwd);
+    const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_INDEX_BYTES);
+    if (content === null) return emptySessionIndex();
     try {
-        const content = readPrivateStorageTextFile(
-            storage,
-            path,
-            MAX_SESSION_INDEX_BYTES
-        );
-        if (content === null) return emptySessionIndex();
-        const parsed = JSON.parse(content) as Partial<SessionIndexFile>;
-        if (
-            parsed.version !== SESSION_INDEX_VERSION ||
-            !Array.isArray(parsed.sessions)
-        ) {
-            return emptySessionIndex();
-        }
+        const parsed: unknown = JSON.parse(content);
+        if (!parsed || typeof parsed !== "object" || !("version" in parsed) || parsed.version !== SESSION_INDEX_VERSION ||
+            !("sessions" in parsed) || !Array.isArray(parsed.sessions)) throw new Error("Unsupported format");
         const sessions = decodeSessionIndexEntries(parsed.sessions, cwd);
-        return sessions
-            ? {version: parsed.version, sessions}
-            : emptySessionIndex();
-    } catch {
-        return emptySessionIndex();
-    }
+        if (!sessions) throw new Error("Invalid entries");
+        return {version: SESSION_INDEX_VERSION, sessions};
+    } catch { throw new Error(`Cannot read corrupt session index: ${path}. Run pillar --storage repair-index to rebuild it.`); }
 }
 
 async function readSessionIndexForMutation(
@@ -114,6 +102,8 @@ export async function upsertSessionIndex(
     storage: PillarStorageLayout,
     input: UpsertSessionIndexInput
 ): Promise<void> {
+    ensureSessionsDirectory(storage,input.cwd);
+    await withFileLock(getSessionIndexLockPath(storage,input.cwd),async()=>{
     const index = await readSessionIndexForMutation(storage, input.cwd);
     const existing = index.sessions.find(
         (entry) => entry.sessionId === input.sessionId
@@ -135,5 +125,6 @@ export async function upsertSessionIndex(
     await writeSessionIndex(storage, input.cwd, {
         version: SESSION_INDEX_VERSION,
         sessions,
+    });
     });
 }

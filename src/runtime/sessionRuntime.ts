@@ -1,3 +1,4 @@
+import {ensureSessionIdentity} from "../persistence/projectState.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {ApprovalEpoch} from "../permissions/approval.js";
 import type {MessageContent} from "../images/content.js";
@@ -75,6 +76,7 @@ export interface RootSessionRuntime {
     createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
     saveSnapshot(input: SaveSessionSnapshotInput): Promise<void>;
     flushSnapshots(): Promise<void>;
+    takeStorageIssues(): string[];
 
     beginTurn(
         prompt: MessageContent,
@@ -170,6 +172,7 @@ export function createRootSessionRuntime({
             initializePromise ??= (async () => {
                 // Task Session restoration starts at construction. Drain every initializer even when another initializer fails.
                 const results = await Promise.allSettled([
+                    ensureSessionIdentity(resources.storage, resources.cwd, seed.sessionId),
                     taskSession.initialize(),
                     directoryAccess.initialize(),
                 ] as const);
@@ -241,6 +244,7 @@ export function createRootSessionRuntime({
         createSnapshot: snapshot,
         saveSnapshot: persistence.save,
         flushSnapshots: persistence.drain,
+        takeStorageIssues: persistence.takeIssues,
         async beginTurn(prompt, state) {
             await this.initialize();
             if (turnActive) throw new Error("This Session is already running");

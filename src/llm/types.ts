@@ -82,7 +82,12 @@ export interface LLMStreamProgress {
 
 export type LLMTextUpdate = {type: "reset"} | {type: "delta"; text: string};
 
+export type LLMTrace = {ownerCwd:string;runId:string} & (
+    {scope:"session";sessionId:string;agentId?:string} | {scope:"maintenance"}
+);
+
 export interface LLMCallOptions {
+    trace?: LLMTrace;
     storage: PillarStorageLayout;
     messages: Message[];
     tools: OpenAITool[];
@@ -120,7 +125,8 @@ export type LLMCaller = (
     signal?: AbortSignal,
     onStreamProgress?: (progress: LLMStreamProgress) => void,
     onText?: (update: LLMTextUpdate) => void | Promise<void>,
-    readImage?: (reference: ImageReference) => Promise<Buffer>
+    readImage?: (reference: ImageReference) => Promise<Buffer>,
+    trace?: LLMTrace
 ) => Promise<LLMCallResult>;
 
 export interface LLMProvider {

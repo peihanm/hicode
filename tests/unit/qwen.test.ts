@@ -1,4 +1,8 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import {afterEach, describe, expect, test} from "bun:test";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
+import {getProjectDebugDirectory} from "../../src/persistence/index.js";
 import {createLLMCaller} from "../../src/llm/index.js";
 import {
     createQwenRequestFields,
@@ -134,6 +138,64 @@ describe("Qwen provider", () => {
                 completion_tokens: 20,
                 total_tokens: 100,
             });
+            expect(result.message).not.toHaveProperty("reasoning_content");
+            const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+            const [filename] = await listPromptLogs(directory);
+            const logged = JSON.parse(await readFile(join(directory, filename!), "utf8")) as {
+                response: {rawResponse: Record<string, unknown>; rawMessage: unknown};
+            };
+            expect(logged.response.rawResponse.reasoning_content).toBe("准备调用工具");
+            expect(logged.response.rawMessage).not.toHaveProperty("reasoning_content");
+        });
+    });
+
+    test.each([
+        {label: "absent", reasoning: undefined},
+        {label: "null", reasoning: null},
+        {label: "empty", reasoning: ""},
+        {label: "whitespace", reasoning: " \n"},
+        {label: "returned", reasoning: "Inspect α\n诊断 test-dashscope-token"},
+    ])("logs optional reasoning separately from text: $label", async ({reasoning}) => {
+        await withTempProject(async (cwd) => {
+            process.env.DASHSCOPE_API_KEY = "test-dashscope-token";
+            let fetchCalls = 0;
+            const encoder = new TextEncoder();
+            globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => {
+                fetchCalls++;
+                const events = [
+                    {choices: [{delta: reasoning === undefined ? {} : {reasoning_content: reasoning}}]},
+                    {choices: [{delta: {content: "ok"}, finish_reason: "stop"}]},
+                ];
+                return new Response(new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+                        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                        controller.close();
+                    },
+                }));
+            }) as typeof fetch;
+
+            const result = await callQwenProvider(qwenProvider, {
+                messages: [{role: "user", origin: "user", content: "hello"}],
+                tools: [], cwd, model: "qwen3.8-flash", kind: "main",
+            });
+            expect(fetchCalls).toBe(1);
+            expect(result.message).toEqual({role: "assistant", content: "ok"});
+            const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+            const filenames = await listPromptLogs(directory);
+            expect(filenames).toHaveLength(1);
+            const serialized = await readFile(join(directory, filenames[0]!), "utf8");
+            const logged = JSON.parse(serialized) as {
+                response: {rawResponse: Record<string, unknown>; rawMessage: unknown};
+            };
+            expect(serialized).not.toContain("test-dashscope-token");
+            expect(logged.response.rawMessage).toEqual(result.message);
+            expect(logged.response.rawResponse.reasoningContentLength).toBe(reasoning?.length ?? 0);
+            if (reasoning?.trim()) {
+                expect(logged.response.rawResponse.reasoning_content).toBe(reasoning.replaceAll("test-dashscope-token", "[REDACTED]"));
+            } else {
+                expect(logged.response.rawResponse).not.toHaveProperty("reasoning_content");
+            }
         });
     });
 

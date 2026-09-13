@@ -4,7 +4,7 @@ import {
     type PillarStorageLayout, withFileLock, writeFileAtomically,
 } from "../persistence/index.js";
 import {decodeSessionEntry, hasCompleteToolPairs} from "./codec.js";
-import {ensureSessionsDirectory, getSessionLogPath, getSessionPersistenceLockPath} from "./paths.js";
+import {ensureSessionsDirectory, getSessionSnapshotPath, getSessionPersistenceLockPath} from "./paths.js";
 import {SessionContentStore, isSessionContentId, MAX_SESSION_CONTENT_BYTES} from "./contentStore.js";
 import type {SessionEntry, SessionSnapshotEntry} from "./types.js";
 import {collectArchiveViews, readArchiveMessages, type SessionArchiveDraft} from "./archive.js";
@@ -14,9 +14,11 @@ const MAX_SESSION_LOG_BYTES = 16 * 1024 * 1024;
 const MAX_SESSION_ENTRY_BYTES = 72 * 1024 * 1024;
 type StoredEntry = Omit<SessionSnapshotEntry, "conversation" | "uiEvents"> & {conversation: string[]; uiEvents: string[]};
 
-export function withSessionPersistenceLock<T>(storage: PillarStorageLayout, cwd: string, action: () => Promise<T>): Promise<T> {
+export function withSessionPersistenceLock<T>(storage: PillarStorageLayout, cwd: string, sessionIds: string | readonly string[], action: () => Promise<T>): Promise<T> {
     ensureSessionsDirectory(storage, cwd);
-    return withFileLock(getSessionPersistenceLockPath(storage, cwd), action);
+    const paths=[...new Set((typeof sessionIds === "string" ? [sessionIds] : sessionIds).map(id => getSessionPersistenceLockPath(storage,cwd,id)))].sort();
+    const acquire=(index:number):Promise<T> => index===paths.length ? action() : withFileLock(paths[index]!,()=>acquire(index+1));
+    return acquire(0);
 }
 
 function references(entries: readonly StoredEntry[]): Set<string> {
@@ -36,31 +38,15 @@ function decodeReferenceEntry(value: unknown): StoredEntry {
 }
 
 function readReferences(storage: PillarStorageLayout, cwd: string, sessionId: string): StoredEntry[] {
-    const path = getSessionLogPath(storage, cwd, sessionId);
+    const path = getSessionSnapshotPath(storage, cwd, sessionId);
     const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_LOG_BYTES);
     if (content === null) return [];
-    const lines = content.split("\n");
-    if (lines.length > 4_096) throw new Error(`Session log entry limit exceeded: ${path}`);
-    const entries: StoredEntry[] = [];
-    let hasSnapshot = false;
-    for (let n = 0; n < lines.length; n++) {
-        const line = lines[n]!;
-        if (!line.trim()) continue;
-        let value: unknown;
-        try { value = JSON.parse(line); }
-        catch (error) {
-            if (n === lines.length - 1 && !content.endsWith("\n")) break;
-            throw new Error(`Cannot update corrupt session log: ${path}`, {cause: error});
-        }
-        try {
-            const entry = decodeReferenceEntry(value);
-            if (entry.sessionId !== sessionId || getProjectKey(entry.cwd) !== getProjectKey(cwd)) throw new Error("Session owner mismatch");
-            if (hasSnapshot) throw new Error("Duplicate Session snapshot");
-            hasSnapshot = true;
-            entries.push(entry);
-        } catch (error) { throw new Error(`Cannot update invalid session log: ${path}`, {cause: error}); }
-    }
-    return entries;
+    let value: unknown;
+    try { value = JSON.parse(content); }
+    catch { throw new Error(`Invalid Session snapshot JSON: ${path}`); }
+    const entry = decodeReferenceEntry(value);
+    if (entry.sessionId !== sessionId || getProjectKey(entry.cwd) !== getProjectKey(cwd)) throw new Error(`Session owner mismatch: ${path}`);
+    return [entry];
 }
 
 function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry {
@@ -88,6 +74,7 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
 export function createSessionSnapshotCommitter(storage: PillarStorageLayout, cwd: string, sessionId: string) {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     let lastCommit: string | undefined;
+    let needsSweep = true;
     return async (entry: SessionEntry, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, preserveConversation: boolean): Promise<boolean> => {
         const normalized = decodeSessionEntry({...entry, conversation: [], uiEvents: []});
         if (!normalized || !hasCompleteToolPairs(entry.conversation) || entry.conversation.length > 20_000 || entry.uiEvents.length > 4_096) throw new Error("Refusing to persist invalid or oversized session entry");
@@ -130,16 +117,19 @@ export function createSessionSnapshotCommitter(storage: PillarStorageLayout, cwd
         if (Buffer.byteLength(content) > MAX_SESSION_LOG_BYTES || blocks.bytes(ids) + Buffer.byteLength(content) > MAX_SESSION_CONTENT_BYTES || ids.size > 131_072) {
             throw new Error("Session current state exceeds storage budget");
         }
-        const path = getSessionLogPath(storage, cwd, sessionId);
+        const path = getSessionSnapshotPath(storage, cwd, sessionId);
         ensurePrivateStorageDirectory(storage, dirname(path));
-        await blocks.collect(new Set([...oldRefs, ...ids]));
+        const sweep = needsSweep || [...oldRefs].some(id => !ids.has(id));
+        needsSweep = true;
+        if (sweep) await blocks.collect(new Set([...oldRefs, ...ids]));
         await blocks.persist(ids);
         if (compaction) throwIfTurnAborted(compaction.signal);
         await writeFileAtomically(path, content, 0o600);
         lastCommit = JSON.stringify(entries);
         blocks.releaseBodies(ids);
         // Reference commit is the truth; failed reclamation must not invalidate an already committed snapshot.
-        await blocks.collect(ids).catch(() => undefined);
+        if (sweep) await blocks.collect(ids).catch(() => undefined);
+        needsSweep = false;
         if ([...previous, ...entries].some(item => item.compactState?.archives?.length)) {
             await collectArchiveViews(storage, cwd, sessionId, new Set(entries.flatMap(item =>
                 item.compactState?.archives?.map(record => record.id) ?? []))).catch(() => undefined);
@@ -154,12 +144,10 @@ export function hasNewerSessionCompaction(storage: PillarStorageLayout, cwd: str
 }
 
 export function readLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string): SessionSnapshotEntry | null {
-    try {
-        const entry = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
-        if (!entry) return null;
-        const result = hydrate(entry, new SessionContentStore(storage, cwd, sessionId));
-        return result.type === "snapshot" ? result : null;
-    } catch { return null; }
+    const entry = readReferences(storage, cwd, sessionId).at(-1);
+    if (!entry) return null;
+    const result = hydrate(entry, new SessionContentStore(storage, cwd, sessionId));
+    return result.type === "snapshot" ? result : null;
 }
 
 export function readSessionSourceIds(storage: PillarStorageLayout, cwd: string, sessionId: string): string[] {

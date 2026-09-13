@@ -107,3 +107,11 @@ test("--image accepts repeated explicit paths, keeps spaces and rejects overflow
     expect(() => parseCliArgs(Array.from({length: 9}, () => "--image=x.png"))).toThrow("8 images");
     expect(() => parseCliArgs(["--image=x.png", "-r", "s", "--rewind", "c"])).toThrow("Unknown argument");
 });
+
+test("storage maintenance is an explicit standalone command", () => {
+  for (const action of ["projects", "inspect", "preview", "clean", "repair-index"] as const) {
+    expect(parseCliArgs(["--storage", action]).storageAction).toBe(action);
+  }
+  expect(() => parseCliArgs(["--storage", "unknown"])).toThrow();
+  expect(() => parseCliArgs(["--storage", "clean", "-p", "hello"])).toThrow("on its own");
+});

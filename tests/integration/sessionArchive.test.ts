@@ -14,7 +14,7 @@ import {prepareSessionArchive, readArchiveMessages} from "../../src/session/arch
 import {SessionContentStore} from "../../src/session/contentStore.js";
 import {loadSession} from "../../src/session/storage.js";
 import {getSessionContentDirectory, type PillarStorageLayout} from "../../src/persistence/index.js";
-import {getSessionLogPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/session/paths.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {Message} from "../../src/llm/types.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
@@ -103,7 +103,7 @@ test("压缩提交失败或取消不替换原 History，不留下生效档案", 
         const f = fixture(cwd, storage);
         try {
             await saveSessionSnapshot(storage, f.session.createSnapshot(state()));
-            const log = getSessionLogPath(storage, cwd, f.session.sessionId);
+            const log = getSessionSnapshotPath(storage, cwd, f.session.sessionId);
             const originalLog = await readFile(log, "utf8");
             const before = structuredClone(f.session.history);
             const outside = join(cwd, "untouched.txt");
@@ -141,7 +141,7 @@ test("档案正文损坏、未授权 Agent 与符号链接均 fail closed", asyn
             const block = join(getSessionContentDirectory(storage, cwd, f.session.sessionId), record.messages[0]! + ".json");
             await writeFile(block, '{"kind":"message","value":{"role":"user","content":"tampered"}}');
             expect((await f.tool("read_file", {path})).outcome).toBe("denied");
-            expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")).toBeNull();
+            expect(() => loadSession(storage, cwd, f.session.sessionId, "glm-test")).toThrow();
         } finally {await f.resources.close();}
     });
 });
@@ -175,14 +175,14 @@ test("档案数量超限及竞争提交均拒绝发布；长 Unicode 原文分�
                 rebuilt += await readFile(part!.path, "utf8");
             }
             expect(rebuilt).toBe(combined);
-            const before = await readFile(getSessionLogPath(storage, cwd, f.session.sessionId), "utf8");
+            const before = await readFile(getSessionSnapshotPath(storage, cwd, f.session.sessionId), "utf8");
             const draft = prepareSessionArchive(storage, cwd, f.session.sessionId, [{role: "user", origin: "user" as const, content: "other owner"}]);
             const competing = {...f.session.createSnapshot(state()), compactState: {...createCompactState(), compactCount: 2, archives: [draft.record]}};
             await expect(saveSessionCompaction(storage, competing, draft, f.controller.signal)).rejects.toThrow("base changed");
             const oversized = {...f.session.createSnapshot(state()), compactState: {...f.session.compactState,
                 archives: Array.from({length: 129}, (_, index) => prepareSessionArchive(storage, cwd, f.session.sessionId, [{role: "user", origin: "user" as const, content: `quota-${index}`}]).record)}};
             await expect(saveSessionSnapshot(storage, oversized)).rejects.toThrow("invalid");
-            expect(await readFile(getSessionLogPath(storage, cwd, f.session.sessionId), "utf8")).toBe(before);
+            expect(await readFile(getSessionSnapshotPath(storage, cwd, f.session.sessionId), "utf8")).toBe(before);
         } finally {await f.resources.close();}
     });
 });

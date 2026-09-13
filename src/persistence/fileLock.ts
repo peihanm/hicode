@@ -1,303 +1,88 @@
 import {randomUUID} from "node:crypto";
-import {dirname} from "node:path";
-import {type FileHandle, mkdir, open, readFile, rename, stat, unlink,} from "node:fs/promises";
+import {constants} from "node:fs";
+import {dirname, join} from "node:path";
+import {lstat, mkdir, open, readdir, rmdir, unlink} from "node:fs/promises";
 
-interface LockOwner {
-    version: 1;
-    token: string;
-    pid: number;
-    createdAt: string;
-}
-
-export interface FileLockOperations {
-    mkdir(path: string): Promise<void>;
-
-    open(path: string, flags: string): Promise<FileHandle>;
-
-    readFile(path: string): Promise<string>;
-
-    rename(from: string, to: string): Promise<void>;
-
-    stat(path: string): Promise<{ mtimeMs: number }>;
-
-    unlink(path: string): Promise<void>;
-}
-
-export const nodeFileLockOperations: FileLockOperations = {
-    async mkdir(path) {
-        await mkdir(path, {recursive: true});
-    },
-    open,
-    async readFile(path) {
-        return readFile(path, "utf8");
-    },
-    rename,
-    stat,
-    unlink,
-};
-
-interface FileLockConfig {
-    timeoutMs?: number;
-    retryDelayMs?: number;
-    staleMs?: number;
-    now?: () => number;
-    sleep?: (milliseconds: number) => Promise<void>;
-    createToken?: () => string;
-    pid?: number;
-    isProcessAlive?: (pid: number) => boolean;
-    operations?: FileLockOperations;
-}
-
-const DEFAULT_TIMEOUT_MS = 2_000;
-const DEFAULT_RETRY_DELAY_MS = 20;
-const DEFAULT_STALE_MS = 30_000;
+const TIMEOUT_MS = 2_000;
+const RETRY_MS = 20;
+const STALE_MS = 30_000;
+const OWNER = /^([1-9][0-9]*)-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/;
 
 function isCode(error: unknown, code: string): boolean {
-    return Boolean(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as { code?: string }).code === code
-    );
+    return !!error && typeof error === "object" && "code" in error && error.code === code;
 }
 
-function parseOwner(value: string): LockOwner | null {
+function alive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return !isCode(error, "ESRCH"); }
+}
+
+async function removeEmptyDirectory(path: string): Promise<void> {
+    try { await rmdir(path); }
+    catch (error) {
+        if (!isCode(error, "ENOENT") && !isCode(error, "ENOTEMPTY") && !isCode(error, "EEXIST")) throw error;
+    }
+}
+
+async function inspectDirectory(path: string) {
+    const info = await lstat(path);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`Unsafe persistence lock (expected a directory): ${path}`);
+    const entries = await readdir(path, {withFileTypes: true});
+    if (entries.length > 128 || entries.some(entry => !entry.isFile() || !OWNER.test(entry.name))) {
+        throw new Error(`Invalid persistence lock owner: ${path}`);
+    }
+    return {info, entries};
+}
+
+/** Remove only a dead owner's unique marker, then rmdir only if no other owner exists. */
+async function recoverAbandonedDirectory(path: string): Promise<void> {
     try {
-        const owner = JSON.parse(value) as Partial<LockOwner>;
-        if (
-            owner.version !== 1 ||
-            typeof owner.token !== "string" ||
-            typeof owner.pid !== "number" ||
-            typeof owner.createdAt !== "string"
-        ) {
-            return null;
+        const {info, entries} = await inspectDirectory(path);
+        if (entries.length === 0 && Date.now() - info.mtimeMs < STALE_MS) return;
+        for (const entry of entries) {
+            const pid = Number(OWNER.exec(entry.name)![1]);
+            if (!Number.isSafeInteger(pid) || alive(pid)) continue;
+            try { await unlink(join(path, entry.name)); }
+            catch (error) { if (!isCode(error, "ENOENT")) throw error; }
         }
-        return owner as LockOwner;
-    } catch {
-        return null;
-    }
+        // A competing initializer that has published a marker prevents rmdir.
+        await removeEmptyDirectory(path);
+    } catch (error) { if (!isCode(error, "ENOENT")) throw error; }
 }
 
-function defaultIsProcessAlive(pid: number): boolean {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        return isCode(error, "EPERM");
-    }
-}
-
-async function fileExists(
-    path: string,
-    operations: FileLockOperations
-): Promise<boolean> {
-    try {
-        await operations.stat(path);
-        return true;
-    } catch (error) {
-        if (isCode(error, "ENOENT")) return false;
-        throw error;
-    }
-}
-
-async function readOwner(
-    lockPath: string,
-    operations: FileLockOperations
-): Promise<LockOwner | null> {
-    try {
-        return parseOwner(await operations.readFile(lockPath));
-    } catch (error) {
-        if (isCode(error, "ENOENT")) return null;
-        throw error;
-    }
-}
-
-async function releaseOwnedLock(
-    lockPath: string,
-    token: string,
-    operations: FileLockOperations
-): Promise<void> {
-    const owner = await readOwner(lockPath, operations);
-    if (owner?.token !== token) return;
-    try {
-        await operations.unlink(lockPath);
-    } catch (error) {
-        if (!isCode(error, "ENOENT")) throw error;
-    }
-}
-
-async function unlinkIfPresent(
-    path: string,
-    operations: FileLockOperations
-): Promise<void> {
-    try {
-        await operations.unlink(path);
-    } catch (error) {
-        if (!isCode(error, "ENOENT")) throw error;
-    }
-}
-
-async function tryRecoverStaleLock(input: {
-    lockPath: string;
-    recoveryPath: string;
-    staleMs: number;
-    now: () => number;
-    isProcessAlive: (pid: number) => boolean;
-    operations: FileLockOperations;
-    createToken: () => string;
-}): Promise<boolean> {
-    let recoveryHandle: FileHandle | undefined;
-    try {
-        recoveryHandle = await input.operations.open(input.recoveryPath, "wx");
-    } catch (error) {
-        if (isCode(error, "EEXIST")) return false;
-        throw error;
-    }
-
-    try {
-        await recoveryHandle.writeFile("recovering\n", "utf8");
-        await recoveryHandle.close();
-        recoveryHandle = undefined;
-
-        let lockStat: { mtimeMs: number };
-        try {
-            lockStat = await input.operations.stat(input.lockPath);
-        } catch (error) {
-            if (isCode(error, "ENOENT")) return true;
-            throw error;
-        }
-        if (input.now() - lockStat.mtimeMs < input.staleMs) return false;
-
-        const owner = await readOwner(input.lockPath, input.operations);
-        if (owner && input.isProcessAlive(owner.pid)) return false;
-
-        const quarantinePath = `${input.lockPath}.stale.${input.createToken()}`;
-        try {
-            await input.operations.rename(input.lockPath, quarantinePath);
-        } catch (error) {
-            if (isCode(error, "ENOENT")) return true;
-            throw error;
-        }
-        try {
-            await input.operations.unlink(quarantinePath);
-        } catch (error) {
-            if (!isCode(error, "ENOENT")) throw error;
-        }
-        return true;
-    } finally {
-        if (recoveryHandle) {
+/** Directory leases need no recovery guard that can itself be orphaned. */
+export async function withFileLock<T>(path: string, action: () => Promise<T>): Promise<T> {
+    const owner = `${process.pid}-${randomUUID()}`;
+    const marker = join(path, owner);
+    const deadline = Date.now() + TIMEOUT_MS;
+    await mkdir(dirname(path), {recursive: true});
+    while (true) {
+        let created = false;
+        try { await mkdir(path, {mode: 0o700}); created = true; }
+        catch (error) { if (!isCode(error, "EEXIST")) throw error; }
+        if (created) {
+            let published = false;
             try {
-                await recoveryHandle.close();
-            } catch {
-                // Continue with guard cleanup.
+                const handle = await open(marker, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+                published = true;
+                await handle.close();
+                const {entries} = await inspectDirectory(path);
+                // An initializer paused while its empty directory was reaped must not
+                // enter alongside the initializer of a replacement directory.
+                if (entries.length === 1 && entries[0]!.name === owner) return await action();
+            } catch (error) {
+                if (!isCode(error, "ENOENT") || published) throw error;
+            } finally {
+                if (published) {
+                    try { await unlink(marker); }
+                    catch (error) { if (!isCode(error, "ENOENT")) throw error; }
+                }
+                await removeEmptyDirectory(path);
             }
+        } else {
+            await recoverAbandonedDirectory(path);
         }
-        try {
-            await input.operations.unlink(input.recoveryPath);
-        } catch (error) {
-            if (!isCode(error, "ENOENT")) throw error;
-        }
+        if (Date.now() >= deadline) throw new Error(`Timed out waiting for persistence lock: ${path}`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_MS));
     }
 }
-
-/** Serialize a short local-filesystem mutation across Pillar processes. */
-export async function withFileLock<T>(
-    lockPath: string,
-    action: () => Promise<T>
-): Promise<T> {
-    return defaultFileLock(lockPath, action);
-}
-
-export function createFileLock(config: FileLockConfig = {}) {
-    const operations = config.operations ?? nodeFileLockOperations;
-    const now = config.now ?? Date.now;
-    const sleep =
-        config.sleep ??
-        ((milliseconds: number) =>
-            new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
-    const createToken = config.createToken ?? randomUUID;
-    const isProcessAlive = config.isProcessAlive ?? defaultIsProcessAlive;
-    const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
-    const staleMs = config.staleMs ?? DEFAULT_STALE_MS;
-
-    return async function withFileLock<T>(
-        lockPath: string,
-        action: () => Promise<T>
-    ): Promise<T> {
-        const token = createToken();
-        const pid = config.pid ?? process.pid;
-        const recoveryPath = `${lockPath}.recovery`;
-        const deadline = now() + timeoutMs;
-
-        await operations.mkdir(dirname(lockPath));
-
-        while (true) {
-            if (!(await fileExists(recoveryPath, operations))) {
-                let handle: FileHandle | undefined;
-                try {
-                    handle = await operations.open(lockPath, "wx");
-                    const owner: LockOwner = {
-                        version: 1,
-                        token,
-                        pid,
-                        createdAt: new Date(now()).toISOString(),
-                    };
-                    await handle.writeFile(`${JSON.stringify(owner)}\n`, "utf8");
-                    await handle.sync();
-                    await handle.close();
-                    handle = undefined;
-
-                    // A stale recovery may have started between the first guard check and
-                    // exclusive create. Let it finish before claiming ownership.
-                    if (await fileExists(recoveryPath, operations)) {
-                        await releaseOwnedLock(lockPath, token, operations);
-                    } else {
-                        let result: T | undefined;
-                        let actionError: unknown;
-                        try {
-                            result = await action();
-                        } catch (error) {
-                            actionError = error;
-                        }
-                        try {
-                            await releaseOwnedLock(lockPath, token, operations);
-                        } catch (releaseError) {
-                            if (actionError === undefined) throw releaseError;
-                        }
-                        if (actionError !== undefined) throw actionError;
-                        return result as T;
-                    }
-                } catch (error) {
-                    if (handle) {
-                        try {
-                            await handle.close();
-                        } catch {
-                            // Preserve the acquisition error.
-                        }
-                        await unlinkIfPresent(lockPath, operations);
-                    }
-                    if (!isCode(error, "EEXIST")) throw error;
-                }
-            }
-
-            const recovered = await tryRecoverStaleLock({
-                lockPath,
-                recoveryPath,
-                staleMs,
-                now,
-                isProcessAlive,
-                operations,
-                createToken,
-            });
-            if (recovered) continue;
-
-            if (now() >= deadline) {
-                throw new Error(`Timed out waiting for persistence lock: ${lockPath}`);
-            }
-            await sleep(retryDelayMs);
-        }
-    };
-}
-
-const defaultFileLock = createFileLock();

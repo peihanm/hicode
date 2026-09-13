@@ -80,6 +80,7 @@ export interface SubagentResult {
     toolUseCount: number;
     durationMs: number;
     transcriptPath?: string;
+    transcriptIssue?: string;
 }
 
 export type SubagentRunner = (

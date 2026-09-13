@@ -1,3 +1,4 @@
+import {finishPromptLogRun} from "../llm/promptLog.js";
 import {contentText, type MessageContent} from "../images/content.js";
 import type {AgentEvent, AgentResult} from "../agent/types.js";
 import {
@@ -173,6 +174,7 @@ export function createRootTurnRunnerFactory(
             }
             throw error;
         } finally {
+            finishPromptLogRun(resources.storage, {scope:"session", ownerCwd:resources.cwd, sessionId:session.sessionId, runId:turnId});
             await settleHost();
             session.endTurn();
             if (!sessionSaved) {
@@ -197,6 +199,9 @@ export function createRootTurnRunnerFactory(
                         // Diagnostic sink failures must not replace the original Turn error.
                     }
                 }
+            }
+            for (const message of session.takeStorageIssues()) {
+                try { await onLifecycleIssue({scope: "session", message, error: new Error(message)}); } catch {}
             }
             try {
                 const input: Extract<HookInput, {hook_event_name: "TurnEnd"}> = {

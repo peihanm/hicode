@@ -1,3 +1,6 @@
+import {randomUUID} from "node:crypto";
+import {finishPromptLogRun} from "../llm/promptLog.js";
+import type {LLMTrace} from "../llm/types.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import {createLLMCaller} from "../llm/index.js";
 import type {LLMCaller, Message, OpenAITool} from "../llm/types.js";
@@ -97,6 +100,9 @@ export function createHookPromptExecutorFactory(
                 const onAbort = () => controller.abort(input.signal.reason);
                 if (input.signal.aborted) onAbort();
                 else input.signal.addEventListener("abort", onAbort, {once: true});
+                const event=input.envelope.event;
+                const inheritedRun="turn_id" in event && typeof event.turn_id==="string" ? event.turn_id : undefined;
+                const trace:LLMTrace={scope:"session",ownerCwd:options.cwd,sessionId:event.session_id,runId:inheritedRun??randomUUID()};
                 const timer = setTimeout(
                     () => controller.abort("timeout"),
                     input.timeoutMs
@@ -110,7 +116,7 @@ export function createHookPromptExecutorFactory(
                         options.cwd,
                         options.model,
                         "hook",
-                        controller.signal
+                        controller.signal, undefined, undefined, undefined, trace
                     );
                     const text = result.message.role === "assistant"
                         ? result.message.content?.trim()
@@ -149,6 +155,7 @@ export function createHookPromptExecutorFactory(
                     }
                     throw error;
                 } finally {
+                    if(!inheritedRun)finishPromptLogRun(options.storage,trace);
                     clearTimeout(timer);
                     input.signal.removeEventListener("abort", onAbort);
                 }

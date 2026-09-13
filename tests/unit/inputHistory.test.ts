@@ -1,70 +1,47 @@
-import { describe, expect, test } from "bun:test";
-import { appendFile, mkdir, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { createInputHistoryStore } from "../../src/session/inputHistory/index.js";
-import { withTempProject } from "../helpers/tempProject.js";
+import {expect,test} from "bun:test";
+import {mkdir,readFile,stat,symlink,writeFile} from "node:fs/promises";
+import {dirname,join} from "node:path";
+import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
+import {getSessionInputHistoryPath} from "../../src/persistence/layout.js";
+import {withTempProject} from "../helpers/tempProject.js";
 
-describe("persistent input history", () => {
-  test("全局 JSONL 按 Session 和项目过滤、最近优先去重并跳过损坏行", async () => {
-    await withTempProject(async (root, storage) => {
-      const projectA = join(root, "a");
-      const projectB = join(root, "b");
-      const historyPath = join(root, "user", "history.jsonl");
-      const sessionA = "session-a";
-      const sessionB = "session-b";
-      await Promise.all([
-        mkdir(projectA, { recursive: true }),
-        mkdir(projectB, { recursive: true }),
-      ]);
-      const store = createInputHistoryStore(storage, { historyPath });
-
-      await store.append(projectA, sessionA, "第一条");
-      await store.append(projectB, sessionA, "其他项目");
-      await store.append(projectA, sessionA, "第二条");
-      await store.append(projectA, sessionB, "同项目的其他会话");
-      await store.append(projectA, sessionA, "第一条");
-      await appendFile(
-        historyPath,
-        `${JSON.stringify({
-          version: 1,
-          input: "旧版项目级历史",
-          project: projectA,
-          timestamp: new Date().toISOString(),
-        })}\n损坏的尾行`,
-        "utf8"
-      );
-
-      expect(await store.load(projectA, sessionA)).toEqual(["第二条", "第一条"]);
-      expect(await store.load(projectA, sessionB)).toEqual(["同项目的其他会话"]);
-      expect(await store.load(projectB, sessionA)).toEqual(["其他项目"]);
-      if (process.platform !== "win32") {
-        expect((await stat(historyPath)).mode & 0o777).toBe(0o600);
-      }
-    });
-  });
-
-  test("并发 append 不丢失不同输入", async () => {
-    await withTempProject(async (cwd, storage) => {
-      const historyPath = join(cwd, "user", "history.jsonl");
-      const store = createInputHistoryStore(storage, { historyPath, limit: 50 });
-      const inputs = Array.from({ length: 12 }, (_, index) => `prompt-${index}`);
-
-      await Promise.all(
-        inputs.map((input) => store.append(cwd, "session-a", input))
-      );
-
-      expect(await store.load(cwd, "session-a")).toEqual(inputs);
-    });
-  });
-
-  test("超过 1 MiB 的输入只留在当前 UI，不写入用户历史", async () => {
-    await withTempProject(async (cwd, storage) => {
-      const historyPath = join(cwd, "user", "history.jsonl");
-      const store = createInputHistoryStore(storage, { historyPath });
-
-      await store.append(cwd, "session-a", "x".repeat(1024 * 1024 + 1));
-
-      expect(await store.load(cwd, "session-a")).toEqual([]);
-    });
-  });
+test("history belongs to a session and retains recent unique inputs",async()=>{
+ await withTempProject(async(cwd,storage)=>{
+  const store=createInputHistoryStore(storage);
+  await store.append(cwd,"a","one");await store.append(cwd,"a","two");await store.append(cwd,"a","one");
+  for(let i=0;i<3;i++)await store.append(cwd,"b",`${i}:`+"x".repeat(800_000));
+  expect(await store.load(cwd,"a")).toEqual(["two","one"]);
+  expect((await stat(getSessionInputHistoryPath(storage,cwd,"b"))).size).toBeLessThanOrEqual(2*1024*1024);
+  expect((await stat(getSessionInputHistoryPath(storage,cwd,"a"))).mode&0o777).toBe(0o600);
+ });
+});
+test("concurrent stores preserve additions, with a physical 100 entry limit",async()=>{
+ await withTempProject(async(cwd,storage)=>{
+  const a=createInputHistoryStore(storage),b=createInputHistoryStore(storage);
+  await Promise.all(Array.from({length:12},(_,i)=>(i%2?a:b).append(cwd,"a",`line-${i}`)));
+  expect(await a.load(cwd,"a")).toHaveLength(12);
+  for(let i=0;i<110;i++)await a.append(cwd,"a",`new-${i}`);
+  const values=await a.load(cwd,"a");expect(values).toHaveLength(100);expect(values[0]).toBe("new-10");
+  await a.append(cwd,"a","x".repeat(1024*1024+1));expect(await a.load(cwd,"a")).toEqual(values);
+ });
+});
+test("symlink files and malformed data fail closed without modifying their targets",async()=>{
+ await withTempProject(async(cwd,storage)=>{
+  const store=createInputHistoryStore(storage),path=getSessionInputHistoryPath(storage,cwd,"a");
+  await mkdir(dirname(path),{recursive:true});
+  const target=join(cwd,"private");await writeFile(target,"keep");await symlink(target,path);
+  await expect(store.append(cwd,"a","bad")).rejects.toThrow();await expect(store.load(cwd,"a")).rejects.toThrow();
+  expect(await readFile(target,"utf8")).toBe("keep");
+  const bad=getSessionInputHistoryPath(storage,cwd,"b");await mkdir(dirname(bad));await writeFile(bad,"broken");
+  await expect(store.append(cwd,"b","bad")).rejects.toThrow("Invalid");expect(await readFile(bad,"utf8")).toBe("broken");
+ });
+});
+test("non-regular files are rejected without blocking",async()=>{
+ await withTempProject(async(cwd,storage)=>{
+  const path=getSessionInputHistoryPath(storage,cwd,"a");await mkdir(dirname(path),{recursive:true});
+  if(process.platform!=="win32"){
+   const command=Bun.spawnSync(["mkfifo",path]);expect(command.exitCode).toBe(0);
+   await expect(createInputHistoryStore(storage).load(cwd,"a")).rejects.toThrow("regular");
+  }
+ });
 });

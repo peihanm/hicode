@@ -5,7 +5,7 @@ import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createSessionPersistence, loadSession} from "../../src/session/storage.js";
 import {prepareSessionArchive} from "../../src/session/archive.js";
-import {getSessionLogPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/session/paths.js";
 import {getSessionContentDirectory} from "../../src/persistence/layout.js";
 import type {SaveSessionSnapshotInput} from "../../src/session/types.js";
 
@@ -45,9 +45,9 @@ test("跨提交缓存不能掩盖磁盘内容被篡改", async () => {
         const input: SaveSessionSnapshotInput = {cwd, sessionId: "tamper", model: "glm-test", todos: [], permissionMode: "ask", collaborationMode: "build",
             history: [{role: "user", origin: "user", content: "original"}]};
         await writer.save(input);
-        const record: {conversation: string[]} = JSON.parse(await readFile(getSessionLogPath(storage, cwd, "tamper"), "utf8"));
+        const record: {conversation: string[]} = JSON.parse(await readFile(getSessionSnapshotPath(storage, cwd, "tamper"), "utf8"));
         await writeFile(join(getSessionContentDirectory(storage, cwd, "tamper"), `${record.conversation[0]}.json`), '{}');
         await expect(writer.save(input)).rejects.toThrow("changed since last commit");
-        expect(loadSession(storage, cwd, "tamper", "glm-test")).toBeNull();
+        expect(() => loadSession(storage, cwd, "tamper", "glm-test")).toThrow();
     });
 });

@@ -1,3 +1,4 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import {afterEach, expect, test} from "bun:test";
 import {readFile, readdir} from "node:fs/promises";
 import {join} from "node:path";
@@ -61,8 +62,8 @@ test("残缺工具响应只重试模型请求，重置草稿并累加已报告 u
     expect(result.contextUsage?.tokenCount).toBe(12);
     expect(updates).toEqual([{type: "reset"}, {type: "delta", text: "discard this draft"}, {type: "reset"}, {type: "delta", text: "recovered"}]);
     expect(phases.filter(phase => phase === "retrying")).toHaveLength(1);
-    const directory = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
-    const logs = await Promise.all((await readdir(directory)).map(async file => JSON.parse(await readFile(join(directory, file), "utf8"))));
+    const directory = join(getProjectDebugDirectory(storage, cwd), "requests");
+    const logs = await Promise.all((await listPromptLogs(directory)).map(async file => JSON.parse(await readFile(join(directory, file), "utf8"))));
     const failed = logs.find(log => log.response.error);
     expect(failed.response.rawResponse.protocolFailure).toMatchObject({code: "missing_tool_identity", finishReason: "tool_calls", done: true,
         tools: [{index: 0, hasId: false, hasName: false, argumentCharacters: 19}]});
@@ -144,8 +145,8 @@ test.each([
         phase: "retrying", outputCharacters: 0, estimatedOutputTokens: 0,
         retry: {reason, attempt: 2, maxAttempts: 3},
     }]);
-    const directory = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
-    const logs = await Promise.all((await readdir(directory)).map(file => readFile(join(directory, file), "utf8")));
+    const directory = join(getProjectDebugDirectory(storage, cwd), "requests");
+    const logs = await Promise.all((await listPromptLogs(directory)).map(file => readFile(join(directory, file), "utf8")));
     expect(logs.join("")).not.toContain("private-output");
     expect(logs.join("")).not.toContain("private connection details");
 }));

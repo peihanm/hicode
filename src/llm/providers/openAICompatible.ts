@@ -1,3 +1,4 @@
+import {randomUUID} from "node:crypto";
 import {encodeImageMessages} from "../../images/wire.js";
 import {ContextLengthError, isContextLengthResponse} from "../errors.js";
 import {imageReferences} from "../../images/content.js";
@@ -7,7 +8,7 @@ import {
     throwIfTurnAborted,
     TurnInterruptedError,
 } from "../../runtime/abort.js";
-import {beginPromptLog} from "../promptLog.js";
+import {beginPromptLog, finishPromptLogRun} from "../promptLog.js";
 import type {LLMCallOptions, LLMCallResult, LLMRetryInfo, LLMStreamProgress, Message, PromptLogResponse, TokenUsage,} from "../types.js";
 import {consumeOpenAICompatibleSSE, OpenAICompatibleProtocolError} from "./openAICompatibleStream.js";
 import {Buffer} from "node:buffer";
@@ -314,7 +315,7 @@ async function callOpenAICompatibleCore(
             options.kind,
             options.model,
             {...requestBody, messages: toProviderMessages(options.messages, endpoint.preserveToolCallReasoning === true), ...(hasImages ? {imagesSubmitted: true} : {})},
-            [endpoint.apiKey]
+            [endpoint.apiKey], options.trace, attempt
         );
         let lastStreamProgress: LLMStreamProgress | undefined;
         const finishPromptLog = (response: PromptLogResponse) =>
@@ -449,6 +450,10 @@ async function callOpenAICompatibleCore(
                 finishReason: streamed.finishReason,
                 contentLength: streamed.content.length,
                 reasoningContentLength: streamed.reasoningContent.length,
+                // Diagnostics only; provider-specific History/replay rules remain unchanged.
+                ...(streamed.reasoningContent.trim().length > 0
+                    ? {reasoning_content: streamed.reasoningContent}
+                    : {}),
                 toolCallCount: streamed.toolCalls.length,
             };
             if (emptyResponse) {
@@ -559,8 +564,11 @@ export function createOpenAICompatibleCaller(
         ...defaultCallerConfig,
         ...overrides,
     };
-    return (options: LLMCallOptions, endpoint: OpenAICompatibleEndpoint) =>
-        callOpenAICompatibleCore(options, endpoint, config);
+    return async (options: LLMCallOptions, endpoint: OpenAICompatibleEndpoint) => {
+        const trace = options.trace ?? {scope: "maintenance" as const, ownerCwd: options.cwd, runId: randomUUID()};
+        try { return await callOpenAICompatibleCore({...options, trace}, endpoint, config); }
+        finally { if (!options.trace) finishPromptLogRun(options.storage, trace); }
+    };
 }
 
 export const callOpenAICompatible = createOpenAICompatibleCaller();

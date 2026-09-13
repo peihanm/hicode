@@ -15,7 +15,7 @@ import {listSessionIndex, loadLatestSession, loadSession} from "../../src/sessio
 import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import {getSessionIndexPath, getSessionLogPath} from "../../src/session/paths.js";
+import {getSessionIndexPath, getSessionSnapshotPath} from "../../src/session/paths.js";
 import {getProjectSessionsDirectory} from "../../src/persistence/index.js";
 
 describe("session persistence", () => {
@@ -93,16 +93,16 @@ describe("session persistence", () => {
       });
       const snapshot = JSON.parse(
         await readFile(
-          getSessionLogPath(storage, cwd, "session-1"),
+          getSessionSnapshotPath(storage, cwd, "session-1"),
           "utf8"
         )
       );
       expect(snapshot.version).toBe(8);
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
-      expect((await stat(getSessionLogPath(storage, cwd, "session-1"))).mode & 0o777)
+      expect((await stat(getSessionSnapshotPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
       expect((await stat(dirname(
-        getSessionLogPath(storage, cwd, "session-1")
+        getSessionSnapshotPath(storage, cwd, "session-1")
       ))).mode & 0o777).toBe(0o700);
       expect(loadLatestSession(storage, cwd, "glm-test")?.sessionId).toBe("session-1");
     });
@@ -123,7 +123,7 @@ describe("session persistence", () => {
         permissionMode: "ask",
         collaborationMode: "build",
       });
-      const path = getSessionLogPath(storage, cwd, "legacy-tool-discovery");
+      const path = getSessionSnapshotPath(storage, cwd, "legacy-tool-discovery");
       const snapshot = JSON.parse(await readFile(path, "utf8"));
       snapshot.toolDiscovery = {
         version: 1,
@@ -156,67 +156,36 @@ describe("session persistence", () => {
         permissionMode: "ask",
         collaborationMode: "build",
       });
-      const path = getSessionLogPath(storage, cwd, "unversioned");
+      const path = getSessionSnapshotPath(storage, cwd, "unversioned");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
         string,
         unknown
       >;
       snapshot.version = 3;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
       snapshot.version = 2;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
 
       snapshot.version = 1;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
 
       delete snapshot.version;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
 
-      expect(loadSession(storage, cwd, "unversioned", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
       expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["unversioned"]);
     });
   });
 
-  test("忽略末尾损坏行并恢复最后一个有效 snapshot", async () => {
+  test("a malformed snapshot reports corruption instead of pretending the session is absent", async () => {
     await withTempProject(async (cwd, storage) => {
-      await saveSessionSnapshot(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "session-2",
-        history: [
-          { role: "system", content: "system" },
-          { role: "user", origin: "user" as const, content: "保留我" },
-        ],
-        todos: [],
-        permissionMode: "ask",
-        collaborationMode: "build",
-      });
-      await appendFile(
-        getSessionLogPath(storage, cwd, "session-2"),
-        "{partial-json"
-      );
-
-      const loaded = loadSession(storage, cwd, "session-2", "glm-test");
-      expect(loaded?.history.at(-1)).toEqual({ role: "user", origin: "user" as const, content: "保留我" });
-
-      await saveSessionSnapshot(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "session-2",
-        history: loaded?.history ?? [],
-        todos: [],
-        permissionMode: "ask",
-        collaborationMode: "build",
-      });
-      const repairedLines = (await readFile(
-        getSessionLogPath(storage, cwd, "session-2"),
-        "utf8"
-      )).trim().split("\n");
-      expect(repairedLines.every((line) => Boolean(JSON.parse(line)))).toBe(true);
-      expect(repairedLines).toHaveLength(1);
+      const path = getSessionSnapshotPath(storage, cwd, "broken");
+      await mkdir(dirname(path), {recursive: true});
+      await writeFile(path, "{partial-json");
+      expect(() => loadSession(storage, cwd, "broken", "glm-test")).toThrow("Invalid Session snapshot JSON");
     });
   });
 
@@ -234,7 +203,7 @@ describe("session persistence", () => {
         permissionMode: "ask",
         collaborationMode: "build",
       });
-      const path = getSessionLogPath(storage, cwd, "untrusted-session");
+      const path = getSessionSnapshotPath(storage, cwd, "untrusted-session");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
         string,
         unknown
@@ -242,7 +211,7 @@ describe("session persistence", () => {
 
       snapshot.cwd = `${cwd}-other`;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(loadSession(storage, cwd, "untrusted-session", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "untrusted-session", "glm-test")).toThrow();
       expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["untrusted-session"]);
 
       snapshot.cwd = cwd;
@@ -256,7 +225,7 @@ describe("session persistence", () => {
         }],
       }];
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(loadSession(storage, cwd, "untrusted-session", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "untrusted-session", "glm-test")).toThrow();
     });
   });
 
@@ -274,7 +243,7 @@ describe("session persistence", () => {
         permissionMode: "ask",
         collaborationMode: "build",
       });
-      const path = getSessionLogPath(storage, cwd, "strict-mutation");
+      const path = getSessionSnapshotPath(storage, cwd, "strict-mutation");
       await appendFile(path, "{}\n");
       const before = await readFile(path, "utf8");
 
@@ -289,7 +258,7 @@ describe("session persistence", () => {
         todos: [],
         permissionMode: "ask",
         collaborationMode: "build",
-      })).rejects.toThrow("Cannot update invalid session log");
+      })).rejects.toThrow("Invalid Session snapshot JSON");
       expect(await readFile(path, "utf8")).toBe(before);
 
       await saveSessionSnapshot(storage, {
@@ -439,7 +408,7 @@ describe("session persistence", () => {
       );
 
       const lines = (
-        await readFile(getSessionLogPath(storage, cwd, "shared"), "utf8")
+        await readFile(getSessionSnapshotPath(storage, cwd, "shared"), "utf8")
       )
         .trim()
         .split("\n");
@@ -468,7 +437,7 @@ describe("session persistence", () => {
       }
 
       const lines = (await readFile(
-        getSessionLogPath(storage, cwd, "compact-log"),
+        getSessionSnapshotPath(storage, cwd, "compact-log"),
         "utf8"
       )).trim().split("\n").map((line) => JSON.parse(line) as {type: string});
       expect(lines.map((line) => line.type)).toEqual([
@@ -509,7 +478,7 @@ describe("session persistence", () => {
           permissionMode: "ask",
         collaborationMode: "build",
         })
-      ).rejects.toThrow("Cannot update corrupt session index");
+      ).resolves.toBeUndefined();
       expect(await readFile(indexPath, "utf8")).toBe("{corrupt-index");
       expect(loadSession(storage, cwd, "after-corruption", "glm-test")?.history.at(-1)).toEqual({
         role: "user", origin: "user" as const,
@@ -553,14 +522,14 @@ describe("session persistence", () => {
         permissionMode: "ask",
         collaborationMode: "build",
       });
-      const logPath = getSessionLogPath(storage, cwd, "file-symlink");
+      const logPath = getSessionSnapshotPath(storage, cwd, "file-symlink");
       const originalLog = await readFile(logPath, "utf8");
       const redirectedLog = join(cwd, "redirected-events.jsonl");
       await writeFile(redirectedLog, originalLog, "utf8");
       await unlink(logPath);
       await symlink(redirectedLog, logPath);
 
-      expect(loadSession(storage, cwd, "file-symlink", "glm-test")).toBeNull();
+      expect(() => loadSession(storage, cwd, "file-symlink", "glm-test")).toThrow();
       await expect(saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",
@@ -578,7 +547,7 @@ describe("session persistence", () => {
       await writeFile(redirectedIndex, originalIndex, "utf8");
       await unlink(indexPath);
       await symlink(redirectedIndex, indexPath);
-      expect(listSessionIndex(storage, cwd)).toEqual([]);
+      expect(() => listSessionIndex(storage, cwd)).toThrow();
       expect(await readFile(redirectedIndex, "utf8")).toBe(originalIndex);
     });
   });

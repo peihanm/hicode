@@ -2,7 +2,7 @@ import {imageAssetId} from "../images/identity.js";
 import {constants} from "node:fs";
 import {createHash, randomUUID} from "node:crypto";
 import {storedImageSchema, imageReferenceSchema, type StoredImage, type ImageReference} from "../images/content.js";
-import {chmod, link, lstat, open, readdir, readFile, rm, stat, truncate, writeFile,} from "node:fs/promises";
+import {chmod, link, lstat, open, readdir, readFile, rm, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
 import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock} from "../persistence/index.js";
 import {getArtifactKey, getResultId, getToolResultSessionDir,} from "./paths.js";
@@ -64,7 +64,6 @@ export class ToolResultStore {
     readonly maxSessionBytes: number;
     readonly previewChars: number;
     readonly sessionId: string;
-    private temporaryFilesCleaned = false;
     private readonly projectsRoot: string;
 
     constructor(
@@ -115,28 +114,8 @@ export class ToolResultStore {
             throw new ToolResultStoreError("tool result session directory is not safe");
         }
         await chmod(this.sessionDir, 0o700);
-        if (this.temporaryFilesCleaned) return;
-        this.temporaryFilesCleaned = true;
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        try {
-            const entries = await readdir(this.sessionDir, {withFileTypes: true});
-            if (entries.length > MAX_TOOL_RESULT_DIRECTORY_ENTRIES) {
-                throw new ToolResultStoreError("tool result directory entry limit exceeded");
-            }
-            await Promise.all(
-                entries
-                    .filter((entry) => entry.isFile() && entry.name.startsWith(".tmp-"))
-                    .map(async (entry) => {
-                        const path = join(this.sessionDir, entry.name);
-                        if ((await stat(path)).mtimeMs < cutoff) {
-                            await rm(path, {force: true});
-                        }
-                    })
-            );
-        } catch (error) {
-            if (error instanceof ToolResultStoreError) throw error;
-            // Cleanup is best-effort; a stale temp must not block a new tool result.
-        }
+        // Temporary output can belong to another live Root. Explicit idle-project
+        // maintenance owns reclamation; file age alone does not establish liveness.
     }
 
     private async currentUsage(): Promise<number> {

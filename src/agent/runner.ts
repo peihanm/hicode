@@ -239,7 +239,8 @@ async function runAgentCore(
                         });
                     },
                     draft.update,
-                    reference => ctx.imageAccess!.read(reference)
+                    reference => ctx.imageAccess!.read(reference),
+                    ctx.llmTrace ?? {scope: "session", ownerCwd: ctx.cwd, sessionId: ctx.sessionId, runId: ctx.turnId}
                 );
             } catch (error) {
                 if (error instanceof ContextLengthError && !ctx.signal.aborted && !contextLengthRecoveryUsed && hasNextIteration && ctx.sessionCompaction) {

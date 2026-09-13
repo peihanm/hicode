@@ -1,34 +1,26 @@
-import {
-    chmodSync,
-    lstatSync,
-    mkdirSync,
-    readdirSync,
-    renameSync,
-    statSync,
-    unlinkSync,
-    writeFileSync,
-} from "node:fs";
+import {z} from "zod";
+import {lstatSync, readdirSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {randomUUID} from "node:crypto";
-import {dirname, join} from "node:path";
-import {
-    getProjectDebugDirectory,
-    getProjectStorageDirectory,
-    type PillarStorageLayout,
-} from "../persistence/index.js";
-import type {LLMCallKind, PromptLogPendingResponse, PromptLogRequest, PromptLogResponse,} from "./types.js";
+import {join,isAbsolute} from "node:path";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, type PillarStorageLayout} from "../persistence/index.js";
+import {getPromptLogDirectory} from "../persistence/layout.js";
+import type {LLMCallKind, LLMTrace, PromptLogPendingResponse, PromptLogRequest, PromptLogResponse} from "./types.js";
+import {hashProjectValue} from "../persistence/project.js";
 
-// Prompt logs are project runtime diagnostics, not repository configuration.
-// Failure is nonfatal to avoid interrupting the main Agent workflow.
-const PROMPT_LOG_DIR = "prompt-logs";
 const MAX_PROMPT_LOG_BYTES = 64 * 1024 * 1024;
 const MAX_PROMPT_LOG_FILES = 200;
 const MAX_PROMPT_LOG_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_TOOL_SEARCH_DESCRIPTION_CHARS = 20_000;
-const PROMPT_LOG_FILE = /^\d{4}-\d{2}-\d{2}T.+_[0-9a-f-]+\.json$/i;
-
-export interface PromptLogHandle {
-    finish(response: PromptLogResponse): void;
-}
+const REQUEST_FILE = /^\d{4}-\d{2}-\d{2}T.+_[0-9a-f-]+\.json$/i;
+export interface PromptLogHandle {finish(response: PromptLogResponse): void}
+const traceBase={ownerCwd:z.string().max(4096).refine(isAbsolute),runId:z.string().min(1).max(512)};
+const traceSchema=z.discriminatedUnion("scope",[
+    z.object({...traceBase,scope:z.literal("session"),sessionId:z.string().min(1).max(512),agentId:z.string().min(1).max(512).optional()}).strict(),
+    z.object({...traceBase,scope:z.literal("maintenance")}).strict(),
+]);
+const runSchema=z.object({version:z.literal(1),trace:traceSchema,pid:z.number().int().positive().max(2147483647),
+    startedAt:z.string().datetime(),completedAt:z.string().datetime().optional(),pending:z.array(z.string().regex(REQUEST_FILE)).max(200),omittedRequests:z.number().int().nonnegative(),writeFailure:z.object({request:z.string().regex(REQUEST_FILE),at:z.string().datetime()}).strict().optional()}).strict();
+type RunRecord=z.infer<typeof runSchema>;
 
 function toolName(value: unknown): string | undefined {
     if (!value || typeof value !== "object") return undefined;
@@ -66,46 +58,6 @@ function compactRequest(request: PromptLogRequest): Record<string, unknown> {
     };
 }
 
-function isCode(error: unknown, code: string): boolean {
-    return Boolean(
-        error && typeof error === "object" && "code" in error &&
-        (error as {code?: string}).code === code
-    );
-}
-
-function ensureDirectory(path: string): void {
-    try {
-        mkdirSync(path, {mode: 0o700});
-    } catch (error) {
-        if (!isCode(error, "EEXIST")) throw error;
-    }
-    const info = lstatSync(path);
-    if (!info.isDirectory() || info.isSymbolicLink()) {
-        throw new Error(`Unsafe Prompt Log directory: ${path}`);
-    }
-    chmodSync(path, 0o700);
-}
-
-function ensurePromptLogDirectory(
-    storage: PillarStorageLayout,
-    cwd: string
-): string {
-    const projectDirectory = getProjectStorageDirectory(storage, cwd);
-    const debugDirectory = getProjectDebugDirectory(storage, cwd);
-    const logDirectory = join(debugDirectory, PROMPT_LOG_DIR);
-    mkdirSync(storage.pillarHome, {recursive: true, mode: 0o700});
-    ensureDirectory(storage.pillarHome);
-    for (const directory of [
-        storage.projectsRoot,
-        projectDirectory,
-        debugDirectory,
-        logDirectory,
-    ]) {
-        ensureDirectory(directory);
-    }
-    return logDirectory;
-}
-
 function redactSerializedLog(serialized: string, secrets: readonly string[]): string {
     const values = [...new Set(secrets.filter((value) => value.length > 0))]
         .sort((left, right) => right.length - left.length);
@@ -120,94 +72,109 @@ function redactSerializedLog(serialized: string, secrets: readonly string[]): st
     return redacted;
 }
 
-function prunePromptLogs(directory: string): void {
-    const files = readdirSync(directory, {withFileTypes: true})
-        .filter((entry) => entry.isFile() && PROMPT_LOG_FILE.test(entry.name))
-        .map((entry) => {
-            const path = join(directory, entry.name);
-            return {name: entry.name, path, size: statSync(path).size};
-        })
-        .sort((left, right) => right.name.localeCompare(left.name));
-    let retainedBytes = 0;
-    for (let index = 0; index < files.length; index += 1) {
-        const file = files[index]!;
-        const withinCount = index < MAX_PROMPT_LOG_FILES;
-        const withinBytes = retainedBytes + file.size <= MAX_PROMPT_LOG_TOTAL_BYTES;
-        if (withinCount && (withinBytes || index === 0)) {
-            retainedBytes += file.size;
-        } else {
-            unlinkSync(file.path);
+
+function alive(pid:number):boolean {
+    if(!Number.isSafeInteger(pid)||pid<=0)return false;
+    try{process.kill(pid,0);return true;}catch(error){return !(error&&typeof error==="object"&&"code" in error&&error.code==="ESRCH");}
+}
+function runDirectory(storage:PillarStorageLayout,trace:LLMTrace):string {
+    return join(getPromptLogDirectory(storage,trace.ownerCwd,trace.scope==="session"?trace.sessionId:undefined),`run-${hashProjectValue(trace.runId,32)}`);
+}
+function atomic(path:string,text:string):void {
+    const temporary=`${path}.${process.pid}.${randomUUID()}.tmp`;
+    try {writeFileSync(temporary,text,{flag:"wx",mode:0o600});renameSync(temporary,path);}
+    finally {try{rmSync(temporary);}catch{}}
+}
+function readRun(storage:PillarStorageLayout,directory:string):RunRecord|undefined {
+    const text=readPrivateStorageTextFile(storage,join(directory,"run.json"),32*1024);
+    if(text===null)return;
+    return runSchema.parse(JSON.parse(text));
+}
+function writeRun(directory:string,run:RunRecord):void {atomic(join(directory,"run.json"),JSON.stringify(run,null,2));}
+
+/** Retire completed runs first; active runs keep pending requests and expose any coverage gap. */
+function prune(storage:PillarStorageLayout,root:string,currentFile:string):boolean {
+    const runs: Array<{directory:string;record:RunRecord;files:Array<{name:string;bytes:number}>;active:boolean}>=[];
+    const entries=readdirSync(root,{withFileTypes:true});
+    if(entries.length>2000)return false;
+    for(const entry of entries){
+        if(!entry.isDirectory()||!/^run-[a-f0-9]{32}$/.test(entry.name))continue;
+        const directory=join(root,entry.name),record=readRun(storage,directory);
+        if(!record)continue;
+        const files=readdirSync(directory,{withFileTypes:true}).filter(file=>file.isFile()&&REQUEST_FILE.test(file.name))
+            .map(file=>({name:file.name,bytes:lstatSync(join(directory,file.name)).size}));
+        runs.push({directory,record,files,active:(!record.completedAt||record.pending.length>0)&&alive(record.pid)});
+    }
+    let count=runs.reduce((n,run)=>n+run.files.length,0),bytes=runs.reduce((n,run)=>n+run.files.reduce((m,file)=>m+file.bytes,0),0);
+    const over=()=>count>MAX_PROMPT_LOG_FILES||bytes>MAX_PROMPT_LOG_TOTAL_BYTES;
+    for(const run of runs.sort((a,b)=>a.record.startedAt.localeCompare(b.record.startedAt))){
+        if(!over())break;
+        if(run.active||run.files.some(file=>join(run.directory,file.name)===currentFile))continue;
+        rmSync(run.directory,{recursive:true});count-=run.files.length;bytes-=run.files.reduce((n,file)=>n+file.bytes,0);
+    }
+    if(over())for(const run of runs){
+        if(!run.active)continue;
+        for(const file of run.files.sort((a,b)=>a.name.localeCompare(b.name))){
+            if(!over())break;
+            if(run.record.pending.includes(file.name)||join(run.directory,file.name)===currentFile)continue;
+            rmSync(join(run.directory,file.name));count--;bytes-=file.bytes;run.record.omittedRequests++;
+            writeRun(run.directory,run.record);
         }
     }
+    return !over();
 }
 
-export function beginPromptLog(
-    storage: PillarStorageLayout,
-    cwd: string,
-    kind: LLMCallKind,
-    model: string,
-    request: PromptLogRequest,
-    secrets: readonly string[]
-): PromptLogHandle {
-    const timestamp = new Date().toISOString();
-    const persistedRequest = compactRequest(request);
-    let filepath: string | undefined;
-    let temporaryPath: string | undefined;
+export function finishPromptLogRun(storage:PillarStorageLayout,trace:LLMTrace):void {
+    try {
+        const directory=runDirectory(storage,trace),run=readRun(storage,directory);
+        if(run&&run.pid===process.pid){run.completedAt=new Date().toISOString();writeRun(directory,run);}
+    }catch{ /* Diagnostics never control task completion. */ }
+}
 
-    const write = (
-        response: PromptLogResponse | PromptLogPendingResponse
-    ): void => {
-        if (!filepath) return;
+export function beginPromptLog(storage:PillarStorageLayout,cwd:string,kind:LLMCallKind,model:string,
+    request:PromptLogRequest,secrets:readonly string[],providedTrace?:LLMTrace,attempt=1):PromptLogHandle {
+    const timestamp=new Date().toISOString();
+    const parsedTrace=traceSchema.safeParse(providedTrace??{scope:"maintenance",ownerCwd:cwd,runId:randomUUID()});
+    if(!parsedTrace.success)return {finish:()=>{}};
+    const trace=parsedTrace.data;
+    const root=getPromptLogDirectory(storage,trace.ownerCwd,trace.scope==="session"?trace.sessionId:undefined);
+    const directory=runDirectory(storage,trace);
+    const filename=`${timestamp.replace(/[:.]/g,"-")}_${randomUUID()}.json`,path=join(directory,filename);
+    const persistedRequest=compactRequest(request);
+    let initialized=false;
+    const write=(response:PromptLogResponse|PromptLogPendingResponse)=>{
         try {
-            const directory = dirname(filepath);
-            const directoryInfo = lstatSync(directory);
-            if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
-                throw new Error("Prompt Log directory became unsafe during the request");
+            ensurePrivateStorageDirectory(storage,root);
+            const existingRuns=readdirSync(root).filter(name=>/^run-[a-f0-9]{32}$/.test(name));
+            if(!existingRuns.includes(directory.split("/").at(-1)!)&&existingRuns.length>=256)return;
+            ensurePrivateStorageDirectory(storage,directory);
+            const run=readRun(storage,directory)??{version:1,trace,pid:process.pid,startedAt:timestamp,pending:[],omittedRequests:0};
+            if(run.pid!==process.pid&&alive(run.pid))return;
+            if(!initialized){
+                if(run.pending.length>=200){run.omittedRequests++;writeRun(directory,run);return;}
+                run.pending.push(filename);initialized=true;
             }
-            const serialized = redactSerializedLog(JSON.stringify(
-                {
-                    timestamp,
-                    updatedAt: new Date().toISOString(),
-                    kind,
-                    model,
-                    request: persistedRequest,
-                    response,
-                },
-                null,
-                2
-            ), secrets);
-            if (Buffer.byteLength(serialized, "utf8") > MAX_PROMPT_LOG_BYTES) {
-                throw new Error("Prompt Log exceeds the 64 MiB limit");
+            const pending="status" in response&&response.status==="pending";
+            if(!pending)run.pending=run.pending.filter(name=>name!==filename);
+            const payload={timestamp,updatedAt:new Date().toISOString(),kind,model,trace,attempt,executionCwd:cwd,request:persistedRequest,response};
+            const serialized=redactSerializedLog(JSON.stringify(payload,null,2),secrets);
+            const omitted=()=>JSON.stringify({timestamp,updatedAt:new Date().toISOString(),kind,model,trace,attempt,executionCwd:cwd,
+                request:{omitted:true},response:{status:pending?"pending":"omitted",error:"Prompt log body omitted by storage limits"}},null,2);
+            if(Buffer.byteLength(serialized)>MAX_PROMPT_LOG_BYTES){atomic(path,omitted());run.omittedRequests++;}
+            else atomic(path,serialized);
+            if(!pending&&!providedTrace)run.completedAt=new Date().toISOString();
+            writeRun(directory,run);
+            if(!prune(storage,root,path)){
+                atomic(path,omitted());
+                const current=readRun(storage,directory);if(current){current.omittedRequests++;writeRun(directory,current);}
             }
-            writeFileSync(
-                temporaryPath!,
-                serialized,
-                {encoding: "utf8", mode: 0o600, flag: "wx"}
-            );
-            renameSync(temporaryPath!, filepath);
-            prunePromptLogs(directory);
-        } catch {
-            if (temporaryPath) {
-                try {
-                    unlinkSync(temporaryPath);
-                } catch {
-                }
-            }
+        }catch{
+            try {
+                const run=readRun(storage,directory);
+                if(run&&run.pid===process.pid){run.pending=run.pending.filter(name=>name!==filename);run.writeFailure={request:filename,at:new Date().toISOString()};writeRun(directory,run);}
+            }catch{ /* A failed diagnostic sink cannot control task execution. */ }
         }
     };
-
-    try {
-        const logDir = ensurePromptLogDirectory(storage, cwd);
-        const ts = timestamp.replace(/[:.]/g, "-");
-        const filename = `${ts}_${randomUUID()}.json`;
-        filepath = join(logDir, filename);
-        temporaryPath = `${filepath}.${process.pid}.tmp`;
-        write({status: "pending"});
-    } catch {
-        // Diagnostic persistence is best effort and must not corrupt TUI output.
-    }
-
-    return {
-        finish: write,
-    };
+    write({status:"pending"});
+    return {finish:write};
 }

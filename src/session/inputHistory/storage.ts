@@ -1,157 +1,61 @@
-import {constants} from "node:fs";
-import {chmod, type FileHandle, mkdir, open, realpath,} from "node:fs/promises";
-import {dirname, join, resolve} from "node:path";
-import {withFileLock} from "../../persistence/fileLock.js";
-import type {PillarStorageLayout} from "../../persistence/index.js";
+import {realpath} from "node:fs/promises";
+import {dirname, resolve} from "node:path";
+import {z} from "zod";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type PillarStorageLayout} from "../../persistence/index.js";
+import {getSessionInputHistoryPath} from "../../persistence/layout.js";
 
-const HISTORY_VERSION = 2;
-const DEFAULT_HISTORY_LIMIT = 100;
-const MAX_HISTORY_READ_BYTES = 2 * 1024 * 1024;
-const MAX_PERSISTED_INPUT_BYTES = 1024 * 1024;
-
-interface StoredInputHistoryEntry {
-    version: 2;
-    sessionId: string;
-    input: string;
-    project: string;
-    timestamp: string;
-}
+const MAX_HISTORY_BYTES = 2 * 1024 * 1024;
+const MAX_INPUT_BYTES = 1024 * 1024;
+const MAX_ENTRIES = 100;
+const entrySchema = z.object({version:z.literal(3),sessionId:z.string().min(1),project:z.string().min(1),input:z.string().min(1),timestamp:z.string().datetime()}).strict();
+type Entry = z.infer<typeof entrySchema>;
 
 export interface InputHistoryStore {
-    load(cwd: string, sessionId: string): Promise<string[]>;
-
-    append(cwd: string, sessionId: string, input: string): Promise<void>;
+    load(cwd:string,sessionId:string):Promise<string[]>;
+    append(cwd:string,sessionId:string,input:string):Promise<void>;
 }
 
-export interface CreateInputHistoryStoreOptions {
-    historyPath?: string;
-    limit?: number;
+async function canonicalProject(cwd:string):Promise<string> {
+    try {return await realpath(cwd);} catch {return resolve(cwd);}
 }
 
-async function canonicalProject(cwd: string): Promise<string> {
-    try {
-        return await realpath(cwd);
-    } catch {
-        return resolve(cwd);
+function readEntries(storage:PillarStorageLayout,path:string,project:string,sessionId:string):Entry[] {
+    const text=readPrivateStorageTextFile(storage,path,MAX_HISTORY_BYTES);
+    if(text===null)return [];
+    const entries:Entry[]=[];
+    for(const line of text.split("\n")) {
+        if(!line.trim())continue;
+        let raw:unknown;
+        try {raw=JSON.parse(line);} catch {throw new Error(`Invalid input history JSON: ${path}`);}
+        const parsed=entrySchema.safeParse(raw);
+        if(!parsed.success||parsed.data.project!==project||parsed.data.sessionId!==sessionId)throw new Error(`Invalid input history owner or format: ${path}`);
+        entries.push(parsed.data);
+        if(entries.length>MAX_ENTRIES)throw new Error(`Input history entry limit exceeded: ${path}`);
     }
+    return entries;
 }
 
-function parseEntry(line: string): StoredInputHistoryEntry | undefined {
-    try {
-        const value = JSON.parse(line) as Partial<StoredInputHistoryEntry>;
-        if (
-            value.version !== HISTORY_VERSION ||
-            typeof value.sessionId !== "string" ||
-            value.sessionId.length === 0 ||
-            typeof value.input !== "string" ||
-            typeof value.project !== "string" ||
-            typeof value.timestamp !== "string"
-        ) {
-            return undefined;
-        }
-        return value as StoredInputHistoryEntry;
-    } catch {
-        return undefined;
-    }
-}
-
-async function readRecentLines(path: string): Promise<string[]> {
-    let handle: FileHandle | undefined;
-    try {
-        handle = await open(path, constants.O_RDONLY);
-        const {size} = await handle.stat();
-        const start = Math.max(0, size - MAX_HISTORY_READ_BYTES);
-        const buffer = Buffer.alloc(size - start);
-        const {bytesRead} = await handle.read(buffer, 0, buffer.length, start);
-        let content = buffer.subarray(0, bytesRead).toString("utf8");
-        if (start > 0) {
-            const firstNewline = content.indexOf("\n");
-            content = firstNewline === -1 ? "" : content.slice(firstNewline + 1);
-        }
-        return content.split("\n").filter(Boolean);
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-        throw error;
-    } finally {
-        await handle?.close().catch(() => {
-        });
-    }
-}
-
-export function createInputHistoryStore(
-    storage: PillarStorageLayout,
-    options: CreateInputHistoryStoreOptions = {}
-): InputHistoryStore {
-    const historyPath = options.historyPath ?? join(storage.pillarHome, "history.jsonl");
-    const limit = Math.max(1, Math.floor(options.limit ?? DEFAULT_HISTORY_LIMIT));
-    let appendQueue = Promise.resolve();
-
-    const appendEntry = async (
-        cwd: string,
-        sessionId: string,
-        input: string
-    ): Promise<void> => {
-        if (
-            !sessionId ||
-            !input ||
-            Buffer.byteLength(input, "utf8") > MAX_PERSISTED_INPUT_BYTES
-        ) {
-            return;
-        }
-        const project = await canonicalProject(cwd);
-        const entry: StoredInputHistoryEntry = {
-            version: HISTORY_VERSION,
-            sessionId,
-            input,
-            project,
-            timestamp: new Date().toISOString(),
-        };
-        await withFileLock(`${historyPath}.lock`, async () => {
-            await mkdir(dirname(historyPath), {recursive: true});
-            let handle: FileHandle | undefined;
-            try {
-                handle = await open(historyPath, "a", 0o600);
-                await chmod(historyPath, 0o600);
-                await handle.writeFile(`${JSON.stringify(entry)}\n`, "utf8");
-                await handle.sync();
-            } finally {
-                await handle?.close().catch(() => {
-                });
-            }
-        });
-    };
-
+/** Input history is bounded within its Session, including physical disk usage. */
+export function createInputHistoryStore(storage:PillarStorageLayout):InputHistoryStore {
     return {
-        async load(cwd, sessionId) {
-            if (!sessionId) return [];
-            const project = await canonicalProject(cwd);
-            const lines = await readRecentLines(historyPath);
-            const newest: string[] = [];
-            const seen = new Set<string>();
-            for (let index = lines.length - 1; index >= 0; index--) {
-                const entry = parseEntry(lines[index]!);
-                if (
-                    !entry ||
-                    entry.project !== project ||
-                    entry.sessionId !== sessionId ||
-                    seen.has(entry.input)
-                ) {
-                    continue;
-                }
-                seen.add(entry.input);
-                newest.push(entry.input);
-                if (newest.length >= limit) break;
-            }
-            return newest.reverse();
+        async load(cwd,sessionId) {
+            if(!sessionId)return [];
+            const project=await canonicalProject(cwd);
+            return readEntries(storage,getSessionInputHistoryPath(storage,project,sessionId),project,sessionId).map(entry=>entry.input);
         },
-
-        append(cwd, sessionId, input) {
-            const operation = appendQueue.then(() =>
-                appendEntry(cwd, sessionId, input)
-            );
-            appendQueue = operation.catch(() => {
+        async append(cwd,sessionId,input) {
+            if(!sessionId||!input||Buffer.byteLength(input)>MAX_INPUT_BYTES)return;
+            const project=await canonicalProject(cwd);
+            const path=getSessionInputHistoryPath(storage,project,sessionId);
+            ensurePrivateStorageDirectory(storage,dirname(path));
+            await withFileLock(`${path}.lock`,async()=>{
+                const previous=readEntries(storage,path,project,sessionId);
+                const entry:Entry={version:3,sessionId,project,input,timestamp:new Date().toISOString()};
+                const rows=[...previous.filter(item=>item.input!==input),entry].slice(-MAX_ENTRIES).map(item=>JSON.stringify(item)+"\n");
+                let bytes=rows.reduce((sum,row)=>sum+Buffer.byteLength(row),0);
+                while(bytes>MAX_HISTORY_BYTES&&rows.length)bytes-=Buffer.byteLength(rows.shift()!);
+                await writeFileAtomically(path,rows.join(""),0o600);
             });
-            return operation;
         },
     };
 }

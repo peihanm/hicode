@@ -29,6 +29,20 @@ if (cliOptions.help) {
     process.exit(0);
 }
 
+if (cliOptions.storageAction) {
+    try {
+        const storage=createPillarStorageLayout();
+        const {inspectStorage,cleanStorage,listStoredProjects}=await import("./runtime/storageMaintenance.js");
+        const {repairSessionIndex}=await import("./session/repair.js");
+        const result=cliOptions.storageAction==="projects" ? await listStoredProjects(storage)
+            : cliOptions.storageAction==="repair-index" ? await repairSessionIndex(storage,process.cwd())
+            : cliOptions.storageAction==="clean" ? await cleanStorage(storage,process.cwd())
+            : await inspectStorage(storage,process.cwd(),cliOptions.storageAction==="preview");
+        process.stdout.write(`${JSON.stringify(result,null,2)}\n`);
+    } catch (error) {process.stderr.write(`${error instanceof Error ? error.message : "Storage maintenance failed"}\n`);process.exitCode=1;}
+    process.exit(process.exitCode??0);
+}
+
 loadEnv();
 
 const cwd = process.cwd();

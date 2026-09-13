@@ -51,7 +51,7 @@ function formatResult(result: SubagentResult): string {
         result.reason === "completed" || result.reason === "no_tool_calls";
     const label = result.agentType;
     if (completed) {
-        return result.reply || `(${label} completed but returned no content.)`;
+        return [result.reply || `(${label} completed but returned no content.)`, result.transcriptIssue].filter(Boolean).join("\n\n");
     }
     return [
         `${label} did not fully complete (reason: ${result.reason}).`,

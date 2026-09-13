@@ -18,6 +18,7 @@ export function createCompactSummaryGenerator(dependencies: CompactSummaryDepend
 }
 
 async function generateCompactSummaryCore(input: {
+    trace?: import("../llm/types.js").LLMTrace;
     system: Extract<Message, {role: "system"}>;
     conversation: Message[];
     signal: AbortSignal;
@@ -42,7 +43,7 @@ async function generateCompactSummaryCore(input: {
     for (let attempt = 0; attempt < 2; attempt++) {
         throwIfTurnAborted(signal);
         // Transport failures are owned by the Provider; only local format failures get one correction.
-        const {message} = await callLLM(messages, [], storage, cwd, model, "compact", signal);
+        const {message} = await callLLM(messages, [], storage, cwd, model, "compact", signal, undefined, undefined, undefined, input.trace);
         throwIfTurnAborted(signal);
         if (message.role !== "assistant" || message.tool_calls?.length) throw new Error("Task handoff must be assistant text without tool calls");
         try {

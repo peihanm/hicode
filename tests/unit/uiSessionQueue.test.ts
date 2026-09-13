@@ -18,7 +18,8 @@ test("Session 串行捕获输入数组，不被后续 Host 更新改变；保存
         expect(loadSession(storage, cwd, "queue", "glm-test")?.history.at(-1)?.content).toBe("original");
         expect(loadSession(storage, cwd, "queue", "glm-test")?.toolDiscovery?.loadedNames).toEqual(["first"]);
         await writeFile(getSessionIndexPath(storage, cwd), "invalid index");
-        await expect(writer.save(input)).rejects.toThrow("corrupt session index");
+        await writer.save(input);
+        expect(writer.takeIssues()[0]).toContain("content was saved");
         await writeFile(getSessionIndexPath(storage, cwd), JSON.stringify({version: SESSION_INDEX_VERSION, sessions: []}));
         await writer.save(input);
         await writer.drain();

@@ -139,3 +139,24 @@ export function getMemoryWorkspacePaths(directory: string, leaseId: string): {ro
     const root = join(getMemoryWorkspacesDirectory(directory), leaseId);
     return {root, draft: join(root, "draft"), runtime: join(root, "runtime")};
 }
+
+export function getSessionInputHistoryPath(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "input-history.jsonl");
+}
+
+export function getSessionIndexRecoveryDirectory(storage: PillarStorageLayout, cwd: string): string {
+    return join(getProjectSessionsDirectory(storage, cwd), "index-recovery");
+}
+
+export function getPromptLogDirectory(storage: PillarStorageLayout, cwd: string, sessionId?: string): string {
+    return join(sessionId ? getSessionStorageDirectory(storage,cwd,sessionId) : getProjectStorageDirectory(storage,cwd), "debug", "requests");
+}
+
+export function getSubagentStorageDirectory(storage: PillarStorageLayout, cwd: string, sessionId: string, agentId: string): string {
+    return join(getSessionStorageDirectory(storage,cwd,sessionId), "subagents", hashProjectValue(agentId,32));
+}
+
+export function getProjectIdentityPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json");}
+export function getProjectActivityDirectory(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"activity");}
+export function getProjectMaintenanceLockPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),".maintenance.lock");}
+export function getSessionIdentityPath(storage:PillarStorageLayout,cwd:string,sessionId:string):string {return join(getSessionStorageDirectory(storage,cwd,sessionId),"identity.json");}

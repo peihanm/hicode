@@ -4,13 +4,13 @@ import type {SessionIndexEntry} from "../../session/index.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {ResumePicker} from "./ResumePicker.js";
 
-function EmptyResumeState({onClose}: {onClose: () => void}) {
+function EmptyResumeState({onClose, message}: {onClose: () => void; message?: string}) {
     useInput((_input, key) => {
         if (key.escape) onClose();
     });
     return (
         <Box flexDirection="column">
-            <Text color={COLORS.dim}>No other previous sessions are available to resume.</Text>
+            <Text color={message ? COLORS.error : COLORS.dim}>{message ?? "No other previous sessions are available to resume."}</Text>
             <Text color={COLORS.dim}>esc back</Text>
         </Box>
     );
@@ -18,11 +18,13 @@ function EmptyResumeState({onClose}: {onClose: () => void}) {
 
 export function ResumeDialog({
                                  sessions,
+                                 indexError,
                                  currentSessionId,
                                  onSelect,
                                  onClose,
                              }: {
     sessions: SessionIndexEntry[];
+    indexError?: string;
     currentSessionId: string;
     onSelect: (sessionId: string) => Promise<void>;
     onClose: () => void;
@@ -54,7 +56,7 @@ export function ResumeDialog({
                 {switching ? (
                     <Text color={COLORS.dim}>{SYMBOLS.spinner} Switching session…</Text>
                 ) : available.length === 0 ? (
-                    <EmptyResumeState onClose={onClose}/>
+                    <EmptyResumeState onClose={onClose} message={indexError}/>
                 ) : (
                     <ResumePicker
                         sessions={available}

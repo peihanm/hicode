@@ -15,17 +15,18 @@ export function getSessionIndexPath(
 
 export function getSessionPersistenceLockPath(
     storage: PillarStorageLayout,
-    cwd: string
+    cwd: string,
+    sessionId: string
 ): string {
-    return join(getProjectSessionsDirectory(storage, cwd), ".persistence.lock");
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), ".persistence.lock");
 }
 
-export function getSessionLogPath(
+export function getSessionSnapshotPath(
     storage: PillarStorageLayout,
     cwd: string,
     sessionId: string
 ): string {
-    return join(getSessionStorageDirectory(storage, cwd, sessionId), "events.jsonl");
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "snapshot.json");
 }
 
 export function ensureSessionsDirectory(
@@ -35,3 +36,5 @@ export function ensureSessionsDirectory(
     const directory = getProjectSessionsDirectory(storage, cwd);
     ensurePrivateStorageDirectory(storage, directory);
 }
+
+export function getSessionIndexLockPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectSessionsDirectory(storage,cwd),".index.lock");}

@@ -1,3 +1,4 @@
+import {finishPromptLogRun} from "../llm/promptLog.js";
 import type {ContextSettings} from "../context/config.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import { mkdir, readdir, rm } from "node:fs/promises";
@@ -47,10 +48,16 @@ export function createMemoryConsolidatorFactory(callLLM: LLMCaller) {
     return (options: ConsolidatorOptions) => buildMemoryConsolidator(options, callLLM);
 }
 function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller): MemoryConsolidator {
-    const callLLM: LLMCaller = (messages, tools, storage, cwd, model, _kind, signal, onProgress, onText) => caller(messages, tools, storage, cwd, model, "memory", signal, onProgress, onText);
+    let logRunId:string|undefined;
+    const callLLM: LLMCaller = (messages, tools, _storage, cwd, model, _kind, signal, onProgress, onText, readImage, trace) => {
+        logRunId=trace?.runId;
+        return caller(messages,tools,options.storage,cwd,model,"memory",signal,onProgress,onText,readImage,
+            logRunId?{scope:"maintenance",ownerCwd:options.cwd,runId:logRunId}:undefined);
+    };
     const runAgent = createAgentRunner({ callLLM, compactHistory: async () => { throw new Error("Memory consolidation exceeded its fixed input budget; recursive compaction is disabled"); } });
     const tools = createToolRuntime({ allowedToolNames: ["read_file", "grep", "list_files", "write_file", "edit_file", "delete_file"] });
     return { async consolidate(input) {
+            logRunId=undefined;
             const remaining = Date.parse(input.lease.expiresAt) - Date.now();
             if (remaining <= 0)
                 throw new Error("Memory consolidation lease expired");
@@ -124,6 +131,7 @@ No useful changes means no file edits. Stop when done; do not investigate the pr
                 return { topics, summary };
             }
             finally {
+                if(logRunId)finishPromptLogRun(options.storage,{scope:"maintenance",ownerCwd:options.cwd,runId:logRunId});
                 if (ownsRoot) {
                     ensurePrivateStorageDirectory(options.storage, paths.root);
                     await rm(paths.root, {recursive: true, force: true});

@@ -1,3 +1,4 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {runHeadlessForTest} from "../helpers/headless.js";
 import {expect, test} from "bun:test";
@@ -18,7 +19,7 @@ import {createToolResultStore} from "../../src/toolResults/store.js";
 import {RuntimeMessageQueue, normalizeRuntimeQueuedMessages} from "../../src/runtime/messageQueue.js";
 import {loadSession} from "../../src/session/storage.js";
 import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
-import {getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {getProjectStorageDirectory} from "../../src/persistence/index.js";
 
 const png = (red = 30) => sharp({create: {width: 32, height: 16, channels: 4, background: {r: red, g: 70, b: 100, alpha: 1}}}).png().toBuffer();
 const state = {todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []};
@@ -67,8 +68,8 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             const resumed = await createSDKThread({resources, seed: {sessionId: loaded.sessionId, history: loaded.history, compactState: loaded.compactState!}, state, resumed: true, onClose() {}});
             try {expect((await resumed.run("比较两张图")).stopReason).toBe("completed");} finally {await resumed.close();}
             expect(JSON.stringify(requests[1])).toContain("data:image/png;base64,");
-            const logDir = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
-            for (const name of await readdir(logDir)) {
+            const logDir = getProjectStorageDirectory(storage, cwd);
+            for (const name of await listPromptLogs(logDir)) {
                 const log = await readFile(join(logDir, name), "utf8");
                 expect(log).not.toContain("base64,"); expect(log).not.toContain("offline-test");
             }

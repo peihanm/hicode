@@ -5,6 +5,7 @@ import {qwenProvider} from "./providers/qwen.js";
 import type {LLMProviderName} from "./providerRegistry.js";
 import type {
     LLMCaller,
+    LLMTrace,
     LLMCallKind,
     LLMCallResult,
     LLMProvider,
@@ -40,7 +41,8 @@ export function createLLMCaller(
         signal?: AbortSignal,
         onStreamProgress?: (progress: LLMStreamProgress) => void,
         onText?: (update: LLMTextUpdate) => void | Promise<void>,
-        readImage?: (reference: ImageReference) => Promise<Buffer>
+        readImage?: (reference: ImageReference) => Promise<Buffer>,
+        trace?: LLMTrace
     ): Promise<LLMCallResult> {
         return provider.call({
             messages,
@@ -53,6 +55,7 @@ export function createLLMCaller(
             onStreamProgress,
             onText,
             readImage,
+            trace,
         }, source);
     };
 }

@@ -92,7 +92,7 @@ export function createSessionArchiveAccess(storage: PillarStorageLayout, cwd: st
     return {async resolve(path) {
         path = resolve(path);
         if (!isSessionArchivePath(storage, path)) return null;
-        return withFileLock(getSessionPersistenceLockPath(storage, cwd), async () => {
+        return withFileLock(getSessionPersistenceLockPath(storage, cwd, sessionId), async () => {
         if (dirname(path) !== directory) throw new Error("Cannot read compaction archives from another Session");
         const match = /^([a-f0-9]{64})-(index|[1-9][0-9]{0,3})\.txt$/.exec(basename(path));
         const record = match && getState().archives?.find(item => item.id === match[1]);

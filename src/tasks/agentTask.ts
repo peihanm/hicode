@@ -93,6 +93,7 @@ export async function runAgentTask(
             task.iterations = result.iterations;
             task.toolUseCount = result.toolUseCount;
             task.transcriptPath = result.transcriptPath;
+            task.outputIssue = result.transcriptIssue;
             task.resultPreview = result.reply;
             finalStatus = result.reason === "interrupted"
                 ? "cancelled"

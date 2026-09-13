@@ -1,3 +1,4 @@
+import {ensureSessionIdentity} from "../persistence/projectState.js";
 import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
 import {createInitialHistory} from "../prompt/index.js";
@@ -35,6 +36,7 @@ export function createSessionPersistence(storage: PillarStorageLayout, cwd: stri
     const limitUIEvents = createSessionUIEventLimiter();
     const freezeSessionValue = createSessionValueFreezer();
     let pending = Promise.resolve();
+    const issues = new Set<string>();
     const enqueue = (input: SaveSessionSnapshotInput, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}) => {
         if (input.cwd !== cwd || input.sessionId !== sessionId) return Promise.reject(new Error("Session writer owner mismatch"));
         const preserveConversation = !hasCompleteToolPairs(stripSystemMessage(input.history));
@@ -45,7 +47,7 @@ export function createSessionPersistence(storage: PillarStorageLayout, cwd: stri
             uiEvents: preserveConversation ? [] : input.uiEvents?.map(event => freezeSessionValue(event)),
             ...(preserveConversation ? {summaryHint: summarizeSessionHistory(input.history).summary ?? input.summaryHint} : {}),
         };
-        const operation = pending.then(() => saveSnapshot(storage, snapshot, commit, limitUIEvents, preserveConversation, compaction));
+        const operation = pending.then(() => saveSnapshot(storage, snapshot, commit, limitUIEvents, preserveConversation, message => {if (issues.size < 8) issues.add(message);}, compaction));
         pending = operation.catch(() => undefined);
         return operation;
     };
@@ -53,6 +55,7 @@ export function createSessionPersistence(storage: PillarStorageLayout, cwd: stri
         save: (input: SaveSessionSnapshotInput) => enqueue(input),
         compact: (input: SaveSessionSnapshotInput, draft: SessionArchiveDraft, signal: AbortSignal) => enqueue(input, {draft, signal}),
         drain: () => pending,
+        takeIssues: () => {const result = [...issues]; issues.clear(); return result;},
     };
 }
 
@@ -62,7 +65,7 @@ export function createSessionId(): string {
 
 async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnapshotInput,
     commit: ReturnType<typeof createSessionSnapshotCommitter>, limitUIEvents: ReturnType<typeof createSessionUIEventLimiter>,
-    preserveConversation: boolean, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
+    preserveConversation: boolean, onIssue: (message: string) => void, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
     const conversation = stripSystemMessage(input.history);
     const summarized = summarizeSessionHistory(conversation);
     const hint = input.summaryHint
@@ -73,10 +76,11 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
         : {summary: hint};
     if (!summary.summary && !input.allowEmpty && !compaction) return;
 
-    await withSessionPersistenceLock(storage, input.cwd, async () => {
+    await withSessionPersistenceLock(storage, input.cwd, input.sessionId, async () => {
         // A queued pre-compaction UI snapshot must not undo a committed archive/History.
         if (!compaction && hasNewerSessionCompaction(storage, input.cwd, input.sessionId,
             input.compactState?.compactCount ?? 0)) return;
+        await ensureSessionIdentity(storage,input.cwd,input.sessionId);
         const timestamp = new Date().toISOString();
         const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
         const entry: SessionSnapshotEntry = {
@@ -100,7 +104,8 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
         };
 
         if (!await commit(entry, compaction, preserveConversation)) return;
-        const priorIndex = preserveConversation ? readSessionIndex(storage, input.cwd).sessions.find(item => item.sessionId === input.sessionId) : undefined;
+        let priorIndex: SessionIndexEntry | undefined;
+        try { priorIndex = preserveConversation ? readSessionIndex(storage, input.cwd).sessions.find(item => item.sessionId === input.sessionId) : undefined; } catch {}
         const updateProjections = async () => {
             await upsertSessionIndex(storage, {
                 cwd: input.cwd,
@@ -111,9 +116,8 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
                 ...summary,
             });
         };
-        // A committed compaction cannot be reported as failed because an index projection failed.
-        if (compaction) await updateProjections().catch(() => undefined);
-        else await updateProjections();
+        try { await updateProjections(); }
+        catch { onIssue("Session content was saved, but its listing index could not be updated. Run pillar --storage repair-index; existing snapshots remain available by ID."); }
     });
 }
 
@@ -141,9 +145,8 @@ export function loadSession(
 ): LoadedSession | null {
     const snapshot = readLatestSessionSnapshot(storage, cwd, sessionId);
     if (!snapshot) return null;
-    const index = readSessionIndex(storage, cwd).sessions.find(
-        (entry) => entry.sessionId === sessionId
-    );
+    let index: SessionIndexEntry | undefined;
+    try { index = readSessionIndex(storage, cwd).sessions.find(entry => entry.sessionId === sessionId); } catch {}
     return {
         sessionId,
         cwd,

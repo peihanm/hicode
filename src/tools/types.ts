@@ -46,6 +46,7 @@ interface ToolSearchSource {
 // Tool runtime context injects permission decisions, rules, modes and other dependencies.
 // Tools do not depend directly on UI or configuration loading.
 export interface ToolContext {
+    llmTrace?: import("../llm/types.js").LLMTrace;
     readonly toolNames: readonly string[];
     imageModelSupported?: boolean;
     imageAccess?: ImageAccess;

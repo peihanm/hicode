@@ -2,7 +2,7 @@ import {contentText} from "../images/content.js";
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { selectSessionMemorySource, readSessionSourceIds, readSessionSourceMessages, withSessionPersistenceLock } from "../session/snapshotStore.js";
-import { createPillarStorageLayout, ensurePrivateStorageDirectory } from "../persistence/index.js";
+import { ensurePrivateStorageDirectory } from "../persistence/index.js";
 import { getMemoryWorkspacePaths } from "../persistence/layout.js";
 import { createMemorySourceExtractor, type MemorySourceExtractor } from "./sourceExtractor.js";
 import type { AgentRunner } from "../agent/index.js";
@@ -133,7 +133,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             return undefined;
         try {
             this.store.snapshot();
-            return await withSessionPersistenceLock(this.storage, this.cwd, async () => readSessionSourceIds(this.storage, this.cwd, sessionId));
+            return await withSessionPersistenceLock(this.storage, this.cwd, sessionId, async () => readSessionSourceIds(this.storage, this.cwd, sessionId));
         }
         catch {
             return undefined;
@@ -143,7 +143,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
         this.requireOpen();
         if (!this.autoExtract)
             return;
-        await withSessionPersistenceLock(this.storage, this.cwd, async () => {
+        await withSessionPersistenceLock(this.storage, this.cwd, sessionId, async () => {
             const { hashes, omitted } = selectSessionMemorySource(this.storage, this.cwd, sessionId, baseline);
             if (!hashes.length)
                 return;
@@ -175,14 +175,13 @@ class MemoryRuntime implements MemoryRuntimeLike {
         if (extraction) {
             const paths = getMemoryWorkspacePaths(this.directory, extraction.lease.id);
             try {
-                const temporary = createPillarStorageLayout({ pillarHome: paths.runtime });
                 ensurePrivateStorageDirectory(this.storage, paths.runtime);
-                const extractor = this.createExtractor(temporary);
+                const extractor = this.createExtractor(this.storage);
                 const results: Array<Parameters<MemoryPublicationStore["finishExtraction"]>[1][number]> = [];
                 for (const frame of extraction.frames) {
                     let messages;
                     try {
-                        messages = await withSessionPersistenceLock(this.storage, this.cwd, async () => readSessionSourceMessages(this.storage, this.cwd, frame.sessionId, frame.messageHashes));
+                        messages = await withSessionPersistenceLock(this.storage, this.cwd, frame.sessionId, async () => readSessionSourceMessages(this.storage, this.cwd, frame.sessionId, frame.messageHashes));
                     }
                     catch {
                         throwIfTurnAborted(signal);
@@ -192,7 +191,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
                     const facts = await extractor.extract(messages.map(message => ({...message, content: contentText(message.content)})), signal, frame.omitted);
                     results.push({ frame, facts, unavailable: false });
                 }
-                await withSessionPersistenceLock(this.storage, this.cwd, async () => {
+                await withSessionPersistenceLock(this.storage, this.cwd, extraction.frames.map(frame => frame.sessionId), async () => {
                     for (const result of results) {
                         if (result.unavailable)
                             continue;
@@ -222,7 +221,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
             return { status: this.store.snapshot().lease ? "busy" : "empty", topics: this.store.snapshot().topics.length };
         try {
             const draft = await this.createConsolidator().consolidate({ ...job, sessionId: input.sessionId, signal });
-            await withSessionPersistenceLock(this.storage, this.cwd, async () => {
+            await withSessionPersistenceLock(this.storage, this.cwd, job.baseline.sources.flatMap(source => source.origin.kind === "session" ? [source.origin.sessionId] : []), async () => {
                 for (const source of job.baseline.sources.filter(source => draft.topics.some(topic => topic.sources.includes(source.id)))) {
                     if (source.origin.kind === "session")
                         readSessionSourceMessages(this.storage, this.cwd, source.origin.sessionId, source.origin.messageHashes);

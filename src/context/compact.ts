@@ -50,6 +50,7 @@ type CompactSummaryGenerator = (input: {
     contextWindow?: number;
     sources?: HandoffSources;
     contextSettings: ContextSettings;
+    trace?: import("../llm/types.js").LLMTrace;
 }) => Promise<string>;
 
 interface CompactResult {
@@ -150,6 +151,7 @@ async function compactHistoryCore({
             cwd: ctx.cwd,
             model: ctx.model,
             contextSettings: ctx.contextSettings,
+            trace: ctx.llmTrace ?? {scope:"session", ownerCwd:ctx.cwd, sessionId:ctx.sessionId, runId:ctx.turnId},
             customInstructions: [customInstructions, ...formatHookContext("PreCompact", preHook?.additionalContexts ?? [])]
                 .filter(Boolean).join("\n") || undefined,
             contextWindow,

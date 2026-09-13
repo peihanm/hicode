@@ -6,7 +6,7 @@ import {join} from "node:path";
 import {createCompactState} from "../../src/context/index.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import {loadSession, listSessionIndex} from "../../src/session/index.js";
-import {getSessionLogPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/session/paths.js";
 import {getSessionStorageDirectory, getSessionContentDirectory} from "../../src/persistence/index.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -58,9 +58,9 @@ describe("Session recovery and storage boundaries", () => {
         await withTempProject(async (cwd, storage) => {
             await saveSessionSnapshot(storage, {cwd, sessionId: "indexed", model: "glm-test", history: [{role: "user", origin: "user" as const, content: "indexed prompt"}],
                 todos: [], permissionMode: "ask", collaborationMode: "build"});
-            await writeFile(getSessionLogPath(storage, cwd, "indexed"), "corrupt conversation\n");
+            await writeFile(getSessionSnapshotPath(storage, cwd, "indexed"), "corrupt conversation\n");
             expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["indexed"]);
-            expect(loadSession(storage, cwd, "indexed", "glm-test")).toBeNull();
+            expect(() => loadSession(storage, cwd, "indexed", "glm-test")).toThrow();
         });
     });
 
@@ -82,7 +82,7 @@ describe("Session recovery and storage boundaries", () => {
             const input = {cwd, sessionId: "blocks", model: "glm-test", history: [{role: "user" as const, origin: "user" as const, content: "x".repeat(1024 * 1024)}],
                 todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const};
             await saveSessionSnapshot(storage, input);
-            const path = getSessionLogPath(storage, cwd, "blocks");
+            const path = getSessionSnapshotPath(storage, cwd, "blocks");
             const reference = JSON.parse(await readFile(path, "utf8")) as {conversation: string[]};
             const block = join(getSessionContentDirectory(storage, cwd, "blocks"), `${reference.conversation[0]}.json`);
             if (corruption === "tamper") await writeFile(block, '{}');
@@ -97,7 +97,7 @@ describe("Session recovery and storage boundaries", () => {
                 reference.conversation = corruption === "traversal" ? ["../../outside"] : Array(65).fill(reference.conversation[0]);
                 await writeFile(path, JSON.stringify(reference) + "\n");
             }
-            expect(loadSession(storage, cwd, "blocks", input.model)).toBeNull();
+            expect(() => loadSession(storage, cwd, "blocks", input.model)).toThrow();
             await expect(saveSessionSnapshot(storage, input)).rejects.toThrow();
         });
     });

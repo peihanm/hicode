@@ -98,6 +98,7 @@ export function App({
     }) {
         const {exit} = useApp();
         const [showResume, setShowResume] = useState(false);
+        const [resumeError, setResumeError] = useState<string>();
         const [resumeSessions, setResumeSessions] = useState<SessionIndexEntry[]>([]);
         const [showTasks, setShowTasks] = useState(false);
         const [showAgents, setShowAgents] = useState(false);
@@ -110,7 +111,8 @@ export function App({
             setShowGitDiff(false);
             setShowModel(false);
             setShowPermissions(false);
-            setResumeSessions(listSessionIndex(resources.storage, resources.cwd));
+            try {setResumeSessions(listSessionIndex(resources.storage, resources.cwd)); setResumeError(undefined);}
+            catch (error) {setResumeSessions([]); setResumeError(error instanceof Error ? error.message : "Cannot read session index");}
             setShowResume(true);
         }, [resources.cwd, resources.storage]);
         const openAgents = useCallback(() => {
@@ -266,7 +268,7 @@ export function App({
                 )}
 
                 {runtimeApproval ? runtimeApproval : showResume && requestSessionSwitch ? (
-                    <ResumeDialog
+                    <ResumeDialog indexError={resumeError}
                         sessions={resumeSessions}
                         currentSessionId={turn.sessionId}
                         onSelect={requestSessionSwitch}

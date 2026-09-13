@@ -1,3 +1,6 @@
+import {ensureSessionIdentity} from "../persistence/projectState.js";
+import {finishPromptLogRun} from "../llm/promptLog.js";
+import type {LLMTrace} from "../llm/types.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {persistPreparedImage} from "../images/persist.js";
@@ -191,6 +194,7 @@ export function createSubagentFactories(
         let transcriptPath: string | undefined;
         let transcriptStarted = false;
         let transcriptDisabled = false;
+        let transcriptIssue: string | undefined;
         let running = false;
         let runCount = 0;
         let childCwd: string | undefined;
@@ -203,6 +207,7 @@ export function createSubagentFactories(
                     throw new Error(`Agent Thread is running: ${agentId}`);
                 }
                 running = true;
+                let logTrace: LLMTrace | undefined;
                 let hookStart: Extract<HookInput, {hook_event_name: "SubagentStart"}> | undefined;
                 let hookStatus: "completed" | "failed" | "cancelled" = "failed";
                 let hookReason = "error";
@@ -233,6 +238,8 @@ export function createSubagentFactories(
                             copied.add(ref.imageId);
                         }
                     }
+                    try {await ensureSessionIdentity(parentContext.storage, options.storageCwd ?? parentContext.cwd, childSessionId);}
+                    catch {transcriptIssue = "Subagent storage identity could not be recorded; task execution continues.";}
                     const firstRun = runCount === 0;
                     runCount += 1;
                     const childContext: ToolContext = createToolContext({
@@ -280,6 +287,10 @@ export function createSubagentFactories(
                         }
                         return runtime.executeTool(name, args, context, callId);
                     };
+                    logTrace = {scope: "session", ownerCwd: options.storageCwd ?? parentContext.cwd,
+                        sessionId: parentContext.llmTrace?.scope === "session" ? parentContext.llmTrace.sessionId : parentContext.sessionId,
+                        runId: childContext.turnId, agentId};
+                    childContext.llmTrace = logTrace;
                     // Omitting subagentLauncher enforces the no-recursion boundary.
                     if (!transcriptStarted && !transcriptDisabled) {
                         try {
@@ -303,6 +314,7 @@ export function createSubagentFactories(
                             transcriptStarted = true;
                         } catch {
                             transcriptDisabled = true;
+                            transcriptIssue = "Subagent transcript is incomplete or unavailable; task execution continues.";
                         }
                     }
 
@@ -334,6 +346,7 @@ export function createSubagentFactories(
                             } catch {
                                 transcriptPath = undefined;
                                 transcriptDisabled = true;
+                            transcriptIssue = "Subagent transcript is incomplete or unavailable; task execution continues.";
                             }
                         }
                         if (event.type === "tool_call_start") {
@@ -428,6 +441,7 @@ export function createSubagentFactories(
                         toolUseCount,
                         durationMs: Date.now() - startedAt,
                         ...(transcriptPath ? {transcriptPath} : {}),
+                        ...(transcriptIssue ? {transcriptIssue} : {}),
                     };
 
                     if (transcriptPath) {
@@ -441,7 +455,9 @@ export function createSubagentFactories(
                         } catch {
                             transcriptPath = undefined;
                             transcriptDisabled = true;
+                            transcriptIssue = "Subagent transcript is incomplete or unavailable; task execution continues.";
                             delete subagentResult.transcriptPath;
+                            subagentResult.transcriptIssue = transcriptIssue;
                         }
                     }
 
@@ -494,7 +510,7 @@ export function createSubagentFactories(
                         if (hookStart) await parentContext.runHook?.({...hookStart, hook_event_name: "SubagentStop",
                             status: input.signal.aborted ? "cancelled" : hookStatus,
                             reason: input.signal.aborted ? "cancelled" : hookReason}, input.signal);
-                    } finally {running = false;}
+                    } finally {if (logTrace) finishPromptLogRun(parentContext.storage, logTrace); running = false;}
                 }
             },
         };

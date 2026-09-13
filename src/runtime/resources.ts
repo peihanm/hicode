@@ -1,3 +1,4 @@
+import {acquireProjectActivity} from "../persistence/projectState.js";
 import {loadPillarSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
@@ -176,6 +177,8 @@ export function createRootRuntimeResourcesFactory(
         options: CreateRootRuntimeResourcesOptions
     ): Promise<RootRuntimeResources> {
         const {cwd, settings, storage} = options.configuration;
+        const releaseActivity = await acquireProjectActivity(storage,cwd);
+        try {
         const [skills, instructions, loadedCustomAgents] = await Promise.all([
             Promise.resolve(dependencies.loadSkills({
                 storage,
@@ -332,6 +335,7 @@ export function createRootRuntimeResourcesFactory(
                 sandbox
             );
 
+            let finalClose: Promise<void> | undefined;
             let hookUsers = 0;
             let hooksReloading = false;
             return {
@@ -386,7 +390,7 @@ export function createRootRuntimeResourcesFactory(
                 fileCommits: new FileCommitCoordinator(),
                 gitWorkspace,
                 beginShutdown: closeOwnedResources.beginShutdown,
-                close: closeOwnedResources.close,
+                close: () => finalClose ??= (async () => {try {await closeOwnedResources!.close();} finally {await releaseActivity();}})(),
             };
         } catch (error) {
             if (closeOwnedResources) {
@@ -401,6 +405,7 @@ export function createRootRuntimeResourcesFactory(
             }
             throw error;
         }
+        } catch (error) {await releaseActivity();throw error;}
     };
 }
 

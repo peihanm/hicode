@@ -8,7 +8,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {continuityFixture, continuityHost, continuityState} from "../helpers/continuity.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {loadSession} from "../../src/session/storage.js";
-import {getSessionIndexPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/session/paths.js";
 import {hasCompleteToolPairs} from "../../src/session/codec.js";
 import {runRootTurn} from "../../src/runtime/turnRuntime.js";
 
@@ -47,8 +47,8 @@ test("批次保存失败后停止下一次模型调用，已执行文件不回�
         try {
             await expect(runRootTurn({resources: f.resources, session: f.session, prompt: "write", signal: new AbortController().signal,
                 host: continuityHost, async onEvent(event) {
-                    if (event.type === "tool_call_end") await writeFile(getSessionIndexPath(storage, cwd), "broken");
-                }, onHookResult() {}, onLifecycleIssue() {}, getSnapshotState: continuityState})).rejects.toThrow("corrupt session index");
+                    if (event.type === "tool_call_end") await writeFile(getSessionSnapshotPath(storage, cwd, f.session.sessionId), "broken");
+                }, onHookResult() {}, onLifecycleIssue() {}, getSnapshotState: continuityState})).rejects.toThrow("Invalid Session snapshot JSON");
             expect(fake.calls).toHaveLength(1);
             expect(await readFile(join(cwd, "written.txt"), "utf8")).toBe("saved");
         } finally {await f.resources.close();}

@@ -1,4 +1,8 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import {afterEach, describe, expect, test} from "bun:test";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
+import {getProjectDebugDirectory} from "../../src/persistence/index.js";
 import {createLLMCaller} from "../../src/llm/index.js";
 import {deepseekProvider} from "../../src/llm/providers/deepseek.js";
 import {createTestStorage, withTempProject} from "../helpers/tempProject.js";
@@ -196,6 +200,21 @@ describe("DeepSeek provider", () => {
                 role: "assistant",
                 content: "读取完成",
             });
+            const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+            const logs = await Promise.all((await listPromptLogs(directory)).map(async filename =>
+                JSON.parse(await readFile(join(directory, filename), "utf8")) as {
+                    response: {
+                        rawResponse: {toolCallCount: number; reasoning_content?: string};
+                        rawMessage: {reasoning_content?: string};
+                    };
+                }));
+            expect(logs).toHaveLength(2);
+            const toolLog = logs.find(log => log.response.rawResponse.toolCallCount === 1);
+            const textLog = logs.find(log => log.response.rawResponse.toolCallCount === 0);
+            expect(toolLog?.response.rawResponse.reasoning_content).toBe("需要先读取文件");
+            expect(toolLog?.response.rawMessage.reasoning_content).toBe("需要先读取文件");
+            expect(textLog?.response.rawResponse.reasoning_content).toBe("已经获得文件内容");
+            expect(textLog?.response.rawMessage).not.toHaveProperty("reasoning_content");
         });
     });
 

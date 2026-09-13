@@ -1,5 +1,6 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import { afterEach, describe, expect, test } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createGlmProvider,
@@ -28,7 +29,7 @@ function callGlm(
 }
 
 function promptLogDirectory(cwd: string): string {
-  return join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "prompt-logs");
+  return join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
 }
 
 const originalFetch = globalThis.fetch;
@@ -63,7 +64,7 @@ describe("GLM cancellation", () => {
         kind: "main",
       })).rejects.toThrow("authorization=[REDACTED]");
 
-      const files = await readdir(promptLogDirectory(cwd));
+      const files = await listPromptLogs(promptLogDirectory(cwd));
       const logged = await readFile(
         join(promptLogDirectory(cwd), files[0]!),
         "utf8"
@@ -105,7 +106,7 @@ describe("GLM cancellation", () => {
         signal: controller.signal,
       });
       await didStart;
-      const pendingLogs = await readdir(promptLogDirectory(cwd));
+      const pendingLogs = await listPromptLogs(promptLogDirectory(cwd));
       expect(pendingLogs).toHaveLength(1);
       const pending = JSON.parse(
         await readFile(
@@ -239,7 +240,7 @@ describe("GLM cancellation", () => {
         toolName: "write_file",
         estimatedOutputTokens: expect.any(Number),
       });
-      const [promptLog] = await readdir(promptLogDirectory(cwd));
+      const [promptLog] = await listPromptLogs(promptLogDirectory(cwd));
       const logged = JSON.parse(
         await readFile(join(promptLogDirectory(cwd), promptLog!), "utf8")
       ) as {
@@ -390,7 +391,7 @@ describe("GLM cancellation", () => {
         total_tokens: 18,
       });
       expect(result.contextUsage).toEqual({inputTokens: 8, tokenCount: 10});
-      const logs = (await readdir(promptLogDirectory(cwd))).sort();
+      const logs = (await listPromptLogs(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);
       const first = JSON.parse(
         await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8")
@@ -445,11 +446,12 @@ describe("GLM cancellation", () => {
 
       expect(fetchCalls).toBe(2);
       expect(result.message.content).toBe("恢复成功");
-      const logs = (await readdir(promptLogDirectory(cwd))).sort();
+      const logs = (await listPromptLogs(promptLogDirectory(cwd))).sort();
       const first = JSON.parse(await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8"));
       expect(first.response.rawResponse).toMatchObject({
         finishReason: "stop", contentLength: 3,
         reasoningContentLength: reasoning.length, toolCallCount: 0,
+        ...(reasoning.trim() ? {reasoning_content: reasoning} : {}),
       });
     });
   });
@@ -493,7 +495,7 @@ describe("GLM cancellation", () => {
       );
       expect(fetchCalls).toBe(3);
       expect(
-        await readdir(promptLogDirectory(cwd))
+        await listPromptLogs(promptLogDirectory(cwd))
       ).toHaveLength(3);
     });
   });
@@ -631,7 +633,7 @@ describe("GLM cancellation", () => {
       expect(Date.now() - startedAt).toBeLessThan(500);
       expect(progress).toContain("stalled");
       expect(progress).toContain("retrying");
-      const logs = (await readdir(promptLogDirectory(cwd))).sort();
+      const logs = (await listPromptLogs(promptLogDirectory(cwd))).sort();
       expect(logs).toHaveLength(2);
       const logged = JSON.parse(
         await readFile(join(promptLogDirectory(cwd), logs[0]!), "utf8")

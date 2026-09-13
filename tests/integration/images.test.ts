@@ -1,3 +1,4 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import {saveSessionSnapshot, saveSessionCompaction} from "../helpers/sessionStorage.js";
 import {expect, test} from "bun:test";
 import {readdir, readFile, symlink, unlink, writeFile} from "node:fs/promises";
@@ -22,7 +23,7 @@ import {createCompactState} from "../../src/context/state.js";
 import {selectCompactInput} from "../../src/context/compactInput.js";
 import {estimateMessageTokens} from "../../src/context/tokens.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
-import {getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {getProjectStorageDirectory} from "../../src/persistence/index.js";
 import {createOpenAICompatibleCaller} from "../../src/llm/providers/openAICompatible.js";
 import {createHookRuntimeFactory, type HookEnvelope} from "../../src/hooks/index.js";
 import {resolvedHooks} from "../helpers/hooks.js";
@@ -192,8 +193,8 @@ test("production Agent → Qwen Provider sends native tool pixels; logs and even
             expect(requests[1]).toContain("data:image/png;base64,");
             expect(JSON.stringify(history)).not.toContain("base64,");
             expect(events.join("\n")).not.toContain("base64,");
-            const logs = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
-            const logged = (await Promise.all((await readdir(logs)).map(name => readFile(join(logs, name), "utf8")))).join("\n");
+            const logs = getProjectStorageDirectory(storage, cwd);
+            const logged = (await Promise.all((await listPromptLogs(logs)).map(name => readFile(join(logs, name), "utf8")))).join("\n");
             expect(logged).toContain('"imagesSubmitted": true');
             expect(logged).toContain('"imageId"');
             expect(logged).not.toContain("base64,");
@@ -251,8 +252,8 @@ test("image retry reuses prepared bytes and HTTP errors cannot echo them into di
             expect(reads).toBe(1);
             globalThis.fetch = (async (_url, init) => new Response(String(init?.body), {status: 400})) as typeof fetch;
             await expect(call(options, endpoint)).rejects.toThrow("Image request error body hidden");
-            const logs = join(getProjectDebugDirectory(storage, cwd), "prompt-logs");
-            const logged = (await Promise.all((await readdir(logs)).map(name => readFile(join(logs, name), "utf8")))).join("\n");
+            const logs = getProjectStorageDirectory(storage, cwd);
+            const logged = (await Promise.all((await listPromptLogs(logs)).map(name => readFile(join(logs, name), "utf8")))).join("\n");
             expect(logged).not.toContain("base64,");
             expect(logged).not.toContain((await f.ctx.imageAccess!.read(ref!)).toString("base64"));
         } finally {globalThis.fetch = originalFetch;}

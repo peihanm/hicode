@@ -80,7 +80,7 @@ function readPrivateStorageFile(
 
     let descriptor: number | undefined;
     try {
-        descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         const metadata = fstatSync(descriptor);
         if (!metadata.isFile()) {
             throw new Error(`Pillar storage file is not a regular file: ${path}`);

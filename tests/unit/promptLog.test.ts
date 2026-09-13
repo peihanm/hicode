@@ -1,5 +1,6 @@
+import {listPromptLogs} from "../helpers/promptLogs.js";
 import {describe, expect, test} from "bun:test";
-import {readdir, readFile} from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {beginPromptLog} from "../../src/llm/promptLog.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -18,9 +19,9 @@ describe("prompt log lifecycle", () => {
             );
             const directory = join(
                 getProjectDebugDirectory(storage, cwd),
-                "prompt-logs"
+                "requests"
             );
-            const [filename] = await readdir(directory);
+            const [filename] = await listPromptLogs(directory);
             const pending = JSON.parse(
                 await readFile(join(directory, filename!), "utf8")
             ) as {response: unknown};
@@ -105,9 +106,9 @@ describe("prompt log lifecycle", () => {
 
             const directory = join(
                 getProjectDebugDirectory(storage, cwd),
-                "prompt-logs"
+                "requests"
             );
-            const [filename] = await readdir(directory);
+            const [filename] = await listPromptLogs(directory);
             const content = await readFile(join(directory, filename!), "utf8");
             const logged = JSON.parse(content) as {
                 request: Record<string, unknown>;
@@ -191,9 +192,9 @@ describe("prompt log lifecycle", () => {
 
             const directory = join(
                 getProjectDebugDirectory(storage, cwd),
-                "prompt-logs"
+                "requests"
             );
-            const [filename] = await readdir(directory);
+            const [filename] = await listPromptLogs(directory);
             const content = await readFile(join(directory, filename!), "utf8");
             const logged = JSON.parse(content) as {
                 request: Record<string, unknown>;
@@ -228,9 +229,9 @@ describe("prompt log lifecycle", () => {
 
             const directory = join(
                 getProjectDebugDirectory(storage, cwd),
-                "prompt-logs"
+                "requests"
             );
-            const [filename] = await readdir(directory);
+            const [filename] = await listPromptLogs(directory);
             const content = await readFile(join(directory, filename!), "utf8");
             expect(content).not.toContain(apiKey);
             expect(content).toContain("[REDACTED]");
@@ -248,14 +249,14 @@ describe("prompt log lifecycle", () => {
                     "glm-5.2",
                     {messages: [{role: "user", origin: "user" as const, content: String(index)}]},
                     []
-                );
+                ).finish({error: "fixture complete"});
             }
 
             const directory = join(
                 getProjectDebugDirectory(storage, cwd),
-                "prompt-logs"
+                "requests"
             );
-            expect(await readdir(directory)).toHaveLength(200);
+            expect(await listPromptLogs(directory)).toHaveLength(200);
         });
     });
 });
