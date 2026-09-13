@@ -17,13 +17,13 @@ describe("RuntimeMessageQueue", () => {
 
     test("终态 Agent 可以按顺序取出下一条消息作为新 Run 输入", () => {
         const queue = new RuntimeMessageQueue();
-        queue.enqueueUser("第一条继续消息", "next");
-        queue.enqueueUser("第二条继续消息", "next");
+        queue.enqueueAgent("第一条继续消息", {sender: "parent", recipient: "00000000-0000-0000-0000-000000000000", runCount: 1, intent: "followup"});
+        queue.enqueueAgent("第二条继续消息", {sender: "parent", recipient: "00000000-0000-0000-0000-000000000000", runCount: 1, intent: "followup"});
 
-        expect(queue.dequeueNextUserInput()?.content).toBe("第一条继续消息");
+        expect(queue.dequeueFollowup()?.content).toBe("第一条继续消息");
         expect(queue.list()).toHaveLength(1);
-        expect(queue.dequeueNextUserInput()?.content).toBe("第二条继续消息");
-        expect(queue.dequeueNextUserInput()).toBeUndefined();
+        expect(queue.dequeueFollowup()?.content).toBe("第二条继续消息");
+        expect(queue.dequeueFollowup()).toBeUndefined();
     });
 
     test("取回可编辑输入但保留任务通知", () => {
@@ -121,4 +121,25 @@ describe("RuntimeMessageQueue", () => {
         expect(queue.enqueueUser("继续", "next").content).toBe("继续");
         expect(queue.list()).toHaveLength(1);
     });
+});
+
+test("agent messages retain validated routing on restore, cannot be edited as user input, and waits cancel", async () => {
+    const queue = new RuntimeMessageQueue();
+    const route = {sender: "00000000-0000-0000-0000-000000000000", recipient: "parent", runCount: 2, intent: "message" as const};
+    const controller = new AbortController();
+    const waiting = queue.waitForAgentMessage(1000, controller.signal);
+    queue.enqueueAgent("question", route);
+    expect(await waiting).toBe("message");
+    expect(queue.takeEditableInputs()).toEqual([]);
+    expect(queue.dequeueFollowup()).toBeUndefined();
+    const restored = new RuntimeMessageQueue({messages: queue.list()});
+    expect(restored.list()).toEqual(queue.list());
+    expect(restored.createAgentInputChannel(() => {}).drainInitial()[0]).toMatchObject({source: "agent_message"});
+    expect(restored.list()).toHaveLength(0);
+    expect(await restored.waitForAgentMessage(1, controller.signal)).toBe("timeout");
+    const aborted = restored.waitForAgentMessage(1000, controller.signal).catch(error => error);
+    controller.abort("test-cancel");
+    expect(await aborted).toBe("test-cancel");
+    expect(() => queue.enqueueAgent("x".repeat(32769), route)).toThrow("must not exceed");
+    expect(() => queue.enqueueAgent("spoof", {...route, sender: "user"})).toThrow("Invalid agent message route");
 });

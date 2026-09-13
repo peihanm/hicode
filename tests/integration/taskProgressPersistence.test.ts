@@ -30,7 +30,7 @@ test("ordinary Agent progress is live-only while start, finish and notification 
             if (event.type === "task_finished") finish();
         });
         try {
-            await session.startAgent({parentContext: ctx, request: {kind: "registered", agentType: "Explore",
+            await session.startAgent({parentContext: ctx, request: { agentType: "Explore",
                 description: "progress", prompt: "inspect", parentToolCallId: "start-progress"}});
             await completed;
             expect(progress).toBe(10);

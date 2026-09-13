@@ -28,7 +28,7 @@ describe("agent definitions", () => {
   test("只接受已注册的 Agent 类型", () => {
     expect(BUILTIN_SUBAGENT_REGISTRY.has("Explore")).toBe(true);
     expect(BUILTIN_SUBAGENT_REGISTRY.has("verification")).toBe(false);
-    expect(BUILTIN_SUBAGENT_REGISTRY.listDefinitions().map(agent => agent.agentType)).toEqual(["Explore"]);
+    expect(BUILTIN_SUBAGENT_REGISTRY.listDefinitions().map(agent => agent.agentType)).toEqual(["Explore", "Worker"]);
     expect(BUILTIN_SUBAGENT_REGISTRY.has("GeneralPurpose")).toBe(false);
   });
 

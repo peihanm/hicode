@@ -63,8 +63,10 @@ describe("Model dialog", () => {
             expect(primaryModel.target).toEqual(deepseek);
             expect(resources.fastModel).toBe(fastBefore);
             expect(instance.lastFrame()).toContain("DeepSeek Pro");
-            expect(instance.lastFrame()).toContain("Main model switched to: DeepSeek Pro.");
+            expect(instance.lastFrame()).toContain("Switched to DeepSeek Pro.");
             expect(instance.lastFrame()).not.toContain("Fast model");
+            expect(instance.lastFrame()).not.toContain("Main model");
+            expect(instance.lastFrame()).not.toContain("Worked for");
 
             instance.stdin.write("验证真实上下文");
             await new Promise((resolve) => setTimeout(resolve, 10));

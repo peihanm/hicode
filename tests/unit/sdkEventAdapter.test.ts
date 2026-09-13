@@ -152,3 +152,11 @@ describe("SDK event adapter", async () => {
         });
     });
 });
+
+ test("coordination messages have their own SDK item and never become the final response", async () => {
+    const events: ThreadEventPayload[] = [];
+    const adapter = new SDKEventAdapter("turn", event => {events.push(event);});
+    await adapter.handleAgentEvent({type: "coordination_message", messageId: "message-id", text: "Child requests clarification"});
+    expect(events.find(event => event.type === "item.completed")).toMatchObject({item: {id: "message-id", type: "coordination_message", text: "Child requests clarification"}});
+    expect(events.some(event => "item" in event && event.item.type === "agent_message")).toBe(false);
+});

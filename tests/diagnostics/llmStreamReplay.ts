@@ -48,6 +48,12 @@ const USAGE = [
 
 function getReplayConnection(provider: LLMProviderName): ReplayConnection {
     switch (provider) {
+        case "openrouter":
+            return {
+                apiKeyVariable: "OPENROUTER_API_KEY",
+                apiKey: process.env.OPENROUTER_API_KEY,
+                baseUrl: "https://openrouter.ai/api/v1",
+            };
         case "glm":
             return {
                 apiKeyVariable: "GLM_API_KEY",

@@ -3,7 +3,7 @@ import type {SlashCommand} from "../types.js";
 export const modelCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "model",
-    description: "View or switch the main model",
+    description: "View or switch the model",
     async execute(args, context) {
         if (args) {
             await context.onEvent({
@@ -18,7 +18,7 @@ export const modelCommand: SlashCommand = {
         }
         await context.onEvent({
             type: "assistant_text",
-            content: `Current main model: ${context.ctx.model}`,
+            content: `Current model: ${context.ctx.model}`,
         });
     },
 };

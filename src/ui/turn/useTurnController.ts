@@ -491,7 +491,7 @@ export function useTurnController({
                     resources.settings.context
                 ));
                 eventStore.appendNotice(
-                    `Main model switched to: ${formatModelTarget(target)}.`
+                    `Switched to ${formatModelTarget(target)}.`
                 );
                 void persistSnapshot();
             },

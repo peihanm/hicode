@@ -1,3 +1,4 @@
+import type {AgentMessaging} from "./agentMessaging.js";
 import type {ContextUsageTracker} from "../context/usage.js";
 import {ApprovalBudget, ApprovalEpoch, type ApprovalReviewer} from "../permissions/approval.js";
 import {randomUUID} from "node:crypto";
@@ -43,6 +44,7 @@ export interface ToolContextResources {
     mcpManager?: McpManagerLike;
     taskRuntime?: TaskRuntimeLike;
     tasks?: TaskSessionLike;
+    agentMessaging?: AgentMessaging;
     shellRunner: ShellRunnerLike;
     memoryFiles?: MemoryFileAccess;
 }
@@ -139,6 +141,7 @@ export function createToolContext({
             allowGrants: false,
         }),
         mcpManager: resources.mcpManager,
+        agentMessaging: resources.agentMessaging,
         tasks: resources.tasks ?? resources.taskRuntime?.forSession({
             sessionId: session.sessionId,
             toolResultStore: session.toolResultStore,

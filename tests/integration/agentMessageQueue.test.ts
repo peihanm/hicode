@@ -48,3 +48,20 @@ describe("Agent running input queue", () => {
         });
     });
 });
+
+test("a failed host message projection does not lose queued evidence or the new user prompt", async () => {
+    await withTempProject(async cwd => {
+        const queue = new RuntimeMessageQueue();
+        for (const content of ["first finding", "second finding"]) queue.enqueueAgent(content, {
+            sender: "00000000-0000-0000-0000-000000000000", recipient: "parent", runCount: 1, intent: "message",
+        });
+        const history: Message[] = [{role: "system", content: "system"}];
+        const fake = createFakeLLM([]);
+        await expect(runAgentForTest("new user request", history, event => {
+            if (event.type === "coordination_message") throw new Error("host projection failed");
+        }, createTestContext(cwd), {callLLM: fake.callLLM, inputChannel: queue.createAgentInputChannel(() => {})})).rejects.toThrow("host projection failed");
+        expect(history.filter(message => message.role === "user" && message.origin === "agent")).toHaveLength(2);
+        expect(history.at(-1)).toMatchObject({role: "user", origin: "user", content: "new user request"});
+        expect(fake.calls).toHaveLength(0);
+    });
+});

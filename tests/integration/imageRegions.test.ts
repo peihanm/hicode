@@ -113,7 +113,7 @@ test("child Fork receives independent original and view assets through the paren
         }]);
         const thread = createSubagentThreadForTest({parentContext: f.ctx, agentId: "image-child", onEvent() {},
             toolResultStoreOptions: {pillarHome: f.ctx.storage.pillarHome}, agentOptions: {callLLM: child.callLLM}},
-            {kind: "fork", agentType: "fork", name: "image", description: "检查图像", prompt: "检查图像", parentToolCallId: "fork", contextSnapshot: buildForkContextSnapshot(f.history, "fork")});
+            {agentType: "Worker", name: "image", description: "检查图像", prompt: "检查图像", parentToolCallId: "fork", contextSnapshot: buildForkContextSnapshot(f.history, "fork")});
         const result = await thread.run({prompt: "检查图像", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(result.reply).toBe("图片副本确认");
     });

@@ -5,9 +5,9 @@ import {checkTaskStopPermission} from "./stopPermission.js";
 
 const inputSchema = z.object({
     action: z
-        .enum(["list", "status", "send", "stop"])
+        .enum(["list", "status", "followup", "interrupt", "stop"])
         .default("list")
-        .describe("list/status/send/stop tasks; send steers or continues an Agent."),
+        .describe("Manage tasks. followup assigns work; interrupt retains the Agent thread; stop closes it."),
     task_id: z
         .string()
         .optional()
@@ -17,7 +17,7 @@ const inputSchema = z.object({
         .min(1)
         .max(32 * 1024)
         .optional()
-        .describe("Required for send: inject at a safe boundary while running, or continue the same finished Agent thread."),
+        .describe("Required for followup: inject at a safe boundary while running, or continue the same finished Agent thread."),
 });
 
 function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
@@ -85,12 +85,12 @@ function formatTask(task: TaskSnapshot): string {
 export const taskTool: Tool<typeof inputSchema> = {
     name: "task",
     description:
-        "Manage this session's background Shell/Agent tasks with list/status/send/stop. Completion is notified automatically; avoid repeated polling. send steers a running Agent at a safe boundary or continues a finished thread. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
+        "Manage this session's background Shell/Agent tasks with list/status/followup/interrupt/stop. Completion is notified automatically; avoid repeated polling. followup steers a running Agent at a safe boundary or continues a finished thread. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "list" || action === "status",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
     checkPermissions: async ({action, task_id}, ctx) => {
-        if (action === "stop") return checkTaskStopPermission(ctx, task_id);
+        if (action === "stop" || action === "interrupt") return checkTaskStopPermission(ctx, task_id);
         return {behavior: "passthrough"};
     },
     async execute({action, task_id, message}, ctx) {
@@ -109,15 +109,19 @@ export const taskTool: Tool<typeof inputSchema> = {
                 outcome: "failed",
             };
         }
-        if (action === "send") {
+        if (action === "interrupt") {
+            try {return {content: formatTask(await ctx.tasks.interrupt(task_id)), outcome: "ok"};}
+            catch (error) {return {content: error instanceof Error ? error.message : String(error), outcome: "failed"};}
+        }
+        if (action === "followup") {
             if (!message?.trim()) {
                 return {
-                    content: "send requires a non-empty message",
+                    content: "followup requires a non-empty message",
                     outcome: "failed",
                 };
             }
             try {
-                const task = await ctx.tasks.send(task_id, message);
+                const task = await ctx.tasks.followup(task_id, message);
                 return {
                     content: formatTask(task),
                     outcome: "ok",

@@ -1,4 +1,5 @@
 import type {TokenUsage} from "../types.js";
+import {reasoningDetailSchema, type ReasoningDetail} from "../reasoning.js";
 
 const MAX_TOOL_CALLS = 128;
 
@@ -17,6 +18,8 @@ export interface OpenAICompatibleStreamChunk {
         delta?: {
             content?: string | null;
             reasoning_content?: string | null;
+            reasoning?: string | null;
+            reasoning_details?: ReasoningDetail[];
             tool_calls?: OpenAICompatibleStreamDeltaToolCall[];
         };
         finish_reason?: string | null;
@@ -55,6 +58,13 @@ function decodeUsage(value: unknown): TokenUsage | undefined {
         result[field] = count as number;
     }
     return result;
+}
+
+function decodeReasoningDetails(value: unknown): ReasoningDetail[] | undefined {
+    if (value === undefined || value === null) return undefined;
+    const parsed = reasoningDetailSchema.array().max(200_000).safeParse(value);
+    if (!parsed.success) throw new Error("Invalid stream reasoning_details");
+    return parsed.data;
 }
 
 function decodeToolCalls(
@@ -138,6 +148,12 @@ export function decodeOpenAICompatibleStreamChunk(
     if (!isRecord(value)) {
         throw new Error("OpenAI-compatible stream data events must be objects");
     }
+    if (value.error !== undefined) {
+        const error = value.error;
+        const code = isRecord(error) && (typeof error.code === "number" || typeof error.code === "string") ? error.code : "unknown";
+        const message = isRecord(error) && typeof error.message === "string" ? error.message : "Provider stream failed";
+        throw new Error(`Provider stream error ${code}: ${message}`);
+    }
     const usage = decodeUsage(value.usage);
     if (value.choices === undefined) return usage ? {usage} : {};
     if (!Array.isArray(value.choices)) {
@@ -165,6 +181,8 @@ export function decodeOpenAICompatibleStreamChunk(
                 : {
                     delta: {
                         content: optionalString(rawDelta.content, "delta.content"),
+                        reasoning: optionalString(rawDelta.reasoning, "delta.reasoning"),
+                        reasoning_details: decodeReasoningDetails(rawDelta.reasoning_details),
                         reasoning_content: optionalString(
                             rawDelta.reasoning_content,
                             "delta.reasoning_content"

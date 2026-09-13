@@ -85,7 +85,9 @@ function notificationFor(task: TaskSnapshot): TaskNotification {
         message: `Background ${task.kind === "shell" ? "task" : "Agent"} ${task.id}(${label}) is ${
             task.status === "completed"
                 ? "completed"
-                : task.status === "cancelled"
+                : task.status === "interrupted"
+                    ? "interrupted"
+                    : task.status === "cancelled"
                     ? "cancelled"
                     : "failed"
         }:${summary}${output}.`,

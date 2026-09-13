@@ -53,7 +53,7 @@ describe("/agents slash command", () => {
 
             expect(handled).toBe(true);
             expect(messages).toHaveLength(1);
-            expect(messages[0]).toContain("Agents · 2 available");
+            expect(messages[0]).toContain("Agents · 3 available");
             expect(messages[0]).toContain("reviewer · project");
             expect(messages[0]).toContain("Model fast (glm-fast-test) · maximum turns 7");
             expect(messages[0]).toContain("Tools (2) read_file · grep");

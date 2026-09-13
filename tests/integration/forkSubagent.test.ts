@@ -66,7 +66,7 @@ describe("fork subagent", () => {
             const thread = createSubagentThreadForTest({
                 parentContext: createTestContext(cwd, {toolResultStore: store}),
                 agentId: "fork-evidence", onEvent: () => {}, agentOptions: {callLLM: child.callLLM},
-            }, {kind: "fork", agentType: "fork", name: "evidence", description: "检查证据",
+            }, {agentType: "Worker", name: "evidence", description: "检查证据",
                 prompt: "检查证据", parentToolCallId: "fork", contextSnapshot: snapshot});
             const result = await thread.run({prompt: "检查证据", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
             expect(result.reply).toBe("evidence checked");
@@ -88,7 +88,7 @@ describe("fork subagent", () => {
                         function: {
                             name: "agent",
                             arguments: JSON.stringify({
-                                subagent_type: "fork",
+                                subagent_type: "Worker", context: "inherit",
                                 name: "frontend",
                             }),
                         },
@@ -151,7 +151,7 @@ describe("fork subagent", () => {
             const launched = await executeToolResult("agent", JSON.stringify({
                 description: "实现前端",
                 prompt: "只调查现有前端结构并给出方案",
-                subagent_type: "fork",
+                subagent_type: "Worker", context: "inherit",
                 name: "frontend",
                 read_only: true,
                 run_in_background: true,
@@ -163,7 +163,7 @@ describe("fork subagent", () => {
             const [task] = await tasks.list();
             expect(task).toMatchObject({
                 kind: "agent",
-                agentType: "fork",
+                agentType: "Worker",
                 agentName: "frontend",
                 status: "completed",
                 resultPreview: "frontend 已理解父上下文",
@@ -270,7 +270,7 @@ describe("fork subagent", () => {
                     JSON.stringify({
                         description: "实现前端文件",
                         prompt: "创建 fork-feature.txt",
-                        subagent_type: "fork",
+                        subagent_type: "Worker", context: "inherit",
                         name: "frontend",
                         run_in_background: true,
                         cwd: childCwd,
@@ -284,7 +284,7 @@ describe("fork subagent", () => {
                 const [task] = await tasks.list();
                 expect(task).toMatchObject({
                     kind: "agent",
-                    agentType: "fork",
+                    agentType: "Worker",
                     agentName: "frontend",
                     status: "completed",
                     cwd: await realpath(childCwd),
@@ -304,29 +304,35 @@ describe("fork subagent", () => {
         });
     });
 
-    test("Fork 缺少 name 或请求前台运行时在工具边界拒绝", async () => {
-        await withTempProject(async (cwd) => {
+    test("role, inherited background, name and foreground execution are independent", async () => {
+        await withTempProject(async cwd => {
             const ctx = createTestContext(cwd);
-            attachSubagentLauncher(ctx, async () => {
-                throw new Error("不应启动");
-            });
-            const missingName = await executeToolResult("agent", JSON.stringify({
-                description: "fork",
-                prompt: "fork",
-                subagent_type: "fork",
-                run_in_background: true,
-            }), ctx, "missing-name");
-            expect(missingName.outcome).toBe("failed");
-            expect(missingName.modelContent).toContain("requires name");
-
-            const foreground = await executeToolResult("agent", JSON.stringify({
-                description: "fork",
-                prompt: "fork",
-                subagent_type: "fork",
-                name: "frontend",
-            }), ctx, "foreground-fork");
-            expect(foreground.outcome).toBe("failed");
-            expect(foreground.modelContent).toContain("run_in_background=true");
+            const history: Message[] = [
+                {role: "system", content: "parent"},
+                {role: "user", origin: "user", content: "shared background"},
+                {role: "assistant", content: null, tool_calls: [{id: "spawn", type: "function", function: {name: "agent", arguments: "{}"}}]},
+            ];
+            for (const role of ["Worker", "Explore"]) {
+                for (const context of ["fresh", "inherit"] as const) {
+                    attachSubagentLauncher(ctx, async request => {
+                        expect(request.agentType).toBe(role);
+                        expect(request.model).toBe("fast");
+                        expect(request.contextSnapshot !== undefined).toBe(context === "inherit");
+                        if (request.contextSnapshot) {
+                            expect(request.contextSnapshot.history[1]?.content).toBe("shared background");
+                            expect(request.contextSnapshot.history.at(-1)?.role).toBe("tool");
+                        }
+                        return {agentId: "child", agentType: role, description: "inspect", reply: "done",
+                            reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
+                    }, () => history);
+                    const result = await executeToolResult("agent", JSON.stringify({
+                        description: "inspect", prompt: "inspect", subagent_type: role,
+                        context, model: "fast", read_only: true,
+                    }), ctx, "spawn");
+                    expect(result.outcome).toBe("ok");
+                }
+            }
+            expect(history).toHaveLength(3);
         });
     });
 });

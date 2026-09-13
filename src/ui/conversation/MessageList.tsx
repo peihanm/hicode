@@ -30,7 +30,7 @@ function agentIdentity(
     try {
         const parsed = JSON.parse(thread.args) as Record<string, unknown>;
         const type = thread.subagentName
-            ? `${thread.subagentName} (fork)`
+            ? `${thread.subagentName} (${thread.subagentType ?? "Worker"})`
             : thread.subagentType ??
             (typeof parsed.subagent_type === "string"
                 ? parsed.subagent_type
@@ -44,7 +44,7 @@ function agentIdentity(
     } catch {
         return {
             type: thread.subagentName
-                ? `${thread.subagentName} (fork)`
+                ? `${thread.subagentName} (${thread.subagentType ?? "Worker"})`
                 : thread.subagentType ?? "Agent",
         };
     }
@@ -127,7 +127,9 @@ function TaskNotificationView({
 }) {
     const state = thread.status === "completed"
         ? "completed"
-        : thread.status === "cancelled"
+        : thread.status === "interrupted"
+            ? "interrupted"
+            : thread.status === "cancelled"
             ? "cancelled"
             : "failed";
     const kind = thread.kind === "agent" ? "Background Agent" : "Background task";
@@ -232,7 +234,7 @@ function ToolCallView({
                 <Box marginLeft={2} marginTop={1} flexDirection="column">
                     <Text color={COLORS.dim}>
                         {thread.subagentName
-                            ? `${thread.subagentName} (fork)`
+                            ? `${thread.subagentName} (${thread.subagentType ?? "Worker"})`
                             : thread.subagentType ?? "Agent"} response
                     </Text>
                     <Text color={COLORS.toolResult}>
@@ -394,6 +396,7 @@ function ThreadView({
             </Text>}
         </Box>;
     }
+    if (thread.role === "coordination_message") return <Box marginTop={1} flexDirection="column"><Text color={COLORS.accent}>Agent coordination</Text><Text>{thread.text}</Text></Box>;
     if (thread.role === "task_notification") {
         return <TaskNotificationView thread={thread}/>;
     }

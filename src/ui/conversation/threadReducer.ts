@@ -62,6 +62,7 @@ export function threadsFromHistory(
     for (const message of history) {
         if (message.role === "user") {
             const text = textFromUserMessage(message);
+            if (message.origin === "agent" && text.trim()) threads.push({id: createId(), role: "coordination_message", text});
             if (message.origin === "user" && text.trim().length > 0) {
                 threads.push(createUserThread(text, createId));
             }
@@ -184,6 +185,8 @@ export function reduceThreads(
     createId: ThreadIdFactory = randomThreadId
 ): UIThread[] {
     switch (event.type) {
+        case "coordination_message":
+            return [...threads, {id: createId(), role: "coordination_message", text: event.text}];
         case "approval_review":
             return threads.map(thread => thread.role === "tool_call" && thread.toolCallId === event.toolCallId
                 ? {...thread, approvalReview: event.phase === "start" ? "Reviewing permissions automatically" : undefined} : thread);

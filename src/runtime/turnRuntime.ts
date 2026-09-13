@@ -2,7 +2,6 @@ import {finishPromptLogRun} from "../llm/promptLog.js";
 import {contentText, type MessageContent} from "../images/content.js";
 import type {AgentEvent, AgentResult} from "../agent/types.js";
 import {
-    EMPTY_AGENT_INPUT_CHANNEL,
     type AgentInputChannel,
     type AgentRunOptions,
 } from "../agent/index.js";
@@ -75,7 +74,7 @@ export function createRootTurnRunnerFactory(
             onTurnSettled,
             getSnapshotState,
             sessionStartContextBlocks = [],
-            inputChannel = EMPTY_AGENT_INPUT_CHANNEL,
+            inputChannel = session.messageQueue.createAgentInputChannel(() => {}),
             maxIterations,
         } = options;
         const turnId = options.turnId ?? randomUUID();

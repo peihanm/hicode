@@ -208,7 +208,7 @@ Options:
       --cwd <path>                Workspace (default: process cwd)
       --pillar-home <path>        Host data root (default: ~/.pillar)
       --env-file <path>           Explicit env file; values override current env
-      --source <source>           glm | qwen | deepseek
+      --source <source>           glm | qwen | deepseek | openrouter
       --model <model>             Primary model override
       --permission-mode <mode>    ask | auto-review | full-access
       --resume <sessionId>        Resume an existing SDK Thread
@@ -313,13 +313,14 @@ function optionalModelSource(value: string | undefined): ModelSource | undefined
     if (
         value === "glm" ||
         value === "qwen" ||
-        value === "deepseek"
+        value === "deepseek" ||
+        value === "openrouter"
     ) {
         return value;
     }
     throw new PillarSDKError(
         "invalid_runner_option",
-        "--source 必须是 glm | qwen | deepseek"
+        "--source 必须是 glm | qwen | deepseek | openrouter"
     );
 }
 

@@ -21,7 +21,7 @@
 ### 1. 准备环境
 
 - [Bun](https://bun.sh/) **1.3 或更高版本**、Git 和 Bash。
-- 至少一个可用的模型 API Key，且账号有权访问所选模型和接口。内置来源包括 **Qwen、GLM 和 DeepSeek**；调用费用由你的模型服务账号承担。
+- 至少一个可用的模型 API Key，且账号有权访问所选模型和接口。内置来源包括 **Qwen、GLM、DeepSeek 和 OpenRouter**；调用费用由你的模型服务账号承担。
 - 沙箱依赖：macOS 需要 `ripgrep`；Linux 需要 `bubblewrap`、`socat` 和 `ripgrep`，系统还需允许沙箱使用用户命名空间。
 
 可以通过包管理器安装沙箱依赖：
@@ -82,10 +82,23 @@ DASHSCOPE_API_KEY=your-api-key
 | `qwen` | `DASHSCOPE_API_KEY` |
 | `glm` | `GLM_API_KEY` |
 | `deepseek` | `DEEPSEEK_API_KEY` |
+| `openrouter` | `OPENROUTER_API_KEY` |
 
 更换服务商时，同时配置 `primary` 和 `fast`；只切换主模型不会改变快速模型。Key 保存在 `.env`，不要写入 `settings.json`。
 
 </details>
+
+使用 OpenRouter 时，在 `.env` 填写 `OPENROUTER_API_KEY`，重启后通过 `/model` 选择 **OpenRouter → Nemotron 3 Super (free)**。如果只配置了 OpenRouter Key，在 `~/.pillar/settings.json` 中同时设置两个模型槽：
+
+```json
+{
+  "models": {
+    "primary": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"},
+    "fast": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"}
+  }
+}
+```
+
 
 ### 4. 启动
 

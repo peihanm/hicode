@@ -1,3 +1,4 @@
+import {WORKER_SUBAGENT} from "./builtins/worker/index.js";
 import {EXPLORE_SUBAGENT} from "./builtins/explore/index.js";
 import {createCustomSubagentRegistration} from "./custom.js";
 import {boundAgentLoadIssues, normalizeAgentName} from "./load.js";
@@ -17,6 +18,7 @@ function immutableRegistration(
 const BUILTIN_SUBAGENT_REGISTRATIONS: readonly SubagentRegistration[] =
     Object.freeze([
         immutableRegistration(EXPLORE_SUBAGENT),
+        immutableRegistration(WORKER_SUBAGENT),
     ]);
 
 export interface SubagentRegistry {

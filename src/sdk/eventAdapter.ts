@@ -107,6 +107,9 @@ export class SDKEventAdapter {
                 }
                 break;
             }
+            case "coordination_message":
+                await this.emitInstant({id: event.messageId, type: "coordination_message", status: "completed", text: event.text});
+                break;
             case "turn_end":
                 await this.emit({type: "turn.settled", turnId: this.turnId, input: event.input});
                 break;

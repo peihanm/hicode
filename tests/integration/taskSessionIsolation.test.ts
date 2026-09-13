@@ -27,7 +27,7 @@ test("task 跨 Session 不停止 Agent、不确认通知，恢复后仍隔离", 
         const tools = createToolRuntime();
         try {
             const task = await session.startAgent({parentContext: ctx, request: {
-                kind: "registered", agentType: "Explore", description: "kind test",
+                 agentType: "Explore", description: "kind test",
                 prompt: "wait", parentToolCallId: "start-kind",
             }});
             const other = createTestContext(cwd, {sessionId: "other"});

@@ -1,3 +1,4 @@
+import {agentMessageTool} from "./agentMessage/agentMessage.js";
 import {viewImageTool} from "./viewImage/viewImage.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import type {OpenAITool} from "../llm/types.js";
@@ -56,6 +57,7 @@ function createBuiltinTools(): Tool[] {
         skillTool,
         createAgentTool(BUILTIN_SUBAGENT_REGISTRY),
         taskTool,
+        agentMessageTool,
         webFetchTool,
     ];
 }

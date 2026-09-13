@@ -21,7 +21,7 @@ Pillar is under active development. APIs, configuration, and stored session form
 ### 1. Prepare your environment
 
 - [Bun](https://bun.sh/) **1.3 or newer**, Git, and Bash.
-- An API key with access to your chosen model and endpoint. Built-in sources are **Qwen, GLM, and DeepSeek**; model calls use your provider account.
+- An API key with access to your chosen model and endpoint. Built-in sources are **Qwen, GLM, DeepSeek, and OpenRouter**; model calls use your provider account.
 - Sandbox dependencies: `ripgrep` on macOS; `bubblewrap`, `socat`, and `ripgrep` on Linux. Linux must also permit the user namespaces needed by the sandbox.
 
 For example, install the sandbox dependencies with your package manager:
@@ -82,10 +82,23 @@ For GLM or DeepSeek, use the corresponding source name and credential variable:
 | `qwen` | `DASHSCOPE_API_KEY` |
 | `glm` | `GLM_API_KEY` |
 | `deepseek` | `DEEPSEEK_API_KEY` |
+| `openrouter` | `OPENROUTER_API_KEY` |
 
 Configure both `primary` and `fast` when changing providers; switching the main model alone does not change the fast model. Keep keys in `.env`, not in `settings.json`.
 
 </details>
+
+For OpenRouter, set `OPENROUTER_API_KEY` in `.env` and select **OpenRouter → Nemotron 3 Super (free)** with `/model` after restarting. To start with only an OpenRouter key, set both model slots in `~/.pillar/settings.json`:
+
+```json
+{
+  "models": {
+    "primary": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"},
+    "fast": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"}
+  }
+}
+```
+
 
 ### 4. Start Pillar
 

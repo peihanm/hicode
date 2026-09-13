@@ -114,7 +114,6 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
-        kind: "registered",
         agentType: "FixtureWriter",
         description: "验证文件观察隔离",
         prompt: "不要读取文件，直接修改 owned-by-parent.ts",
@@ -274,7 +273,6 @@ describe("synchronous subagent", () => {
       });
 
       const running = runner({
-        kind: "registered",
         agentType: "Explore",
         description: "等待取消",
         prompt: "调查长任务",
@@ -321,7 +319,6 @@ describe("synchronous subagent", () => {
       });
 
       const result = await runner({
-        kind: "registered",
         agentType: "Explore",
         description: "权限收窄",
         prompt: "读取 guarded.ts",
@@ -367,7 +364,6 @@ describe("synchronous subagent", () => {
         toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
       const result = await runner({
-        kind: "registered",
         agentType: "Explore",
         description: "轮次上限",
         prompt: "持续读取",
@@ -394,7 +390,6 @@ describe("synchronous subagent", () => {
         toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
       });
       const result = await runner({
-        kind: "registered",
         agentType: "Explore",
         description: "transcript 降级",
         prompt: "返回报告",

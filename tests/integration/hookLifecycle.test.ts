@@ -230,7 +230,7 @@ test("子 Agent 两次真实运行携带 runCount/taskId，父 Hook 能力不进
         ctx.runHook = async input => {inputs.push(input); return {blocked: false, executions: [], additionalContexts: []};};
         const fake = createFakeLLM([assistantText("first"), assistantText("second")]);
         const thread = createSubagentThreadForTest({agentId: "child-id", parentContext: ctx, onEvent() {}, agentOptions: {callLLM: fake.callLLM}}, {
-            kind: "registered", agentType: "Explore", description: "read", prompt: "read", parentToolCallId: "parent",
+             agentType: "Explore", description: "read", prompt: "read", parentToolCallId: "parent",
         });
         expect(inputs).toHaveLength(0);
         const signal = new AbortController().signal;

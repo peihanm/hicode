@@ -1,3 +1,4 @@
+import {RuntimeMessageQueue} from "../../src/runtime/messageQueue.js";
 import {contentText} from "../../src/images/content.js";
 import {createApprovalReviewer} from "../../src/permissions/reviewer.js";
 import {describe, expect, test} from "bun:test";
@@ -931,5 +932,29 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
             finally {await second.close();}
             expect(fake.calls).toHaveLength(4);
         } finally {await first.close(); await resources.close();}
+    });
+});
+
+ test("SDK default input channel consumes restored coordination as agent evidence and exposes a distinct item", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const inbox = new RuntimeMessageQueue();
+        inbox.enqueueAgent("Worker found a boundary issue", {sender: "00000000-0000-0000-0000-000000000000", recipient: "parent", runCount: 1, intent: "message"});
+        const fake = createFakeLLM([options => {
+            expect(options.messages.find(message => message.role === "user" && typeof message.content === "string" && message.content.includes("Worker found a boundary issue")))
+                .toMatchObject({origin: "agent"});
+            return assistantText("I checked the worker evidence");
+        }]);
+        const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
+        const sessionId = "sdk-agent-inbox";
+        const thread = await createSDKThread({resources,
+            seed: {sessionId, history: createInitialHistory(cwd, resources.model), compactState: createCompactState(), queuedInputs: inbox.list()},
+            state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {},
+        });
+        try {
+            const result = await thread.run("Continue my task");
+            expect(result.finalResponse).toBe("I checked the worker evidence");
+            expect(result.items.some(item => item.type === "coordination_message" && item.text.includes("Worker found a boundary issue"))).toBe(true);
+            expect(loadSession(storage, cwd, sessionId, resources.model)?.queuedInputs).toEqual([]);
+        } finally {await thread.close(); await resources.close();}
     });
 });

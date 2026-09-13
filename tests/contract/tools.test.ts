@@ -36,7 +36,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(15);
+    expect(schemas).toHaveLength(16);
     expect(names).not.toContain("bash_task");
     expect(names).toContain("view_image");
     expect(new Set(names).size).toBe(names.length);
@@ -133,7 +133,7 @@ describe("tool registry contract", () => {
       const ctx = createTestContext(cwd);
       let selectedModel: string | undefined;
       attachSubagentLauncher(ctx, async (request) => {
-        selectedModel = request.kind === "fork" ? undefined : request.model;
+        selectedModel = request.model;
         return {
           agentId: "agent-model-test",
           agentType: request.agentType,

@@ -8,6 +8,12 @@ export function projectMessageForWire(message: Message) {
     if (message.role === "user") return {role: message.role, content: message.content};
     if (message.role === "assistant") {
         const {reasoning, ...visible} = message;
+        if (reasoning && "format" in reasoning) {
+            return {...visible,
+                ...(reasoning.content ? {reasoning: reasoning.content} : {}),
+                ...(reasoning.details.length ? {reasoning_details: reasoning.details} : {}),
+            };
+        }
         return {...visible, ...(reasoning ? {reasoning_content: reasoning.content} : {})};
     }
     return message;

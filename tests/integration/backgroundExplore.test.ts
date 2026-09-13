@@ -158,7 +158,7 @@ describe("background Explore", () => {
                 kind: "agent",
                 status: "cancelled",
             });
-            await expect(tasks.send(running!.id, "取消后继续"))
+            await expect(tasks.followup(running!.id, "取消后继续"))
                 .rejects.toThrow("cancelled Agent cannot continue");
             expect(await tasks.pendingNotifications()).toHaveLength(0);
             await taskRuntime.close();
@@ -231,7 +231,7 @@ describe("background Explore", () => {
             await started;
             const [task] = await tasks.list();
             if (!task || task.kind !== "agent") throw new Error("Agent Task 未启动");
-            const queued = await tasks.send(task.id, "请重点检查消息队列");
+            const queued = await tasks.followup(task.id, "请重点检查消息队列");
             expect(queued).toMatchObject({
                 id: task.id,
                 status: "running",
@@ -328,7 +328,7 @@ describe("background Explore", () => {
             const continued = await executeToolResult(
                 "task",
                 JSON.stringify({
-                    action: "send",
+                    action: "followup",
                     task_id: started.id,
                     message: "继续检查测试覆盖",
                 }),
@@ -430,8 +430,8 @@ describe("background Explore", () => {
                 status: "completed",
                 resultPreview: "恢复前报告",
             });
-            await expect(restoredTasks.send(started!.id, "恢复后继续"))
-                .rejects.toThrow("has only persisted state");
+            await expect(restoredTasks.followup(started!.id, "恢复后继续"))
+                .rejects.toThrow("persisted state cannot continue");
             await secondRuntime.close();
         });
     });

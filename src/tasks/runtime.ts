@@ -1,3 +1,4 @@
+import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {MemoryRuntimeLike} from "../memory/runtime.js";
 import {isMemoryTask,isAgentTask,snapshotMemory,type ManagedMemoryTask} from "./managed.js";
 import type {StartMemoryTaskInput,MemoryTaskSnapshot} from "./types.js";
@@ -58,6 +59,7 @@ async function observeShellStartup(completion: Promise<void>, waitMs = SHELL_STA
 
 class TaskSession implements TaskSessionLike {
     readonly sessionId: string;
+    readonly messaging?: AgentMessaging;
     private readonly ready: Promise<void>;
 
     constructor(
@@ -66,6 +68,13 @@ class TaskSession implements TaskSessionLike {
     ) {
         this.sessionId = binding.sessionId;
         this.ready = runtime.ensureSession(binding.sessionId);
+        if (binding.messageQueue) this.messaging = {
+            send: async (target, message) => {
+                await this.ready;
+                return runtime.messageAgent(binding.sessionId, target, message);
+            },
+            wait: (timeoutMs, signal) => binding.messageQueue!.waitForAgentMessage(timeoutMs, signal),
+        };
     }
 
     initialize(): Promise<void> {
@@ -108,9 +117,14 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.stop(this.sessionId, id);
     }
 
-    async send(id: string, message: string): Promise<AgentTaskSnapshot> {
+    async followup(id: string, message: string): Promise<AgentTaskSnapshot> {
         await this.ready;
-        return this.runtime.sendAgent(this.binding, id, message);
+        return this.runtime.followupAgent(this.binding, id, message);
+    }
+
+    async interrupt(id: string): Promise<AgentTaskSnapshot> {
+        await this.ready;
+        return this.runtime.interruptAgent(this.sessionId, id);
     }
 
     hasRunning(): boolean {
@@ -186,7 +200,7 @@ class TaskRuntime implements TaskRuntimeLike {
                 store:binding.toolResultStore,controller:createTurnAbortController(),notificationPending:false,suppressTerminalNotification:!input.background,completion:Promise.resolve()};
             this.tasks.set(task.id,task);
             try{await this.publish("task_started",task,true);}catch(error){this.tasks.delete(task.id);throw error;}
-            if(this.closed)task.controller.abort("shutdown");
+            if (this.closed) task.controller.abort("shutdown");
             const signal=input.background?task.controller.signal:AbortSignal.any([task.controller.signal,input.signal]);
             task.completion=(async()=>{
                 try {
@@ -298,115 +312,61 @@ class TaskRuntime implements TaskRuntimeLike {
         }
     }
 
-    async sendAgent(
-        binding: TaskSessionBinding,
-        id: string,
-        message: string
-    ): Promise<AgentTaskSnapshot> {
+    async messageAgent(sessionId: string, id: string, message: string): Promise<{messageId: string}> {
         this.assertOpen();
-        let task = this.ownedTask(binding.sessionId, id);
-        if (!task) {
-            const archived = this.archived.get(id);
-            if (archived?.owner.sessionId === binding.sessionId) {
-                throw new Error(
-                    archived.kind === "agent"
-                        ? "This Agent has only persisted state and cannot continue in this process; start a new Agent"
-                        : `Task ${id} is not an Agent`
-                );
-            }
-            throw new Error(`Agent Task not found: ${id}`);
-        }
+        const task = this.ownedTask(sessionId, id);
+        if (!task || !isAgentTask(task)) throw new Error(`Live-session Agent not found: ${id}`);
+        if (task.stopRequested || task.status === "cancelled") throw new Error("A stopped Agent cannot receive messages");
+        const queued = task.messageQueue.enqueueAgent(message, {sender: "parent", recipient: id, runCount: task.runCount, intent: "message"});
+        await this.publish("task_progress", task);
+        return {messageId: queued.id};
+    }
+
+    async followupAgent(binding: TaskSessionBinding, id: string, message: string): Promise<AgentTaskSnapshot> {
+        this.assertOpen();
+        const task = this.ownedTask(binding.sessionId, id);
+        if (!task) throw new Error(`Live-session Agent not found: ${id}; persisted state cannot continue in this process`);
         if (!isAgentTask(task)) throw new Error(`Task ${id} is not an Agent`);
-        if (task.status === "cancelled") {
-            throw new Error("A cancelled Agent cannot continue; start a new Agent");
-        }
-        if (task.status === "running") {
-            task.messageQueue.enqueueUser(message);
+        const assertAvailable = () => {
+            this.assertOpen();
+            if (task.stopRequested || task.status === "cancelled") throw new Error("A cancelled Agent cannot continue; start a new Agent");
+        };
+        const enqueue = async () => {
+            task.messageQueue.enqueueAgent(message, {sender: "parent", recipient: id, runCount: task.runCount, intent: "followup"});
             await this.publish("task_progress", task);
             return snapshotAgent(task);
-        }
-
+        };
+        assertAvailable();
+        if (task.status === "running" && !task.controller.signal.aborted) return enqueue();
         await task.completion;
-        task = this.ownedTask(binding.sessionId, id);
-        if (!task || !isAgentTask(task)) {
-            throw new Error(`Agent Task not found: ${id}`);
+        assertAvailable();
+        if (task.status === "running") return enqueue();
+        if (!message.trim() || Buffer.byteLength(message, "utf8") > 32 * 1024) throw new Error("Follow-up must contain 1–32768 bytes of text");
+        if (this.runningAgentCount(binding.sessionId) >= MAX_RUNNING_AGENT_TASKS_PER_SESSION) {
+            throw new Error(`Concurrent background Agents in this Session reached the limit: ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`);
         }
-        if (task.status === "running") {
-            task.messageQueue.enqueueUser(message);
-            await this.publish("task_progress", task);
-            return snapshotAgent(task);
-        }
-        if (task.status === "cancelled") {
-            throw new Error("A cancelled Agent cannot continue; start a new Agent");
-        }
-        if (this.runningAgentCount(binding.sessionId) >=
-            MAX_RUNNING_AGENT_TASKS_PER_SESSION) {
-            throw new Error(
-                `Concurrent background Agents in this Session reached the limit: ${MAX_RUNNING_AGENT_TASKS_PER_SESSION}`
-            );
-        }
-
         const previousNotification = task.notificationPending ? snapshotAgent(task) : undefined;
         if (previousNotification) this.notifications.rememberPrevious(previousNotification);
-        const previous = {
-            status: task.status,
-            completedAt: task.completedAt,
-            runCount: task.runCount,
-            iterations: task.iterations,
-            toolUseCount: task.toolUseCount,
-            tokenCount: task.tokenCount,
-            lastPublishedTokenCount: task.lastPublishedTokenCount,
-            lastActivity: task.lastActivity,
-            reason: task.reason,
-            resultPreview: task.resultPreview,
-            outputResult: task.outputResult,
-            transcriptPath: task.transcriptPath,
-            outputIssue: task.outputIssue,
-            notificationPending: task.notificationPending,
-            suppressTerminalNotification: task.suppressTerminalNotification,
-        };
-        try {
-            task.messageQueue.enqueueUser(message);
-        } catch (error) {
-            if (previousNotification) this.notifications.acknowledgePrevious(taskNotificationId(task.id, task.runCount));
-            throw error;
-        }
+        // Reserve the run and its completion promise before yielding to persistence or another caller.
         task.controller = createTurnAbortController();
         resetAgentRun(task, task.runCount + 1);
         task.status = "running";
         task.completedAt = undefined;
         task.notificationPending = false;
         task.suppressTerminalNotification = false;
-        try {
-            await this.publish("task_started", task, true);
-        } catch (error) {
-            if (previousNotification) this.notifications.acknowledgePrevious(taskNotificationId(task.id, previous.runCount));
-            task.status = previous.status;
-            task.completedAt = previous.completedAt;
-            task.runCount = previous.runCount;
-            task.iterations = previous.iterations;
-            task.toolUseCount = previous.toolUseCount;
-            task.tokenCount = previous.tokenCount;
-            task.lastPublishedTokenCount = previous.lastPublishedTokenCount;
-            task.lastActivity = previous.lastActivity;
-            task.reason = previous.reason;
-            task.resultPreview = previous.resultPreview;
-            task.outputResult = previous.outputResult;
-            task.transcriptPath = previous.transcriptPath;
-            task.outputIssue = previous.outputIssue;
-            task.notificationPending = previous.notificationPending;
-            task.suppressTerminalNotification =
-                previous.suppressTerminalNotification;
-            throw error;
-        }
-        const queued = task.messageQueue.dequeueNextUserInput();
-        if (!queued) throw new Error("Agent continuation message was unexpectedly lost");
-        if (typeof queued.content !== "string") throw new Error("Background Agent steering accepts text only");
-        task.completion = runAgentTask(
-            task,
-            queued.content,
-            (finished) => this.publish("task_finished", finished)
+        const started = this.publish("task_started", task, true);
+        task.completion = started.then(
+            () => runAgentTask(task, message, finished => this.publish("task_finished", finished)),
+            async error => {
+                task.status = task.stopRequested ? "cancelled" : task.interruptRequested ? "interrupted" : "failed";
+                task.completedAt = new Date().toISOString();
+                task.outputIssue = error instanceof Error ? error.message : String(error);
+                task.notificationPending = !task.suppressTerminalNotification;
+                await this.publish("task_finished", task);
+            },
         );
+        void task.completion.catch(() => {});
+        await started;
         return snapshotAgent(task);
     }
 
@@ -431,6 +391,18 @@ class TaskRuntime implements TaskRuntimeLike {
         ]);
     }
 
+    async interruptAgent(sessionId: string, id: string): Promise<AgentTaskSnapshot> {
+        this.assertOpen();
+        const task = this.ownedTask(sessionId, id);
+        if (!task || !isAgentTask(task)) throw new Error("Only a live-session Agent can be interrupted");
+        if (!task.stopRequested && task.status === "running" && !task.controller.signal.aborted) {
+            task.interruptRequested = true;
+            task.controller.abort("user-cancel");
+        }
+        await task.completion;
+        return snapshotAgent(task);
+    }
+
     async stop(sessionId: string, id: string): Promise<TaskSnapshot | undefined> {
         const task = this.ownedTask(sessionId, id);
         if (!task) {
@@ -440,12 +412,21 @@ class TaskRuntime implements TaskRuntimeLike {
                 notificationId: taskNotificationId(id, archived.kind === "agent" ? archived.progress.runCount : 1)});
             return archived;
         }
+        if (isAgentTask(task)) task.stopRequested = true;
         const shouldAcknowledge =
             task.status === "running" || task.notificationPending;
         if (task.status === "running") {
             task.suppressTerminalNotification = true;
+            if (isAgentTask(task)) task.interruptRequested = false;
             task.controller.abort("user-cancel");
             await task.completion;
+        }
+        if (isAgentTask(task) && task.status !== "cancelled") {
+            task.interruptRequested = false;
+            task.status = "cancelled";
+            task.completedAt = new Date().toISOString();
+            task.suppressTerminalNotification = true;
+            await this.publish("task_finished", task);
         }
         if (shouldAcknowledge) {
             await this.markNotificationClaimed(sessionId, id, taskNotificationId(id, isAgentTask(task) ? task.runCount : 1));
@@ -523,7 +504,10 @@ class TaskRuntime implements TaskRuntimeLike {
             const running = [...this.tasks.values()].filter(
                 (task) => task.status === "running"
             );
-            for (const task of running) task.controller.abort("shutdown");
+            for (const task of running) {
+                if (isAgentTask(task)) {task.stopRequested = true; task.interruptRequested = false;}
+                task.controller.abort("shutdown");
+            }
             await Promise.allSettled(running.map((task) => task.completion));
         })();
         return this.closePromise;

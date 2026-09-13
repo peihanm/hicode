@@ -103,7 +103,7 @@ test("task 默认停止自有 Agent，已删除的 discard 在 Schema 边界拒�
         const tools = createToolRuntime();
         try {
             const task = await session.startAgent({parentContext: ctx, request: {
-                kind: "registered", agentType: "Explore", description: "permission test",
+                 agentType: "Explore", description: "permission test",
                 prompt: "wait", parentToolCallId: "agent-start",
             }});
             const stopped = await tools.executeTool("task", JSON.stringify({action: "stop", task_id: task.id}), ctx, "agent-stop");

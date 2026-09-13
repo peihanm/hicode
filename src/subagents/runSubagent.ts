@@ -24,14 +24,12 @@ import type {
     CreateSubagentRunner,
     CreateSubagentRunnerOptions,
     CreateSubagentThread,
-    ForkSubagentRequest,
     SubagentRequest,
     SubagentResult,
     SubagentThread,
 } from "./types.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
-import {type SubagentRegistration} from "./registration.js";
 import {resolveSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import {resolveSubagentDirectory, subagentInstructions, subagentPermissionRules} from "./workspace.js";
@@ -51,69 +49,6 @@ const DEFAULT_FINALIZE_PROMPT = [
     "Answer the assigned task in the user's language. Report completed changes, actual verification and unfinished work; never claim unperformed checks passed.",
 ].join("\n");
 
-const READONLY_FORK_TOOLS = [
-    "list_files",
-    "glob",
-    "read_file",
-    "grep",
-] as const;
-
-const WRITABLE_FORK_TOOLS = [
-    "list_files",
-    "glob",
-    "read_file",
-    "grep",
-    "edit_file",
-    "write_file",
-    "delete_file",
-    "bash",
-] as const;
-
-function createForkRegistration(
-    request: ForkSubagentRequest,
-    parentContext: ToolContext
-): SubagentRegistration {
-    const allowedTools = request.readOnly !== true
-        ? WRITABLE_FORK_TOOLS
-        : READONLY_FORK_TOOLS;
-    return {
-        definition: {
-            agentType: "fork",
-            whenToUse: request.description,
-            systemPrompt: "Complete the current Fork directive. The inherited conversation provides background; only the current assignment and worker capabilities govern execution.",
-            allowedTools,
-            model: "inherit",
-            maxIterations: 12,
-            source: "builtin",
-        },
-        concurrencySafe: request.readOnly === true,
-        createRuntimeConfig() {
-            return {
-                toolRuntimeOptions: {allowedToolNames: allowedTools},
-                contextResources: {
-                    readOnlyTools: request.readOnly === true,
-                    toolNames: parentContext.toolNames,
-                    storage: parentContext.storage,
-                    cwd: parentContext.cwd,
-                    workspaceBoundary:
-                        parentContext.workspaceBoundary ?? parentContext.cwd,
-                    skills: [],
-                    instructions: parentContext.instructions,
-                    shellRunner: parentContext.shellRunner,
-                },
-                permissionRules: {
-                    allow: [],
-                    ask: [],
-                    deny: [...parentContext.permissionRules.deny],
-                },
-                permissionMode: "ask",
-                collaborationMode: parentContext.collaborationMode,
-                permissionPromptPolicy: "never",
-            };
-        },
-    };
-}
-
 async function emit(
     callback: CreateSubagentRunnerOptions["onEvent"],
     event: AgentEvent
@@ -129,9 +64,7 @@ export function createSubagentFactories(
 } {
     const createSubagentThread: CreateSubagentThread = (options, request) => {
         const {parentContext, onEvent, onChildEvent, agentId} = options;
-        const registration = request.kind === "fork"
-            ? createForkRegistration(request, parentContext)
-            : dependencies.registry.get(request.agentType);
+        const registration = dependencies.registry.get(request.agentType);
         if (!registration) {
             const available = dependencies.registry
                 .listDefinitions()
@@ -148,21 +81,18 @@ export function createSubagentFactories(
         runtimeConfig.contextResources.readOnlyTools = !writable;
         runtimeConfig.permissionRules = subagentPermissionRules(parentContext);
         const runtime = createToolRuntime({...runtimeConfig.toolRuntimeOptions,
-            allowedToolNames: (runtimeConfig.toolRuntimeOptions.allowedToolNames ?? [])
-                .filter(name => parentContext.toolNames.includes(name)),
+            allowedToolNames: [...(runtimeConfig.toolRuntimeOptions.allowedToolNames ?? []), ...(options.agentMessaging ? ["agent_message"] : [])]
+                .filter(name => parentContext.toolNames.includes(name))
+                .filter(name => writable || definition.agentType !== "Worker" || ["list_files", "glob", "read_file", "grep", "agent_message"].includes(name)),
         });
         const initialToolNames = runtime.getToolSchemas()
             .map((tool) => tool.function.name);
-        const modelSelection = request.kind !== "fork"
-            ? request.model ?? definition.model
-            : "inherit";
+        const modelSelection = request.model ?? definition.model;
         const childModel = resolveSubagentModel({
             definitionModel: definition.model,
             parentModel: parentContext.model,
             fastModel: dependencies.fastModel,
-            override: request.kind !== "fork"
-                ? request.model
-                : undefined,
+            override: request.model,
         });
         const runChildAgent = modelSelection === "fast"
             ? dependencies.fastRunAgent
@@ -171,7 +101,7 @@ export function createSubagentFactories(
             ? parentContext.fastProvider
             : parentContext.provider;
         const childSessionId = `subagent-${agentId}`;
-        const childHistory: Message[] = request.kind === "fork"
+        const childHistory: Message[] = request.contextSnapshot !== undefined
             ? structuredClone(request.contextSnapshot.history)
             : [];
         const childCompactState = createCompactState();
@@ -181,7 +111,7 @@ export function createSubagentFactories(
             options.storageCwd ?? parentContext.cwd,
             childSessionId
         );
-        const childToolResultFiles = request.kind === "fork"
+        const childToolResultFiles = request.contextSnapshot !== undefined
             ? createForkResultFiles(childHistory, parentContext.toolResultFiles, childToolResultStore)
             : undefined;
 
@@ -221,12 +151,12 @@ export function createSubagentFactories(
                         instructions = await subagentInstructions(parentContext, cwd);
                         const workerSystem: Message = {role: "system",
                             content: createAgentSystemPrompt(definition, cwd, childModel, initialToolNames)};
-                        if (request.kind === "fork") {
+                        if (request.contextSnapshot !== undefined) {
                             if (childHistory[0]?.role !== "system") throw new Error("Fork History is missing a system message");
                             childHistory[0] = workerSystem;
                         } else childHistory.push(workerSystem);
                     }
-                    if (runCount === 0 && request.kind === "fork") {
+                    if (runCount === 0 && request.contextSnapshot !== undefined) {
                         const copied = new Set<string>();
                         for (const ref of childHistory.flatMap(message => imageReferences(message.content))) {
                             if (copied.has(ref.imageId)) continue;
@@ -249,6 +179,7 @@ export function createSubagentFactories(
                             ...runtimeConfig.contextResources,
                             cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames,
                             fileCommits: parentContext.fileCommits,
+                            agentMessaging: options.agentMessaging,
                             // Children gain edit authority only from their own actual reads.
                             model: childModel,
                             provider: childProvider,
@@ -302,9 +233,7 @@ export function createSubagentFactories(
                                 parentToolCallId: request.parentToolCallId,
                                 agentId,
                                 agentType: definition.agentType,
-                                ...(request.kind === "fork"
-                                    ? {agentName: request.name}
-                                    : {}),
+                                ...(request.name ? {agentName: request.name} : {}),
                                 description: request.description,
                                 model: childModel,
                                 cwd,
@@ -327,7 +256,7 @@ export function createSubagentFactories(
                         type: "subagent_start",
                         agentId,
                         agentType: definition.agentType,
-                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        ...(request.name ? {agentName: request.name} : {}),
                         description: request.description,
                         parentToolCallId: request.parentToolCallId,
                     });
@@ -384,9 +313,9 @@ export function createSubagentFactories(
                     const totalBudget =
                         definition.maxIterations ?? DEFAULT_SUBAGENT_MAX_ITERATIONS;
                     const explorationBudget = Math.max(1, totalBudget - 1);
-                    const childPrompt = firstRun && request.kind === "fork"
+                    const childPrompt = firstRun && request.contextSnapshot !== undefined
                         ? createForkDirective({
-                            name: request.name,
+                            name: request.name ?? definition.agentType,
                             description: request.description,
                             prompt: `Current working directory: ${cwd}. Resolve paths relative to this directory; other directories in inherited history do not grant access.\n ${input.prompt}`,
                             writable,
@@ -433,7 +362,7 @@ export function createSubagentFactories(
                     const subagentResult: SubagentResult = {
                         agentId,
                         agentType: definition.agentType,
-                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        ...(request.name ? {agentName: request.name} : {}),
                         description: request.description,
                         reply: result.reply,
                         reason: result.reason,
@@ -465,7 +394,7 @@ export function createSubagentFactories(
                         type: "subagent_end",
                         agentId,
                         agentType: definition.agentType,
-                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        ...(request.name ? {agentName: request.name} : {}),
                         reason: subagentResult.reason,
                         iterations: subagentResult.iterations,
                         toolUseCount: subagentResult.toolUseCount,
@@ -501,7 +430,7 @@ export function createSubagentFactories(
                         type: "subagent_error",
                         agentId,
                         agentType: definition.agentType,
-                        ...(request.kind === "fork" ? {agentName: request.name} : {}),
+                        ...(request.name ? {agentName: request.name} : {}),
                         message,
                     });
                     throw error;

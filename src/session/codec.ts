@@ -1,5 +1,6 @@
 import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
+import {reasoningStateSchema} from "../llm/reasoning.js";
 import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";
 import {isPermissionMode} from "../permissions/index.js";
@@ -79,10 +80,7 @@ const messageSchema = z.discriminatedUnion("role", [
         role: z.literal("assistant"),
         content: boundedString(MAX_MESSAGE_CONTENT_BYTES).nullable(),
         tool_calls: z.array(toolCallSchema).max(MAX_TOOL_CALLS_PER_MESSAGE).optional(),
-        reasoning: z.object({
-            content: boundedString(MAX_MESSAGE_CONTENT_BYTES, false),
-            scope: z.string().regex(/^[a-f0-9]{64}$/),
-        }).strict().optional(),
+        reasoning: reasoningStateSchema.optional(),
     }).strict(),
     z.object({
         role: z.literal("tool"),

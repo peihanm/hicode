@@ -13,6 +13,7 @@ import {beginPromptLog, finishPromptLogRun} from "../promptLog.js";
 import type {LLMCallOptions, LLMCallResult, LLMRetryInfo, LLMStreamProgress, Message, PromptLogResponse, TokenUsage,} from "../types.js";
 import {consumeOpenAICompatibleSSE, OpenAICompatibleProtocolError} from "./openAICompatibleStream.js";
 import {Buffer} from "node:buffer";
+import {reasoningStateSchema, type ReasoningState} from "../reasoning.js";
 
 const LLM_MAX_ATTEMPTS = 3;
 const LLM_RETRY_BASE_DELAY_MS = 800;
@@ -458,6 +459,7 @@ async function callOpenAICompatibleCore(
                 ...(streamed.reasoningContent.trim().length > 0
                     ? {reasoning_content: streamed.reasoningContent}
                     : {}),
+                ...(streamed.reasoningDetails.length ? {reasoning_details: streamed.reasoningDetails} : {}),
                 toolCallCount: streamed.toolCalls.length,
             };
             if (emptyResponse) {
@@ -473,16 +475,22 @@ async function callOpenAICompatibleCore(
                 continue;
             }
             const content = streamed.content.trim().length > 0 ? streamed.content : null;
+            let reasoning: ReasoningState | undefined;
+            if (reasoningScope !== undefined) {
+                if (endpoint.reasoningSource === "openrouter" && (streamed.reasoningContent.trim() || streamed.reasoningDetails.length)) {
+                    reasoning = {format: "openrouter", content: streamed.reasoningContent, scope: reasoningScope, details: streamed.reasoningDetails};
+                } else if (streamed.reasoningContent.trim()) {
+                    reasoning = {content: streamed.reasoningContent, scope: reasoningScope};
+                }
+                if (reasoning && !reasoningStateSchema.safeParse(reasoning).success) throw new Error("Reasoning replay state exceeds supported limits");
+            }
             const message: Message = {
                 role: "assistant",
                 content,
                 ...(streamed.toolCalls.length > 0
                     ? {tool_calls: streamed.toolCalls}
                     : {}),
-                ...(reasoningScope !== undefined &&
-                streamed.reasoningContent.trim().length > 0
-                    ? {reasoning: {content: streamed.reasoningContent, scope: reasoningScope}}
-                    : {}),
+                ...(reasoning ? {reasoning} : {}),
             };
 
             finishPromptLog({
@@ -550,8 +558,9 @@ async function callOpenAICompatibleCore(
                 });
                 continue;
             }
-            finishPromptLog({error: `Stream failed: ${formatError(error)}`});
-            throw error;
+            const safeError = redactSecret(formatError(error), endpoint.apiKey).slice(0, 1000);
+            finishPromptLog({error: `Stream failed: ${safeError}`});
+            throw new Error(safeError);
         } finally {
             requestSignal.cleanup();
         }

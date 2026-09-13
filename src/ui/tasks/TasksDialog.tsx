@@ -7,9 +7,9 @@ import {useTerminalWidth} from "../terminalSize.js";
 import {stripVTControlCharacters} from "node:util";
 import stringWidth from "string-width";
 
-const labels = {running: "Running", completed: "Completed", failed: "Failed", cancelled: "Stopped"};
-const markers = {running: "●", completed: "✓", failed: "!", cancelled: "○"};
-const statusColors = {running: COLORS.accent, completed: COLORS.diffAdded, failed: COLORS.error, cancelled: COLORS.dim};
+const labels = {running: "Running", completed: "Completed", failed: "Failed", cancelled: "Stopped", interrupted: "Interrupted"};
+const markers = {running: "●", completed: "✓", failed: "!", cancelled: "○", interrupted: "◷"};
+const statusColors = {running: COLORS.accent, completed: COLORS.diffAdded, failed: COLORS.error, cancelled: COLORS.dim, interrupted: COLORS.dim};
 const visibleTasks = 5;
 const title = (task: TaskSnapshot) => (task.kind === "shell" ? task.command : task.kind === "memory" ? "Memory consolidation" : task.description).replace(/\s+/g, " ").trim();
 const clean = (value: string) => stripVTControlCharacters(value).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");

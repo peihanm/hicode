@@ -7,7 +7,7 @@ import type {
     ShellTaskSnapshot,
     TaskEventEnvelope,
     TaskSnapshot,
-    TaskStatus,
+    AgentTaskStatus,
 } from "./types.js";
 
 export type TaskJournalEntry =
@@ -27,8 +27,8 @@ const MAX_PATH_CHARACTERS = 16_384;
 const MAX_TEXT_CHARACTERS = 128 * 1024;
 const MAX_COMMAND_CHARACTERS = 1024 * 1024;
 
-const TASK_STATUSES = new Set<TaskStatus>([
-    "running", "completed", "failed", "cancelled",
+const TASK_STATUSES = new Set<AgentTaskStatus>([
+    "running", "completed", "failed", "cancelled", "interrupted",
 ]);
 const STOP_REASONS = new Set<StopReason>([
     "completed", "max_turns", "permission_denied", "hook_blocked", "hook_error", "hook_limit",
@@ -138,7 +138,7 @@ function decodeOwner(value: unknown): {sessionId: string; toolCallId: string} | 
 function decodeCommon(value: Record<string, unknown>): {
     id: string;
     owner: {sessionId: string; toolCallId: string};
-    status: TaskStatus;
+    status: AgentTaskStatus;
     startedAt: string;
     completedAt?: string;
     outputIssue?: string;
@@ -148,7 +148,7 @@ function decodeCommon(value: Record<string, unknown>): {
         !boundedString(value.id, MAX_ID_CHARACTERS) ||
         !owner ||
         typeof value.status !== "string" ||
-        !TASK_STATUSES.has(value.status as TaskStatus) ||
+        !TASK_STATUSES.has(value.status as AgentTaskStatus) ||
         !isoDate(value.startedAt) ||
         (value.completedAt !== undefined && !isoDate(value.completedAt)) ||
         (value.status === "running" && value.completedAt !== undefined) ||
@@ -159,7 +159,7 @@ function decodeCommon(value: Record<string, unknown>): {
     return {
         id: value.id,
         owner,
-        status: value.status as TaskStatus,
+        status: value.status as AgentTaskStatus,
         startedAt: value.startedAt,
         ...(typeof value.completedAt === "string" ? {completedAt: value.completedAt} : {}),
         ...(typeof value.outputIssue === "string" ? {outputIssue: value.outputIssue} : {}),
@@ -179,7 +179,7 @@ function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | un
         ? undefined
         : decodeTermination(value.termination);
     if (
-        value.kind !== "shell" || !common ||
+        value.kind !== "shell" || !common || common.status === "interrupted" ||
         (value.executionMode !== "sandbox" && value.executionMode !== "host") ||
         !boundedString(value.command, MAX_COMMAND_CHARACTERS) ||
         !boundedString(value.cwd, MAX_PATH_CHARACTERS) ||
@@ -189,6 +189,7 @@ function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | un
     ) return undefined;
     return {
         ...common,
+        status: common.status,
         kind: "shell",
         executionMode: value.executionMode,
         command: value.command,

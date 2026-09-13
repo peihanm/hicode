@@ -76,7 +76,7 @@ export function createForkDirective({
     writable: boolean;
 }): string {
     return [
-        `You are the temporary Fork worker ${name}.`,
+        `You are worker ${name}, continuing from inherited conversation background.`,
         `Task label: ${description}`,
         writable
             ? "You may edit and verify within assigned file ownership. Preserve other agents' changes. Changes in a separate directory are not automatically integrated into the parent directory."

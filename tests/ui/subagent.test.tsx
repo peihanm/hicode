@@ -79,7 +79,7 @@ describe("subagent UI", () => {
     expect(expanded.lastFrame()).toContain("完整 Explore 调查报告");
   });
 
-  test("运行中 Agent 只有底部状态动画，标题不使用静态假 spinner 或重复描述", async () => {
+  test.each([undefined, "reviewer"])("运行中 Agent 只有底部状态动画，具名角色显示正确：%s", async agentName => {
     await withTempProject(async (cwd) => {
       let release!: () => void;
       const released = new Promise<void>((resolve) => {
@@ -104,6 +104,7 @@ describe("subagent UI", () => {
           type: "subagent_start",
           agentId: "reviewer-running",
           agentType: "project-reviewer",
+          ...(agentName ? {agentName} : {}),
           description: "独立审查本轮实现",
           parentToolCallId: "review-running",
         });
@@ -113,6 +114,7 @@ describe("subagent UI", () => {
           type: "subagent_end",
           agentId: "reviewer-running",
           agentType: "project-reviewer",
+          ...(agentName ? {agentName} : {}),
           reason: "completed",
           iterations: 1,
           toolUseCount: 0,
@@ -142,8 +144,9 @@ describe("subagent UI", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       const frame = instance.lastFrame() ?? "";
-      expect(frame).toContain("● project-reviewer Agent · 独立审查本轮实现");
-      expect(frame).toContain("Running project-reviewer Agent...");
+      const label = agentName ? `${agentName} (project-reviewer)` : "project-reviewer";
+      expect(frame).toContain(`● ${label} Agent · 独立审查本轮实现`);
+      expect(frame).toContain(`Running ${label} Agent...`);
       expect(frame).not.toContain("✻ project-reviewer Agent");
       expect(frame).not.toContain("project-reviewer: 独立审查本轮实现");
 

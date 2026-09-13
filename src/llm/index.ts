@@ -2,6 +2,7 @@ import type {ImageReference} from "../images/content.js";
 import {deepseekProvider} from "./providers/deepseek.js";
 import {glmProvider} from "./providers/glm.js";
 import {qwenProvider} from "./providers/qwen.js";
+import {openrouterProvider} from "./providers/openrouter.js";
 import type {LLMProviderName} from "./providerRegistry.js";
 import type {
     LLMCaller,
@@ -21,6 +22,7 @@ const providers: Record<LLMProviderName, LLMProvider> = {
     glm: glmProvider,
     qwen: qwenProvider,
     deepseek: deepseekProvider,
+    openrouter: openrouterProvider,
 };
 
 // Public LLM domain entry point.

@@ -16,6 +16,7 @@ const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000;
 // Infer context-window size from the model name.
 function getContextWindowForModel(model: string): number | undefined {
     const normalizedModel = model.toLowerCase();
+    if (normalizedModel === "nvidia/nemotron-3-super-120b-a12b:free") return 262_144;
     if (normalizedModel.includes("glm-5.2")) return 1_000_000;
     if (normalizedModel.includes("glm")) return 128_000;
     if (normalizedModel === "deepseek-pro" || normalizedModel === "deepseek-flash") return 1_000_000;

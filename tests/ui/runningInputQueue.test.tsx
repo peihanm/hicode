@@ -204,3 +204,11 @@ describe("running input queue UI", () => {
         expect(frame).toContain("plus 1 more");
     });
 });
+
+test("queued child messages are visible but not offered for user editing", () => {
+    const view = render(<QueuedInputPreview messages={[{id: "msg", type: "agent_message", priority: "next", content: "Need interface decision", createdAt: new Date().toISOString(),
+        route: {sender: "00000000-0000-0000-0000-000000000000", recipient: "parent", runCount: 1, intent: "message"}}]}/>);
+    expect(view.lastFrame()).toContain("Agent: Need interface decision");
+    expect(view.lastFrame()).not.toContain("↑ Edit queued message");
+    view.unmount();
+});

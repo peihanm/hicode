@@ -34,6 +34,7 @@ export interface AgentUsage {
 
 /** Runtime events published by the Agent loop to the Host. */
 export type AgentEvent =
+    | {type: "coordination_message"; messageId: string; text: string}
     | ApprovalEvent
     | HookLifecycleEvent
     | {type: "turn_end"; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}

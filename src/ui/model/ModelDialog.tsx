@@ -10,6 +10,7 @@ const SOURCE_LABELS: Record<ModelTargetSettings["source"], string> = {
     glm: "ZHIPU GLM",
     qwen: "ALIBABA QWEN",
     deepseek: "DEEPSEEK",
+    openrouter: "OPENROUTER",
 };
 
 function sameTarget(left: ModelTargetSettings, right: ModelTargetSettings): boolean {

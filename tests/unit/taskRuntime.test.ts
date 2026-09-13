@@ -91,7 +91,6 @@ describe("TaskRuntime", () => {
             const starts = Array.from({length: 5}, (_, index) =>
                 session.startAgent({
                     request: {
-                        kind: "registered",
                         agentType: "Explore",
                         description: `并发调查 ${index}`,
                         prompt: "等待 Runtime 关闭",
@@ -138,7 +137,6 @@ describe("TaskRuntime", () => {
             const context = createTestContext(cwd, {tasks: session});
             await expect(session.startAgent({
                 request: {
-                    kind: "registered",
                     agentType: "GeneralPurpose",
                     description: "不允许的后台实现",
                     prompt: "验证项目",
@@ -279,7 +277,7 @@ describe("TaskRuntime", () => {
                 output: "task output\n",
                 outputResult: {resultId: `task_${started.id}`},
             });
-            await expect(first.send(started.id, "继续"))
+            await expect(first.followup(started.id, "继续"))
                 .rejects.toThrow(`Task ${started.id} is not an Agent`);
             expect(await second.get(started.id)).toBeUndefined();
             expect(events.map((event) => event.sequence)).toEqual([1, 2]);

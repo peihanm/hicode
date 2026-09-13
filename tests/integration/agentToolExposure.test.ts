@@ -95,7 +95,7 @@ test("子 Agent 用尽预算后的无工具总结不能再次写入文件", asyn
         ]);
         const runner = createSubagentRunnerForTest({registry, parentContext: createTestContext(cwd),
             onEvent() {}, agentOptions: {callLLM: fake.callLLM}});
-        const result = await runner({kind: "registered", agentType: "writer", description: "fixture",
+        const result = await runner({ agentType: "writer", description: "fixture",
             prompt: "test", parentToolCallId: "parent"});
         expect(result.reason).toBe("max_turns");
         expect(fake.calls).toHaveLength(2);

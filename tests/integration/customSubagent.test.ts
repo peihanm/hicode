@@ -177,7 +177,6 @@ describe("custom subagent runtime", () => {
             });
 
             const result = await runner({
-                kind: "registered",
                 agentType: "PROJECT-REVIEWER",
                 description: "检查自定义权限",
                 prompt: "尝试写入并说明结果",
@@ -226,7 +225,6 @@ describe("custom subagent runtime", () => {
                 toolResultStoreOptions: {pillarHome: `${cwd}/accepted-results`},
             });
             await accepted({
-                kind: "registered",
                 agentType: "writer",
                 description: "写入 cwd",
                 prompt: "创建 allowed.txt",
@@ -265,7 +263,6 @@ describe("custom subagent runtime", () => {
                 toolResultStoreOptions: {pillarHome: `${cwd}/plan-results`},
             });
             await planned({
-                kind: "registered",
                 agentType: "writer",
                 description: "plan 隔离",
                 prompt: "尝试创建 plan-blocked.txt",
@@ -315,7 +312,6 @@ describe("custom subagent runtime", () => {
                 toolResultStoreOptions: {pillarHome: `${cwd}/deny-results`},
             });
             await runner({
-                kind: "registered",
                 agentType: "writer",
                 description: "deny 优先",
                 prompt: "尝试写入",
@@ -406,7 +402,6 @@ describe("custom subagent runtime", () => {
             });
 
             const result = await runner({
-                kind: "registered",
                 agentType: "mcp-reader",
                 description: "MCP 权限",
                 prompt: "读取后尝试写入",

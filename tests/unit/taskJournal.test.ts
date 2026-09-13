@@ -1,3 +1,4 @@
+import {decodeTaskJournalEntry} from "../../src/tasks/codec.js";
 import {describe, expect, test} from "bun:test";
 import {appendFile, readFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -167,4 +168,13 @@ describe("TaskJournal", () => {
         center.acknowledgeArchived("task-a");
         expect(center.hasArchivedPending("task-a")).toBe(false);
     });
+});
+
+test("interrupted is an Agent-only persisted status", () => {
+    const shell = shellEvent({sequence: 1, status: "completed", type: "task_finished"});
+    expect(decodeTaskJournalEntry({...shell, task: {...shell.task, status: "interrupted"}}, "session-a")).toBeUndefined();
+    const agent = {...shell, task: {id: "agent-id", kind: "agent", owner: shell.task.owner, cwd: "/tmp/project",
+        agentType: "Worker", description: "work", status: "interrupted", startedAt: "2026-08-30T00:00:00.000Z", completedAt: "2026-08-30T00:00:01.000Z",
+        reason: "interrupted", progress: {runCount: 1, iterations: 1, toolUseCount: 1, pendingMessages: 0}}};
+    expect(decodeTaskJournalEntry(agent, "session-a")?.type).toBe("task_finished");
 });

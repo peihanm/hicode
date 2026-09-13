@@ -1,3 +1,4 @@
+import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {AgentInputChannel} from "../agent/inputChannel.js";
 import type {AgentEvent, StopReason} from "../agent/types.js";
 import type {ToolContext} from "../tools/types.js";
@@ -46,28 +47,17 @@ interface SubagentWorkspace {
     readOnly?: boolean;
 }
 
-export interface RegisteredSubagentRequest extends SubagentWorkspace {
+export interface SubagentRequest extends SubagentWorkspace {
     workspaceWriteApproved?: true;
-    kind: "registered";
     agentType: AgentName;
+    name?: string;
     description: string;
     prompt: string;
     parentToolCallId: string;
     model?: SubagentModelOverride;
+    /** Absent for fresh context; inherited history never grants file-read authority. */
+    contextSnapshot?: ForkContextSnapshot;
 }
-
-export interface ForkSubagentRequest extends SubagentWorkspace {
-    kind: "fork";
-    agentType: "fork";
-    name: string;
-    description: string;
-    prompt: string;
-    parentToolCallId: string;
-    workspaceWriteApproved?: true;
-    contextSnapshot: ForkContextSnapshot;
-}
-
-export type SubagentRequest = RegisteredSubagentRequest | ForkSubagentRequest;
 
 export interface SubagentResult {
     agentId: string;
@@ -112,6 +102,8 @@ export interface CreateSubagentThreadOptions extends CreateSubagentRunnerOptions
     onChildEvent?: (event: AgentEvent) => void | Promise<void>;
     /** Agent transcripts and tool artifacts remain in parent-project storage, even with a separate cwd. */
     storageCwd?: string;
+    /** Background children receive only a parent-addressed messaging endpoint. */
+    agentMessaging?: AgentMessaging;
 }
 
 export type CreateSubagentRunner = (

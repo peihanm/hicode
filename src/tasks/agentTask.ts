@@ -5,17 +5,14 @@ import type {CreateSubagentThread} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import type {ToolContext} from "../tools/types.js";
 import type {ManagedAgentTask} from "./managed.js";
-import type {StartAgentTaskInput, TaskSessionBinding, TaskStatus,} from "./types.js";
+import type {StartAgentTaskInput, TaskSessionBinding, AgentTaskStatus,} from "./types.js";
 
 export function validateAgentTaskInput(
     input: StartAgentTaskInput,
     subagents: SubagentRegistry
 ): void {
-    if (input.request.kind === "fork") {
-        if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(input.request.name)) {
-            throw new Error("Fork name must contain only lowercase letters, digits and hyphens, with length 1–40");
-        }
-        return;
+    if (input.request.name && !/^[a-z0-9][a-z0-9-]{0,39}$/.test(input.request.name)) {
+        throw new Error("Agent name must use lowercase letters, digits and hyphens (1–40 characters)");
     }
     const registration = subagents.get(input.request.agentType);
     if (!registration) {
@@ -39,6 +36,17 @@ export function createAgentTask(
         agentId: id,
         storageCwd: input.parentContext.cwd,
         onEvent: () => {},
+        ...(binding.messageQueue ? {agentMessaging: {
+            send: async (target: string, message: string) => {
+                if (target !== "parent") throw new Error("A child can message only its parent");
+                if (task.stopRequested || task.status !== "running" || task.controller.signal.aborted) throw new Error("Agent run is no longer active");
+                const queued = binding.messageQueue!.enqueueAgent(message, {
+                    sender: id, recipient: "parent", runCount: task.runCount, intent: "message",
+                });
+                return {messageId: queued.id};
+            },
+            wait: (timeoutMs: number, signal: AbortSignal) => messageQueue.waitForAgentMessage(timeoutMs, signal),
+        }} : {}),
         onChildEvent: (event) => recordAgentProgress(
             task,
             event,
@@ -55,11 +63,13 @@ export function createAgentTask(
         messageQueue,
         agentType: input.request.agentType,
         cwd: input.request.cwd ?? context.cwd,
-        ...(input.request.kind === "fork"
+        ...(input.request.name
             ? {agentName: input.request.name}
             : {}),
         description: input.request.description,
         status: "running",
+        interruptRequested: false,
+        stopRequested: false,
         startedAt: new Date().toISOString(),
         store: binding.toolResultStore,
         controller: createTurnAbortController(),
@@ -79,7 +89,7 @@ export async function runAgentTask(
     prompt: string,
     publishFinished: (task: ManagedAgentTask) => Promise<void>
 ): Promise<void> {
-    let finalStatus: TaskStatus = "failed";
+    let finalStatus: AgentTaskStatus = "failed";
     try {
         let nextPrompt = prompt;
         while (true) {
@@ -96,7 +106,7 @@ export async function runAgentTask(
             task.outputIssue = result.transcriptIssue;
             task.resultPreview = result.reply;
             finalStatus = result.reason === "interrupted"
-                ? "cancelled"
+                ? task.interruptRequested ? "interrupted" : "cancelled"
                 : result.reason === "completed" || result.reason === "no_tool_calls"
                     ? "completed"
                     : "failed";
@@ -113,17 +123,19 @@ export async function runAgentTask(
                     ? error.message
                     : String(error);
             }
-            if (finalStatus === "cancelled") break;
-            const queued = task.messageQueue.dequeueNextUserInput();
+            if (task.controller.signal.aborted) finalStatus = task.interruptRequested ? "interrupted" : "cancelled";
+            if (finalStatus === "cancelled" || finalStatus === "interrupted") break;
+            const queued = task.messageQueue.dequeueFollowup();
             if (!queued) break;
             if (typeof queued.content !== "string") throw new Error("Background Agent steering accepts text only");
             nextPrompt = queued.content;
             resetAgentRun(task, task.runCount + 1);
         }
     } catch (error) {
-        finalStatus = task.controller.signal.aborted ? "cancelled" : "failed";
+        finalStatus = task.controller.signal.aborted ? task.interruptRequested ? "interrupted" : "cancelled" : "failed";
         task.outputIssue = error instanceof Error ? error.message : String(error);
     } finally {
+        if (task.controller.signal.aborted) finalStatus = task.interruptRequested ? "interrupted" : "cancelled";
         task.status = finalStatus;
         task.completedAt = new Date().toISOString();
         task.notificationPending = !task.suppressTerminalNotification;
@@ -132,6 +144,7 @@ export async function runAgentTask(
 }
 
 export function resetAgentRun(task: ManagedAgentTask, runCount: number): void {
+    task.interruptRequested = false;
     task.runCount = runCount;
     task.iterations = 0;
     task.toolUseCount = 0;

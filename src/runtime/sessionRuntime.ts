@@ -115,14 +115,12 @@ export function createRootSessionRuntime({
         seed.sessionId
     );
     resources.toolRuntime.restoreToolDiscovery(seed.toolDiscovery);
-    const taskSession = resources.taskRuntime.forSession({
-        sessionId: seed.sessionId,
-        toolResultStore,
-        allowBackgroundTasks,
-    });
     const messageQueue = new RuntimeMessageQueue({
         messages: seed.queuedInputs,
         taskReceipts: seed.taskNotificationReceipts,
+    });
+    const taskSession = resources.taskRuntime.forSession({
+        sessionId: seed.sessionId, toolResultStore, allowBackgroundTasks, messageQueue,
     });
     const hookSession = createHookSessionRuntime();
     const networkAccess = new NetworkAccessSession();
@@ -188,7 +186,7 @@ export function createRootSessionRuntime({
         createContext({signal, host, onEvent, turnId, getSnapshotState}) {
             const ctx = createToolContext({
                 signal, turnId,
-                resources: {...resources, toolNames: resources.toolRuntime.toolNames, contextSettings: resources.settings.context, tasks: taskSession},
+                resources: {...resources, toolNames: resources.toolRuntime.toolNames, contextSettings: resources.settings.context, tasks: taskSession, agentMessaging: taskSession.messaging},
                 session: {
                     approvalEpoch,
                     sessionId: seed.sessionId,

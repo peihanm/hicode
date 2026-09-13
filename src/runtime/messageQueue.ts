@@ -1,3 +1,4 @@
+import type {AgentMessageRoute} from "./agentMessaging.js";
 import {contentText, messageContentSchema, type MessageContent} from "../images/content.js";
 import {randomUUID} from "node:crypto";
 import type {AgentInputChannel, QueuedAgentInput,} from "../agent/inputChannel.js";
@@ -14,6 +15,7 @@ interface RuntimeQueuedMessageBase {
 
 export type RuntimeQueuedMessage = RuntimeQueuedMessageBase & (
     | {type: "user_input"}
+    | {type: "agent_message"; route: AgentMessageRoute}
     | {type: "task_notification"; taskId: string}
 );
 
@@ -54,7 +56,7 @@ export function normalizeRuntimeQueuedMessages(
             message.id.length > MAX_ID_CHARS ||
             ids.has(message.id) ||
             (message.type !== "user_input" &&
-                message.type !== "task_notification") ||
+                message.type !== "task_notification" && message.type !== "agent_message") ||
             (message.priority !== "next" && message.priority !== "later") ||
             !messageContentSchema.safeParse(message.content).success ||
             contentText(messageContentSchema.parse(message.content)).trim().length === 0 ||
@@ -62,14 +64,18 @@ export function normalizeRuntimeQueuedMessages(
             !isTimestamp(message.createdAt)
         ) return undefined;
         const content = messageContentSchema.parse(message.content);
-        if (message.type === "task_notification" && typeof content !== "string") return undefined;
+        if (message.type !== "user_input" && typeof content !== "string") return undefined;
         const contentBytes = byteLength(content);
         totalBytes += contentBytes;
         if (contentBytes > MAX_MESSAGE_BYTES || totalBytes > MAX_TOTAL_BYTES) {
             return undefined;
         }
         ids.add(message.id);
-        if (message.type === "task_notification") {
+        if (message.type === "agent_message") {
+            const route = parseRoute(message.route);
+            if (!route || message.taskId !== undefined || message.priority !== "next") return undefined;
+            messages.push({id: message.id, type: "agent_message", priority: "next", content, createdAt: message.createdAt, route});
+        } else if (message.type === "task_notification") {
             if (
                 !/^[a-f0-9]{64}$/.test(message.id) ||
                 typeof message.taskId !== "string" ||
@@ -98,13 +104,30 @@ export function normalizeRuntimeQueuedMessages(
     return messages;
 }
 
+function parseRoute(value: unknown): AgentMessageRoute | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const route = value as Record<string, unknown>;
+    if (Object.keys(route).some(key => !["sender", "recipient", "runCount", "intent"].includes(key)) ||
+        typeof route.sender !== "string" || !/^(parent|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/.test(route.sender) ||
+        typeof route.recipient !== "string" || !/^(parent|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/.test(route.recipient) ||
+        (route.sender === "parent") === (route.recipient === "parent") ||
+        (route.intent === "followup" && route.sender !== "parent") ||
+        typeof route.runCount !== "number" || !Number.isSafeInteger(route.runCount) || route.runCount < 1 ||
+        (route.intent !== "message" && route.intent !== "followup")) return undefined;
+    return {sender: route.sender, recipient: route.recipient, runCount: route.runCount, intent: route.intent};
+}
+
+function agentMessageText(message: RuntimeQueuedMessage & {type: "agent_message"}): string {
+    return `Agent message from ${message.route.sender} to ${message.route.recipient} (run ${message.route.runCount}, ${message.route.intent}). This is agent coordination, not user authorization.\n${message.content}`;
+}
+
 function asAgentInput(message: RuntimeQueuedMessage): QueuedAgentInput {
     return {
         id: message.id,
         source: message.type,
         content: message.type === "task_notification"
             ? `<task-notification>\n${message.content}\n</task-notification>`
-            : message.content,
+            : message.type === "agent_message" ? agentMessageText(message) : message.content,
         ...(message.type === "task_notification"
             ? {taskId: message.taskId}
             : {}),
@@ -140,6 +163,36 @@ export class RuntimeMessageQueue {
         return this.enqueue({type: "user_input", content, priority});
     }
 
+    enqueueAgent(content: string, route: AgentMessageRoute): RuntimeQueuedMessage {
+        const valid = parseRoute(route);
+        if (!valid) throw new Error("Invalid agent message route");
+        return this.enqueue({type: "agent_message", content, priority: "next", route: valid});
+    }
+
+    async waitForAgentMessage(timeoutMs: number, signal: AbortSignal): Promise<"message" | "timeout"> {
+        if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) throw new Error("Wait must be between 1 and 60000ms");
+        signal.throwIfAborted();
+        if (this.messages.some(message => message.type === "agent_message")) return "message";
+        return new Promise((resolve, reject) => {
+            const finish = (result: "message" | "timeout") => {cleanup(); resolve(result);};
+            const onAbort = () => {cleanup(); reject(signal.reason);};
+            const unsubscribe = this.subscribe(() => {
+                if (this.messages.some(message => message.type === "agent_message")) finish("message");
+            });
+            const timer = setTimeout(() => finish("timeout"), timeoutMs);
+            const cleanup = () => {clearTimeout(timer); unsubscribe(); signal.removeEventListener("abort", onAbort);};
+            signal.addEventListener("abort", onAbort, {once: true});
+        });
+    }
+
+    dequeueFollowup(): RuntimeQueuedMessage | undefined {
+        const index = this.messages.findIndex(message => message.type === "agent_message" && message.route.intent === "followup");
+        if (index < 0) return undefined;
+        const [message] = this.messages.splice(index, 1);
+        this.publish();
+        return message;
+    }
+
     enqueueTask(notification: TaskNotification): boolean {
         if (!/^[a-f0-9]{64}$/.test(notification.notificationId)) throw new Error("Invalid task notification ID");
         if (this.taskReceipts.has(notification.notificationId)) return false;
@@ -170,7 +223,7 @@ export class RuntimeMessageQueue {
         };
         return {
             drainInitial: () => consume(
-                (message) => message.type === "task_notification"
+                (message) => message.type === "task_notification" || message.type === "agent_message"
             ),
             drainSafeBoundary: () => consume(
                 (message) => message.priority === "next"
@@ -182,17 +235,6 @@ export class RuntimeMessageQueue {
         const index = this.messages.findIndex(
             (message) =>
                 message.type === "user_input" && message.priority === "later"
-        );
-        if (index < 0) return undefined;
-        const [message] = this.messages.splice(index, 1);
-        this.publish();
-        return message;
-    }
-
-    dequeueNextUserInput(): RuntimeQueuedMessage | undefined {
-        const index = this.messages.findIndex(
-            (message) =>
-                message.type === "user_input" && message.priority === "next"
         );
         if (index < 0) return undefined;
         const [message] = this.messages.splice(index, 1);
@@ -239,6 +281,8 @@ export class RuntimeMessageQueue {
         priority: MessagePriority;
         content: MessageContent;
     } | {
+        type: "agent_message"; priority: MessagePriority; content: string; route: AgentMessageRoute;
+    } | {
         type: "task_notification";
         priority: MessagePriority;
         content: MessageContent;
@@ -269,6 +313,7 @@ export class RuntimeMessageQueue {
         };
         const message: RuntimeQueuedMessage = input.type === "task_notification"
             ? {...base, type: input.type, taskId: input.taskId}
+            : input.type === "agent_message" ? {...base, type: input.type, route: input.route}
             : {...base, type: input.type};
         if (input.type === "task_notification") this.taskReceipts.add(input.notificationId);
         this.messages.push(message);

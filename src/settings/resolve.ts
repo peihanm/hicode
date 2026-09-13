@@ -16,6 +16,12 @@ import {DEFAULT_CONTEXT_SETTINGS, validateContextSettings} from "../context/conf
 export const DEFAULT_MODEL = "qwen3.8-flash";
 
 const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
+    openrouter: {
+        id: "openrouter",
+        label: "OpenRouter",
+        apiKeyEnv: "OPENROUTER_API_KEY",
+        models: [{id: "nvidia/nemotron-3-super-120b-a12b:free", label: "Nemotron 3 Super (free)"}],
+    },
     glm: {
         id: "glm",
         label: "Zhipu GLM",

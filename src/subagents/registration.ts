@@ -7,7 +7,7 @@ import type {AgentDefinition} from "./types.js";
 
 export function hasAgentWriteTools(definition: AgentDefinition): boolean {
     return definition.allowedTools.some(name => ![
-        "list_files", "glob", "read_file", "grep", "web_fetch",
+        "list_files", "glob", "read_file", "grep", "web_fetch", "agent_message",
     ].includes(name));
 }
 

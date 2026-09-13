@@ -618,3 +618,28 @@ test("pasted image failures and cancellation restore text and preserve attachmen
     h.controller.dispose();
     expect(h.controller.pasteImage("after-close.png", "after-close.png")).toBe(false);
 });
+
+test("local slash commands clear old elapsed time without starting another work timer", async () => {
+    let now = 1000;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const harness = createHarness({now: () => now, runTurn: async () => {now = 4000;},
+        processSlashCommand: async () => {await gate; return true;}});
+    await harness.controller.submit("real task");
+    expect(harness.controller.getSnapshot().elapsedMs).toBe(3000);
+    const pending = harness.controller.submit("/model");
+    expect(harness.controller.getSnapshot()).toEqual({busy: true, stopping: false});
+    now = 9000;
+    release();
+    await pending;
+    expect(harness.controller.getSnapshot()).toEqual({busy: false, stopping: false});
+});
+
+test("unhandled slash input still times the Agent turn it starts", async () => {
+    let now = 1000;
+    const harness = createHarness({now: () => now,
+        processSlashCommand: async () => {now = 2000; return false;},
+        runTurn: async () => {now = 5000;}});
+    await harness.controller.submit("/unhandled");
+    expect(harness.controller.getSnapshot()).toEqual({busy: false, stopping: false, elapsedMs: 3000});
+});

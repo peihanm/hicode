@@ -6,6 +6,7 @@ import type {FileChange, ToolUIData} from "../../fileChanges/index.js";
 export type UIThread =
     | {id: string; role: "hook"; status: "running" | "done";
         execution: Omit<HookExecution, "outcome" | "durationMs"> & {outcome?: HookExecution["outcome"]; durationMs?: number}}
+    | {id: string; role: "coordination_message"; text: string}
     | {id: string; role: "user"; text: string}
     | {id: string; role: "assistant"; text: string}
     | {
@@ -15,7 +16,7 @@ export type UIThread =
         ownerToolCallId?: string;
         kind: "shell" | "agent" | "memory";
         label: string;
-        status: "completed" | "failed" | "cancelled";
+        status: "completed" | "failed" | "cancelled" | "interrupted";
         summary: string;
         resultId?: string;
     }

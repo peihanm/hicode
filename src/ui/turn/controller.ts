@@ -174,7 +174,8 @@ export class UITurnController {
 
     private async submitPrepared(input: MessageContent): Promise<boolean> {
         if (this.disposed || !this.guard.reserve()) return false;
-        this.publish({busy: true, stopping: false, startedAt: this.now()});
+        const isSlash = typeof input === "string" && input.trim().startsWith("/");
+        this.publish({busy: true, stopping: false, ...(isSlash ? {} : {startedAt: this.now()})});
 
         const controller = createTurnAbortController();
         const generation = this.guard.tryStart();
@@ -209,6 +210,7 @@ export class UITurnController {
                 });
                 if (handled) return true;
             }
+            if (isSlash) this.publish({busy: true, stopping: false, startedAt: this.now()});
             await this.dependencies.runTurn(input, controller.signal);
             return true;
         } catch (error) {

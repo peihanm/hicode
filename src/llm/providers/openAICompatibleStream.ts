@@ -1,4 +1,5 @@
 import type {LLMStreamProgress, TokenUsage, ToolCall,} from "../types.js";
+import type {ReasoningDetail} from "../reasoning.js";
 import {
     decodeOpenAICompatibleStreamChunk,
     type OpenAICompatibleStreamChunk,
@@ -41,6 +42,7 @@ export class OpenAICompatibleProtocolError extends Error {
 export interface OpenAICompatibleStreamResult {
     content: string;
     reasoningContent: string;
+    reasoningDetails: ReasoningDetail[];
     toolCalls: ToolCall[];
     usage: TokenUsage;
     finishReason?: string;
@@ -92,6 +94,7 @@ export async function consumeOpenAICompatibleSSE({
     let buffer = "";
     let content = "";
     let reasoningContent = "";
+    const reasoningDetails: ReasoningDetail[] = [];
     let outputCharacters = 0;
     let retainedCharacters = 0;
     let usage: TokenUsage = {
@@ -186,11 +189,24 @@ export async function consumeOpenAICompatibleSSE({
         if (eventFinishReason) finishReason = eventFinishReason;
 
         if (delta) {
-            if (delta.reasoning_content) {
-                retain(delta.reasoning_content, "reasoning_content");
-                reasoningContent += delta.reasoning_content;
-                outputCharacters += delta.reasoning_content.length;
+            const reasoning = delta.reasoning ?? delta.reasoning_content;
+            if (reasoning) {
+                retain(reasoning, "reasoning");
+                reasoningContent += reasoning;
+                outputCharacters += reasoning.length;
                 report("reasoning");
+            }
+            for (const detail of delta.reasoning_details ?? []) {
+                const encoded = JSON.stringify(detail);
+                retain(encoded, "reasoning_details");
+                if (reasoningDetails.length >= 200_000) throw new Error("Too many reasoning detail fragments");
+                reasoningDetails.push(detail);
+                // Plaintext and structured details often carry the same text.
+                if (!reasoning) {
+                    outputCharacters += detail.type === "reasoning.text" ? (detail.text?.length ?? 0)
+                        : detail.type === "reasoning.summary" ? detail.summary.length : detail.data.length;
+                    report("reasoning");
+                }
             }
             if (delta.content) {
                 retain(delta.content, "content");
@@ -320,6 +336,7 @@ export async function consumeOpenAICompatibleSSE({
     return {
         content,
         reasoningContent,
+        reasoningDetails,
         toolCalls,
         usage,
         ...(finishReason ? {finishReason} : {}),

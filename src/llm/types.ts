@@ -1,4 +1,5 @@
 import type {LLMProviderName} from "./providerRegistry.js";
+import type {ReasoningState} from "./reasoning.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import type {ImageReference, MessageContent} from "../images/content.js";
 
@@ -24,7 +25,7 @@ export type Message =
         content: string | null;
         tool_calls?: ToolCall[];
         /** Provider reasoning replay state; scope binds source, endpoint and model. */
-        reasoning?: {content: string; scope: string};
+        reasoning?: ReasoningState;
     }
     | { role: "tool"; content: MessageContent; tool_call_id: string };
 

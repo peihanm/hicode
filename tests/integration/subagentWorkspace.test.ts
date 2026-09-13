@@ -65,7 +65,7 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
         attachSubagentLauncher(parent, async () => {throw new Error("must run in background");}, () => forkHistory);
         try {
             const firstDone = nextFinished(tasks);
-            const start = await executeToolResult("agent", JSON.stringify({subagent_type: "fork", name: "worker",
+            const start = await executeToolResult("agent", JSON.stringify({subagent_type: "Worker", context: "inherit", name: "worker",
                 description: "implement", prompt: "modify and verify", cwd: target, run_in_background: true}), parent, "spawn");
             expect(start.outcome).toBe("ok");
             await firstDone;
@@ -73,7 +73,7 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
             expect(first).toMatchObject({kind: "agent", status: "completed", cwd: await realpath(target), progress: {runCount: 1}});
             expect(await readFile(join(target, "shared.txt"), "utf8")).toBe("verified");
             const secondDone = nextFinished(tasks);
-            await tasks.send(first!.id, "continue with correction");
+            await tasks.followup(first!.id, "continue with correction");
             await secondDone;
             expect(await tasks.get(first!.id)).toMatchObject({id: first!.id, kind: "agent", status: "completed", progress: {runCount: 2}});
             expect(await readFile(join(target, "shared.txt"), "utf8")).toBe("corrected");
@@ -108,7 +108,7 @@ test.each(["file-deny", "shell-deny", "read-only", "plan", "elevated", "tool-sco
             },
         ]);
         const thread = createSubagentThreadForTest({parentContext: parent, agentId: "bounded", onEvent() {}, agentOptions: {callLLM: child.callLLM}},
-            {kind: "fork", agentType: "fork", name: "worker", description: "bounded", prompt: "test", parentToolCallId: "spawn",
+            {agentType: "Worker", name: "worker", description: "bounded", prompt: "test", parentToolCallId: "spawn",
                 cwd: target, workspaceWriteApproved: true, contextSnapshot: {history: [{role: "system", content: "parent"}]}});
         await thread.run({prompt: "test", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(child.calls).toHaveLength(2);
@@ -123,7 +123,7 @@ test("cwd 外部目录需已有授权，继续前拒绝 Symlink 换向，不改�
         const directoryAccess = createDirectoryAccessRuntime({cwd: main, hardBoundary: root});
         const parent = createTestContext(main, {directoryAccess});
         const child = createFakeLLM([() => assistantText("allowed directory")]);
-        const request = {kind: "fork" as const, agentType: "fork" as const, name: "worker", description: "cwd", prompt: "cwd",
+        const request = {agentType: "Worker" as const, name: "worker", description: "cwd", prompt: "cwd",
             parentToolCallId: "spawn", cwd: other, readOnly: true, contextSnapshot: {history: [{role: "system" as const, content: "parent"}]}};
         const create = () => createSubagentThreadForTest({parentContext: parent, agentId: "cwd-check", onEvent() {}, agentOptions: {callLLM: child.callLLM}}, request);
         const run = {prompt: "run", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL};
@@ -154,7 +154,7 @@ test("模型生成期间工作目录被换向时，旧工具调用不能写入�
             },
         ]);
         const thread = createSubagentThreadForTest({parentContext: createTestContext(root), agentId: "swap", onEvent() {}, agentOptions: {callLLM: child.callLLM}},
-            {kind: "fork", agentType: "fork", name: "worker", description: "swap", prompt: "write", parentToolCallId: "spawn",
+            {agentType: "Worker", name: "worker", description: "swap", prompt: "write", parentToolCallId: "spawn",
                 cwd: target, workspaceWriteApproved: true, contextSnapshot: {history: [{role: "system", content: "parent"}]}});
         await thread.run({prompt: "write", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(child.calls).toHaveLength(2);

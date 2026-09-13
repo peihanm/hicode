@@ -156,7 +156,13 @@ export interface HookItem extends ThreadItemBase {
     execution: Omit<HookExecution, "outcome" | "durationMs"> & {outcome?: HookExecution["outcome"]; durationMs?: number};
 }
 
+export interface CoordinationMessageItem extends ThreadItemBase {
+    type: "coordination_message";
+    text: string;
+}
+
 export type ThreadItem =
+    | CoordinationMessageItem
     | HookItem
     | AgentMessageItem
     | ToolCallItem

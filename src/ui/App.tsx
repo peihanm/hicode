@@ -48,29 +48,17 @@ function runningActivityLabel(
     if (running.name !== "agent") return `Executing ${running.name}...`;
 
     let agentType = running.subagentType;
-    if (!agentType) {
-        try {
-            const parsed = JSON.parse(running.args) as Record<string, unknown>;
-            if (
-                typeof parsed.subagent_type === "string" &&
-                subagents.has(parsed.subagent_type)
-            ) {
-                agentType = parsed.subagent_type;
-            }
-        } catch {
-            // The tool layer reports invalid arguments; the status line falls back to a generic Agent name.
-        }
-    }
-    let forkName: string | undefined;
+    let agentName = running.subagentName;
     try {
         const parsed = JSON.parse(running.args) as Record<string, unknown>;
-        if (parsed.subagent_type === "fork" && typeof parsed.name === "string") {
-            forkName = `${parsed.name} (fork)`;
-        }
+        const role = typeof parsed.subagent_type === "string" ? parsed.subagent_type : "Worker";
+        if (!agentType && subagents.has(role)) agentType = role;
+        if (!agentName && typeof parsed.name === "string") agentName = parsed.name;
     } catch {
-        // The tool layer reports invalid arguments.
+        // The tool layer reports invalid arguments; the status line uses known lifecycle fields.
     }
-    return `Running ${forkName ?? agentType ?? "Agent"} Agent...`;
+    const label = agentName ? `${agentName} (${agentType ?? "Agent"})` : agentType ?? "Agent";
+    return `Running ${label} Agent...`;
 }
 
 export function App({

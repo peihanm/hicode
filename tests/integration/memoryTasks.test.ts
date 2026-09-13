@@ -20,5 +20,5 @@ test("Memory Task 具有真实 Turn owner；Host 禁后台无模型，关闭取�
 }));
 test("显式前台维护在禁后台 Host 仍可等待完成，停止后不会作为 Agent 接收消息",async()=>withTempProject(async cwd=>{
  const memory=createTestMemoryRuntime(cwd);await remember(memory,"brief","简洁");const tasks=createTaskRuntimeForTest(cwd,createShellRunner(createDisabledSandboxRuntime(),testChildEnvironment),undefined,join(cwd,"tasks"),undefined,memory);const session=tasks.forSession({sessionId:"owner",toolResultStore:createTestToolResultStore(cwd,"owner"),allowBackgroundTasks:false});
- const job=await session.startMemory({turnId:"turn",signal:memoryOwner().signal,background:false});expect(job?.status).toBe("completed");expect((await memory.status()).published).toBe(1);expect(await session.pendingNotifications()).toHaveLength(0);await expect(session.send(job!.id,"继续")).rejects.toThrow("is not an Agent");await tasks.close();await memory.close();
+ const job=await session.startMemory({turnId:"turn",signal:memoryOwner().signal,background:false});expect(job?.status).toBe("completed");expect((await memory.status()).published).toBe(1);expect(await session.pendingNotifications()).toHaveLength(0);await expect(session.followup(job!.id,"继续")).rejects.toThrow("is not an Agent");await tasks.close();await memory.close();
 }));

@@ -1,3 +1,4 @@
+import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {ContextUsageTracker} from "../context/usage.js";
 import type {ImageAccess} from "../images/access.js";
 import type {FileCommitCoordinator} from "./shared/fileCommit.js";
@@ -152,6 +153,7 @@ export interface ToolContext {
 
     // Session task view; Root owns task state and children do not inherit it by default.
     tasks?: TaskSessionLike;
+    agentMessaging?: AgentMessaging;
 
     // Session Hook lifecycle state for atomic once claims.
     // Session Runtime owns this state, not Root Hook Runtime.

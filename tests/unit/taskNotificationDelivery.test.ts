@@ -97,7 +97,7 @@ test("批量第二条遇到满队列不吞第一条，释放空间后可继续�
     await expect(fixture.delivery.drain()).rejects.toThrow("limit reached: 32");
     expect(fixture.pending.map(item => item.taskId)).toEqual(["b"]);
     expect(fixture.saved()?.messages).toHaveLength(32);
-    fixture.queue.dequeueNextUserInput();
+    fixture.queue.takeEditableInputs();
     await fixture.delivery.drain();
     expect(fixture.pending).toHaveLength(0);
     expect(fixture.queue.list().filter(item => item.type === "task_notification")).toHaveLength(2);

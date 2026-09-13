@@ -6,14 +6,14 @@ import type {ToolResultStore} from "../toolResults/index.js";
 import type {ShellTermination} from "../tools/bash/process.js";
 import type {SubagentThread} from "../subagents/types.js";
 import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
-import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot, TaskStatus,} from "./types.js";
+import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot, TaskStatus, AgentTaskStatus,} from "./types.js";
 
 const OUTPUT_PREVIEW_BYTES = 20_000;
 
-interface ManagedTaskBase {
+interface ManagedTaskBase<Status extends string = TaskStatus> {
     id: string;
     owner: {sessionId: string; toolCallId: string};
-    status: TaskStatus;
+    status: Status;
     startedAt: string;
     completedAt?: string;
     store: ToolResultStore;
@@ -34,7 +34,9 @@ export interface ManagedShellTask extends ManagedTaskBase {
     outputPreview?: string;
 }
 
-export interface ManagedAgentTask extends ManagedTaskBase {
+export interface ManagedAgentTask extends ManagedTaskBase<AgentTaskStatus> {
+    interruptRequested: boolean;
+    stopRequested: boolean;
     cwd: string;
     thread: SubagentThread;
     messageQueue: RuntimeMessageQueue;

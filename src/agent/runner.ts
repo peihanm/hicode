@@ -1,4 +1,4 @@
-import type {MessageContent} from "../images/content.js";
+import {contentText, type MessageContent} from "../images/content.js";
 import {createImageAccess} from "../images/access.js";
 import {HookControlError, formatHookContext} from "../hooks/index.js";
 import {ResponseDraft} from "./draft.js";
@@ -167,18 +167,22 @@ async function runAgentCore(
         };
     };
 
-    const appendQueuedInputs = (inputs: readonly QueuedAgentInput[]) => {
+    const appendQueuedInputs = async (inputs: readonly QueuedAgentInput[]) => {
         for (const input of inputs) {
-            history.push({role: "user", origin: input.source === "user_input" ? "user" : "task_notification", content: input.content});
+            history.push({role: "user", origin: input.source === "user_input" ? "user" : input.source === "agent_message" ? "agent" : "task_notification", content: input.content});
+        }
+        for (const input of inputs) {
+            if (input.source === "agent_message") await onEvent({type: "coordination_message", messageId: input.id, text: contentText(input.content)});
         }
     };
 
     // Completed-task notifications precede new questions as transient runtime messages, not separate LLM turns.
-    appendQueuedInputs(inputChannel.drainInitial());
+    const initialDelivery = appendQueuedInputs(inputChannel.drainInitial());
     // Append real user input to History; userContext stays transient.
     history.push({role: "user", origin: options.inputOrigin ?? "user", content: userInput});
 
     try {
+        await initialDelivery;
         throwIfTurnAborted(ctx.signal);
         for (
             let i = 0;
@@ -348,7 +352,7 @@ async function runAgentCore(
                                 phase: "final",
                             });
                         }
-                        appendQueuedInputs(queued);
+                        await appendQueuedInputs(queued);
                         continue;
                     }
                 }
@@ -449,7 +453,7 @@ async function runAgentCore(
                 };
             }
             if (hasNextIteration) {
-                appendQueuedInputs(inputChannel.drainSafeBoundary());
+                await appendQueuedInputs(inputChannel.drainSafeBoundary());
             }
         }
 

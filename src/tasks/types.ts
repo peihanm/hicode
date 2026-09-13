@@ -1,3 +1,5 @@
+import type {AgentMessaging} from "../runtime/agentMessaging.js";
+import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {SandboxExecutionPreference} from "../sandbox/index.js";
 import type {NetworkAccessExecution} from "../permissions/networkAccess.js";
 import type {PersistedToolResult, ToolResultStore} from "../toolResults/index.js";
@@ -11,6 +13,8 @@ export type TaskStatus =
     | "completed"
     | "failed"
     | "cancelled";
+
+export type AgentTaskStatus = TaskStatus | "interrupted";
 
 interface TaskOwner {
     sessionId: string;
@@ -50,7 +54,7 @@ export interface AgentTaskSnapshot {
     agentType: string;
     agentName?: string;
     description: string;
-    status: TaskStatus;
+    status: AgentTaskStatus;
     startedAt: string;
     completedAt?: string;
     progress: AgentTaskProgress;
@@ -100,7 +104,7 @@ export interface TaskNotification {
     ownerToolCallId?: string;
     kind: "shell" | "agent" | "memory";
     label: string;
-    status: Extract<TaskStatus, "completed" | "failed" | "cancelled">;
+    status: Exclude<AgentTaskStatus, "running">;
     summary: string;
     resultId?: string;
     message: string;
@@ -116,6 +120,7 @@ export interface TaskEventEnvelope {
 
 export interface TaskSessionLike {
     readonly sessionId: string;
+    readonly messaging?: AgentMessaging;
 
     initialize(): Promise<void>;
 
@@ -131,8 +136,9 @@ export interface TaskSessionLike {
 
     stop(id: string): Promise<TaskSnapshot | undefined>;
 
-    send(id: string, message: string): Promise<AgentTaskSnapshot>;
+    followup(id: string, message: string): Promise<AgentTaskSnapshot>;
 
+    interrupt(id: string): Promise<AgentTaskSnapshot>;
 
     hasRunning(): boolean;
 
@@ -146,6 +152,8 @@ export interface TaskSessionLike {
 }
 
 export interface TaskSessionBinding {
+    /** The owning Session queue; omitted for task-only hosts without an Agent inbox. */
+    messageQueue?: RuntimeMessageQueue;
     sessionId: string;
     toolResultStore: ToolResultStore;
     allowBackgroundTasks?: boolean;

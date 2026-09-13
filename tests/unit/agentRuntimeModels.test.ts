@@ -100,14 +100,12 @@ describe("AgentRuntime model targets", () => {
             });
 
             const fast = await runSubagent({
-                kind: "registered",
                 agentType: "Explore",
                 description: "快速调查",
                 prompt: "直接总结",
                 parentToolCallId: "fast-call",
             });
             const primary = await runSubagent({
-                kind: "registered",
                 agentType: "FixtureWriter",
                 description: "主力实现",
                 prompt: "直接总结",
@@ -124,7 +122,6 @@ describe("AgentRuntime model targets", () => {
                 onEvent() {},
             });
             const switchedPrimary = await runDeepseekSubagent({
-                kind: "registered",
                 agentType: "FixtureWriter",
                 description: "切换后的主力实现",
                 prompt: "直接总结",
