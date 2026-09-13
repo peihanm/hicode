@@ -79,7 +79,10 @@ const messageSchema = z.discriminatedUnion("role", [
         role: z.literal("assistant"),
         content: boundedString(MAX_MESSAGE_CONTENT_BYTES).nullable(),
         tool_calls: z.array(toolCallSchema).max(MAX_TOOL_CALLS_PER_MESSAGE).optional(),
-        reasoning_content: boundedString(MAX_MESSAGE_CONTENT_BYTES).optional(),
+        reasoning: z.object({
+            content: boundedString(MAX_MESSAGE_CONTENT_BYTES, false),
+            scope: z.string().regex(/^[a-f0-9]{64}$/),
+        }).strict().optional(),
     }).strict(),
     z.object({
         role: z.literal("tool"),

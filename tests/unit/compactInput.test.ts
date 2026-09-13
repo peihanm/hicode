@@ -37,7 +37,7 @@ test("无档案或必须保留的原文过长时失败，不能伪造已覆盖",
 });
 
 test("正常输入完整覆盖且不携带隐藏推理，压缩目标独立于触发阈值", () => {
-    const conversation: Message[] = [{role: "user", origin: "user" as const, content: "task"}, {role: "assistant", content: "visible", reasoning_content: "private"}];
+    const conversation: Message[] = [{role: "user", origin: "user" as const, content: "task"}, {role: "assistant", content: "visible", reasoning: {content: "private", scope: "a".repeat(64)}}];
     const result = selectCompactInput({system, conversation, prompt: "交接", budget: 1000});
     expect(result.coverage).toBe("");
     expect(JSON.stringify(result.messages)).not.toContain("private");

@@ -62,18 +62,19 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
     activityLabel?: string;
 }) {
     const [animation, setAnimation] = useState({
-        displayedCharacters: 0,
+        displayedTokens: 0,
         frame: 0,
     });
 
     useEffect(() => {
         const update = () => {
             setAnimation((current) => {
-                const displayedCharacters = stopping
-                    ? 0
-                    : (progressRef.current?.outputCharacters ?? modelStream?.outputCharacters ?? 0);
+                const progress = progressRef.current ?? modelStream;
+                const displayedTokens = !stopping && progress && progress.outputCharacters > 0
+                    ? progress.estimatedOutputTokens
+                    : 0;
                 return {
-                    displayedCharacters,
+                    displayedTokens,
                     frame: current.frame + 1,
                 };
             });
@@ -84,6 +85,7 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
         return () => clearInterval(timer);
     }, [
         modelStream?.outputCharacters,
+        modelStream?.estimatedOutputTokens,
         modelStream?.phase,
         modelStream?.toolName,
         progressRef,
@@ -99,8 +101,8 @@ export const ModelStreamStatus = memo(function ModelStreamStatus({
             </Box>
             <Text color={COLORS.dim}>
                 {stopping ? "Stopping..." : streamLabel(modelStream, activityLabel)}
-                {!stopping && modelStream && animation.displayedCharacters > 0
-                    ? ` · ${animation.displayedCharacters} characters`
+                {!stopping && modelStream && animation.displayedTokens > 0
+                    ? ` · ~${animation.displayedTokens.toLocaleString("en-US")} tokens`
                     : ""}
             </Text>
         </Box>

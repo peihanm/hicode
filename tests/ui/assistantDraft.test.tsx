@@ -27,7 +27,8 @@ test.each(["", "\n\n", "\r\n  \r\n", "\n".repeat(10)])("草稿尾部空白 %j �
     const statusLine = lines.findIndex(line => line.includes("Building write_file arguments"));
     expect(bodyLine).toBeGreaterThanOrEqual(0);
     expect(statusLine - bodyLine).toBe(2);
-    expect(view.lastFrame()).toContain("Response commentary");
+    expect(view.lastFrame()).not.toContain("Response commentary");
+    expect(lines.find(line => line.trim())?.trim()).toBe(body);
     expect(view.lastFrame()).not.toContain("Generating");
     expect(lines[bodyLine + 1]?.trim()).toBe("");
     expect(store.getDraftSnapshot()?.text).toBe(text);
@@ -61,6 +62,9 @@ test("草稿有界更新独立区域，不改 Static；窄屏 resize 和撤销�
     await flush();
     expect(store.getDraftSnapshot()?.text.length).toBeLessThanOrEqual(8_000);
     expect(view.lastFrame()).toContain("尾部正在生成");
+    view.rerender(<AssistantDraftView store={store} phase="tool_input"/>);
+    expect(view.lastFrame()).toContain("showing recent text");
+    expect(view.lastFrame()).not.toContain("Response commentary");
     expect(view.lastFrame()?.split("\n").length).toBeLessThanOrEqual(8);
     expect(rootUpdates).toBe(0);
     expect(store.getSnapshot().staticThreads).toBe(staticBefore);
@@ -96,7 +100,7 @@ test("进入工具参数阶段补齐正文尾部，回到正文阶段再显示�
         view.rerender(<AssistantDraftView store={store} phase="tool_input"/>);
         await flush();
         expect(view.lastFrame()).toContain("我已经了解全貌，现在写一份说明文档。");
-        expect(view.lastFrame()).toContain("Response commentary");
+        expect(view.lastFrame()).not.toContain("Response commentary");
         expect(view.lastFrame()).not.toContain("Generating");
         view.rerender(<AssistantDraftView store={store} phase="content"/>);
         expect(view.lastFrame()).toContain("Generating");

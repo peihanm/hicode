@@ -4,39 +4,43 @@ import type {UIThread} from "./types.js";
 import {MessageList, StaticMessageList} from "./MessageList.js";
 import {Welcome} from "../bootstrap/Welcome.js";
 import {useTerminalSize} from "../terminalSize.js";
+import type {TerminalCursorOutput} from "../input/terminalCursor.js";
 
 /** Clear terminal-owned scrollback and the visible screen before source-backed replay. */
 export const CLEAR_SCROLLBACK_AND_SCREEN = "\u001B[3J\u001B[2J\u001B[H";
 
 interface TranscriptSnapshot {
     width: number;
-    threadIds: string[];
+    threads: UIThread[];
+    expanded: boolean;
+}
+
+function supportsScrollbackRecording(
+    stdout: NodeJS.WriteStream
+): stdout is NodeJS.WriteStream & Pick<TerminalCursorOutput, "recordScrollback"> {
+    return "recordScrollback" in stdout && typeof stdout.recordScrollback === "function";
 }
 
 export type TranscriptEmissionPlan =
     | {kind: "none"}
+    | {kind: "append"; from: number; includeWelcome: boolean}
     | {kind: "replay"; includeWelcome: boolean};
 
-/**
- * Finalized threads remain the source of truth. Ink Static owns ordinary append-only writes;
- * Width changes and non-append mutations require a full source-backed replay.
- * Height does not affect retained transcript layout.
- */
+/** Only source/layout changes write history; animation renders must not replay it. */
 export function planTranscriptEmission(
     previous: TranscriptSnapshot | undefined,
     current: TranscriptSnapshot,
     showWelcome: boolean
 ): TranscriptEmissionPlan {
-    if (!previous) return {kind: "none"};
-    if (previous.width !== current.width) {
+    if (!previous) return {kind: "append", from: 0, includeWelcome: showWelcome};
+    const isAppendOnly = previous.threads.length <= current.threads.length &&
+        previous.threads.every((thread, index) => current.threads[index] === thread);
+    if (previous.width !== current.width || previous.expanded !== current.expanded || !isAppendOnly) {
         return {kind: "replay", includeWelcome: showWelcome};
     }
-    const isAppendOnly = previous.threadIds.length <= current.threadIds.length &&
-        previous.threadIds.every((id, index) => current.threadIds[index] === id);
-    if (!isAppendOnly) {
-        return {kind: "replay", includeWelcome: showWelcome};
-    }
-    return {kind: "none"};
+    return previous.threads.length === current.threads.length
+        ? {kind: "none"}
+        : {kind: "append", from: previous.threads.length, includeWelcome: false};
 }
 
 function createTranscriptCaptureOutput(width: number, height: number): {
@@ -84,6 +88,7 @@ export async function renderTranscriptForScrollback(input: {
     showWelcome: boolean;
     width: number;
     height: number;
+    expanded?: boolean;
 }): Promise<string> {
     const capture = createTranscriptCaptureOutput(input.width, input.height);
     const instance = render(
@@ -91,6 +96,8 @@ export async function renderTranscriptForScrollback(input: {
             {input.showWelcome && <Welcome/>}
             <MessageList
                 threads={input.threads}
+                paused
+                transcript={input.expanded}
                 terminalWidth={input.width}
             />
         </Box>,
@@ -112,16 +119,15 @@ export async function renderTranscriptForScrollback(input: {
     return withFinalNewline(output);
 }
 
-/**
- * Interactive TTY resize owner. Ink Static performs ordinary append-only writes. After resize,
- * old terminal-owned rows are cleared and rebuilt from UIThread source at the new size.
- */
+/** Owns terminal history writes and one-time replay when its presentation changes. */
 export function ScrollbackTranscript({
     threads,
     showWelcome = false,
+    expanded = false,
 }: {
     threads: UIThread[];
     showWelcome?: boolean;
+    expanded?: boolean;
 }) {
     const {stdout, write} = useStdout();
     const {width, height} = useTerminalSize();
@@ -130,40 +136,31 @@ export function ScrollbackTranscript({
 
     useEffect(() => {
         if (!isInteractive) return;
-        const current: TranscriptSnapshot = {
-            width,
-            threadIds: threads.map((thread) => thread.id),
-        };
-        const plan = planTranscriptEmission(
-            previousRef.current,
-            current,
-            showWelcome
-        );
-        if (plan.kind === "none") {
-            // Static has synchronously accepted an ordinary append-only update.
-            previousRef.current = current;
-            return;
-        }
+        const current: TranscriptSnapshot = {width, threads, expanded};
+        const plan = planTranscriptEmission(previousRef.current, current, showWelcome);
+        if (plan.kind === "none") return;
 
-        // A second Ink renderer cannot be entered while React is flushing this renderer's
-        // passive effects. Defer one task so the retained transcript render is isolated.
+        // Render outside React's current commit. A newer snapshot cancels the pending
+        // write, and replans from the last successful write so no append can be lost.
         let active = true;
         const timer = setTimeout(() => {
             void renderTranscriptForScrollback({
-                threads,
+                threads: plan.kind === "append" ? threads.slice(plan.from) : threads,
+                expanded,
                 showWelcome: plan.includeWelcome,
                 width,
                 height,
             }).then((rendered) => {
-                if (active) {
-                    write(`${CLEAR_SCROLLBACK_AND_SCREEN}${rendered}`);
-                    // Only a successful terminal write commits replay state.
-                    // If this effect was cancelled by a newer source snapshot,
-                    // the next effect must still see the old committed width and replay.
-                    previousRef.current = current;
+                if (!active) return;
+                write(`${plan.kind === "replay" ? CLEAR_SCROLLBACK_AND_SCREEN : ""}${rendered}`);
+                // The CLI output adapter retains only this rendered presentation for
+                // Ink's emergency overflow redraw; plain/captured streams need no cache.
+                if (supportsScrollbackRecording(stdout)) {
+                    stdout.recordScrollback(plan.kind, rendered);
                 }
+                previousRef.current = current;
             }).catch(() => {
-                // Keep the existing terminal-owned history if replay rendering fails.
+                // Keep the last committed history if rendering fails.
             });
         }, 0);
         timer.unref?.();
@@ -171,13 +168,18 @@ export function ScrollbackTranscript({
             active = false;
             clearTimeout(timer);
         };
-    }, [height, isInteractive, showWelcome, threads, width, write]);
+    }, [expanded, height, isInteractive, showWelcome, threads, width, write, stdout]);
 
-    return (
+    // Redirected output cannot retract terminal rows. Retain append-only output there.
+    // Interactive history must not also enter Ink's immutable Static cache: otherwise
+    // a later overflow would restore the old expanded history after collapse.
+    return isInteractive ? null : (
         <StaticMessageList
+            key={String(expanded)}
             threads={threads}
             showWelcome={showWelcome}
             terminalWidth={width}
+            transcript={expanded}
         />
     );
 }

@@ -44,7 +44,7 @@ function fixture(cwd: string, storage: PillarStorageLayout, id = "archive-sessio
     const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({})});
     const history: Message[] = [{role: "system", content: "system"},
         {role: "user", origin: "user" as const, content: "决定：删除列必须明确选择，禁止默认丢弃\n" + "历史资料\n".repeat(2500)},
-        {role: "assistant", content: "已确认", reasoning_content: "hidden-reasoning-must-not-be-archived"},
+        {role: "assistant", content: "已确认", reasoning: {content: "hidden-reasoning-must-not-be-archived", scope: "a".repeat(64)}},
         {role: "user", origin: "user" as const, content: "继续实现"}];
     const session = createRootSessionRuntime({resources,  seed: {sessionId: id, history, compactState: createCompactState()}});
     const controller = new AbortController();
@@ -243,7 +243,7 @@ test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果�
                 {role: "tool", tool_call_id: "historical-test", content: buildPersistedToolResultMessage(artifact)});
             const initial = structuredClone(f.session.history.filter(message => message.role !== "system")).map(message => {
                 if (message.role !== "assistant") return message;
-                const {reasoning_content: _reasoning, ...visible} = message;
+                const {reasoning: _reasoning, ...visible} = message;
                 return visible;
             });
             let firstSource = "";

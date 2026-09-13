@@ -11,6 +11,24 @@ const root = () => contentText(createInitialHistory("/project", "test-model")[0]
 const toolDescription = (name: string) => createToolCatalog({}).tools.find(tool => tool.name === name)!.description;
 
 describe("English prompt contracts", () => {
+    test("Root and actual worker prompts share evidence-driven implementation guidance without overriding Plan", () => {
+        const history = createInitialHistory("/project", "test-model");
+        const plan = withExecutionContext(history, {
+            collaborationMode: "plan", permissionMode: "ask",
+            permissionPromptPolicy: "onRequest", readOnlyTools: true,
+        });
+        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", "worker-model", ["read_file"]);
+        for (const prompt of [contentText(history[0]!.content), contentText(plan[0]!.content), worker]) {
+            expect(prompt.match(/# Task execution/g)).toHaveLength(1);
+            expect(prompt).toContain("For implementation work");
+            expect(prompt).toContain("next verifiable change");
+            expect(prompt).toContain("smallest relevant experiment or focused test");
+            expect(prompt).toContain("without making unsolicited implementation changes");
+            expect(prompt).toContain("Speed does not justify skipping necessary analysis or verification");
+        }
+        expect(contentText(plan[0]!.content)).toContain("restricted to read-only tools");
+        expect(worker).not.toContain("# Tools and coordination");
+    });
     test("Root keeps authorization, language and verification boundaries while tool details live with tools", () => {
         const prompt = root();
         expect(prompt).not.toMatch(/[\u3400-\u9fff]/u);

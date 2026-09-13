@@ -28,8 +28,8 @@ export function estimateMessageTokens(msg: Message): number {
     if (msg.role === "assistant" && msg.tool_calls) {
         total += roughTokenCountEstimation(JSON.stringify(msg.tool_calls));
     }
-    if (msg.role === "assistant" && msg.reasoning_content) {
-        total += roughTokenCountEstimation(msg.reasoning_content);
+    if (msg.role === "assistant" && msg.reasoning?.content) {
+        total += roughTokenCountEstimation(msg.reasoning?.content);
     }
 
     return total;

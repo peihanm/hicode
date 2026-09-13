@@ -23,8 +23,8 @@ export type Message =
         role: "assistant";
         content: string | null;
         tool_calls?: ToolCall[];
-        /** DeepSeek thinking tool turns must send this back on later requests. */
-        reasoning_content?: string;
+        /** Provider reasoning replay state; scope binds source, endpoint and model. */
+        reasoning?: {content: string; scope: string};
     }
     | { role: "tool"; content: MessageContent; tool_call_id: string };
 

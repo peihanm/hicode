@@ -14,7 +14,6 @@ import {limitTerminalText} from "./presentationLimits.js";
 import {
     type AgentBatch,
     type ConversationItem,
-    isToolCall,
     layoutUserMessageRows,
     type PhaseGroup,
     projectDefaultThreads,
@@ -412,6 +411,7 @@ function ThreadView({
             thread={thread}
             paused={paused}
             transcript={transcript}
+            includeHidden={transcript}
         />
     );
 }
@@ -450,14 +450,16 @@ type StaticListItem =
     | {kind: "welcome"; id: "welcome"}
     | {kind: "thread"; id: string; item: ConversationItem};
 
-/** Completed output is appended to the main-screen scrollback; active content stays live. After resume, native terminal scrolling and selection work without taking over the mouse protocol. */
+/** Append-only output for redirected streams; interactive replay is owned by ScrollbackTranscript. */
 export function StaticMessageList({
                                       threads,
                                       showWelcome = false,
+                                      transcript = false,
                                       terminalWidth: widthOverride,
                                   }: {
     threads: UIThread[];
     showWelcome?: boolean;
+    transcript?: boolean;
     terminalWidth?: number;
 }) {
     const terminalWidth = useTerminalWidth(widthOverride);
@@ -465,7 +467,7 @@ export function StaticMessageList({
         ...(showWelcome
             ? [{kind: "welcome" as const, id: "welcome" as const}]
             : []),
-        ...projectDefaultThreads(threads).map((item) => ({
+        ...(transcript ? threads : projectDefaultThreads(threads)).map((item) => ({
             kind: "thread" as const,
             id: item.id,
             item,
@@ -481,50 +483,11 @@ export function StaticMessageList({
                         key={item.id}
                         item={item.item}
                         paused
-                        transcript={false}
+                        transcript={transcript}
                         terminalWidth={terminalWidth}
                     />
                 )
             }
         </Static>
-    );
-}
-
-export function TranscriptDetails({
-                                      threads,
-                                      terminalWidth,
-                                  }: {
-    threads: UIThread[];
-    terminalWidth?: number;
-}) {
-    const details = threads.filter(
-        (thread): thread is
-            | ToolCallThread
-            | Extract<UIThread, {role: "file_change_group"}> =>
-            isToolCall(thread) || thread.role === "file_change_group"
-    );
-    if (details.length === 0) return null;
-    return (
-        <Box flexDirection="column" marginTop={1}>
-            <Text color={COLORS.dim}>Transcript · Ctrl+O to close</Text>
-            {details.map((thread) =>
-                thread.role === "tool_call" ? (
-                    <ToolCallView
-                        key={`transcript:${thread.id}`}
-                        thread={thread}
-                        paused
-                        transcript
-                        includeHidden
-                    />
-                ) : (
-                    <FileChangeGroup
-                        key={`details:${thread.id}`}
-                        changes={thread.changes}
-                        expanded
-                        terminalWidth={terminalWidth}
-                    />
-                )
-            )}
-        </Box>
     );
 }

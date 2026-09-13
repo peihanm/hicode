@@ -320,7 +320,7 @@ describe("session persistence", () => {
           {
             role: "assistant",
             content: null,
-            reasoning_content: "需要修改文件",
+            reasoning: {content: "需要修改文件", scope: "a".repeat(64)},
             tool_calls: [{
               id: "edit-a",
               type: "function",
@@ -354,7 +354,7 @@ describe("session persistence", () => {
       });
       expect(loaded?.history.at(-2)).toMatchObject({
         role: "assistant",
-        reasoning_content: "需要修改文件",
+        reasoning: {content: "需要修改文件", scope: "a".repeat(64)},
       });
     });
   });

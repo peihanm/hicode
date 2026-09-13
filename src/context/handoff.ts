@@ -42,7 +42,7 @@ export function labelHandoffSources(messages: readonly Message[], sources: Hando
     if (messages.length !== sources.current.messages.length) throw new Error("handoff source count mismatch");
     return messages.map((message, index) => {
         const cloned = structuredClone(message);
-        if (cloned.role === "assistant") delete cloned.reasoning_content;
+        if (cloned.role === "assistant") delete cloned.reasoning;
         cloned.content = `[source ${sources.current.id}/${index + 1}; role=${message.role}${message.role === "user" ? `; origin=${message.origin}` : ""}]\n${contentText(message.content)}`;
         return cloned;
     });

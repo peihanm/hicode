@@ -1,12 +1,12 @@
 import type {MessageContent} from "../images/content.js";
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
-import {useRef, useCallback, useEffect, useState, type ReactNode} from "react";
+import {useRef, useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import {getNextCollaborationMode, type CollaborationMode} from "../collaboration/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
-import {MessageList, TranscriptDetails,} from "./conversation/MessageList.js";
+import {MessageList} from "./conversation/MessageList.js";
 import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
 import {InputBox} from "./input/InputBox.js";
 import {ConfirmDialog} from "./dialogs/ConfirmDialog.js";
@@ -21,7 +21,7 @@ import {PermissionsDialog} from "./dialogs/PermissionsDialog.js";
 import {StatusBar} from "./status/StatusBar.js";
 import {TodoList} from "./status/TodoList.js";
 import {ModelStreamStatus} from "./status/ModelStreamStatus.js";
-import {useTurnController} from "./turn/useTurnController.js";
+import {selectLiveThreads, useTurnController} from "./turn/useTurnController.js";
 import type {UIThread} from "./conversation/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import {GitDiffDialog} from "./git/GitDiffDialog.js";
@@ -229,6 +229,23 @@ export function App({
             }
         });
 
+        const display = useMemo(() => {
+            if (!showTranscript) {
+                return {settled: turn.staticThreads, live: selectLiveThreads(turn.threads, turn.staticThreads)};
+            }
+            const settled: UIThread[] = [];
+            const live: UIThread[] = [];
+            const archivedIds = new Set(turn.staticThreads.map(thread => thread.id));
+            for (const thread of turn.threads) {
+                // Diffs merge during a tool batch. Wait for the same stable boundary
+                // in both display modes rather than replaying partial patches.
+                if (thread.role === "file_change_group" && !archivedIds.has(thread.id)) continue;
+                const running = (thread.role === "tool_call" || thread.role === "hook") && thread.status === "running";
+                (running ? live : settled).push(thread);
+            }
+            return {settled, live};
+        }, [showTranscript, turn.threads, turn.staticThreads]);
+
         const {cwd, mcpManager} = resources;
         const mcpSnapshots = mcpManager?.getSnapshots() ?? [];
         const activityLabel = runningActivityLabel(
@@ -237,16 +254,12 @@ export function App({
         );
         return (
             <Box flexDirection="column">
-                <ScrollbackTranscript threads={turn.staticThreads} showWelcome/>
+                <ScrollbackTranscript threads={display.settled} showWelcome expanded={showTranscript}/>
 
                 <MessageList
-                    threads={showTranscript ? [] : turn.liveThreads}
+                    threads={display.live}
                     paused={!!turn.confirmRequest}
                 />
-
-                {showTranscript && (
-                    <TranscriptDetails threads={turn.threads}/>
-                )}
 
                 {!showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
                     <TodoList

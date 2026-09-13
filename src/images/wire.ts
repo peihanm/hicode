@@ -3,6 +3,16 @@ import type {Message} from "../llm/types.js";
 import {imageReferences, imageReferenceSchema, IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ImageReference} from "./content.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 
+/** Project internal provenance away while preserving the provider's reasoning field. */
+export function projectMessageForWire(message: Message) {
+    if (message.role === "user") return {role: message.role, content: message.content};
+    if (message.role === "assistant") {
+        const {reasoning, ...visible} = message;
+        return {...visible, ...(reasoning ? {reasoning_content: reasoning.content} : {})};
+    }
+    return message;
+}
+
 export async function encodeImageMessages(input: {
     messages: readonly Message[]; supported: boolean;
     readImage?: (reference: ImageReference) => Promise<Buffer>; signal?: AbortSignal;
@@ -24,7 +34,7 @@ export async function encodeImageMessages(input: {
     const cache = new Map<string, string>();
     const messages: unknown[] = [];
     for (const message of input.messages) {
-        const wireMessage = message.role === "user" ? {role: message.role, content: message.content} : message;
+        const wireMessage = projectMessageForWire(message);
         if (input.signal) throwIfTurnAborted(input.signal);
         if (!Array.isArray(message.content)) {messages.push(wireMessage); continue;}
         const content: unknown[] = [];

@@ -14,7 +14,7 @@ export function selectCompactInput(input: {
     const {system, conversation, prompt, budget, sources} = input;
     const labelled = sources ? labelHandoffSources(conversation, sources) : conversation.map(message => {
         if (message.role !== "assistant") return {...message, content: contentText(message.content)};
-        const {reasoning_content: _reasoning, ...visible} = message;
+        const {reasoning: _reasoning, ...visible} = message;
         return visible;
     });
     const full: Message[] = [system, ...labelled, {role: "user", origin: "runtime" as const, content: prompt}];

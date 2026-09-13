@@ -217,7 +217,7 @@ describe("subagent UI", () => {
     });
   });
 
-  test("运行中 Ctrl+O 使用单一 Transcript，并按根工具到子 Agent 排序", async () => {
+  test("运行中 Ctrl+O 展开已完成工具，进行中的子 Agent 保持 live", async () => {
     await withTempProject(async (cwd) => {
       let release!: () => void;
       const released = new Promise<void>((resolve) => {
@@ -308,14 +308,12 @@ describe("subagent UI", () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         const frame = instance.lastFrame() ?? "";
         expect(frame.match(/● Explore Agent/g) ?? []).toHaveLength(1);
-        const transcriptIndex = frame.indexOf("Transcript · Ctrl+O to close");
-        const rootListIndex = frame.indexOf("● List .", transcriptIndex);
+        const rootListIndex = frame.indexOf("● List .");
         const agentIndex = frame.indexOf(
           "● Explore Agent · 调查刷题网站项目现状",
-          transcriptIndex
+          rootListIndex
         );
-        expect(transcriptIndex).toBeGreaterThanOrEqual(0);
-        expect(rootListIndex).toBeGreaterThan(transcriptIndex);
+        expect(rootListIndex).toBeGreaterThanOrEqual(0);
         expect(agentIndex).toBeGreaterThan(rootListIndex);
       } finally {
         release();

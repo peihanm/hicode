@@ -13,20 +13,25 @@ function cleanLines(value: string): string[] {
 }
 
 describe("source-backed terminal scrollback", () => {
-    test("普通追加交给 Static，resize 和非追加变化触发完整 replay", () => {
-        const initial = {width: 80, threadIds: ["a"]};
-        expect(planTranscriptEmission(undefined, initial, true)).toEqual({kind: "none"});
+    test("追加只写新条目，切换、resize 和正文变化重绘，动画不重绘", () => {
+        const a: UIThread = {id: "a", role: "assistant", text: "Hello"};
+        const b: UIThread = {id: "b", role: "assistant", text: "Next"};
+        const initial = {width: 80, threads: [a], expanded: false};
+        expect(planTranscriptEmission(undefined, initial, true)).toEqual({kind: "append", from: 0, includeWelcome: true});
+        expect(planTranscriptEmission(initial, {...initial, threads: [a]}, true)).toEqual({kind: "none"});
+        expect(planTranscriptEmission(initial, {...initial, expanded: true}, true)).toEqual({kind: "replay", includeWelcome: true});
+        expect(planTranscriptEmission({...initial, expanded: true}, initial, true)).toEqual({kind: "replay", includeWelcome: true});
         expect(planTranscriptEmission(initial, {
             ...initial,
-            threadIds: ["a", "b"],
-        }, true)).toEqual({kind: "none"});
+            threads: [a, b],
+        }, true)).toEqual({kind: "append", from: 1, includeWelcome: false});
         expect(planTranscriptEmission(initial, {
             ...initial,
             width: 120,
         }, true)).toEqual({kind: "replay", includeWelcome: true});
         expect(planTranscriptEmission(initial, {
             ...initial,
-            threadIds: ["replacement"],
+            threads: [{...a, text: "Changed content with same ID"}],
         }, true)).toEqual({kind: "replay", includeWelcome: true});
         expect(CLEAR_SCROLLBACK_AND_SCREEN).toBe("\u001B[3J\u001B[2J\u001B[H");
     });

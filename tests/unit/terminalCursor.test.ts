@@ -130,3 +130,22 @@ test("只剥离输入锚点链接，正文中的真实链接保留成对边界",
     expect(result.output).not.toContain(TERMINAL_CURSOR_ANCHOR_MARKER);
     expect(result.output).toEndWith("\u001B7\u001B[2A\u001B[4G");
 });
+
+test("Ink overflow restores the latest presentation, including after collapse", () => {
+    const writes: string[] = [];
+    const target = new EventEmitter() as NodeJS.WriteStream;
+    target.write = ((chunk: string | Uint8Array) => {writes.push(String(chunk)); return true;}) as NodeJS.WriteStream["write"];
+    const output = createTerminalCursorOutput(target);
+    const inkClear = "\u001b[2J\u001b[3J\u001b[H";
+    output.recordScrollback("append", "Welcome\n");
+    output.recordScrollback("replay", "expanded detail\n");
+    output.write(inkClear + "dialog");
+    expect(writes.at(-1)).toBe(inkClear + "expanded detail\ndialog");
+    output.recordScrollback("replay", "compact\n");
+    output.recordScrollback("append", "next result\n");
+    output.write(inkClear + "dialog");
+    expect(writes.at(-1)).toBe(inkClear + "compact\nnext result\ndialog");
+    output.disposeCursorOutput();
+    output.write(inkClear + "closed");
+    expect(writes.at(-1)).toBe(inkClear + "closed");
+});

@@ -154,7 +154,7 @@ describe("DeepSeek provider", () => {
             expect(first.message).toEqual({
                 role: "assistant",
                 content: null,
-                reasoning_content: "需要先读取文件",
+                reasoning: {content: "需要先读取文件", scope: expect.any(String)},
                 tool_calls: [{
                     id: "call-deepseek-1",
                     type: "function",
@@ -199,22 +199,23 @@ describe("DeepSeek provider", () => {
             expect(second.message).toEqual({
                 role: "assistant",
                 content: "读取完成",
+                reasoning: {content: "已经获得文件内容", scope: expect.any(String)},
             });
             const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
             const logs = await Promise.all((await listPromptLogs(directory)).map(async filename =>
                 JSON.parse(await readFile(join(directory, filename), "utf8")) as {
                     response: {
                         rawResponse: {toolCallCount: number; reasoning_content?: string};
-                        rawMessage: {reasoning_content?: string};
+                        rawMessage: {reasoning?: {content: string}};
                     };
                 }));
             expect(logs).toHaveLength(2);
             const toolLog = logs.find(log => log.response.rawResponse.toolCallCount === 1);
             const textLog = logs.find(log => log.response.rawResponse.toolCallCount === 0);
             expect(toolLog?.response.rawResponse.reasoning_content).toBe("需要先读取文件");
-            expect(toolLog?.response.rawMessage.reasoning_content).toBe("需要先读取文件");
+            expect(toolLog?.response.rawMessage.reasoning?.content).toBe("需要先读取文件");
             expect(textLog?.response.rawResponse.reasoning_content).toBe("已经获得文件内容");
-            expect(textLog?.response.rawMessage).not.toHaveProperty("reasoning_content");
+            expect(textLog?.response.rawMessage.reasoning?.content).toBe("已经获得文件内容");
         });
     });
 

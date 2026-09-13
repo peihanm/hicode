@@ -26,7 +26,7 @@ export const deepseekProvider: LLMProvider = {
             baseUrl: source.baseUrl || DEFAULT_DEEPSEEK_BASE_URL,
             apiKey,
             requestFields: createDeepSeekRequestFields(),
-            preserveToolCallReasoning: true,
+            reasoningSource: source.id,
             disableThinkingOnFinalStallRetry: true,
         });
     },

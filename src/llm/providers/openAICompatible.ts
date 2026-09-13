@@ -1,5 +1,6 @@
-import {randomUUID} from "node:crypto";
-import {encodeImageMessages} from "../../images/wire.js";
+import {createHash, randomUUID} from "node:crypto";
+import {encodeImageMessages, projectMessageForWire} from "../../images/wire.js";
+import type {LLMProviderName} from "../providerRegistry.js";
 import {ContextLengthError, isContextLengthResponse} from "../errors.js";
 import {imageReferences} from "../../images/content.js";
 import {
@@ -49,21 +50,21 @@ export interface OpenAICompatibleEndpoint {
     apiKey: string;
     /** Vendor extensions cannot override model/messages/tools/stream. */
     requestFields?: Record<string, unknown>;
-    /** Preserve reasoning_content for tool-call turns in History and subsequent requests. */
-    preserveToolCallReasoning?: boolean;
+    /** Enable replay for this source's compatible models, including text-only replies. */
+    reasoningSource?: LLMProviderName;
     /** After two deep-reasoning stalls, disable thinking for the final request. */
     disableThinkingOnFinalStallRetry?: boolean;
 }
 
 function toProviderMessages(
     messages: readonly Message[],
-    preserveToolCallReasoning: boolean
+    reasoningScope: string | undefined
 ): Message[] {
-    if (preserveToolCallReasoning) return [...messages];
     return messages.map((message) => {
         if (
             message.role !== "assistant" ||
-            message.reasoning_content === undefined
+            message.reasoning === undefined ||
+            message.reasoning.scope === reasoningScope
         ) {
             return message;
         }
@@ -173,7 +174,7 @@ function createRequestBody(
     options: LLMCallOptions,
     requestFields: Record<string, unknown> | undefined,
     disableThinking: boolean,
-    preserveToolCallReasoning: boolean
+    reasoningScope: string | undefined
 ): ChatCompletionsRequest {
     const effectiveRequestFields = {...requestFields};
     if (disableThinking) {
@@ -188,8 +189,8 @@ function createRequestBody(
         model: options.model,
         messages: toProviderMessages(
             options.messages,
-            preserveToolCallReasoning
-        ),
+            reasoningScope
+        ).map(projectMessageForWire),
         ...(tools.length > 0 ? {tools} : {}),
         stream: true,
     };
@@ -285,6 +286,8 @@ async function callOpenAICompatibleCore(
     config: OpenAICompatibleCallerConfig
 ): Promise<LLMCallResult> {
     const url = toChatCompletionsUrl(endpoint.baseUrl);
+    const reasoningScope = endpoint.reasoningSource === undefined ? undefined : createHash("sha256")
+        .update(JSON.stringify([endpoint.reasoningSource, url, options.model])).digest("hex");
     const requestTimeoutMs = config.streamIdleTimeoutMs;
     const outputStallTimeoutMs = config.outputStallTimeoutMs;
     let outputStallRetries = 0;
@@ -293,7 +296,8 @@ async function callOpenAICompatibleCore(
 
     if (options.signal) throwIfTurnAborted(options.signal);
     const hasImages = options.messages.some(message => imageReferences(message.content).length > 0);
-    const wireMessages = await encodeImageMessages({messages: toProviderMessages(options.messages, endpoint.preserveToolCallReasoning === true), supported: endpoint.toolImages === true, readImage: options.readImage, signal: options.signal});
+    const providerMessages = toProviderMessages(options.messages, reasoningScope);
+    const wireMessages = await encodeImageMessages({messages: providerMessages, supported: endpoint.toolImages === true, readImage: options.readImage, signal: options.signal});
     await options.onText?.({type: "reset"});
     for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
         if (options.signal) throwIfTurnAborted(options.signal);
@@ -304,7 +308,7 @@ async function callOpenAICompatibleCore(
             options,
             endpoint.requestFields,
             disableThinking,
-            endpoint.preserveToolCallReasoning === true
+            reasoningScope
         );
         requestBody.messages = wireMessages;
         const requestJson = JSON.stringify(requestBody);
@@ -314,7 +318,7 @@ async function callOpenAICompatibleCore(
             options.cwd,
             options.kind,
             options.model,
-            {...requestBody, messages: toProviderMessages(options.messages, endpoint.preserveToolCallReasoning === true), ...(hasImages ? {imagesSubmitted: true} : {})},
+            {...requestBody, messages: providerMessages.map(projectMessageForWire), ...(hasImages ? {imagesSubmitted: true} : {})},
             [endpoint.apiKey], options.trace, attempt
         );
         let lastStreamProgress: LLMStreamProgress | undefined;
@@ -475,10 +479,9 @@ async function callOpenAICompatibleCore(
                 ...(streamed.toolCalls.length > 0
                     ? {tool_calls: streamed.toolCalls}
                     : {}),
-                ...(endpoint.preserveToolCallReasoning === true &&
-                streamed.toolCalls.length > 0 &&
+                ...(reasoningScope !== undefined &&
                 streamed.reasoningContent.trim().length > 0
-                    ? {reasoning_content: streamed.reasoningContent}
+                    ? {reasoning: {content: streamed.reasoningContent, scope: reasoningScope}}
                     : {}),
             };
 

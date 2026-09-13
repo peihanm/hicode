@@ -21,7 +21,7 @@ describe("ModelStreamStatus", () => {
     expect(frame).not.toContain("Thinking");
   });
 
-  test("直接展示接收到的字符量，无新数据时数值不补涨", async () => {
+  test("展示明确标记的 Token 估算量，无新数据时数值不补涨", async () => {
     const modelStream: UIModelStreamInfo = {
       phase: "reasoning",
       outputCharacters: 4,
@@ -40,7 +40,7 @@ describe("ModelStreamStatus", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 280));
     expect(instance.lastFrame()).toContain("Generating reasoning");
-    expect(instance.lastFrame()).toContain("4 characters");
+    expect(instance.lastFrame()).toContain("~1 tokens");
 
     progressRef.current = {
       ...modelStream,
@@ -48,15 +48,15 @@ describe("ModelStreamStatus", () => {
       estimatedOutputTokens: 2000,
     };
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(instance.lastFrame()).toContain("8000 characters");
-    expect(instance.lastFrame()).not.toContain("tokens");
+    expect(instance.lastFrame()).toContain("~2,000 tokens");
+    expect(instance.lastFrame()).not.toContain("characters");
 
     // 没有新数据，只有独立 glyph 动画继续更新。
     await new Promise((resolve) => setTimeout(resolve, 150));
     const settledFrameCount = instance.frames.length;
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(instance.frames.length).toBeGreaterThan(settledFrameCount);
-    expect(instance.lastFrame()).toContain("8000 characters");
+    expect(instance.lastFrame()).toContain("~2,000 tokens");
     instance.unmount();
   });
 
@@ -99,14 +99,14 @@ test("下一次请求清零计数，停止后隐藏计数", async () => {
     const progressRef: UIModelStreamProgressRef = {current: running};
     const view = render(<ModelStreamStatus modelStream={running} progressRef={progressRef} stopping={false}/>);
     await new Promise(resolve => setTimeout(resolve, 140));
-    expect(view.lastFrame()).toContain("4000 characters");
+    expect(view.lastFrame()).toContain("~1,000 tokens");
     const next: UIModelStreamInfo = {phase: "requesting", outputCharacters: 0, estimatedOutputTokens: 0};
     progressRef.current = next;
     view.rerender(<ModelStreamStatus modelStream={next} progressRef={progressRef} stopping={false}/>);
     await new Promise(resolve => setTimeout(resolve, 140));
     expect(view.lastFrame()).toContain("Waiting for model response");
-    expect(view.lastFrame()).not.toContain("characters");
+    expect(view.lastFrame()).not.toContain("tokens");
     view.rerender(<ModelStreamStatus modelStream={running} progressRef={progressRef} stopping/>);
-    expect(view.lastFrame()).not.toContain("characters");
+    expect(view.lastFrame()).not.toContain("tokens");
     view.unmount();
 });

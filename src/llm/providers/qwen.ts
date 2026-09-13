@@ -9,6 +9,10 @@ function supportsThinking(model: string): boolean {
         !normalized.startsWith("qwen3-coder-plus");
 }
 
+function supportsReasoningReplay(model: string): boolean {
+    return /^qwen3\.(?:6|7|8)-(?:plus|flash|max)(?:-|$)/i.test(model);
+}
+
 export function createQwenRequestFields(
     model: string,
     hasTools: boolean
@@ -16,6 +20,7 @@ export function createQwenRequestFields(
     return {
         stream_options: {include_usage: true},
         ...(supportsThinking(model) ? {enable_thinking: true} : {}),
+        ...(supportsReasoningReplay(model) ? {preserve_thinking: true} : {}),
         ...(hasTools ? {parallel_tool_calls: true} : {}),
     };
 }
@@ -34,6 +39,7 @@ export const qwenProvider: LLMProvider = {
         return callOpenAICompatible(options, {
             displayName: source.label,
             toolImages: supportsToolImages(source, options.model),
+            ...(supportsReasoningReplay(options.model) ? {reasoningSource: source.id} : {}),
             baseUrl: source.baseUrl || QWEN_DEFAULT_BASE_URL,
             apiKey,
             requestFields: createQwenRequestFields(

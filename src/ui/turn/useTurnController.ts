@@ -42,7 +42,7 @@ export interface UseTurnControllerOptions {
     openPermissions?: () => void;
 }
 
-/** Only threads needing updates belong in Ink's live area. File diffs merge within an iteration; rendering them live can push them into scrollback and duplicate them when moved to Static. Show each final diff once at the iteration/turn boundary. */
+/** Only threads needing updates belong in Ink's live area. File diffs merge within an iteration; rendering them live can push them into scrollback and duplicate them when moved to scrollback. Show each final diff once at the iteration/turn boundary. */
 export function selectLiveThreads(
     threads: UIThread[],
     staticThreads: UIThread[]

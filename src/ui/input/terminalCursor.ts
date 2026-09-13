@@ -6,6 +6,7 @@ export const TERMINAL_CURSOR_ANCHOR_MARKER = "\u001B]8;;pillar-cursor://input\u0
 export const TERMINAL_CURSOR_ANCHOR_END = "\u001B]8;;\u0007";
 
 export interface TerminalCursorOutput extends NodeJS.WriteStream {
+    recordScrollback(mode: "append" | "replay", rendered: string): void;
     disposeCursorOutput(): void;
 }
 
@@ -52,6 +53,7 @@ export function createTerminalCursorOutput(
     target: NodeJS.WriteStream
 ): TerminalCursorOutput {
     let anchored = false;
+    let scrollback = "";
     let inkResizeListener: ((...args: unknown[]) => void) | undefined;
 
     const write = (
@@ -65,7 +67,13 @@ export function createTerminalCursorOutput(
         const data = typeof chunk === "string"
             ? chunk
             : Buffer.from(chunk).toString(encoding);
-        const formatted = formatTerminalCursorWrite(data, anchored);
+        // Ink 5 can clear the terminal when a live dialog exceeds its height.
+        // Restore the latest committed presentation, never its stale Static cache.
+        const inkClear = "\u001B[2J\u001B[3J\u001B[H";
+        const frame = data.startsWith(inkClear)
+            ? inkClear + scrollback + data.slice(inkClear.length)
+            : data;
+        const formatted = formatTerminalCursorWrite(frame, anchored);
         anchored = formatted.anchored;
         if (typeof encodingOrCallback === "function") {
             return target.write(formatted.output, encodingOrCallback);
@@ -74,10 +82,19 @@ export function createTerminalCursorOutput(
     };
 
     return new Proxy(target, {
+        has(object, property) {
+            return property === "recordScrollback" || Reflect.has(object, property);
+        },
         get(object, property) {
             if (property === "write") return write;
+            if (property === "recordScrollback") {
+                return (mode: "append" | "replay", rendered: string) => {
+                    scrollback = mode === "replay" ? rendered : scrollback + rendered;
+                };
+            }
             if (property === "disposeCursorOutput") {
                 return () => {
+                    scrollback = "";
                     inkResizeListener = undefined;
                     if (anchored) target.write(RESTORE_CURSOR);
                     anchored = false;

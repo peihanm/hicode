@@ -19,12 +19,12 @@ describe("工作交接协议", () => {
         expect(buildCompactPrompt("   ")).toBe(buildCompactPrompt());
     });
     test("来源标注不改变原文或泄漏 reasoning", () => {
-        const original = [{role: "assistant" as const, content: "可见决定", reasoning_content: "private"}];
+        const original = [{role: "assistant" as const, content: "可见决定", reasoning: {content: "private", scope: "a".repeat(64)}}];
         const labelled = labelHandoffSources(original, sources);
         expect(labelled[0]?.content).toContain(`${current.id}/1; role=assistant`);
         expect(JSON.stringify(labelled)).not.toContain("private");
         expect(original[0].content).toBe("可见决定");
-        expect(original[0].reasoning_content).toBe("private");
+        expect(original[0].reasoning.content).toBe("private");
     });
     test("拒绝伪造/越界引用与无依据的确定转述，推断明确显示", () => {
         expect(renderHandoff(JSON.stringify(handoff()), sources)).toContain(`[[${current.id}/1]]`);

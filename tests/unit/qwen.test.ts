@@ -138,14 +138,14 @@ describe("Qwen provider", () => {
                 completion_tokens: 20,
                 total_tokens: 100,
             });
-            expect(result.message).not.toHaveProperty("reasoning_content");
+            expect(result.message).toMatchObject({reasoning: {content: "准备调用工具", scope: expect.any(String)}});
             const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
             const [filename] = await listPromptLogs(directory);
             const logged = JSON.parse(await readFile(join(directory, filename!), "utf8")) as {
                 response: {rawResponse: Record<string, unknown>; rawMessage: unknown};
             };
             expect(logged.response.rawResponse.reasoning_content).toBe("准备调用工具");
-            expect(logged.response.rawMessage).not.toHaveProperty("reasoning_content");
+            expect(logged.response.rawMessage).toMatchObject({reasoning: {content: "准备调用工具"}});
         });
     });
 
@@ -180,7 +180,7 @@ describe("Qwen provider", () => {
                 tools: [], cwd, model: "qwen3.8-flash", kind: "main",
             });
             expect(fetchCalls).toBe(1);
-            expect(result.message).toEqual({role: "assistant", content: "ok"});
+            expect(result.message).toEqual({role: "assistant", content: "ok", ...(reasoning?.trim() ? {reasoning: {content: reasoning, scope: expect.any(String)}} : {})});
             const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
             const filenames = await listPromptLogs(directory);
             expect(filenames).toHaveLength(1);
@@ -189,7 +189,7 @@ describe("Qwen provider", () => {
                 response: {rawResponse: Record<string, unknown>; rawMessage: unknown};
             };
             expect(serialized).not.toContain("test-dashscope-token");
-            expect(logged.response.rawMessage).toEqual(result.message);
+            expect(logged.response.rawMessage).toEqual(JSON.parse(JSON.stringify(result.message).replaceAll("test-dashscope-token", "[REDACTED]")));
             expect(logged.response.rawResponse.reasoningContentLength).toBe(reasoning?.length ?? 0);
             if (reasoning?.trim()) {
                 expect(logged.response.rawResponse.reasoning_content).toBe(reasoning.replaceAll("test-dashscope-token", "[REDACTED]"));
@@ -247,7 +247,7 @@ describe("Qwen provider", () => {
                     {
                         role: "assistant",
                         content: null,
-                        reasoning_content: "DeepSeek private reasoning",
+                        reasoning: {content: "DeepSeek private reasoning", scope: "a".repeat(64)},
                         tool_calls: [{
                             id: "call-1",
                             type: "function",

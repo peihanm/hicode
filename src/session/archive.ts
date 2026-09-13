@@ -30,7 +30,7 @@ export function prepareSessionArchive(storage: PillarStorageLayout, cwd: string,
     const messages = history.flatMap<Exclude<Message, {role: "system"}>>(message => {
         if (message.role === "system") return [];
         if (message.role === "assistant") {
-            const {reasoning_content: _reasoning, ...visible} = message;
+            const {reasoning: _reasoning, ...visible} = message;
             return [structuredClone(visible)];
         }
         return [structuredClone(message)];
