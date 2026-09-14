@@ -1,7 +1,7 @@
+import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProvider} from "../types.js";
 import {callOpenAICompatible} from "./openAICompatible.js";
 
-const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
 function createDeepSeekRequestFields(): Record<string, unknown> {
     return {
@@ -23,7 +23,7 @@ export const deepseekProvider: LLMProvider = {
 
         return callOpenAICompatible(options, {
             displayName: source.label,
-            baseUrl: source.baseUrl || DEFAULT_DEEPSEEK_BASE_URL,
+            baseUrl: source.baseUrl || PROVIDER_BASE_URLS.deepseek,
             apiKey,
             requestFields: createDeepSeekRequestFields(),
             reasoningSource: source.id,

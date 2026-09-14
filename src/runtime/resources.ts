@@ -1,3 +1,4 @@
+import {createModelConfiguration, type ModelConfiguration} from "../settings/modelConfiguration.js";
 import {acquireProjectActivity} from "../persistence/projectState.js";
 import {loadPillarSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
@@ -51,8 +52,9 @@ export interface RootRuntimeResources {
     readonly model: string;
     readonly provider: ResolvedPillarSettings["models"]["primary"]["source"];
     readonly fastModel: string;
-    readonly fastProvider: ResolvedPillarSettings["models"]["fast"]["source"];
+    readonly fastProvider: ResolvedPillarSettings["models"]["primary"]["source"];
     readonly primaryModel: PrimaryModelRuntime;
+    readonly modelConfiguration?: ModelConfiguration;
     readonly settings: ResolvedPillarSettings;
     readonly agentRuntime: AgentRuntime;
     readonly subagents: SubagentCatalog;
@@ -232,7 +234,7 @@ export function createRootRuntimeResourcesFactory(
                 storage,
                 cwd,
                 getModelTarget: auxiliaryModelTarget,
-                getModelSource: (source) => settings.sources[source],
+                getModelSource: (source) => primaryModel.sources[source],
                 shellRunner,
                 settings: settings.memory,
                 contextSettings: settings.context,
@@ -256,12 +258,11 @@ export function createRootRuntimeResourcesFactory(
                 childEnvironment,
                 headless: options.headless,
                 signal: options.signal,
-                promptExecutor: createHookPromptExecutor({
-                    storage,
-                    source: settings.sources[settings.models.fast.source],
-                    cwd,
-                    model: settings.models.fast.model,
-                }),
+                promptExecutor: {execute(input) {
+                    const target = settings.models.fast ?? primaryModel.target;
+                    return createHookPromptExecutor({storage, cwd, model: target.model,
+                        source: primaryModel.sources[target.source]}).execute(input);
+                }},
                 requestTrust: options.requestHookTrust,
             });
             const catalogToolNames = () => createToolCatalog({
@@ -289,7 +290,7 @@ export function createRootRuntimeResourcesFactory(
                 storage,
                 cwd,
                 getModelTarget: auxiliaryModelTarget,
-                getModelSource: (source) => settings.sources[source],
+                getModelSource: (source) => primaryModel.sources[source],
                 instructions,
                 availableToolNames: catalogToolNames().filter(
                     (name) => !name.startsWith("mcp__")
@@ -305,17 +306,13 @@ export function createRootRuntimeResourcesFactory(
                     ...(options.additionalTools ?? []),
                 ],
                 toolOverrides: [
-                    createAgentTool(
-                        subagents,
-                        settings.models.fast.model
-                    ),
+                    createAgentTool(subagents),
                 ],
                 hooks,
             });
             const agentRuntime = dependencies.createAgentRuntime({
                 storage,
-                fastModel: settings.models.fast,
-                sources: settings.sources,
+                getSources: () => primaryModel.sources,
                 subagents,
                 memory: createdMemory,
             });
@@ -370,9 +367,10 @@ export function createRootRuntimeResourcesFactory(
                 get provider() {
                     return primaryModel.target.source;
                 },
-                fastModel: settings.models.fast.model,
-                fastProvider: settings.models.fast.source,
+                get fastModel() {return (settings.models.fast ?? primaryModel.target).model;},
+                get fastProvider() {return (settings.models.fast ?? primaryModel.target).source;},
                 primaryModel,
+                modelConfiguration: options.configuration.fileSources.settings.includes("user") ? createModelConfiguration(storage, cwd, primaryModel, [settings.models.fast, settings.models.reviewer].filter((target): target is NonNullable<typeof target> => target !== undefined)) : undefined,
                 settings,
                 agentRuntime,
                 subagents,

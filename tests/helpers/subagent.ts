@@ -45,7 +45,6 @@ export function createSubagentRunnerForTest({
   return createSubagentFactories({
     primaryRunAgent: runAgent,
     fastRunAgent: runAgent,
-    fastModel: "glm-fast-test",
     createToolResultStore: (cwd, sessionId) =>
       createTestToolResultStore(cwd, sessionId, toolResultStoreOptions),
     registry,
@@ -82,7 +81,6 @@ export function createSubagentThreadForTest(
   return createSubagentFactories({
     primaryRunAgent: runAgent,
     fastRunAgent: runAgent,
-    fastModel: "glm-fast-test",
     createToolResultStore: (cwd, sessionId) =>
       createTestToolResultStore(cwd, sessionId, toolResultStoreOptions),
     registry,

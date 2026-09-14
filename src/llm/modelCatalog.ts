@@ -18,7 +18,7 @@ function targetsForSource(source: ModelSourceSettings): ModelTargetSettings[] {
         }));
 }
 
-function sourceIsAvailable(
+export function sourceIsAvailable(
     source: ModelSourceSettings,
     environment: NodeJS.ProcessEnv
 ): boolean {

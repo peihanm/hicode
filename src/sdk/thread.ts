@@ -168,7 +168,7 @@ class SDKThreadImpl implements SessionThread {
         const resources = this.options.resources;
         const target = resources.primaryModel.target;
         return this.prepareImageInput(signal => importUserInput(copied, this.options.session.toolResultStore,
-            supportsToolImages(resources.settings.sources[target.source], target.model), signal), options);
+            supportsToolImages(resources.primaryModel.sources[target.source], target.model), signal), options);
     }
 
     async runStreamedWithImagePaths(input: string, paths: readonly string[], options: TurnOptions = {}): Promise<StreamedTurn> {

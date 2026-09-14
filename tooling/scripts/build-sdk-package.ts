@@ -15,6 +15,7 @@ const runtimeDependencies = [
     "ajv-formats",
     "re2js",
     "diff",
+    "dotenv",
     "ignore",
     "picomatch",
     "string-width",

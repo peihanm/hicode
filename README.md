@@ -42,69 +42,52 @@ The commands below use a macOS/Linux shell. Native Windows additionally requires
 git clone https://github.com/peihanm/pillar-core.git
 cd pillar-core
 bun install --frozen-lockfile
-cp .env.sample .env
 ```
 
-### 3. Configure a model
-
-Edit `.env` and fill in the key for the source you intend to use. For the default Qwen configuration:
-
-```dotenv
-DASHSCOPE_API_KEY=your-api-key
-```
-
-The current defaults use **`qwen3.8-flash`** for both the main and fast models, with the Qwen endpoint **`https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`**. Your account must have access to this endpoint and model. If your account uses another endpoint or model, configure it before submitting a task.
-
-<details>
-<summary>Use another endpoint or model</summary>
-
-Create or edit `~/.pillar/settings.json`. This example keeps the Qwen source and replaces its endpoint and model list; replace both placeholders with values supported by your provider:
-
-```json
-{
-  "sources": {
-    "qwen": {
-      "baseUrl": "https://your-api-host.example/compatible-mode/v1",
-      "models": [{"id": "your-model-id", "label": "My model"}]
-    }
-  },
-  "models": {
-    "primary": {"source": "qwen", "model": "your-model-id"},
-    "fast": {"source": "qwen", "model": "your-model-id"}
-  }
-}
-```
-
-For GLM or DeepSeek, use the corresponding source name and credential variable:
-
-| Source | API key variable |
-| --- | --- |
-| `qwen` | `DASHSCOPE_API_KEY` |
-| `glm` | `GLM_API_KEY` |
-| `deepseek` | `DEEPSEEK_API_KEY` |
-| `openrouter` | `OPENROUTER_API_KEY` |
-
-Configure both `primary` and `fast` when changing providers; switching the main model alone does not change the fast model. Keep keys in `.env`, not in `settings.json`.
-
-</details>
-
-For OpenRouter, set `OPENROUTER_API_KEY` in `.env` and select **OpenRouter → Nemotron 3 Super (free)** with `/model` after restarting. To start with only an OpenRouter key, set both model slots in `~/.pillar/settings.json`:
-
-```json
-{
-  "models": {
-    "primary": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"},
-    "fast": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"}
-  }
-}
-```
-
-
-### 4. Start Pillar
+### 3. Start and configure a model
 
 ```bash
 bun run start
 ```
+
+Set up access inside the terminal; no JSON editing is required:
+
+1. Open `/providers` and select Qwen, GLM, DeepSeek, or OpenRouter.
+2. Choose **API key**, paste your key, and save. Input is masked and never added to the conversation.
+3. Use a preset model, or choose **Add model** and enter its API model ID. The display name is optional.
+4. Return to `/model` and select a model. Your selection is saved automatically.
+
+To delete a model, choose **Remove model** on the provider page and confirm the entry. The key and endpoint are kept. Switch away from a model first if it is selected or still referenced by model settings.
+
+With no available models, startup opens provider setup. Keys, model lists, and endpoints saved through the panel take effect immediately. One model is enough: unless an independent `fast` target is configured, fast tasks follow the current main model.
+
+<details>
+<summary>Configuration files and advanced usage</summary>
+
+Keys are saved to `~/.pillar/.env` by default. If the project `.env` already defines the same key, the panel updates that file and shows the destination. Existing process environment values take precedence, followed by project `.env` values and then missing values from the user `.env`. An `.env` file is not required.
+
+| Provider | Credential variable |
+| --- | --- |
+| Qwen | `DASHSCOPE_API_KEY` |
+| GLM | `GLM_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+
+`/providers` saves endpoints and model lists in `~/.pillar/settings.json`. `/model` saves the selected model there unless the project explicitly overrides it; in that case, it writes `.pillar/settings.local.json` without changing shared project settings. Explicit CLI arguments still take precedence at startup.
+
+To use a separate fast model, configure a complete `models.fast` target:
+
+```json
+{"models":{"fast":{"source":"deepseek","model":"deepseek-flash"}}}
+```
+
+Remove `fast` to follow the main model again; restart after changing that setting manually. Existing child agents retain their model and endpoint snapshot. A model ID must be offered by the selected provider; adding an ID does not automatically adapt image, reasoning, or tool-calling protocols. Setup does not make paid test requests.
+
+The default Qwen endpoint is `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`. Change **API endpoint** in `/providers` when your account uses another endpoint. Do not put keys in Settings or commit them to Git.
+
+</details>
+
+### 4. Start working
 
 For example, ask:
 
@@ -120,14 +103,15 @@ pillar
 
 Make sure Bun's global executable directory (usually `~/.bun/bin`) is on your `PATH`. Pillar works in the directory where you launch it.
 
-When launching from another project, place its key configuration in that project's `.env`, or create a shared `~/.pillar/.env`. The CLI reads the current directory's `.env` first and only falls back to `~/.pillar/.env` when no local file exists; the files are not merged.
+User-level keys saved through `/providers` work across projects. The CLI preserves process environment values, loads the project `.env`, and fills missing variables from `~/.pillar/.env`.
 
 ## Everyday use
 
 | Action | Command or shortcut |
 | --- | --- |
 | View commands | `/help` |
-| Choose the main model | `/model` |
+| Select and save a model | `/model` |
+| Configure keys, endpoints and model lists | `/providers` |
 | Choose an approval policy | `/permissions` |
 | Switch between Build and Plan | `Shift+Tab` |
 | Resume a saved session | `/resume` |

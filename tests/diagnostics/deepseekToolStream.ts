@@ -1,3 +1,4 @@
+import {createPillarStorageLayout} from "../../src/persistence/index.js";
 import {loadEnv} from "../../src/cli/env.js";
 import {createGlmRequestFields} from "../../src/llm/providers/glm.js";
 
@@ -494,7 +495,7 @@ function printComparison(results: readonly ProbeResult[]): void {
 
 async function main(): Promise<void> {
     const options = parseOptions(process.argv.slice(2));
-    loadEnv({required: false});
+    loadEnv(createPillarStorageLayout(), process.cwd());
 
     const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
     if (!deepseekApiKey) {

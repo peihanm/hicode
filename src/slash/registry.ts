@@ -1,3 +1,4 @@
+import {providersCommand} from "./commands/providers.js";
 import {hooksCommand} from "./commands/hooks.js";
 import {planCommand, buildCommand} from "./commands/collaboration.js";
 import {compactCommand} from "./commands/compact.js";
@@ -19,6 +20,7 @@ const COMMANDS: readonly SlashCommand[] = [
     hooksCommand,
     compactCommand,
     modelCommand,
+    providersCommand,
     resumeCommand,
     permissionsCommand,
     addDirCommand,

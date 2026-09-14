@@ -5,7 +5,6 @@ import {type AgentRunner, createAgentRunner} from "../agent/index.js";
 import {type CompactHistoryRunner, createCompactHistoryRunner,} from "../context/compact.js";
 import {createCompactSummaryGenerator} from "../context/compactSummary.js";
 import {createLLMCaller} from "../llm/index.js";
-import type {ModelTargetSettings} from "../settings/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {ResolvedPillarSettings} from "../settings/types.js";
 import {createSubagentFactories} from "../subagents/runSubagent.js";
@@ -43,16 +42,18 @@ function createProviderRunner(
 }
 
 function createPrimaryRouter(
-    sources: ResolvedPillarSettings["sources"]
+    getSources: () => ResolvedPillarSettings["sources"]
 ) {
-    const runners = new Map<LLMProviderName, ReturnType<typeof createProviderRunner>>();
+    const runners = new Map<LLMProviderName, {connection: string; runner: ReturnType<typeof createProviderRunner>}>();
     const getRunner = (provider: LLMProviderName) => {
-        let runner = runners.get(provider);
-        if (!runner) {
-            runner = createProviderRunner(sources[provider]);
-            runners.set(provider, runner);
+        const source = getSources()[provider];
+        const connection = JSON.stringify(source);
+        let cached = runners.get(provider);
+        if (!cached || cached.connection !== connection) {
+            cached = {connection, runner: createProviderRunner(source)};
+            runners.set(provider, cached);
         }
-        return runner;
+        return cached.runner;
     };
     return {
         runAgent: ((userInput, history, onEvent, ctx, inputChannel, options) =>
@@ -69,38 +70,29 @@ function createPrimaryRouter(
     };
 }
 
-/** Route the per-Turn primary target while keeping the fast target fixed. */
-export function createAgentRuntime({
-    storage,
-    fastModel,
-    sources,
-    subagents,
-    memory,
-}: {
+/** Root resolves current connections; each child captures connections at spawn. */
+export function createAgentRuntime({storage, getSources, subagents, memory}: {
     storage: PillarStorageLayout;
-    fastModel: ModelTargetSettings;
-    sources: ResolvedPillarSettings["sources"];
+    getSources(): ResolvedPillarSettings["sources"];
     subagents: SubagentRegistry;
     memory: MemoryRuntimeLike;
 }): AgentRuntime {
-    const primary = createPrimaryRouter(sources);
-    const fast = createProviderRunner(sources[fastModel.source]);
-    const rootRunAgent = createMemoryAwareAgentRunner(
-        primary.runAgent,
-        memory
-    );
-    const subagentFactories = createSubagentFactories({
-        primaryRunAgent: primary.runAgent,
-        fastRunAgent: fast.runAgent,
-        fastModel: fastModel.model,
-        registry: subagents,
-        createToolResultStore: (cwd, sessionId) =>
-            createToolResultStore(storage, cwd, sessionId),
-    });
+    const primary = createPrimaryRouter(getSources);
+    const childFactories = () => {
+        const sources = structuredClone(getSources());
+        const child = createPrimaryRouter(() => sources);
+        return createSubagentFactories({
+            primaryRunAgent: child.runAgent,
+            fastRunAgent: child.runAgent,
+            registry: subagents,
+            createToolResultStore: (cwd, sessionId) => createToolResultStore(storage, cwd, sessionId),
+        });
+    };
     return {
-        runAgent: rootRunAgent,
+        runAgent: createMemoryAwareAgentRunner(primary.runAgent, memory),
         reviewApproval: createApprovalReviewer(primary.runAgent),
         compactHistory: primary.compactHistory,
-        ...subagentFactories,
+        createSubagentRunner: options => childFactories().createSubagentRunner(options),
+        createSubagentThread: (options, request) => childFactories().createSubagentThread(options, request),
     };
 }

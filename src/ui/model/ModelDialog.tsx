@@ -34,9 +34,11 @@ export function ModelDialog({
 }: {
     models: readonly ModelTargetSettings[];
     current: ModelTargetSettings;
-    onSelect(target: ModelTargetSettings): void;
+    onSelect(target: ModelTargetSettings): Promise<void>;
     onClose(): void;
 }) {
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
     const initialIndex = Math.max(
         0,
         models.findIndex((target) => sameTarget(target, current))
@@ -57,6 +59,7 @@ export function ModelDialog({
     }, [models]);
 
     useInput((_input, key) => {
+        if (saving) return;
         if (key.escape) {
             onClose();
             return;
@@ -68,7 +71,11 @@ export function ModelDialog({
             setSelectedIndex((index) => (index + 1) % models.length);
         } else if (key.return) {
             const target = models[selectedIndex];
-            if (target) onSelect(target);
+            if (target) {
+                setSaving(true); setError("");
+                void onSelect(target).catch(reason => setError(reason instanceof Error ? reason.message : "Could not save model selection"))
+                    .finally(() => setSaving(false));
+            }
         }
     });
 
@@ -110,13 +117,14 @@ export function ModelDialog({
             ) : (
                 <Box marginTop={1}>
                     <Text color={COLORS.warning}>
-                        No models available; check Settings and model credentials.
+                        No models available. Use /providers to add an API key.
                     </Text>
                 </Box>
             )}
 
+            {error && <Text color={COLORS.error}>{error}</Text>}
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>↑↓ select · enter switch · esc back</Text>
+                <Text color={COLORS.dim}>{saving ? "Saving…" : "↑↓ select · enter switch and save · esc back"}</Text>
             </Box>
         </Box>
     );

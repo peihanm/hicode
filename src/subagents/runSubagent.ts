@@ -37,7 +37,6 @@ import {resolveSubagentDirectory, subagentInstructions, subagentPermissionRules}
 interface SubagentRunnerDependencies {
     primaryRunAgent: AgentRunner;
     fastRunAgent: AgentRunner;
-    fastModel: string;
     registry: SubagentRegistry;
 
     createToolResultStore(cwd: string, sessionId: string): ToolResultStore;
@@ -91,7 +90,7 @@ export function createSubagentFactories(
         const childModel = resolveSubagentModel({
             definitionModel: definition.model,
             parentModel: parentContext.model,
-            fastModel: dependencies.fastModel,
+            fastModel: parentContext.fastModel,
             override: request.model,
         });
         const runChildAgent = modelSelection === "fast"
@@ -183,7 +182,7 @@ export function createSubagentFactories(
                             // Children gain edit authority only from their own actual reads.
                             model: childModel,
                             provider: childProvider,
-                            fastModel: dependencies.fastModel,
+                            fastModel: parentContext.fastModel,
                             fastProvider: parentContext.fastProvider,
                             contextSettings: parentContext.contextSettings,
                         },

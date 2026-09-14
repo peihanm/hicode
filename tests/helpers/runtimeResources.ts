@@ -1,3 +1,4 @@
+import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
 import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
@@ -152,8 +153,7 @@ export function createTestRuntimeResources(
     overrides.agentRuntime ??
     createAgentRuntime({
       storage,
-      fastModel: settings.models.fast,
-      sources: settings.sources,
+      getSources: () => primaryModel.sources,
       subagents,
       memory,
     });
@@ -199,9 +199,10 @@ export function createTestRuntimeResources(
     get provider() {
       return primaryModel.target.source;
     },
-    fastModel: settings.models.fast.model,
-    fastProvider: settings.models.fast.source,
+    get fastModel() {return (settings.models.fast ?? primaryModel.target).model;},
+    get fastProvider() {return (settings.models.fast ?? primaryModel.target).source;},
     primaryModel,
+    modelConfiguration: createModelConfiguration(storage, cwd, primaryModel, [settings.models.fast, settings.models.reviewer].filter((target): target is NonNullable<typeof target> => target !== undefined)),
     settings,
     agentRuntime,
     subagents,
@@ -236,6 +237,8 @@ export function createTestRuntimeResources(
   Object.defineProperties(result, {
     model: {get: () => primaryModel.target.model, enumerable: true},
     provider: {get: () => primaryModel.target.source, enumerable: true},
+    fastModel: {get: () => (settings.models.fast ?? primaryModel.target).model, enumerable: true},
+    fastProvider: {get: () => (settings.models.fast ?? primaryModel.target).source, enumerable: true},
   });
   return result;
 }

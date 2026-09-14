@@ -19,6 +19,7 @@ interface SlashCommandContext {
     openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
+    openProviders?: () => void;
     openPermissions?: () => void;
     setCollaborationMode?: (mode: CollaborationMode) => void;
 }

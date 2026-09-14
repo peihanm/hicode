@@ -264,7 +264,7 @@ async function main(): Promise<void> {
     const options = parseOptions(process.argv.slice(2));
     const projectCwd = projectCwdFromPromptLog(options.promptLogPath);
     process.chdir(projectCwd);
-    loadEnv();
+    loadEnv(createPillarStorageLayout(), process.cwd());
     const settings = loadPillarSettings({
         storage: createPillarStorageLayout(),
         cwd: projectCwd,

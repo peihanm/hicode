@@ -1,7 +1,7 @@
+import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMCallOptions, LLMCallResult, LLMProvider} from "../types.js";
 import {callOpenAICompatible, type OpenAICompatibleEndpoint,} from "./openAICompatible.js";
 
-const DEFAULT_GLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 
 export function createGlmRequestFields(): Record<string, unknown> {
     return {
@@ -29,7 +29,7 @@ export function createGlmProvider(
 
             return callEndpoint(options, {
                 displayName: source.label,
-                baseUrl: source.baseUrl || DEFAULT_GLM_BASE_URL,
+                baseUrl: source.baseUrl || PROVIDER_BASE_URLS.glm,
                 apiKey,
                 requestFields: createGlmRequestFields(),
                 disableThinkingOnFinalStallRetry: true,

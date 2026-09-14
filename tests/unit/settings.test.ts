@@ -20,16 +20,11 @@ function document(
 }
 
 describe("Unified Settings", () => {
-    test("primary 和 fast 默认使用 Qwen 3.8 Flash", () => {
+    test("primary 默认 Qwen，未声明 fast 时保留跟随语义", () => {
         const resolved = resolvePillarSettings([]);
         expect(resolved.values).toMatchObject({
             models: {
                 primary: {
-                    model: DEFAULT_MODEL,
-                    source: DEFAULT_LLM_PROVIDER,
-                    label: "Qwen 3.8 Flash",
-                },
-                fast: {
                     model: DEFAULT_MODEL,
                     source: DEFAULT_LLM_PROVIDER,
                     label: "Qwen 3.8 Flash",
@@ -197,11 +192,7 @@ describe("Unified Settings", () => {
             model: "qwen3.8-flash",
             label: "Qwen 3.8 Flash",
         });
-        expect(resolved.values.models.fast).toMatchObject({
-            source: "qwen",
-            model: "qwen3.8-flash",
-            label: "Qwen 3.8 Flash",
-        });
+        expect(resolved.values.models.fast).toBeUndefined();
     });
 
     test("Memory 召回默认开启、自动生成默认关闭，显式关闭不能被覆盖", () => {

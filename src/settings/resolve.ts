@@ -65,7 +65,7 @@ function cloneSources(): Record<LLMProviderName, ModelSourceSettings> {
     return sources;
 }
 
-function mergeUserSources(
+export function resolveModelSources(
     documents: readonly LoadedSettingsDocument[]
 ): Record<LLMProviderName, ModelSourceSettings> {
     const sources = cloneSources();
@@ -193,7 +193,7 @@ export function resolvePillarSettings(
     documents: readonly LoadedSettingsDocument[],
     cli: PillarSettingsOverrides = {}
 ): Pick<LoadedPillarSettings, "values" | "origins"> {
-    const sources = mergeUserSources(documents);
+    const sources = resolveModelSources(documents);
     let context = {...DEFAULT_CONTEXT_SETTINGS};
     let reviewerTarget: {model: string; source: LLMProviderName} | undefined;
     let primaryModel = DEFAULT_MODEL;
@@ -315,7 +315,8 @@ export function resolvePillarSettings(
             models: {
                 ...(reviewerTarget ? {reviewer: resolveModelTarget(sources, reviewerTarget.source, reviewerTarget.model, "reviewer")} : {}),
                 primary: resolveModelTarget(sources, primarySource, primaryModel, "primary"),
-                fast: resolveModelTarget(sources, fastSource, fastModel, "fast"),
+                ...(origins.fastModel !== "default" || origins.fastSource !== "default"
+                    ? {fast: resolveModelTarget(sources, fastSource, fastModel, "fast")} : {}),
             },
             permissions: {
                 defaultMode: permissionMode,

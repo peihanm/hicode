@@ -63,11 +63,7 @@ describe("SDK Host config", () => {
                 model: "host-qwen",
                 label: "Host Qwen",
             });
-            expect(loaded.configuration.settings.models.fast).toEqual({
-                source: "qwen",
-                model: "host-qwen",
-                label: "Host Qwen",
-            });
+            expect(loaded.configuration.settings.models.fast).toBeUndefined();
             expect(loaded.configuration.settings.permissions.defaultMode).toBe(
                 "ask"
             );
@@ -155,10 +151,7 @@ describe("SDK Host config", () => {
             expect(loaded.configuration.settings.models.primary.model).toBe(
                 "qwen3.8-flash"
             );
-            expect(loaded.configuration.settings.models.fast).toMatchObject({
-                source: "qwen",
-                model: "qwen3.8-flash",
-            });
+            expect(loaded.configuration.settings.models.fast).toBeUndefined();
             expect(loaded.issues).toEqual([]);
         });
     });

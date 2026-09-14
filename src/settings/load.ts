@@ -1,4 +1,4 @@
-import {join} from "node:path";
+import {getUserSettingsPath} from "../persistence/layout.js";
 import type {PillarStorageLayout} from "../persistence/index.js";
 import {loadSettingsDocuments, parseHostSettingsDocument} from "./document.js";
 import {resolvePillarSettings} from "./resolve.js";
@@ -21,7 +21,7 @@ export function loadPillarSettings(
     options: LoadPillarSettingsOptions
 ): LoadedPillarSettings {
     const loaded = loadSettingsDocuments(options.cwd, {
-        userSettingsPath: join(options.storage.pillarHome, "settings.json"),
+        userSettingsPath: getUserSettingsPath(options.storage),
         sources: options.sources ?? ["user", "project", "local"],
     });
     const host = options.hostSettings === undefined

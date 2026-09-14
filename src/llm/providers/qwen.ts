@@ -1,4 +1,4 @@
-import {QWEN_DEFAULT_BASE_URL} from "../providerRegistry.js";
+import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import {supportsToolImages} from "../../images/capability.js";
 import type {LLMProvider} from "../types.js";
 import {callOpenAICompatible} from "./openAICompatible.js";
@@ -40,7 +40,7 @@ export const qwenProvider: LLMProvider = {
             displayName: source.label,
             toolImages: supportsToolImages(source, options.model),
             ...(supportsReasoningReplay(options.model) ? {reasoningSource: source.id} : {}),
-            baseUrl: source.baseUrl || QWEN_DEFAULT_BASE_URL,
+            baseUrl: source.baseUrl || PROVIDER_BASE_URLS.qwen,
             apiKey,
             requestFields: createQwenRequestFields(
                 options.model,

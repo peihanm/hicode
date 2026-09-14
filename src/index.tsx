@@ -43,10 +43,9 @@ if (cliOptions.storageAction) {
     process.exit(process.exitCode??0);
 }
 
-loadEnv();
-
 const cwd = process.cwd();
 const storage = createPillarStorageLayout();
+loadEnv(storage, cwd);
 let loadedSettings: LoadedPillarSettings;
 try {
     loadedSettings = loadPillarSettings({

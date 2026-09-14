@@ -114,7 +114,7 @@ export interface ResolvedPillarSettings {
     models: {
         reviewer?: ModelTargetSettings;
         primary: ModelTargetSettings;
-        fast: ModelTargetSettings;
+        fast?: ModelTargetSettings;
     };
     permissions: {
         defaultMode: PermissionMode;

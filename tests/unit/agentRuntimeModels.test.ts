@@ -65,12 +65,7 @@ describe("AgentRuntime model targets", () => {
             const memory = createTestMemoryRuntime(cwd, {enabled: false});
             const runtime = createAgentRuntime({
                 storage,
-                fastModel: {
-                    source: "glm",
-                    model: "glm-fast-test",
-                    label: "GLM Fast Test",
-                },
-                sources: {
+                getSources: () => ({
                     ...createTestSettings().sources,
                     qwen: {
                         ...createTestSettings().sources.qwen,
@@ -84,7 +79,7 @@ describe("AgentRuntime model targets", () => {
                         ...createTestSettings().sources.deepseek,
                         baseUrl: "https://deepseek.test/v1",
                     },
-                },
+                }),
                 subagents: createWriterRegistry(),
                 memory,
             });
@@ -150,5 +145,26 @@ describe("AgentRuntime model targets", () => {
             ]);
             await memory.close();
         });
+    });
+});
+
+test("new child uses refreshed connection while an existing child retains its original connection", async () => {
+    await withTempProject(async (cwd, storage) => {
+        process.env.DASHSCOPE_API_KEY = "test-key";
+        let sources = createTestSettings().sources;
+        sources = {...sources, qwen: {...sources.qwen, baseUrl: "https://first.test/v1"}};
+        const requests: string[] = [];
+        globalThis.fetch = (async input => {requests.push(String(input)); return textStream("done");}) as typeof fetch;
+        const memory = createTestMemoryRuntime(cwd, {enabled: false});
+        const runtime = createAgentRuntime({storage, getSources: () => structuredClone(sources), subagents: createWriterRegistry(), memory});
+        const parent = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", fastModel: "qwen3.8-flash", fastProvider: "qwen"});
+        const request = {agentType: "Explore", prompt: "inspect", description: "inspect", parentToolCallId: "spawn"};
+        const old = runtime.createSubagentThread({parentContext: parent, agentId: "old", onEvent() {}}, request);
+        sources = {...sources, qwen: {...sources.qwen, baseUrl: "https://second.test/v1"}};
+        const next = runtime.createSubagentThread({parentContext: parent, agentId: "new", onEvent() {}}, request);
+        const input = {prompt: "inspect", signal: new AbortController().signal, inputChannel: {drainInitial: () => [], drainSafeBoundary: () => []}};
+        await old.run(input); await next.run(input);
+        expect(requests).toEqual(["https://first.test/v1/chat/completions", "https://second.test/v1/chat/completions"]);
+        await memory.close();
     });
 });

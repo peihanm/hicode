@@ -1,3 +1,4 @@
+import {ProvidersDialog} from "./providers/ProvidersDialog.js";
 import type {MessageContent} from "../images/content.js";
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
 import {useRef, useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -91,12 +92,14 @@ export function App({
         const [showTasks, setShowTasks] = useState(false);
         const [showAgents, setShowAgents] = useState(false);
         const [showGitDiff, setShowGitDiff] = useState(false);
-        const [showModel, setShowModel] = useState(false);
+        const [showProviders, setShowProviders] = useState(() => !!resources.modelConfiguration && resources.primaryModel.available.length === 0);
+        const [showModel, setShowModel] = useState(() => resources.primaryModel.available.length > 0 && !resources.primaryModel.available.some(item => item.source === resources.provider && item.model === resources.model));
         const [showPermissions, setShowPermissions] = useState(false);
         const openResume = useCallback(() => {
             setShowTasks(false);
             setShowAgents(false);
             setShowGitDiff(false);
+            setShowProviders(false);
             setShowModel(false);
             setShowPermissions(false);
             try {setResumeSessions(listSessionIndex(resources.storage, resources.cwd)); setResumeError(undefined);}
@@ -106,6 +109,7 @@ export function App({
         const openAgents = useCallback(() => {
             setShowResume(false);
             setShowGitDiff(false);
+            setShowProviders(false);
             setShowModel(false);
             setShowPermissions(false);
             setShowAgents(true);
@@ -114,9 +118,14 @@ export function App({
             setShowResume(false);
             setShowTasks(false);
             setShowAgents(false);
+            setShowProviders(false);
             setShowModel(false);
             setShowPermissions(false);
             setShowGitDiff(true);
+        }, []);
+        const openProviders = useCallback(() => {
+            setShowResume(false); setShowTasks(false); setShowAgents(false); setShowGitDiff(false);
+            setShowModel(false); setShowPermissions(false); setShowProviders(true);
         }, []);
         const openModel = useCallback(() => {
             setShowResume(false);
@@ -124,6 +133,7 @@ export function App({
             setShowAgents(false);
             setShowGitDiff(false);
             setShowPermissions(false);
+            setShowProviders(false);
             setShowModel(true);
         }, []);
         const openPermissions = useCallback(() => {
@@ -131,11 +141,13 @@ export function App({
             setShowTasks(false);
             setShowAgents(false);
             setShowGitDiff(false);
+            setShowProviders(false);
             setShowModel(false);
             setShowPermissions(true);
         }, []);
         const openTasks = useCallback(() => {
             setShowResume(false); setShowAgents(false); setShowGitDiff(false);
+            setShowProviders(false);
             setShowModel(false); setShowPermissions(false); setShowTasks(true);
         }, []);
         const turn = useTurnController({
@@ -150,6 +162,7 @@ export function App({
             openTasks,
             openGitDiff,
             openModel,
+            openProviders: resources.modelConfiguration ? openProviders : undefined,
             openPermissions,
         });
         const initialImagesLoaded = useRef(false);
@@ -188,7 +201,7 @@ export function App({
         useInput((input, key) => {
             if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showResume || showTasks || showAgents || showGitDiff || showModel || showPermissions) return;
+            if (showResume || showTasks || showAgents || showGitDiff || showModel || showProviders || showPermissions) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             if (
                 (turn.busy || turn.attachmentState.preparing) &&
@@ -249,14 +262,14 @@ export function App({
                     paused={!!turn.confirmRequest}
                 />
 
-                {!showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
+                {!showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showProviders && !showPermissions && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showPermissions && (
+                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showGitDiff && !showModel && !showProviders && !showPermissions && (
                     <>
                         <AssistantDraftView store={turn.draftStore} phase={turn.modelStream?.phase}/>
                         <ModelStreamStatus
@@ -275,12 +288,14 @@ export function App({
                         onSelect={requestSessionSwitch}
                         onClose={() => setShowResume(false)}
                     />
+                ) : showProviders && resources.modelConfiguration ? (
+                    <ProvidersDialog runtime={resources.primaryModel} configuration={resources.modelConfiguration} onClose={() => setShowProviders(false)}/>
                 ) : showModel ? (
                     <ModelDialog
                         models={turn.availableModels}
                         current={turn.primaryModel}
-                        onSelect={(target) => {
-                            turn.setPrimaryModel(target);
+                        onSelect={async (target) => {
+                            await turn.setPrimaryModel(target);
                             setShowModel(false);
                         }}
                         onClose={() => setShowModel(false)}

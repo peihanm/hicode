@@ -160,3 +160,11 @@ export function getProjectIdentityPath(storage:PillarStorageLayout,cwd:string):s
 export function getProjectActivityDirectory(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"activity");}
 export function getProjectMaintenanceLockPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),".maintenance.lock");}
 export function getSessionIdentityPath(storage:PillarStorageLayout,cwd:string,sessionId:string):string {return join(getSessionStorageDirectory(storage,cwd,sessionId),"identity.json");}
+
+export function getUserSettingsPath(storage: PillarStorageLayout): string {
+    return join(storage.pillarHome, "settings.json");
+}
+
+export function getUserCredentialsPath(storage: PillarStorageLayout): string {
+    return join(storage.pillarHome, ".env");
+}

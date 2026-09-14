@@ -39,6 +39,7 @@ export interface UseTurnControllerOptions {
     openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
+    openProviders?: () => void;
     openPermissions?: () => void;
 }
 
@@ -66,6 +67,7 @@ export function useTurnController({
                                           openTasks,
                                           openGitDiff,
                                           openModel,
+                                          openProviders,
                                           openPermissions,
                                       }: UseTurnControllerOptions) {
         const {cwd, model, toolRuntime} = resources;
@@ -325,6 +327,7 @@ export function useTurnController({
                 toolRuntime,
                 openGitDiff,
                 openModel,
+                openProviders,
                 openPermissions,
                 setCollaborationMode,
                 runTurn: async (input, signal) => {
@@ -365,8 +368,13 @@ export function useTurnController({
                 importImages: (paths, signal) => importSelectedImages(paths, resources, rootSession.createContext({signal, host: toolContextHost,
                     onEvent: eventStore.handleEvent, getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()})})),
                 validateImages: content => {
+                    if (!(typeof content === "string" && content.trim().startsWith("/")) &&
+                        !resources.primaryModel.available.some(item => item.source === resources.provider && item.model === resources.model)) {
+                        if (resources.primaryModel.available.length) openModel?.(); else openProviders?.();
+                        throw new Error("Configure a provider with /providers and choose a model with /model. Your input is preserved.");
+                    }
                     const target = resources.primaryModel.target;
-                    if (imageReferences(content).length && !supportsToolImages(resources.settings.sources[target.source], target.model))
+                    if (imageReferences(content).length && !supportsToolImages(resources.primaryModel.sources[target.source], target.model))
                         throw new Error("This model does not support images. Attachments and input are preserved; switch models first.");
                 },
                 restoreDraft: value => setInputReplacement(current => ({value, revision: (current?.revision ?? 0) + 1, appendCurrent: true})),
@@ -475,8 +483,9 @@ export function useTurnController({
         );
 
         const setPrimaryModel = useCallback(
-            (target: ModelTargetSettings) => {
-                resources.primaryModel.select(target);
+            async (target: ModelTargetSettings) => {
+                if (!resources.modelConfiguration) throw new Error("This Host does not allow saving model configuration");
+                await resources.modelConfiguration.saveSelection(target);
                 rootSession.replaceConversation(
                     updateInitialHistoryModel(rootSession.history, target.model),
                     rootSession.compactState

@@ -42,69 +42,52 @@ sudo apt-get install bubblewrap socat ripgrep
 git clone https://github.com/peihanm/pillar-core.git
 cd pillar-core
 bun install --frozen-lockfile
-cp .env.sample .env
 ```
 
-### 3. 配置模型
-
-编辑 `.env`，填写你要使用的模型来源对应的 Key。默认使用 Qwen：
-
-```dotenv
-DASHSCOPE_API_KEY=your-api-key
-```
-
-当前内置主模型和快速模型均为 **`qwen3.8-flash`**，Qwen 默认接口为 **`https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`**。你的账号需要具备该接口和模型的访问权限；如果账号使用其他接口或模型，请先调整配置再发送任务。
-
-<details>
-<summary>使用其他接口或模型</summary>
-
-创建或编辑 `~/.pillar/settings.json`。下面以 Qwen 来源为例，替换接口地址和模型列表；请将两个占位值改为服务商实际支持的地址和模型 ID：
-
-```json
-{
-  "sources": {
-    "qwen": {
-      "baseUrl": "https://your-api-host.example/compatible-mode/v1",
-      "models": [{"id": "your-model-id", "label": "My model"}]
-    }
-  },
-  "models": {
-    "primary": {"source": "qwen", "model": "your-model-id"},
-    "fast": {"source": "qwen", "model": "your-model-id"}
-  }
-}
-```
-
-使用 GLM 或 DeepSeek 时，换成对应的来源名称和凭证变量：
-
-| 来源 | API Key 环境变量 |
-| --- | --- |
-| `qwen` | `DASHSCOPE_API_KEY` |
-| `glm` | `GLM_API_KEY` |
-| `deepseek` | `DEEPSEEK_API_KEY` |
-| `openrouter` | `OPENROUTER_API_KEY` |
-
-更换服务商时，同时配置 `primary` 和 `fast`；只切换主模型不会改变快速模型。Key 保存在 `.env`，不要写入 `settings.json`。
-
-</details>
-
-使用 OpenRouter 时，在 `.env` 填写 `OPENROUTER_API_KEY`，重启后通过 `/model` 选择 **OpenRouter → Nemotron 3 Super (free)**。如果只配置了 OpenRouter Key，在 `~/.pillar/settings.json` 中同时设置两个模型槽：
-
-```json
-{
-  "models": {
-    "primary": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"},
-    "fast": {"source": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free"}
-  }
-}
-```
-
-
-### 4. 启动
+### 3. 启动并配置模型
 
 ```bash
 bun run start
 ```
+
+首次启动后，在终端内完成配置，不需要手写 JSON：
+
+1. 输入 `/providers`，选择 Qwen、GLM、DeepSeek 或 OpenRouter。
+2. 选择 **API key**，粘贴 Key 并保存。输入内容遮罩显示，不进入聊天记录。
+3. 服务商已提供预置模型；需要其他模型时选 **Add model**，填写接口要求的模型 ID，展示名称可留空。
+4. 返回后输入 `/model` 选择模型，选择会自动保存。
+
+删除模型：在服务商页面选择 **Remove model**，选中条目并确认。Key 和接口地址保留；正在使用或配置中仍引用的模型需先改选。
+
+没有任何可用模型时，启动会直接打开配置面板。Key、模型列表和接口地址通过面板保存后立即生效。默认只需要一个模型；未配置独立 `fast` 时，子任务的快速模型跟随当前主模型。
+
+<details>
+<summary>配置文件与高级用法</summary>
+
+Key 默认保存在 `~/.pillar/.env`；若项目 `.env` 已定义同一个 Key，面板会更新该项目文件，并显示保存位置。CLI 优先保留进程环境变量，再读取项目 `.env`，最后用用户级 `.env` 补充缺失变量；不要求必须存在 `.env` 文件。
+
+| 服务商 | Key 环境变量 |
+| --- | --- |
+| Qwen | `DASHSCOPE_API_KEY` |
+| GLM | `GLM_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+
+接口地址和模型列表保存在 `~/.pillar/settings.json`，可在 `/providers` 修改。`/model` 默认将选择保存到用户设置；若项目明确配置了主模型，则写入项目 `.pillar/settings.local.json`，不修改共享项目设置。显式启动参数仍具有最高优先级。
+
+需要独立快速模型时，在 Settings 中配置完整的 `models.fast`，例如：
+
+```json
+{"models":{"fast":{"source":"deepseek","model":"deepseek-flash"}}}
+```
+
+删除 `fast` 项即可恢复跟随主模型；手动修改此项后重启。已启动子任务保持其模型和接口快照。模型 ID 必须由对应服务商提供；手动添加模型不等于自动支持它的图片、推理或工具调用协议。不会自动发送付费连通测试。
+
+默认 Qwen 接口为 `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`；账号使用其他接口时，在 `/providers` 修改 API endpoint。Key 不要写入 Settings 或提交到 Git。
+
+</details>
+
+### 4. 开始使用
 
 进入后可以直接输入：
 
@@ -120,14 +103,15 @@ pillar
 
 确保 Bun 的全局可执行目录（通常是 `~/.bun/bin`）已加入 `PATH`。Pillar 会以启动命令时所在的目录作为工作目录。
 
-从其他项目启动时，需要在该项目的 `.env` 中配置 Key，或创建共用的 `~/.pillar/.env`。CLI 优先读取当前目录的 `.env`，只有该文件不存在时才读取用户级文件，两份文件不会合并。
+在 `/providers` 保存到用户目录的 Key 可以跨项目复用。CLI 保留进程环境变量，加载项目 `.env` 后，再从 `~/.pillar/.env` 补充缺失变量。
 
 ## 日常使用
 
 | 操作 | 命令或快捷键 |
 | --- | --- |
 | 查看命令 | `/help` |
-| 选择主模型 | `/model` |
+| 选择并保存模型 | `/model` |
+| 配置 Key、接口和模型列表 | `/providers` |
 | 选择权限审批策略 | `/permissions` |
 | 切换 Build / Plan | `Shift+Tab` |
 | 恢复已保存的会话 | `/resume` |

@@ -1,3 +1,4 @@
+import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProvider} from "../types.js";
 import {callOpenAICompatible} from "./openAICompatible.js";
 
@@ -8,7 +9,7 @@ export const openrouterProvider: LLMProvider = {
         if (!apiKey) throw new Error(`Missing ${source.apiKeyEnv}; check the project .env or ~/.pillar/.env`);
         return callOpenAICompatible(options, {
             displayName: source.label,
-            baseUrl: source.baseUrl || "https://openrouter.ai/api/v1",
+            baseUrl: source.baseUrl || PROVIDER_BASE_URLS.openrouter,
             apiKey,
             reasoningSource: source.id,
             requestFields: {

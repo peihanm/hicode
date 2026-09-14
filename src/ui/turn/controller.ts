@@ -48,6 +48,7 @@ export interface UITurnControllerDependencies {
 
     openGitDiff?(): void;
     openModel?(): void;
+    openProviders?(): void;
     openPermissions?(): void;
     setCollaborationMode?(mode: CollaborationMode): void;
 
@@ -205,6 +206,7 @@ export class UITurnController {
                     openTasks: this.dependencies.openTasks,
                     openGitDiff: this.dependencies.openGitDiff,
                     openModel: this.dependencies.openModel,
+                    openProviders: this.dependencies.openProviders,
                     openPermissions: this.dependencies.openPermissions,
                     setCollaborationMode: this.dependencies.setCollaborationMode,
                 });

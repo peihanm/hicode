@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     if (flag !== "--live" || !imagePath || !reportPath || (credentialMode !== undefined && credentialMode !== "--user-env")) {
         throw new Error("用法：bun tests/diagnostics/qwenVision.ts --live <PNG 路径> <结果 JSON 路径> [--user-env]；最多 5 次付费请求");
     }
-    loadEnv();
+    loadEnv(createPillarStorageLayout(), process.cwd());
     const storage = createPillarStorageLayout();
     const settings = loadPillarSettings({cwd: process.cwd(), storage});
     if (settings.issues.length) throw new Error("配置存在问题，停止探针；不打印可能敏感的配置内容");

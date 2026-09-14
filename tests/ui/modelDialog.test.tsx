@@ -3,13 +3,15 @@ import {cleanup, render} from "ink-testing-library";
 import type {ToolContext} from "../../src/tools/types.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {createTestRuntimeResources, createTestSettings} from "../helpers/runtimeResources.js";
+import {readFile} from "node:fs/promises";
+import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
 import {AppForTest as App} from "../helpers/AppForTest.js";
 
 afterEach(() => cleanup());
 
 describe("Model dialog", () => {
-    test("/model 只展示可用候选，切换 primary 且保持 fast 不变", async () => {
+    test.each([true, false])("/model saves selection; explicit fast=%s", async explicitFast => {
         await withTempProject(async (cwd) => {
             const qwen = {
                 source: "qwen" as const,
@@ -28,7 +30,9 @@ describe("Model dialog", () => {
                 createTestSettings().sources,
                 [qwen, deepseek]
             );
-            const resources = createTestRuntimeResources(cwd, {primaryModel});
+            const settings = createTestSettings();
+            if (!explicitFast) delete settings.models.fast;
+            const resources = createTestRuntimeResources(cwd, {primaryModel, settings});
             const fastBefore = resources.fastModel;
             let nextContext: ToolContext | undefined;
             const instance = render(
@@ -61,7 +65,7 @@ describe("Model dialog", () => {
             await new Promise((resolve) => setTimeout(resolve, 30));
 
             expect(primaryModel.target).toEqual(deepseek);
-            expect(resources.fastModel).toBe(fastBefore);
+            expect(resources.fastModel).toBe(explicitFast ? fastBefore : deepseek.model);
             expect(instance.lastFrame()).toContain("DeepSeek Pro");
             expect(instance.lastFrame()).toContain("Switched to DeepSeek Pro.");
             expect(instance.lastFrame()).not.toContain("Fast model");
@@ -74,7 +78,10 @@ describe("Model dialog", () => {
             await new Promise((resolve) => setTimeout(resolve, 30));
             expect(nextContext?.provider).toBe("deepseek");
             expect(nextContext?.model).toBe("deepseek-pro");
-            expect(nextContext?.fastModel).toBe(fastBefore);
+            expect(nextContext?.fastModel).toBe(explicitFast ? fastBefore : deepseek.model);
+            expect(nextContext?.fastProvider).toBe(explicitFast ? settings.models.fast!.source : deepseek.source);
+            const saved = JSON.parse(await readFile(join(resources.storage.pillarHome, "settings.json"), "utf8"));
+            expect(saved.models.primary).toEqual({source: deepseek.source, model: deepseek.model});
             expect(nextContext?.contextSettings).toEqual(resources.settings.context);
         });
     });
