@@ -1,147 +1,79 @@
 # Pillar
 
-[简体中文](README.zh-CN.md) | English
+English | [简体中文](README.zh-CN.md)
 
-**A coding agent that works in your terminal.**
+**Describe a development task. Pillar works on it in your terminal.**
 
-Describe a task in plain language. Pillar can explore a codebase, edit files, run commands and tests, and use the results to continue working. It is built with TypeScript and provides an interactive terminal interface, a headless CLI, and a programmatic SDK.
+Pillar is a coding agent built with TypeScript. It reads your project, edits files, runs commands and tests, and uses the results to continue working. Ask it to build a new project, fix a bug, or extend an existing application.
 
-Pillar is under active development. APIs, configuration, and stored session formats may change between versions.
+**Currently supports macOS only.** Pillar runs locally and connects to a model provider using your API key. No separate server deployment is needed.
 
-## What it can do
+## What you can do
 
-- **Build and fix projects:** search and understand code, make targeted edits, run tests, and work through failures.
-- **Continue complex tasks:** manage progress, compact context, retrieve earlier conversation details, and retain project memory across sessions.
-- **Delegate and run background work:** assign subtasks to child agents and manage long-running commands from the terminal.
-- **Control execution:** separate planning from execution, with configurable approval policies and OS sandbox integration.
-- **Extend the workflow:** connect MCP servers, add Skills and Hooks, define custom agents, and inspect local image inputs with a compatible model.
+- **Build from an idea:** describe a page, application, or small game and have Pillar create the files, implement it, and run checks.
+- **Work on existing code:** investigate errors, fix bugs, add features, or review a project before making changes.
+- **Continue longer tasks:** split work into subtasks, delegate to subagents, and use context management and project memory to carry work forward. You can add instructions while it runs.
+- **Extend its capabilities:** connect tools through MCP, add Skills and Hooks, or provide screenshots to an image-capable model. A TypeScript SDK is also available for programmatic use.
 
-## Quick start
+## Install on macOS
 
-### 1. Prepare your environment
-
-- [Bun](https://bun.sh/) **1.3 or newer**, Git, and Bash.
-- An API key with access to your chosen model and endpoint. Built-in sources are **Qwen, GLM, DeepSeek, and OpenRouter**; model calls use your provider account.
-- Sandbox dependencies: `ripgrep` on macOS; `bubblewrap`, `socat`, and `ripgrep` on Linux. Linux must also permit the user namespaces needed by the sandbox.
-
-For example, install the sandbox dependencies with your package manager:
+Run this in your terminal:
 
 ```bash
-# macOS (Homebrew)
-brew install ripgrep
-
-# Ubuntu / Debian
-sudo apt-get install bubblewrap socat ripgrep
+curl -fsSL https://raw.githubusercontent.com/peihanm/pillar-core/main/install.sh -o pillar-install.sh && bash pillar-install.sh
 ```
 
-The commands below use a macOS/Linux shell. Native Windows additionally requires Git Bash and the sandbox backend's Windows setup; this guide does not cover that setup.
+The script downloads Pillar, installs missing dependencies (Git, Bun, and ripgrep), registers the `pillar` command, and configures your shell's PATH automatically. If Homebrew is missing and needed, it starts the [official Homebrew installer](https://brew.sh/), which may ask for your macOS password. Automatic shell setup supports zsh (the macOS default) and bash.
 
-### 2. Download and install
+**After installation, open a new terminal**, enter your project directory, and start Pillar:
 
 ```bash
-git clone https://github.com/peihanm/pillar-core.git
-cd pillar-core
-bun install --frozen-lockfile
-```
-
-### 3. Start and configure a model
-
-```bash
-bun run start
-```
-
-Set up access inside the terminal; no JSON editing is required:
-
-1. Open `/providers` and select Qwen, GLM, DeepSeek, or OpenRouter.
-2. Choose **API key**, paste your key, and save. Input is masked and never added to the conversation.
-3. Use a preset model, or choose **Add model** and enter its API model ID. The display name is optional.
-4. Return to `/model` and select a model. Your selection is saved automatically.
-
-To delete a model, choose **Remove model** on the provider page and confirm the entry. The key and endpoint are kept. Switch away from a model first if it is selected or still referenced by model settings.
-
-With no available models, startup opens provider setup. Keys, model lists, and endpoints saved through the panel take effect immediately. One model is enough: unless an independent `fast` target is configured, fast tasks follow the current main model.
-
-<details>
-<summary>Configuration files and advanced usage</summary>
-
-Keys are saved to `~/.pillar/.env` by default. If the project `.env` already defines the same key, the panel updates that file and shows the destination. Existing process environment values take precedence, followed by project `.env` values and then missing values from the user `.env`. An `.env` file is not required.
-
-| Provider | Credential variable |
-| --- | --- |
-| Qwen | `DASHSCOPE_API_KEY` |
-| GLM | `GLM_API_KEY` |
-| DeepSeek | `DEEPSEEK_API_KEY` |
-| OpenRouter | `OPENROUTER_API_KEY` |
-
-`/providers` saves endpoints and model lists in `~/.pillar/settings.json`. `/model` saves the selected model there unless the project explicitly overrides it; in that case, it writes `.pillar/settings.local.json` without changing shared project settings. Explicit CLI arguments still take precedence at startup.
-
-To use a separate fast model, configure a complete `models.fast` target:
-
-```json
-{"models":{"fast":{"source":"deepseek","model":"deepseek-flash"}}}
-```
-
-Remove `fast` to follow the main model again; restart after changing that setting manually. Existing child agents retain their model and endpoint snapshot. A model ID must be offered by the selected provider; adding an ID does not automatically adapt image, reasoning, or tool-calling protocols. Setup does not make paid test requests.
-
-The default Qwen endpoint is `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`. Change **API endpoint** in `/providers` when your account uses another endpoint. Do not put keys in Settings or commit them to Git.
-
-</details>
-
-### 4. Start working
-
-For example, ask:
-
-> Inspect this project, explain its structure, and identify the most important improvements. Do not edit files yet.
-
-To use Pillar in another project, register the local executable once from this checkout:
-
-```bash
-bun link
 cd /path/to/your/project
 pillar
 ```
 
-Make sure Bun's global executable directory (usually `~/.bun/bin`) is on your `PATH`. Pillar works in the directory where you launch it.
+You only install once. Run `pillar` from any project directory afterward; create an empty directory first if you want to build something new.
 
-User-level keys saved through `/providers` work across projects. The CLI preserves process environment values, loads the project `.env`, and fills missing variables from `~/.pillar/.env`.
+<details>
+<summary>Already downloaded or cloned the repository?</summary>
 
-## Everyday use
-
-| Action | Command or shortcut |
-| --- | --- |
-| View commands | `/help` |
-| Select and save a model | `/model` |
-| Configure keys, endpoints and model lists | `/providers` |
-| Choose an approval policy | `/permissions` |
-| Switch between Build and Plan | `Shift+Tab` |
-| Resume a saved session | `/resume` |
-| Inspect background tasks | `/tasks` |
-| Stop the current task | `Esc` |
-
-You can send additional instructions while Pillar is working. They are added to the current task at a safe boundary after the current tool batch finishes.
-
-For a non-interactive task or CLI help:
+Run the installer from your checkout:
 
 ```bash
-pillar -p "Explain this project's structure. Do not modify files."
-pillar --help
+bash install.sh
 ```
 
-Headless runs cannot ask you to click an approval dialog; actions requiring an unhandled interaction are denied. Select permissions deliberately for unattended work.
+It uses your local source. The downloaded installer otherwise stores source at `~/.local/share/pillar/source`. Keep that source directory: the `pillar` command links to it. Rerunning the installer repairs setup without pulling or replacing your checkout.
 
-## Configuration and local data
+</details>
 
-- `PILLAR.md` supplies project instructions.
-- `~/.pillar/settings.json` holds user settings; project `.pillar/settings.json` and `.pillar/settings.local.json` can override them.
-- Sessions, memory, tool outputs, and request logs live under `~/.pillar/projects/`. Request logs can contain source code, conversation text, and reasoning returned by the model; keep these and API keys out of public commits.
-- `pillar --storage inspect` shows local storage usage; `pillar --storage preview` previews cleanup. Neither command calls a model.
+## Configure a model
 
-## Development
+**Complete setup in the terminal UI. There is no need to create an `.env` file or edit JSON first.** When no models are available, Pillar opens provider setup automatically. You can also open it by entering `/providers` inside Pillar.
 
-```bash
-bun run check     # TypeScript checks
-bun test          # Offline automated tests
-bun run verify    # Tests, type checks, and Node/Bun SDK package verification
-```
+Supported providers are **Alibaba Bailian (Qwen), Zhipu GLM, DeepSeek, and OpenRouter**. Have an API key ready; usage is billed by your provider.
 
-Source lives in `src/`, automated tests in `tests/`, and evaluation/build utilities in `tooling/`. For programmatic integration, see the [SDK example](tooling/examples/sdk/run.ts); `bun run build:sdk` builds the SDK package locally.
+1. **Choose a provider.** Select the provider that issued your API key, such as **DeepSeek** or **Alibaba Bailian**.
+2. **Save your key.** Open **API key**, paste the key, and press Enter. The input is masked.
+3. **Check the endpoint.** Open **API endpoint** if your account uses a different API base URL. The key, endpoint, and model must belong to the same service.
+4. **Choose a model.** Press Esc to leave setup, enter `/model`, and select a model you have access to. The selection is saved for future launches.
+
+Use ↑/↓ to select, Enter to confirm, and Esc to go back in the setup panel.
+
+**Model missing from the list?** Open `/providers`, choose its provider, and select **Add model**. Enter the exact **Model ID** expected by the API, then an optional **Display name**. Return to `/model` to select it. Adding a model uses that provider's existing adapter; it does not add support for an arbitrary API protocol.
+
+**Using Qwen?** Pillar currently defaults to `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`. If your account uses a different endpoint, change **API endpoint** before sending a task. Preset models also require access through your account.
+
+Keys are saved to `~/.pillar/.env` by default, and model configuration to `~/.pillar/settings.json`, so setup can be reused across projects. Existing project configuration can override these defaults: if the project's `.env` already contains the key variable, the panel updates that file and shows its location. Keep API keys out of Git.
+
+## Give it a task
+
+Once the model is selected, type what you want to accomplish:
+
+> Inspect this project and explain how it works. Identify the most important improvements, but don't edit files yet.
+
+Or ask it to make a concrete change:
+
+> Fix the failing tests. Find the cause, update the implementation, and rerun the relevant tests. Summarize what changed.
+
+Pillar works on files in the directory where you launched it. When an operation requires approval, it asks in the terminal. Available checks depend on your project's dependencies and connected tools; browser interaction requires a browser tool to be provided.

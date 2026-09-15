@@ -1,147 +1,79 @@
 # Pillar
 
-简体中文 | [English](README.md)
+[English](README.md) | 简体中文
 
-**在终端中完成开发任务的 Code Agent。**
+**用自然语言描述开发任务，让 Pillar 在终端里帮你完成。**
 
-用自然语言描述需求，Pillar 可以理解项目、修改代码、执行命令和测试，并根据结果继续推进任务。项目基于 TypeScript 构建，提供交互式终端、Headless CLI 和程序化 SDK。
+Pillar 是一个基于 TypeScript 开发的 Code Agent。它可以读取项目、修改文件、执行命令和测试，并根据结果继续推进任务。你可以让它从零搭建项目，也可以让它修复 Bug、为已有应用增加功能。
 
-项目仍在持续开发中，不同版本之间的 API、配置和会话存储格式可能变化。
+**目前仅支持 macOS。** Pillar 在本机运行，通过你的 API Key 调用模型服务，无需额外部署服务端。
 
-## 核心能力
+## 能做什么
 
-- **开发与修复：**检索和理解代码、精确修改文件、运行测试，并根据报错继续修复。
-- **持续推进复杂任务：**管理任务进度，结合上下文压缩、历史检索和项目长期记忆保留必要信息。
-- **分工与后台执行：**将子任务交给子 Agent，管理长时间运行的命令和后台任务。
-- **控制执行边界：**区分规划与执行，提供权限审批策略及操作系统沙箱集成。
-- **扩展工作方式：**接入 MCP、Skills、Hooks 和自定义 Agent；使用具备图片能力的模型理解本地图片输入。
+- **从想法到项目：**描述一个页面、应用或小游戏，让 Pillar 创建文件、编写功能并运行检查。
+- **维护已有代码：**排查报错、修复 Bug、添加功能，或先审查项目再决定如何修改。
+- **持续推进长任务：**拆分任务、交给子 Agent 协作，通过上下文管理和项目记忆衔接后续工作。执行期间也可以继续补充要求。
+- **扩展能力：**通过 MCP 接入工具，添加 Skills 和 Hooks，或使用支持图片的模型理解截图。也提供 TypeScript SDK，方便程序调用。
 
-## 快速开始
+## 在 macOS 上安装
 
-### 1. 准备环境
-
-- [Bun](https://bun.sh/) **1.3 或更高版本**、Git 和 Bash。
-- 至少一个可用的模型 API Key，且账号有权访问所选模型和接口。内置来源包括 **Qwen、GLM、DeepSeek 和 OpenRouter**；调用费用由你的模型服务账号承担。
-- 沙箱依赖：macOS 需要 `ripgrep`；Linux 需要 `bubblewrap`、`socat` 和 `ripgrep`，系统还需允许沙箱使用用户命名空间。
-
-可以通过包管理器安装沙箱依赖：
+在终端执行：
 
 ```bash
-# macOS（Homebrew）
-brew install ripgrep
-
-# Ubuntu / Debian
-sudo apt-get install bubblewrap socat ripgrep
+curl -fsSL https://raw.githubusercontent.com/peihanm/pillar-core/main/install.sh -o pillar-install.sh && bash pillar-install.sh
 ```
 
-下文命令使用 macOS/Linux Shell。原生 Windows 还需 Git Bash 及沙箱后端的 Windows 初始化配置，本指南暂不展开。
+脚本会自动下载 Pillar、补齐依赖（Git、Bun 和 ripgrep）、注册 `pillar` 命令并配置 PATH。如果缺少依赖且尚未安装 Homebrew，会调用 [Homebrew 官方安装程序](https://brew.sh/)，期间可能需要输入 macOS 密码。支持自动配置 zsh（macOS 默认 Shell）和 bash。
 
-### 2. 下载并安装
+**安装完成后，重新打开一个终端窗口**，进入你的项目目录即可启动：
 
 ```bash
-git clone https://github.com/peihanm/pillar-core.git
-cd pillar-core
-bun install --frozen-lockfile
-```
-
-### 3. 启动并配置模型
-
-```bash
-bun run start
-```
-
-首次启动后，在终端内完成配置，不需要手写 JSON：
-
-1. 输入 `/providers`，选择 Qwen、GLM、DeepSeek 或 OpenRouter。
-2. 选择 **API key**，粘贴 Key 并保存。输入内容遮罩显示，不进入聊天记录。
-3. 服务商已提供预置模型；需要其他模型时选 **Add model**，填写接口要求的模型 ID，展示名称可留空。
-4. 返回后输入 `/model` 选择模型，选择会自动保存。
-
-删除模型：在服务商页面选择 **Remove model**，选中条目并确认。Key 和接口地址保留；正在使用或配置中仍引用的模型需先改选。
-
-没有任何可用模型时，启动会直接打开配置面板。Key、模型列表和接口地址通过面板保存后立即生效。默认只需要一个模型；未配置独立 `fast` 时，子任务的快速模型跟随当前主模型。
-
-<details>
-<summary>配置文件与高级用法</summary>
-
-Key 默认保存在 `~/.pillar/.env`；若项目 `.env` 已定义同一个 Key，面板会更新该项目文件，并显示保存位置。CLI 优先保留进程环境变量，再读取项目 `.env`，最后用用户级 `.env` 补充缺失变量；不要求必须存在 `.env` 文件。
-
-| 服务商 | Key 环境变量 |
-| --- | --- |
-| Qwen | `DASHSCOPE_API_KEY` |
-| GLM | `GLM_API_KEY` |
-| DeepSeek | `DEEPSEEK_API_KEY` |
-| OpenRouter | `OPENROUTER_API_KEY` |
-
-接口地址和模型列表保存在 `~/.pillar/settings.json`，可在 `/providers` 修改。`/model` 默认将选择保存到用户设置；若项目明确配置了主模型，则写入项目 `.pillar/settings.local.json`，不修改共享项目设置。显式启动参数仍具有最高优先级。
-
-需要独立快速模型时，在 Settings 中配置完整的 `models.fast`，例如：
-
-```json
-{"models":{"fast":{"source":"deepseek","model":"deepseek-flash"}}}
-```
-
-删除 `fast` 项即可恢复跟随主模型；手动修改此项后重启。已启动子任务保持其模型和接口快照。模型 ID 必须由对应服务商提供；手动添加模型不等于自动支持它的图片、推理或工具调用协议。不会自动发送付费连通测试。
-
-默认 Qwen 接口为 `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`；账号使用其他接口时，在 `/providers` 修改 API endpoint。Key 不要写入 Settings 或提交到 Git。
-
-</details>
-
-### 4. 开始使用
-
-进入后可以直接输入：
-
-> 看一下这个项目，介绍它的结构，并找出最值得优化的地方，先不要修改代码。
-
-如果要在其他项目目录使用 Pillar，先在本仓库注册一次命令：
-
-```bash
-bun link
-cd /path/to/your/project
+cd /你的项目目录
 pillar
 ```
 
-确保 Bun 的全局可执行目录（通常是 `~/.bun/bin`）已加入 `PATH`。Pillar 会以启动命令时所在的目录作为工作目录。
+只需要安装一次，以后在任意项目目录输入 `pillar` 就能使用。从零开发时，先创建一个空目录即可。
 
-在 `/providers` 保存到用户目录的 Key 可以跨项目复用。CLI 保留进程环境变量，加载项目 `.env` 后，再从 `~/.pillar/.env` 补充缺失变量。
+<details>
+<summary>已经下载或 clone 了仓库？</summary>
 
-## 日常使用
-
-| 操作 | 命令或快捷键 |
-| --- | --- |
-| 查看命令 | `/help` |
-| 选择并保存模型 | `/model` |
-| 配置 Key、接口和模型列表 | `/providers` |
-| 选择权限审批策略 | `/permissions` |
-| 切换 Build / Plan | `Shift+Tab` |
-| 恢复已保存的会话 | `/resume` |
-| 查看后台任务 | `/tasks` |
-| 停止当前任务 | `Esc` |
-
-执行过程中可以继续补充要求。Pillar 会在当前一批工具执行完后，在安全边界将消息加入当前任务。
-
-执行一次非交互任务，或查看 CLI 帮助：
+在源码目录执行：
 
 ```bash
-pillar -p "解释这个项目的结构，不要修改文件。"
-pillar --help
+bash install.sh
 ```
 
-Headless 模式没有可点击的审批弹窗，无法处理的交互请求会被拒绝；无人值守运行前需明确配置允许的操作范围。
+脚本会使用当前源码。直接下载安装脚本时，源码默认存放在 `~/.local/share/pillar/source`。请保留源码目录，`pillar` 命令链接到这里。重复执行可以修复安装配置，不会自动拉取或覆盖已有源码。
 
-## 配置与本地数据
+</details>
 
-- `PILLAR.md` 用于编写项目指令。
-- `~/.pillar/settings.json` 保存用户设置；项目中的 `.pillar/settings.json` 和 `.pillar/settings.local.json` 可以覆盖它。
-- 会话、Memory、工具输出和请求日志保存在 `~/.pillar/projects/` 下。请求日志可能包含源码、对话和模型返回的思考，请勿将它们或 API Key 提交到公开仓库。
-- `pillar --storage inspect` 查看存储占用；`pillar --storage preview` 预览清理范围，均不调用模型。
+## 配置模型
 
-## 开发与验证
+**直接在终端界面完成配置，不需要提前创建 `.env` 或手写 JSON。** 没有可用模型时，Pillar 会自动打开服务商配置面板；也可以在 Pillar 中输入 `/providers` 打开。
 
-```bash
-bun run check     # TypeScript 检查
-bun test          # 离线自动化测试
-bun run verify    # 测试、类型检查及 Node/Bun SDK 打包验证
-```
+目前支持 **阿里云百炼（Qwen）、智谱 GLM、DeepSeek 和 OpenRouter**。准备好对应的 API Key，模型调用费用由服务商计收。
 
-`src/` 存放源码，`tests/` 存放自动化测试，`tooling/` 存放评测和构建辅助工具。程序化接入可参考 [SDK 示例](tooling/examples/sdk/run.ts)，通过 `bun run build:sdk` 在本地构建 SDK 包。
+1. **选择服务商。**选择签发你这个 API Key 的服务商，例如 **DeepSeek** 或 **Alibaba Bailian（阿里云百炼）**。
+2. **保存 Key。**进入 **API key**，粘贴 Key 后按 Enter 保存，输入内容会遮罩显示。
+3. **确认接口地址。**如果账号使用的地址与默认值不同，进入 **API endpoint** 填写 API 基础地址。Key、接口地址和模型需要对应同一个服务。
+4. **选择模型。**按 Esc 退出配置面板，输入 `/model`，选择你的账号有权限使用的模型。选择会自动保存，下次启动继续使用。
+
+配置面板中，↑/↓ 选择，Enter 确认，Esc 返回。
+
+**列表里没有想用的模型？** 在 `/providers` 中选择对应服务商，进入 **Add model**，填写接口要求的准确 **Model ID（模型 ID）**，再填写可选的 **Display name（展示名称）**。保存后回到 `/model` 选择即可。新增模型会沿用该服务商已有的适配能力，不代表支持任意 API 协议。
+
+**使用 Qwen 时请注意：**目前默认接口为 `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`。如果你的账号使用其他接口，请先修改 **API endpoint** 再发送任务。预置模型也需要你的账号具有对应访问权限。
+
+Key 默认保存在 `~/.pillar/.env`，模型配置保存在 `~/.pillar/settings.json`，换一个项目也可以复用。已有项目配置可以覆盖这些默认设置：如果项目 `.env` 中已经存在对应 Key 变量，面板会更新该文件并显示保存位置。不要将 API Key 提交到 Git。
+
+## 开始一个任务
+
+选好模型后，直接输入需求，例如：
+
+> 看一下这个项目，介绍它的结构，找出最值得优化的地方，先不要修改代码。
+
+也可以让它直接修改：
+
+> 修复当前失败的测试。先定位原因，再修改实现，最后重新运行相关测试，并说明改了什么。
+
+Pillar 会在启动时所在的目录中处理文件。遇到需要授权的操作，会在终端中请求确认。能够执行哪些验证取决于项目依赖和已接入的工具；网页操作需要另外提供浏览器工具。
