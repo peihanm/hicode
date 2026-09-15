@@ -182,7 +182,7 @@ export async function saveMcpApproval(
     path: string,
     identity: {projectPath: string; configHash: string},
     serverName: string,
-    decision: Exclude<McpApprovalDecision, "once">
+    decision: Extract<McpApprovalDecision, "always" | "deny">
 ): Promise<void> {
     await ensureSafeParent(path);
     await withFileLock(`${path}.lock`, async () => {

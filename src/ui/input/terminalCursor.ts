@@ -54,6 +54,7 @@ export function createTerminalCursorOutput(
 ): TerminalCursorOutput {
     let anchored = false;
     let scrollback = "";
+    let recoverAfterOverflow = false;
     let inkResizeListener: ((...args: unknown[]) => void) | undefined;
 
     const write = (
@@ -70,9 +71,20 @@ export function createTerminalCursorOutput(
         // Ink 5 can clear the terminal when a live dialog exceeds its height.
         // Restore the latest committed presentation, never its stale Static cache.
         const inkClear = "\u001B[2J\u001B[3J\u001B[H";
-        const frame = data.startsWith(inkClear)
-            ? inkClear + scrollback + data.slice(inkClear.length)
-            : data;
+        let frame = data;
+        if (data.startsWith(inkClear)) {
+            frame = inkClear + scrollback + data.slice(inkClear.length);
+            recoverAfterOverflow = true;
+        } else if (recoverAfterOverflow && !/^(?:\u001B\[\?25[hl]|\u001B\[[\d;]*m)+$/.test(data)) {
+            // Ink's overflow branch bypasses log-update, leaving its previous line
+            // count stale. A later erase cannot remove live rows already scrolled
+            // offscreen. Rebuild once from retained history before resuming deltas.
+            frame = inkClear + scrollback + data.replace(
+                /^(?:\u001B\[2K(?:\u001B\[1A\u001B\[2K)*\u001B\[G)/,
+                ""
+            );
+            recoverAfterOverflow = false;
+        }
         const formatted = formatTerminalCursorWrite(frame, anchored);
         anchored = formatted.anchored;
         if (typeof encodingOrCallback === "function") {
@@ -95,6 +107,7 @@ export function createTerminalCursorOutput(
             if (property === "disposeCursorOutput") {
                 return () => {
                     scrollback = "";
+                    recoverAfterOverflow = false;
                     inkResizeListener = undefined;
                     if (anchored) target.write(RESTORE_CURSOR);
                     anchored = false;

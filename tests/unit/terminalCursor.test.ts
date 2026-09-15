@@ -149,3 +149,35 @@ test("Ink overflow restores the latest presentation, including after collapse", 
     output.write(inkClear + "closed");
     expect(writes.at(-1)).toBe(inkClear + "closed");
 });
+
+test("溢出后只恢复一次历史，丢弃 Ink 过期的实时区清除行数", () => {
+    const writes: string[] = [];
+    const target = new EventEmitter() as NodeJS.WriteStream;
+    target.write = ((chunk: string | Uint8Array) => {writes.push(String(chunk)); return true;}) as NodeJS.WriteStream["write"];
+    const output = createTerminalCursorOutput(target);
+    const clear = "\u001B[2J\u001B[3J\u001B[H";
+    const staleErase = "\u001B[2K\u001B[1A\u001B[2K\u001B[G";
+    output.recordScrollback("append", "12 + }\n");
+    output.write(clear + "tall live content\nfooter");
+    output.write("\u001B[?25h");
+    output.write(staleErase + "\n● Bash npm install\n");
+    expect(writes.at(-1)).toBe(clear + "12 + }\n\n● Bash npm install\n");
+    output.write(staleErase + "next animation frame\n");
+    expect(writes.at(-1)).toBe(staleErase + "next animation frame\n");
+    output.disposeCursorOutput();
+});
+
+test("溢出后的空 log.clear 也恢复历史，新追加内容不重复", () => {
+    const writes: string[] = [];
+    const target = new EventEmitter() as NodeJS.WriteStream;
+    target.write = ((chunk: string | Uint8Array) => {writes.push(String(chunk)); return true;}) as NodeJS.WriteStream["write"];
+    const output = createTerminalCursorOutput(target);
+    const clear = "\u001B[2J\u001B[3J\u001B[H";
+    output.recordScrollback("append", "diff\n");
+    output.write(clear + "tall live content");
+    output.write("");
+    output.write("tool result\n");
+    output.recordScrollback("append", "tool result\n");
+    expect(writes.slice(-2)).toEqual([clear + "diff\n", "tool result\n"]);
+    output.disposeCursorOutput();
+});

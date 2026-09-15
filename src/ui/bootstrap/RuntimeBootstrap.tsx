@@ -85,13 +85,10 @@ export function createRuntimeBootstrap(
 
         useInput((input, key) => {
             if ((key.ctrl && input === "c") || input === "\x03") {
-                pending?.resolve("deny");
-                pendingHook?.resolve("deny");
-                pendingRef.current = null;
-                pendingHookRef.current = null;
+                void shutdown.close();
                 exit();
             }
-        }, {isActive: !ready});
+        }, {isActive: !ready || pending !== null});
 
         useEffect(() => {
             let disposed = false;
@@ -108,7 +105,7 @@ export function createRuntimeBootstrap(
                     configuration,
                     signal: controller.signal,
                     requestMcpApproval: (request) => {
-                        if (disposed) return Promise.resolve("deny");
+                        if (disposed || controller.signal.aborted) return Promise.resolve("skip");
                         return new Promise<McpApprovalDecision>((resolve) => {
                             const value = {request, resolve};
                             pendingRef.current = value;
@@ -125,6 +122,10 @@ export function createRuntimeBootstrap(
                     },
                 });
                 ownedResources = resources;
+                if (disposed || controller.signal.aborted) {
+                    await closeResources(resources);
+                    return;
+                }
                 const initialSession = session;
                 const turnSession = createUITurnSessionRuntime(resources, initialSession);
                 await turnSession.rootSession.initialize();
@@ -153,7 +154,7 @@ export function createRuntimeBootstrap(
                 disposed = true;
                 shutdown.signal.removeEventListener("abort", abortInitialization);
                 controller.abort("shutdown");
-                pendingRef.current?.resolve("deny");
+                pendingRef.current?.resolve("skip");
                 pendingRef.current = null;
                 pendingHookRef.current?.resolve("deny");
                 pendingHookRef.current = null;
@@ -165,18 +166,18 @@ export function createRuntimeBootstrap(
             return dispose;
         }, [configuration, cwd, session, settings, storage, shutdown]);
 
-        if (pending) {
-            return (
-                <McpApprovalDialog
-                    request={pending.request}
-                    onDecision={(decision) => {
-                        pending.resolve(decision);
-                        pendingRef.current = null;
-                        setPending(null);
-                    }}
-                />
-            );
-        }
+        const mcpApproval = pending ? (
+            <McpApprovalDialog
+                key={pending.request.configHash}
+                request={pending.request}
+                onDecision={(decision) => {
+                    pending.resolve(decision);
+                    pendingRef.current = null;
+                    setPending(null);
+                }}
+            />
+        ) : undefined;
+        if (mcpApproval && !ready) return mcpApproval;
         if (pendingHook && !ready) {
             return (
                 <HookApprovalDialog
@@ -210,9 +211,9 @@ export function createRuntimeBootstrap(
             <App
                 key={sessionKey}
                 resources={ready.resources}
-                runtimeApproval={pendingHook ? <HookApprovalDialog request={pendingHook.request} onDecision={decision => {
+                runtimeApproval={mcpApproval ?? (pendingHook ? <HookApprovalDialog request={pendingHook.request} onDecision={decision => {
                     pendingHook.resolve(decision); pendingHookRef.current = null; setPendingHook(null);
-                }}/> : undefined}
+                }}/> : undefined)}
                 rootSession={ready.session.rootSession}
                 resumedDraft={ready.session.resumedDraft}
                 initialPermissionMode={initialPermissionMode}

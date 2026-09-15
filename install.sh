@@ -6,7 +6,8 @@ trap 'printf "Pillar installation failed. Fix the error above and rerun the inst
 
 [[ "$(uname -s)" == Darwin ]] || fail "Only macOS is supported."
 [[ $EUID -ne 0 ]] || fail "Run this script as your normal user, without sudo."
-case "${SHELL##*/}" in
+login_shell=${SHELL:-/bin/zsh}
+case "${login_shell##*/}" in
     zsh) startup_files=("${ZDOTDIR:-$HOME}/.zshrc") ;;
     bash)
         if [[ -e "$HOME/.bash_profile" ]]; then login_file="$HOME/.bash_profile"
@@ -17,11 +18,31 @@ case "${SHELL##*/}" in
     *) fail "Automatic setup supports zsh and bash. Switch to one of these login shells first." ;;
 esac
 
-# Find existing installations even before the user's shell has a working PATH.
-export PATH="${BUN_INSTALL:-$HOME/.bun}/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-missing=()
-command -v git >/dev/null && git --version >/dev/null 2>&1 || missing+=(git)
-command -v rg >/dev/null || missing+=(ripgrep)
+# Install only the required binaries, without a package-manager bootstrap.
+install_root="$HOME/.local/share/pillar"
+export PATH="$install_root/bin:${BUN_INSTALL:-$HOME/.bun}/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+staging=$(mktemp -d "${TMPDIR:-/tmp}/pillar-install.XXXXXX")
+trap 'rm -rf "$staging"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+download() {
+    curl --fail --location --show-error --connect-timeout 10 --max-time 180 \
+        --retry 2 --retry-max-time 240 --speed-limit 1024 --speed-time 30 \
+        "$1" -o "$2"
+}
+install_binary() {
+    local name=$1 url=$2 checksum=$3 entry=$4
+    local archive="$staging/$name.tgz" unpack="$staging/$name"
+    printf 'Downloading %s directly from the npm registry...\n' "$name"
+    download "$url" "$archive"
+    printf '%s  %s\n' "$checksum" "$archive" | shasum -a 512 -c - >/dev/null
+    mkdir -p "$unpack" "$install_root/bin"
+    tar -xzf "$archive" -C "$unpack" "$entry"
+    [[ -f "$unpack/$entry" && ! -L "$unpack/$entry" ]] || fail "Invalid $name archive."
+    chmod 755 "$unpack/$entry"
+    mv -f "$unpack/$entry" "$install_root/bin/$name"
+}
 bun_supported() {
     local version major minor
     command -v bun >/dev/null || return 1
@@ -30,31 +51,32 @@ bun_supported() {
     major=${BASH_REMATCH[1]}; minor=${BASH_REMATCH[2]}
     (( major > 1 || (major == 1 && minor >= 3) ))
 }
-bun_supported || missing+=(oven-sh/bun/bun)
-
-if (( ${#missing[@]} )); then
-    if ! command -v brew >/dev/null; then
-        printf 'Installing Homebrew for missing dependencies. Its installer may request your macOS password.\n'
-        brew_script=$(mktemp -t pillar-homebrew)
-        trap 'rm -f "$brew_script"' EXIT
-        curl --fail --silent --show-error --location https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$brew_script"
-        /bin/bash "$brew_script"
-        rm -f "$brew_script"
-        trap - EXIT
-    fi
-    command -v brew >/dev/null || fail "Homebrew was not installed successfully."
-    brew install "${missing[@]}"
-    # Prefer the Homebrew Bun if an older custom installation shadows it.
-    if ! bun_supported; then
-        brew_bun=$(brew --prefix oven-sh/bun/bun)
-        export PATH="$brew_bun/bin:$PATH"
-    fi
+# Versions and SHA-512 values come from the publishers' npm package metadata.
+case "$(uname -m)" in
+    arm64)
+        bun_package=bun-darwin-aarch64
+        bun_checksum=3a68f6d12ba21c13948d4048caab643634942233ad10e27099b8b1fd9c851f805a43a3994da6915884784e31d5cf4c9a7478258ba94b4e2021d6e6ab9ef0f8f4
+        rg_package=ripgrep-darwin-arm64
+        rg_checksum=af792d1d2bdb172710345eac97bb0d0cfa1ca6c23b27e984ce1d48699164634b299b793667db7c84f01e38aefea7497aa7afecc24402d785d65f4d65a30fbde1 ;;
+    x86_64)
+        bun_package=bun-darwin-x64-baseline
+        bun_checksum=3927ec4d9b2d73cf7c1c7125854e0d71c68118e4920e7e557da8625539e2759f41ffec1bed64f27d925a05e25c7e3c09f47d96f6e4e1d931ad97751f717815f6
+        rg_package=ripgrep-darwin-x64
+        rg_checksum=db96f88166cbd77f1d1ae414db8e1e6c228a734ab4e542c1328152cfda001141cd7aa2bf94e2558834bb0d1bdb0dacf303348475a9f7f7566792cfd1e6691a4d ;;
+    *) fail "Unsupported CPU architecture." ;;
+esac
+if ! bun_supported; then
+    install_binary bun "https://registry.npmjs.org/@oven/$bun_package/-/$bun_package-1.3.14.tgz" "$bun_checksum" package/bin/bun
+    hash -r
+fi
+if ! command -v rg >/dev/null || ! rg --version >/dev/null 2>&1; then
+    install_binary rg "https://registry.npmjs.org/@vscode/$rg_package/-/$rg_package-1.18.0.tgz" "$rg_checksum" package/bin/rg
+    hash -r
 fi
 bun_supported || fail "Bun 1.3 or newer is required."
-git --version >/dev/null
 rg --version >/dev/null
 
-# A checked-out install.sh uses that checkout; a downloaded script fetches source.
+# Download source without requiring Git or Xcode Command Line Tools.
 script_dir=""
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
     script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -62,29 +84,32 @@ fi
 if [[ -n "$script_dir" && -f "$script_dir/src/index.tsx" && -f "$script_dir/bun.lock" ]]; then
     source_dir="$script_dir"
 else
-    source_dir="$HOME/.local/share/pillar/source"
-    if [[ -e "$source_dir" ]]; then
-        [[ -d "$source_dir/.git" && -f "$source_dir/src/index.tsx" ]] || fail "Destination already exists: $source_dir. It was left unchanged."
-        [[ "$(git -C "$source_dir" remote get-url origin)" == https://github.com/peihanm/pillar-core.git ]] || fail "Destination belongs to another repository: $source_dir"
-        printf 'Reusing %s without changing its Git checkout.\n' "$source_dir"
-    else
-        mkdir -p "$(dirname "$source_dir")"
-        git clone --depth 1 https://github.com/peihanm/pillar-core.git "$source_dir"
-    fi
+    source_dir="$install_root/source"
+    [[ ! -e "$source_dir" && ! -L "$source_dir" ]] || fail "Destination already exists. To repair that installation, run: bash \"$source_dir/install.sh\""
+    printf 'Downloading Pillar source...\n'
+    download https://codeload.github.com/peihanm/pillar-core/tar.gz/refs/heads/main "$staging/source.tgz"
+    tar -xzf "$staging/source.tgz" -C "$staging"
+    [[ -f "$staging/pillar-core-main/src/index.tsx" && -f "$staging/pillar-core-main/bun.lock" ]] || fail "Invalid Pillar source archive."
+    mkdir -p "$install_root"
+    mv "$staging/pillar-core-main" "$source_dir"
 fi
 
 cd "$source_dir"
 printf 'Installing Pillar from %s\n' "$source_dir"
-bun install --frozen-lockfile
-bun link
-global_bin=$(bun pm bin -g)
-[[ "$global_bin" == /* && -x "$global_bin/pillar" ]] || fail "Bun did not create the pillar executable."
-bun_bin=$(dirname "$(command -v bun)")
+bun install --frozen-lockfile --production
+bun_executable=$(command -v bun)
+bun_bin=$(dirname "$bun_executable")
 rg_bin=$(dirname "$(command -v rg)")
-git_bin=$(dirname "$(command -v git)")
+global_bin="$install_root/bin"
+mkdir -p "$global_bin"
+[[ ! -d "$global_bin/pillar" ]] || fail "Command destination is a directory: $global_bin/pillar"
+# A launcher needs no Bun global package.json and preserves the caller's cwd.
+printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_executable" "$source_dir/src/index.tsx" > "$staging/pillar"
+chmod 755 "$staging/pillar"
+mv -f "$staging/pillar" "$global_bin/pillar"
 
 # Escape paths as shell syntax; preserve existing config and avoid duplicate entries.
-printf -v path_line 'export PATH=%q:%q:%q:%q:"$PATH" # Pillar installer' "$global_bin" "$bun_bin" "$rg_bin" "$git_bin"
+printf -v path_line 'export PATH=%q:%q:%q:"$PATH" # Pillar installer' "$global_bin" "$bun_bin" "$rg_bin"
 for startup_file in "${startup_files[@]}"; do
     [[ ! -e "$startup_file" || -f "$startup_file" ]] || fail "Not a regular shell configuration file: $startup_file"
     mkdir -p "$(dirname "$startup_file")"

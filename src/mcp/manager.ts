@@ -62,17 +62,18 @@ class McpManager implements McpManagerLike {
         return this.connections.flatMap((item) => item.tools);
     }
 
-    private async isApproved(server: LoadedMcpServerConfig): Promise<boolean> {
-        if (this.closed || this.options.signal?.aborted) return false;
-        if (server.source === "user") return true;
+    private async getApproval(server: LoadedMcpServerConfig, reviewDenied: boolean): Promise<"allow" | "deny" | "pending"> {
+        if (this.closed || this.options.signal?.aborted) return "pending";
+        if (server.source === "user") return "allow";
         const identity = await createMcpApprovalIdentity(this.options.cwd, server);
         const approvalPath = join(
             this.options.storage.pillarHome,
             "mcp-approvals.json"
         );
         const stored = await getMcpApproval(approvalPath, identity, server.name);
-        if (stored === "allow") return true;
-        if (stored === "deny" || this.options.headless || !this.options.requestApproval) return false;
+        if (this.closed || this.options.signal?.aborted) return "pending";
+        if (stored === "allow") return "allow";
+        if ((stored === "deny" && !reviewDenied) || this.options.headless || !this.options.requestApproval) return stored;
         const decision = await this.options.requestApproval({
             projectPath: identity.projectPath,
             serverName: server.name,
@@ -80,11 +81,12 @@ class McpManager implements McpManagerLike {
             args: server.config.args,
             configHash: identity.configHash,
         });
-        if (this.closed || this.options.signal?.aborted) return false;
+        if (this.closed || this.options.signal?.aborted) return "pending";
         if (decision === "always" || decision === "deny") {
             await saveMcpApproval(approvalPath, identity, server.name, decision);
         }
-        return decision === "once" || decision === "always";
+        if (decision === "once" || decision === "always") return "allow";
+        return decision === "deny" ? "deny" : stored;
     }
 
     async initialize(): Promise<void> {
@@ -146,10 +148,11 @@ class McpManager implements McpManagerLike {
         const active: MutableConnection[] = [];
         for (const connection of this.connections) {
             if (connection.snapshot.status === "disabled" || connection.snapshot.status === "failed") continue;
-            if (!(await this.isApproved(connection.server))) {
+            const approval = await this.getApproval(connection.server, false);
+            if (approval !== "allow") {
                 if (this.closed || this.options.signal?.aborted) break;
-                connection.snapshot.status = "pending-approval";
-                connection.snapshot.error = "MCP Server has not been approved";
+                connection.snapshot.status = approval === "deny" ? "denied" : "pending-approval";
+                connection.snapshot.error = approval === "deny" ? "MCP Server was denied for this project" : "MCP Server has not been approved";
                 continue;
             }
             active.push(connection);
@@ -256,7 +259,15 @@ class McpManager implements McpManagerLike {
             connection.snapshot.source = server.source;
             if (server.config.disabled) { connection.snapshot.status = "disabled"; this.emit(); return; }
             if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
-            if (!(await this.isApproved(server))) { if (!this.closed) {connection.snapshot.status = "pending-approval"; this.emit();} return; }
+            const approval = await this.getApproval(server, true);
+            if (approval !== "allow") {
+                if (!this.closed && !this.options.signal?.aborted) {
+                    connection.snapshot.status = approval === "deny" ? "denied" : "pending-approval";
+                    connection.snapshot.error = approval === "deny" ? "MCP Server was denied for this project" : "MCP Server has not been approved";
+                    this.emit();
+                }
+                return;
+            }
             if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
             await this.connect(connection);
         } catch (error) {

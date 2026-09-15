@@ -27,7 +27,9 @@ export const mcpCommand: SlashCommand = {
             : snapshots.map((item) => {
                 const tools = `${item.toolCount} tool${item.toolCount === 1 ? "" : "s"}`;
                 const error = item.error ? ` — ${item.error.replace(/\s+/g, " ").slice(0, 240)}` : "";
-                return `${item.name}  ${item.status}  ${tools}  ${item.source}${error}`;
+                const nextStep = item.status === "denied" || item.status === "pending-approval"
+                    ? `\n  Review authorization: /mcp reconnect ${item.name}` : "";
+                return `${item.name}  ${item.status}  ${tools}  ${item.source}${error}${nextStep}`;
             }).join("\n");
         await context.onEvent({type: "assistant_text", content});
     },

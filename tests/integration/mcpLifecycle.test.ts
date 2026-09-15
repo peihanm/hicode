@@ -6,6 +6,9 @@ import {createToolRuntime} from "../../src/tools/runtime.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 import {createTestContext} from "../helpers/testContext.js";
+import {createMcpApprovalIdentity, getMcpApproval} from "../../src/mcp/approval.js";
+import {loadMcpConfig} from "../../src/mcp/config.js";
+import type {McpApprovalDecision} from "../../src/mcp/types.js";
 
 async function until(predicate: () => boolean) {
     const deadline = Date.now() + 4000;
@@ -14,6 +17,86 @@ async function until(predicate: () => boolean) {
         await new Promise(resolve => setTimeout(resolve, 5));
     }
 }
+
+test.each(["skip", "abort"])("授权 %s 不持久拒绝，下一次启动仍询问且批准后才启动进程", async action => {
+    await withTempProject(async (cwd, storage) => {
+        await writeFile(join(cwd, ".mcp.json"), JSON.stringify({mcpServers: {fixture: {
+            command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000,
+        }}}));
+        const loaded = await loadMcpConfig(storage, cwd, ["project"]);
+        const identity = await createMcpApprovalIdentity(cwd, loaded.servers[0]!);
+        const controller = new AbortController();
+        const initial = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
+            signal: controller.signal, requestApproval: async () => {
+                if (action === "abort") controller.abort();
+                return action === "abort" ? "deny" : "skip";
+            }});
+        try {
+            await initial.initialize();
+            expect(initial.getTools()).toHaveLength(0);
+            expect(initial.getSnapshots()[0]?.status).toBe("pending-approval");
+            expect(await getMcpApproval(join(storage.pillarHome, "mcp-approvals.json"), identity, "fixture")).toBe("pending");
+        } finally {await initial.closeAll();}
+        let requests = 0;
+        const restarted = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
+            requestApproval: async () => {requests++; return "once";}});
+        try {
+            await restarted.initialize();
+            expect(requests).toBe(1);
+            expect(restarted.getSnapshots()[0]).toMatchObject({status: "connected", toolCount: 2});
+        } finally {await restarted.closeAll();}
+    });
+});
+
+test("永久拒绝明确显示，显式重连重新审查；跳过不清除拒绝，允许后才连接", async () => {
+    await withTempProject(async (cwd, storage) => {
+        await writeFile(join(cwd, ".mcp.json"), JSON.stringify({mcpServers: {fixture: {
+            command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000,
+        }}}));
+        const loaded = await loadMcpConfig(storage, cwd, ["project"]);
+        const identity = await createMcpApprovalIdentity(cwd, loaded.servers[0]!);
+        const approvalPath = join(storage.pillarHome, "mcp-approvals.json");
+        const denied = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
+            requestApproval: async () => "deny"});
+        try {
+            await denied.initialize();
+            expect(denied.getSnapshots()[0]).toMatchObject({status: "denied", toolCount: 0});
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+        } finally {await denied.closeAll();}
+        const headless = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
+            headless: true, requestApproval: async () => {throw new Error("Headless must not request approval");}});
+        try {
+            await headless.initialize();
+            await headless.reconnect("fixture");
+            expect(headless.getSnapshots()[0]).toMatchObject({status: "denied", toolCount: 0});
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+        } finally {await headless.closeAll();}
+        let requests = 0;
+        let decision: McpApprovalDecision = "skip";
+        const review = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
+            requestApproval: async () => {requests++; return decision;}});
+        try {
+            await review.initialize();
+            expect(requests).toBe(0);
+            expect(review.getSnapshots()[0]?.status).toBe("denied");
+            await review.reconnect("fixture");
+            expect(requests).toBe(1);
+            expect(review.getSnapshots()[0]?.status).toBe("denied");
+            expect(review.getTools()).toHaveLength(0);
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+            decision = "once";
+            await review.reconnect("fixture");
+            expect(requests).toBe(2);
+            expect(review.getSnapshots()[0]).toMatchObject({status: "connected", toolCount: 2});
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+            decision = "always";
+            await review.reconnect("fixture");
+            expect(requests).toBe(3);
+            expect(review.getSnapshots()[0]).toMatchObject({status: "connected", toolCount: 2});
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("allow");
+        } finally {await review.closeAll();}
+    });
+});
 
 test.each(["refresh", "disconnect", "invalid", "storm"])("真实 stdio 生命周期 %s 撤销旧能力、隔离其他服务、显式重连", async action => {
     await withTempProject(async (cwd, storage) => {

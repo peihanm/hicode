@@ -23,7 +23,7 @@ Pillar 是一个基于 TypeScript 开发的 Code Agent。它可以读取项目�
 curl -fsSL https://raw.githubusercontent.com/peihanm/pillar-core/main/install.sh -o pillar-install.sh && bash pillar-install.sh
 ```
 
-脚本会自动下载 Pillar、补齐依赖（Git、Bun 和 ripgrep）、注册 `pillar` 命令并配置 PATH。如果缺少依赖且尚未安装 Homebrew，会调用 [Homebrew 官方安装程序](https://brew.sh/)，期间可能需要输入 macOS 密码。支持自动配置 zsh（macOS 默认 Shell）和 bash。
+脚本会自动下载 Pillar，优先复用已有的 Bun 和 ripgrep，缺少时直接下载并校验可执行文件，然后注册 `pillar` 命令、配置 PATH。无需 Homebrew、Node.js 或管理员密码。支持自动配置 zsh（macOS 默认 Shell）和 bash。
 
 **安装完成后，重新打开一个终端窗口**，进入你的项目目录即可启动：
 
@@ -43,7 +43,7 @@ pillar
 bash install.sh
 ```
 
-脚本会使用当前源码。直接下载安装脚本时，源码默认存放在 `~/.local/share/pillar/source`。请保留源码目录，`pillar` 命令链接到这里。重复执行可以修复安装配置，不会自动拉取或覆盖已有源码。
+脚本会使用当前源码。直接下载安装脚本时，源码默认存放在 `~/.local/share/pillar/source`。请保留源码目录，`pillar` 命令链接到这里。需要修复安装配置时，在该源码目录再次执行 `bash install.sh` 即可，不会自动覆盖已有源码。
 
 </details>
 

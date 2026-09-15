@@ -23,7 +23,7 @@ Run this in your terminal:
 curl -fsSL https://raw.githubusercontent.com/peihanm/pillar-core/main/install.sh -o pillar-install.sh && bash pillar-install.sh
 ```
 
-The script downloads Pillar, installs missing dependencies (Git, Bun, and ripgrep), registers the `pillar` command, and configures your shell's PATH automatically. If Homebrew is missing and needed, it starts the [official Homebrew installer](https://brew.sh/), which may ask for your macOS password. Automatic shell setup supports zsh (the macOS default) and bash.
+The script downloads Pillar, reuses existing Bun and ripgrep installations or downloads their verified binaries, registers `pillar`, and configures PATH automatically. It requires no Homebrew, Node.js, or administrator password. Automatic shell setup supports zsh (the macOS default) and bash.
 
 **After installation, open a new terminal**, enter your project directory, and start Pillar:
 
@@ -43,7 +43,7 @@ Run the installer from your checkout:
 bash install.sh
 ```
 
-It uses your local source. The downloaded installer otherwise stores source at `~/.local/share/pillar/source`. Keep that source directory: the `pillar` command links to it. Rerunning the installer repairs setup without pulling or replacing your checkout.
+It uses your local source. The downloaded installer otherwise stores source at `~/.local/share/pillar/source`. Keep that source directory: the `pillar` command links to it. To repair setup, run `bash install.sh` from that source directory. Existing source is never automatically replaced.
 
 </details>
 

@@ -6,7 +6,7 @@ import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 export type McpConfigSource = "user" | "project";
 export type McpSource = McpConfigSource | "host";
-export type McpApprovalDecision = "once" | "always" | "deny";
+export type McpApprovalDecision = "once" | "always" | "deny" | "skip";
 
 export interface McpStdioServerConfig {
     type: "stdio";
@@ -56,6 +56,7 @@ export interface LoadedMcpConfig {
 
 type McpServerStatus =
     | "pending-approval"
+    | "denied"
     | "connecting"
     | "connected"
     | "failed"

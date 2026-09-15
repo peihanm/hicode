@@ -12,10 +12,64 @@ import {
 import { withTempProject } from "../helpers/tempProject.js";
 import {type LoadedSession} from "../../src/session/index.js";
 import type {HookTrustRequest, HookTrustDecision} from "../../src/hooks/types.js";
+import type {McpApprovalRequest, McpApprovalDecision} from "../../src/mcp/index.js";
 
 afterEach(() => cleanup());
 
 describe("RuntimeBootstrap lifecycle", () => {
+  test.each(["ctrl-c", "unmount"])("MCP 授权页 %s 先取消 Root，再返回非持久跳过", async action => {
+    await withTempProject(async (cwd, storage) => {
+      const resources = createTestRuntimeResources(cwd);
+      const shutdown = new InteractiveShutdown();
+      let resolveDecision!: (value: {decision: McpApprovalDecision | undefined; aborted: boolean}) => void;
+      const decision = new Promise<{decision: McpApprovalDecision | undefined; aborted: boolean}>(resolve => {resolveDecision = resolve;});
+      const RuntimeBootstrap = createRuntimeBootstrap({createResources: async options => {
+        const value = await options.requestMcpApproval?.({
+          projectPath: cwd, serverName: "fixture", command: "bun", args: ["server.ts"], configHash: "cancel",
+        });
+        resolveDecision({decision: value, aborted: options.signal?.aborted === true});
+        return resources;
+      }});
+      const instance = render(<RuntimeBootstrap shutdown={shutdown}
+        configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
+      if (action === "ctrl-c") instance.stdin.write("\u0003");
+      else instance.unmount();
+      expect(await decision).toEqual({decision: "skip", aborted: true});
+      await shutdown.close();
+    });
+  });
+
+  test("运行中 MCP 重新授权保留 App 和 Session，Esc 只跳过本次", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const resources = createTestRuntimeResources(cwd);
+      let sessionEnds = 0;
+      resources.hooks.execute = async input => {
+        if (input.hook_event_name === "SessionEnd") sessionEnds++;
+        return {blocked: false, additionalContexts: [], executions: []};
+      };
+      let requestApproval!: (request: McpApprovalRequest) => Promise<McpApprovalDecision>;
+      const RuntimeBootstrap = createRuntimeBootstrap({createResources: async options => {
+        requestApproval = options.requestMcpApproval!;
+        return resources;
+      }});
+      const instance = render(<RuntimeBootstrap shutdown={new InteractiveShutdown()}
+        configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
+      await new Promise(resolve => setTimeout(resolve, 40));
+      const approval = requestApproval({projectPath: cwd, serverName: "fixture", command: "bun", args: [], configHash: "review"});
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
+      expect(sessionEnds).toBe(0);
+      instance.stdin.write("\u001b");
+      expect(await approval).toBe("skip");
+      await new Promise(resolve => setTimeout(resolve, 40));
+      expect(instance.lastFrame()).not.toContain("◆ MCP CONNECTION");
+      expect(sessionEnds).toBe(0);
+      instance.unmount();
+    });
+  });
+
   test("运行中重新批准 Hook 保留 App 和 Session，不触发 SessionEnd", async () => {
     await withTempProject(async (cwd, storage) => {
       const resources = createTestRuntimeResources(cwd);
@@ -72,11 +126,40 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("Project requests an MCP Server: fixture");
+      expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
+      expect(instance.lastFrame()).toContain("fixture");
       instance.stdin.write("1");
       await new Promise((resolve) => setTimeout(resolve, 30));
       expect(decision).toBe("once");
       expect(instance.lastFrame()).toContain("❯");
+    });
+  });
+
+  test("连续 MCP 请求重置选中项和提交状态", async () => {
+    await withTempProject(async (cwd, storage) => {
+      const resources = createTestRuntimeResources(cwd);
+      const decisions: Array<string | undefined> = [];
+      const RuntimeBootstrap = createRuntimeBootstrap({createResources: async options => {
+        for (const serverName of ["first-server", "second-server"]) {
+          decisions.push(await options.requestMcpApproval?.({
+            projectPath: cwd, serverName, command: "bun", args: ["server.ts"], configHash: serverName,
+          }));
+        }
+        return resources;
+      }});
+      const instance = render(<RuntimeBootstrap shutdown={new InteractiveShutdown()}
+        configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      instance.stdin.write("\u001b[B");
+      await new Promise(resolve => setTimeout(resolve, 30));
+      instance.stdin.write("\r");
+      await new Promise(resolve => setTimeout(resolve, 30));
+      expect(instance.lastFrame()).toContain("second-server");
+      expect(instance.lastFrame()).toContain("❯ 1. Allow once");
+      instance.stdin.write("\r");
+      await new Promise(resolve => setTimeout(resolve, 30));
+      expect(decisions).toEqual(["always", "once"]);
+      expect(instance.lastFrame()).not.toContain("◆ MCP CONNECTION");
     });
   });
 

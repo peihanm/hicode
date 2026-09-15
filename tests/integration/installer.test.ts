@@ -1,4 +1,5 @@
 import {describe, expect, test} from "bun:test";
+import {createHash} from "node:crypto";
 import {chmod, mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {dirname, join} from "node:path";
@@ -21,32 +22,27 @@ async function fixture(run: (context: {
         await mkdir(join(source, "src"), {recursive: true});
         await writeFile(join(source, "src/index.tsx"), "");
         await writeFile(join(source, "bun.lock"), "");
-        await writeFile(join(source, "install.sh"), installer);
-        await writeFile(join(root, "downloaded.sh"), installer);
         const mocks: Record<string, string> = {
-            uname: 'printf "%s\\n" "${TEST_OS:-Darwin}"',
-            curl: 'echo "Unexpected network access" >&2; exit 98',
-            brew: 'printf "%s\\n" "$*" >> "$HOME/brew.log"; touch "$HOME/brew-installed"',
-            rg: 'exit 0',
-            git: `case "$1" in
-  --version) echo git-test ;;
-  clone)
-    target="\${@: -1}"
-    mkdir -p "$target/src" "$target/.git"
-    touch "$target/src/index.tsx" "$target/bun.lock"
-    echo clone >> "$HOME/git.log" ;;
-  -C) echo "\${TEST_ORIGIN:-https://github.com/peihanm/pillar-core.git}" ;;
-  *) exit 97 ;;
-esac`,
+            uname: 'if [[ "$1" == -m ]]; then echo "${TEST_ARCH:-arm64}"; else echo "${TEST_OS:-Darwin}"; fi',
+            curl: `[[ "\${TEST_ALLOW_DOWNLOAD:-0}" == 1 ]] || exit 98
+for arg in "$@"; do
+  case "$arg" in
+    https://registry.npmjs.org/@oven/*) package=bun ;;
+    https://registry.npmjs.org/@vscode/*) package=rg ;;
+    https://codeload.github.com/*) package=source ;;
+  esac
+done
+printf '%s\\n' "$package" >> "$HOME/download.log"
+cp "$TEST_ARCHIVES/$package.tgz" "\${@: -1}"
+if [[ "\${TEST_BAD_CHECKSUM:-0}" == 1 ]]; then printf corrupt >> "\${@: -1}"; fi`,
+            brew: 'echo "Unexpected Homebrew execution" >&2; exit 98',
+            git: 'echo "Unexpected Git execution" >&2; exit 98',
+            rg: '[[ "${TEST_MISSING_RG:-0}" != 1 || -f "$HOME/.local/share/pillar/bin/rg" ]]',
             bun: `case "$1" in
   --version)
-    if [[ "\${TEST_OLD_BUN:-0}" == 1 && ! -e "$HOME/brew-installed" ]]; then echo 1.2.0; else echo 1.3.14; fi ;;
+    if [[ "\${TEST_OLD_BUN:-0}" == 1 && ! -e "$HOME/.local/share/pillar/bin/bun" ]]; then echo 1.2.0; else echo 1.3.14; fi ;;
   install) [[ "\${TEST_INSTALL_FAIL:-0}" != 1 ]] ;;
-  link)
-    mkdir -p "$HOME/global bin"
-    printf '#!/bin/bash\\n[[ "$1" == --help ]]\\n' > "$HOME/global bin/pillar"
-    chmod +x "$HOME/global bin/pillar" ;;
-  pm) printf '%s\\n' "$HOME/global bin" ;;
+  */src/index.tsx) [[ "$2" == --help ]] ;;
   *) exit 97 ;;
 esac`,
         };
@@ -55,10 +51,35 @@ esac`,
             await writeFile(path, `#!/bin/bash\nset -eu\n${body}\n`);
             await chmod(path, 0o755);
         }
+        // Serve local archives through curl; use their real checksums to exercise verification.
+        const archives = join(root, "archives");
+        const packageDir = join(root, "payload/package/bin");
+        await mkdir(archives);
+        await mkdir(packageDir, {recursive: true});
+        let fixtureInstaller = installer;
+        for (const name of ["bun", "rg"]) {
+            const file = join(packageDir, name);
+            await writeFile(file, `#!/bin/bash\nset -eu\n${mocks[name]}\n`);
+            await chmod(file, 0o755);
+            const archive = join(archives, `${name}.tgz`);
+            const tar = Bun.spawn(["/usr/bin/tar", "-czf", archive, "-C", join(root, "payload"), `package/bin/${name}`]);
+            expect(await tar.exited).toBe(0);
+            const hash = createHash("sha512").update(await readFile(archive)).digest("hex");
+            fixtureInstaller = fixtureInstaller.replace(new RegExp(`${name}_checksum=[a-f0-9]+`, "g"), `${name}_checksum=${hash}`);
+        }
+        await writeFile(join(source, "install.sh"), fixtureInstaller);
+        await writeFile(join(root, "downloaded.sh"), fixtureInstaller);
+        const remote = join(root, "pillar-core-main");
+        await mkdir(join(remote, "src"), {recursive: true});
+        await writeFile(join(remote, "src/index.tsx"), "");
+        await writeFile(join(remote, "bun.lock"), "");
+        await writeFile(join(remote, "install.sh"), fixtureInstaller);
+        const tar = Bun.spawn(["/usr/bin/tar", "-czf", join(archives, "source.tgz"), "-C", root, "pillar-core-main"]);
+        expect(await tar.exited).toBe(0);
         await run({home, source, execute: async (overrides = {}, remote = false) => {
             const child = Bun.spawn(["/bin/bash", join(remote ? root : source, remote ? "downloaded.sh" : "install.sh")], {
                 cwd: root,
-                env: {HOME: home, SHELL: "/bin/zsh", PATH: `${bin}:/usr/bin:/bin`, BUN_INSTALL: root, ...overrides},
+                env: {HOME: home, SHELL: "/bin/zsh", PATH: `${bin}:/usr/bin:/bin`, BUN_INSTALL: root, TEST_ARCHIVES: archives, ...overrides},
                 stdout: "pipe", stderr: "pipe",
             });
             const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
@@ -84,9 +105,9 @@ describe("macOS installer (offline command fixtures)", () => {
             });
             const output = await new Response(child.stdout).text();
             expect(await child.exited).toBe(0);
-            expect(output.trim()).toBe(join(home, "global bin/pillar"));
+            expect(output.trim()).toBe(join(home, ".local/share/pillar/bin/pillar"));
         });
-    });
+    }, 20_000);
 
     test("honors ZDOTDIR and bash login configuration", async () => {
         await fixture(async ({home, execute}) => {
@@ -99,25 +120,40 @@ describe("macOS installer (offline command fixtures)", () => {
             expect(await readFile(join(home, ".bashrc"), "utf8")).toContain("# Pillar installer");
             expect(await Bun.file(join(home, ".bash_profile")).exists()).toBe(false);
         });
-    });
+    }, 20_000);
 
-    test("installs an outdated Bun through Homebrew", async () => {
+    test("installs an outdated Bun directly with checksum verification and no Homebrew", async () => {
         await fixture(async ({home, execute}) => {
-            expect(await execute({TEST_OLD_BUN: "1"})).toMatchObject({code: 0});
-            expect(await readFile(join(home, "brew.log"), "utf8")).toBe("install oven-sh/bun/bun\n");
+            expect(await execute({TEST_OLD_BUN: "1", TEST_ALLOW_DOWNLOAD: "1"})).toMatchObject({code: 0});
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("bun\n");
         });
-    });
+    }, 20_000);
 
-    test("downloaded installer clones once and refuses an unrelated destination", async () => {
+    test("downloads ripgrep for Intel when no working executable is available", async () => {
         await fixture(async ({home, execute}) => {
-            expect(await execute({}, true)).toMatchObject({code: 0});
-            expect(await execute({}, true)).toMatchObject({code: 0});
-            expect(await readFile(join(home, "git.log"), "utf8")).toBe("clone\n");
-            const result = await execute({TEST_ORIGIN: "https://example.com/other.git"}, true);
+            expect(await execute({TEST_ARCH: "x86_64", TEST_MISSING_RG: "1", TEST_ALLOW_DOWNLOAD: "1"})).toMatchObject({code: 0});
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("rg\n");
+        });
+    }, 20_000);
+
+    test("rejects corrupt binary downloads before installation or shell changes", async () => {
+        await fixture(async ({home, execute}) => {
+            const result = await execute({TEST_OLD_BUN: "1", TEST_ALLOW_DOWNLOAD: "1", TEST_BAD_CHECKSUM: "1"});
+            expect(result.code).not.toBe(0);
+            expect(await Bun.file(join(home, ".local/share/pillar/bin/bun")).exists()).toBe(false);
+            expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
+        });
+    }, 20_000);
+
+    test("downloads source without Git and preserves it on a repeated remote install", async () => {
+        await fixture(async ({home, execute}) => {
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            const result = await execute({}, true);
             expect(result.code).toBe(1);
-            expect(result.output).toContain("belongs to another repository");
+            expect(result.output).toContain("To repair that installation");
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("source\n");
         });
-    });
+    }, 20_000);
 
     test("does not overwrite an existing non-repository directory", async () => {
         await fixture(async ({home, execute}) => {
@@ -127,7 +163,7 @@ describe("macOS installer (offline command fixtures)", () => {
             expect((await execute({}, true)).code).toBe(1);
             expect(await readFile(target, "utf8")).toBe("user data");
         });
-    });
+    }, 20_000);
 
     test("failed dependency installation never reports success or edits shell config", async () => {
         await fixture(async ({home, execute}) => {
@@ -136,7 +172,7 @@ describe("macOS installer (offline command fixtures)", () => {
             expect(result.output).not.toContain("Pillar installed.");
             expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
         });
-    });
+    }, 20_000);
 
     test("rejects unsupported platforms before changing files", async () => {
         await fixture(async ({home, execute}) => {
@@ -145,5 +181,5 @@ describe("macOS installer (offline command fixtures)", () => {
             expect(result.output).toContain("Only macOS");
             expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
         });
-    });
+    }, 20_000);
 });
