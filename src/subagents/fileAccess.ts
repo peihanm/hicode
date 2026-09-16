@@ -29,17 +29,17 @@ async function ensureDirectory(path: string, create: boolean): Promise<boolean> 
     return true;
 }
 
-/** Validate the managed `.pillar/agents` suffix without following symlinks. */
+/** Validate the managed `.hicode/agents` suffix without following symlinks. */
 export async function ensureAgentDefinitionDirectory(
     directory: string,
     create = false
 ): Promise<boolean> {
-    const pillarDirectory = dirname(directory);
+    const hicodeDirectory = dirname(directory);
     if (create) {
-        await mkdir(dirname(pillarDirectory), {recursive: true, mode: 0o700});
+        await mkdir(dirname(hicodeDirectory), {recursive: true, mode: 0o700});
     }
-    const hasPillarDirectory = await ensureDirectory(pillarDirectory, create);
-    if (!hasPillarDirectory) return false;
+    const hasHiCodeDirectory = await ensureDirectory(hicodeDirectory, create);
+    if (!hasHiCodeDirectory) return false;
     return ensureDirectory(directory, create);
 }
 

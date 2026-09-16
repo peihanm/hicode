@@ -11,7 +11,7 @@ import {
 import {type AgentDefinitionScope, getAgentDefinitionDirectory,} from "./paths.js";
 import {serializeAgentDefinition} from "./serialize.js";
 import type {AgentDefinition} from "./types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {
     ensureAgentDefinitionDirectory,
     readAgentDefinitionFile,
@@ -106,7 +106,7 @@ async function writeExclusive(path: string, content: string): Promise<void> {
 }
 
 export function createAgentDefinitionStore(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): AgentDefinitionStore {
     const directory = (scope: AgentDefinitionScope) =>

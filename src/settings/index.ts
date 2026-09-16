@@ -1,13 +1,13 @@
-export {loadPillarSettings} from "./load.js";
-export {DEFAULT_MODEL, resolvePillarSettings} from "./resolve.js";
+export {loadHiCodeSettings} from "./load.js";
+export {DEFAULT_MODEL, resolveHiCodeSettings} from "./resolve.js";
 export {
     appendLocalPermissionAllowRule,
     appendLocalPermissionDirectory,
 } from "./permissionUpdate.js";
 export type {
-    LoadedPillarSettings,
+    LoadedHiCodeSettings,
     LoadedSettingsDocument,
-    ResolvedPillarSettings,
+    ResolvedHiCodeSettings,
     SettingsFileSource,
-    PillarSettingsFile,
+    HiCodeSettingsFile,
 } from "./types.js";

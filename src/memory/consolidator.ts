@@ -10,7 +10,7 @@ import { createCompactState } from "../context/state.js";
 import { createLLMCaller } from "../llm/index.js";
 import type { LLMCaller, LLMSourceConnection } from "../llm/types.js";
 import type { ModelTargetSettings } from "../settings/types.js";
-import { createPillarStorageLayout, ensurePrivateStorageDirectory, readPrivateStorageTextFile, writeFileAtomically, type PillarStorageLayout } from "../persistence/index.js";
+import { createHiCodeStorageLayout, ensurePrivateStorageDirectory, readPrivateStorageTextFile, writeFileAtomically, type HiCodeStorageLayout } from "../persistence/index.js";
 import { getMemoryWorkspacePaths, getMemoryWorkspacesDirectory, getProjectMemoryDirectory } from "../persistence/layout.js";
 import { EMPTY_PROJECT_INSTRUCTIONS } from "../prompt/instructions.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
@@ -34,7 +34,7 @@ export interface MemoryConsolidator {
 }
 interface ConsolidatorOptions {
     contextSettings: ContextSettings;
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     shellRunner: ShellRunnerLike;
     target: ModelTargetSettings;
@@ -78,7 +78,7 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
                     await writeFileAtomically(join(directory, "topics", `${topic.key}.md`), serializeDraftTopic({ key: topic.key, name: topic.name, description: topic.description, type: topic.type,
                         content: topic.content, sources: topic.sources }), 0o600);
                 // Private prompt logs and tool artifacts share the draft lifetime, including forgetting/cleanup.
-                const draftStorage = createPillarStorageLayout({ pillarHome: paths.runtime });
+                const draftStorage = createHiCodeStorageLayout({ hicodeHome: paths.runtime });
                 const ctx = createToolContext({ signal: input.signal, resources: {toolNames: tools.toolNames,
                         contextSettings: options.contextSettings, storage: draftStorage, cwd: directory, workspaceBoundary: directory, shellRunner: options.shellRunner,
                         fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.source,

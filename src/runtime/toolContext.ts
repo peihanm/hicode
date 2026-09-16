@@ -18,7 +18,7 @@ import {EMPTY_PROJECT_INSTRUCTIONS, type ProjectInstructions,} from "../prompt/i
 import type {HookSessionRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {
     createDirectoryAccessRuntime,
     type DirectoryAccessRuntimeLike,
@@ -32,7 +32,7 @@ export interface ToolContextResources {
     approvalReviewer?: ApprovalReviewer;
     reviewerModel?: ToolContext["reviewerModel"];
     fileCommits: FileCommitCoordinator;
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     workspaceBoundary?: string;
     model: string;

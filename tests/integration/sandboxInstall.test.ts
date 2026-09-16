@@ -14,7 +14,7 @@ import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
-const enabled = process.env.PILLAR_RUN_SANDBOX_INTEGRATION === "1" && process.platform === "darwin";
+const enabled = process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1" && process.platform === "darwin";
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
 test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权，敏感路径仍禁写", async () => {
@@ -22,13 +22,13 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
         const cwd = join(root, "workspace");
         const pkg = join(root, "package");
         await mkdir(cwd); await mkdir(pkg);
-        await writeFile(join(pkg, "package.json"), JSON.stringify({name: "pillar-install-fixture", version: "1.0.0", bin: {"pillar-fixture": "cli.js"}}));
+        await writeFile(join(pkg, "package.json"), JSON.stringify({name: "hicode-install-fixture", version: "1.0.0", bin: {"hicode-fixture": "cli.js"}}));
         await writeFile(join(pkg, "cli.js"), "#!/usr/bin/env node\nconsole.log('fixture');\n");
         const archive = join(root, "fixture.tgz");
         const tar = await runShellCommand({cwd: root, signal: new AbortController().signal,
             command: `tar -czf ${quote(archive)} package`});
         expect(tar.termination).toMatchObject({kind: "exit", code: 0});
-        await writeFile(join(cwd, "package.json"), JSON.stringify({name: "install-test", dependencies: {"pillar-install-fixture": `file:${archive}`}}));
+        await writeFile(join(cwd, "package.json"), JSON.stringify({name: "install-test", dependencies: {"hicode-install-fixture": `file:${archive}`}}));
         await writeFile(join(cwd, "source.ts"), "before");
         await writeFile(join(cwd, ".env"), "fixture=protected");
         // Real Seatbelt enforcement without starting network proxies; this fixture denies all networking.
@@ -52,7 +52,7 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
         await writeFile(npmConfig, ""); await writeFile(npmGlobalConfig, "");
         const runner = createShellRunner(sandbox, createChildProcessEnvironment({...testChildEnvironment.base,
             npm_config_userconfig: npmConfig, npm_config_globalconfig: npmGlobalConfig, npm_config_update_notifier: "false"}, []));
-        const ctx = createTestContext(cwd, {toolResultStore: createTestToolResultStore(cwd, "install", {pillarHome: storage.pillarHome}), shellRunner: runner, canUseTool: async () => {throw new Error("unexpected approval");}});
+        const ctx = createTestContext(cwd, {toolResultStore: createTestToolResultStore(cwd, "install", {hicodeHome: storage.hicodeHome}), shellRunner: runner, canUseTool: async () => {throw new Error("unexpected approval");}});
         try {
             const tools = createToolRuntime();
             expect((await tools.executeTool("write_file", JSON.stringify({path: "tracked.ts", content: "tracked"}), ctx, "write")).outcome).toBe("ok");
@@ -69,14 +69,14 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
             expect(npmInstall.outcome).toBe("ok");
             const npmCache = await realpath(getProjectNpmCacheDirectory(storage, cwd));
             expect((await runner.run({cwd, signal: ctx.signal, command: "npm config get cache"})).stdout.trim()).toBe(npmCache);
-            expect((await runner.run({cwd, signal: ctx.signal, command: "npx --offline pillar-fixture"})).stdout).toContain("fixture");
+            expect((await runner.run({cwd, signal: ctx.signal, command: "npx --offline hicode-fixture"})).stdout).toContain("fixture");
             const denied = await tools.executeTool("bash", JSON.stringify({command: "printf damaged > .env"}), ctx, "protected");
             expect(denied.outcome).toBe("failed");
             expect(await readFile(join(cwd, ".env"), "utf8")).toBe("fixture=protected");
             expect(await readFile(join(cwd, "source.ts"), "utf8")).toBe("before");
             expect(await Bun.file(join(cwd, "bun.lock")).exists()).toBe(true);
             expect(await Bun.file(join(cwd, "tracked.ts")).exists()).toBe(true);
-            expect(await Bun.file(join(cwd, "node_modules/pillar-install-fixture/package.json")).exists()).toBe(true);
+            expect(await Bun.file(join(cwd, "node_modules/hicode-install-fixture/package.json")).exists()).toBe(true);
         } finally {await sandbox.close();}
     });
 }, 20_000);

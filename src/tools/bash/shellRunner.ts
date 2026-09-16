@@ -111,7 +111,7 @@ export function createShellRunner(
                 } catch {
                 }
                 if (wrapped.networkDenials?.length) {
-                    stderr += `\nPillar Sandbox: network proxy denied ${wrapped.networkDenials.join(";")}.` +
+                    stderr += `\nHiCode Sandbox: network proxy denied ${wrapped.networkDenials.join(";")}.` +
                         "This is a local network permission restriction, not a remote service failure. Do not change sources or escalate to bypass a user denial.";
                 }
                 return {...result, stderr};

@@ -39,7 +39,7 @@ describe("Agents dialog", () => {
                 definitions: [],
                 issues: [{
                     source: "project",
-                    path: `${cwd}/.pillar/agents/broken.md`,
+                    path: `${cwd}/.hicode/agents/broken.md`,
                     severity: "error",
                     field: "tools",
                     message: "Tool does not exist in this Runtime: missing",

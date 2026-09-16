@@ -2,7 +2,7 @@ import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
 import {z} from "zod";
 
-const server = new McpServer({name: "pillar-many-tools", version: "1.0.0"});
+const server = new McpServer({name: "hicode-many-tools", version: "1.0.0"});
 const categories = [
     {name: "browser", description: "Navigate pages, inspect DOM and capture screenshots"},
     {name: "github", description: "Search repositories, issues and pull requests"},

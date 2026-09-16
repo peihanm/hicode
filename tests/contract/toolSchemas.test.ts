@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {Ajv} from "ajv";
 import {z} from "zod";
 import {createToolCatalog} from "../../src/tools/catalog.js";
-import {adaptPillarHostTools, definePillarTool} from "../../src/sdk/hostTools.js";
+import {adaptHiCodeHostTools, defineHiCodeTool} from "../../src/sdk/hostTools.js";
 
 describe("Function parameter JSON Schema", () => {
     test("所有内置工具满足 JSON Schema Draft 7 元规范", () => {
@@ -28,7 +28,7 @@ describe("Function parameter JSON Schema", () => {
     });
 
     test("SDK Zod 工具保留排他上界、下界和 nullable 语义", () => {
-        const tools = adaptPillarHostTools([definePillarTool({
+        const tools = adaptHiCodeHostTools([defineHiCodeTool({
             name: "host_bounded", description: "Bounded input", readOnly: true,
             parameters: z.object({value: z.number().gt(0).lt(1), note: z.string().nullable()}),
             execute() { return "ok"; },

@@ -31,7 +31,7 @@ export async function inspectEvalRun(
         verification: join(runDirectory, "verification.json"),
         diff: join(runDirectory, "diff.patch"),
         workspace: join(runDirectory, "workspace"),
-        pillarHome: join(runDirectory, "pillar-home"),
+        hicodeHome: join(runDirectory, "hicode-home"),
     };
     const issues: string[] = [];
     const manifest = validateRunArtifact(

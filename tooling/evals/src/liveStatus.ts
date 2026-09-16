@@ -1,4 +1,4 @@
-import type {InteractionRequest, ThreadEvent} from "pillar/sdk";
+import type {InteractionRequest, ThreadEvent} from "hicode/sdk";
 import type {EvalLiveStatus} from "./types.js";
 
 export function createEvalLiveStatus(nowMs: number): EvalLiveStatus {

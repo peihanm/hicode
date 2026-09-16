@@ -123,7 +123,7 @@ describe("ShellRunner", () => {
             });
 
             expect(result.stderr).toContain("listen EPERM");
-            expect(result.stderr).not.toContain("Pillar Sandbox:");
+            expect(result.stderr).not.toContain("HiCode Sandbox:");
         });
     });
 
@@ -144,7 +144,7 @@ describe("ShellRunner", () => {
             });
 
             expect(result.stderr).toContain("Immediate connect fail");
-            expect(result.stderr).not.toContain("Pillar Sandbox:");
+            expect(result.stderr).not.toContain("HiCode Sandbox:");
         });
     });
 

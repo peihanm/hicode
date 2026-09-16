@@ -1,7 +1,7 @@
 import type {
     ModelSourceSettings,
     ModelTargetSettings,
-    ResolvedPillarSettings,
+    ResolvedHiCodeSettings,
 } from "../settings/types.js";
 
 function nonEmpty(value: string | undefined): string | undefined {
@@ -27,7 +27,7 @@ export function sourceIsAvailable(
 
 /** Build the startup catalog from sources with configured API keys. */
 export function listConfiguredPrimaryModels(
-    sources: ResolvedPillarSettings["sources"],
+    sources: ResolvedHiCodeSettings["sources"],
     environment: NodeJS.ProcessEnv = process.env
 ): ModelTargetSettings[] {
     return Object.values(sources).flatMap((source) =>

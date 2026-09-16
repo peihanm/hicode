@@ -7,7 +7,7 @@
 // after system and before real user input.
 //
 // Injection policy:
-// - PILLAR.md: Root startup snapshot, same content each request.
+// - HICODE.md: Root startup snapshot, same content each request.
 // - currentDate: injected each request.
 // - Skill list: same bytes each request for a stable cache prefix.
 //

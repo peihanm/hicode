@@ -80,7 +80,7 @@ describe("Model dialog", () => {
             expect(nextContext?.model).toBe("deepseek-pro");
             expect(nextContext?.fastModel).toBe(explicitFast ? fastBefore : deepseek.model);
             expect(nextContext?.fastProvider).toBe(explicitFast ? settings.models.fast!.source : deepseek.source);
-            const saved = JSON.parse(await readFile(join(resources.storage.pillarHome, "settings.json"), "utf8"));
+            const saved = JSON.parse(await readFile(join(resources.storage.hicodeHome, "settings.json"), "utf8"));
             expect(saved.models.primary).toEqual({source: deepseek.source, model: deepseek.model});
             expect(nextContext?.contextSettings).toEqual(resources.settings.context);
         });

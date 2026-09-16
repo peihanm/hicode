@@ -49,8 +49,8 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
 
 async function initializeRepository(cwd: string): Promise<string> {
     await git(cwd, "init", "-q");
-    await git(cwd, "config", "user.name", "Pillar Test");
-    await git(cwd, "config", "user.email", "pillar-test@example.com");
+    await git(cwd, "config", "user.name", "HiCode Test");
+    await git(cwd, "config", "user.email", "hicode-test@example.com");
     return git(cwd, "branch", "--show-current");
 }
 
@@ -259,7 +259,7 @@ describe("Git repository snapshot", () => {
         await withTempProject(async (cwd) => {
             await initializeRepository(cwd);
             await commitFile(cwd, "base.txt", "base\n", "initial");
-            const worktree = join(cwd, ".pillar-test-worktree");
+            const worktree = join(cwd, ".hicode-test-worktree");
             await git(cwd, "worktree", "add", "-q", "-b", "worktree-test", worktree);
 
             const source = await snapshot(cwd);
@@ -334,13 +334,13 @@ describe("Git process", () => {
                 createChildProcessEnvironment({
                     ...process.env,
                     JENIYA_AUTH: "sensitive",
-                    PILLAR_VISIBLE_TEST_VALUE: "visible",
+                    HICODE_VISIBLE_TEST_VALUE: "visible",
                 }, ["JENIYA_AUTH"])
             );
             const result = await runRestrictedGit(cwd, [
                 "-c",
-                "alias.pillar-env=!printf '%s:%s' \"${JENIYA_AUTH-unset}\" \"${PILLAR_VISIBLE_TEST_VALUE-unset}\"",
-                "pillar-env",
+                "alias.hicode-env=!printf '%s:%s' \"${JENIYA_AUTH-unset}\" \"${HICODE_VISIBLE_TEST_VALUE-unset}\"",
+                "hicode-env",
             ]);
 
             expect(result.code).toBe(0);
@@ -354,8 +354,8 @@ describe("Git process", () => {
             const controller = new AbortController();
             const pending = runGitCommand(cwd, [
                 "-c",
-                "alias.pillar-wait=!sleep 10",
-                "pillar-wait",
+                "alias.hicode-wait=!sleep 10",
+                "hicode-wait",
             ], controller.signal);
             setTimeout(() => controller.abort("test"), 25);
             const result = await pending;

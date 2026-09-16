@@ -81,7 +81,7 @@ export function PermissionsDialog({
                 <Box marginTop={1} flexDirection="column">
                     <Text>Allow this session to access files and the network as the current OS account.</Text>
                     <Text color={COLORS.dim}>
-                        Commands will run outside Pillar sandbox isolation. OS permissions, MCP activation approval and Hook trust still apply.
+                        Commands will run outside HiCode sandbox isolation. OS permissions, MCP activation approval and Hook trust still apply.
                     </Text>
                 </Box>
                 <Box marginTop={1} flexDirection="column">

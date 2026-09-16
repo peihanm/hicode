@@ -4,7 +4,7 @@ import {join} from "node:path";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import {createPillarStorageLayout, getSessionStorageDirectory} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout, getSessionStorageDirectory} from "../../src/persistence/index.js";
 
 test("ordinary Agent progress is live-only while start, finish and notification remain durable", async () => {
     await withTempProject(async cwd => {
@@ -34,7 +34,7 @@ test("ordinary Agent progress is live-only while start, finish and notification 
                 description: "progress", prompt: "inspect", parentToolCallId: "start-progress"}});
             await completed;
             expect(progress).toBe(10);
-            const text = await readFile(join(getSessionStorageDirectory(createPillarStorageLayout({pillarHome: home}), cwd, ctx.sessionId), "tasks", "events.jsonl"), "utf8");
+            const text = await readFile(join(getSessionStorageDirectory(createHiCodeStorageLayout({hicodeHome: home}), cwd, ctx.sessionId), "tasks", "events.jsonl"), "utf8");
             expect(text).toContain('"type":"task_started"');
             expect(text).toContain('"type":"task_finished"');
             expect(text).not.toContain('"type":"task_progress"');

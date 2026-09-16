@@ -5,7 +5,7 @@ import {join} from "node:path";
 import {ProvidersDialog} from "../../src/ui/providers/ProvidersDialog.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
-import {resolvePillarSettings} from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/index.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {AppForTest} from "../helpers/AppForTest.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
@@ -17,7 +17,7 @@ async function until(check: () => boolean) {for (let i = 0; i < 100 && !check();
 
 test("provider form masks secrets, cancels without saving, then adds a model with an optional label", async () => {
     await withTempProject(async (cwd, storage) => {
-        const settings = resolvePillarSettings([]).values;
+        const settings = resolveHiCodeSettings([]).values;
         const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources);
         const config = createModelConfiguration(storage, cwd, runtime);
         const app = render(<ProvidersDialog runtime={runtime} configuration={config} onClose={() => {}}/>);
@@ -29,12 +29,12 @@ test("provider form masks secrets, cancels without saving, then adds a model wit
         expect(app.lastFrame()).toContain("•");
         expect(app.frames.join("\n")).not.toContain(secret);
         app.stdin.write("\u001b"); await tick();
-        await expect(readFile(join(storage.pillarHome, ".env"), "utf8")).rejects.toThrow();
+        await expect(readFile(join(storage.hicodeHome, ".env"), "utf8")).rejects.toThrow();
         app.stdin.write("\r"); await tick();
         app.stdin.write(secret); await tick();
         app.stdin.write("\r");
         await until(() => app.lastFrame()?.includes("Key saved") ?? false);
-        expect(await readFile(join(storage.pillarHome, ".env"), "utf8")).toContain(secret);
+        expect(await readFile(join(storage.hicodeHome, ".env"), "utf8")).toContain(secret);
         app.stdin.write("\u001b[B"); await tick();
         app.stdin.write("\u001b[B"); await tick();
         app.stdin.write("\r"); await tick();
@@ -45,7 +45,7 @@ test("provider form masks secrets, cancels without saving, then adds a model wit
         await until(() => app.lastFrame()?.includes("Saved. Available immediately.") ?? false);
         expect(runtime.available).toContainEqual({source: "glm", model: "custom-new-model", label: "custom-new-model"});
         expect(app.frames.join("\n")).not.toContain(secret);
-        expect(await readFile(join(storage.pillarHome, "settings.json"), "utf8")).not.toContain(secret);
+        expect(await readFile(join(storage.hicodeHome, "settings.json"), "utf8")).not.toContain(secret);
         app.unmount();
     });
 });
@@ -66,7 +66,7 @@ test("/providers is a local panel and never starts the model or a task timer", a
 
 test("remove-model picker confirms the exact ID, supports cancelling, and refreshes after deletion", async () => {
     await withTempProject(async (cwd, storage) => {
-        const settings = resolvePillarSettings([]).values;
+        const settings = resolveHiCodeSettings([]).values;
         const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources);
         const config = createModelConfiguration(storage, cwd, runtime);
         const id = runtime.sources.glm.models[0]!.id;

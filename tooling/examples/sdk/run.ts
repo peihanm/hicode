@@ -5,23 +5,23 @@ import {join, resolve} from "node:path";
 import {parseArgs} from "node:util";
 import {
     collectTurnResult,
-    loadPillarHostConfig,
-    Pillar,
-    PillarSDKError,
+    loadHiCodeHostConfig,
+    HiCode,
+    HiCodeSDKError,
     type InteractionRequest,
-    type ResolvedPillarSettings,
+    type ResolvedHiCodeSettings,
     type ThreadEvent,
     type TurnOptions,
     type TurnResult,
-} from "pillar/sdk";
+} from "hicode/sdk";
 
-type ModelSource = ResolvedPillarSettings["models"]["primary"]["source"];
+type ModelSource = ResolvedHiCodeSettings["models"]["primary"]["source"];
 type PermissionMode = NonNullable<TurnOptions["permissionMode"]>;
 type OutputFormat = "text" | "json";
 
 interface RunnerOptions {
     cwd: string;
-    pillarHome: string;
+    hicodeHome: string;
     prompt: string;
     envFile?: string;
     model?: string;
@@ -45,16 +45,16 @@ async function main(): Promise<void> {
             quiet: true,
         });
         if (loaded.error) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "env_load_failed",
                 `无法加载 env file: ${options.envFile}: ${loaded.error.message}`
             );
         }
     }
 
-    const hostConfig = loadPillarHostConfig({
+    const hostConfig = loadHiCodeHostConfig({
         cwd: options.cwd,
-        pillarHome: options.pillarHome,
+        hicodeHome: options.hicodeHome,
         fileSources: {
             settings: ["user", "project", "local"],
             instructions: ["project", "local"],
@@ -92,9 +92,9 @@ async function main(): Promise<void> {
     );
     timeout.unref?.();
 
-    let pillar: Pillar | undefined;
+    let hicode: HiCode | undefined;
     try {
-        pillar = await Pillar.create({
+        hicode = await HiCode.create({
             configuration: hostConfig.configuration,
             host: {
                 onInteraction: async (request) =>
@@ -107,8 +107,8 @@ async function main(): Promise<void> {
             },
         });
         const thread = options.resumeSessionId
-            ? await pillar.resumeThread(options.resumeSessionId)
-            : await pillar.startThread({
+            ? await hicode.resumeThread(options.resumeSessionId)
+            : await hicode.startThread({
                 permissionMode: options.permissionMode,
             });
         const streamed = await thread.runStreamed(options.prompt, {
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
         clearTimeout(timeout);
         process.removeListener("SIGINT", onSigint);
         process.removeListener("SIGTERM", onSigterm);
-        await pillar?.close();
+        await hicode?.close();
     }
 }
 
@@ -141,7 +141,7 @@ function parseRunnerOptions(args: string[]): RunnerOptions | undefined {
             help: {type: "boolean", short: "h"},
             prompt: {type: "string", short: "p"},
             cwd: {type: "string"},
-            "pillar-home": {type: "string"},
+            "hicode-home": {type: "string"},
             "env-file": {type: "string"},
             model: {type: "string"},
             source: {type: "string"},
@@ -160,8 +160,8 @@ function parseRunnerOptions(args: string[]): RunnerOptions | undefined {
     }
     const prompt = requireText(parsed.values.prompt, "--prompt");
     const cwd = resolve(parsed.values.cwd ?? process.cwd());
-    const pillarHome = resolve(
-        parsed.values["pillar-home"] ?? join(homedir(), ".pillar")
+    const hicodeHome = resolve(
+        parsed.values["hicode-home"] ?? join(homedir(), ".hicode")
     );
     const source = optionalModelSource(parsed.values.source);
     const permissionMode = optionalPermissionMode(
@@ -170,7 +170,7 @@ function parseRunnerOptions(args: string[]): RunnerOptions | undefined {
     const outputFormat = parseOutputFormat(parsed.values["output-format"]);
     return {
         cwd,
-        pillarHome,
+        hicodeHome,
         prompt,
         envFile: parsed.values["env-file"]
             ? resolve(parsed.values["env-file"])
@@ -198,7 +198,7 @@ function parseRunnerOptions(args: string[]): RunnerOptions | undefined {
 }
 
 function printHelp(): void {
-    process.stdout.write(`Pillar TypeScript SDK runner
+    process.stdout.write(`HiCode TypeScript SDK runner
 
 Usage:
   bun run sdk:run -- --prompt <text> [options]
@@ -206,7 +206,7 @@ Usage:
 Options:
   -p, --prompt <text>             Required prompt
       --cwd <path>                Workspace (default: process cwd)
-      --pillar-home <path>        Host data root (default: ~/.pillar)
+      --hicode-home <path>        Host data root (default: ~/.hicode)
       --env-file <path>           Explicit env file; values override current env
       --source <source>           glm | qwen | deepseek | openrouter
       --model <model>             Primary model override
@@ -280,7 +280,7 @@ function abortTurn(controller: AbortController, reason: string): void {
 
 function requireText(value: string | undefined, name: string): string {
     const text = value?.trim();
-    if (!text) throw new PillarSDKError("invalid_runner_option", `${name} 需要非空值`);
+    if (!text) throw new HiCodeSDKError("invalid_runner_option", `${name} 需要非空值`);
     return text;
 }
 
@@ -300,7 +300,7 @@ function optionalInteger(
     if (value === undefined) return undefined;
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_runner_option",
             `${name} 必须是 ${min}-${max} 的整数`
         );
@@ -318,7 +318,7 @@ function optionalModelSource(value: string | undefined): ModelSource | undefined
     ) {
         return value;
     }
-    throw new PillarSDKError(
+    throw new HiCodeSDKError(
         "invalid_runner_option",
         "--source 必须是 glm | qwen | deepseek | openrouter"
     );
@@ -335,7 +335,7 @@ function optionalPermissionMode(
     ) {
         return value;
     }
-    throw new PillarSDKError(
+    throw new HiCodeSDKError(
         "invalid_runner_option",
         "--permission-mode 必须是 ask | auto-review | full-access"
     );
@@ -344,7 +344,7 @@ function optionalPermissionMode(
 function parseOutputFormat(value: string | undefined): OutputFormat {
     if (value === undefined || value === "text") return "text";
     if (value === "json") return "json";
-    throw new PillarSDKError(
+    throw new HiCodeSDKError(
         "invalid_runner_option",
         "--output-format 必须是 text 或 json"
     );
@@ -358,7 +358,7 @@ function oneLine(value: string): string {
 }
 
 main().catch((error: unknown) => {
-    const code = error instanceof PillarSDKError ? error.code : "runner_error";
+    const code = error instanceof HiCodeSDKError ? error.code : "runner_error";
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`[${code}] ${message}\n`);
     process.exitCode = 1;

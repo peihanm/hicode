@@ -18,8 +18,8 @@ import {
   createAgentRuntime,
   type AgentRuntime,
 } from "../../src/runtime/agentRuntime.js";
-import type { ResolvedPillarSettings } from "../../src/settings/index.js";
-import { resolvePillarSettings } from "../../src/settings/index.js";
+import type { ResolvedHiCodeSettings } from "../../src/settings/index.js";
+import { resolveHiCodeSettings } from "../../src/settings/index.js";
 import {
   createAgentDefinitionManager,
   createAgentDefinitionStore,
@@ -43,16 +43,16 @@ import {createTestStorage} from "./tempProject.js";
 import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
 import {
   CLI_FILE_SOURCES,
-  createPillarRootConfiguration,
-  type PillarFileSources,
-  type PillarRootConfiguration,
-  type PillarRootContributions,
+  createHiCodeRootConfiguration,
+  type HiCodeFileSources,
+  type HiCodeRootConfiguration,
+  type HiCodeRootContributions,
 } from "../../src/runtime/rootConfiguration.js";
 
 export function createTestSettings(
-  overrides: Partial<ResolvedPillarSettings> = {}
-): ResolvedPillarSettings {
-  const defaultSources = resolvePillarSettings([]).values.sources;
+  overrides: Partial<ResolvedHiCodeSettings> = {}
+): ResolvedHiCodeSettings {
+  const defaultSources = resolveHiCodeSettings([]).values.sources;
   return {
     context: DEFAULT_CONTEXT_SETTINGS,
     sources: {
@@ -88,7 +88,7 @@ export function createTestSettings(
 
       filesystem: {
         denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
-        denyWrite: [".pillar", ".env"],
+        denyWrite: [".hicode", ".env"],
       },
       network: { allowedDomains: [], allowLocalBinding: true },
     },
@@ -98,11 +98,11 @@ export function createTestSettings(
 
 export function createTestRootConfiguration(
   cwd: string,
-  settings: ResolvedPillarSettings = createTestSettings(),
+  settings: ResolvedHiCodeSettings = createTestSettings(),
   storage = createTestStorage(cwd),
-  fileSources: PillarFileSources = CLI_FILE_SOURCES
-): PillarRootConfiguration {
-  return createPillarRootConfiguration({
+  fileSources: HiCodeFileSources = CLI_FILE_SOURCES
+): HiCodeRootConfiguration {
+  return createHiCodeRootConfiguration({
     allowFullAccess: true,
     cwd,
     workspaceBoundary: cwd,
@@ -287,11 +287,11 @@ interface RootRuntimeTestDependencies {
 export function createRootRuntimeResourcesForTest(
   options: Omit<CreateRootRuntimeResourcesOptions, "configuration"> & {
     cwd: string;
-    settings: ResolvedPillarSettings;
+    settings: ResolvedHiCodeSettings;
     storage?: RootRuntimeResources["storage"];
     workspaceBoundary?: string;
-    fileSources?: PillarFileSources;
-    rootContributions?: PillarRootContributions;
+    fileSources?: HiCodeFileSources;
+    rootContributions?: HiCodeRootContributions;
   },
   test: RootRuntimeTestDependencies = {}
 ) {
@@ -329,7 +329,7 @@ export function createRootRuntimeResourcesForTest(
     createHookRuntime: async () => createDisabledTestHookRuntime(),
     createSandboxRuntime: async () => createDisabledSandboxRuntime(),
   })({
-    configuration: createPillarRootConfiguration({
+    configuration: createHiCodeRootConfiguration({
       allowFullAccess: true,
       cwd: options.cwd,
       workspaceBoundary: options.workspaceBoundary ?? options.cwd,

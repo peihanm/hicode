@@ -3,7 +3,7 @@ import {appendFile, chmod, lstat, mkdir, readFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {
     getSessionStorageDirectory,
-    type PillarStorageLayout,
+    type HiCodeStorageLayout,
     withFileLock,
     writeFileAtomically,
 } from "../persistence/index.js";
@@ -40,7 +40,7 @@ export interface TaskJournalLike {
 }
 
 function journalPath(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sessionId: string
 ): string {
@@ -174,7 +174,7 @@ class TaskJournal implements TaskJournalLike {
     private readonly cache = new Map<string, CachedJournal>();
 
     constructor(
-        private readonly storage: PillarStorageLayout,
+        private readonly storage: HiCodeStorageLayout,
         private readonly cwd: string,
     ) {}
 
@@ -303,7 +303,7 @@ class TaskJournal implements TaskJournalLike {
 }
 
 export function createTaskJournal(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): TaskJournalLike {
     return new TaskJournal(storage, cwd);

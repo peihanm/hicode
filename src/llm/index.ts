@@ -16,7 +16,7 @@ import type {
     Message,
     OpenAITool,
 } from "./types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 
 const providers: Record<LLMProviderName, LLMProvider> = {
     glm: glmProvider,
@@ -36,7 +36,7 @@ export function createLLMCaller(
     return async function callConfiguredLLM(
         messages: Message[],
         tools: OpenAITool[],
-        storage: PillarStorageLayout,
+        storage: HiCodeStorageLayout,
         cwd: string,
         model: string,
         kind: LLMCallKind,

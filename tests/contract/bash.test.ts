@@ -70,7 +70,7 @@ function createTaskSession(
     })
   );
   const store = createTestToolResultStore(cwd, "test-session", {
-    pillarHome: join(cwd, ".pillar-test-results"),
+    hicodeHome: join(cwd, ".hicode-test-results"),
   });
   return {
     runtime,
@@ -500,7 +500,7 @@ describe("bash tool contract", () => {
         expect(result.modelContent).toContain("Status: failed");
         expect(result.modelContent).toContain("Termination: exit 1");
         expect(result.modelContent).toContain("listen EPERM");
-        expect(result.modelContent).not.toContain("Pillar Sandbox: 本地端口监听被");
+        expect(result.modelContent).not.toContain("HiCode Sandbox: 本地端口监听被");
         expect(await tasks.pendingNotifications()).toEqual([]);
       } finally {
         await runtime.close();
@@ -525,8 +525,8 @@ describe("bash tool contract", () => {
         );
         expect(started.outcome).toBe("ok");
         expect(started.modelContent).toContain("Ignored timeout_ms");
-        expect(contentText(started.modelContent).split("\n").slice(0, 3).join("\n")).toContain("terminates when Pillar exits");
-        expect(started.displayContent).toContain("terminates when Pillar exits");
+        expect(contentText(started.modelContent).split("\n").slice(0, 3).join("\n")).toContain("terminates when HiCode exits");
+        expect(started.displayContent).toContain("terminates when HiCode exits");
         const taskId = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
         expect(taskId).toBeDefined();
 
@@ -646,7 +646,7 @@ describe("bash tool contract", () => {
   test("命中 artifact cap 时保留 partial 结果并返回失败状态", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "capped-session", {
-        pillarHome: join(cwd, "store"),
+        hicodeHome: join(cwd, "store"),
         maxArtifactBytes: 1024,
       });
       const ctx = createTestContext(cwd, {

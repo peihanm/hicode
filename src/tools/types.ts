@@ -20,7 +20,7 @@ import type {MemoryFileAccess} from "../memory/types.js";
 import type {SessionArchiveAccess} from "../session/archiveAccess.js";
 import type {SessionCompaction} from "../session/archive.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js";
 import type {NetworkAccessSession} from "../permissions/networkAccess.js";
 import type {ApprovalBudget, ApprovalEpoch, ApprovalEvent, ApprovalReviewer} from "../permissions/approval.js";
@@ -52,7 +52,7 @@ export interface ToolContext {
     imageModelSupported?: boolean;
     imageAccess?: ImageAccess;
     /** Root Turn observes actual execute intervals, excluding permission and batch queues. */
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     // Cancellation signal for this Turn; create a fresh signal for each Turn.
     signal: AbortSignal;
 

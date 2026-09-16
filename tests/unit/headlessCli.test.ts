@@ -11,13 +11,13 @@ import { createTestSettings } from "../helpers/runtimeResources.js";
 import {createTestStorage} from "../helpers/tempProject.js";
 import {
   CLI_FILE_SOURCES,
-  createPillarRootConfiguration,
+  createHiCodeRootConfiguration,
 } from "../../src/runtime/rootConfiguration.js";
 
 function options(format: "text" | "json" = "json"): HeadlessOptions {
   const cwd = "/tmp/project";
   return {
-    configuration: createPillarRootConfiguration({
+    configuration: createHiCodeRootConfiguration({
       cwd,
       workspaceBoundary: "/",
       storage: createTestStorage(cwd),

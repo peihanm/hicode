@@ -24,7 +24,7 @@ describe("agent definition store", () => {
             const store = createAgentDefinitionStore(storage, cwd);
             const created = await store.create("project", draft());
             expect(created.path).toBe(
-                `${cwd}/.pillar/agents/project-reviewer.md`
+                `${cwd}/.hicode/agents/project-reviewer.md`
             );
             expect(await readFile(created.path, "utf8")).toBe(
                 serializeAgentDefinition(draft())
@@ -70,7 +70,7 @@ describe("agent definition store", () => {
                 ...draft(),
                 name: "Project-Reviewer",
             })).rejects.toThrow("Agent already exists in this scope");
-            expect((await readdir(`${cwd}/.pillar/agents`)).filter(
+            expect((await readdir(`${cwd}/.hicode/agents`)).filter(
                 (name) => name.endsWith(".md")
             )).toEqual(["project-reviewer.md"]);
         });
@@ -82,7 +82,7 @@ describe("agent definition store", () => {
             await store.create("project", draft());
             await Promise.all(Array.from({length: 63}, (_, index) =>
                 Bun.write(
-                    `${cwd}/.pillar/agents/fixture-${index}.md`,
+                    `${cwd}/.hicode/agents/fixture-${index}.md`,
                     "invalid fixture"
                 )
             ));
@@ -97,21 +97,21 @@ describe("agent definition store", () => {
         await withTempProject(async (cwd, storage) => {
             const store = createAgentDefinitionStore(storage, cwd);
             await Bun.write(`${cwd}/outside.md`, serializeAgentDefinition(draft()));
-            await Bun.$`mkdir -p ${cwd}/.pillar/agents`.quiet();
+            await Bun.$`mkdir -p ${cwd}/.hicode/agents`.quiet();
             await symlink(
                 `${cwd}/outside.md`,
-                `${cwd}/.pillar/agents/project-reviewer.md`
+                `${cwd}/.hicode/agents/project-reviewer.md`
             );
             await expect(store.read("project", "project-reviewer"))
                 .rejects.toThrow();
         });
     });
 
-    test("拒绝通过 symlink .pillar 目录写出项目", async () => {
+    test("拒绝通过 symlink .hicode 目录写出项目", async () => {
         await withTempProject(async (cwd, storage) => {
             const outside = `${cwd}/outside`;
             await mkdir(outside, {recursive: true});
-            await symlink(outside, `${cwd}/.pillar`);
+            await symlink(outside, `${cwd}/.hicode`);
             const store = createAgentDefinitionStore(storage, cwd);
 
             await expect(store.create("project", draft())).rejects.toThrow(

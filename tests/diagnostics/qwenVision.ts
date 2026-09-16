@@ -5,8 +5,8 @@ import {join, resolve} from "node:path";
 import {parse as parseEnv} from "dotenv";
 import {z} from "zod";
 import {loadEnv} from "../../src/cli/env.js";
-import {loadPillarSettings} from "../../src/settings/index.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {loadHiCodeSettings} from "../../src/settings/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {createQwenRequestFields} from "../../src/llm/providers/qwen.js";
 import {consumeOpenAICompatibleSSE} from "../../src/llm/providers/openAICompatibleStream.js";
 import type {OpenAITool, ToolCall} from "../../src/llm/types.js";
@@ -39,13 +39,13 @@ async function main(): Promise<void> {
     if (flag !== "--live" || !imagePath || !reportPath || (credentialMode !== undefined && credentialMode !== "--user-env")) {
         throw new Error("用法：bun tests/diagnostics/qwenVision.ts --live <PNG 路径> <结果 JSON 路径> [--user-env]；最多 5 次付费请求");
     }
-    loadEnv(createPillarStorageLayout(), process.cwd());
-    const storage = createPillarStorageLayout();
-    const settings = loadPillarSettings({cwd: process.cwd(), storage});
+    loadEnv(createHiCodeStorageLayout(), process.cwd());
+    const storage = createHiCodeStorageLayout();
+    const settings = loadHiCodeSettings({cwd: process.cwd(), storage});
     if (settings.issues.length) throw new Error("配置存在问题，停止探针；不打印可能敏感的配置内容");
     const source = settings.values.sources.qwen;
     const apiKey = credentialMode === "--user-env"
-        ? parseEnv(await readFile(join(storage.pillarHome, ".env"), "utf8"))[source.apiKeyEnv]
+        ? parseEnv(await readFile(join(storage.hicodeHome, ".env"), "utf8"))[source.apiKeyEnv]
         : process.env[source.apiKeyEnv];
     if (!apiKey) throw new Error("Qwen API key 未配置");
     const model = "qwen3.8-flash";

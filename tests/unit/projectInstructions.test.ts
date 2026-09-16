@@ -12,26 +12,26 @@ async function put(path: string, content: string): Promise<void> {
   await writeFile(path, content, "utf8");
 }
 
-describe("PILLAR.md project instructions", () => {
+describe("HICODE.md project instructions", () => {
   test("按用户、上层到 cwd、local 的顺序加载，且不兼容旧 CODE.md 或 CLAUDE.md", async () => {
     await withTempProject(async (root) => {
       const home = join(root, "home");
       const repo = join(root, "repo");
       const cwd = join(repo, "packages", "web");
       await mkdir(cwd, { recursive: true });
-      await put(join(home, ".pillar", "PILLAR.md"), "user-rule");
-      await put(join(repo, "PILLAR.md"), "repo-rule");
-      await put(join(repo, ".pillar", "PILLAR.md"), "repo-dot-rule");
-      await put(join(repo, "PILLAR.local.md"), "repo-local-rule");
-      await put(join(cwd, "PILLAR.md"), "web-rule");
-      await put(join(cwd, ".pillar", "PILLAR.md"), "web-dot-rule");
-      await put(join(cwd, "PILLAR.local.md"), "web-local-rule");
+      await put(join(home, ".hicode", "HICODE.md"), "user-rule");
+      await put(join(repo, "HICODE.md"), "repo-rule");
+      await put(join(repo, ".hicode", "HICODE.md"), "repo-dot-rule");
+      await put(join(repo, "HICODE.local.md"), "repo-local-rule");
+      await put(join(cwd, "HICODE.md"), "web-rule");
+      await put(join(cwd, ".hicode", "HICODE.md"), "web-dot-rule");
+      await put(join(cwd, "HICODE.local.md"), "web-local-rule");
       await put(join(cwd, "CODE.md"), "must-not-load-old-project");
       await put(join(cwd, "CODE.local.md"), "must-not-load-old-local");
       await put(join(cwd, "CLAUDE.md"), "must-not-load");
 
       const loaded = await createProjectInstructionLoader({
-        userPillarHome: join(home, ".pillar"),
+        userHiCodeHome: join(home, ".hicode"),
         sources: ["user", "project", "local"],
       })(cwd);
       expect(loaded.files.map((file) => file.content)).toEqual([
@@ -68,11 +68,11 @@ describe("PILLAR.md project instructions", () => {
       const repo = join(root, "repo");
       const cwd = join(repo, "app");
       await mkdir(cwd, { recursive: true });
-      await put(join(repo, "PILLAR.md"), "p".repeat(30));
-      await put(join(cwd, "PILLAR.local.md"), "L".repeat(20));
+      await put(join(repo, "HICODE.md"), "p".repeat(30));
+      await put(join(cwd, "HICODE.local.md"), "L".repeat(20));
 
       const loaded = await createProjectInstructionLoader({
-        userPillarHome: join(home, ".pillar"),
+        userHiCodeHome: join(home, ".hicode"),
         maxFileChars: 20,
         maxTotalChars: 25,
       })(cwd);
@@ -85,18 +85,18 @@ describe("PILLAR.md project instructions", () => {
     });
   });
 
-  test("显式 discovery boundary 不读取隔离目录外的 PILLAR.md", async () => {
+  test("显式 discovery boundary 不读取隔离目录外的 HICODE.md", async () => {
     await withTempProject(async (root) => {
       const home = join(root, "home");
       const outer = join(root, "outer");
       const boundary = join(outer, "isolated");
       const cwd = join(boundary, "packages", "web");
       await mkdir(cwd, {recursive: true});
-      await put(join(outer, "PILLAR.md"), "outer-uncommitted-rule");
-      await put(join(boundary, "PILLAR.md"), "isolated-rule");
+      await put(join(outer, "HICODE.md"), "outer-uncommitted-rule");
+      await put(join(boundary, "HICODE.md"), "isolated-rule");
 
       const loaded = await createProjectInstructionLoader({
-        userPillarHome: join(home, ".pillar"),
+        userHiCodeHome: join(home, ".hicode"),
       })(
         cwd,
         boundary
@@ -106,27 +106,27 @@ describe("PILLAR.md project instructions", () => {
     });
   });
 
-  test("拒绝通过符号链接加载 PILLAR.md", async () => {
+  test("拒绝通过符号链接加载 HICODE.md", async () => {
     await withTempProject(async (root) => {
       const home = join(root, "home");
       const cwd = join(root, "repo");
       const outside = join(root, "outside.md");
       await mkdir(cwd, {recursive: true});
       await writeFile(outside, "untrusted linked instructions");
-      await symlink(outside, join(cwd, "PILLAR.md"));
+      await symlink(outside, join(cwd, "HICODE.md"));
 
       const loaded = await createProjectInstructionLoader({
-        userPillarHome: join(home, ".pillar"),
+        userHiCodeHome: join(home, ".hicode"),
       })(cwd);
 
       expect(loaded.files).toEqual([]);
-      expect(loaded.issues.some((issue) => issue.includes("PILLAR.md"))).toBe(true);
+      expect(loaded.issues.some((issue) => issue.includes("HICODE.md"))).toBe(true);
     });
   });
 
   test("Host 指令最后注入且不伪造文件路径", async () => {
     await withTempProject(async (cwd) => {
-      await put(join(cwd, "PILLAR.md"), "project-rule");
+      await put(join(cwd, "HICODE.md"), "project-rule");
       const loaded = await createProjectInstructionLoader({
         sources: ["project"],
         hostInstructions: [{id: "sdk-policy", content: "host-rule"}],

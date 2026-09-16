@@ -106,7 +106,7 @@ test("定义变化重新批准、未变 once 不重跑、重载失败不半更�
 
 test("旧项目级批准拒绝读取且不自动清理", async () => {
     await withTempProject(async (_cwd, storage) => {
-        await mkdir(storage.pillarHome, {recursive: true});
+        await mkdir(storage.hicodeHome, {recursive: true});
         const path = getHookTrustPath(storage);
         const value = JSON.stringify({version: 1, projects: []});
         await writeFile(path, value);

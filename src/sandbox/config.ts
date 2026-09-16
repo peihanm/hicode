@@ -3,7 +3,7 @@ import {isAbsolute, resolve} from "node:path";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 import type {ResolvedSandboxSettings} from "./types.js";
 
-const MANDATORY_DENY_WRITE = [".git", ".pillar", ".env", ".env*", "**/.git", "**/.git/**", "**/.pillar", "**/.pillar/**", "**/.env*"];
+const MANDATORY_DENY_WRITE = [".git", ".hicode", ".env", ".env*", "**/.git", "**/.git/**", "**/.hicode", "**/.hicode/**", "**/.env*"];
 
 function resolveSandboxPath(cwd: string, configuredPath: string): string {
     if (configuredPath === "~") return homedir();

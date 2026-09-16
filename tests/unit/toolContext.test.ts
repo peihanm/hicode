@@ -44,7 +44,7 @@ describe("ToolContext builder", () => {
           sessionId: "session-live",
           compactState: createCompactState(), contextUsage: new ContextUsageTracker(),
           toolResultStore: createTestToolResultStore(cwd, "session-live", {
-            pillarHome: `${cwd}/results`,
+            hicodeHome: `${cwd}/results`,
           }),
         },
         host: {
@@ -95,7 +95,7 @@ describe("ToolContext builder", () => {
       }];
       const compactState = createCompactState();
       const toolResultStore = createTestToolResultStore(cwd, "shared-session", {
-        pillarHome: `${cwd}/results`,
+        hicodeHome: `${cwd}/results`,
       });
       const resources = {
         contextSettings: DEFAULT_CONTEXT_SETTINGS, toolNames: ["read_file"],

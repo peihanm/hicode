@@ -1,6 +1,6 @@
 import {existsSync, readdirSync, readFileSync, statSync} from "node:fs";
 import {join} from "node:path";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {LoadedSkill, SkillFileSource} from "./types.js";
 import {parseFrontmatter} from "./frontmatter.js";
 import {loadBundledSkills} from "./bundled.js";
@@ -12,13 +12,13 @@ export function loadSkills({
     sources,
     hostSkills = [],
 }: {
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     sources: readonly SkillFileSource[];
     hostSkills?: readonly HostSkillContribution[];
 }): LoadedSkill[] {
-    const userDir = join(storage.pillarHome, "skills");
-    const projectDir = join(cwd, ".pillar", "skills");
+    const userDir = join(storage.hicodeHome, "skills");
+    const projectDir = join(cwd, ".hicode", "skills");
 
     // A missing directory yields an empty list; absent user Skills are not errors.
     const userSkills = sources.includes("user")

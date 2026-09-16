@@ -9,14 +9,14 @@ import {compactHistoryForTest} from "../helpers/compact.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {assistantText, createFakeLLM} from "../helpers/fakeLLM.js";
 
-const source: LLMSourceConnection = {id:"qwen", label:"Qwen", apiKeyEnv:"PILLAR_REPLAY_TEST_KEY", baseUrl:"https://qwen.test/v1"};
+const source: LLMSourceConnection = {id:"qwen", label:"Qwen", apiKeyEnv:"HICODE_REPLAY_TEST_KEY", baseUrl:"https://qwen.test/v1"};
 const tools: OpenAITool[] = [{type:"function", function:{name:"read_file", description:"Read", parameters:{type:"object"}}}];
 const originalFetch = globalThis.fetch;
-const originalKey = process.env.PILLAR_REPLAY_TEST_KEY;
+const originalKey = process.env.HICODE_REPLAY_TEST_KEY;
 afterEach(() => {
     globalThis.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.PILLAR_REPLAY_TEST_KEY;
-    else process.env.PILLAR_REPLAY_TEST_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.HICODE_REPLAY_TEST_KEY;
+    else process.env.HICODE_REPLAY_TEST_KEY = originalKey;
 });
 
 function response(reasoning: string, tool: boolean) {
@@ -33,7 +33,7 @@ function response(reasoning: string, tool: boolean) {
 
 test.each(["qwen", "deepseek"] as const)("%s replays tool and text reasoning across Session restore and a follow-up", async id => {
     await withTempProject(async (cwd, storage) => {
-        process.env.PILLAR_REPLAY_TEST_KEY = "fixture-key";
+        process.env.HICODE_REPLAY_TEST_KEY = "fixture-key";
         const call = createLLMCaller({...source, id});
         const model = id === "qwen" ? "qwen3.8-flash" : "deepseek-flash";
         const longReasoning = "Compare candidate moves α\n".repeat(3000);
@@ -74,7 +74,7 @@ test.each(["qwen", "deepseek"] as const)("%s replays tool and text reasoning acr
 
 test("reasoning replay is scoped to source, endpoint and model without mutating History", async () => {
     await withTempProject(async (cwd, storage) => {
-        process.env.PILLAR_REPLAY_TEST_KEY = "fixture-key";
+        process.env.HICODE_REPLAY_TEST_KEY = "fixture-key";
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => response("original model reasoning", false)) as typeof fetch;
         const user: Message = {role:"user", origin:"user", content:"hello"};
         const first = await createLLMCaller(source)([user], tools, storage, cwd, "qwen3.8-flash", "main");

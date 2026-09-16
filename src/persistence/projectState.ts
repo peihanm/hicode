@@ -5,13 +5,13 @@ import {z} from "zod";
 import {ensurePrivateStorageDirectory,readPrivateStorageTextFile} from "./privateStorage.js";
 import {withFileLock} from "./fileLock.js";
 import {writeFileAtomically} from "./atomicFile.js";
-import {getProjectActivityDirectory,getProjectMaintenanceLockPath,getProjectIdentityPath,getSessionIdentityPath,type PillarStorageLayout} from "./layout.js";
+import {getProjectActivityDirectory,getProjectMaintenanceLockPath,getProjectIdentityPath,getSessionIdentityPath,type HiCodeStorageLayout} from "./layout.js";
 import {dirname} from "node:path";
 
 const identity=z.object({version:z.literal(1),cwd:z.string(),name:z.string(),createdAt:z.string().datetime()}).strict();
 const sessionIdentity=z.object({version:z.literal(1),cwd:z.string(),sessionId:z.string(),createdAt:z.string().datetime()}).strict();
 
-export async function ensureSessionIdentity(storage:PillarStorageLayout,cwd:string,sessionId:string):Promise<void>{
+export async function ensureSessionIdentity(storage:HiCodeStorageLayout,cwd:string,sessionId:string):Promise<void>{
     const path=getSessionIdentityPath(storage,cwd,sessionId);
     ensurePrivateStorageDirectory(storage,dirname(path));
     const previous=readPrivateStorageTextFile(storage,path,32*1024);
@@ -19,12 +19,12 @@ export async function ensureSessionIdentity(storage:PillarStorageLayout,cwd:stri
     await writeFileAtomically(path,JSON.stringify({version:1,cwd,sessionId,createdAt:new Date().toISOString()},null,2),0o600);
 }
 
-export function readSessionIdentity(storage:PillarStorageLayout,path:string){
+export function readSessionIdentity(storage:HiCodeStorageLayout,path:string){
     const raw=readPrivateStorageTextFile(storage,path,32*1024);
     return raw===null?undefined:sessionIdentity.parse(JSON.parse(raw));
 }
 
-export async function activeProjectProcesses(storage:PillarStorageLayout,cwd:string):Promise<number[]>{
+export async function activeProjectProcesses(storage:HiCodeStorageLayout,cwd:string):Promise<number[]>{
     const directory=getProjectActivityDirectory(storage,cwd);
     let files;
     try{const info=await lstat(directory);if(!info.isDirectory()||info.isSymbolicLink())throw new Error("Unsafe activity directory");files=await readdir(directory,{withFileTypes:true});}catch(error){if(error&&typeof error==="object"&&"code"in error&&error.code==="ENOENT")return [];throw error;}
@@ -40,7 +40,7 @@ export async function activeProjectProcesses(storage:PillarStorageLayout,cwd:str
 }
 
 /** Root holds an activity record until all background resources have stopped. */
-export async function acquireProjectActivity(storage:PillarStorageLayout,cwd:string):Promise<()=>Promise<void>>{
+export async function acquireProjectActivity(storage:HiCodeStorageLayout,cwd:string):Promise<()=>Promise<void>>{
     const canonical=await realpath(cwd);
     const marker=join(getProjectActivityDirectory(storage,cwd),`${process.pid}-${randomUUID()}.json`);
     ensurePrivateStorageDirectory(storage,dirname(getProjectIdentityPath(storage,cwd)));
@@ -57,7 +57,7 @@ export async function acquireProjectActivity(storage:PillarStorageLayout,cwd:str
     return async()=>{if(released)return;await unlink(marker).catch(error=>{if(error.code!=="ENOENT")throw error;});released=true;};
 }
 
-export function readProjectIdentity(storage:PillarStorageLayout,path:string){
+export function readProjectIdentity(storage:HiCodeStorageLayout,path:string){
     const raw=readPrivateStorageTextFile(storage,path,32*1024);
     return raw===null?undefined:identity.parse(JSON.parse(raw));
 }

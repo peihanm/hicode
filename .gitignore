@@ -1,10 +1,10 @@
 node_modules/
-.pillar/
+.hicode/
 .env
 .env.*
 !.env.sample
 .mcp.json
-PILLAR.local.md
+HICODE.local.md
 docs/
 AGENTS.md
 .idea/
@@ -12,3 +12,7 @@ AGENTS.md
 dist/
 coverage/
 *.log
+
+# Keep pre-rename local configuration out of Git.
+.pillar/
+PILLAR.local.md

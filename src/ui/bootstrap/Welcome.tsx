@@ -31,7 +31,7 @@ export function Welcome() {
             paddingY={1}
         >
             <Box width={innerWidth} justifyContent="space-between">
-                <Text color={COLORS.welcome} bold>◆ PILLAR</Text>
+                <Text color={COLORS.welcome} bold>◆ HICODE</Text>
                 {!compact && <Text color={COLORS.dim}>CODING AGENT</Text>}
             </Box>
 

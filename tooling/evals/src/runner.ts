@@ -2,15 +2,15 @@ import {config as loadEnvFile} from "dotenv";
 import {writeFile} from "node:fs/promises";
 import {
     collectTurnResult,
-    loadPillarHostConfig,
-    Pillar,
-    PillarSDKError,
+    loadHiCodeHostConfig,
+    HiCode,
+    HiCodeSDKError,
     type InteractionRequest,
     type InteractionResponse,
     type ThreadEvent,
     type ThreadInfo,
     type TurnResult,
-} from "pillar/sdk";
+} from "hicode/sdk";
 import {
     appendJsonLine,
     applyRetentionPolicy,
@@ -59,7 +59,7 @@ export async function runEvalCase(
         diagnostics: [],
         interactions: [],
     };
-    let pillar: Pillar | undefined;
+    let hicode: HiCode | undefined;
     let threadInfo: ThreadInfo | undefined;
     let result: TurnResult | undefined;
     let runError: {code: string; message: string} | undefined;
@@ -74,9 +74,9 @@ export async function runEvalCase(
     timeout.unref?.();
 
     try {
-        const hostConfig = loadPillarHostConfig({
+        const hostConfig = loadHiCodeHostConfig({
             cwd: prepared.paths.workspace,
-            pillarHome: prepared.paths.pillarHome,
+            hicodeHome: prepared.paths.hicodeHome,
             fileSources: {
                 settings: ["user", "project", "local"],
                 instructions: ["project", "local"],
@@ -96,7 +96,7 @@ export async function runEvalCase(
         resolvedSource =
             hostConfig.configuration.settings.models.primary.source;
         resolvedModel = hostConfig.configuration.settings.models.primary.model;
-        pillar = await Pillar.create({
+        hicode = await HiCode.create({
             configuration: hostConfig.configuration,
             host: {
                 onInteraction: async (request) => {
@@ -119,7 +119,7 @@ export async function runEvalCase(
                 },
             },
         });
-        const thread = await pillar.startThread({
+        const thread = await hicode.startThread({
             permissionMode: evalCase.permissionMode,
         });
         threadInfo = thread.getInfo();
@@ -141,7 +141,7 @@ export async function runEvalCase(
     } finally {
         clearTimeout(timeout);
         try {
-            await pillar?.close();
+            await hicode?.close();
         } catch (error) {
             runError ??= toErrorInfo(error, state.events);
         }
@@ -191,7 +191,7 @@ export async function runEvalCase(
     const passed = assertions.every((assertion) => assertion.passed);
     const finishedAt = new Date().toISOString();
     const sessionArtifacts = await locateSessionArtifacts(
-        prepared.paths.pillarHome
+        prepared.paths.hicodeHome
     );
     const transcript = createTranscript(
         evalCase.id,
@@ -353,7 +353,7 @@ function toErrorInfo(
 ): {code: string; message: string} {
     const failed = events.findLast((event) => event.type === "turn.failed");
     if (failed?.type === "turn.failed") return failed.error;
-    if (error instanceof PillarSDKError) {
+    if (error instanceof HiCodeSDKError) {
         return {code: error.code, message: error.message};
     }
     return {

@@ -6,7 +6,7 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
-import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type PillarStorageLayout} from "../persistence/layout.js";
+import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
 import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
 import {createSandboxRuntimeConfig} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
@@ -77,7 +77,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         private readonly networkApproval: SandboxNetworkApproval,
         private readonly bunCacheDirectory: string,
         private readonly npmCacheDirectory: string,
-        private readonly pillarHome: string
+        private readonly hicodeHome: string
     ) {}
 
     async wrapCommand(
@@ -114,8 +114,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             const part = relative(parent, path);
             return part === "" || (!isAbsolute(part) && part !== ".." && !part.startsWith("../") && !part.startsWith("..\\"));
         };
-        if (customConfig && writableRoots.some(root => within(root, this.pillarHome))) {
-            customConfig.filesystem.denyWrite = [...customConfig.filesystem.denyWrite, this.pillarHome];
+        if (customConfig && writableRoots.some(root => within(root, this.hicodeHome))) {
+            customConfig.filesystem.denyWrite = [...customConfig.filesystem.denyWrite, this.hicodeHome];
         }
         const approval = this.networkApproval.register(options?.networkAccess, signal);
         try {
@@ -157,7 +157,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
         writableRoots = [],
     }: {
         cwd: string;
-        storage: PillarStorageLayout;
+        storage: HiCodeStorageLayout;
         settings: ResolvedSandboxSettings;
         writableRoots?: readonly string[];
     }): Promise<SandboxRuntimeLike> {
@@ -201,7 +201,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             });
         }
 
-        const lease = Symbol("pillar-sandbox-lease");
+        const lease = Symbol("hicode-sandbox-lease");
         const networkApproval = new SandboxNetworkApproval();
         ownership = {kind: "owned", lease};
         let releasePromise: Promise<void> | undefined;
@@ -213,7 +213,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                     await backend.reset();
                     ownership = {kind: "idle"};
                 } catch (error) {
-                    ownership = {kind: "failed", reason: `Sandbox cleanup failed; restart Pillar: ${errorMessage(error)}`};
+                    ownership = {kind: "failed", reason: `Sandbox cleanup failed; restart HiCode: ${errorMessage(error)}`};
                     throw error;
                 }
             })();
@@ -241,7 +241,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 kind: "ready",
                 platform,
                 warnings: dependencies.warnings,
-            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.pillarHome));
+            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.hicodeHome));
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

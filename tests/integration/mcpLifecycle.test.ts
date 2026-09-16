@@ -35,7 +35,7 @@ test.each(["skip", "abort"])("授权 %s 不持久拒绝，下一次启动仍询�
             await initial.initialize();
             expect(initial.getTools()).toHaveLength(0);
             expect(initial.getSnapshots()[0]?.status).toBe("pending-approval");
-            expect(await getMcpApproval(join(storage.pillarHome, "mcp-approvals.json"), identity, "fixture")).toBe("pending");
+            expect(await getMcpApproval(join(storage.hicodeHome, "mcp-approvals.json"), identity, "fixture")).toBe("pending");
         } finally {await initial.closeAll();}
         let requests = 0;
         const restarted = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
@@ -55,7 +55,7 @@ test("永久拒绝明确显示，显式重连重新审查；跳过不清除拒�
         }}}));
         const loaded = await loadMcpConfig(storage, cwd, ["project"]);
         const identity = await createMcpApprovalIdentity(cwd, loaded.servers[0]!);
-        const approvalPath = join(storage.pillarHome, "mcp-approvals.json");
+        const approvalPath = join(storage.hicodeHome, "mcp-approvals.json");
         const denied = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
             requestApproval: async () => "deny"});
         try {
@@ -100,8 +100,8 @@ test("永久拒绝明确显示，显式重连重新审查；跳过不清除拒�
 
 test.each(["refresh", "disconnect", "invalid", "storm"])("真实 stdio 生命周期 %s 撤销旧能力、隔离其他服务、显式重连", async action => {
     await withTempProject(async (cwd, storage) => {
-        const path = join(storage.pillarHome, "mcp.json");
-        await mkdir(storage.pillarHome, {recursive: true});
+        const path = join(storage.hicodeHome, "mcp.json");
+        await mkdir(storage.hicodeHome, {recursive: true});
         const config = {type: "stdio", command: process.execPath,
             args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000};
         await writeFile(path, JSON.stringify({mcpServers: {first: config, second: config}}));
@@ -141,8 +141,8 @@ test.each(["refresh", "disconnect", "invalid", "storm"])("真实 stdio 生命周
 });
 
 test("重连重新批准修改后的配置，关闭不等待迟到的批准或复活进程", async () => withTempProject(async (cwd, storage) => {
-    const path = join(cwd, ".pillar", "mcp.json");
-    await mkdir(join(cwd, ".pillar"), {recursive: true});
+    const path = join(cwd, ".hicode", "mcp.json");
+    await mkdir(join(cwd, ".hicode"), {recursive: true});
     const config = {type: "stdio", command: process.execPath,
         args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000};
     await writeFile(path, JSON.stringify({mcpServers: {fixture: config}}));

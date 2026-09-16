@@ -6,10 +6,10 @@ import { ensurePrivateStorageDirectory } from "../persistence/index.js";
 import { getMemoryWorkspacePaths } from "../persistence/layout.js";
 import { createMemorySourceExtractor, type MemorySourceExtractor } from "./sourceExtractor.js";
 import type { AgentRunner } from "../agent/index.js";
-import type { ResolvedPillarSettings } from "../settings/index.js";
+import type { ResolvedHiCodeSettings } from "../settings/index.js";
 import type { ModelTargetSettings } from "../settings/types.js";
 import type { ShellRunnerLike } from "../tools/bash/shellRunner.js";
-import type { PillarStorageLayout } from "../persistence/index.js";
+import type { HiCodeStorageLayout } from "../persistence/index.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
 import { getMemoryInboxDirectory, getMemoryViewsDirectory } from "../persistence/layout.js";
 import { join } from "node:path";
@@ -55,7 +55,7 @@ class MemoryRuntime implements MemoryRuntimeLike {
     }> = [];
     private closed = false;
     readonly directory: string;
-    constructor(readonly enabled: boolean, readonly autoExtract: boolean, private readonly store: MemoryPublicationStore, private readonly createConsolidator: () => MemoryConsolidator, private readonly storage: PillarStorageLayout, private readonly cwd: string, private readonly createExtractor: (storage: PillarStorageLayout) => MemorySourceExtractor) { this.directory = store.directory; }
+    constructor(readonly enabled: boolean, readonly autoExtract: boolean, private readonly store: MemoryPublicationStore, private readonly createConsolidator: () => MemoryConsolidator, private readonly storage: HiCodeStorageLayout, private readonly cwd: string, private readonly createExtractor: (storage: HiCodeStorageLayout) => MemorySourceExtractor) { this.directory = store.directory; }
     private requireOpen(): void {
         if (!this.enabled)
             throw new Error("Memory is closed");
@@ -238,19 +238,19 @@ class MemoryRuntime implements MemoryRuntimeLike {
     async close(): Promise<void> { this.closed = true; }
 }
 interface MemoryRuntimeFactoryDependencies {
-    createStore(storage: PillarStorageLayout, cwd: string): MemoryPublicationStore;
+    createStore(storage: HiCodeStorageLayout, cwd: string): MemoryPublicationStore;
     createConsolidator: typeof createMemoryConsolidator;
     createExtractor: typeof createMemorySourceExtractor;
 }
 export function createMemoryRuntimeFactory(overrides: Partial<MemoryRuntimeFactoryDependencies> = {}) {
     return (options: {
-        storage: PillarStorageLayout;
+        storage: HiCodeStorageLayout;
         cwd: string;
         shellRunner: ShellRunnerLike;
-        settings: ResolvedPillarSettings["memory"];
-        contextSettings: ResolvedPillarSettings["context"];
+        settings: ResolvedHiCodeSettings["memory"];
+        contextSettings: ResolvedHiCodeSettings["context"];
         getModelTarget(): ModelTargetSettings;
-        getModelSource(source: ModelTargetSettings["source"]): ResolvedPillarSettings["sources"][ModelTargetSettings["source"]];
+        getModelSource(source: ModelTargetSettings["source"]): ResolvedHiCodeSettings["sources"][ModelTargetSettings["source"]];
     }): MemoryRuntimeLike => {
         const store = (overrides.createStore ?? ((storage, cwd) => new MemoryPublicationStore(storage, cwd)))(options.storage, options.cwd);
         return new MemoryRuntime(options.settings.enabled, options.settings.autoExtract, store, () => {

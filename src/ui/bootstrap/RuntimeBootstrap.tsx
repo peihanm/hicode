@@ -18,7 +18,7 @@ import {COLORS, SYMBOLS} from "../theme.js";
 import {HookApprovalDialog} from "./HookApprovalDialog.js";
 import {McpApprovalDialog} from "./McpApprovalDialog.js";
 import {Welcome} from "./Welcome.js";
-import type {PillarRootConfiguration} from "../../runtime/rootConfiguration.js";
+import type {HiCodeRootConfiguration} from "../../runtime/rootConfiguration.js";
 import {createUITurnSessionRuntime, type UITurnSessionRuntime,} from "../turn/sessionRuntime.js";
 
 interface PendingMcpApproval {
@@ -33,7 +33,7 @@ interface PendingHookApproval {
 
 interface RuntimeBootstrapProps {
     shutdown: InteractiveShutdown;
-    configuration: PillarRootConfiguration;
+    configuration: HiCodeRootConfiguration;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;
     initialImages?: readonly string[];

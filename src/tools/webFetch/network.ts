@@ -182,7 +182,7 @@ async function requestOnce(url: URL, signal: AbortSignal): Promise<WebFetchRespo
                 method: "GET",
                 headers: {
                     Accept: "text/markdown, text/html, text/plain, application/json, application/xml;q=0.9, */*;q=0.1",
-                    "User-Agent": "pillar-agent/0.1 web_fetch",
+                    "User-Agent": "hicode-agent/0.1 web_fetch",
                 },
                 lookup: createPinnedLookup(addresses),
                 signal,

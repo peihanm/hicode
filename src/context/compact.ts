@@ -11,7 +11,7 @@ import {findCompactTailStart} from "./compactTail.js";
 import {getUserContextBlocks} from "../prompt/attachments.js";
 import {buildInvokeMessages} from "../prompt/invokeMessages.js";
 import type {CompactState} from "./state.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {archiveIndexPath} from "../session/archiveAccess.js";
 import type {HandoffSources} from "./handoff.js";
 
@@ -43,7 +43,7 @@ type CompactSummaryGenerator = (input: {
     system: Extract<Message, { role: "system" }>;
     conversation: Message[];
     signal: AbortSignal;
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     model: string;
     customInstructions?: string;

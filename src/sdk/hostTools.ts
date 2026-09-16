@@ -5,9 +5,9 @@ import {schemaForTool} from "../tools/catalog.js";
 import {createToolRuntime} from "../tools/registry.js";
 import type {Tool} from "../tools/types.js";
 import {
-    PillarSDKError,
-    type PillarHostTool,
-    type PillarHostToolOutput,
+    HiCodeSDKError,
+    type HiCodeHostTool,
+    type HiCodeHostToolOutput,
 } from "./types.js";
 
 const MAX_HOST_TOOLS = 64;
@@ -25,14 +25,14 @@ const HOST_TOOL_KEYS = new Set([
     "execute",
 ]);
 
-export function definePillarTool<TInput>(
-    tool: PillarHostTool<TInput>
-): PillarHostTool<TInput> {
+export function defineHiCodeTool<TInput>(
+    tool: HiCodeHostTool<TInput>
+): HiCodeHostTool<TInput> {
     return tool;
 }
 
-export function adaptPillarHostTools(
-    input: readonly PillarHostTool[] | undefined
+export function adaptHiCodeHostTools(
+    input: readonly HiCodeHostTool[] | undefined
 ): readonly Tool[] {
     if (input === undefined) return [];
     if (!Array.isArray(input)) {
@@ -186,7 +186,7 @@ export function adaptPillarHostTools(
     return tools;
 }
 
-function normalizeOutput(name: string, output: PillarHostToolOutput): ToolOutput {
+function normalizeOutput(name: string, output: HiCodeHostToolOutput): ToolOutput {
     if (typeof output === "string") return output;
     if (!isRecord(output)) {
         throw new Error(`Host Tool ${name} must return a string or result object`);
@@ -223,8 +223,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function invalidTool(message: string, cause?: unknown): PillarSDKError {
-    return new PillarSDKError(
+function invalidTool(message: string, cause?: unknown): HiCodeSDKError {
+    return new HiCodeSDKError(
         "invalid_host_tool",
         message,
         cause === undefined ? undefined : {cause}

@@ -33,7 +33,7 @@ async function run(
 
 async function main(): Promise<void> {
     const temporaryRoot = await mkdtemp(
-        resolve(tmpdir(), "pillar-sdk-package-")
+        resolve(tmpdir(), "hicode-sdk-package-")
     );
     try {
         await run(
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
             "utf8"
         )) as Record<string, unknown>;
         if (
-            packageManifest.name !== "pillar-core-sdk" ||
+            packageManifest.name !== "hicode-core-sdk" ||
             packageManifest.private !== true ||
             "publishConfig" in packageManifest
         ) {
@@ -78,12 +78,12 @@ async function main(): Promise<void> {
         await writeFile(resolve(consumerDirectory, "package.json"), `${JSON.stringify({
             private: true,
             type: "module",
-            dependencies: {"pillar-core-sdk": `file:${tarball}`},
+            dependencies: {"hicode-core-sdk": `file:${tarball}`},
         }, null, 2)}\n`, "utf8");
         // Do not invoke an installer: Bun's --offline can still contact registries.
         // Only declared direct dependencies are linked, so missing external declarations fail.
         const modules = resolve(consumerDirectory, "node_modules");
-        const installedPackage = resolve(modules, "pillar-core-sdk");
+        const installedPackage = resolve(modules, "hicode-core-sdk");
         await mkdir(installedPackage, {recursive: true});
         await run(["tar", "-xzf", tarball, "-C", installedPackage, "--strip-components=1"], consumerDirectory);
         const dependencies: unknown = packageManifest.dependencies;
@@ -137,14 +137,14 @@ async function main(): Promise<void> {
         for (const runtime of ["node", process.execPath]) {
             const runtimeName = runtime === "node" ? "node" : "bun";
             const workspace = resolve(temporaryRoot, `${runtimeName}-workspace`);
-            const pillarHome = resolve(temporaryRoot, `${runtimeName}-home`);
+            const hicodeHome = resolve(temporaryRoot, `${runtimeName}-home`);
             await mkdir(workspace, {recursive: true});
-            await mkdir(pillarHome, {recursive: true});
+            await mkdir(hicodeHome, {recursive: true});
             const output = await run([
                 runtime,
                 resolve(consumerDirectory, "consumer.mjs"),
                 workspace,
-                pillarHome,
+                hicodeHome,
             ], consumerDirectory);
             if (!output.includes(`SDK_PACKAGE_RUN_OK:${runtimeName}`)) {
                 throw new Error(`${runtimeName} SDK smoke 缺少成功标记: ${output}`);

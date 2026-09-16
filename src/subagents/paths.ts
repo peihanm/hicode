@@ -1,14 +1,14 @@
 import {join} from "node:path";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 
 export type AgentDefinitionScope = "user" | "project";
 
 export function getAgentDefinitionDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     scope: AgentDefinitionScope
 ): string {
     return scope === "project"
-        ? join(cwd, ".pillar", "agents")
-        : join(storage.pillarHome, "agents");
+        ? join(cwd, ".hicode", "agents")
+        : join(storage.hicodeHome, "agents");
 }

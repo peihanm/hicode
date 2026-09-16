@@ -5,19 +5,19 @@ import {createSessionPersistence, loadSession} from "../../src/session/storage.j
 import {decodeSessionContentBlock} from "../../src/session/codec.js";
 import {estimateMessageTokens} from "../../src/context/tokens.js";
 import {getModelInputBudget} from "../../src/context/window.js";
-import {resolvePillarSettings} from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/index.js";
 import {listConfiguredPrimaryModels} from "../../src/llm/modelCatalog.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 const model = "nvidia/nemotron-3-super-120b-a12b:free";
-const source: LLMSourceConnection = {id: "openrouter", label: "OpenRouter", apiKeyEnv: "PILLAR_OPENROUTER_TEST_KEY"};
+const source: LLMSourceConnection = {id: "openrouter", label: "OpenRouter", apiKeyEnv: "HICODE_OPENROUTER_TEST_KEY"};
 const tools: OpenAITool[] = [{type: "function", function: {name: "add_integers", description: "Add", parameters: {type: "object"}}}];
 const originalFetch = globalThis.fetch;
-const originalKey = process.env.PILLAR_OPENROUTER_TEST_KEY;
+const originalKey = process.env.HICODE_OPENROUTER_TEST_KEY;
 afterEach(() => {
     globalThis.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.PILLAR_OPENROUTER_TEST_KEY;
-    else process.env.PILLAR_OPENROUTER_TEST_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.HICODE_OPENROUTER_TEST_KEY;
+    else process.env.HICODE_OPENROUTER_TEST_KEY = originalKey;
 });
 function sse(chunks: unknown[]) {
     const text = ": OPENROUTER PROCESSING\n\n" + chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n";
@@ -30,7 +30,7 @@ function sse(chunks: unknown[]) {
 }
 
 test("OpenRouter catalog uses its own credential and the free model's actual context budget", () => {
-    const settings = resolvePillarSettings([], {source: "openrouter", model}).values;
+    const settings = resolveHiCodeSettings([], {source: "openrouter", model}).values;
     expect(settings.sources.openrouter.apiKeyEnv).toBe("OPENROUTER_API_KEY");
     expect(settings.models.primary).toMatchObject({source: "openrouter", model});
     expect(listConfiguredPrimaryModels(settings.sources, {OPENROUTER_API_KEY: "fixture"})).toEqual([
@@ -42,7 +42,7 @@ test("OpenRouter catalog uses its own credential and the free model's actual con
 
 test("streamed tool arguments and exact reasoning fragments survive restore and replay only to the same target", async () => {
     await withTempProject(async (cwd, storage) => {
-        process.env.PILLAR_OPENROUTER_TEST_KEY = "fixture-openrouter-key";
+        process.env.HICODE_OPENROUTER_TEST_KEY = "fixture-openrouter-key";
         const details = [
             {type: "reasoning.text", text: "先算", index: 0, format: "unknown", signature: null},
             {type: "reasoning.text", text: "加法", index: 0, format: "unknown", signature: "signed"},
@@ -101,7 +101,7 @@ test("streamed tool arguments and exact reasoning fragments survive restore and 
 
 test("details-only replies persist; malformed details and HTTP-200 provider errors fail without exposing secrets", async () => {
     await withTempProject(async (cwd, storage) => {
-        process.env.PILLAR_OPENROUTER_TEST_KEY = "fixture-openrouter-secret";
+        process.env.HICODE_OPENROUTER_TEST_KEY = "fixture-openrouter-secret";
         const call = createLLMCaller(source);
         const user: Message = {role: "user", origin: "user", content: "Hi"};
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => sse([{choices: [{delta: {reasoning_details: [{type: "reasoning.encrypted", data: "opaque"}], content: "Hi"}, finish_reason: "stop"}]}])) as typeof fetch;

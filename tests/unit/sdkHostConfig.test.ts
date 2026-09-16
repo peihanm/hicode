@@ -2,11 +2,11 @@ import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {
-    loadPillarHostConfig,
-    PillarSDKError,
+    loadHiCodeHostConfig,
+    HiCodeSDKError,
 } from "../../src/sdk/index.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import type {PillarSettingsFile} from "../../src/settings/index.js";
+import type {HiCodeSettingsFile} from "../../src/settings/index.js";
 
 const FILE_SOURCES = {
     settings: ["user", "project", "local"],
@@ -17,14 +17,14 @@ const FILE_SOURCES = {
 } as const;
 
 describe("SDK Host config", () => {
-    test("从 Host 注入的 Pillar Home 加载用户 Settings 并合并项目层级", async () => {
+    test("从 Host 注入的 HiCode Home 加载用户 Settings 并合并项目层级", async () => {
         await withTempProject(async (cwd) => {
-            const pillarHome = join(cwd, "host-data");
-            const projectSettings = join(cwd, ".pillar");
-            await mkdir(pillarHome, {recursive: true});
+            const hicodeHome = join(cwd, "host-data");
+            const projectSettings = join(cwd, ".hicode");
+            await mkdir(hicodeHome, {recursive: true});
             await mkdir(projectSettings, {recursive: true});
             await writeFile(
-                join(pillarHome, "settings.json"),
+                join(hicodeHome, "settings.json"),
                 JSON.stringify({
                     sources: {
                         qwen: {
@@ -45,9 +45,9 @@ describe("SDK Host config", () => {
                 JSON.stringify({memory: {enabled: false}})
             );
 
-            const loaded = loadPillarHostConfig({
+            const loaded = loadHiCodeHostConfig({
                 cwd,
-                pillarHome,
+                hicodeHome,
                 fileSources: FILE_SOURCES,
                 settingsOverrides: {
                     models: {
@@ -57,7 +57,7 @@ describe("SDK Host config", () => {
             });
 
             expect(loaded.configuration.cwd).toBe(cwd);
-            expect(loaded.configuration.storage.pillarHome).toBe(pillarHome);
+            expect(loaded.configuration.storage.hicodeHome).toBe(hicodeHome);
             expect(loaded.configuration.settings.models.primary).toEqual({
                 source: "qwen",
                 model: "host-qwen",
@@ -75,36 +75,36 @@ describe("SDK Host config", () => {
 
     test("损坏的 Host Settings fail closed 并抛出类型化错误", async () => {
         await withTempProject(async (cwd) => {
-            const pillarHome = join(cwd, "host-data");
-            await mkdir(pillarHome, {recursive: true});
-            await writeFile(join(pillarHome, "settings.json"), "{broken-json");
+            const hicodeHome = join(cwd, "host-data");
+            await mkdir(hicodeHome, {recursive: true});
+            await writeFile(join(hicodeHome, "settings.json"), "{broken-json");
 
-            expect(() => loadPillarHostConfig({
+            expect(() => loadHiCodeHostConfig({
                 cwd,
-                pillarHome,
+                hicodeHome,
                 fileSources: FILE_SOURCES,
             })).toThrow(
-                PillarSDKError
+                HiCodeSDKError
             );
             try {
-                loadPillarHostConfig({cwd, pillarHome, fileSources: FILE_SOURCES});
-                throw new Error("expected loadPillarHostConfig to throw");
+                loadHiCodeHostConfig({cwd, hicodeHome, fileSources: FILE_SOURCES});
+                throw new Error("expected loadHiCodeHostConfig to throw");
             } catch (error) {
-                expect(error).toBeInstanceOf(PillarSDKError);
-                if (!(error instanceof PillarSDKError)) return;
+                expect(error).toBeInstanceOf(HiCodeSDKError);
+                if (!(error instanceof HiCodeSDKError)) return;
                 expect(error.code).toBe("invalid_settings");
                 expect(error.message).toContain("Failed to parse Settings JSON");
             }
         });
     });
 
-    test("模型解析失败和相对 Pillar Home 都使用稳定 SDK 错误码", async () => {
+    test("模型解析失败和相对 HiCode Home 都使用稳定 SDK 错误码", async () => {
         await withTempProject(async (cwd) => {
             expectSDKErrorCode(
                 () =>
-                loadPillarHostConfig({
+                loadHiCodeHostConfig({
                     cwd,
-                    pillarHome: join(cwd, "host-data"),
+                    hicodeHome: join(cwd, "host-data"),
                     fileSources: FILE_SOURCES,
                     settingsOverrides: {
                         models: {
@@ -115,17 +115,17 @@ describe("SDK Host config", () => {
                 "invalid_settings"
             );
             expectSDKErrorCode(
-                () => loadPillarHostConfig({
+                () => loadHiCodeHostConfig({
                     cwd,
-                    pillarHome: "relative-home",
+                    hicodeHome: "relative-home",
                     fileSources: FILE_SOURCES,
                 }),
-                "invalid_pillar_home"
+                "invalid_hicode_home"
             );
             expectSDKErrorCode(
-                () => loadPillarHostConfig({
+                () => loadHiCodeHostConfig({
                     cwd: "relative-workspace",
-                    pillarHome: join(cwd, "host-data"),
+                    hicodeHome: join(cwd, "host-data"),
                     fileSources: FILE_SOURCES,
                 }),
                 "invalid_cwd"
@@ -135,13 +135,13 @@ describe("SDK Host config", () => {
 
     test("未选择的 Settings 来源不会被读取", async () => {
         await withTempProject(async (cwd) => {
-            const pillarHome = join(cwd, "host-data");
-            await mkdir(pillarHome, {recursive: true});
-            await writeFile(join(pillarHome, "settings.json"), "{broken-json");
+            const hicodeHome = join(cwd, "host-data");
+            await mkdir(hicodeHome, {recursive: true});
+            await writeFile(join(hicodeHome, "settings.json"), "{broken-json");
 
-            const loaded = loadPillarHostConfig({
+            const loaded = loadHiCodeHostConfig({
                 cwd,
-                pillarHome,
+                hicodeHome,
                 fileSources: {
                     ...FILE_SOURCES,
                     settings: [],
@@ -158,12 +158,12 @@ describe("SDK Host config", () => {
 
     test("Settings 来源输入顺序不改变固定覆盖优先级", async () => {
         await withTempProject(async (cwd) => {
-            const pillarHome = join(cwd, "host-data");
-            const projectSettings = join(cwd, ".pillar");
-            await mkdir(pillarHome, {recursive: true});
+            const hicodeHome = join(cwd, "host-data");
+            const projectSettings = join(cwd, ".hicode");
+            await mkdir(hicodeHome, {recursive: true});
             await mkdir(projectSettings, {recursive: true});
             await writeFile(
-                join(pillarHome, "settings.json"),
+                join(hicodeHome, "settings.json"),
                 JSON.stringify({permissions: {defaultMode: "ask"}})
             );
             await writeFile(
@@ -173,9 +173,9 @@ describe("SDK Host config", () => {
                 })
             );
 
-            const loaded = loadPillarHostConfig({
+            const loaded = loadHiCodeHostConfig({
                 cwd,
-                pillarHome,
+                hicodeHome,
                 fileSources: {
                     ...FILE_SOURCES,
                     settings: ["local", "user"],
@@ -195,18 +195,18 @@ describe("SDK Host config", () => {
     test("workspace boundary 必须是包含 cwd 的绝对路径", async () => {
         await withTempProject(async (cwd) => {
             expectSDKErrorCode(
-                () => loadPillarHostConfig({
+                () => loadHiCodeHostConfig({
                     cwd,
-                    pillarHome: join(cwd, "host-data"),
+                    hicodeHome: join(cwd, "host-data"),
                     workspaceBoundary: "relative-boundary",
                     fileSources: FILE_SOURCES,
                 }),
                 "invalid_configuration"
             );
             expectSDKErrorCode(
-                () => loadPillarHostConfig({
+                () => loadHiCodeHostConfig({
                     cwd,
-                    pillarHome: join(cwd, "host-data"),
+                    hicodeHome: join(cwd, "host-data"),
                     workspaceBoundary: join(cwd, "nested"),
                     fileSources: FILE_SOURCES,
                 }),
@@ -217,9 +217,9 @@ describe("SDK Host config", () => {
 
     test("Host Settings 最高优先级合并并保留 host 来源", async () => {
         await withTempProject(async (cwd) => {
-            const pillarHome = join(cwd, "host-data");
+            const hicodeHome = join(cwd, "host-data");
             const context = {windowTokens: 1_000_000, autoCompactTokenLimit: 900_000};
-            const settingsOverrides: PillarSettingsFile = {
+            const settingsOverrides: HiCodeSettingsFile = {
                 context,
                 sources: {
                     qwen: {
@@ -231,9 +231,9 @@ describe("SDK Host config", () => {
                 },
                 permissions: {defaultMode: "ask"},
             };
-            const loaded = loadPillarHostConfig({
+            const loaded = loadHiCodeHostConfig({
                 cwd,
-                pillarHome,
+                hicodeHome,
                 fileSources: FILE_SOURCES,
                 settingsOverrides,
             });
@@ -255,13 +255,13 @@ describe("SDK Host config", () => {
     test("Host Settings 未知字段 fail closed", async () => {
         await withTempProject(async (cwd) => {
             expectSDKErrorCode(
-                () => loadPillarHostConfig({
+                () => loadHiCodeHostConfig({
                     cwd,
-                    pillarHome: join(cwd, "host-data"),
+                    hicodeHome: join(cwd, "host-data"),
                     fileSources: FILE_SOURCES,
                     settingsOverrides: {
                         memory: {enabled: true, typo: true},
-                    } as PillarSettingsFile,
+                    } as HiCodeSettingsFile,
                 }),
                 "invalid_settings"
             );
@@ -272,10 +272,10 @@ describe("SDK Host config", () => {
 function expectSDKErrorCode(run: () => unknown, code: string): void {
     try {
         run();
-        throw new Error(`expected PillarSDKError ${code}`);
+        throw new Error(`expected HiCodeSDKError ${code}`);
     } catch (error) {
-        expect(error).toBeInstanceOf(PillarSDKError);
-        if (!(error instanceof PillarSDKError)) return;
+        expect(error).toBeInstanceOf(HiCodeSDKError);
+        if (!(error instanceof HiCodeSDKError)) return;
         expect(error.code).toBe(code);
     }
 }

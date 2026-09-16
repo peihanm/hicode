@@ -1,24 +1,24 @@
-export {Pillar} from "./pillar.js";
-export {loadPillarHostConfig} from "./hostConfig.js";
+export {HiCode} from "./hicode.js";
+export {loadHiCodeHostConfig} from "./hostConfig.js";
 export {collectTurnResult} from "./resultCollector.js";
-export {definePillarTool} from "./hostTools.js";
-export {PillarSDKError} from "./types.js";
+export {defineHiCodeTool} from "./hostTools.js";
+export {HiCodeSDKError} from "./types.js";
 
 export type {
-    LoadedPillarHostConfig,
-    LoadPillarHostConfigOptions,
-    PillarHostSettingsIssue,
-    PillarHostSettingsOrigins,
+    LoadedHiCodeHostConfig,
+    LoadHiCodeHostConfigOptions,
+    HiCodeHostSettingsIssue,
+    HiCodeHostSettingsOrigins,
 } from "./hostConfig.js";
 
 export type {
     HostDiagnostic,
     InteractionContext,
-    PillarHost,
-    PillarHostTool,
-    PillarHostToolContext,
-    PillarHostToolOutput,
-    PillarOptions,
+    HiCodeHost,
+    HiCodeHostTool,
+    HiCodeHostToolContext,
+    HiCodeHostToolOutput,
+    HiCodeOptions,
     StartThreadOptions,
     StreamedTurn,
     Thread,
@@ -48,15 +48,15 @@ export type {
     Usage,
 } from "./protocol.js";
 
-export type {PillarStorageLayout} from "../persistence/index.js";
+export type {HiCodeStorageLayout} from "../persistence/index.js";
 export type {
-    PillarSettingsFile,
-    ResolvedPillarSettings,
+    HiCodeSettingsFile,
+    ResolvedHiCodeSettings,
 } from "../settings/index.js";
 export type {
-    PillarFileSources,
-    PillarRootConfiguration,
-    PillarRootContributions,
+    HiCodeFileSources,
+    HiCodeRootConfiguration,
+    HiCodeRootContributions,
     HostInstructionContribution,
     HostSkillContribution,
     HostAgentContribution,

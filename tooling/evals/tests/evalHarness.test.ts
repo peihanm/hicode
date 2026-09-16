@@ -25,7 +25,7 @@ import {runEvalVerification} from "../src/verifier.js";
 import {runEvalSuite, validateCaseIds} from "../src/suite.js";
 
 async function withTempDirectory<T>(run: (root: string) => Promise<T>): Promise<T> {
-    const root = await mkdtemp(join(tmpdir(), "pillar-eval-test-"));
+    const root = await mkdtemp(join(tmpdir(), "hicode-eval-test-"));
     try {
         return await run(root);
     } finally {
@@ -303,7 +303,7 @@ describe("SDK Eval Harness", () => {
             });
             const generatedSettings = JSON.parse(
                 await readFile(
-                    join(prepared.paths.pillarHome, "settings.json"),
+                    join(prepared.paths.hicodeHome, "settings.json"),
                     "utf8"
                 )
             ) as Record<string, unknown>;
@@ -365,7 +365,7 @@ describe("SDK Eval Harness", () => {
                     sources: {
                         qwen: {
                             apiKeyEnv:
-                                "PILLAR_EVAL_TEST_DELIBERATELY_MISSING_PROVIDER_KEY",
+                                "HICODE_EVAL_TEST_DELIBERATELY_MISSING_PROVIDER_KEY",
                             models: [
                                 {id: "qwen-eval-model", label: "Eval Model"},
                             ],
@@ -391,7 +391,7 @@ describe("SDK Eval Harness", () => {
             expect(report.error?.message).toContain("Missing");
             expect(report.retained).toEqual({
                 workspace: false,
-                pillarHome: false,
+                hicodeHome: false,
             });
             expect(await Bun.file(report.paths.report).exists()).toBe(true);
             expect(await Bun.file(report.paths.transcript).exists()).toBe(true);
@@ -409,7 +409,7 @@ describe("SDK Eval Harness", () => {
                     sources: {
                         qwen: {
                             apiKeyEnv:
-                                "PILLAR_EVAL_SUITE_DELIBERATELY_MISSING_KEY",
+                                "HICODE_EVAL_SUITE_DELIBERATELY_MISSING_KEY",
                             models: [
                                 {id: "qwen-suite-model", label: "Suite Model"},
                             ],

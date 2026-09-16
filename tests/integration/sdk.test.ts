@@ -8,7 +8,7 @@ import {createCompactState} from "../../src/context/index.js";
 import {createInitialHistory} from "../../src/prompt/index.js";
 import type {AgentRuntime} from "../../src/runtime/agentRuntime.js";
 import {createSessionId, loadSession} from "../../src/session/index.js";
-import {Pillar} from "../../src/sdk/index.js";
+import {HiCode} from "../../src/sdk/index.js";
 import {collectTurnResult} from "../../src/sdk/resultCollector.js";
 import {createSDKThread} from "../../src/sdk/thread.js";
 import type {ThreadEvent, InteractionRequest} from "../../src/sdk/protocol.js";
@@ -207,16 +207,16 @@ describe("TypeScript SDK", () => {
         });
     });
 
-    test("公开 Pillar 生命周期可以创建 Thread 并幂等关闭", async () => {
+    test("公开 HiCode 生命周期可以创建 Thread 并幂等关闭", async () => {
         await withTempProject(async (cwd, storage) => {
-            const pillar = await Pillar.create({
+            const hicode = await HiCode.create({
                 configuration: createTestRootConfiguration(
                     cwd,
                     createTestSettings(),
                     storage
                 ),
             });
-            const thread = await pillar.startThread({
+            const thread = await hicode.startThread({
                 permissionMode: "ask",
         collaborationMode: "build",
             });
@@ -228,15 +228,15 @@ describe("TypeScript SDK", () => {
         collaborationMode: "build",
                 resumed: false,
             });
-            await expect(pillar.startThread()).rejects.toMatchObject({
+            await expect(hicode.startThread()).rejects.toMatchObject({
                 code: "thread_already_open",
             });
 
             await thread.close();
-            const next = await pillar.startThread();
+            const next = await hicode.startThread();
             await next.close();
-            await pillar.close();
-            await pillar.close();
+            await hicode.close();
+            await hicode.close();
         });
     });
 
@@ -260,7 +260,7 @@ describe("TypeScript SDK", () => {
                     ...defaults.hooks,
                     SessionStart: [{
                         source: "project",
-                        path: join(cwd, ".pillar", "settings.json"),
+                        path: join(cwd, ".hicode", "settings.json"),
                         hooks: [{type: "command", purpose: "observe", command: "true"}],
                     }],
                 },
@@ -270,7 +270,7 @@ describe("TypeScript SDK", () => {
             let awaitingRoot!: () => void;
             const rootWaiting = new Promise<void>(resolve => {awaitingRoot = resolve;});
 
-            const pillar = await Pillar.create({
+            const hicode = await HiCode.create({
                 configuration: createTestRootConfiguration(
                     cwd,
                     settings,
@@ -288,7 +288,7 @@ describe("TypeScript SDK", () => {
                 },
             });
             try {
-                const thread = await pillar.startThread();
+                const thread = await hicode.startThread();
                 expect(interactionKinds).toEqual([
                     "mcp_approval",
                     "hook_trust",
@@ -300,18 +300,18 @@ describe("TypeScript SDK", () => {
                     }),
                 ]);
                 expect(interactionSignals.every(signal => signal.aborted)).toBe(true);
-                await pillar.reconnectMcpServer("sdk_fixture");
-                expect(pillar.getMcpServers()[0]?.status).toBe("connected");
+                await hicode.reconnectMcpServer("sdk_fixture");
+                expect(hicode.getMcpServers()[0]?.status).toBe("connected");
                 expect(interactionKinds).toEqual(["mcp_approval", "hook_trust", "mcp_approval"]);
                 await thread.close();
-                const reconnect = pillar.reconnectMcpServer("sdk_fixture");
+                const reconnect = hicode.reconnectMcpServer("sdk_fixture");
                 await rootWaiting;
-                await pillar.close();
+                await hicode.close();
                 await reconnect;
                 expect(interactionSignals[3]?.aborted).toBe(true);
-                expect(pillar.getMcpServers()[0]?.status).toBe("closed");
+                expect(hicode.getMcpServers()[0]?.status).toBe("closed");
             } finally {
-                await pillar.close();
+                await hicode.close();
             }
         });
     });

@@ -1,8 +1,8 @@
 import {join} from "node:path";
-import {getSessionStorageDirectory, hashProjectValue, type PillarStorageLayout,} from "../persistence/index.js";
+import {getSessionStorageDirectory, hashProjectValue, type HiCodeStorageLayout,} from "../persistence/index.js";
 
 export function getToolResultSessionDir(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sessionId: string
 ): string {

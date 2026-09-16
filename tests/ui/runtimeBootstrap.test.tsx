@@ -87,7 +87,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       await new Promise(resolve => setTimeout(resolve, 40));
       expect(instance.lastFrame()).toContain("❯");
       const approval = requestTrust!({projectPath: cwd, hooks: [{event: "Stop", hookId: "a".repeat(64),
-        purpose: "control", type: "command", command: "review", source: "project", path: `${cwd}/.pillar/settings.json`}]});
+        purpose: "control", type: "command", command: "review", source: "project", path: `${cwd}/.hicode/settings.json`}]});
       await new Promise(resolve => setTimeout(resolve, 40));
       expect(instance.lastFrame()).toContain("Stop · command: review");
       expect(sessionEnds).toBe(0);
@@ -201,14 +201,14 @@ describe("RuntimeBootstrap lifecycle", () => {
                 matcher: "bash",
                 command: "./hooks/check.sh",
                 source: "project",
-                path: `${cwd}/.pillar/settings.json`,
+                path: `${cwd}/.hicode/settings.json`,
               },
               {
                 event: "UserPromptSubmit", hookId: "b".repeat(64), purpose: "control",
                 type: "prompt",
                 prompt: "Reject requests for production secrets",
                 source: "project",
-                path: `${cwd}/.pillar/settings.json`,
+                path: `${cwd}/.hicode/settings.json`,
               },
             ],
           });

@@ -35,7 +35,7 @@ export interface HostAgentContribution {
     readonly maxIterations?: number;
 }
 
-export interface PillarRootContributions {
+export interface HiCodeRootContributions {
     readonly instructions?: readonly HostInstructionContribution[];
     readonly skills?: readonly HostSkillContribution[];
     readonly agents?: readonly HostAgentContribution[];
@@ -63,7 +63,7 @@ const agentSchema: z.ZodType<HostAgentContribution> = z.object({
     maxIterations: z.number().int().min(2).max(30).optional(),
 }).strict();
 
-const contributionsSchema: z.ZodType<PillarRootContributions> = z.object({
+const contributionsSchema: z.ZodType<HiCodeRootContributions> = z.object({
     instructions: z.array(instructionSchema).max(MAX_CONTRIBUTIONS_PER_DOMAIN).optional(),
     skills: z.array(skillSchema).max(MAX_CONTRIBUTIONS_PER_DOMAIN).optional(),
     agents: z.array(agentSchema).max(MAX_CONTRIBUTIONS_PER_DOMAIN).optional(),
@@ -72,9 +72,9 @@ const contributionsSchema: z.ZodType<PillarRootContributions> = z.object({
         .optional(),
 }).strict();
 
-export function normalizePillarRootContributions(
-    value: PillarRootContributions | undefined
-): PillarRootContributions {
+export function normalizeHiCodeRootContributions(
+    value: HiCodeRootContributions | undefined
+): HiCodeRootContributions {
     const parsed = contributionsSchema.safeParse(value ?? {});
     if (!parsed.success) {
         const problem = parsed.error.issues[0];

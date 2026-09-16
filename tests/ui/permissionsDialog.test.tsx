@@ -66,7 +66,7 @@ describe("PermissionsDialog", () => {
         await flush();
 
         expect(instance.lastFrame()).toContain("◆ Enable Full Access?");
-        expect(instance.lastFrame()).toContain("Commands will run outside Pillar sandbox isolation");
+        expect(instance.lastFrame()).toContain("Commands will run outside HiCode sandbox isolation");
         instance.stdin.write(ENTER);
         await flush();
         expect(onSelect).not.toHaveBeenCalled();

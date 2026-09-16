@@ -4,15 +4,15 @@ import {InteractiveShutdown, bindInteractiveSignals} from "./cli/interactiveShut
 import {Root} from "./ui/Root.js";
 import {type CliOptions, loadEnv, parseCliArgs, printHelp} from "./cli/index.js";
 import {runHeadlessFromCli} from "./headless/cli.js";
-import {loadPillarSettings, type LoadedPillarSettings} from "./settings/index.js";
+import {loadHiCodeSettings, type LoadedHiCodeSettings} from "./settings/index.js";
 import {createTerminalCursorOutput} from "./ui/input/terminalCursor.js";
 import {TerminalCursorAnchorProvider} from "./ui/input/terminalCursorContext.js";
 import {TerminalSizeProvider} from "./ui/terminalSize.js";
-import {createPillarStorageLayout} from "./persistence/index.js";
+import {createHiCodeStorageLayout} from "./persistence/index.js";
 import {parse} from "node:path";
 import {
     CLI_FILE_SOURCES,
-    createPillarRootConfiguration,
+    createHiCodeRootConfiguration,
 } from "./runtime/rootConfiguration.js";
 
 let cliOptions: CliOptions;
@@ -31,7 +31,7 @@ if (cliOptions.help) {
 
 if (cliOptions.storageAction) {
     try {
-        const storage=createPillarStorageLayout();
+        const storage=createHiCodeStorageLayout();
         const {inspectStorage,cleanStorage,listStoredProjects}=await import("./runtime/storageMaintenance.js");
         const {repairSessionIndex}=await import("./session/repair.js");
         const result=cliOptions.storageAction==="projects" ? await listStoredProjects(storage)
@@ -44,11 +44,11 @@ if (cliOptions.storageAction) {
 }
 
 const cwd = process.cwd();
-const storage = createPillarStorageLayout();
+const storage = createHiCodeStorageLayout();
 loadEnv(storage, cwd);
-let loadedSettings: LoadedPillarSettings;
+let loadedSettings: LoadedHiCodeSettings;
 try {
-    loadedSettings = loadPillarSettings({
+    loadedSettings = loadHiCodeSettings({
         storage,
         cwd,
         sources: CLI_FILE_SOURCES.settings,
@@ -71,7 +71,7 @@ for (const issue of loadedSettings.issues) {
     );
 }
 
-const configuration = createPillarRootConfiguration({
+const configuration = createHiCodeRootConfiguration({
     allowFullAccess: true,
     cwd,
     workspaceBoundary: parse(cwd).root,
@@ -120,7 +120,7 @@ if (cliOptions.printPrompt !== undefined) {
         await app.waitUntilExit();
     } finally {
         const timeout = setTimeout(() => {
-            process.stderr.write("Pillar shutdown cleanup timed out; terminating the process.\n");
+            process.stderr.write("HiCode shutdown cleanup timed out; terminating the process.\n");
             process.exit(process.exitCode || 1);
         }, 10_000);
         await shutdown.close();

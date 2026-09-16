@@ -35,7 +35,7 @@ export async function connectMcpServer(
         if (stderr.length >= MAX_STDERR_CHARS) return;
         stderr += String(chunk).slice(0, MAX_STDERR_CHARS - stderr.length);
     });
-    const client = new Client({name: "pillar", version: "0.1.0"});
+    const client = new Client({name: "hicode", version: "0.1.0"});
     let closed = false;
     let closing: Promise<void> | undefined;
     let connected: McpConnectedServer | undefined;

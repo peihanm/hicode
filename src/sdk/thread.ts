@@ -27,9 +27,9 @@ import type {
 } from "./protocol.js";
 import {collectTurnResult} from "./resultCollector.js";
 import {
-    PillarSDKError,
+    HiCodeSDKError,
     type HostDiagnostic,
-    type PillarHost,
+    type HiCodeHost,
     type StreamedTurn,
     type Thread,
     type ThreadInfo,
@@ -51,7 +51,7 @@ interface CreateSDKThreadOptions {
     seed: RootSessionSeed;
     state: SDKSessionState;
     resumed: boolean;
-    host?: PillarHost;
+    host?: HiCodeHost;
     signal?: AbortSignal;
     onClose(): void;
 }
@@ -77,7 +77,7 @@ export function createSDKThreadFactory(
     return async function createSDKThread(
         options: CreateSDKThreadOptions
     ): Promise<SessionThread> {
-        if (options.state.permissionMode === "full-access" && !options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
+        if (options.state.permissionMode === "full-access" && !options.resources.allowFullAccess) throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         const session = createRootSessionRuntime({
             resources: options.resources,
             seed: options.seed,
@@ -160,10 +160,10 @@ class SDKThreadImpl implements SessionThread {
         options: TurnOptions = {}
     ): Promise<StreamedTurn> {
         validateTurnOptions(options);
-        if (this.closed) throw new PillarSDKError("thread_closed", `Thread is closed: ${this.id}`);
-        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
+        if (this.closed) throw new HiCodeSDKError("thread_closed", `Thread is closed: ${this.id}`);
+        if (this.activeRun || this.preparing) throw new HiCodeSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
         let copied: TurnInput;
-        try {copied = snapshotTurnInput(input);} catch (error) {throw new PillarSDKError("invalid_input", error instanceof Error ? error.message : String(error));}
+        try {copied = snapshotTurnInput(input);} catch (error) {throw new HiCodeSDKError("invalid_input", error instanceof Error ? error.message : String(error));}
         if (typeof copied === "string") return {events: this.streamTurn(copied, options)};
         const resources = this.options.resources;
         const target = resources.primaryModel.target;
@@ -184,8 +184,8 @@ class SDKThreadImpl implements SessionThread {
 
     private async prepareImageInput(prepare: (signal: AbortSignal) => Promise<MessageContent>, options: TurnOptions): Promise<StreamedTurn> {
         validateTurnOptions(options);
-        if (this.closed) throw new PillarSDKError("thread_closed", `Thread is closed: ${this.id}`);
-        if (this.activeRun || this.preparing) throw new PillarSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
+        if (this.closed) throw new HiCodeSDKError("thread_closed", `Thread is closed: ${this.id}`);
+        if (this.activeRun || this.preparing) throw new HiCodeSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
         const controller = new AbortController();
         const unlink = linkAbortSignal(options.signal, controller);
         const settled = prepare(controller.signal);
@@ -193,10 +193,10 @@ class SDKThreadImpl implements SessionThread {
         this.preparing = preparing;
         try {
             const prompt = await settled;
-            if (this.closed || controller.signal.aborted) throw new PillarSDKError("interrupted", "Image input cancelled");
+            if (this.closed || controller.signal.aborted) throw new HiCodeSDKError("interrupted", "Image input cancelled");
             return {events: this.streamTurn(prompt, options)};
         } catch (error) {
-            throw new PillarSDKError(controller.signal.aborted ? "interrupted" : "invalid_image",
+            throw new HiCodeSDKError(controller.signal.aborted ? "interrupted" : "invalid_image",
                 controller.signal.aborted ? "Image input cancelled" : error instanceof Error ? error.message : String(error));
         } finally {unlink(); if (this.preparing === preparing) this.preparing = undefined;}
     }
@@ -211,13 +211,13 @@ class SDKThreadImpl implements SessionThread {
         turnOptions: TurnOptions
     ): AsyncGenerator<ThreadEvent> {
         if (this.closed) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "thread_closed",
                 `Thread is closed: ${this.id}`
             );
         }
         if (this.activeRun) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "thread_busy",
                 `Thread already has an active Turn: ${this.id}`
             );
@@ -294,7 +294,7 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
-        if ((turnOptions.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
+        if ((turnOptions.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         if (turnOptions.permissionMode !== undefined || turnOptions.collaborationMode !== undefined) this.options.session.invalidateApprovals();
         if (turnOptions.permissionMode !== undefined) {
             this.options.state.permissionMode = turnOptions.permissionMode;
@@ -530,7 +530,7 @@ function validateTurnOptions(options: TurnOptions): void {
         options.permissionMode !== undefined &&
         !isPermissionMode(options.permissionMode)
     ) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_permission_mode",
             `Invalid permissionMode: ${String(options.permissionMode)}`
         );
@@ -539,7 +539,7 @@ function validateTurnOptions(options: TurnOptions): void {
         options.collaborationMode !== undefined &&
         !isCollaborationMode(options.collaborationMode)
     ) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_collaboration_mode",
             `Invalid collaborationMode: ${String(options.collaborationMode)}`
         );
@@ -550,7 +550,7 @@ function validateTurnOptions(options: TurnOptions): void {
             options.maxIterations < 1 ||
             options.maxIterations > MAX_SDK_ITERATIONS)
     ) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_max_iterations",
             `maxIterations must be an integer from 1 to ${MAX_SDK_ITERATIONS} .`
         );
@@ -600,7 +600,7 @@ function toSDKErrorInfo(
     error: unknown,
     signal: AbortSignal
 ): {code: string; message: string} {
-    if (error instanceof PillarSDKError) {
+    if (error instanceof HiCodeSDKError) {
         return {code: error.code, message: error.message};
     }
     if (signal.aborted) {
@@ -614,7 +614,7 @@ function toSDKErrorInfo(
 }
 
 async function reportHookIssues(
-    host: PillarHost | undefined,
+    host: HiCodeHost | undefined,
     result: Parameters<typeof getHookExecutionIssues>[0]
 ): Promise<void> {
     for (const execution of result.executions) {

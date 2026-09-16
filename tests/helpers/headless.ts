@@ -23,11 +23,11 @@ import {
 } from "./subagent.js";
 import type { AgentRuntime } from "../../src/runtime/agentRuntime.js";
 import {createTestStorage} from "./tempProject.js";
-import type {ResolvedPillarSettings} from "../../src/settings/index.js";
-import type {PillarStorageLayout} from "../../src/persistence/index.js";
+import type {ResolvedHiCodeSettings} from "../../src/settings/index.js";
+import type {HiCodeStorageLayout} from "../../src/persistence/index.js";
 import {
   CLI_FILE_SOURCES,
-  createPillarRootConfiguration,
+  createHiCodeRootConfiguration,
 } from "../../src/runtime/rootConfiguration.js";
 import {parse} from "node:path";
 import {
@@ -51,8 +51,8 @@ interface HeadlessTestOptions {
 
 export type HeadlessTestInput = Omit<HeadlessOptions, "configuration"> & {
   cwd: string;
-  settings: ResolvedPillarSettings;
-  storage?: PillarStorageLayout;
+  settings: ResolvedHiCodeSettings;
+  storage?: HiCodeStorageLayout;
 };
 
 export function runHeadlessForTest(
@@ -120,7 +120,7 @@ export function runHeadlessForTest(
   });
 
   const storage = options.storage ?? createTestStorage(options.cwd);
-  const configuration = createPillarRootConfiguration({
+  const configuration = createHiCodeRootConfiguration({
     allowFullAccess: true,
     cwd: options.cwd,
     workspaceBoundary: parse(options.cwd).root,

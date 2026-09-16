@@ -44,7 +44,7 @@ test("Memory 整理复用真实标准工具和私有草稿目录，发布前不�
         expect(draft.summary).toBe("用户偏好简洁的文件结构。");
         expect(fake.calls).toHaveLength(5);
         expect(fake.calls.every(call => call.kind === "memory")).toBe(true);
-        expect(fake.calls.every(call => call.storage.pillarHome === storage.pillarHome)).toBe(true);
+        expect(fake.calls.every(call => call.storage.hicodeHome === storage.hicodeHome)).toBe(true);
         await expect(access(getMemoryWorkspacePaths(store.directory, job.lease.id).root)).rejects.toThrow();
         await store.publish(job.lease, draft.topics, draft.summary, signal);
         expect(store.snapshot().topics[0]!.content).toBe("文件结构保持简洁");

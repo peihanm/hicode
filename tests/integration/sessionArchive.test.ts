@@ -13,7 +13,7 @@ import {prepareSessionArchive, readArchiveMessages} from "../../src/session/arch
 
 import {SessionContentStore} from "../../src/session/contentStore.js";
 import {loadSession} from "../../src/session/storage.js";
-import {getSessionContentDirectory, type PillarStorageLayout} from "../../src/persistence/index.js";
+import {getSessionContentDirectory, type HiCodeStorageLayout} from "../../src/persistence/index.js";
 import {getSessionSnapshotPath} from "../../src/session/paths.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {Message} from "../../src/llm/types.js";
@@ -40,7 +40,7 @@ test("只有摘要 reminder 的候选也必须实际落盘，不能被普通快�
     });
 });
 
-function fixture(cwd: string, storage: PillarStorageLayout, id = "archive-session") {
+function fixture(cwd: string, storage: HiCodeStorageLayout, id = "archive-session") {
     const resources = createTestRuntimeResources(cwd, {storage, settings: createTestSettings({})});
     const history: Message[] = [{role: "system", content: "system"},
         {role: "user", origin: "user" as const, content: "决定：删除列必须明确选择，禁止默认丢弃\n" + "历史资料\n".repeat(2500)},

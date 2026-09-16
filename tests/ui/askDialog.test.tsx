@@ -74,7 +74,7 @@ test("AskDialog 无边框且长中文说明随终端宽度换行", async () => {
         await flush();
         const frame = instance.lastFrame() ?? "";
         expect(frame).not.toContain("│");
-        expect(frame).not.toContain("Pillar needs your input");
+        expect(frame).not.toContain("HiCode needs your input");
         expect(frame).not.toContain("Type something");
         expect(frame).toContain("❯ 1. 整页全白");
         expect(frame).toContain("Enter your own answer…");

@@ -7,7 +7,7 @@ afterEach(() => cleanup());
 describe("Welcome", () => {
   test("启动页用完整介绍框展示品牌、定位和入口", () => {
     const frame = render(<Welcome />).lastFrame() ?? "";
-    expect(frame).toContain("◆ PILLAR");
+    expect(frame).toContain("◆ HICODE");
     expect(frame).toContain("CODING AGENT");
     expect(frame).toContain("BUILD  /  INSPECT  /  FIX  /  VERIFY");
     expect(frame).toContain("From intent to verified code, inside your terminal.");

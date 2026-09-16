@@ -2,11 +2,11 @@ import {describe, expect, test} from "bun:test";
 import {createAgentDefinitionGenerator} from "../../src/subagents/authoring/generator.js";
 import {EMPTY_PROJECT_INSTRUCTIONS} from "../../src/prompt/instructions.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 
 function runtime(fake: ReturnType<typeof createFakeLLM>) {
     return createAgentDefinitionGenerator({callLLM: fake.callLLM})({
-        storage: createPillarStorageLayout({pillarHome: "/tmp/pillar-agent-authoring"}),
+        storage: createHiCodeStorageLayout({hicodeHome: "/tmp/hicode-agent-authoring"}),
         cwd: "/fixture",
         model: "glm-test",
         instructions: EMPTY_PROJECT_INSTRUCTIONS,

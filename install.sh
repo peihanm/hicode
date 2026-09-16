@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-fail() { printf 'Pillar install: %s\n' "$*" >&2; exit 1; }
-trap 'printf "Pillar installation failed. Fix the error above and rerun the installer.\n" >&2' ERR
+fail() { printf 'HiCode install: %s\n' "$*" >&2; exit 1; }
+trap 'printf "HiCode installation failed. Fix the error above and rerun the installer.\n" >&2' ERR
 
 [[ "$(uname -s)" == Darwin ]] || fail "Only macOS is supported."
 [[ $EUID -ne 0 ]] || fail "Run this script as your normal user, without sudo."
@@ -19,9 +19,9 @@ case "${login_shell##*/}" in
 esac
 
 # Install only the required binaries, without a package-manager bootstrap.
-install_root="$HOME/.local/share/pillar"
+install_root="$HOME/.local/share/hicode"
 export PATH="$install_root/bin:${BUN_INSTALL:-$HOME/.bun}/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-staging=$(mktemp -d "${TMPDIR:-/tmp}/pillar-install.XXXXXX")
+staging=$(mktemp -d "${TMPDIR:-/tmp}/hicode-install.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -86,30 +86,30 @@ if [[ -n "$script_dir" && -f "$script_dir/src/index.tsx" && -f "$script_dir/bun.
 else
     source_dir="$install_root/source"
     [[ ! -e "$source_dir" && ! -L "$source_dir" ]] || fail "Destination already exists. To repair that installation, run: bash \"$source_dir/install.sh\""
-    printf 'Downloading Pillar source...\n'
-    download https://codeload.github.com/peihanm/pillar-core/tar.gz/refs/heads/main "$staging/source.tgz"
+    printf 'Downloading HiCode source...\n'
+    download https://codeload.github.com/peihanm/hicode/tar.gz/refs/heads/main "$staging/source.tgz"
     tar -xzf "$staging/source.tgz" -C "$staging"
-    [[ -f "$staging/pillar-core-main/src/index.tsx" && -f "$staging/pillar-core-main/bun.lock" ]] || fail "Invalid Pillar source archive."
+    [[ -f "$staging/hicode-main/src/index.tsx" && -f "$staging/hicode-main/bun.lock" ]] || fail "Invalid HiCode source archive."
     mkdir -p "$install_root"
-    mv "$staging/pillar-core-main" "$source_dir"
+    mv "$staging/hicode-main" "$source_dir"
 fi
 
 cd "$source_dir"
-printf 'Installing Pillar from %s\n' "$source_dir"
+printf 'Installing HiCode from %s\n' "$source_dir"
 bun install --frozen-lockfile --production
 bun_executable=$(command -v bun)
 bun_bin=$(dirname "$bun_executable")
 rg_bin=$(dirname "$(command -v rg)")
 global_bin="$install_root/bin"
 mkdir -p "$global_bin"
-[[ ! -d "$global_bin/pillar" ]] || fail "Command destination is a directory: $global_bin/pillar"
+[[ ! -d "$global_bin/hicode" ]] || fail "Command destination is a directory: $global_bin/hicode"
 # A launcher needs no Bun global package.json and preserves the caller's cwd.
-printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_executable" "$source_dir/src/index.tsx" > "$staging/pillar"
-chmod 755 "$staging/pillar"
-mv -f "$staging/pillar" "$global_bin/pillar"
+printf '#!/bin/bash\nexec %q %q "$@"\n' "$bun_executable" "$source_dir/src/index.tsx" > "$staging/hicode"
+chmod 755 "$staging/hicode"
+mv -f "$staging/hicode" "$global_bin/hicode"
 
 # Escape paths as shell syntax; preserve existing config and avoid duplicate entries.
-printf -v path_line 'export PATH=%q:%q:%q:"$PATH" # Pillar installer' "$global_bin" "$bun_bin" "$rg_bin"
+printf -v path_line 'export PATH=%q:%q:%q:"$PATH" # HiCode installer' "$global_bin" "$bun_bin" "$rg_bin"
 for startup_file in "${startup_files[@]}"; do
     [[ ! -e "$startup_file" || -f "$startup_file" ]] || fail "Not a regular shell configuration file: $startup_file"
     mkdir -p "$(dirname "$startup_file")"
@@ -118,6 +118,6 @@ for startup_file in "${startup_files[@]}"; do
     fi
 done
 export PATH="$global_bin:$PATH"
-pillar --help >/dev/null
-printf '\nPillar installed. Open a new terminal, cd into your project, and run: pillar\n'
+hicode --help >/dev/null
+printf '\nHiCode installed. Open a new terminal, cd into your project, and run: hicode\n'
 printf 'On first launch, configure your API key and select a model.\n'

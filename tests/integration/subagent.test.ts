@@ -60,7 +60,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: {callLLM: child.callLLM},
-        toolResultStoreOptions: {pillarHome: `${cwd}/tool-results`},
+        toolResultStoreOptions: {hicodeHome: `${cwd}/tool-results`},
       });
       attachSubagentLauncher(ctx, runner);
 
@@ -110,7 +110,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: {callLLM: child.callLLM},
-        toolResultStoreOptions: {pillarHome: `${cwd}/tool-results`},
+        toolResultStoreOptions: {hicodeHome: `${cwd}/tool-results`},
       });
 
       const result = await runner({
@@ -191,7 +191,7 @@ describe("synchronous subagent", () => {
         sessionId: "parent-session",
         instructions: {
           files: [{
-            path: `${cwd}/PILLAR.md`,
+            path: `${cwd}/HICODE.md`,
             scope: "project",
             content: "root-only CODE instruction",
             truncated: false,
@@ -210,7 +210,7 @@ describe("synchronous subagent", () => {
           await args[8]?.({type:"delta",text:"transient-draft-not-for-log"});
           return child.callLLM(...args);
         } },
-        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
+        toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       }));
       const history: Message[] = [{ role: "system", content: "parent system" }];
 
@@ -269,7 +269,7 @@ describe("synchronous subagent", () => {
           events.push(event);
         },
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
+        toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       });
 
       const running = runner({
@@ -315,7 +315,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
+        toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       });
 
       const result = await runner({
@@ -361,7 +361,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
+        toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       });
       const result = await runner({
         agentType: "Explore",
@@ -379,7 +379,7 @@ describe("synchronous subagent", () => {
 
   test("transcript 不可写时仍返回已生成报告", async () => {
     await withTempProject(async (cwd, storage) => {
-      await writeFile(storage.pillarHome, "阻止创建 transcript 目录");
+      await writeFile(storage.hicodeHome, "阻止创建 transcript 目录");
       const child = createFakeLLM([assistantText("仍然完成调查")]);
       const ctx = createTestContext(cwd);
       const runner = createSubagentRunner({
@@ -387,7 +387,7 @@ describe("synchronous subagent", () => {
         parentContext: ctx,
         onEvent: () => {},
         agentOptions: { callLLM: child.callLLM },
-        toolResultStoreOptions: { pillarHome: `${cwd}/tool-results` },
+        toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       });
       const result = await runner({
         agentType: "Explore",

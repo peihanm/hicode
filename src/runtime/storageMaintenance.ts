@@ -2,7 +2,7 @@ import {storedImageSchema} from "../images/content.js";
 import {imageAssetId} from "../images/identity.js";
 import {lstat,readdir,rm} from "node:fs/promises";
 import {join,resolve} from "node:path";
-import {getProjectStorageDirectory,getProjectSessionsDirectory,getSessionStorageDirectory,getProjectMaintenanceLockPath,getProjectActivityDirectory,type PillarStorageLayout} from "../persistence/layout.js";
+import {getProjectStorageDirectory,getProjectSessionsDirectory,getSessionStorageDirectory,getProjectMaintenanceLockPath,getProjectActivityDirectory,type HiCodeStorageLayout} from "../persistence/layout.js";
 import {activeProjectProcesses,readSessionIdentity,readProjectIdentity} from "../persistence/projectState.js";
 import {readPrivateStorageTextFile,withFileLock,ensurePrivateStorageDirectory} from "../persistence/index.js";
 import {readLatestSessionSnapshot,readSessionSourceIds} from "../session/snapshotStore.js";
@@ -49,7 +49,7 @@ function collectReferences(value:unknown,refs:Set<string>):void{
 }
 
 /** Project-wide idle gate protects drafts, queued inputs and child stores without guessing their liveness. */
-export async function inspectStorage(storage:PillarStorageLayout,cwd:string,preview=false):Promise<StorageReport>{
+export async function inspectStorage(storage:HiCodeStorageLayout,cwd:string,preview=false):Promise<StorageReport>{
  const root=getProjectStorageDirectory(storage,cwd);
  readPrivateStorageTextFile(storage,join(root,"project.json"),32*1024);
  const report:StorageReport={sessions:[],project:cwd,path:root,bytes:0,files:0,activeProcesses:await activeProjectProcesses(storage,cwd),categories:{},candidates:[],issues:[]};
@@ -150,11 +150,11 @@ export async function inspectStorage(storage:PillarStorageLayout,cwd:string,prev
  return report;
 }
 
-export async function cleanStorage(storage:PillarStorageLayout,cwd:string):Promise<StorageReport>{
+export async function cleanStorage(storage:HiCodeStorageLayout,cwd:string):Promise<StorageReport>{
  ensurePrivateStorageDirectory(storage,getProjectStorageDirectory(storage,cwd));
  return withFileLock(getProjectMaintenanceLockPath(storage,cwd),async()=>{
   const report=await inspectStorage(storage,cwd,true);
-  if(report.activeProcesses.length)throw new Error("Project is active; close its Pillar processes before cleaning storage");
+  if(report.activeProcesses.length)throw new Error("Project is active; close its HiCode processes before cleaning storage");
   if(report.issues.length)throw new Error("Storage has unresolved reference errors; inspect and repair them before cleanup");
   for(const candidate of report.candidates){
    if(!resolve(candidate.path).startsWith(`${resolve(report.path)}/`))throw new Error("Invalid cleanup path");
@@ -165,7 +165,7 @@ export async function cleanStorage(storage:PillarStorageLayout,cwd:string):Promi
  });
 }
 
-export async function listStoredProjects(storage:PillarStorageLayout){
+export async function listStoredProjects(storage:HiCodeStorageLayout){
  const projects:Array<{path:string;cwd?:string;name?:string;status:"identified"|"unidentified"|"invalid"}>=[];
  for(const entry of await entries(storage.projectsRoot)){
   if(!entry.isDirectory())continue;

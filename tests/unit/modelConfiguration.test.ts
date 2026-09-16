@@ -4,7 +4,7 @@ import {join} from "node:path";
 import {parse as parseEnv} from "dotenv";
 import {loadEnv} from "../../src/cli/env.js";
 import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
-import {loadPillarSettings, resolvePillarSettings} from "../../src/settings/index.js";
+import {loadHiCodeSettings, resolveHiCodeSettings} from "../../src/settings/index.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
@@ -13,7 +13,7 @@ const currentKey = (): string | undefined => process.env.DEEPSEEK_API_KEY;
 afterEach(() => {if (prior === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = prior;});
 
 function setup(storage: Parameters<typeof createModelConfiguration>[0], cwd: string) {
-    const settings = resolvePillarSettings([]).values;
+    const settings = resolveHiCodeSettings([]).values;
     const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources);
     return {runtime, config: createModelConfiguration(storage, cwd, runtime)};
 }
@@ -21,11 +21,11 @@ function setup(storage: Parameters<typeof createModelConfiguration>[0], cwd: str
 test("Key, custom model and endpoint save safely, refresh immediately and selection survives restart", async () => {
     await withTempProject(async (cwd, storage) => {
         const {runtime, config} = setup(storage, cwd);
-        await mkdir(storage.pillarHome);
-        await writeFile(join(storage.pillarHome, ".env"), "# retained\nOTHER_KEY=unrelated-fixture\n");
-        await writeFile(join(storage.pillarHome, "settings.json"), '{"memory":{"enabled":false},"custom":{"keep":true}}');
+        await mkdir(storage.hicodeHome);
+        await writeFile(join(storage.hicodeHome, ".env"), "# retained\nOTHER_KEY=unrelated-fixture\n");
+        await writeFile(join(storage.hicodeHome, "settings.json"), '{"memory":{"enabled":false},"custom":{"keep":true}}');
         const path = await config.saveKey("deepseek", "fixture-secret");
-        expect(path).toBe(join(storage.pillarHome, ".env"));
+        expect(path).toBe(join(storage.hicodeHome, ".env"));
         expect((await stat(path)).mode & 0o777).toBe(0o600);
         expect(parseEnv(await readFile(path, "utf8"))).toEqual({OTHER_KEY: "unrelated-fixture", DEEPSEEK_API_KEY: "fixture-secret"});
         expect(runtime.available.some(model => model.source === "deepseek")).toBe(true);
@@ -35,10 +35,10 @@ test("Key, custom model and endpoint save safely, refresh immediately and select
         await config.saveSelection(selected);
         expect(runtime.target).toEqual(selected);
         expect(runtime.sources.deepseek.baseUrl).toBe("https://proxy.example/v1");
-        const serialized = await readFile(join(storage.pillarHome, "settings.json"), "utf8");
+        const serialized = await readFile(join(storage.hicodeHome, "settings.json"), "utf8");
         expect(serialized).not.toContain("fixture-secret");
         expect(JSON.parse(serialized)).toMatchObject({memory: {enabled: false}, custom: {keep: true}});
-        const loaded = loadPillarSettings({cwd, storage});
+        const loaded = loadHiCodeSettings({cwd, storage});
         expect(loaded.values.models.primary).toEqual(selected);
         expect(loaded.values.models.fast).toBeUndefined();
         await config.saveEndpoint("deepseek", "");
@@ -51,7 +51,7 @@ test("concurrent model additions preserve each other; optional label defaults to
     await withTempProject(async (cwd, storage) => {
         const first = setup(storage, cwd), second = setup(storage, cwd);
         await Promise.all([first.config.addModel("deepseek", "extra-one", ""), second.config.addModel("deepseek", "extra-two", "Second")]);
-        const loaded = loadPillarSettings({cwd, storage});
+        const loaded = loadHiCodeSettings({cwd, storage});
         expect(loaded.values.sources.deepseek.models).toEqual(expect.arrayContaining([{id: "extra-one", label: "extra-one"}, {id: "extra-two", label: "Second"}]));
     });
 });
@@ -62,31 +62,31 @@ test("project Key and primary override update their effective local files withou
         await writeFile(join(cwd, ".env"), "DEEPSEEK_API_KEY=old-fixture\nAPP_MODE=dev\n");
         expect(await config.saveKey("deepseek", "new-fixture")).toBe(join(cwd, ".env"));
         expect(parseEnv(await readFile(join(cwd, ".env"), "utf8"))).toMatchObject({APP_MODE: "dev", DEEPSEEK_API_KEY: "new-fixture"});
-        await mkdir(join(cwd, ".pillar"));
+        await mkdir(join(cwd, ".hicode"));
         const shared = '{"models":{"primary":{"source":"qwen","model":"qwen3.8-flash"}}}';
-        await writeFile(join(cwd, ".pillar/settings.json"), shared);
-        await writeFile(join(cwd, ".pillar/settings.local.json"), '{"permissions":{"allow":["read_file"]}}');
+        await writeFile(join(cwd, ".hicode/settings.json"), shared);
+        await writeFile(join(cwd, ".hicode/settings.local.json"), '{"permissions":{"allow":["read_file"]}}');
         const selected = runtime.available.find(item => item.source === "deepseek")!;
         await config.saveSelection(selected);
-        expect(await readFile(join(cwd, ".pillar/settings.json"), "utf8")).toBe(shared);
-        const local = JSON.parse(await readFile(join(cwd, ".pillar/settings.local.json"), "utf8"));
+        expect(await readFile(join(cwd, ".hicode/settings.json"), "utf8")).toBe(shared);
+        const local = JSON.parse(await readFile(join(cwd, ".hicode/settings.local.json"), "utf8"));
         expect(local.permissions.allow).toEqual(["read_file"]);
-        expect(loadPillarSettings({storage, cwd}).values.models.primary).toEqual(selected);
+        expect(loadHiCodeSettings({storage, cwd}).values.models.primary).toEqual(selected);
     });
 });
 
 test("unsafe files, corrupt settings, duplicate or invalid values fail without overwriting", async () => {
     await withTempProject(async (cwd, storage) => {
         const {config} = setup(storage, cwd);
-        await mkdir(storage.pillarHome);
-        const path = join(storage.pillarHome, "settings.json");
+        await mkdir(storage.hicodeHome);
+        const path = join(storage.hicodeHome, "settings.json");
         await writeFile(path, "{corrupt");
         await expect(config.addModel("deepseek", "test", "Test")).rejects.toThrow("Invalid settings");
         expect(await readFile(path, "utf8")).toBe("{corrupt");
         await expect(config.saveEndpoint("deepseek", "https://secret@example.com/v1")).rejects.toThrow("without credentials");
         await expect(config.saveKey("deepseek", "bad\nKEY=injection")).rejects.toThrow("single-line");
         const outside = join(cwd, "untouched"); await writeFile(outside, "keep");
-        await symlink(outside, join(storage.pillarHome, ".env"));
+        await symlink(outside, join(storage.hicodeHome, ".env"));
         await expect(config.saveKey("deepseek", "test-key")).rejects.toThrow("safely read");
         expect(await readFile(outside, "utf8")).toBe("keep");
     });
@@ -96,8 +96,8 @@ test("CLI accepts no env file; project values win and user credentials fill miss
     await withTempProject(async (cwd, storage) => {
         expect(() => loadEnv(storage, cwd)).not.toThrow();
         delete process.env.DEEPSEEK_API_KEY;
-        await mkdir(storage.pillarHome);
-        await writeFile(join(storage.pillarHome, ".env"), "DEEPSEEK_API_KEY=user-fixture\n");
+        await mkdir(storage.hicodeHome);
+        await writeFile(join(storage.hicodeHome, ".env"), "DEEPSEEK_API_KEY=user-fixture\n");
         await writeFile(join(cwd, ".env"), "# project has no provider credential\n");
         loadEnv(storage, cwd);
         expect(currentKey()).toBe("user-fixture");
@@ -114,8 +114,8 @@ test("CLI accepts no env file; project values win and user credentials fill miss
 test("credential-looking lines inside another multiline value cannot be overwritten", async () => {
     await withTempProject(async (cwd, storage) => {
         const {config} = setup(storage, cwd);
-        await mkdir(storage.pillarHome);
-        const path = join(storage.pillarHome, ".env");
+        await mkdir(storage.hicodeHome);
+        const path = join(storage.hicodeHome, ".env");
         const before = "MULTILINE='first\nDEEPSEEK_API_KEY=embedded-text\nlast'\n";
         await writeFile(path, before);
         await expect(config.saveKey("deepseek", "replacement-fixture")).rejects.toThrow("another variable");
@@ -134,10 +134,10 @@ test("removing custom and preset models persists an explicit catalog, retaining 
         for (const model of runtime.sources.deepseek.models) await config.removeModel("deepseek", model.id);
         expect(runtime.sources.deepseek.models).toEqual([]);
         expect(runtime.hasCredential("deepseek")).toBe(true);
-        const loaded = loadPillarSettings({storage, cwd});
+        const loaded = loadHiCodeSettings({storage, cwd});
         expect(loaded.values.sources.deepseek.models).toEqual([]);
         expect(loaded.values.sources.deepseek.baseUrl).toBe("https://keep.example/v1");
-        expect(parseEnv(await readFile(join(storage.pillarHome, ".env"), "utf8"))).toMatchObject({DEEPSEEK_API_KEY: "keep-key-fixture"});
+        expect(parseEnv(await readFile(join(storage.hicodeHome, ".env"), "utf8"))).toMatchObject({DEEPSEEK_API_KEY: "keep-key-fixture"});
         await config.addModel("deepseek", "added-again", "");
         expect(runtime.sources.deepseek.models).toEqual([{id: "added-again", label: "added-again"}]);
     });
@@ -157,8 +157,8 @@ test.each(["primary", "fast", "reviewer"] as const)("removing a saved %s model i
     await withTempProject(async (cwd, storage) => {
         const {runtime, config} = setup(storage, cwd);
         const model = runtime.sources.deepseek.models[0]!;
-        await mkdir(storage.pillarHome);
-        const path = join(storage.pillarHome, "settings.json");
+        await mkdir(storage.hicodeHome);
+        const path = join(storage.hicodeHome, "settings.json");
         const before = JSON.stringify({models: {[slot]: {source: "deepseek", model: model.id}}});
         await writeFile(path, before);
         await expect(config.removeModel("deepseek", model.id)).rejects.toThrow(`referenced by ${slot}`);
@@ -170,12 +170,12 @@ test("project references and concurrent catalog edits are preserved during remov
     await withTempProject(async (cwd, storage) => {
         const {runtime, config} = setup(storage, cwd);
         const model = runtime.sources.deepseek.models[0]!;
-        await mkdir(join(cwd, ".pillar"));
-        await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({models: {primary: {source: "deepseek", model: model.id}}}));
+        await mkdir(join(cwd, ".hicode"));
+        await writeFile(join(cwd, ".hicode/settings.json"), JSON.stringify({models: {primary: {source: "deepseek", model: model.id}}}));
         await expect(config.removeModel("deepseek", model.id)).rejects.toThrow("project settings");
         await config.addModel("deepseek", "temporary", "Temporary");
         await Promise.all([config.removeModel("deepseek", "temporary"), config.addModel("deepseek", "concurrent", "Concurrent")]);
-        const loaded = loadPillarSettings({storage, cwd});
+        const loaded = loadHiCodeSettings({storage, cwd});
         expect(loaded.values.sources.deepseek.models.some(item => item.id === "temporary")).toBe(false);
         expect(loaded.values.sources.deepseek.models.some(item => item.id === "concurrent")).toBe(true);
     });
@@ -188,7 +188,7 @@ test("all Qwen entries can be removed once the saved main model uses another pro
         const target = runtime.available.find(model => model.source === "deepseek")!;
         await config.saveSelection(target);
         for (const model of runtime.sources.qwen.models) await config.removeModel("qwen", model.id);
-        const loaded = loadPillarSettings({storage, cwd});
+        const loaded = loadHiCodeSettings({storage, cwd});
         expect(loaded.values.sources.qwen.models).toEqual([]);
         expect(loaded.values.models.primary).toEqual(target);
         expect(runtime.target).toEqual(target);

@@ -97,7 +97,7 @@ await withTempProject(async cwd => {
         const inputFrame = chunks.findLast(chunk => chunk.includes("❯ next"));
         assert(inputFrame, "input remains usable after toggling and resize");
         assert.match(inputFrame, /\x1b7\x1b\[4A\x1b\[7G$/);
-        assert(!chunks.join("").includes("pillar-cursor://"));
+        assert(!chunks.join("").includes("hicode-cursor://"));
         stdout.write("\x1b[2J\x1b[3J\x1b[Hoverflow dialog");
         assert(chunks.at(-1)?.includes("❯ inspect"), "overflow retains the committed history");
         assert(!chunks.at(-1)?.includes("DETAIL-80"), "overflow cannot resurrect expanded history");

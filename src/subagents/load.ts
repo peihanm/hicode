@@ -8,7 +8,7 @@ import {
     ensureAgentDefinitionDirectory,
     readAgentDefinitionFile,
 } from "./fileAccess.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {HostAgentContribution} from "../runtime/rootContributions.js";
 
 export const MAX_AGENT_FILES_PER_SOURCE = 64;
@@ -424,17 +424,17 @@ export function validateCustomAgentTools(
 }
 
 export async function loadCustomAgentDefinitions(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sources: readonly AgentFileSource[] = ["user", "project"],
     hostAgents: readonly HostAgentContribution[] = []
 ): Promise<LoadedCustomAgents> {
     const [user, project] = await Promise.all([
         sources.includes("user")
-            ? loadAgentSourceDirectory(join(storage.pillarHome, "agents"), "user")
+            ? loadAgentSourceDirectory(join(storage.hicodeHome, "agents"), "user")
             : {definitions: [], issues: []},
         sources.includes("project")
-            ? loadAgentSourceDirectory(join(cwd, ".pillar", "agents"), "project")
+            ? loadAgentSourceDirectory(join(cwd, ".hicode", "agents"), "project")
             : {definitions: [], issues: []},
     ]);
     return mergeCustomAgentSources(

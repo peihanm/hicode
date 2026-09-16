@@ -2,8 +2,8 @@ import {lstat, mkdir, readFile, realpath} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {hasFileSystemErrorCode, withFileLock, writeFileAtomically,} from "../persistence/index.js";
 import {getSettingsPath} from "./document.js";
-import {pillarSettingsFileSchema} from "./schema.js";
-import type {PillarSettingsFile} from "./types.js";
+import {hicodeSettingsFileSchema} from "./schema.js";
+import type {HiCodeSettingsFile} from "./types.js";
 
 const MAX_LOCAL_SETTINGS_BYTES = 4 * 1024 * 1024;
 
@@ -25,9 +25,9 @@ async function ensureSafeLocalSettingsPath(
     if (
         directoryInfo.isSymbolicLink() ||
         !directoryInfo.isDirectory() ||
-        directoryPath !== join(cwdPath, ".pillar")
+        directoryPath !== join(cwdPath, ".hicode")
     ) {
-        throw new Error("Cannot update settings through an unsafe .pillar directory");
+        throw new Error("Cannot update settings through an unsafe .hicode directory");
     }
     try {
         const info = await lstat(path);
@@ -42,7 +42,7 @@ async function ensureSafeLocalSettingsPath(
     }
 }
 
-async function readSettingsForUpdate(path: string): Promise<PillarSettingsFile> {
+async function readSettingsForUpdate(path: string): Promise<HiCodeSettingsFile> {
     let content: string;
     try {
         content = await readFile(path, "utf8");
@@ -58,7 +58,7 @@ async function readSettingsForUpdate(path: string): Promise<PillarSettingsFile> 
         throw new Error(`Cannot update corrupt settings: ${path}`, {cause: error});
     }
 
-    const parsed = pillarSettingsFileSchema.safeParse(raw);
+    const parsed = hicodeSettingsFileSchema.safeParse(raw);
     if (!parsed.success) {
         throw new Error(`Cannot update invalid settings: ${path}`, {
             cause: parsed.error,

@@ -34,7 +34,7 @@ function customDefinition(
         model: "inherit",
         maxIterations: 6,
         source: "project",
-        path: "/fixture/.pillar/agents/project-reviewer.md",
+        path: "/fixture/.hicode/agents/project-reviewer.md",
         ...overrides,
     };
 }
@@ -90,7 +90,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
             }));
             const toolRuntime = createToolRuntime({
                 toolOverrides: [createAgentTool(registry)],
@@ -160,7 +160,7 @@ describe("custom subagent runtime", () => {
                 },
                 instructions: {
                     files: [{
-                        path: `${cwd}/PILLAR.md`,
+                        path: `${cwd}/HICODE.md`,
                         scope: "project",
                         content: "必须遵守项目规则",
                         truncated: false,
@@ -173,7 +173,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {pillarHome: `${cwd}/tool-results`},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/tool-results`},
             });
 
             const result = await runner({
@@ -222,7 +222,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: defaultLLM.callLLM},
-                toolResultStoreOptions: {pillarHome: `${cwd}/accepted-results`},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/accepted-results`},
             });
             await accepted({
                 agentType: "writer",
@@ -260,7 +260,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: planLLM.callLLM},
-                toolResultStoreOptions: {pillarHome: `${cwd}/plan-results`},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/plan-results`},
             });
             await planned({
                 agentType: "writer",
@@ -309,7 +309,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {pillarHome: `${cwd}/deny-results`},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/deny-results`},
             });
             await runner({
                 agentType: "writer",
@@ -398,7 +398,7 @@ describe("custom subagent runtime", () => {
                 onEvent: () => {},
                 registry,
                 agentOptions: {callLLM: child.callLLM},
-                toolResultStoreOptions: {pillarHome: `${cwd}/mcp-results`},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/mcp-results`},
             });
 
             const result = await runner({

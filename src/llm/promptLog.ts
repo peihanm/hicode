@@ -2,7 +2,7 @@ import {z} from "zod";
 import {lstatSync, readdirSync, renameSync, rmSync, writeFileSync} from "node:fs";
 import {randomUUID} from "node:crypto";
 import {join,isAbsolute} from "node:path";
-import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, type PillarStorageLayout} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, type HiCodeStorageLayout} from "../persistence/index.js";
 import {getPromptLogDirectory} from "../persistence/layout.js";
 import type {LLMCallKind, LLMTrace, PromptLogPendingResponse, PromptLogRequest, PromptLogResponse} from "./types.js";
 import {hashProjectValue} from "../persistence/project.js";
@@ -77,7 +77,7 @@ function alive(pid:number):boolean {
     if(!Number.isSafeInteger(pid)||pid<=0)return false;
     try{process.kill(pid,0);return true;}catch(error){return !(error&&typeof error==="object"&&"code" in error&&error.code==="ESRCH");}
 }
-function runDirectory(storage:PillarStorageLayout,trace:LLMTrace):string {
+function runDirectory(storage:HiCodeStorageLayout,trace:LLMTrace):string {
     return join(getPromptLogDirectory(storage,trace.ownerCwd,trace.scope==="session"?trace.sessionId:undefined),`run-${hashProjectValue(trace.runId,32)}`);
 }
 function atomic(path:string,text:string):void {
@@ -85,7 +85,7 @@ function atomic(path:string,text:string):void {
     try {writeFileSync(temporary,text,{flag:"wx",mode:0o600});renameSync(temporary,path);}
     finally {try{rmSync(temporary);}catch{}}
 }
-function readRun(storage:PillarStorageLayout,directory:string):RunRecord|undefined {
+function readRun(storage:HiCodeStorageLayout,directory:string):RunRecord|undefined {
     const text=readPrivateStorageTextFile(storage,join(directory,"run.json"),32*1024);
     if(text===null)return;
     return runSchema.parse(JSON.parse(text));
@@ -93,7 +93,7 @@ function readRun(storage:PillarStorageLayout,directory:string):RunRecord|undefin
 function writeRun(directory:string,run:RunRecord):void {atomic(join(directory,"run.json"),JSON.stringify(run,null,2));}
 
 /** Retire completed runs first; active runs keep pending requests and expose any coverage gap. */
-function prune(storage:PillarStorageLayout,root:string,currentFile:string):boolean {
+function prune(storage:HiCodeStorageLayout,root:string,currentFile:string):boolean {
     const runs: Array<{directory:string;record:RunRecord;files:Array<{name:string;bytes:number}>;active:boolean}>=[];
     const entries=readdirSync(root,{withFileTypes:true});
     if(entries.length>2000)return false;
@@ -124,14 +124,14 @@ function prune(storage:PillarStorageLayout,root:string,currentFile:string):boole
     return !over();
 }
 
-export function finishPromptLogRun(storage:PillarStorageLayout,trace:LLMTrace):void {
+export function finishPromptLogRun(storage:HiCodeStorageLayout,trace:LLMTrace):void {
     try {
         const directory=runDirectory(storage,trace),run=readRun(storage,directory);
         if(run&&run.pid===process.pid){run.completedAt=new Date().toISOString();writeRun(directory,run);}
     }catch{ /* Diagnostics never control task completion. */ }
 }
 
-export function beginPromptLog(storage:PillarStorageLayout,cwd:string,kind:LLMCallKind,model:string,
+export function beginPromptLog(storage:HiCodeStorageLayout,cwd:string,kind:LLMCallKind,model:string,
     request:PromptLogRequest,secrets:readonly string[],providedTrace?:LLMTrace,attempt=1):PromptLogHandle {
     const timestamp=new Date().toISOString();
     const parsedTrace=traceSchema.safeParse(providedTrace??{scope:"maintenance",ownerCwd:cwd,runId:randomUUID()});

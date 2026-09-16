@@ -3,11 +3,11 @@ import {parsePermissionRule} from "../permissions/rules.js";
 import type {PermissionMode, PermissionRule, PermissionRules,} from "../permissions/types.js";
 import type {HookEvent, ResolvedHookMatcher, ResolvedHookSettings,} from "../hooks/types.js";
 import type {
-    LoadedPillarSettings,
+    LoadedHiCodeSettings,
     LoadedSettingsDocument,
     ModelSourceSettings,
     ModelTargetSettings,
-    PillarSettingsOverrides,
+    HiCodeSettingsOverrides,
     SettingsOrigins,
 } from "./types.js";
 
@@ -189,10 +189,10 @@ function mergeHooks(
     return resolved;
 }
 
-export function resolvePillarSettings(
+export function resolveHiCodeSettings(
     documents: readonly LoadedSettingsDocument[],
-    cli: PillarSettingsOverrides = {}
-): Pick<LoadedPillarSettings, "values" | "origins"> {
+    cli: HiCodeSettingsOverrides = {}
+): Pick<LoadedHiCodeSettings, "values" | "origins"> {
     const sources = resolveModelSources(documents);
     let context = {...DEFAULT_CONTEXT_SETTINGS};
     let reviewerTarget: {model: string; source: LLMProviderName} | undefined;
@@ -206,7 +206,7 @@ export function resolvePillarSettings(
     let memoryDisabled = false;
     let autoExtractDisabled = false;
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
-    let sandboxDenyWrite = [".pillar", ".env"];
+    let sandboxDenyWrite = [".hicode", ".env"];
     let sandboxAllowedDomains: string[] = [];
     let sandboxAllowLocalBinding = true;
     const origins: SettingsOrigins = {

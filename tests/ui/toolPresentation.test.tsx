@@ -199,11 +199,11 @@ describe("phase-based tool presentation", () => {
             id: "background-worker",
             name: "bash",
             args: {command: "node worker.js", run_in_background: true},
-            result: "Background task started.\nTask: worker-123\nLifecycle: managed by the current Pillar Runtime; terminates when Pillar exits.\nStatus: running\nCwd: .\nUse task to inspect output, completion status or stop the task.",
+            result: "Background task started.\nTask: worker-123\nLifecycle: managed by the current HiCode Runtime; terminates when HiCode exits.\nStatus: running\nCwd: .\nUse task to inspect output, completion status or stop the task.",
         });
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("worker-123");
-        expect(frame).toContain("terminates when Pillar exits");
+        expect(frame).toContain("terminates when HiCode exits");
     });
 
     test("curl 批次即使 exit 0 也不会把 000FAIL 包装成验证通过", () => {

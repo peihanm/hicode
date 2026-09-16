@@ -35,7 +35,7 @@ export const sandboxCommand: SlashCommand = {
         if (args) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "/sandbox does not accept arguments; restart Pillar after changing Sandbox Settings.",
+                content: "/sandbox does not accept arguments; restart HiCode after changing Sandbox Settings.",
             });
             return;
         }

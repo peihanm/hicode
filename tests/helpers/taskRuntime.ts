@@ -8,7 +8,7 @@ import {
 } from "../../src/subagents/index.js";
 import type {CreateSubagentThread} from "../../src/subagents/types.js";
 import type {ShellRunnerLike} from "../../src/tools/bash/shellRunner.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {join} from "node:path";
 
 export function createTaskRuntimeForTest(
@@ -20,11 +20,11 @@ export function createTaskRuntimeForTest(
             throw new Error("本用例没有配置 Agent Task runner");
         },
     }),
-    pillarHome = join(cwd, ".test-task-storage"),
+    hicodeHome = join(cwd, ".test-task-storage"),
     subagents: SubagentRegistry = BUILTIN_SUBAGENT_REGISTRY,
     memory:MemoryRuntimeLike = createTestMemoryRuntime(cwd,{enabled:false})
 ): TaskRuntimeLike {
-    const storage = createPillarStorageLayout({pillarHome});
+    const storage = createHiCodeStorageLayout({hicodeHome});
     return createTaskRuntime(
         storage,
         cwd,

@@ -1,9 +1,9 @@
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {hasFileSystemErrorCode} from "../persistence/index.js";
-import {pillarHostSettingsSchema, pillarSettingsFileSchema} from "./schema.js";
+import {hicodeHostSettingsSchema, hicodeSettingsFileSchema} from "./schema.js";
 import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";
-import type {LoadedSettingsDocument, PillarSettingsFile, SettingsFileSource, SettingsIssue,} from "./types.js";
+import type {LoadedSettingsDocument, HiCodeSettingsFile, SettingsFileSource, SettingsIssue,} from "./types.js";
 
 const KNOWN_TOP_LEVEL_KEYS = new Set([
     "context",
@@ -70,13 +70,13 @@ export function getSettingsPath(
 ): string {
     if (source === "user") {
         if (!userSettingsPath) {
-            throw new Error("User Settings path must be provided by PillarStorageLayout");
+            throw new Error("User Settings path must be provided by HiCodeStorageLayout");
         }
         return resolve(userSettingsPath);
     }
     return resolve(
         cwd,
-        ".pillar",
+        ".hicode",
         source === "project" ? "settings.json" : "settings.local.json"
     );
 }
@@ -268,7 +268,7 @@ function loadSettingsDocument(
         }
     }
 
-    const parsed = pillarSettingsFileSchema.safeParse(raw);
+    const parsed = hicodeSettingsFileSchema.safeParse(raw);
     if (!parsed.success) {
         const first = parsed.error.issues.find(issue => issue.path[0] === "permissions" || issue.path[0] === "context") ?? parsed.error.issues[0];
         return {
@@ -317,10 +317,10 @@ export function loadSettingsDocuments(
 }
 
 export function parseHostSettingsDocument(
-    value: PillarSettingsFile,
+    value: HiCodeSettingsFile,
     id = "settingsOverrides"
 ): {document?: LoadedSettingsDocument; issues: SettingsIssue[]} {
-    const parsed = pillarHostSettingsSchema.safeParse(value);
+    const parsed = hicodeHostSettingsSchema.safeParse(value);
     if (!parsed.success) {
         return {
             issues: parsed.error.issues.map((problem) => ({

@@ -1,14 +1,14 @@
 import {
-    definePillarTool,
-    loadPillarHostConfig,
-    Pillar,
-    type PillarFileSources,
+    defineHiCodeTool,
+    loadHiCodeHostConfig,
+    HiCode,
+    type HiCodeFileSources,
     type ThreadEvent,
     type TurnResult,
-} from "pillar-core-sdk";
+} from "hicode-core-sdk";
 import {z} from "zod";
 
-const hostLookup = definePillarTool({
+const hostLookup = defineHiCodeTool({
     name: "host_lookup",
     description: "Look up a value owned by the SDK Host",
     parameters: z.object({key: z.string()}),
@@ -21,7 +21,7 @@ const hostLookup = definePillarTool({
     },
 });
 
-const fileSources: PillarFileSources = {
+const fileSources: HiCodeFileSources = {
     settings: [],
     instructions: [],
     skills: [],
@@ -29,9 +29,9 @@ const fileSources: PillarFileSources = {
     mcp: [],
 };
 
-const loaded = loadPillarHostConfig({
+const loaded = loadHiCodeHostConfig({
     cwd: "/workspace",
-    pillarHome: "/host-data/pillar",
+    hicodeHome: "/host-data/hicode",
     fileSources,
 });
 
@@ -43,7 +43,7 @@ function acceptResult(result: TurnResult): string {
     return result.finalResponse;
 }
 
-void Pillar.create;
+void HiCode.create;
 void loaded.configuration;
 void hostLookup;
 void acceptEvent;

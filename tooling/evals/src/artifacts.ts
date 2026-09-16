@@ -50,13 +50,13 @@ export async function prepareEvalRun(
         force: false,
     });
     await materializeFixtureTemplates(paths.workspace);
-    await mkdir(paths.pillarHome, {recursive: true});
+    await mkdir(paths.hicodeHome, {recursive: true});
     const verifierEnvironment = await createVerifierEnvironment(
         paths.verifierHome
     );
     await writeEvalSettings(
         options.settingsFile,
-        join(paths.pillarHome, "settings.json"),
+        join(paths.hicodeHome, "settings.json"),
         options.source,
         options.model
     );
@@ -136,9 +136,9 @@ export async function collectWorkspaceDiff(
 }
 
 export async function locateSessionArtifacts(
-    pillarHome: string
+    hicodeHome: string
 ): Promise<{sessionIndexPath?: string; sessionEventsPath?: string}> {
-    const projectsRoot = join(pillarHome, "projects");
+    const projectsRoot = join(hicodeHome, "projects");
     let projectEntries;
     try {
         projectEntries = await readdir(projectsRoot, {withFileTypes: true});
@@ -177,20 +177,20 @@ export async function applyRetentionPolicy(
     paths: EvalRunPaths,
     keep: EvalKeepPolicy,
     passed: boolean
-): Promise<{workspace: boolean; pillarHome: boolean}> {
+): Promise<{workspace: boolean; hicodeHome: boolean}> {
     const retain = keep === "all" || (keep === "failed" && !passed);
-    if (retain) return {workspace: true, pillarHome: true};
+    if (retain) return {workspace: true, hicodeHome: true};
     await rm(paths.workspace, {recursive: true, force: true});
-    await rm(paths.pillarHome, {recursive: true, force: true});
+    await rm(paths.hicodeHome, {recursive: true, force: true});
     await rm(paths.verifierHome, {recursive: true, force: true});
-    return {workspace: false, pillarHome: false};
+    return {workspace: false, hicodeHome: false};
 }
 
 function createRunPaths(runDirectory: string): EvalRunPaths {
     return {
         runDirectory,
         workspace: join(runDirectory, "workspace"),
-        pillarHome: join(runDirectory, "pillar-home"),
+        hicodeHome: join(runDirectory, "hicode-home"),
         verifierHome: join(runDirectory, "verifier-home"),
         manifest: join(runDirectory, "manifest.json"),
         report: join(runDirectory, "report.json"),
@@ -244,8 +244,8 @@ async function initializeGitRepository(
 ): Promise<string> {
     const commands: readonly string[][] = [
         ["git", "init", "--quiet"],
-        ["git", "config", "user.name", "Pillar Eval"],
-        ["git", "config", "user.email", "eval@pillar.invalid"],
+        ["git", "config", "user.name", "HiCode Eval"],
+        ["git", "config", "user.email", "eval@hicode.invalid"],
         ["git", "add", "--all"],
         ["git", "commit", "--quiet", "--no-gpg-sign", "-m", "eval baseline"],
     ];

@@ -26,16 +26,16 @@ const state = {todos: [], permissionMode: "ask" as const, collaborationMode: "bu
 function settings() {
     const value = createTestSettings();
     value.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
-    value.sources.qwen = {...value.sources.qwen, apiKeyEnv: "PILLAR_USER_IMAGE_TEST_KEY"};
+    value.sources.qwen = {...value.sources.qwen, apiKeyEnv: "HICODE_USER_IMAGE_TEST_KEY"};
     return value;
 }
 
 test("SDK snapshots ordered user bytes before deferred streaming, sends actual user pixels, resumes and logs metadata only", async () => {
     await withTempProject(async (cwd, storage) => {
         const resources = createTestRuntimeResources(cwd, {storage, settings: settings()});
-        const oldFetch = globalThis.fetch, oldKey = process.env.PILLAR_USER_IMAGE_TEST_KEY;
+        const oldFetch = globalThis.fetch, oldKey = process.env.HICODE_USER_IMAGE_TEST_KEY;
         const requests: {messages: {role: string; content: unknown}[]}[] = [];
-        process.env.PILLAR_USER_IMAGE_TEST_KEY = "offline-test";
+        process.env.HICODE_USER_IMAGE_TEST_KEY = "offline-test";
         globalThis.fetch = (async (_url, init) => {
             requests.push(JSON.parse(String(init?.body)));
             return new Response('data: {"choices":[{"index":0,"delta":{"content":"图片收到"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {headers: {"content-type": "text/event-stream"}});
@@ -76,7 +76,7 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             expect(JSON.stringify(loaded)).not.toContain("base64,");
         } finally {
             await first.close(); globalThis.fetch = oldFetch;
-            if (oldKey === undefined) delete process.env.PILLAR_USER_IMAGE_TEST_KEY; else process.env.PILLAR_USER_IMAGE_TEST_KEY = oldKey;
+            if (oldKey === undefined) delete process.env.HICODE_USER_IMAGE_TEST_KEY; else process.env.HICODE_USER_IMAGE_TEST_KEY = oldKey;
             await resources.close();
         }
     });

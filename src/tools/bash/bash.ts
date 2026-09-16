@@ -355,7 +355,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                     content: [
                         yield_time_ms !== undefined ? "Command is still running and moved to the background (same process)." : "Background task started.",
                         `Task: ${task.id}`,
-                        "Lifecycle: managed by the current Pillar Runtime; terminates when Pillar exits.",
+                        "Lifecycle: managed by the current HiCode Runtime; terminates when HiCode exits.",
                         `Status: ${task.status}`,
                         `Cwd: ${displayToolPath(ctx.cwd, commandCwd) || "."}`,
                         ...(timeout_ms !== undefined && yield_time_ms === undefined

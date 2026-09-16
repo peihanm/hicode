@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {homedir} from "node:os";
 import {join} from "node:path";
 import {
-    createPillarStorageLayout,
+    createHiCodeStorageLayout,
     getProjectKey,
     getProjectStorageDirectory,
     getSessionStorageDirectory,
@@ -13,19 +13,19 @@ import {getToolResultSessionDir} from "../../src/toolResults/paths.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("persistence paths", () => {
-    test("默认 Pillar Home 与 Projects Root 使用统一布局", () => {
-        const storage = createPillarStorageLayout();
-        expect(storage.pillarHome).toBe(join(homedir(), ".pillar"));
-        expect(storage.projectsRoot).toBe(join(homedir(), ".pillar", "projects"));
+    test("默认 HiCode Home 与 Projects Root 使用统一布局", () => {
+        const storage = createHiCodeStorageLayout();
+        expect(storage.hicodeHome).toBe(join(homedir(), ".hicode"));
+        expect(storage.projectsRoot).toBe(join(homedir(), ".hicode", "projects"));
     });
 
     test("Project 与 Session 目录只计算一次 identity", async () => {
         await withTempProject(async (cwd) => {
-            const pillarHome = join(cwd, "storage-root");
-            const storage = createPillarStorageLayout({pillarHome});
+            const hicodeHome = join(cwd, "storage-root");
+            const storage = createHiCodeStorageLayout({hicodeHome});
             const sessionId = "session-path-test";
             const projectDirectory = join(
-                pillarHome,
+                hicodeHome,
                 "projects",
                 getProjectKey(cwd)
             );

@@ -21,7 +21,7 @@ import {
 } from "../helpers/headless.js";
 import { createSubagentRegistry } from "../../src/subagents/index.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 
 function toolItems(result: HeadlessRunSummary) {return result.items.filter(item => item.type === "tool_call");}
 function agentItems(result: HeadlessRunSummary) {return result.items.filter(item => item.type === "subagent");}
@@ -64,9 +64,9 @@ describe("headless integration", () => {
 
   test("Session 存储无法创建时不运行 Agent", async () => {
     await withTempProject(async (cwd) => {
-      const pillarHome = join(cwd, "blocked-storage");
-      await writeFile(pillarHome, "not a directory");
-      const storage = createPillarStorageLayout({pillarHome});
+      const hicodeHome = join(cwd, "blocked-storage");
+      await writeFile(hicodeHome, "not a directory");
+      const storage = createHiCodeStorageLayout({hicodeHome});
       const settings = createTestSettings({
         });
       const resources = createTestRuntimeResources(cwd, {settings});
@@ -202,7 +202,7 @@ describe("headless integration", () => {
       const summary = await runHeadless(options(cwd), {
         mcpManager: false,
         agent: { callLLM: fake.callLLM },
-        toolResultStoreOptions: { pillarHome: join(cwd, "tool-results") },
+        toolResultStoreOptions: { hicodeHome: join(cwd, "tool-results") },
         writeOutput: ignoreOutput,
       });
 
@@ -341,7 +341,7 @@ describe("headless integration", () => {
 
   test("大结果引用进入 JSON，continue 后仍可分页读取", async () => {
     await withTempProject(async (cwd) => {
-      const pillarHome = join(cwd, "tool-result-root");
+      const hicodeHome = join(cwd, "tool-result-root");
       const firstFake = createFakeLLM([
         assistantToolCall(
           "bash",
@@ -353,7 +353,7 @@ describe("headless integration", () => {
       const first = await runHeadless(options(cwd), {
         mcpManager: false,
         agent: { callLLM: firstFake.callLLM },
-        toolResultStoreOptions: { pillarHome },
+        toolResultStoreOptions: { hicodeHome },
         writeOutput: ignoreOutput,
       });
       expect(toolItems(first)[0]).toMatchObject({
@@ -385,7 +385,7 @@ describe("headless integration", () => {
         {
           mcpManager: false,
           agent: { callLLM: secondFake.callLLM },
-          toolResultStoreOptions: { pillarHome },
+          toolResultStoreOptions: { hicodeHome },
           writeOutput: ignoreOutput,
         }
       );
@@ -616,7 +616,7 @@ describe("headless integration", () => {
         definitions: [],
         issues: [{
           source: "project",
-          path: `${cwd}/.pillar/agents/broken.md`,
+          path: `${cwd}/.hicode/agents/broken.md`,
           severity: "error",
           field: "tools",
           message: "Tool does not exist in this Runtime: missing",
@@ -654,7 +654,7 @@ describe("headless integration", () => {
         definitions: [],
         issues: [{
           source: "project",
-          path: `${cwd}/.pillar/agents/broken.md`,
+          path: `${cwd}/.hicode/agents/broken.md`,
           severity: "error",
           message: "broken",
         }],

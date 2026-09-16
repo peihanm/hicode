@@ -97,7 +97,7 @@ const inputSchema = z.object({
     include_hidden: z
         .boolean()
         .default(false)
-        .describe("Search hidden paths such as .github/.pillar; default false. Always excludes .git."),
+        .describe("Search hidden paths such as .github/.hicode; default false. Always excludes .git."),
 });
 
 type Input = z.infer<typeof inputSchema>;

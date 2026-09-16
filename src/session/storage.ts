@@ -2,7 +2,7 @@ import {ensureSessionIdentity} from "../persistence/projectState.js";
 import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
 import {createInitialHistory} from "../prompt/index.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {getProjectKey} from "../persistence/index.js";
 import {
     countSessionConversationMessages,
@@ -31,7 +31,7 @@ import {
 import {createSessionValueFreezer} from "./contentStore.js";
 
 /** Serial persistence belongs to the Session, shared by tools, compaction and every Host. */
-export function createSessionPersistence(storage: PillarStorageLayout, cwd: string, sessionId: string) {
+export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: string, sessionId: string) {
     const commit = createSessionSnapshotCommitter(storage, cwd, sessionId);
     const limitUIEvents = createSessionUIEventLimiter();
     const freezeSessionValue = createSessionValueFreezer();
@@ -63,7 +63,7 @@ export function createSessionId(): string {
     return randomUUID();
 }
 
-async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnapshotInput,
+async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnapshotInput,
     commit: ReturnType<typeof createSessionSnapshotCommitter>, limitUIEvents: ReturnType<typeof createSessionUIEventLimiter>,
     preserveConversation: boolean, onIssue: (message: string) => void, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
     const conversation = stripSystemMessage(input.history);
@@ -117,12 +117,12 @@ async function saveSnapshot(storage: PillarStorageLayout, input: SaveSessionSnap
             });
         };
         try { await updateProjections(); }
-        catch { onIssue("Session content was saved, but its listing index could not be updated. Run pillar --storage repair-index; existing snapshots remain available by ID."); }
+        catch { onIssue("Session content was saved, but its listing index could not be updated. Run hicode --storage repair-index; existing snapshots remain available by ID."); }
     });
 }
 
 export function listSessionIndex(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): SessionIndexEntry[] {
     const projectKey = getProjectKey(cwd);
@@ -138,7 +138,7 @@ export function listSessionIndex(
 }
 
 export function loadSession(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sessionId: string,
     model: string
@@ -165,7 +165,7 @@ export function loadSession(
 }
 
 export function loadLatestSession(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     model: string
 ): LoadedSession | null {

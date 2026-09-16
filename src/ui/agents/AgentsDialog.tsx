@@ -361,8 +361,8 @@ export function AgentsDialog({
                         <Text bold>Choose save scope</Text>
                         <SelectInput
                             items={[
-                                {label: "Project · .pillar/agents in this project", value: "project"},
-                                {label: "Personal · ~/.pillar/agents", value: "user"},
+                                {label: "Project · .hicode/agents in this project", value: "project"},
+                                {label: "Personal · ~/.hicode/agents", value: "user"},
                             ]}
                             indicatorComponent={DialogIndicator}
                             itemComponent={DialogItem}
@@ -379,7 +379,7 @@ export function AgentsDialog({
                         <Text bold>Creation method</Text>
                         <SelectInput
                             items={[
-                                {label: "Generate with Pillar · create a candidate from a description", value: "generate"},
+                                {label: "Generate with HiCode · create a candidate from a description", value: "generate"},
                                 {label: "Manual · enter the definition yourself", value: "manual"},
                             ]}
                             indicatorComponent={DialogIndicator}

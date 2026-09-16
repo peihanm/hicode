@@ -209,7 +209,7 @@ function parseCLIOptions(args: string[]): EvalCLICommand | undefined {
         return undefined;
     }
     const evalRoot = resolve(
-        parsed.values["eval-root"] ?? join(homedir(), ".pillar-evals")
+        parsed.values["eval-root"] ?? join(homedir(), ".hicode-evals")
     );
     if (parsed.values.trend) {
         assertNoOtherCommand(parsed.values, "--trend");
@@ -253,7 +253,7 @@ function parseCommonRunOptions(
     values: Readonly<Record<string, string | boolean | undefined>>,
     evalRoot: string
 ): Omit<EvalCLIOptions, "kind" | "caseId"> {
-    const defaultSettings = join(homedir(), ".pillar", "settings.json");
+    const defaultSettings = join(homedir(), ".hicode", "settings.json");
     return {
         evalRoot,
         settingsFile: textOption(values["settings-file"])
@@ -292,7 +292,7 @@ function parseCommonRunOptions(
 }
 
 function printHelp(): void {
-    process.stdout.write(`Pillar SDK Eval Harness
+    process.stdout.write(`HiCode SDK Eval Harness
 
 Usage:
   bun run eval -- --case <id> [options]
@@ -306,8 +306,8 @@ Options:
       --suite                 Run multiple Cases sequentially
       --cases <ids>           Comma-separated Case ids, or all
       --inspect <run-id>      Diagnose an existing Run without calling Provider
-      --eval-root <path>      Run artifacts root (default: ~/.pillar-evals)
-      --settings-file <path>  User Settings catalog (default: ~/.pillar/settings.json when present)
+      --eval-root <path>      Run artifacts root (default: ~/.hicode-evals)
+      --settings-file <path>  User Settings catalog (default: ~/.hicode/settings.json when present)
       --env-file <path>       Explicit Provider env file; never copied into artifacts
       --source <source>       glm | qwen | deepseek | openrouter
       --model <model>         Primary and fast model override
@@ -326,7 +326,7 @@ Options:
       --list                  List available Cases
   -h, --help                  Show help
 
-The verifier gets a secret-filtered environment. Full workspaces and Pillar
+The verifier gets a secret-filtered environment. Full workspaces and HiCode
 sessions are retained by default so another development agent can inspect them.
 `);
 }

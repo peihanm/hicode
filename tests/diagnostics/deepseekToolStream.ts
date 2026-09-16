@@ -1,4 +1,4 @@
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {loadEnv} from "../../src/cli/env.js";
 import {createGlmRequestFields} from "../../src/llm/providers/glm.js";
 
@@ -489,13 +489,13 @@ function printComparison(results: readonly ProbeResult[]): void {
         `- 工具增量事件: DeepSeek ${deepseek.toolDeltaEvents} / GLM ${glm.toolDeltaEvents}`
     );
     console.log(
-        "- 请求协议: DeepSeek 使用标准 stream=true；GLM 额外使用 Pillar 当前的 tool_stream=true 扩展。"
+        "- 请求协议: DeepSeek 使用标准 stream=true；GLM 额外使用 HiCode 当前的 tool_stream=true 扩展。"
     );
 }
 
 async function main(): Promise<void> {
     const options = parseOptions(process.argv.slice(2));
-    loadEnv(createPillarStorageLayout(), process.cwd());
+    loadEnv(createHiCodeStorageLayout(), process.cwd());
 
     const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
     if (!deepseekApiKey) {

@@ -10,7 +10,7 @@ export {
     hashProjectValue,
 } from "./project.js";
 export {
-    createPillarStorageLayout,
+    createHiCodeStorageLayout,
     getProjectDebugDirectory,
     getProjectSessionsDirectory,
     getProjectStorageDirectory,
@@ -18,6 +18,6 @@ export {
     getSessionContentDirectory,
 } from "./layout.js";
 export type {
-    CreatePillarStorageLayoutOptions,
-    PillarStorageLayout,
+    CreateHiCodeStorageLayoutOptions,
+    HiCodeStorageLayout,
 } from "./layout.js";

@@ -1,18 +1,18 @@
-import type {ModelTargetSettings, ResolvedPillarSettings} from "../settings/types.js";
+import type {ModelTargetSettings, ResolvedHiCodeSettings} from "../settings/types.js";
 import {listConfiguredPrimaryModels, sourceIsAvailable} from "../llm/modelCatalog.js";
 
 export interface PrimaryModelRuntime {
     readonly target: ModelTargetSettings;
     readonly available: readonly ModelTargetSettings[];
-    readonly sources: ResolvedPillarSettings["sources"];
+    readonly sources: ResolvedHiCodeSettings["sources"];
     hasCredential(source: ModelTargetSettings["source"]): boolean;
     select(target: ModelTargetSettings): void;
-    updateSources(sources: ResolvedPillarSettings["sources"]): void;
+    updateSources(sources: ResolvedHiCodeSettings["sources"]): void;
 }
 
 export function createPrimaryModelRuntime(
     initial: ModelTargetSettings,
-    initialSources: ResolvedPillarSettings["sources"],
+    initialSources: ResolvedHiCodeSettings["sources"],
     available?: readonly ModelTargetSettings[]
 ): PrimaryModelRuntime {
     let target = {...initial};

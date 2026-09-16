@@ -36,7 +36,7 @@ describe("custom agent definitions", () => {
     test("解析 YAML frontmatter、工具数组、模型和正文", () => {
         const parsed = parseCustomAgentDocument({
             source: "project",
-            path: "/repo/.pillar/agents/reviewer.md",
+            path: "/repo/.hicode/agents/reviewer.md",
             raw: `---
 name: code-reviewer
 description: 审查实现和回归风险
@@ -65,7 +65,7 @@ max_iterations: 9
     test("非法字段产生 error，未知字段 warning 不阻止合法定义", () => {
         const warning = parseCustomAgentDocument({
             source: "user",
-            path: "/home/.pillar/agents/reviewer.md",
+            path: "/home/.hicode/agents/reviewer.md",
             raw: `---
 name: reviewer
 description: review
@@ -84,7 +84,7 @@ review carefully`,
 
         const invalid = parseCustomAgentDocument({
             source: "project",
-            path: "/repo/.pillar/agents/bad.md",
+            path: "/repo/.hicode/agents/bad.md",
             raw: `---
 name: 1bad
 description: bad
@@ -143,9 +143,9 @@ body`,
         expect(validated.issues[1]?.message).toContain("Tool does not exist");
     });
 
-    test("生产 loader 从项目 .pillar/agents 读取定义并隔离坏文件", async () => {
+    test("生产 loader 从项目 .hicode/agents 读取定义并隔离坏文件", async () => {
         await withTempProject(async (cwd, storage) => {
-            const directory = join(cwd, ".pillar", "agents");
+            const directory = join(cwd, ".hicode", "agents");
             await mkdir(directory, {recursive: true});
             await writeFile(
                 join(directory, "unique-r12-agent.md"),
@@ -177,8 +177,8 @@ project prompt`,
         await withTempProject(async (root) => {
             const home = join(root, "home");
             const cwd = join(root, "project");
-            const userDirectory = join(home, ".pillar", "agents");
-            const projectDirectory = join(cwd, ".pillar", "agents");
+            const userDirectory = join(home, ".hicode", "agents");
+            const projectDirectory = join(cwd, ".hicode", "agents");
             await Promise.all([
                 mkdir(userDirectory, {recursive: true}),
                 mkdir(projectDirectory, {recursive: true}),
@@ -209,8 +209,8 @@ project prompt`, "utf8");
             ).href;
             const script = [
                 `import {loadCustomAgentDefinitions} from ${JSON.stringify(moduleUrl)};`,
-                `import {createPillarStorageLayout} from ${JSON.stringify(layoutUrl)};`,
-                `const storage = createPillarStorageLayout({pillarHome: ${JSON.stringify(join(home, ".pillar"))}});`,
+                `import {createHiCodeStorageLayout} from ${JSON.stringify(layoutUrl)};`,
+                `const storage = createHiCodeStorageLayout({hicodeHome: ${JSON.stringify(join(home, ".hicode"))}});`,
                 `const loaded = await loadCustomAgentDefinitions(storage, ${JSON.stringify(cwd)});`,
                 "console.log(JSON.stringify(loaded));",
             ].join("\n");
@@ -247,7 +247,7 @@ project prompt`, "utf8");
 
     test("超大定义文件不会激活", async () => {
         await withTempProject(async (cwd, storage) => {
-            const directory = join(cwd, ".pillar", "agents");
+            const directory = join(cwd, ".hicode", "agents");
             await mkdir(directory, {recursive: true});
             await writeFile(
                 join(directory, "oversized.md"),
@@ -268,7 +268,7 @@ project prompt`, "utf8");
 
     test("Host Agent 覆盖文件定义且 Catalog reload 后仍保留", async () => {
         await withTempProject(async (cwd, storage) => {
-            const directory = join(cwd, ".pillar", "agents");
+            const directory = join(cwd, ".hicode", "agents");
             await mkdir(directory, {recursive: true});
             await writeFile(join(directory, "reviewer.md"), `---
 name: reviewer
@@ -313,8 +313,8 @@ changed project prompt`, "utf8");
 
     test("合并来源后最多激活 64 个定义", async () => {
         await withTempProject(async (cwd, storage) => {
-            const userDirectory = join(storage.pillarHome, "agents");
-            const projectDirectory = join(cwd, ".pillar", "agents");
+            const userDirectory = join(storage.hicodeHome, "agents");
+            const projectDirectory = join(cwd, ".hicode", "agents");
             await Promise.all([
                 mkdir(userDirectory, {recursive: true}),
                 mkdir(projectDirectory, {recursive: true}),

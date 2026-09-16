@@ -94,7 +94,7 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
             if (content !== null) {
                 // Stage on the same filesystem; final rename cannot expose a partial file.
                 await mkdir(dirname(canonical), {recursive: true});
-                temporary = join(dirname(canonical), `.pillar-write-${randomUUID()}.tmp`);
+                temporary = join(dirname(canonical), `.hicode-write-${randomUUID()}.tmp`);
                 const file = await open(temporary, "wx", targetMode ?? version.mode ?? 0o666);
                 try {
                     await file.writeFile(content, "utf8");

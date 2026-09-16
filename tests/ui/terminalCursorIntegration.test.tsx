@@ -21,7 +21,7 @@ test("真实 Ink 输出在取消后再次输入仍定位输入框", async () => 
         expect(index).toBeGreaterThanOrEqual(0);
         expect(chunks[index]).toEndWith(`\u001b7\u001b[4A\u001b[${column}G`);
         expect(chunks.slice(index + 1).join("")).not.toContain("\u001b8");
-        expect(chunks.join("")).not.toContain("pillar-cursor://");
+        expect(chunks.join("")).not.toContain("hicode-cursor://");
         expect(chunks.join("")).not.toContain("\u200c");
     };
     const input = Object.assign(new PassThrough(), {isTTY: true, setRawMode() {return this;}, ref() {return this;}, unref() {return this;}});

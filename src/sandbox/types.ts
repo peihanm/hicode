@@ -1,7 +1,7 @@
-import type {ResolvedPillarSettings} from "../settings/index.js";
+import type {ResolvedHiCodeSettings} from "../settings/index.js";
 import type {NetworkAccessExecution} from "../permissions/networkAccess.js";
 
-export type ResolvedSandboxSettings = ResolvedPillarSettings["sandbox"];
+export type ResolvedSandboxSettings = ResolvedHiCodeSettings["sandbox"];
 export type SandboxPlatform = "macos" | "linux" | "windows";
 export type SandboxExecutionPreference =
     | "use_default"

@@ -1,4 +1,4 @@
-import type {TurnResult} from "pillar/sdk";
+import type {TurnResult} from "hicode/sdk";
 import type {EvalAssertion, EvalFailureKind} from "./types.js";
 
 export function classifyEvalFailure(

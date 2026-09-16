@@ -12,7 +12,7 @@ async function fixture(run: (context: {
     source: string;
     execute(overrides?: Record<string, string>, remote?: boolean): Promise<{code: number; output: string}>;
 }) => Promise<void>) {
-    const root = await mkdtemp(join(tmpdir(), "pillar-installer-"));
+    const root = await mkdtemp(join(tmpdir(), "hicode-installer-"));
     const home = join(root, "user's home");
     const bin = join(root, "bin");
     const source = join(root, "source code");
@@ -37,10 +37,10 @@ cp "$TEST_ARCHIVES/$package.tgz" "\${@: -1}"
 if [[ "\${TEST_BAD_CHECKSUM:-0}" == 1 ]]; then printf corrupt >> "\${@: -1}"; fi`,
             brew: 'echo "Unexpected Homebrew execution" >&2; exit 98',
             git: 'echo "Unexpected Git execution" >&2; exit 98',
-            rg: '[[ "${TEST_MISSING_RG:-0}" != 1 || -f "$HOME/.local/share/pillar/bin/rg" ]]',
+            rg: '[[ "${TEST_MISSING_RG:-0}" != 1 || -f "$HOME/.local/share/hicode/bin/rg" ]]',
             bun: `case "$1" in
   --version)
-    if [[ "\${TEST_OLD_BUN:-0}" == 1 && ! -e "$HOME/.local/share/pillar/bin/bun" ]]; then echo 1.2.0; else echo 1.3.14; fi ;;
+    if [[ "\${TEST_OLD_BUN:-0}" == 1 && ! -e "$HOME/.local/share/hicode/bin/bun" ]]; then echo 1.2.0; else echo 1.3.14; fi ;;
   install) [[ "\${TEST_INSTALL_FAIL:-0}" != 1 ]] ;;
   */src/index.tsx) [[ "$2" == --help ]] ;;
   *) exit 97 ;;
@@ -69,12 +69,12 @@ esac`,
         }
         await writeFile(join(source, "install.sh"), fixtureInstaller);
         await writeFile(join(root, "downloaded.sh"), fixtureInstaller);
-        const remote = join(root, "pillar-core-main");
+        const remote = join(root, "hicode-main");
         await mkdir(join(remote, "src"), {recursive: true});
         await writeFile(join(remote, "src/index.tsx"), "");
         await writeFile(join(remote, "bun.lock"), "");
         await writeFile(join(remote, "install.sh"), fixtureInstaller);
-        const tar = Bun.spawn(["/usr/bin/tar", "-czf", join(archives, "source.tgz"), "-C", root, "pillar-core-main"]);
+        const tar = Bun.spawn(["/usr/bin/tar", "-czf", join(archives, "source.tgz"), "-C", root, "hicode-main"]);
         expect(await tar.exited).toBe(0);
         await run({home, source, execute: async (overrides = {}, remote = false) => {
             const child = Bun.spawn(["/bin/bash", join(remote ? root : source, remote ? "downloaded.sh" : "install.sh")], {
@@ -98,14 +98,14 @@ describe("macOS installer (offline command fixtures)", () => {
             expect(await execute()).toMatchObject({code: 0});
             const config = await readFile(join(home, ".zshrc"), "utf8");
             expect(config.startsWith("# existing user config\n")).toBe(true);
-            expect(config.match(/# Pillar installer/g)).toHaveLength(1);
+            expect(config.match(/# HiCode installer/g)).toHaveLength(1);
             // Evaluate the generated PATH as a fresh interactive shell would.
-            const child = Bun.spawn(["/bin/zsh", "-c", 'source "$HOME/.zshrc"; command -v pillar; pillar --help'], {
+            const child = Bun.spawn(["/bin/zsh", "-c", 'source "$HOME/.zshrc"; command -v hicode; hicode --help'], {
                 env: {HOME: home, PATH: "/usr/bin:/bin"}, stdout: "pipe", stderr: "pipe",
             });
             const output = await new Response(child.stdout).text();
             expect(await child.exited).toBe(0);
-            expect(output.trim()).toBe(join(home, ".local/share/pillar/bin/pillar"));
+            expect(output.trim()).toBe(join(home, ".local/share/hicode/bin/hicode"));
         });
     }, 20_000);
 
@@ -113,11 +113,11 @@ describe("macOS installer (offline command fixtures)", () => {
         await fixture(async ({home, execute}) => {
             const zdotdir = join(home, "zsh config");
             expect(await execute({ZDOTDIR: zdotdir})).toMatchObject({code: 0});
-            expect(await readFile(join(zdotdir, ".zshrc"), "utf8")).toContain("# Pillar installer");
+            expect(await readFile(join(zdotdir, ".zshrc"), "utf8")).toContain("# HiCode installer");
             await writeFile(join(home, ".profile"), "# login config\n");
             expect(await execute({SHELL: "/bin/bash"})).toMatchObject({code: 0});
             expect(await readFile(join(home, ".profile"), "utf8")).toContain("# login config\n");
-            expect(await readFile(join(home, ".bashrc"), "utf8")).toContain("# Pillar installer");
+            expect(await readFile(join(home, ".bashrc"), "utf8")).toContain("# HiCode installer");
             expect(await Bun.file(join(home, ".bash_profile")).exists()).toBe(false);
         });
     }, 20_000);
@@ -140,7 +140,7 @@ describe("macOS installer (offline command fixtures)", () => {
         await fixture(async ({home, execute}) => {
             const result = await execute({TEST_OLD_BUN: "1", TEST_ALLOW_DOWNLOAD: "1", TEST_BAD_CHECKSUM: "1"});
             expect(result.code).not.toBe(0);
-            expect(await Bun.file(join(home, ".local/share/pillar/bin/bun")).exists()).toBe(false);
+            expect(await Bun.file(join(home, ".local/share/hicode/bin/bun")).exists()).toBe(false);
             expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
         });
     }, 20_000);
@@ -157,7 +157,7 @@ describe("macOS installer (offline command fixtures)", () => {
 
     test("does not overwrite an existing non-repository directory", async () => {
         await fixture(async ({home, execute}) => {
-            const target = join(home, ".local/share/pillar/source/keep.txt");
+            const target = join(home, ".local/share/hicode/source/keep.txt");
             await mkdir(dirname(target), {recursive: true});
             await writeFile(target, "user data");
             expect((await execute({}, true)).code).toBe(1);
@@ -169,7 +169,7 @@ describe("macOS installer (offline command fixtures)", () => {
         await fixture(async ({home, execute}) => {
             const result = await execute({TEST_INSTALL_FAIL: "1"});
             expect(result.code).not.toBe(0);
-            expect(result.output).not.toContain("Pillar installed.");
+            expect(result.output).not.toContain("HiCode installed.");
             expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
         });
     }, 20_000);

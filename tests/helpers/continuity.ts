@@ -5,7 +5,7 @@ import {createCompactState} from "../../src/context/state.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import {createTestRuntimeResources} from "./runtimeResources.js";
 import type {LLMCaller, Message} from "../../src/llm/types.js";
-import type {PillarStorageLayout} from "../../src/persistence/layout.js";
+import type {HiCodeStorageLayout} from "../../src/persistence/layout.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 
 export const continuityState = () => ({todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []});
@@ -14,7 +14,7 @@ export const continuityHost: ToolContextHost = {canUseTool: async () => ({behavi
     getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",
     setTodos() {}};
 
-export function continuityFixture(cwd: string, storage: PillarStorageLayout, callLLM: LLMCaller, history: Message[] = [{role: "system", content: "fixture"}]) {
+export function continuityFixture(cwd: string, storage: HiCodeStorageLayout, callLLM: LLMCaller, history: Message[] = [{role: "system", content: "fixture"}]) {
     const resources = createTestRuntimeResources(cwd, {storage, toolRuntime: createToolRuntime({allowedToolNames: ["list_files", "write_file"]})});
     let compactions = 0;
     const compact = createCompactHistoryRunner({generateSummary: async () => {compactions++; return "工作继续，详细来源见档案";}});

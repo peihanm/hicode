@@ -21,7 +21,7 @@ describe("TaskRuntime", () => {
                     await appendFile(request.outputFilePath!, "stopped\n");
                     return {stdout: "", stderr: "", termination: {kind: "aborted", reason: "shutdown"}, outputBytes: 8, outputComplete: true};
                 }};
-                const store = createTestToolResultStore(cwd, "quiet-shutdown", {pillarHome: `${cwd}/tool-results`});
+                const store = createTestToolResultStore(cwd, "quiet-shutdown", {hicodeHome: `${cwd}/tool-results`});
                 const runtime = createTaskRuntimeForTest(cwd, runner);
                 const session = runtime.forSession({sessionId: "quiet-shutdown", toolResultStore: store});
                 const task = await session.startShell({command: "fixture-server", cwd, toolCallId: "start-server"});
@@ -84,7 +84,7 @@ describe("TaskRuntime", () => {
                 toolResultStore: createTestToolResultStore(
                     cwd,
                     "concurrent-agent-session",
-                    {pillarHome: `${cwd}/tool-results`}
+                    {hicodeHome: `${cwd}/tool-results`}
                 ),
             });
             const context = createTestContext(cwd, {tasks: session});
@@ -128,7 +128,7 @@ describe("TaskRuntime", () => {
             };
             const runtime = createTaskRuntimeForTest(cwd, shellRunner);
             const store = createTestToolResultStore(cwd, "policy-session", {
-                pillarHome: `${cwd}/tool-results`,
+                hicodeHome: `${cwd}/tool-results`,
             });
             const session = runtime.forSession({
                 sessionId: "policy-session",
@@ -172,13 +172,13 @@ describe("TaskRuntime", () => {
             const first = runtime.forSession({
                 sessionId: "summary-a",
                 toolResultStore: createTestToolResultStore(cwd, "summary-a", {
-                    pillarHome: `${cwd}/tool-results`,
+                    hicodeHome: `${cwd}/tool-results`,
                 }),
             });
             const second = runtime.forSession({
                 sessionId: "summary-b",
                 toolResultStore: createTestToolResultStore(cwd, "summary-b", {
-                    pillarHome: `${cwd}/tool-results`,
+                    hicodeHome: `${cwd}/tool-results`,
                 }),
             });
             let finish!: () => void;
@@ -241,10 +241,10 @@ describe("TaskRuntime", () => {
             };
             const runtime = createTaskRuntimeForTest(cwd, shellRunner);
             const firstStore = createTestToolResultStore(cwd, "session-a", {
-                pillarHome: `${cwd}/tool-results`,
+                hicodeHome: `${cwd}/tool-results`,
             });
             const secondStore = createTestToolResultStore(cwd, "session-b", {
-                pillarHome: `${cwd}/tool-results`,
+                hicodeHome: `${cwd}/tool-results`,
             });
             const first = runtime.forSession({
                 sessionId: "session-a",
@@ -324,7 +324,7 @@ describe("TaskRuntime", () => {
             };
             const runtime = createTaskRuntimeForTest(cwd, shellRunner);
             const store = createTestToolResultStore(cwd, "failed-session", {
-                pillarHome: `${cwd}/tool-results`,
+                hicodeHome: `${cwd}/tool-results`,
             });
             const session = runtime.forSession({
                 sessionId: "failed-session",
@@ -380,7 +380,7 @@ describe("TaskRuntime", () => {
                 },
             };
             const store = createTestToolResultStore(cwd, "resume-session", {
-                pillarHome: `${cwd}/tool-results`,
+                hicodeHome: `${cwd}/tool-results`,
             });
             const firstRuntime = createTaskRuntimeForTest(cwd, shellRunner);
             const first = firstRuntime.forSession({

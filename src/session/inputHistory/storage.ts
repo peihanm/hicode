@@ -1,7 +1,7 @@
 import {realpath} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
 import {z} from "zod";
-import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type PillarStorageLayout} from "../../persistence/index.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../../persistence/index.js";
 import {getSessionInputHistoryPath} from "../../persistence/layout.js";
 
 const MAX_HISTORY_BYTES = 2 * 1024 * 1024;
@@ -19,7 +19,7 @@ async function canonicalProject(cwd:string):Promise<string> {
     try {return await realpath(cwd);} catch {return resolve(cwd);}
 }
 
-function readEntries(storage:PillarStorageLayout,path:string,project:string,sessionId:string):Entry[] {
+function readEntries(storage:HiCodeStorageLayout,path:string,project:string,sessionId:string):Entry[] {
     const text=readPrivateStorageTextFile(storage,path,MAX_HISTORY_BYTES);
     if(text===null)return [];
     const entries:Entry[]=[];
@@ -36,7 +36,7 @@ function readEntries(storage:PillarStorageLayout,path:string,project:string,sess
 }
 
 /** Input history is bounded within its Session, including physical disk usage. */
-export function createInputHistoryStore(storage:PillarStorageLayout):InputHistoryStore {
+export function createInputHistoryStore(storage:HiCodeStorageLayout):InputHistoryStore {
     return {
         async load(cwd,sessionId) {
             if(!sessionId)return [];

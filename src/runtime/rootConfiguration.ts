@@ -1,25 +1,25 @@
 import {isAbsolute, relative, resolve, sep} from "node:path";
 import type {McpConfigSource} from "../mcp/types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
-import {normalizePillarStorageLayout} from "../persistence/layout.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
+import {normalizeHiCodeStorageLayout} from "../persistence/layout.js";
 import type {InstructionFileSource} from "../prompt/instructions.js";
-import type {ResolvedPillarSettings, SettingsFileSource,} from "../settings/index.js";
+import type {ResolvedHiCodeSettings, SettingsFileSource,} from "../settings/index.js";
 import type {SkillFileSource} from "../skills/types.js";
 import type {AgentFileSource} from "../subagents/types.js";
 import {
-    normalizePillarRootContributions,
-    type PillarRootContributions,
+    normalizeHiCodeRootContributions,
+    type HiCodeRootContributions,
 } from "./rootContributions.js";
 
 export type {
     HostAgentContribution,
     HostInstructionContribution,
     HostSkillContribution,
-    PillarRootContributions,
+    HiCodeRootContributions,
 } from "./rootContributions.js";
 export type {HostMcpServerContribution} from "../mcp/types.js";
 
-export interface PillarFileSources {
+export interface HiCodeFileSources {
     readonly settings: readonly SettingsFileSource[];
     readonly instructions: readonly InstructionFileSource[];
     readonly skills: readonly SkillFileSource[];
@@ -27,30 +27,30 @@ export interface PillarFileSources {
     readonly mcp: readonly McpConfigSource[];
 }
 
-const rootConfigurationBrand: unique symbol = Symbol("PillarRootConfiguration");
+const rootConfigurationBrand: unique symbol = Symbol("HiCodeRootConfiguration");
 
-export interface PillarRootConfiguration {
+export interface HiCodeRootConfiguration {
     readonly allowFullAccess: boolean;
     readonly [rootConfigurationBrand]: true;
     readonly cwd: string;
     readonly workspaceBoundary: string;
-    readonly storage: PillarStorageLayout;
-    readonly settings: ResolvedPillarSettings;
-    readonly fileSources: PillarFileSources;
-    readonly contributions: PillarRootContributions;
+    readonly storage: HiCodeStorageLayout;
+    readonly settings: ResolvedHiCodeSettings;
+    readonly fileSources: HiCodeFileSources;
+    readonly contributions: HiCodeRootContributions;
 }
 
-export interface CreatePillarRootConfigurationOptions {
+export interface CreateHiCodeRootConfigurationOptions {
     allowFullAccess?: boolean;
     cwd: string;
     workspaceBoundary: string;
-    storage: PillarStorageLayout;
-    settings: ResolvedPillarSettings;
-    fileSources: PillarFileSources;
-    rootContributions?: PillarRootContributions;
+    storage: HiCodeStorageLayout;
+    settings: ResolvedHiCodeSettings;
+    fileSources: HiCodeFileSources;
+    rootContributions?: HiCodeRootContributions;
 }
 
-export const CLI_FILE_SOURCES: PillarFileSources = freezeFileSources({
+export const CLI_FILE_SOURCES: HiCodeFileSources = freezeFileSources({
     settings: ["user", "project", "local"],
     instructions: ["user", "project", "local"],
     skills: ["user", "project"],
@@ -58,9 +58,9 @@ export const CLI_FILE_SOURCES: PillarFileSources = freezeFileSources({
     mcp: ["user", "project"],
 });
 
-export function createPillarRootConfiguration(
-    options: CreatePillarRootConfigurationOptions
-): PillarRootConfiguration {
+export function createHiCodeRootConfiguration(
+    options: CreateHiCodeRootConfigurationOptions
+): HiCodeRootConfiguration {
     const cwd = requireAbsolutePath(options.cwd, "cwd");
     const workspaceBoundary = requireAbsolutePath(
         options.workspaceBoundary,
@@ -69,15 +69,15 @@ export function createPillarRootConfiguration(
     assertContains(workspaceBoundary, cwd);
     if (options.allowFullAccess !== undefined && typeof options.allowFullAccess !== "boolean") throw new Error("allowFullAccess must be boolean");
     if (options.settings.permissions.defaultMode === "full-access" && !options.allowFullAccess) throw new Error("This Host does not allow Full Access");
-    const configuration: PillarRootConfiguration = {
+    const configuration: HiCodeRootConfiguration = {
         [rootConfigurationBrand]: true,
         allowFullAccess: options.allowFullAccess ?? false,
         cwd,
         workspaceBoundary,
-        storage: normalizePillarStorageLayout(options.storage),
+        storage: normalizeHiCodeStorageLayout(options.storage),
         settings: immutableCopy(options.settings),
-        fileSources: normalizePillarFileSources(options.fileSources),
-        contributions: normalizePillarRootContributions(
+        fileSources: normalizeHiCodeFileSources(options.fileSources),
+        contributions: normalizeHiCodeRootContributions(
             options.rootContributions
         ),
     };
@@ -85,9 +85,9 @@ export function createPillarRootConfiguration(
     return configuration;
 }
 
-export function isPillarRootConfiguration(
+export function isHiCodeRootConfiguration(
     value: unknown
-): value is PillarRootConfiguration {
+): value is HiCodeRootConfiguration {
     return Boolean(
         value &&
         typeof value === "object" &&
@@ -96,9 +96,9 @@ export function isPillarRootConfiguration(
     );
 }
 
-export function normalizePillarFileSources(
-    sources: PillarFileSources
-): PillarFileSources {
+export function normalizeHiCodeFileSources(
+    sources: HiCodeFileSources
+): HiCodeFileSources {
     if (!sources || typeof sources !== "object") {
         throw new Error("fileSources must be an object");
     }
@@ -153,8 +153,8 @@ function normalizeSources<T extends string>(
     return Object.freeze(allowed.filter((value) => seen.has(value)));
 }
 
-function freezeFileSources(sources: PillarFileSources): PillarFileSources {
-    const frozen: PillarFileSources = {
+function freezeFileSources(sources: HiCodeFileSources): HiCodeFileSources {
+    const frozen: HiCodeFileSources = {
         settings: Object.freeze([...sources.settings]),
         instructions: Object.freeze([...sources.instructions]),
         skills: Object.freeze([...sources.skills]),

@@ -19,7 +19,7 @@ const TOOL_OPTIONS: ConfirmOption[] = [
         value: "yes_no_ask",
     },
     {
-        label: "3. No, and tell pillar what to do differently",
+        label: "3. No, and tell hicode what to do differently",
         value: "no",
     },
 ];
@@ -27,7 +27,7 @@ const TOOL_OPTIONS: ConfirmOption[] = [
 const BASIC_OPTIONS: ConfirmOption[] = [
     {label: "1. Yes", value: "yes"},
     {
-        label: "2. No, and tell pillar what to do differently",
+        label: "2. No, and tell hicode what to do differently",
         value: "no",
     },
 ];

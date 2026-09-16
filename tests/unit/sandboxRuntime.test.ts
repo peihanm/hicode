@@ -230,7 +230,7 @@ test.each(["bun", "npm"] as const)("受管 %s 缓存拒绝 symlink，初始化�
             const wrapped = await runtime.wrapCommand("install", cwd, new AbortController().signal);
             expect(wrapped.env[manager === "bun" ? "BUN_INSTALL_CACHE_DIR" : "npm_config_cache"]).toBe(await realpath(cache));
             expect(configs[0]?.filesystem?.denyWrite).toContain(cache);
-            expect(configs[0]?.filesystem?.allowWrite).not.toContain(storage.pillarHome);
+            expect(configs[0]?.filesystem?.allowWrite).not.toContain(storage.hicodeHome);
         } finally {await runtime.close();}
         expect(resets).toBe(2);
     });

@@ -29,8 +29,8 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
         const processCwd = process.cwd();
         const target = join(cwd, "packages", "worker");
         await mkdir(target, {recursive: true});
-        await writeFile(join(cwd, "packages", "PILLAR.md"), "INTERMEDIATE_PROJECT_RULE: keep changes scoped");
-        await writeFile(join(target, "PILLAR.md"), "CHILD_PROJECT_RULE: run relevant checks");
+        await writeFile(join(cwd, "packages", "HICODE.md"), "INTERMEDIATE_PROJECT_RULE: keep changes scoped");
+        await writeFile(join(target, "HICODE.md"), "CHILD_PROJECT_RULE: run relevant checks");
         await writeFile(join(target, "shared.txt"), "uncommitted");
         const child = createFakeLLM([
             options => {
@@ -78,7 +78,7 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
             expect(await tasks.get(first!.id)).toMatchObject({id: first!.id, kind: "agent", status: "completed", progress: {runCount: 2}});
             expect(await readFile(join(target, "shared.txt"), "utf8")).toBe("corrected");
             expect(await readdir(cwd)).not.toContain(".git");
-            expect(await readdir(cwd)).not.toContain(".pillar");
+            expect(await readdir(cwd)).not.toContain(".hicode");
             expect(process.cwd()).toBe(processCwd);
         } finally {await runtime.close();}
     });

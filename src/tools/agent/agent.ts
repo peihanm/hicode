@@ -37,7 +37,7 @@ const agentInputSchema = z.object({
     run_in_background: z
         .boolean()
         .default(false)
-        .describe("Return a Task ID immediately when true; Pillar notifies completion."),
+        .describe("Return a Task ID immediately when true; HiCode notifies completion."),
     cwd: z.string().trim().min(1).optional().describe("Existing working directory, default current directory; must be within parent-authorized directories. Does not create or authorize a directory."),
     read_only: z.boolean().default(false).describe("Read-only investigation when true; prohibits writes and commands with side effects. Explore is always read-only."),
     model: z

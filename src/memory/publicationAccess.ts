@@ -1,6 +1,6 @@
 import { basename, dirname, relative, resolve } from "node:path";
 import { realpath } from "node:fs/promises";
-import type { PillarStorageLayout } from "../persistence/layout.js";
+import type { HiCodeStorageLayout } from "../persistence/layout.js";
 import { memoryKeySchema } from "./schema.js";
 import { parseMemoryNote } from "./note.js";
 import type { MemoryPublicationStore } from "./publicationStore.js";
@@ -30,11 +30,11 @@ export function classifyPublicationPath(directory: string, inputPath: string): P
     const key = memoryKeySchema.safeParse(match?.[2]);
     return match && key.success ? { kind: match[1] === "inbox" ? "note" : "topic", key: key.data, path } : undefined;
 }
-export function isMemoryStoragePath(storage: PillarStorageLayout, path: string): boolean {
+export function isMemoryStoragePath(storage: HiCodeStorageLayout, path: string): boolean {
     const rel = relative(storage.projectsRoot, resolve(path));
     return !rel.startsWith("..") && /^[^/]+\/memory(?:\/|$)/.test(rel);
 }
-export async function checkMemoryStoragePath(storage: PillarStorageLayout, path: string): Promise<boolean> {
+export async function checkMemoryStoragePath(storage: HiCodeStorageLayout, path: string): Promise<boolean> {
     if (isMemoryStoragePath(storage, path))
         return true;
     let probe = resolve(path);

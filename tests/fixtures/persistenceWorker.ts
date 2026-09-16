@@ -5,7 +5,7 @@ import { addToAllowList, type PermissionRules } from "../../src/permissions/inde
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { join } from "node:path";
 import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 
 const [mode, cwd, prefix, countValue, readyPath, barrierPath] = process.argv.slice(2);
 if (!mode || !cwd || !prefix || !countValue || !readyPath || !barrierPath) {
@@ -13,7 +13,7 @@ if (!mode || !cwd || !prefix || !countValue || !readyPath || !barrierPath) {
 }
 const count = Number.parseInt(countValue, 10);
 if (!Number.isFinite(count) || count < 1) throw new Error("invalid worker count");
-const storage = createPillarStorageLayout({pillarHome: join(cwd, ".pillar-test-storage")});
+const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, ".hicode-test-storage")});
 
 await writeFile(readyPath, "ready\n", "utf8");
 while (true) {
@@ -47,7 +47,7 @@ if (mode === "session") {
   }
 } else if (mode === "tool-result-quota") {
   const store = createTestToolResultStore(cwd, "shared-tool-result", {
-    pillarHome: join(cwd, "tool-result-artifacts"),
+    hicodeHome: join(cwd, "tool-result-artifacts"),
     maxArtifactBytes: 100,
     maxSessionBytes: 100,
   });
@@ -59,7 +59,7 @@ if (mode === "session") {
   await writeFile(`${readyPath}.result.json`, JSON.stringify(result), "utf8");
 } else if (mode === "tool-result-binary") {
   const store = createTestToolResultStore(cwd, "shared-binary", {
-    pillarHome: join(cwd, "tool-result-artifacts"),
+    hicodeHome: join(cwd, "tool-result-artifacts"),
   });
   const size = prefix === "a" ? 10 : 20;
   const result = await store.persistBinary({

@@ -23,7 +23,7 @@ import {
     ToolResultStoreError,
     type ToolResultStoreLimits,
 } from "./types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 
 const MAX_TOOL_RESULT_METADATA_BYTES = 64 * 1024;
 const MAX_TOOL_RESULT_DIRECTORY_ENTRIES = 20_000;
@@ -67,7 +67,7 @@ export class ToolResultStore {
     private readonly projectsRoot: string;
 
     constructor(
-        private readonly storage: PillarStorageLayout,
+        private readonly storage: HiCodeStorageLayout,
         readonly cwd: string,
         sessionId: string,
         limits: ToolResultStoreLimits
@@ -84,7 +84,7 @@ export class ToolResultStore {
     }
 
     static create(
-        storage: PillarStorageLayout,
+        storage: HiCodeStorageLayout,
         cwd: string,
         sessionId: string
     ): ToolResultStore {

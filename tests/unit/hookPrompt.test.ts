@@ -2,13 +2,13 @@ import type {HookInput, HookEnvelope} from "../../src/hooks/types.js";
 import {describe, expect, test} from "bun:test";
 import {createHookPromptExecutorFactory} from "../../src/hooks/prompt.js";
 import type {LLMCaller} from "../../src/llm/types.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 
 function envelope(event: HookInput): HookEnvelope {
     return {version: 2, cwd: "/project", hook_id: "id", execution_id: "execution", dispatch_id: "dispatch",
         source: {source: "host", id: "fixture"}, purpose: event.hook_event_name === "PreToolUse" || event.hook_event_name === "UserPromptSubmit" ? "control" : "observe", event};
 }
-const storage = createPillarStorageLayout({pillarHome: "/tmp/pillar-hook-test"});
+const storage = createHiCodeStorageLayout({hicodeHome: "/tmp/hicode-hook-test"});
 
 const usage = {
     prompt_tokens: 10,

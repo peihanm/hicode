@@ -8,7 +8,7 @@ describe("Child process environment", () => {
     test("保留普通变量并剔除配置凭证与常见 Secret", () => {
         const environment = createChildProcessEnvironment({
             PATH: "/bin",
-            PILLAR_VISIBLE: "yes",
+            HICODE_VISIBLE: "yes",
             CustomCredential: "configured-secret",
             GITHUB_TOKEN: "token-secret",
             SERVICE_PASSWORD: "password-secret",
@@ -16,7 +16,7 @@ describe("Child process environment", () => {
 
         expect(environment.base).toEqual({
             PATH: "/bin",
-            PILLAR_VISIBLE: "yes",
+            HICODE_VISIBLE: "yes",
         });
     });
 

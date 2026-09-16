@@ -14,7 +14,7 @@ import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import {
   appendLocalPermissionDirectory,
-  loadPillarSettings,
+  loadHiCodeSettings,
 } from "../../src/settings/index.js";
 
 const inputSchema = z.object({ path: z.string().optional() });
@@ -144,7 +144,7 @@ describe("resolvePermission", () => {
         getDefaultApprovalScope: ({path}) =>
           path ? {kind: "workspace", path} : undefined,
       });
-      const target = join(tmpdir(), "pillar-external-write.txt");
+      const target = join(tmpdir(), "hicode-external-write.txt");
 
       const result = await resolvePermission(tool, {path: target}, ctx);
       expect(result).toMatchObject({
@@ -158,15 +158,15 @@ describe("resolvePermission", () => {
       expect(
         result.behavior === "ask" &&
         result.presentation?.kind === "filesystem_access" &&
-        result.presentation.targetPath.endsWith("pillar-external-write.txt")
+        result.presentation.targetPath.endsWith("hicode-external-write.txt")
       ).toBe(true);
     });
   });
 
   test("Session 目录授权只扩大所选目录", async () => {
     await withTempProject(async (cwd) => {
-      const granted = join(tmpdir(), `pillar-grant-${Date.now()}`);
-      const other = join(tmpdir(), `pillar-other-${Date.now()}`);
+      const granted = join(tmpdir(), `hicode-grant-${Date.now()}`);
+      const other = join(tmpdir(), `hicode-other-${Date.now()}`);
       await mkdir(granted);
       await mkdir(other);
       try {
@@ -240,10 +240,10 @@ describe("permission rule persistence", () => {
       await appendLocalPermissionDirectory(cwd, directory);
 
       expect(
-        loadPillarSettings({storage, cwd}).values.permissions.additionalDirectories
+        loadHiCodeSettings({storage, cwd}).values.permissions.additionalDirectories
       ).toEqual([directory]);
       const settings = JSON.parse(
-        await readFile(join(cwd, ".pillar", "settings.local.json"), "utf8")
+        await readFile(join(cwd, ".hicode", "settings.local.json"), "utf8")
       );
       expect(settings.permissions.additionalDirectories).toEqual([directory]);
     });
@@ -269,7 +269,7 @@ describe("permission rule persistence", () => {
       expect(second.allow).toEqual(first.allow);
 
       const settings = JSON.parse(
-        await readFile(join(cwd, ".pillar", "settings.local.json"), "utf8")
+        await readFile(join(cwd, ".hicode", "settings.local.json"), "utf8")
       );
       expect(settings.permissions.allow).toEqual(["write_file"]);
     });
@@ -287,7 +287,7 @@ describe("permission rule persistence", () => {
         rules = await addToAllowList(rule, rules, cwd);
       }
 
-      expect(loadPillarSettings({storage, cwd}).values.permissions.rules.allow).toEqual([
+      expect(loadHiCodeSettings({storage, cwd}).values.permissions.rules.allow).toEqual([
         { toolName: "write_file", source: "local" },
         { toolName: "bash", content: "git status:*", source: "local" },
         { toolName: "read_file", source: "local" },
@@ -306,7 +306,7 @@ describe("permission rule persistence", () => {
       );
 
       const settings = JSON.parse(
-        await readFile(join(cwd, ".pillar", "settings.local.json"), "utf8")
+        await readFile(join(cwd, ".hicode", "settings.local.json"), "utf8")
       );
       expect([...settings.permissions.allow].sort()).toEqual(
         Array.from({ length: 10 }, (_, index) => `tool_${index}`).sort()
@@ -316,8 +316,8 @@ describe("permission rule persistence", () => {
 
   test("保留未知字段、ask 和 deny", async () => {
     await withTempProject(async (cwd) => {
-      const settingsPath = join(cwd, ".pillar", "settings.local.json");
-      await mkdir(join(cwd, ".pillar"), { recursive: true });
+      const settingsPath = join(cwd, ".hicode", "settings.local.json");
+      await mkdir(join(cwd, ".hicode"), { recursive: true });
       await writeFile(
         settingsPath,
         `${JSON.stringify({
@@ -345,8 +345,8 @@ describe("permission rule persistence", () => {
 
   test("损坏 settings 时拒绝覆盖且不更新内存 rules", async () => {
     await withTempProject(async (cwd) => {
-      const settingsPath = join(cwd, ".pillar", "settings.local.json");
-      await mkdir(join(cwd, ".pillar"), { recursive: true });
+      const settingsPath = join(cwd, ".hicode", "settings.local.json");
+      await mkdir(join(cwd, ".hicode"), { recursive: true });
       await writeFile(settingsPath, "{corrupt-settings", "utf8");
       const emptyRules: PermissionRules = { allow: [], ask: [], deny: [] };
 
@@ -359,16 +359,16 @@ describe("permission rule persistence", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "权限规则拒绝通过 symlink .pillar 目录写出项目边界",
+    "权限规则拒绝通过 symlink .hicode 目录写出项目边界",
     async () => {
       await withTempProject(async (cwd) => {
         const outside = join(cwd, "outside");
         await mkdir(outside);
-        await symlink(outside, join(cwd, ".pillar"));
+        await symlink(outside, join(cwd, ".hicode"));
         const emptyRules: PermissionRules = { allow: [], ask: [], deny: [] };
 
         await expect(addToAllowList("write_file", emptyRules, cwd))
-          .rejects.toThrow("unsafe .pillar directory");
+          .rejects.toThrow("unsafe .hicode directory");
         await expect(readFile(join(outside, "settings.local.json"), "utf8"))
           .rejects.toThrow();
       });

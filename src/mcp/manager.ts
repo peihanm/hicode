@@ -67,7 +67,7 @@ class McpManager implements McpManagerLike {
         if (server.source === "user") return "allow";
         const identity = await createMcpApprovalIdentity(this.options.cwd, server);
         const approvalPath = join(
-            this.options.storage.pillarHome,
+            this.options.storage.hicodeHome,
             "mcp-approvals.json"
         );
         const stored = await getMcpApproval(approvalPath, identity, server.name);

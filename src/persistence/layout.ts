@@ -2,81 +2,81 @@ import {homedir} from "node:os";
 import {isAbsolute, join, resolve} from "node:path";
 import {getProjectKey, hashProjectValue} from "./project.js";
 
-export interface PillarStorageLayout {
-    readonly pillarHome: string;
+export interface HiCodeStorageLayout {
+    readonly hicodeHome: string;
     readonly projectsRoot: string;
 }
 
-export interface CreatePillarStorageLayoutOptions {
-    pillarHome?: string;
+export interface CreateHiCodeStorageLayoutOptions {
+    hicodeHome?: string;
 }
 
 /**
  * Resolve the host-owned data root once at the composition boundary.
  * Domain stores receive this immutable layout instead of reading HOME.
  */
-export function createPillarStorageLayout(
-    options: CreatePillarStorageLayoutOptions = {}
-): PillarStorageLayout {
-    const requestedHome = options.pillarHome ?? join(homedir(), ".pillar");
+export function createHiCodeStorageLayout(
+    options: CreateHiCodeStorageLayoutOptions = {}
+): HiCodeStorageLayout {
+    const requestedHome = options.hicodeHome ?? join(homedir(), ".hicode");
     if (!isAbsolute(requestedHome)) {
-        throw new Error("Pillar storage paths must be absolute");
+        throw new Error("HiCode storage paths must be absolute");
     }
-    const pillarHome = resolve(requestedHome);
+    const hicodeHome = resolve(requestedHome);
     return Object.freeze({
-        pillarHome,
-        projectsRoot: join(pillarHome, "projects"),
+        hicodeHome,
+        projectsRoot: join(hicodeHome, "projects"),
     });
 }
 
 /** Validate a structurally supplied SDK/Host layout at the Root boundary. */
-export function normalizePillarStorageLayout(
-    storage: PillarStorageLayout
-): PillarStorageLayout {
+export function normalizeHiCodeStorageLayout(
+    storage: HiCodeStorageLayout
+): HiCodeStorageLayout {
     if (!storage || typeof storage !== "object") {
-        throw new Error("Pillar storage layout must be an object");
+        throw new Error("HiCode storage layout must be an object");
     }
-    const pillarHome = requireAbsoluteStoragePath(
-        storage.pillarHome,
-        "pillarHome"
+    const hicodeHome = requireAbsoluteStoragePath(
+        storage.hicodeHome,
+        "hicodeHome"
     );
     const projectsRoot = requireAbsoluteStoragePath(
         storage.projectsRoot,
         "projectsRoot"
     );
-    const expectedProjectsRoot = join(pillarHome, "projects");
+    const expectedProjectsRoot = join(hicodeHome, "projects");
     if (projectsRoot !== expectedProjectsRoot) {
-        throw new Error("Pillar projectsRoot must be derived solely from pillarHome");
+        throw new Error("HiCode projectsRoot must be derived solely from hicodeHome");
     }
-    return Object.freeze({pillarHome, projectsRoot});
+    return Object.freeze({hicodeHome, projectsRoot});
 }
 
 function requireAbsoluteStoragePath(value: string, name: string): string {
     if (typeof value !== "string" || !value.trim() || !isAbsolute(value.trim())) {
-        throw new Error(`Pillar storage ${name} must be a non-empty absolute path`);
+        throw new Error(`HiCode storage ${name} must be a non-empty absolute path`);
     }
     return resolve(value.trim());
 }
 
 export function getProjectStorageDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): string {
     if (!isAbsolute(storage.projectsRoot)) {
-        throw new Error("Pillar projects root must be an absolute path");
+        throw new Error("HiCode projects root must be an absolute path");
     }
     return join(storage.projectsRoot, getProjectKey(cwd));
 }
 
 export function getProjectSessionsDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): string {
     return join(getProjectStorageDirectory(storage, cwd), "sessions");
 }
 
 export function getSessionStorageDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sessionId: string
 ): string {
@@ -87,34 +87,34 @@ export function getSessionStorageDirectory(
 }
 
 export function getProjectDebugDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): string {
     return join(getProjectStorageDirectory(storage, cwd), "debug");
 }
 
-export function getSessionContentDirectory(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
+export function getSessionContentDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "content");
 }
 
-export function getSessionArchiveDirectory(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
+export function getSessionArchiveDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "archives");
 }
 
 /** Rebuildable package cache, separate from Session data. */
-export function getProjectBunCacheDirectory(storage: PillarStorageLayout, cwd: string): string {
+export function getProjectBunCacheDirectory(storage: HiCodeStorageLayout, cwd: string): string {
     return join(getProjectStorageDirectory(storage, cwd), "cache", "bun");
 }
 
-export function getProjectNpmCacheDirectory(storage: PillarStorageLayout, cwd: string): string {
+export function getProjectNpmCacheDirectory(storage: HiCodeStorageLayout, cwd: string): string {
     return join(getProjectStorageDirectory(storage, cwd), "cache", "npm");
 }
 
-export function getHookTrustPath(storage: PillarStorageLayout): string {
-    return join(storage.pillarHome, "trusted-projects.json");
+export function getHookTrustPath(storage: HiCodeStorageLayout): string {
+    return join(storage.hicodeHome, "trusted-projects.json");
 }
 
-export function getProjectMemoryDirectory(storage: PillarStorageLayout, cwd: string): string {
+export function getProjectMemoryDirectory(storage: HiCodeStorageLayout, cwd: string): string {
     return join(getProjectStorageDirectory(storage, cwd), "memory");
 }
 
@@ -140,31 +140,31 @@ export function getMemoryWorkspacePaths(directory: string, leaseId: string): {ro
     return {root, draft: join(root, "draft"), runtime: join(root, "runtime")};
 }
 
-export function getSessionInputHistoryPath(storage: PillarStorageLayout, cwd: string, sessionId: string): string {
+export function getSessionInputHistoryPath(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "input-history.jsonl");
 }
 
-export function getSessionIndexRecoveryDirectory(storage: PillarStorageLayout, cwd: string): string {
+export function getSessionIndexRecoveryDirectory(storage: HiCodeStorageLayout, cwd: string): string {
     return join(getProjectSessionsDirectory(storage, cwd), "index-recovery");
 }
 
-export function getPromptLogDirectory(storage: PillarStorageLayout, cwd: string, sessionId?: string): string {
+export function getPromptLogDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId?: string): string {
     return join(sessionId ? getSessionStorageDirectory(storage,cwd,sessionId) : getProjectStorageDirectory(storage,cwd), "debug", "requests");
 }
 
-export function getSubagentStorageDirectory(storage: PillarStorageLayout, cwd: string, sessionId: string, agentId: string): string {
+export function getSubagentStorageDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string, agentId: string): string {
     return join(getSessionStorageDirectory(storage,cwd,sessionId), "subagents", hashProjectValue(agentId,32));
 }
 
-export function getProjectIdentityPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json");}
-export function getProjectActivityDirectory(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"activity");}
-export function getProjectMaintenanceLockPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),".maintenance.lock");}
-export function getSessionIdentityPath(storage:PillarStorageLayout,cwd:string,sessionId:string):string {return join(getSessionStorageDirectory(storage,cwd,sessionId),"identity.json");}
+export function getProjectIdentityPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json");}
+export function getProjectActivityDirectory(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"activity");}
+export function getProjectMaintenanceLockPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),".maintenance.lock");}
+export function getSessionIdentityPath(storage:HiCodeStorageLayout,cwd:string,sessionId:string):string {return join(getSessionStorageDirectory(storage,cwd,sessionId),"identity.json");}
 
-export function getUserSettingsPath(storage: PillarStorageLayout): string {
-    return join(storage.pillarHome, "settings.json");
+export function getUserSettingsPath(storage: HiCodeStorageLayout): string {
+    return join(storage.hicodeHome, "settings.json");
 }
 
-export function getUserCredentialsPath(storage: PillarStorageLayout): string {
-    return join(storage.pillarHome, ".env");
+export function getUserCredentialsPath(storage: HiCodeStorageLayout): string {
+    return join(storage.hicodeHome, ".env");
 }

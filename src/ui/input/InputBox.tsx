@@ -362,7 +362,7 @@ export function createInputBox(
                         value={value}
                         onChange={replaceValue}
                         width={width}
-                        placeholder="Ask Pillar to build, inspect, or fix something"
+                        placeholder="Ask HiCode to build, inspect, or fix something"
                         leadingContent={leadingContent}
                         onBackspaceAtStart={onRemoveImage}
                         handleVerticalNavigation={!showSuggestions}

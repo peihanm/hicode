@@ -71,7 +71,7 @@ interface ModelSourceSettingsFile {
     models?: ModelDefinitionSettingsFile[];
 }
 
-export interface PillarSettingsFile {
+export interface HiCodeSettingsFile {
     context?: Partial<ContextSettings>;
     sources?: Partial<Record<LLMProviderName, ModelSourceSettingsFile>>;
     models?: {
@@ -89,12 +89,12 @@ export type LoadedSettingsDocument =
     | {
         source: SettingsFileSource;
         path: string;
-        value: PillarSettingsFile;
+        value: HiCodeSettingsFile;
     }
     | {
         source: "host";
         id: string;
-        value: PillarSettingsFile;
+        value: HiCodeSettingsFile;
     };
 
 interface SettingsIssueDetails {
@@ -108,7 +108,7 @@ export type SettingsIssue = SettingsIssueDetails & (
     | {source: "host"; id: string}
 );
 
-export interface ResolvedPillarSettings {
+export interface ResolvedHiCodeSettings {
     context: ContextSettings;
     sources: Record<LLMProviderName, ModelSourceSettings>;
     models: {
@@ -148,14 +148,14 @@ export interface SettingsOrigins {
     memoryAutoExtract: SettingsValueSource;
 }
 
-export interface LoadedPillarSettings {
-    values: ResolvedPillarSettings;
+export interface LoadedHiCodeSettings {
+    values: ResolvedHiCodeSettings;
     origins: SettingsOrigins;
     documents: readonly LoadedSettingsDocument[];
     issues: readonly SettingsIssue[];
 }
 
-export interface PillarSettingsOverrides {
+export interface HiCodeSettingsOverrides {
     model?: string;
     source?: LLMProviderName;
 }

@@ -6,8 +6,8 @@ import type {HostInstructionContribution} from "../runtime/rootContributions.js"
 
 const MAX_INSTRUCTION_FILE_CHARS = 40_000;
 const MAX_INSTRUCTION_TOTAL_CHARS = 120_000;
-const PILLAR_INSTRUCTIONS_FILE = "PILLAR.md";
-const PILLAR_LOCAL_INSTRUCTIONS_FILE = "PILLAR.local.md";
+const HICODE_INSTRUCTIONS_FILE = "HICODE.md";
+const HICODE_LOCAL_INSTRUCTIONS_FILE = "HICODE.local.md";
 
 export type InstructionFileSource = "user" | "project" | "local";
 
@@ -41,7 +41,7 @@ interface InstructionCandidate {
 }
 
 interface ProjectInstructionLoaderConfig {
-    userPillarHome?: string;
+    userHiCodeHome?: string;
     sources?: readonly InstructionFileSource[];
     maxFileChars?: number;
     maxTotalChars?: number;
@@ -57,7 +57,7 @@ async function readInstructionFile(
     try {
         const info = await handle.stat();
         if (!info.isFile()) {
-            throw new Error("PILLAR.md must be a regular file, not a directory or symlink");
+            throw new Error("HICODE.md must be a regular file, not a directory or symlink");
         }
         const buffer = Buffer.allocUnsafe(Math.min(info.size, maxBytes));
         const {bytesRead} = buffer.length > 0
@@ -78,7 +78,7 @@ function discoveryDirectories(cwd: string, boundary?: string): string[] {
     const root = boundary === undefined ? parse(current).root : resolve(boundary);
     const relation = relative(resolve(root), current);
     if (relation.startsWith("..") || isAbsolute(relation)) {
-        throw new Error("PILLAR.md discovery boundary does not contain cwd");
+        throw new Error("HICODE.md discovery boundary does not contain cwd");
     }
     while (true) {
         directories.push(current);
@@ -90,14 +90,14 @@ function discoveryDirectories(cwd: string, boundary?: string): string[] {
 
 function instructionCandidates(
     cwd: string,
-    userPillarHome: string | undefined,
+    userHiCodeHome: string | undefined,
     sources: readonly InstructionFileSource[],
     boundary?: string
 ): InstructionCandidate[] {
     const candidates: InstructionCandidate[] = [];
-    if (sources.includes("user") && userPillarHome) {
+    if (sources.includes("user") && userHiCodeHome) {
         candidates.push({
-            path: join(userPillarHome, PILLAR_INSTRUCTIONS_FILE),
+            path: join(userHiCodeHome, HICODE_INSTRUCTIONS_FILE),
             scope: "user",
         });
     }
@@ -105,14 +105,14 @@ function instructionCandidates(
         if (sources.includes("project")) {
             candidates.push(
                 {
-                    path: join(directory, PILLAR_INSTRUCTIONS_FILE),
+                    path: join(directory, HICODE_INSTRUCTIONS_FILE),
                     scope: "project",
                 },
                 {
                     path: join(
                         directory,
-                        ".pillar",
-                        PILLAR_INSTRUCTIONS_FILE
+                        ".hicode",
+                        HICODE_INSTRUCTIONS_FILE
                     ),
                     scope: "project",
                 }
@@ -120,7 +120,7 @@ function instructionCandidates(
         }
         if (sources.includes("local")) {
             candidates.push({
-                path: join(directory, PILLAR_LOCAL_INSTRUCTIONS_FILE),
+                path: join(directory, HICODE_LOCAL_INSTRUCTIONS_FILE),
                 scope: "local",
             });
         }
@@ -133,7 +133,7 @@ function boundedFileContent(
     maxChars: number
 ): { content: string; truncated: boolean } {
     if (content.length <= maxChars) return {content, truncated: false};
-    const marker = `\n\n[PILLAR.md truncated to ${maxChars} characters]`;
+    const marker = `\n\n[HICODE.md truncated to ${maxChars} characters]`;
     if (marker.length >= maxChars) {
         return {content: content.slice(0, maxChars), truncated: true};
     }
@@ -144,16 +144,16 @@ function boundedFileContent(
 }
 
 /**
- * Load durable PILLAR.md instructions in low-to-high priority order.
+ * Load durable HICODE.md instructions in low-to-high priority order.
  *
  * The total budget is allocated from high priority to low priority, so a
- * broad parent rule cannot crowd out PILLAR.local.md near the active cwd.
+ * broad parent rule cannot crowd out HICODE.local.md near the active cwd.
  */
 export function createProjectInstructionLoader(
     config: ProjectInstructionLoaderConfig = {}
 ) {
-    const userPillarHome = config.userPillarHome
-        ? resolve(config.userPillarHome)
+    const userHiCodeHome = config.userHiCodeHome
+        ? resolve(config.userHiCodeHome)
         : undefined;
     const sources = config.sources ?? ["project", "local"];
     const maxFileChars = config.maxFileChars ?? MAX_INSTRUCTION_FILE_CHARS;
@@ -170,7 +170,7 @@ export function createProjectInstructionLoader(
 
         for (const candidate of instructionCandidates(
             cwd,
-            userPillarHome,
+            userHiCodeHome,
             sources,
             boundary
         )) {
@@ -241,18 +241,18 @@ export function createProjectInstructionLoader(
 export function loadProjectInstructions({
     cwd,
     boundary,
-    userPillarHome,
+    userHiCodeHome,
     sources,
     hostInstructions,
 }: {
     cwd: string;
     boundary: string;
-    userPillarHome?: string;
+    userHiCodeHome?: string;
     sources: readonly InstructionFileSource[];
     hostInstructions?: readonly HostInstructionContribution[];
 }): Promise<ProjectInstructions> {
     return createProjectInstructionLoader({
-        userPillarHome,
+        userHiCodeHome,
         sources,
         hostInstructions,
     })(cwd, boundary);
@@ -279,7 +279,7 @@ export function formatProjectInstructions(
     const issueSection =
         instructions.issues.length > 0
             ? [
-                "PILLAR.md loading issues:",
+                "HICODE.md loading issues:",
                 ...instructions.issues.map((issue) => `- ${issue}`),
             ].join("\n")
             : "";

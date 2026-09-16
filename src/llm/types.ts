@@ -1,6 +1,6 @@
 import type {LLMProviderName} from "./providerRegistry.js";
 import type {ReasoningState} from "./reasoning.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {ImageReference, MessageContent} from "../images/content.js";
 
 // Conversation messages carry framework provenance; the Provider wire encoder
@@ -89,7 +89,7 @@ export type LLMTrace = {ownerCwd:string;runId:string} & (
 
 export interface LLMCallOptions {
     trace?: LLMTrace;
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     messages: Message[];
     tools: OpenAITool[];
     cwd: string;
@@ -119,7 +119,7 @@ export interface LLMSourceConnection {
 export type LLMCaller = (
     messages: Message[],
     tools: OpenAITool[],
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     model: string,
     kind: LLMCallKind,

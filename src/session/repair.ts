@@ -4,7 +4,7 @@ import {getSessionIndexLockPath,ensureSessionsDirectory} from "./paths.js";
 import {createHash} from "node:crypto";
 import {readdir} from "node:fs/promises";
 import {join} from "node:path";
-import {ensurePrivateStorageDirectory,getProjectSessionsDirectory,getSessionStorageDirectory,readPrivateStorageTextFile,writeFileAtomically,type PillarStorageLayout} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory,getProjectSessionsDirectory,getSessionStorageDirectory,readPrivateStorageTextFile,writeFileAtomically,type HiCodeStorageLayout} from "../persistence/index.js";
 import {getSessionIndexRecoveryDirectory,getProjectMaintenanceLockPath} from "../persistence/layout.js";
 import {getSessionIndexPath} from "./paths.js";
 import {readLatestSessionSnapshot} from "./snapshotStore.js";
@@ -14,10 +14,10 @@ import {SESSION_INDEX_VERSION,type SessionIndexEntry} from "./types.js";
 export interface SessionRepairResult {sessions:SessionIndexEntry[];issues:string[];backup?:string}
 
 /** Explicit repair, never a silent fallback in the normal save path. */
-export async function repairSessionIndex(storage:PillarStorageLayout,cwd:string):Promise<SessionRepairResult> {
+export async function repairSessionIndex(storage:HiCodeStorageLayout,cwd:string):Promise<SessionRepairResult> {
  ensureSessionsDirectory(storage,cwd);
  return withFileLock(getProjectMaintenanceLockPath(storage,cwd),async()=>{
-  if((await activeProjectProcesses(storage,cwd)).length)throw new Error("Close active Pillar processes before repairing the Session index");
+  if((await activeProjectProcesses(storage,cwd)).length)throw new Error("Close active HiCode processes before repairing the Session index");
   return withFileLock(getSessionIndexLockPath(storage,cwd),async()=>{
   const root=getProjectSessionsDirectory(storage,cwd);
   const directories=await readdir(root,{withFileTypes:true});

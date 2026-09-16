@@ -2,7 +2,7 @@ import {createLLMCaller} from "../../llm/index.js";
 import type {LLMCaller} from "../../llm/types.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
 import type {ModelSourceSettings, ModelTargetSettings} from "../../settings/types.js";
-import type {PillarStorageLayout} from "../../persistence/index.js";
+import type {HiCodeStorageLayout} from "../../persistence/index.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "../custom.js";
 import type {AgentDefinitionDraft} from "../store.js";
 import {createAgentAuthoringPrompt} from "./prompt.js";
@@ -27,7 +27,7 @@ export function createAgentDefinitionGenerator(
         availableToolNames,
         getExistingAgentNames,
     }: {
-        storage: PillarStorageLayout;
+        storage: HiCodeStorageLayout;
         cwd: string;
         model: string;
         instructions: ProjectInstructions;
@@ -114,7 +114,7 @@ export function createAgentDefinitionGenerator(
 }
 
 export function createAgentAuthoringRuntime(options: {
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     getModelTarget(): ModelTargetSettings;
     getModelSource(source: ModelTargetSettings["source"]): ModelSourceSettings;

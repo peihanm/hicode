@@ -1,6 +1,6 @@
 import {describe, expect, test} from "bun:test";
 import {z} from "zod";
-import {adaptPillarHostTools, definePillarTool} from "../../src/sdk/hostTools.js";
+import {adaptHiCodeHostTools, defineHiCodeTool} from "../../src/sdk/hostTools.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -11,7 +11,7 @@ describe("SDK Host Tools", () => {
             let executionContext:
                 | {cwd: string; threadId: string; toolCallId: string}
                 | undefined;
-            const hostTool = definePillarTool({
+            const hostTool = defineHiCodeTool({
                 name: "host_lookup",
                 description: "Look up a Host-owned value",
                 parameters: z.object({key: z.string().min(1)}),
@@ -23,7 +23,7 @@ describe("SDK Host Tools", () => {
                 },
             });
             const runtime = createToolRuntime({
-                additionalTools: adaptPillarHostTools([hostTool]),
+                additionalTools: adaptHiCodeHostTools([hostTool]),
             });
 
             expect(runtime.getToolSchemas()).toContainEqual(
@@ -76,7 +76,7 @@ describe("SDK Host Tools", () => {
     test("有副作用的 Host Tool 默认确认，取消与非法返回 fail closed", async () => {
         await withTempProject(async (cwd) => {
             let executions = 0;
-            const writeTool = definePillarTool({
+            const writeTool = defineHiCodeTool({
                 name: "host_mutation",
                 description: "Perform a Host-owned external mutation",
                 parameters: z.object({value: z.string()}),
@@ -86,7 +86,7 @@ describe("SDK Host Tools", () => {
                     return "mutated";
                 },
             });
-            const invalidOutput = definePillarTool({
+            const invalidOutput = defineHiCodeTool({
                 name: "host_invalid_output",
                 description: "Return an invalid value at runtime",
                 parameters: z.object({}),
@@ -97,7 +97,7 @@ describe("SDK Host Tools", () => {
                 },
             });
             const runtime = createToolRuntime({
-                additionalTools: adaptPillarHostTools([
+                additionalTools: adaptHiCodeHostTools([
                     writeTool,
                     invalidOutput,
                 ]),
@@ -160,7 +160,7 @@ describe("SDK Host Tools", () => {
             readOnly: true,
             execute: ({value}: {value: string}) => `before:${value}`,
         };
-        const adapted = adaptPillarHostTools([mutable]);
+        const adapted = adaptHiCodeHostTools([mutable]);
         mutable.name = "changed";
         mutable.execute = ({value}: {value: string}) => `after:${value}`;
         expect(adapted[0]?.name).toBe("host_snapshot");
@@ -176,21 +176,21 @@ describe("SDK Host Tools", () => {
             expect(result.modelContent).toBe("before:stable");
         });
 
-        expect(() => adaptPillarHostTools([{
+        expect(() => adaptHiCodeHostTools([{
             ...mutable,
             name: "read_file",
         }])).toThrow("Duplicate tool name");
-        expect(() => adaptPillarHostTools([{
+        expect(() => adaptHiCodeHostTools([{
             ...mutable,
             name: "mcp__forbidden",
         }])).toThrow("mcp__ prefix");
-        expect(() => adaptPillarHostTools([{
+        expect(() => adaptHiCodeHostTools([{
             ...mutable,
             name: "host_write_parallel",
             readOnly: false,
             concurrencySafe: true,
         }])).toThrow("readOnly=true");
-        expect(() => adaptPillarHostTools([{
+        expect(() => adaptHiCodeHostTools([{
             ...mutable,
             name: "host_primitive",
             parameters: z.string(),

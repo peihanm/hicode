@@ -22,7 +22,7 @@ describe("tool result budgets", () => {
   });
   test("模型结果预算不会丢弃独立的文件修改 UI 数据", async () => {
     await withTempProject(async (cwd) => {
-      const store = createTestToolResultStore(cwd, "ui-data", { pillarHome: `${cwd}/results` });
+      const store = createTestToolResultStore(cwd, "ui-data", { hicodeHome: `${cwd}/results` });
       const change = createFileChange({
         path: "a.ts",
         kind: "update",
@@ -47,7 +47,7 @@ describe("tool result budgets", () => {
   test("单结果超过工具阈值后落盘", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "budget-a", {
-        pillarHome: join(cwd, "store"),
+        hicodeHome: join(cwd, "store"),
         previewChars: 10,
       });
       const result = await processToolOutput({
@@ -66,7 +66,7 @@ describe("tool result budgets", () => {
   test("批量预算优先持久化最大的 inline 结果", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "budget-b", {
-        pillarHome: join(cwd, "store"),
+        hicodeHome: join(cwd, "store"),
       });
       const history: Message[] = [
         { role: "tool", tool_call_id: "small", content: "s".repeat(4_000) },
@@ -90,7 +90,7 @@ describe("tool result budgets", () => {
   test("写盘失败时只返回有界 preview，不回退超限原文", async () => {
     await withTempProject(async (cwd) => {
       const store = createTestToolResultStore(cwd, "budget-c", {
-        pillarHome: join(cwd, "store"),
+        hicodeHome: join(cwd, "store"),
         maxSessionBytes: 0,
         previewChars: 20,
       });

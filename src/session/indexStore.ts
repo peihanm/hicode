@@ -2,7 +2,7 @@ import {withFileLock} from "../persistence/fileLock.js";
 import {getSessionIndexLockPath} from "./paths.js";
 import {
     readPrivateStorageTextFile,
-    type PillarStorageLayout,
+    type HiCodeStorageLayout,
     writeFileAtomically,
 } from "../persistence/index.js";
 import {decodeSessionIndexEntries} from "./codec.js";
@@ -26,7 +26,7 @@ function emptySessionIndex(): SessionIndexFile {
 }
 
 /** A corrupt directory is not an empty history. Repair preserves the original evidence. */
-export function readSessionIndex(storage: PillarStorageLayout, cwd: string): SessionIndexFile {
+export function readSessionIndex(storage: HiCodeStorageLayout, cwd: string): SessionIndexFile {
     const path = getSessionIndexPath(storage, cwd);
     const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_INDEX_BYTES);
     if (content === null) return emptySessionIndex();
@@ -37,11 +37,11 @@ export function readSessionIndex(storage: PillarStorageLayout, cwd: string): Ses
         const sessions = decodeSessionIndexEntries(parsed.sessions, cwd);
         if (!sessions) throw new Error("Invalid entries");
         return {version: SESSION_INDEX_VERSION, sessions};
-    } catch { throw new Error(`Cannot read corrupt session index: ${path}. Run pillar --storage repair-index to rebuild it.`); }
+    } catch { throw new Error(`Cannot read corrupt session index: ${path}. Run hicode --storage repair-index to rebuild it.`); }
 }
 
 async function readSessionIndexForMutation(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): Promise<SessionIndexFile> {
     const path = getSessionIndexPath(storage, cwd);
@@ -71,7 +71,7 @@ async function readSessionIndexForMutation(
 }
 
 async function writeSessionIndex(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     index: SessionIndexFile
 ): Promise<void> {
@@ -99,7 +99,7 @@ async function writeSessionIndex(
 }
 
 export async function upsertSessionIndex(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     input: UpsertSessionIndexInput
 ): Promise<void> {
     ensureSessionsDirectory(storage,input.cwd);

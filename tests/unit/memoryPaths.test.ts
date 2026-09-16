@@ -3,7 +3,7 @@ import {symlink, unlink} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {getProjectMemoryDirectory} from "../../src/persistence/layout.js";
 import {classifyPublicationPath} from "../../src/memory/publicationAccess.js";
-import {createPillarStorageLayout, getProjectKey} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout, getProjectKey} from "../../src/persistence/index.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("Memory paths", () => {
@@ -12,8 +12,8 @@ describe("Memory paths", () => {
             const alias = join(dirname(cwd), `${getProjectKey(cwd)}-alias`);
             await symlink(cwd, alias);
             try {
-                const pillarHome = join(cwd, "memory-storage");
-                const storage = createPillarStorageLayout({pillarHome});
+                const hicodeHome = join(cwd, "memory-storage");
+                const storage = createHiCodeStorageLayout({hicodeHome});
                 expect(getProjectKey(alias)).toBe(getProjectKey(cwd));
                 expect(getProjectMemoryDirectory(storage, alias)).toBe(
                     getProjectMemoryDirectory(storage, cwd)

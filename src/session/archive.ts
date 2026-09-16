@@ -5,7 +5,7 @@ import {basename, dirname, resolve} from "node:path";
 import type {Message} from "../llm/types.js";
 import type {CompactState} from "../context/state.js";
 import {getSessionArchiveDirectory} from "../persistence/layout.js";
-import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type PillarStorageLayout} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
 import {getSessionPersistenceLockPath} from "./paths.js";
 import {isSessionArchivePath, archiveIndexPath, type SessionArchiveAccess} from "./archiveAccess.js";
 import {SessionContentStore} from "./contentStore.js";
@@ -25,7 +25,7 @@ function recordId(record: Omit<SessionArchiveRecord, "id">): string {
     return createHash("sha256").update(JSON.stringify(record)).digest("hex");
 }
 
-export function prepareSessionArchive(storage: PillarStorageLayout, cwd: string, sessionId: string, history: readonly Message[]): SessionArchiveDraft {
+export function prepareSessionArchive(storage: HiCodeStorageLayout, cwd: string, sessionId: string, history: readonly Message[]): SessionArchiveDraft {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     const messages = history.flatMap<Exclude<Message, {role: "system"}>>(message => {
         if (message.role === "system") return [];
@@ -75,7 +75,7 @@ function renderParts(record: SessionArchiveRecord, blocks: SessionContentStore):
     return parts;
 }
 
-export async function collectArchiveViews(storage: PillarStorageLayout, cwd: string, sessionId: string, retained: ReadonlySet<string>): Promise<void> {
+export async function collectArchiveViews(storage: HiCodeStorageLayout, cwd: string, sessionId: string, retained: ReadonlySet<string>): Promise<void> {
     const directory = getSessionArchiveDirectory(storage, cwd, sessionId);
     ensurePrivateStorageDirectory(storage, directory);
     for (const file of await readdir(directory, {withFileTypes: true})) {
@@ -87,7 +87,7 @@ export async function collectArchiveViews(storage: PillarStorageLayout, cwd: str
 }
 
 /** A derived view grants access only while its record belongs to this Session's active state. */
-export function createSessionArchiveAccess(storage: PillarStorageLayout, cwd: string, sessionId: string, getState: () => CompactState): SessionArchiveAccess {
+export function createSessionArchiveAccess(storage: HiCodeStorageLayout, cwd: string, sessionId: string, getState: () => CompactState): SessionArchiveAccess {
     const directory = getSessionArchiveDirectory(storage, cwd, sessionId);
     return {async resolve(path) {
         path = resolve(path);

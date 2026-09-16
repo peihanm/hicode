@@ -1,4 +1,4 @@
-import {Pillar, loadPillarHostConfig} from "../../src/sdk/index.js";
+import {HiCode, loadHiCodeHostConfig} from "../../src/sdk/index.js";
 import {loadSession} from "../../src/session/storage.js";
 import {processToolOutput} from "../../src/toolResults/budget.js";
 import {ToolResultStore, createToolResultStore} from "../../src/toolResults/store.js";
@@ -93,15 +93,15 @@ test("MCP validates decoding, preserves multiple images and verifies repaired bi
 test("public SDK consumes MCP images through production Provider, preserves History and completes one continuation", async () => {
     await withTempProject(async (cwd, storage) => {
         const path = join(cwd, "sdk.png"), bytes = await png(); await writeFile(path, bytes);
-        const {configuration} = loadPillarHostConfig({cwd, pillarHome: storage.pillarHome,
+        const {configuration} = loadHiCodeHostConfig({cwd, hicodeHome: storage.hicodeHome,
             fileSources: {settings: [], instructions: [], skills: [], agents: [], mcp: []},
             settingsOverrides: {models: {primary: {source: "qwen", model: "qwen3.8-flash"}},
-                sources: {qwen: {apiKeyEnv: "PILLAR_MCP_IMAGE_TEST_KEY"}},
+                sources: {qwen: {apiKeyEnv: "HICODE_MCP_IMAGE_TEST_KEY"}},
                 memory: {enabled: false, autoExtract: false}, sandbox: {}},
             rootContributions: {mcpServers: [{name: "fixture", command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/imageServer.ts"), path]}]},
         });
-        const oldFetch = globalThis.fetch, oldKey = process.env.PILLAR_MCP_IMAGE_TEST_KEY;
-        process.env.PILLAR_MCP_IMAGE_TEST_KEY = "offline";
+        const oldFetch = globalThis.fetch, oldKey = process.env.HICODE_MCP_IMAGE_TEST_KEY;
+        process.env.HICODE_MCP_IMAGE_TEST_KEY = "offline";
         let calls = 0;
         globalThis.fetch = (async (_url, init) => {
             const body = JSON.parse(String(init?.body));
@@ -119,10 +119,10 @@ test("public SDK consumes MCP images through production Provider, preserves Hist
             }}]};
             return new Response(`data: ${JSON.stringify({choices: [{index: 0, delta, finish_reason: calls === 3 ? "stop" : "tool_calls"}]})}\n\ndata: [DONE]\n\n`, {headers: {"content-type": "text/event-stream"}});
         }) as typeof fetch;
-        let pillar: Pillar | undefined;
+        let hicode: HiCode | undefined;
         try {
-            pillar = await Pillar.create({configuration, host: {async onInteraction() {return {behavior: "allow", persistence: "once"};}}});
-            const thread = await pillar.startThread();
+            hicode = await HiCode.create({configuration, host: {async onInteraction() {return {behavior: "allow", persistence: "once"};}}});
+            const thread = await hicode.startThread();
             const result = await thread.run("读取 MCP 截图并描述颜色", {maxIterations: 4});
             expect(result.stopReason).toBe("completed"); expect(calls).toBe(3);
             expect(result.items.filter(item => item.type === "tool_call").map(item => item.status)).toEqual(["completed", "completed"]);
@@ -132,8 +132,8 @@ test("public SDK consumes MCP images through production Provider, preserves Hist
             expect(refs).toHaveLength(1); expect(JSON.stringify(saved)).not.toContain("base64");
             expect(await createToolResultStore(storage, cwd, thread.id).readImage(refs[0]!)).toBeInstanceOf(Buffer);
         } finally {
-            await pillar?.close(); globalThis.fetch = oldFetch;
-            if (oldKey === undefined) delete process.env.PILLAR_MCP_IMAGE_TEST_KEY; else process.env.PILLAR_MCP_IMAGE_TEST_KEY = oldKey;
+            await hicode?.close(); globalThis.fetch = oldFetch;
+            if (oldKey === undefined) delete process.env.HICODE_MCP_IMAGE_TEST_KEY; else process.env.HICODE_MCP_IMAGE_TEST_KEY = oldKey;
         }
     });
 });

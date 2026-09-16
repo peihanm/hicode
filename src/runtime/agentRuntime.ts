@@ -6,7 +6,7 @@ import {type CompactHistoryRunner, createCompactHistoryRunner,} from "../context
 import {createCompactSummaryGenerator} from "../context/compactSummary.js";
 import {createLLMCaller} from "../llm/index.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
-import type {ResolvedPillarSettings} from "../settings/types.js";
+import type {ResolvedHiCodeSettings} from "../settings/types.js";
 import {createSubagentFactories} from "../subagents/runSubagent.js";
 import type {
     CreateSubagentRunner,
@@ -15,7 +15,7 @@ import type {
 import type {SubagentRegistry} from "../subagents/registry.js";
 import {createToolResultStore} from "../toolResults/index.js";
 import {createMemoryAwareAgentRunner, type MemoryRuntimeLike,} from "../memory/index.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 
 export interface AgentRuntime {
     reviewApproval: ApprovalReviewer;
@@ -26,7 +26,7 @@ export interface AgentRuntime {
 }
 
 function createProviderRunner(
-    source: ResolvedPillarSettings["sources"][LLMProviderName]
+    source: ResolvedHiCodeSettings["sources"][LLMProviderName]
 ) {
     const callLLM = createLLMCaller(source);
     const generateSummary = createCompactSummaryGenerator({callLLM});
@@ -42,7 +42,7 @@ function createProviderRunner(
 }
 
 function createPrimaryRouter(
-    getSources: () => ResolvedPillarSettings["sources"]
+    getSources: () => ResolvedHiCodeSettings["sources"]
 ) {
     const runners = new Map<LLMProviderName, {connection: string; runner: ReturnType<typeof createProviderRunner>}>();
     const getRunner = (provider: LLMProviderName) => {
@@ -72,8 +72,8 @@ function createPrimaryRouter(
 
 /** Root resolves current connections; each child captures connections at spawn. */
 export function createAgentRuntime({storage, getSources, subagents, memory}: {
-    storage: PillarStorageLayout;
-    getSources(): ResolvedPillarSettings["sources"];
+    storage: HiCodeStorageLayout;
+    getSources(): ResolvedHiCodeSettings["sources"];
     subagents: SubagentRegistry;
     memory: MemoryRuntimeLike;
 }): AgentRuntime {

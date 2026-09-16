@@ -1,6 +1,6 @@
 import type {Message} from "../llm/types.js";
 import type {CompactState} from "../context/state.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {ToolResultStore} from "../toolResults/store.js";
 import {SessionContentStore} from "../session/contentStore.js";
 import {readArchiveMessages} from "../session/archive.js";
@@ -14,7 +14,7 @@ export interface ImageAccess {
 
 /** References come from the active branch, never by scanning the asset directory. */
 export function createImageAccess(input: {
-    storage: PillarStorageLayout; store: ToolResultStore;
+    storage: HiCodeStorageLayout; store: ToolResultStore;
     history: () => readonly Message[]; state: () => CompactState;
 }): ImageAccess {
     const find = (imageId: string): ImageReference => {

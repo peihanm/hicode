@@ -9,7 +9,7 @@ if (args[0] !== "--install" || args.length > 2) {
     throw new Error("用法: bun tests/diagnostics/imagePackage.ts --install [image-path]；下载隔离依赖，不调用模型");
 }
 const screenshot = args[1] ? resolve(args[1]) : undefined;
-const root = await mkdtemp(resolve(tmpdir(), "pillar-image-v0-"));
+const root = await mkdtemp(resolve(tmpdir(), "hicode-image-v0-"));
 const staging = resolve(root, "staging");
 const consumer = resolve(root, "consumer");
 const cache = resolve(root, "cache");
@@ -33,7 +33,7 @@ async function run(command: string[], cwd: string): Promise<string> {
 try {
     for (const directory of [staging, consumer, cache]) await mkdir(directory);
     await writeFile(resolve(staging, "package.json"), JSON.stringify({
-        name: "pillar-image-v0-probe", version: "0.0.0", private: true, type: "module",
+        name: "hicode-image-v0-probe", version: "0.0.0", private: true, type: "module",
         exports: "./index.js", files: ["index.js"], dependencies: {sharp: version},
     }));
     const build = await Bun.build({
@@ -48,13 +48,13 @@ try {
     const tarballs = (await readdir(root)).filter((name) => name.endsWith(".tgz"));
     assert.equal(tarballs.length, 1);
     await writeFile(resolve(consumer, "package.json"), JSON.stringify({
-        private: true, type: "module", dependencies: {"pillar-image-v0-probe": `file:${resolve(root, tarballs[0]!)}`},
+        private: true, type: "module", dependencies: {"hicode-image-v0-probe": `file:${resolve(root, tarballs[0]!)}`},
     }));
     // Remove staging to rule out imports resolving through the source package.
     await rm(staging, {recursive: true});
     await run([process.execPath, "install", "--offline", "--ignore-scripts", "--no-progress"], consumer);
     await writeFile(resolve(consumer, "consumer.mjs"), [
-        'import {runImageProbe} from "pillar-image-v0-probe";',
+        'import {runImageProbe} from "hicode-image-v0-probe";',
         'console.log(JSON.stringify(await runImageProbe(process.argv[2])));',
     ].join("\n"));
     for (const runtime of ["node", process.execPath]) {

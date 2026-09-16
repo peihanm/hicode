@@ -6,7 +6,7 @@ import {boundedHookMessage, type HookHandlerResult} from "./handler.js";
 import {hookDefinition, hookDefinitions, hookHandler} from "./identity.js";
 import {matchesHookMatcher} from "./matcher.js";
 import {canonicalHookProjectPath, getHookTrust, saveHookTrust} from "./approval.js";
-import {getHookTrustPath, type PillarStorageLayout} from "../persistence/layout.js";
+import {getHookTrustPath, type HiCodeStorageLayout} from "../persistence/layout.js";
 import {mergeChildProcessEnvironment, type ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {HOOK_EVENTS, type HookBatchResult, type HookExecution,
     type HookExecutionContext, type HookInput, type HookRuntime, type HookRuntimeIssue,
@@ -20,7 +20,7 @@ interface HookRuntimeDependencies {
     saveTrust?(projectPath: string, hookId: string, decision: "always" | "deny"): Promise<void>;
 }
 export interface CreateHookRuntimeOptions {
-    storage: PillarStorageLayout; cwd: string; hooks: ResolvedHookSettings;
+    storage: HiCodeStorageLayout; cwd: string; hooks: ResolvedHookSettings;
     childEnvironment: ChildProcessEnvironment; headless?: boolean; signal?: AbortSignal;
     promptExecutor?: HookPromptExecutor;
     requestTrust?: (request: HookTrustRequest) => Promise<"once" | "always" | "deny">;
@@ -221,7 +221,7 @@ class ConfiguredHookRuntime implements HookRuntime {
                 const timeoutMs = Math.max(1, Math.min(hook.timeoutMs ?? 10000, deadline - performance.now()));
                 const handled = hook.type === "command" ? await executeCommandHook({hook, envelope,
                     signal: controller.signal, timeoutMs, executeCommand: this.dependencies.executeCommand,
-                    environment: mergeChildProcessEnvironment(this.options.childEnvironment, {PILLAR_PROJECT_DIR: this.options.cwd})})
+                    environment: mergeChildProcessEnvironment(this.options.childEnvironment, {HICODE_PROJECT_DIR: this.options.cwd})})
                     : await executePromptHook({hook, envelope, signal: controller.signal, timeoutMs, executor: this.options.promptExecutor});
                 const output = await finish(handled);
                 if (result.error || signal.aborted) return result;

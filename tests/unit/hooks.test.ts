@@ -56,7 +56,7 @@ function settingsWith(
             ...(matcher ? {matcher} : {}),
             hooks: hooks.map((hook) => ({type: "command" as const, purpose: (event === "PreToolUse" || event === "UserPromptSubmit" || event === "Stop" ? "control" : "observe") as "control" | "observe", ...hook})),
             source: "project" as const,
-            path: "/project/.pillar/settings.json",
+            path: "/project/.hicode/settings.json",
         }],
     };
 }
@@ -78,7 +78,7 @@ function promptSettingsWith(
             ...(matcher ? {matcher} : {}),
             hooks: hooks.map((hook) => ({type: "prompt" as const, purpose: (event === "PreToolUse" || event === "UserPromptSubmit" || event === "Stop" ? "control" : "observe") as "control" | "observe", ...hook})),
             source: "project" as const,
-            path: "/project/.pillar/settings.json",
+            path: "/project/.hicode/settings.json",
         }],
     };
 }
@@ -602,7 +602,7 @@ describe("Hooks", () => {
                 "node -e",
                 '"let s=\'\';process.stdin.on(\'data\',c=>s+=c);',
                 "process.stdin.on('end',()=>{const x=JSON.parse(s);",
-                "process.stdout.write(JSON.stringify({decision:'pass',additionalContext:x.event.prompt+'@'+process.env.PILLAR_PROJECT_DIR}))})\"",
+                "process.stdout.write(JSON.stringify({decision:'pass',additionalContext:x.event.prompt+'@'+process.env.HICODE_PROJECT_DIR}))})\"",
             ].join(" ");
             const runtime = await createRuntime({
                 cwd,
@@ -688,7 +688,7 @@ describe("Hooks", () => {
             });
 
             const document = JSON.parse(await readFile(
-                join(storage.pillarHome, "trusted-projects.json"),
+                join(storage.hicodeHome, "trusted-projects.json"),
                 "utf8"
             )) as {projects: Array<{
                 projectPath: string;

@@ -74,19 +74,19 @@ describe("terminal IME cursor anchor", () => {
     expect(writes).toHaveLength(1);
   });
 
-  test("输出代理屏蔽 Ink 5 的首个 resize listener，只转发 Pillar listener", () => {
+  test("输出代理屏蔽 Ink 5 的首个 resize listener，只转发 HiCode listener", () => {
     const target = new EventEmitter() as NodeJS.WriteStream;
     target.write = (() => true) as NodeJS.WriteStream["write"];
     const output = createTerminalCursorOutput(target);
     let inkCalls = 0;
-    let pillarCalls = 0;
+    let hicodeCalls = 0;
 
     output.on("resize", () => inkCalls += 1);
-    output.on("resize", () => pillarCalls += 1);
+    output.on("resize", () => hicodeCalls += 1);
     target.emit("resize");
 
     expect(inkCalls).toBe(0);
-    expect(pillarCalls).toBe(1);
+    expect(hicodeCalls).toBe(1);
     output.disposeCursorOutput();
     expect(target.listenerCount("resize")).toBe(1);
   });

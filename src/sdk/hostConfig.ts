@@ -1,72 +1,72 @@
 import {isAbsolute, resolve} from "node:path";
-import {createPillarStorageLayout} from "../persistence/index.js";
+import {createHiCodeStorageLayout} from "../persistence/index.js";
 import {
-    createPillarRootConfiguration,
-    normalizePillarFileSources,
-    type PillarFileSources,
-    type PillarRootContributions,
-    type PillarRootConfiguration,
+    createHiCodeRootConfiguration,
+    normalizeHiCodeFileSources,
+    type HiCodeFileSources,
+    type HiCodeRootContributions,
+    type HiCodeRootConfiguration,
 } from "../runtime/rootConfiguration.js";
-import {loadPillarSettings} from "../settings/load.js";
+import {loadHiCodeSettings} from "../settings/load.js";
 import type {
-    PillarSettingsFile,
+    HiCodeSettingsFile,
     SettingsIssue,
     SettingsOrigins,
 } from "../settings/types.js";
-import {PillarSDKError} from "./types.js";
+import {HiCodeSDKError} from "./types.js";
 
-export interface LoadPillarHostConfigOptions {
+export interface LoadHiCodeHostConfigOptions {
     allowFullAccess?: boolean;
     cwd: string;
-    pillarHome: string;
+    hicodeHome: string;
     workspaceBoundary?: string;
-    fileSources: PillarFileSources;
-    settingsOverrides?: PillarSettingsFile;
-    rootContributions?: PillarRootContributions;
+    fileSources: HiCodeFileSources;
+    settingsOverrides?: HiCodeSettingsFile;
+    rootContributions?: HiCodeRootContributions;
 }
 
-export type PillarHostSettingsIssue = SettingsIssue;
-export type PillarHostSettingsOrigins = SettingsOrigins;
+export type HiCodeHostSettingsIssue = SettingsIssue;
+export type HiCodeHostSettingsOrigins = SettingsOrigins;
 
-export interface LoadedPillarHostConfig {
-    configuration: PillarRootConfiguration;
-    issues: readonly PillarHostSettingsIssue[];
-    origins: PillarHostSettingsOrigins;
+export interface LoadedHiCodeHostConfig {
+    configuration: HiCodeRootConfiguration;
+    issues: readonly HiCodeHostSettingsIssue[];
+    origins: HiCodeHostSettingsOrigins;
 }
 
-export function loadPillarHostConfig(
-    options: LoadPillarHostConfigOptions
-): LoadedPillarHostConfig {
+export function loadHiCodeHostConfig(
+    options: LoadHiCodeHostConfigOptions
+): LoadedHiCodeHostConfig {
     const cwd = requireAbsolutePath(options.cwd, "cwd", "invalid_cwd");
-    const pillarHome = requireNonEmptyPath(options.pillarHome, "pillarHome");
-    if (!isAbsolute(pillarHome)) {
-        throw new PillarSDKError(
-            "invalid_pillar_home",
-            "loadPillarHostConfig requires an absolute pillarHome"
+    const hicodeHome = requireNonEmptyPath(options.hicodeHome, "hicodeHome");
+    if (!isAbsolute(hicodeHome)) {
+        throw new HiCodeSDKError(
+            "invalid_hicode_home",
+            "loadHiCodeHostConfig requires an absolute hicodeHome"
         );
     }
     const resolvedCwd = resolve(cwd);
-    const storage = createPillarStorageLayout({pillarHome});
-    let fileSources: PillarFileSources;
+    const storage = createHiCodeStorageLayout({hicodeHome});
+    let fileSources: HiCodeFileSources;
     try {
-        fileSources = normalizePillarFileSources(options.fileSources);
+        fileSources = normalizeHiCodeFileSources(options.fileSources);
     } catch (error) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_configuration",
             `Invalid Root Configuration: ${error instanceof Error ? error.message : String(error)}`,
             {cause: error}
         );
     }
-    let loaded: ReturnType<typeof loadPillarSettings>;
+    let loaded: ReturnType<typeof loadHiCodeSettings>;
     try {
-        loaded = loadPillarSettings({
+        loaded = loadHiCodeSettings({
             storage,
             cwd: resolvedCwd,
             sources: fileSources.settings,
             hostSettings: options.settingsOverrides,
         });
     } catch (error) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_settings",
             `Settings parsing failed: ${error instanceof Error ? error.message : String(error)}`,
             {cause: error}
@@ -74,14 +74,14 @@ export function loadPillarHostConfig(
     }
     const errors = loaded.issues.filter((issue) => issue.severity === "error");
     if (errors.length > 0) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_settings",
             `Settings loading failed: ${errors.map(formatSettingsIssue).join("; ")}`
         );
     }
-    let configuration: PillarRootConfiguration;
+    let configuration: HiCodeRootConfiguration;
     try {
-        configuration = createPillarRootConfiguration({
+        configuration = createHiCodeRootConfiguration({
             allowFullAccess: options.allowFullAccess,
             cwd: resolvedCwd,
             workspaceBoundary: options.workspaceBoundary ?? resolvedCwd,
@@ -91,7 +91,7 @@ export function loadPillarHostConfig(
             rootContributions: options.rootContributions,
         });
     } catch (error) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "invalid_configuration",
             `Invalid Root Configuration: ${error instanceof Error ? error.message : String(error)}`,
             {cause: error}
@@ -106,9 +106,9 @@ export function loadPillarHostConfig(
 
 function requireNonEmptyPath(value: string, name: string): string {
     if (typeof value !== "string" || !value.trim()) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             `invalid_${name.toLowerCase()}`,
-            `loadPillarHostConfig requires a non-empty ${name}`
+            `loadHiCodeHostConfig requires a non-empty ${name}`
         );
     }
     return value.trim();
@@ -121,9 +121,9 @@ function requireAbsolutePath(
 ): string {
     const path = requireNonEmptyPath(value, name);
     if (!isAbsolute(path)) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             code,
-            `loadPillarHostConfig requires an absolute ${name}`
+            `loadHiCodeHostConfig requires an absolute ${name}`
         );
     }
     return path;

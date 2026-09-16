@@ -19,7 +19,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {NetworkAccessSession} from "../../src/permissions/networkAccess.js";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
 
-const ENABLED = process.env.PILLAR_RUN_SANDBOX_INTEGRATION === "1";
+const ENABLED = process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
 
 async function exists(path: string): Promise<boolean> {
     try {
@@ -42,8 +42,8 @@ describe("OS Sandbox integration", () => {
             });
             const address = server.address();
             if (!address || typeof address === "string") throw new Error("missing test port");
-            await mkdir(join(cwd, ".pillar"), {recursive: true});
-            const blockedPath = join(cwd, ".pillar", "network-must-not-enable-write.txt");
+            await mkdir(join(cwd, ".hicode"), {recursive: true});
+            const blockedPath = join(cwd, ".hicode", "network-must-not-enable-write.txt");
             const runtime = await createSandboxRuntime({cwd, storage, settings: {
                 filesystem: {denyRead: [], denyWrite: []},
                 network: {allowedDomains: [], allowLocalBinding: false},
@@ -109,15 +109,15 @@ describe("OS Sandbox integration", () => {
     test("真实 OS 边界限制文件、网络和子进程", async () => {
         if (!ENABLED) return;
         await withTempProject(async (cwd, storage) => {
-            const outside = await mkdtemp(join(tmpdir(), "pillar-sandbox-outside-"));
+            const outside = await mkdtemp(join(tmpdir(), "hicode-sandbox-outside-"));
             const secretPath = join(outside, "secret.txt");
             const blockedPath = join(outside, "blocked.txt");
             const elevatedPath = join(outside, "elevated.txt");
             const allowedPath = join(cwd, "allowed.txt");
             const defaultAllowedPath = join(cwd, "default-allowed.txt");
-            const pillarPath = join(cwd, ".pillar", "blocked.txt");
+            const hicodePath = join(cwd, ".hicode", "blocked.txt");
             await writeFile(secretPath, "secret", "utf8");
-            await mkdir(join(cwd, ".pillar"), {recursive: true});
+            await mkdir(join(cwd, ".hicode"), {recursive: true});
 
             let serverHits = 0;
             const server = createServer((_request, response) => {
@@ -194,13 +194,13 @@ describe("OS Sandbox integration", () => {
                 expect(deniedRead.termination).toMatchObject({kind: "exit", code: 1});
                 expect(deniedRead.stdout).not.toContain("secret");
 
-                const protectedPillar = await runner.run({
-                    command: `/usr/bin/printf blocked > ${JSON.stringify(pillarPath)}`,
+                const protectedHiCode = await runner.run({
+                    command: `/usr/bin/printf blocked > ${JSON.stringify(hicodePath)}`,
                     cwd,
                     signal,
                 });
-                expect(protectedPillar.termination).toMatchObject({kind: "exit", code: 1});
-                expect(await exists(pillarPath)).toBe(false);
+                expect(protectedHiCode.termination).toMatchObject({kind: "exit", code: 1});
+                expect(await exists(hicodePath)).toBe(false);
 
                 const localBinding = await runner.run({
                     command: `node -e ${JSON.stringify([

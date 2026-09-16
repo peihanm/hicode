@@ -138,7 +138,7 @@ describe("RootRuntimeResources", () => {
                 allowedTools: ["memory"],
                 model: "inherit",
                 source: "project",
-                path: `${cwd}/.pillar/agents/memory-reader.md`,
+                path: `${cwd}/.hicode/agents/memory-reader.md`,
               },
             ],
             issues: [],
@@ -166,7 +166,7 @@ describe("RootRuntimeResources", () => {
         model: "inherit",
         maxIterations: 8,
         source: "project",
-        path: `${cwd}/.pillar/agents/${agentType}.md`,
+        path: `${cwd}/.hicode/agents/${agentType}.md`,
       });
       const first = await createRootRuntimeResources({
         cwd,
@@ -217,7 +217,7 @@ describe("RootRuntimeResources", () => {
     });
   });
 
-  test("统一加载 Skills、PILLAR.md 和 MCP tools，并发 close 保持幂等", async () => {
+  test("统一加载 Skills、HICODE.md 和 MCP tools，并发 close 保持幂等", async () => {
     await withTempProject(async (cwd) => {
       const dynamicTool: Tool<any> = {
         name: "mcp__fixture__runtime",
@@ -242,7 +242,7 @@ describe("RootRuntimeResources", () => {
           instructionLoads += 1;
           return {
             files: [{
-              path: `${cwd}/PILLAR.md`,
+              path: `${cwd}/HICODE.md`,
               scope: "project",
               content: "runtime instructions",
               truncated: false,
@@ -260,7 +260,7 @@ describe("RootRuntimeResources", () => {
             model: "inherit",
             maxIterations: 5,
             source: "project",
-            path: `${cwd}/.pillar/agents/mcp-reader.md`,
+            path: `${cwd}/.hicode/agents/mcp-reader.md`,
           }],
           issues: [],
         },

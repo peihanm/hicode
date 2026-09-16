@@ -13,9 +13,9 @@ import { withTempProject } from "../helpers/tempProject.js";
 describe("MCP config and normalization", () => {
   test("项目配置覆盖用户配置，单个无效 Server 不影响其他项", async () => {
     await withTempProject(async (cwd, storage) => {
-      const userPath = join(storage.pillarHome, "mcp.json");
+      const userPath = join(storage.hicodeHome, "mcp.json");
       const projectPath = join(cwd, ".mcp.json");
-      await mkdir(storage.pillarHome, {recursive: true});
+      await mkdir(storage.hicodeHome, {recursive: true});
       await writeFile(userPath, JSON.stringify({
         mcpServers: {
           shared: { command: "user-command" },
@@ -38,14 +38,14 @@ describe("MCP config and normalization", () => {
     });
   });
 
-  test("Pillar 原生项目配置覆盖根目录 Claude 兼容配置", async () => {
+  test("HiCode 原生项目配置覆盖根目录 Claude 兼容配置", async () => {
     await withTempProject(async (cwd, storage) => {
-      const userPath = join(storage.pillarHome, "mcp.json");
+      const userPath = join(storage.hicodeHome, "mcp.json");
       const compatPath = join(cwd, ".mcp.json");
-      const projectPath = join(cwd, ".pillar", "mcp.json");
+      const projectPath = join(cwd, ".hicode", "mcp.json");
       await Promise.all([
-        mkdir(join(cwd, ".pillar"), { recursive: true }),
-        mkdir(storage.pillarHome, {recursive: true}),
+        mkdir(join(cwd, ".hicode"), { recursive: true }),
+        mkdir(storage.hicodeHome, {recursive: true}),
       ]);
       await writeFile(userPath, JSON.stringify({
         mcpServers: { shared: { command: "user" } },
@@ -54,11 +54,11 @@ describe("MCP config and normalization", () => {
         mcpServers: { shared: { command: "claude-compatible" }, compat: { command: "compat" } },
       }));
       await writeFile(projectPath, JSON.stringify({
-        mcpServers: { shared: { command: "pillar-native" } },
+        mcpServers: { shared: { command: "hicode-native" } },
       }));
       const loaded = await loadMcpConfig(storage, cwd);
       expect(loaded.servers.find((item) => item.name === "shared")?.config.command)
-        .toBe("pillar-native");
+        .toBe("hicode-native");
       expect(loaded.servers.find((item) => item.name === "compat")?.config.command)
         .toBe("compat");
     });
@@ -99,12 +99,12 @@ describe("MCP config and normalization", () => {
 
   test("symlink 配置只产生 issue，不会加载目标 Server", async () => {
     await withTempProject(async (cwd, storage) => {
-      await mkdir(storage.pillarHome, {recursive: true});
+      await mkdir(storage.hicodeHome, {recursive: true});
       const target = join(cwd, "outside-mcp.json");
       await writeFile(target, JSON.stringify({
         mcpServers: {leaked: {command: "should-not-load"}},
       }));
-      await symlink(target, join(storage.pillarHome, "mcp.json"));
+      await symlink(target, join(storage.hicodeHome, "mcp.json"));
 
       const loaded = await loadMcpConfig(storage, cwd);
       expect(loaded.servers.some((server) => server.name === "leaked"))
@@ -125,7 +125,7 @@ describe("MCP config and normalization", () => {
 
   test("审批 Hash 随 Env Secret 变化但不暴露 Secret", async () => {
     await withTempProject(async (cwd) => {
-      await mkdir(join(cwd, ".pillar"), { recursive: true });
+      await mkdir(join(cwd, ".hicode"), { recursive: true });
       const base = {
         name: "server",
         source: "project" as const,
@@ -154,8 +154,8 @@ describe("MCP config and normalization", () => {
 
   test("损坏的审批文档 fail closed，不能被 mutation 覆盖", async () => {
     await withTempProject(async (cwd, storage) => {
-      await mkdir(storage.pillarHome, {recursive: true});
-      const path = join(storage.pillarHome, "mcp-approvals.json");
+      await mkdir(storage.hicodeHome, {recursive: true});
+      const path = join(storage.hicodeHome, "mcp-approvals.json");
       await writeFile(path, "{broken", "utf8");
       const identity = {
         projectPath: cwd,

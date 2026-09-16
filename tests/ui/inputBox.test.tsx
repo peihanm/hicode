@@ -22,7 +22,7 @@ describe("multiline input box", () => {
     const instance = render(<InputBox {...props} terminalWidth={60}/>);
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(instance.lastFrame()).toContain("❯ [Image #1] [Image #2]");
-    expect(instance.lastFrame()).not.toContain("Ask Pillar");
+    expect(instance.lastFrame()).not.toContain("Ask HiCode");
     instance.stdin.write("问题 [Image #1]");
     await new Promise(resolve => setTimeout(resolve, 20));
     instance.rerender(<InputBox {...props} terminalWidth={24}/>);
@@ -101,7 +101,7 @@ describe("multiline input box", () => {
     );
     expect(completed.lastFrame()).toContain("◷ Worked for 2m 02s\n\n❯");
     expect(completed.lastFrame()).toContain(
-      "Ask Pillar to build, inspect, or fix something\n─"
+      "Ask HiCode to build, inspect, or fix something\n─"
     );
     expect(completed.lastFrame()).not.toContain("esc to cancel");
     expect(completed.lastFrame()).not.toContain("─ Worked for");

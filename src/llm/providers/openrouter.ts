@@ -6,7 +6,7 @@ export const openrouterProvider: LLMProvider = {
     name: "openrouter",
     async call(options, source) {
         const apiKey = process.env[source.apiKeyEnv];
-        if (!apiKey) throw new Error(`Missing ${source.apiKeyEnv}; check the project .env or ~/.pillar/.env`);
+        if (!apiKey) throw new Error(`Missing ${source.apiKeyEnv}; check the project .env or ~/.hicode/.env`);
         return callOpenAICompatible(options, {
             displayName: source.label,
             baseUrl: source.baseUrl || PROVIDER_BASE_URLS.openrouter,

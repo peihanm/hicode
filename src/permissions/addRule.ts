@@ -3,7 +3,7 @@
 //
 // Flow:
 // 1. Generate a rule string such as bash(ls:*) or write_file.
-// 2. Write .pillar/settings.local.json.
+// 2. Write .hicode/settings.local.json.
 // 3. Update in-memory permissionRules.
 
 import {generateShellAllowPattern} from "./shellCommand.js";

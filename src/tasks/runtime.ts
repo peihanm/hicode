@@ -7,7 +7,7 @@ import {createTurnAbortController} from "../runtime/abort.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {CreateSubagentThread} from "../subagents/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {createTaskJournal, type TaskJournalLike} from "./journal.js";
 import {
     appendTaskIssue,
@@ -678,7 +678,7 @@ class TaskRuntime implements TaskRuntimeLike {
                     completedAt: new Date().toISOString(),
                     outputIssue: [
                         restored.outputIssue,
-                        "The previous Pillar process exited or crashed; tasks will not restart automatically",
+                        "The previous HiCode process exited or crashed; tasks will not restart automatically",
                     ].filter(Boolean).join(";"),
                 };
                 await this.journal.append(
@@ -696,7 +696,7 @@ class TaskRuntime implements TaskRuntimeLike {
 }
 
 export function createTaskRuntime(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     shellRunner: ShellRunnerLike,
     createSubagentThread: CreateSubagentThread,

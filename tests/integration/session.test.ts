@@ -506,7 +506,7 @@ describe("session persistence", () => {
         todos: [],
         permissionMode: "ask",
         collaborationMode: "build",
-      })).rejects.toThrow("Unsafe Pillar storage directory");
+      })).rejects.toThrow("Unsafe HiCode storage directory");
     });
 
     await withTempProject(async (cwd, storage) => {

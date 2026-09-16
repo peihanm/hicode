@@ -3,18 +3,18 @@ import {
     ensurePrivateStorageDirectory,
     getProjectSessionsDirectory,
     getSessionStorageDirectory,
-    type PillarStorageLayout,
+    type HiCodeStorageLayout,
 } from "../persistence/index.js";
 
 export function getSessionIndexPath(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): string {
     return join(getProjectSessionsDirectory(storage, cwd), "index.json");
 }
 
 export function getSessionPersistenceLockPath(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sessionId: string
 ): string {
@@ -22,7 +22,7 @@ export function getSessionPersistenceLockPath(
 }
 
 export function getSessionSnapshotPath(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sessionId: string
 ): string {
@@ -30,11 +30,11 @@ export function getSessionSnapshotPath(
 }
 
 export function ensureSessionsDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string
 ): void {
     const directory = getProjectSessionsDirectory(storage, cwd);
     ensurePrivateStorageDirectory(storage, directory);
 }
 
-export function getSessionIndexLockPath(storage:PillarStorageLayout,cwd:string):string {return join(getProjectSessionsDirectory(storage,cwd),".index.lock");}
+export function getSessionIndexLockPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectSessionsDirectory(storage,cwd),".index.lock");}

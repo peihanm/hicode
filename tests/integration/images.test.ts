@@ -169,17 +169,17 @@ test("production Agent → Qwen Provider sends native tool pixels; logs and even
     await withTempProject(async (cwd, storage) => {
         const settings = createTestSettings();
         settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
-        settings.sources.qwen = {...settings.sources.qwen, apiKeyEnv: "PILLAR_IMAGE_TEST_KEY"};
+        settings.sources.qwen = {...settings.sources.qwen, apiKeyEnv: "HICODE_IMAGE_TEST_KEY"};
         expect(supportsToolImages(settings.sources.qwen, "qwen3.8-flash")).toBe(true);
         expect(supportsToolImages({...settings.sources.qwen, baseUrl: "https://example.com"}, "qwen3.8-flash")).toBe(false);
         expect(supportsToolImages(settings.sources.qwen, "qwen3.8-max")).toBe(false);
         const resources = createTestRuntimeResources(cwd, {settings, storage});
         const ctx = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", workspaceBoundary: cwd, toolResultStore: createToolResultStore(storage, cwd, "test-session")});
-        const oldFetch = globalThis.fetch, oldKey = process.env.PILLAR_IMAGE_TEST_KEY;
+        const oldFetch = globalThis.fetch, oldKey = process.env.HICODE_IMAGE_TEST_KEY;
         const requests: string[] = [], events: string[] = [];
         const history: Message[] = [{role: "system", content: "test"}];
         await writeFile(join(cwd, "screen.png"), await png());
-        process.env.PILLAR_IMAGE_TEST_KEY = "test-only-key";
+        process.env.HICODE_IMAGE_TEST_KEY = "test-only-key";
         globalThis.fetch = (async (_url, init) => {
             requests.push(String(init?.body));
             const delta = requests.length === 1 ? {tool_calls: [{index: 0, id: "see", type: "function", function: {name: "view_image", arguments: '{"path":"screen.png"}'}}]} : {content: "已读取图片"};
@@ -201,7 +201,7 @@ test("production Agent → Qwen Provider sends native tool pixels; logs and even
             expect(logged).not.toContain("test-only-key");
         } finally {
             globalThis.fetch = oldFetch;
-            if (oldKey === undefined) delete process.env.PILLAR_IMAGE_TEST_KEY; else process.env.PILLAR_IMAGE_TEST_KEY = oldKey;
+            if (oldKey === undefined) delete process.env.HICODE_IMAGE_TEST_KEY; else process.env.HICODE_IMAGE_TEST_KEY = oldKey;
             await resources.close();
         }
     });

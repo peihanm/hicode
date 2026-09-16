@@ -18,13 +18,13 @@ describe("/agents slash command", () => {
                 model: "fast",
                 maxIterations: 7,
                 source: "project",
-                path: `${cwd}/.pillar/agents/reviewer.md`,
+                path: `${cwd}/.hicode/agents/reviewer.md`,
             };
             const registry = createSubagentRegistry({
                 definitions: [reviewer],
                 issues: [{
                     source: "user",
-                    path: "/home/.pillar/agents/broken.md",
+                    path: "/home/.hicode/agents/broken.md",
                     severity: "error",
                     field: "tools",
                     message: "Tool does not exist in this Runtime: missing",

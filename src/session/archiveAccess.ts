@@ -1,17 +1,17 @@
 import {basename, dirname, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
-import {getSessionArchiveDirectory, type PillarStorageLayout} from "../persistence/layout.js";
+import {getSessionArchiveDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
 
 export interface SessionArchiveAccess {
     resolve(path: string): Promise<{path: string; byteLength: number; complete: boolean} | null>;
 }
 
-export function isSessionArchivePath(storage: PillarStorageLayout, path: string): boolean {
+export function isSessionArchivePath(storage: HiCodeStorageLayout, path: string): boolean {
     const rel = relative(storage.projectsRoot, resolve(path));
     return !rel.startsWith("..") && /(?:^|\/)sessions\/session-[^/]+\/archives(?:\/|$)/.test(rel);
 }
 
-export async function checkSessionArchivePath(storage: PillarStorageLayout, path: string): Promise<boolean> {
+export async function checkSessionArchivePath(storage: HiCodeStorageLayout, path: string): Promise<boolean> {
     if (isSessionArchivePath(storage, path)) return true;
     let probe = resolve(path);
     const missing: string[] = [];
@@ -35,7 +35,7 @@ export async function checkSessionArchivePath(storage: PillarStorageLayout, path
     }
 }
 
-export async function resolveSessionArchiveFile(storage: PillarStorageLayout, access: SessionArchiveAccess | undefined, path: string) {
+export async function resolveSessionArchiveFile(storage: HiCodeStorageLayout, access: SessionArchiveAccess | undefined, path: string) {
     if (!isSessionArchivePath(storage, path)) return null;
     if (!access) throw new Error("This Agent has no Session compaction archive read capability");
     const file = await access.resolve(path);
@@ -43,6 +43,6 @@ export async function resolveSessionArchiveFile(storage: PillarStorageLayout, ac
     return file;
 }
 
-export function archiveIndexPath(storage: PillarStorageLayout, cwd: string, sessionId: string, id: string): string {
+export function archiveIndexPath(storage: HiCodeStorageLayout, cwd: string, sessionId: string, id: string): string {
     return resolve(getSessionArchiveDirectory(storage, cwd, sessionId), `${id}-index.txt`);
 }

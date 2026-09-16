@@ -578,14 +578,14 @@ describe("agent loop", () => {
   });
 
   test.each([
-    "运行中的 dev server 由当前 Pillar 会话托管，退出后需用上面的命令重启。",
+    "运行中的 dev server 由当前 HiCode 会话托管，退出后需用上面的命令重启。",
     "The dev server is managed by this session; restart it after exiting.",
     "服务已启动：http://localhost:3000",
   ])("历史失败与后台服务不会因最终措辞强制返工：%s", async (reply) => {
     await withTempProject(async (cwd) => {
       const history = initialHistory();
       const events: AgentEvent[] = [];
-      const lifecycle = "Background task started.\nTask: server-123\nLifecycle: managed by the current Pillar Runtime; terminates when Pillar exits.\nStatus: running";
+      const lifecycle = "Background task started.\nTask: server-123\nLifecycle: managed by the current HiCode Runtime; terminates when HiCode exits.\nStatus: running";
       const fake = createFakeLLM([
         assistantToolCall("edit_file", {}, "old-edit-failure"),
         assistantToolCall("bash", {command: "node server.js", run_in_background: true}, "server-bash"),
@@ -676,7 +676,7 @@ describe("agent loop", () => {
 
   test("正常沙箱说明与局部测试通过不触发文字收尾否决", async () => {
     await withTempProject(async (cwd) => {
-      const reply = "已在 Pillar 沙箱中执行测试。修改后已重新运行受影响的测试，测试通过。";
+      const reply = "已在 HiCode 沙箱中执行测试。修改后已重新运行受影响的测试，测试通过。";
       const history = initialHistory();
       const fake = createFakeLLM([
         assistantToolCall("bash", {command: "bun test"}, "full-check"),

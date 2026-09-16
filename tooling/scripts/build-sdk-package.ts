@@ -5,7 +5,7 @@ const repositoryRoot = resolve(import.meta.dirname, "..", "..");
 const packageDirectory = resolve(repositoryRoot, "dist", "sdk-package");
 const sdkDirectory = resolve(packageDirectory, "sdk");
 const packageJsonPath = resolve(repositoryRoot, "package.json");
-const SDK_PACKAGE_NAME = "pillar-core-sdk";
+const SDK_PACKAGE_NAME = "hicode-core-sdk";
 
 const runtimeDependencies = [
     "sharp",
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
         name: SDK_PACKAGE_NAME,
         version,
         private: true,
-        description: "Pillar TypeScript SDK",
+        description: "HiCode TypeScript SDK",
         type: "module",
         exports: {
             ".": {

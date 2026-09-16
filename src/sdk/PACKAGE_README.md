@@ -1,16 +1,16 @@
-# Pillar TypeScript SDK
+# HiCode TypeScript SDK
 
-Pillar exposes its programmatic API through the ESM-only `pillar-core-sdk` package.
+HiCode exposes its programmatic API through the ESM-only `hicode-core-sdk` package.
 It runs the same Agent, ToolRuntime, permission, Hook and Session
 chain as the terminal application.
 
 ```ts
-import {definePillarTool, loadPillarHostConfig, Pillar} from "pillar-core-sdk";
+import {defineHiCodeTool, loadHiCodeHostConfig, HiCode} from "hicode-core-sdk";
 import {z} from "zod";
 
-const {configuration} = loadPillarHostConfig({
+const {configuration} = loadHiCodeHostConfig({
     cwd: "/absolute/workspace",
-    pillarHome: "/absolute/host-data/pillar",
+    hicodeHome: "/absolute/host-data/hicode",
     fileSources: {
         settings: [],
         instructions: [],
@@ -20,7 +20,7 @@ const {configuration} = loadPillarHostConfig({
     },
 });
 
-const lookupTicket = definePillarTool({
+const lookupTicket = defineHiCodeTool({
     name: "lookup_ticket",
     description: "Read one ticket from the Host issue store",
     parameters: z.object({id: z.string()}),
@@ -29,16 +29,16 @@ const lookupTicket = definePillarTool({
     execute: async ({id}, {signal}) => issueStore.get(id, {signal}),
 });
 
-const pillar = await Pillar.create({
+const hicode = await HiCode.create({
     configuration,
     tools: [lookupTicket],
 });
 try {
-    const thread = await pillar.startThread();
+    const thread = await hicode.startThread();
     const result = await thread.run("Inspect the project and run its tests.");
     console.log(result.finalResponse);
 } finally {
-    await pillar.close();
+    await hicode.close();
 }
 ```
 

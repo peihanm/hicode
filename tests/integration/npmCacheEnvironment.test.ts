@@ -17,10 +17,10 @@ test("真实 npm 离线安装、嵌套 npx 使用受管缓存，显式 --cache �
         const config = join(root, "empty.npmrc");
         const globalConfig = join(root, "global.npmrc");
         await writeFile(config, ""); await writeFile(globalConfig, "");
-        await writeFile(join(pkg, "package.json"), JSON.stringify({name: "pillar-npm-fixture", version: "1.0.0", bin: {"pillar-npm-fixture": "cli.js"}}));
+        await writeFile(join(pkg, "package.json"), JSON.stringify({name: "hicode-npm-fixture", version: "1.0.0", bin: {"hicode-npm-fixture": "cli.js"}}));
         await writeFile(join(pkg, "cli.js"), "#!/usr/bin/env node\nconsole.log('CACHE=' + process.env.npm_config_cache);\n");
         await writeFile(join(cwd, "package.json"), JSON.stringify({name: "cache-test", version: "1.0.0",
-            dependencies: {"pillar-npm-fixture": "file:../fixture.tgz"}, scripts: {nested: "npx --offline pillar-npm-fixture"}}));
+            dependencies: {"hicode-npm-fixture": "file:../fixture.tgz"}, scripts: {nested: "npx --offline hicode-npm-fixture"}}));
         let active = false;
         const sandbox = await createSandboxRuntimeFactory({
             isSupportedPlatform: () => true, isSandboxingEnabled: () => active,

@@ -32,7 +32,7 @@ export const qwenProvider: LLMProvider = {
         const apiKey = process.env[source.apiKeyEnv];
         if (!apiKey) {
             throw new Error(
-                `Missing ${source.apiKeyEnv}; check the project .env or ~/.pillar/.env`
+                `Missing ${source.apiKeyEnv}; check the project .env or ~/.hicode/.env`
             );
         }
 

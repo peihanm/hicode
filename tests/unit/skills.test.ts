@@ -21,12 +21,12 @@ describe("Skill file sources", () => {
     test("用户 Skill 只从 Host storage 加载且可独立关闭", async () => {
         await withTempProject(async (cwd, storage) => {
             await writeSkill(
-                join(storage.pillarHome, "skills"),
+                join(storage.hicodeHome, "skills"),
                 "host-user-skill",
                 "host user"
             );
             await writeSkill(
-                join(cwd, ".pillar", "skills"),
+                join(cwd, ".hicode", "skills"),
                 "project-skill",
                 "project"
             );
@@ -60,7 +60,7 @@ describe("Skill file sources", () => {
     test("inline Host Skill 覆盖同名文件 Skill", async () => {
         await withTempProject(async (cwd, storage) => {
             await writeSkill(
-                join(cwd, ".pillar", "skills"),
+                join(cwd, ".hicode", "skills"),
                 "review",
                 "project review"
             );
@@ -91,7 +91,7 @@ import {createTestContext} from "../helpers/testContext.js";
 
 test("激活 Skill 提供真实资源根且不会把参数替换串当 replacement 模板", async () => {
     await withTempProject(async (cwd, storage) => {
-        const root = join(storage.pillarHome, "skills", "with spaces");
+        const root = join(storage.hicodeHome, "skills", "with spaces");
         await mkdir(join(root, "references"), {recursive: true});
         await writeFile(join(root, "SKILL.md"), "---\ndescription: fixture\n---\nRead references/schema.md. Args: $ARGUMENTS");
         await writeFile(join(root, "references/schema.md"), "RESOURCE_BODY");
@@ -108,25 +108,25 @@ test("激活 Skill 提供真实资源根且不会把参数替换串当 replaceme
 
 test("Host inline Skill 给出来源身份，不能继承被覆盖文件 Skill 的目录", async () => {
     await withTempProject(async (cwd, storage) => {
-        await writeSkill(join(cwd, ".pillar/skills"), "review", "project");
+        await writeSkill(join(cwd, ".hicode/skills"), "review", "project");
         const skills = loadSkills({storage, cwd, sources: ["project"], hostSkills: [{name: "review", description: "host", content: "host body"}]});
         const result = await executeToolResult("skill", JSON.stringify({skill: "review"}), {...createTestContext(cwd), skills}, "host");
         expect(result.modelContent).toContain('"source":"host"');
         expect(result.modelContent).toContain('"id":"review"');
-        expect(result.modelContent).not.toContain(join(cwd, ".pillar/skills/review"));
+        expect(result.modelContent).not.toContain(join(cwd, ".hicode/skills/review"));
         expect(result.modelContent).toContain("no local resource directory");
     });
 });
 
 test("项目覆盖激活指向实际读取的 Markdown 文件", async () => {
     await withTempProject(async (cwd, storage) => {
-        await writeSkill(join(storage.pillarHome, "skills"), "review", "user");
-        await writeSkill(join(cwd, ".pillar/skills"), "review", "project");
+        await writeSkill(join(storage.hicodeHome, "skills"), "review", "user");
+        await writeSkill(join(cwd, ".hicode/skills"), "review", "project");
         const ctx = {...createTestContext(cwd), skills: loadSkills({storage, cwd, sources: ["user", "project"]})};
         const project = await executeToolResult("skill", JSON.stringify({skill: "review"}), ctx, "project");
         expect(project.modelContent).toContain('"source":"project"');
-        expect(project.modelContent).toContain(join(cwd, ".pillar/skills/review/SKILL.md"));
-        expect(project.modelContent).not.toContain(join(storage.pillarHome, "skills/review"));
+        expect(project.modelContent).toContain(join(cwd, ".hicode/skills/review/SKILL.md"));
+        expect(project.modelContent).not.toContain(join(storage.hicodeHome, "skills/review"));
     });
 });
 
@@ -151,7 +151,7 @@ test("未知 Skill 通过统一工具链报告 failed，并列出当前实际可
 test("未配置 Skill 时不注入内置工作流，允许用户自行定义 debug", async () => {
     await withTempProject(async (cwd, storage) => {
         expect(loadSkills({storage, cwd, sources: []})).toEqual([]);
-        await writeSkill(join(cwd, ".pillar/skills"), "debug", "project debugging");
+        await writeSkill(join(cwd, ".hicode/skills"), "debug", "project debugging");
         expect(loadSkills({storage, cwd, sources: ["project"]})).toMatchObject([
             {name: "debug", source: "project", description: "project debugging"},
         ]);

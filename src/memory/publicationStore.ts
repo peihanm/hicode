@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, unlink, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type PillarStorageLayout } from "../persistence/index.js";
+import { ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout } from "../persistence/index.js";
 import { getMemoryWorkspacesDirectory, getMemoryWorkspacePaths, getMemoryInboxDirectory, getMemoryPublicationPath, getMemoryViewsDirectory, getProjectMemoryDirectory } from "../persistence/layout.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
 import { memoryDraftTopicSchema, memoryNoteSchema, memoryPublicationSchema, memorySourceRecordSchema, type MemoryDraftTopic, type MemoryLease, type MemoryNote, type MemoryPublication, type MemorySourceRecord } from "./publicationSchema.js";
@@ -27,7 +27,7 @@ export class MemoryPublicationStore {
     readonly directory: string;
     private cleanupIssue: string | undefined;
     get viewIssue(): string | undefined { return this.cleanupIssue; }
-    constructor(private readonly storage: PillarStorageLayout, cwd: string) {
+    constructor(private readonly storage: HiCodeStorageLayout, cwd: string) {
         this.directory = getProjectMemoryDirectory(storage, cwd);
     }
     snapshot(): MemoryPublication {
@@ -303,7 +303,7 @@ export class MemoryPublicationStore {
             const path = join(root, view.kind === "index" ? "MEMORY.md" : `${memoryKeySchema.parse(view.key)}.md`);
             let content: string | null;
             if (view.kind === "index") {
-                const lines = ["# Pillar Memory", state.summary, ...state.topics.map(topic => `- ${topic.key} [${topic.type}]: ${topic.description} (${join(root, `${topic.key}.md`)})`),
+                const lines = ["# HiCode Memory", state.summary, ...state.topics.map(topic => `- ${topic.key} [${topic.type}]: ${topic.description} (${join(root, `${topic.key}.md`)})`),
                     ...state.sources.filter(source => !source.consumed).slice(-200).map(source => `- ${source.key} [pending ${source.origin.kind}]: ${join(source.origin.kind === "explicit" ? getMemoryInboxDirectory(this.directory) : root, `${source.key}.md`)}`)];
                 const selected: string[] = [];
                 let bytes = 0;

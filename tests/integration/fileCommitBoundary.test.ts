@@ -45,7 +45,7 @@ for (const change of ["content", "identity", "parent", "cancel", "new-file"] as 
             if (change === "cancel") controller.abort("user-cancel");
             await expect(commit("after", controller.signal)).rejects.toThrow();
             expect(await readFile(path, "utf8")).toBe(change === "content" || change === "new-file" ? "external" : "before");
-            expect((await readdir(join(cwd, "target"))).filter(name => name.startsWith(".pillar-write-"))).toEqual([]);
+            expect((await readdir(join(cwd, "target"))).filter(name => name.startsWith(".hicode-write-"))).toEqual([]);
         });
     });
 }

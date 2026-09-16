@@ -12,7 +12,7 @@ import type {
 } from "./protocol.js";
 import type {StopReason} from "../agent/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
-import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
+import type {HiCodeRootConfiguration} from "../runtime/rootConfiguration.js";
 import type {ZodType} from "zod";
 
 export interface HostDiagnostic {
@@ -29,7 +29,7 @@ export interface InteractionContext {
     turnId?: string;
 }
 
-export interface PillarHost {
+export interface HiCodeHost {
     onInteraction?(
         request: InteractionRequest,
         context: InteractionContext
@@ -40,21 +40,21 @@ export interface PillarHost {
     ): void | Promise<void>;
 }
 
-export interface PillarHostToolContext {
+export interface HiCodeHostToolContext {
     readonly cwd: string;
     readonly threadId: string;
     readonly toolCallId: string;
     readonly signal: AbortSignal;
 }
 
-export type PillarHostToolOutput =
+export type HiCodeHostToolOutput =
     | string
     | {
     content: string;
     outcome?: "ok" | "failed";
 };
 
-export interface PillarHostTool<TInput = unknown> {
+export interface HiCodeHostTool<TInput = unknown> {
     readonly name: string;
     readonly description: string;
     readonly parameters: ZodType<TInput>;
@@ -64,14 +64,14 @@ export interface PillarHostTool<TInput = unknown> {
 
     execute(
         input: TInput,
-        context: PillarHostToolContext
-    ): PillarHostToolOutput | Promise<PillarHostToolOutput>;
+        context: HiCodeHostToolContext
+    ): HiCodeHostToolOutput | Promise<HiCodeHostToolOutput>;
 }
 
-export interface PillarOptions {
-    configuration: PillarRootConfiguration;
-    host?: PillarHost;
-    tools?: readonly PillarHostTool[];
+export interface HiCodeOptions {
+    configuration: HiCodeRootConfiguration;
+    host?: HiCodeHost;
+    tools?: readonly HiCodeHostTool[];
 }
 
 export interface StartThreadOptions {
@@ -126,12 +126,12 @@ export interface Thread {
     close(): Promise<void>;
 }
 
-export class PillarSDKError extends Error {
+export class HiCodeSDKError extends Error {
     readonly code: string;
 
     constructor(code: string, message: string, options?: ErrorOptions) {
         super(message, options);
-        this.name = "PillarSDKError";
+        this.name = "HiCodeSDKError";
         this.code = code;
     }
 }

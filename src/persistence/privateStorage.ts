@@ -9,13 +9,13 @@ import {
     readFileSync,
 } from "node:fs";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
-import type {PillarStorageLayout} from "./layout.js";
+import type {HiCodeStorageLayout} from "./layout.js";
 
 function storageRelativePath(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     targetPath: string
 ): {home: string; relativePath: string} {
-    const home = resolve(storage.pillarHome);
+    const home = resolve(storage.hicodeHome);
     const target = resolve(targetPath);
     const relativePath = relative(home, target);
     if (
@@ -23,7 +23,7 @@ function storageRelativePath(
         relativePath.startsWith(`..${sep}`) ||
         isAbsolute(relativePath)
     ) {
-        throw new Error(`Pillar storage path is out of bounds: ${targetPath}`);
+        throw new Error(`HiCode storage path is out of bounds: ${targetPath}`);
     }
     return {home, relativePath};
 }
@@ -31,12 +31,12 @@ function storageRelativePath(
 function assertDirectory(path: string): void {
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
-        throw new Error(`Unsafe Pillar storage directory: ${path}`);
+        throw new Error(`Unsafe HiCode storage directory: ${path}`);
     }
 }
 
 export function ensurePrivateStorageDirectory(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     directory: string
 ): void {
     const {home, relativePath} = storageRelativePath(storage, directory);
@@ -59,7 +59,7 @@ export function ensurePrivateStorageDirectory(
 
 /** Read a private regular file without following a leaf symlink. */
 function readPrivateStorageFile(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     path: string,
     maxBytes: number
 ): Buffer | null {
@@ -83,10 +83,10 @@ function readPrivateStorageFile(
         descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         const metadata = fstatSync(descriptor);
         if (!metadata.isFile()) {
-            throw new Error(`Pillar storage file is not a regular file: ${path}`);
+            throw new Error(`HiCode storage file is not a regular file: ${path}`);
         }
         if (metadata.size > maxBytes) {
-            throw new Error(`Pillar storage file exceeds the size limit: ${path}`);
+            throw new Error(`HiCode storage file exceeds the size limit: ${path}`);
         }
         return readFileSync(descriptor);
     } catch (error) {
@@ -98,7 +98,7 @@ function readPrivateStorageFile(
 }
 
 export function readPrivateStorageTextFile(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     path: string,
     maxBytes: number
 ): string | null {

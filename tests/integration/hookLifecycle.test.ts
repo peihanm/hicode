@@ -15,8 +15,8 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createSubagentThreadForTest} from "../helpers/subagent.js";
 import {createEmptyResolvedHookSettings, resolvedHooks} from "../helpers/hooks.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
-import {loadPillarSettings} from "../../src/settings/index.js";
-import type {PillarStorageLayout} from "../../src/persistence/index.js";
+import {loadHiCodeSettings} from "../../src/settings/index.js";
+import type {HiCodeStorageLayout} from "../../src/persistence/index.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {Message} from "../../src/llm/types.js";
 import {hooksCommand} from "../../src/slash/commands/hooks.js";
@@ -32,7 +32,7 @@ function sessionFor(resources: RootRuntimeResources) {
     return createRootSessionRuntime({resources,  seed: {sessionId: "hooks-case",
         history: [{role: "system", content: "test"}], compactState: createCompactState()}});
 }
-async function resourcesFor(cwd: string, storage: PillarStorageLayout, hooks: ResolvedHookSettings,
+async function resourcesFor(cwd: string, storage: HiCodeStorageLayout, hooks: ResolvedHookSettings,
     handler: (input: HookInput) => unknown) {
     return createRootRuntimeResourcesFactory({createHookRuntime: createHookRuntimeFactory({
         getTrust: async () => "allow", executeCommand: async ({stdin}) => ({stdout: JSON.stringify(handler((JSON.parse(stdin) as HookEnvelope).event)),
@@ -245,11 +245,11 @@ test("子 Agent 两次真实运行携带 runCount/taskId，父 Hook 能力不进
 
 test("Root /hooks reload 仅重读声明来源，活动 Turn 禁止重载，坏配置保留批准", async () => {
     await withTempProject(async (cwd, storage) => {
-        const path = join(cwd, ".pillar", "settings.json");
-        await mkdir(join(cwd, ".pillar"));
+        const path = join(cwd, ".hicode", "settings.json");
+        await mkdir(join(cwd, ".hicode"));
         const declaration = {hooks: {SessionStart: [{hooks: [{type: "command", purpose: "observe", command: "true"}]}]}};
         await writeFile(path, JSON.stringify(declaration));
-        const loaded = loadPillarSettings({cwd, storage, sources: ["project"]});
+        const loaded = loadHiCodeSettings({cwd, storage, sources: ["project"]});
         let approvals = 0;
         const resources = await createRootRuntimeResourcesFactory()({
             configuration: createTestRootConfiguration(cwd, createTestSettings({hooks: loaded.values.hooks}), storage, sources),

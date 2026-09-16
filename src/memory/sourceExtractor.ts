@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createLLMCaller } from "../llm/index.js";
 import type { LLMCaller, LLMSourceConnection, UserMessageOrigin } from "../llm/types.js";
 import type { ModelTargetSettings } from "../settings/types.js";
-import type { PillarStorageLayout } from "../persistence/index.js";
+import type { HiCodeStorageLayout } from "../persistence/index.js";
 import { memoryKeySchema } from "./schema.js";
 import { MEMORY_TYPES } from "./types.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
@@ -17,7 +17,7 @@ export interface MemorySourceExtractor {
     extract(messages: readonly MemorySourceMessage[], signal: AbortSignal, omitted: number): Promise<ExtractedMemoryFact[]>;
 }
 interface Options {
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     target: ModelTargetSettings;
     source: LLMSourceConnection;

@@ -3,7 +3,7 @@ import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
 import {z} from "zod";
 
 const server = new McpServer({
-    name: "pillar-collaboration-tools",
+    name: "hicode-collaboration-tools",
     version: "1.0.0",
 });
 const categories = [

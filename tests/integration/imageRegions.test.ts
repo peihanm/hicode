@@ -106,13 +106,13 @@ test("child Fork receives independent original and view assets through the paren
         const child = createFakeLLM([async () => {
             await unlink(f.ctx.toolResultStore.imagePath(ref.imageId));
             await unlink(f.ctx.toolResultStore.imagePath(imageAssetId(ref.image.source)));
-            const childStore = createTestToolResultStore(cwd, "subagent-image-child", {pillarHome: f.ctx.storage.pillarHome});
+            const childStore = createTestToolResultStore(cwd, "subagent-image-child", {hicodeHome: f.ctx.storage.hicodeHome});
             expect(await childStore.readImageSource(ref)).toEqual(source);
             expect(await childStore.readImage(ref)).toBeInstanceOf(Buffer);
             return assistantText("图片副本确认");
         }]);
         const thread = createSubagentThreadForTest({parentContext: f.ctx, agentId: "image-child", onEvent() {},
-            toolResultStoreOptions: {pillarHome: f.ctx.storage.pillarHome}, agentOptions: {callLLM: child.callLLM}},
+            toolResultStoreOptions: {hicodeHome: f.ctx.storage.hicodeHome}, agentOptions: {callLLM: child.callLLM}},
             {agentType: "Worker", name: "image", description: "检查图像", prompt: "检查图像", parentToolCallId: "fork", contextSnapshot: buildForkContextSnapshot(f.history, "fork")});
         const result = await thread.run({prompt: "检查图像", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(result.reply).toBe("图片副本确认");

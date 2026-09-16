@@ -1,8 +1,8 @@
 import {describe, expect, test} from "bun:test";
 import {join} from "node:path";
 import {
-    createPillarRootConfiguration,
-    type PillarFileSources,
+    createHiCodeRootConfiguration,
+    type HiCodeFileSources,
 } from "../../src/runtime/rootConfiguration.js";
 import {
     createTestSettings,
@@ -16,7 +16,7 @@ function sources() {
         skills: [],
         agents: [],
         mcp: [],
-    } satisfies PillarFileSources;
+    } satisfies HiCodeFileSources;
 }
 
 describe("Root Configuration", () => {
@@ -24,7 +24,7 @@ describe("Root Configuration", () => {
         await withTempProject(async (cwd, storage) => {
             const settings = createTestSettings();
             const fileSources = sources();
-            const configuration = createPillarRootConfiguration({
+            const configuration = createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
                 storage,
@@ -45,7 +45,7 @@ describe("Root Configuration", () => {
 
     test("拒绝越过 workspace boundary 和重复来源", async () => {
         await withTempProject(async (cwd, storage) => {
-            expect(() => createPillarRootConfiguration({
+            expect(() => createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: join(cwd, "nested"),
                 storage,
@@ -53,7 +53,7 @@ describe("Root Configuration", () => {
                 fileSources: sources(),
             })).toThrow("workspaceBoundary does not contain cwd");
 
-            expect(() => createPillarRootConfiguration({
+            expect(() => createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
                 storage,
@@ -68,7 +68,7 @@ describe("Root Configuration", () => {
 
     test("文件来源只负责选择，始终按领域规范优先级排列", async () => {
         await withTempProject(async (cwd, storage) => {
-            const configuration = createPillarRootConfiguration({
+            const configuration = createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
                 storage,
@@ -89,21 +89,21 @@ describe("Root Configuration", () => {
 
     test("拒绝 Host 注入分裂或相对的 StorageLayout", async () => {
         await withTempProject(async (cwd, storage) => {
-            expect(() => createPillarRootConfiguration({
+            expect(() => createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
                 storage: {...storage, projectsRoot: join(cwd, "elsewhere")},
                 settings: createTestSettings(),
                 fileSources: sources(),
-            })).toThrow("projectsRoot must be derived solely from pillarHome");
+            })).toThrow("projectsRoot must be derived solely from hicodeHome");
 
-            expect(() => createPillarRootConfiguration({
+            expect(() => createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
-                storage: {pillarHome: "relative", projectsRoot: "relative/projects"},
+                storage: {hicodeHome: "relative", projectsRoot: "relative/projects"},
                 settings: createTestSettings(),
                 fileSources: sources(),
-            })).toThrow("pillarHome must be a non-empty absolute path");
+            })).toThrow("hicodeHome must be a non-empty absolute path");
         });
     });
 
@@ -128,7 +128,7 @@ describe("Root Configuration", () => {
                     env: {TOKEN: "initial"},
                 }],
             };
-            const configuration = createPillarRootConfiguration({
+            const configuration = createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
                 storage,
@@ -145,7 +145,7 @@ describe("Root Configuration", () => {
             expect(configuration.contributions.mcpServers?.[0]?.env?.TOKEN)
                 .toBe("initial");
 
-            expect(() => createPillarRootConfiguration({
+            expect(() => createHiCodeRootConfiguration({
                 cwd,
                 workspaceBoundary: cwd,
                 storage,

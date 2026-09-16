@@ -1,7 +1,7 @@
 import type {ContextSettings} from "./config.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {LLMCaller, Message} from "../llm/types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {getModelInputBudget} from "./window.js";
 import {estimateMessageTokens} from "./tokens.js";
 import {buildCompactPrompt, parseCompactSummary} from "./compactPrompt.js";
@@ -22,7 +22,7 @@ async function generateCompactSummaryCore(input: {
     system: Extract<Message, {role: "system"}>;
     conversation: Message[];
     signal: AbortSignal;
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     model: string;
     customInstructions?: string;

@@ -24,10 +24,10 @@ export interface CliOptions {
 }
 
 export function printHelp(): void {
-    console.log(`pillar
+    console.log(`hicode
 
 Usage:
-  pillar [options]
+  hicode [options]
 
 Options:
   -p, --print <prompt>           Run one prompt in headless mode and print the final reply

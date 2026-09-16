@@ -2,7 +2,7 @@ import {decodeTaskJournalEntry} from "../../src/tasks/codec.js";
 import {describe, expect, test} from "bun:test";
 import {appendFile, readFile} from "node:fs/promises";
 import {join} from "node:path";
-import {createPillarStorageLayout, getSessionStorageDirectory} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout, getSessionStorageDirectory} from "../../src/persistence/index.js";
 import {createTaskJournal} from "../../src/tasks/journal.js";
 import {taskNotificationId, TaskNotificationCenter} from "../../src/tasks/notifications.js";
 import type {TaskEventEnvelope} from "../../src/tasks/types.js";
@@ -43,7 +43,7 @@ function shellEvent(input: {
 }
 
 function pathFor(
-    storage: ReturnType<typeof createPillarStorageLayout>,
+    storage: ReturnType<typeof createHiCodeStorageLayout>,
     cwd: string,
     sessionId = "session-a"
 ): string {
@@ -57,7 +57,7 @@ function pathFor(
 describe("TaskJournal", () => {
     test("拒绝跨 Session owner，并恢复 spawn_error 的 Error message", async () => {
         await withTempProject(async (cwd) => {
-            const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
+            const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             await expect(journal.append(shellEvent({
                 sequence: 1,
@@ -90,7 +90,7 @@ describe("TaskJournal", () => {
 
     test("下次 append 原子修复崩溃留下的未终止尾行", async () => {
         await withTempProject(async (cwd) => {
-            const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
+            const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             await journal.append(shellEvent({sequence: 1, taskId: "task-a"}));
             await appendFile(pathFor(storage, cwd), "{\"partial\"");
@@ -104,7 +104,7 @@ describe("TaskJournal", () => {
 
     test("完整坏行 fail closed，不把新事件追加到不可恢复日志后面", async () => {
         await withTempProject(async (cwd) => {
-            const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
+            const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             await journal.append(shellEvent({sequence: 1}));
             await appendFile(pathFor(storage, cwd), "{bad-json}\n");
@@ -119,7 +119,7 @@ describe("TaskJournal", () => {
 
     test("高频 progress 会压缩为任务最新状态", async () => {
         await withTempProject(async (cwd) => {
-            const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
+            const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             await journal.append(shellEvent({
                 sequence: 1,
@@ -140,7 +140,7 @@ describe("TaskJournal", () => {
 
     test("压缩保留旧轮次未交付终态，新轮次 ACK 不会抹掉旧结果", async () => {
         await withTempProject(async cwd => {
-            const storage = createPillarStorageLayout({pillarHome: join(cwd, "store")});
+            const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             for (const runCount of [1, 2]) {
                 await journal.append({version: 5, type: "task_finished", sequence: runCount, sessionId: "session-a",

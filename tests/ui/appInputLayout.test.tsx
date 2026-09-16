@@ -14,7 +14,7 @@ describe("App input cursor layout", () => {
         definitions: [],
         issues: [{
           source: "project",
-          path: `${cwd}/.pillar/agents/broken.md`,
+          path: `${cwd}/.hicode/agents/broken.md`,
           severity: "error",
           message: "broken",
         }],
@@ -43,7 +43,7 @@ describe("App input cursor layout", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(instance.frames.join("\n")).toContain(
-        "◆ PILLAR"
+        "◆ HICODE"
       );
 
       instance.stdin.write("输入法定位");

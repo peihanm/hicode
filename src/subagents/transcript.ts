@@ -1,7 +1,7 @@
 import {constants} from "node:fs";
 import {open} from "node:fs/promises";
 import {basename,dirname,join} from "node:path";
-import {ensurePrivateStorageDirectory,readPrivateStorageTextFile,writeFileAtomically,type PillarStorageLayout} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory,readPrivateStorageTextFile,writeFileAtomically,type HiCodeStorageLayout} from "../persistence/index.js";
 import {getSubagentStorageDirectory} from "../persistence/layout.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {Message} from "../llm/types.js";
@@ -38,7 +38,7 @@ const eventSchema = z.discriminatedUnion("type", [
 ]);
 
 /** Validate reference-bearing records before maintenance considers any result unreachable. */
-export function readSubagentTranscriptReferences(storage: PillarStorageLayout, directory: string, parentSessionId: string): unknown[] {
+export function readSubagentTranscriptReferences(storage: HiCodeStorageLayout, directory: string, parentSessionId: string): unknown[] {
     const events = readPrivateStorageTextFile(storage, join(directory, "events.jsonl"), MAX_TRANSCRIPT_BYTES);
     if (!events?.endsWith("\n")) throw new Error("Missing or incomplete subagent events");
     const lines = events.trimEnd().split("\n");
@@ -94,7 +94,7 @@ export class SubagentTranscriptWriter {
     private pending:Promise<void>=Promise.resolve();
     private previous:string[]=[];
     private readonly statePath:string;
-    constructor(private readonly storage:PillarStorageLayout,cwd:string,parentSessionId:string,agentId:string){
+    constructor(private readonly storage:HiCodeStorageLayout,cwd:string,parentSessionId:string,agentId:string){
         const directory=getSubagentStorageDirectory(storage,cwd,parentSessionId,agentId);
         this.path=join(directory,"events.jsonl");this.statePath=join(directory,"state.json");
     }

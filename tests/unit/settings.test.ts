@@ -3,11 +3,11 @@ import {mkdir, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {
     DEFAULT_MODEL,
-    loadPillarSettings,
-    resolvePillarSettings,
+    loadHiCodeSettings,
+    resolveHiCodeSettings,
     type LoadedSettingsDocument,
     type SettingsFileSource,
-    type PillarSettingsFile,
+    type HiCodeSettingsFile,
 } from "../../src/settings/index.js";
 import {DEFAULT_LLM_PROVIDER} from "../../src/llm/providerRegistry.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -21,7 +21,7 @@ function document(
 
 describe("Unified Settings", () => {
     test("primary 默认 Qwen，未声明 fast 时保留跟随语义", () => {
-        const resolved = resolvePillarSettings([]);
+        const resolved = resolveHiCodeSettings([]);
         expect(resolved.values).toMatchObject({
             models: {
                 primary: {
@@ -40,7 +40,7 @@ describe("Unified Settings", () => {
         expect(resolved.values.sandbox).toEqual({
                         filesystem: {
                 denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
-                denyWrite: [".pillar", ".env"],
+                denyWrite: [".hicode", ".env"],
             },
             network: {
                 allowedDomains: [],
@@ -50,7 +50,7 @@ describe("Unified Settings", () => {
     });
 
     test("Settings 用 source/model 选择目录中的 Qwen 与 DeepSeek 模型", () => {
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("project", {
                 models: {
                     primary: {source: "qwen", model: "qwen3.6-plus"},
@@ -74,7 +74,7 @@ describe("Unified Settings", () => {
     });
 
     test("文件和 CLI 按明确优先级合并", () => {
-        const resolved = resolvePillarSettings(
+        const resolved = resolveHiCodeSettings(
             [
                 document("user", {
                     models: {
@@ -134,7 +134,7 @@ describe("Unified Settings", () => {
     });
 
     test("主力和快速模型允许使用不同 source", () => {
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("project", {
                 models: {
                     primary: {source: "qwen", model: "qwen3.6-plus"},
@@ -156,7 +156,7 @@ describe("Unified Settings", () => {
     });
 
     test("source 目录只接受用户级定义，项目只能选择模型", () => {
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("user", {
                 sources: {
                     qwen: {
@@ -196,11 +196,11 @@ describe("Unified Settings", () => {
     });
 
     test("Memory 召回默认开启、自动生成默认关闭，显式关闭不能被覆盖", () => {
-        expect(resolvePillarSettings([]).values.memory).toEqual({
+        expect(resolveHiCodeSettings([]).values.memory).toEqual({
             enabled: true,
             autoExtract: false,
         });
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("user", {
                 memory: {enabled: false, autoExtract: false},
             }),
@@ -217,7 +217,7 @@ describe("Unified Settings", () => {
     });
 
     test("目录授权按来源合并去重且与 Sandbox 配置分离", () => {
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("user", {
                 permissions: {additionalDirectories: ["/shared/a"]},
             }),
@@ -236,7 +236,7 @@ describe("Unified Settings", () => {
     });
 
     test("Sandbox 默认开启，安全字段按来源覆盖且允许显式关闭", () => {
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("user", {
                 sandbox: {
 
@@ -264,7 +264,7 @@ describe("Unified Settings", () => {
         expect(resolved.values.sandbox).toEqual({
                         filesystem: {
                 denyRead: ["~/.ssh"],
-                denyWrite: [".pillar", ".env"],
+                denyWrite: [".hicode", ".env"],
             },
             network: {
                 allowedDomains: ["api.example.com"],
@@ -275,22 +275,22 @@ describe("Unified Settings", () => {
 
     test("旧顶层 mode 不再影响权限模式", () => {
         expect(
-            resolvePillarSettings([
+            resolveHiCodeSettings([
                 document("project", {
                     mode: "plan",
                     permissions: {defaultMode: "ask"},
-                } as PillarSettingsFile),
+                } as HiCodeSettingsFile),
             ]).values.permissions.defaultMode
         ).toBe("ask");
         expect(
-            resolvePillarSettings([
-                document("project", {mode: "plan"} as PillarSettingsFile),
+            resolveHiCodeSettings([
+                document("project", {mode: "plan"} as HiCodeSettingsFile),
             ]).values.permissions.defaultMode
         ).toBe("ask");
     });
 
     test("Hooks 按 user、project、local 叠加并保留配置来源", () => {
-        const resolved = resolvePillarSettings([
+        const resolved = resolveHiCodeSettings([
             document("user", {
                 hooks: {
                     PreToolUse: [{
@@ -337,7 +337,7 @@ describe("Unified Settings", () => {
 
     test("损坏来源被跳过，未知字段被保留并报告", async () => {
         await withTempProject(async (cwd, storage) => {
-            const directory = join(cwd, ".pillar");
+            const directory = join(cwd, ".hicode");
             await mkdir(directory, {recursive: true});
             await writeFile(
                 join(directory, "settings.json"),
@@ -366,7 +366,7 @@ describe("Unified Settings", () => {
                 "{broken-json"
             );
 
-            const loaded = loadPillarSettings({
+            const loaded = loadHiCodeSettings({
                 storage,
                 cwd,
                 cliOverrides: {
@@ -446,28 +446,28 @@ describe("Unified Settings", () => {
 });
 
 test("context 默认 50 万窗口、45 万压缩，可由各层分别覆盖", () => {
-    expect(resolvePillarSettings([]).values.context).toEqual({windowTokens: 500_000, autoCompactTokenLimit: 450_000});
-    const resolved = resolvePillarSettings([
+    expect(resolveHiCodeSettings([]).values.context).toEqual({windowTokens: 500_000, autoCompactTokenLimit: 450_000});
+    const resolved = resolveHiCodeSettings([
         document("user", {context: {windowTokens: 1_000_000, autoCompactTokenLimit: 900_000}}),
         document("project", {context: {autoCompactTokenLimit: 800_000}}),
         document("local", {context: {autoCompactTokenLimit: 750_000}}),
         {source: "host", id: "host", value: {context: {autoCompactTokenLimit: 700_000}}},
     ]);
     expect(resolved.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 700_000});
-    expect(() => resolvePillarSettings([document("user", {context: {windowTokens: 100_000}})])).toThrow("input budget");
+    expect(() => resolveHiCodeSettings([document("user", {context: {windowTokens: 100_000}})])).toThrow("input budget");
 });
 
 test("非法 context 不静默回退到默认，Host 同样校验", async () => {
     await withTempProject(async (cwd, storage) => {
-        await mkdir(join(cwd, ".pillar"), {recursive: true});
+        await mkdir(join(cwd, ".hicode"), {recursive: true});
         for (const context of [{windowTokens: -1}, {windowTokens: 1.5}, {autoCompactTokenLimit: 0}, {windowTokens: "500000"}, {typo: 10}]) {
-            await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({context}));
-            expect(() => loadPillarSettings({storage, cwd, sources: ["project"]})).toThrow("Invalid context configuration");
+            await writeFile(join(cwd, ".hicode/settings.json"), JSON.stringify({context}));
+            expect(() => loadHiCodeSettings({storage, cwd, sources: ["project"]})).toThrow("Invalid context configuration");
         }
-        await writeFile(join(cwd, ".pillar/settings.json"), JSON.stringify({context: {windowTokens: 1_000_000}}));
-        const loaded = loadPillarSettings({storage, cwd, sources: ["project"], hostSettings: {context: {autoCompactTokenLimit: 800_000}}});
+        await writeFile(join(cwd, ".hicode/settings.json"), JSON.stringify({context: {windowTokens: 1_000_000}}));
+        const loaded = loadHiCodeSettings({storage, cwd, sources: ["project"], hostSettings: {context: {autoCompactTokenLimit: 800_000}}});
         expect(loaded.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 800_000});
         expect(loaded.issues).toEqual([]);
-        expect(() => loadPillarSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("Invalid context configuration");
+        expect(() => loadHiCodeSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("Invalid context configuration");
     });
 });

@@ -2,7 +2,7 @@ import {constants} from "node:fs";
 import {lstat, open, realpath} from "node:fs/promises";
 import {dirname, join, resolve} from "node:path";
 import {z} from "zod";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {normalizeMcpName, validateMcpServerName} from "./names.js";
 import type {
     LoadedMcpConfig,
@@ -104,7 +104,7 @@ async function validateNativeProjectDirectory(
         if (
             metadata.isSymbolicLink() ||
             !metadata.isDirectory() ||
-            directoryPath !== join(cwdPath, ".pillar")
+            directoryPath !== join(cwdPath, ".hicode")
         ) {
             throw new Error("Unsafe project MCP configuration directory");
         }
@@ -214,14 +214,14 @@ async function readConfigSource(
 }
 
 export async function loadMcpConfig(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     sources: readonly McpConfigSource[] = ["user", "project"],
     hostServers: readonly HostMcpServerContribution[] = []
 ): Promise<LoadedMcpConfig> {
-    const userPath = join(storage.pillarHome, "mcp.json");
+    const userPath = join(storage.hicodeHome, "mcp.json");
     const compatProjectPath = resolve(cwd, ".mcp.json");
-    const projectPath = resolve(cwd, ".pillar", "mcp.json");
+    const projectPath = resolve(cwd, ".hicode", "mcp.json");
     const [user, compatProject, project] = await Promise.all([
         sources.includes("user")
             ? readConfigSource(userPath, "user")

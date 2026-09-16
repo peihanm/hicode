@@ -37,8 +37,8 @@ export const viewImageTool: Tool<typeof schema> = {
         } else {
             const path = resolveToolPath(ctx.cwd, input.path!);
             const canonical = await realpath(path);
-            const storageRoot = await realpath(ctx.storage.pillarHome).catch(error => {
-                if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return resolve(ctx.storage.pillarHome);
+            const storageRoot = await realpath(ctx.storage.hicodeHome).catch(error => {
+                if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return resolve(ctx.storage.hicodeHome);
                 throw error;
             });
             if (isPathInside(storageRoot, canonical)) throw new Error("Images in managed storage must be read through an image_id in the current branch");

@@ -7,7 +7,7 @@ const path = process.argv[2];
 if (!path || (await stat(path)).size > 20 * 1024 * 1024) throw new Error("Supply one PNG fixture, at most 20 MiB");
 const bytes = await readFile(path);
 if (bytes.length > 20 * 1024 * 1024) throw new Error("Fixture exceeds 20 MiB");
-const server = new McpServer({name: "pillar-image-fixture", version: "1.0.0"});
+const server = new McpServer({name: "hicode-image-fixture", version: "1.0.0"});
 server.registerTool("screenshot", {
     description: "Return the single screenshot explicitly supplied by the user for this test. No browser is launched.",
     inputSchema: {},

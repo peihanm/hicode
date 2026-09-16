@@ -38,11 +38,11 @@ describe("background Explore", () => {
                 (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                    toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
                 }, request)
             );
             const store = createTestToolResultStore(cwd, "root-session", {
-                pillarHome: `${cwd}/root-results`,
+                hicodeHome: `${cwd}/root-results`,
             });
             const tasks = taskRuntime.forSession({
                 sessionId: "root-session",
@@ -123,11 +123,11 @@ describe("background Explore", () => {
                 (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                    toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
                 }, request)
             );
             const store = createTestToolResultStore(cwd, "root-session", {
-                pillarHome: `${cwd}/root-results`,
+                hicodeHome: `${cwd}/root-results`,
             });
             const tasks = taskRuntime.forSession({
                 sessionId: "root-session",
@@ -209,13 +209,13 @@ describe("background Explore", () => {
                 (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                    toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
                 }, request)
             );
             const tasks = runtime.forSession({
                 sessionId: "message-session",
                 toolResultStore: createTestToolResultStore(cwd, "message-session", {
-                    pillarHome: `${cwd}/root-results`,
+                    hicodeHome: `${cwd}/root-results`,
                 }),
             });
             const ctx = createTestContext(cwd, {tasks});
@@ -282,13 +282,13 @@ describe("background Explore", () => {
                 (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                    toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
                 }, request)
             );
             const tasks = runtime.forSession({
                 sessionId: "continue-session",
                 toolResultStore: createTestToolResultStore(cwd, "continue-session", {
-                    pillarHome: `${cwd}/root-results`,
+                    hicodeHome: `${cwd}/root-results`,
                 }),
             });
             const ctx = createTestContext(cwd, {tasks});
@@ -355,7 +355,7 @@ describe("background Explore", () => {
             await runtime.close();
             const restoredRuntime = createTaskRuntimeForTest(cwd, shellRunner);
             const restored = restoredRuntime.forSession({sessionId: "continue-session",
-                toolResultStore: createTestToolResultStore(cwd, "continue-session", {pillarHome: `${cwd}/root-results`})});
+                toolResultStore: createTestToolResultStore(cwd, "continue-session", {hicodeHome: `${cwd}/root-results`})});
             try {
                 const recovered = await restored.pendingNotifications();
                 expect(new Set(recovered.map(item => item.notificationId))).toEqual(new Set(pendingRuns.map(item => item.notificationId)));
@@ -382,12 +382,12 @@ describe("background Explore", () => {
                 (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                    toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
                 }, request),
                 taskHome
             );
             const store = createTestToolResultStore(cwd, "restore-agent", {
-                pillarHome: `${cwd}/root-results`,
+                hicodeHome: `${cwd}/root-results`,
             });
             const firstTasks = firstRuntime.forSession({
                 sessionId: "restore-agent",

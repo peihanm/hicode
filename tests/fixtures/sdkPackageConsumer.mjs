@@ -1,12 +1,12 @@
 import {readFile} from "node:fs/promises";
 import {writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
-import {definePillarTool, loadPillarHostConfig, Pillar} from "pillar-core-sdk";
+import {defineHiCodeTool, loadHiCodeHostConfig, HiCode} from "hicode-core-sdk";
 import {z} from "zod";
 
-const [workspace, pillarHome] = process.argv.slice(2);
-if (!workspace || !pillarHome) {
-    throw new Error("expected workspace and pillarHome arguments");
+const [workspace, hicodeHome] = process.argv.slice(2);
+if (!workspace || !hicodeHome) {
+    throw new Error("expected workspace and hicodeHome arguments");
 }
 
 let requestCount = 0;
@@ -106,15 +106,15 @@ globalThis.fetch = async (input, init) => {
     });
 };
 
-process.env.PILLAR_SDK_SMOKE_KEY = "offline-fixture-key";
+process.env.HICODE_SDK_SMOKE_KEY = "offline-fixture-key";
 await writeFile(resolve(workspace, "fixture.ts"), "export const fixture = true;\n");
 await writeFile(resolve(workspace, "image.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAIAAAA8r+mnAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWP4z8CAFWEXJUsCAFpeH+EjhPzsAAAAAElFTkSuQmCC", "base64"));
-let pillar;
+let hicode;
 let hostToolCalls = 0;
 try {
-    const loaded = loadPillarHostConfig({
+    const loaded = loadHiCodeHostConfig({
         cwd: resolve(workspace),
-        pillarHome: resolve(pillarHome),
+        hicodeHome: resolve(hicodeHome),
         workspaceBoundary: resolve(workspace),
         fileSources: {
             settings: [],
@@ -127,7 +127,7 @@ try {
             sources: {
                 qwen: {
                     label: "SDK package fixture",
-                    apiKeyEnv: "PILLAR_SDK_SMOKE_KEY",
+                    apiKeyEnv: "HICODE_SDK_SMOKE_KEY",
                     baseUrl: "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
                     models: [{id: "qwen3.8-flash", label: "Fixture model"}],
                 },
@@ -140,9 +140,9 @@ try {
             memory: {enabled: false},
         },
     });
-    pillar = await Pillar.create({
+    hicode = await HiCode.create({
         configuration: loaded.configuration,
-        tools: [definePillarTool({
+        tools: [defineHiCodeTool({
             name: "host_lookup",
             description: "Look up a value owned by the SDK Host",
             parameters: z.object({key: z.string()}),
@@ -168,7 +168,7 @@ try {
             }),
         },
     });
-    const thread = await pillar.startThread();
+    const thread = await hicode.startThread();
     const result = await thread.run([{type: "text", text: "Use host_lookup, then glob TypeScript files, then view image.png and grep fixture.ts for fixture."},
         {type: "image", data: await readFile(resolve(workspace, "image.png"))}], {
         maxIterations: 5,
@@ -211,6 +211,6 @@ try {
     const runtime = typeof globalThis.Bun === "undefined" ? "node" : "bun";
     console.log(`SDK_PACKAGE_RUN_OK:${runtime}`);
 } finally {
-    try { await pillar?.close(); }
+    try { await hicode?.close(); }
     finally { globalThis.fetch = originalFetch; }
 }

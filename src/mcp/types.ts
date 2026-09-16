@@ -1,7 +1,7 @@
 import type {Client} from "@modelcontextprotocol/sdk/client/index.js";
 import type {Tool as McpSdkTool} from "@modelcontextprotocol/sdk/types.js";
 import type {Tool} from "../tools/types.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 export type McpConfigSource = "user" | "project";
@@ -95,7 +95,7 @@ export interface McpConnectedServer {
 }
 
 export interface McpManagerOptions {
-    storage: PillarStorageLayout;
+    storage: HiCodeStorageLayout;
     cwd: string;
     childEnvironment: ChildProcessEnvironment;
     signal?: AbortSignal;

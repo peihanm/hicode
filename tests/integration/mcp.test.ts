@@ -25,8 +25,8 @@ const collaborationToolsFixture = resolve(
 
 async function createFixtureManager(cwd: string, fixturePath = fixture) {
   const storage = createTestStorage(cwd);
-  const userConfigPath = join(storage.pillarHome, "mcp.json");
-  await mkdir(storage.pillarHome, {recursive: true});
+  const userConfigPath = join(storage.hicodeHome, "mcp.json");
+  await mkdir(storage.hicodeHome, {recursive: true});
   await writeFile(userConfigPath, JSON.stringify({
     mcpServers: {
       fixture: {
@@ -50,8 +50,8 @@ async function createFixtureManager(cwd: string, fixturePath = fixture) {
 
 async function createMultiFixtureManager(cwd: string) {
   const storage = createTestStorage(cwd);
-  const userConfigPath = join(storage.pillarHome, "mcp.json");
-  await mkdir(storage.pillarHome, {recursive: true});
+  const userConfigPath = join(storage.hicodeHome, "mcp.json");
+  await mkdir(storage.hicodeHome, {recursive: true});
   await writeFile(userConfigPath, JSON.stringify({
     mcpServers: {
       mega_catalog: {
@@ -294,23 +294,23 @@ describe("MCP stdio integration", () => {
 
   test("MCP 子进程不能继承或由配置重新注入 Secret", async () => {
     await withTempProject(async (cwd, storage) => {
-      await mkdir(storage.pillarHome, {recursive: true});
-      await writeFile(join(storage.pillarHome, "mcp.json"), JSON.stringify({
+      await mkdir(storage.hicodeHome, {recursive: true});
+      await writeFile(join(storage.hicodeHome, "mcp.json"), JSON.stringify({
         mcpServers: {
           fixture: {
             command: process.execPath,
             args: [fixture],
             env: {
-              PILLAR_TEST_PROVIDER_API_KEY: "override-secret",
-              PILLAR_TEST_SAFE_VALUE: "visible",
+              HICODE_TEST_PROVIDER_API_KEY: "override-secret",
+              HICODE_TEST_SAFE_VALUE: "visible",
             },
           },
         },
       }));
       const childEnvironment = createChildProcessEnvironment({
         PATH: process.env.PATH,
-        PILLAR_TEST_PROVIDER_API_KEY: "host-secret",
-      }, ["PILLAR_TEST_PROVIDER_API_KEY"]);
+        HICODE_TEST_PROVIDER_API_KEY: "host-secret",
+      }, ["HICODE_TEST_PROVIDER_API_KEY"]);
       const manager = createMcpManager({
         storage,
         cwd,
@@ -324,13 +324,13 @@ describe("MCP stdio integration", () => {
         const ctx = createTestContext(cwd, {permissionMode: "full-access"});
         const secret = await runtime.executeTool(
           "mcp__fixture__environment",
-          JSON.stringify({name: "PILLAR_TEST_PROVIDER_API_KEY"}),
+          JSON.stringify({name: "HICODE_TEST_PROVIDER_API_KEY"}),
           ctx,
           "mcp-secret-env"
         );
         const safe = await runtime.executeTool(
           "mcp__fixture__environment",
-          JSON.stringify({name: "PILLAR_TEST_SAFE_VALUE"}),
+          JSON.stringify({name: "HICODE_TEST_SAFE_VALUE"}),
           ctx,
           "mcp-safe-env"
         );
@@ -344,8 +344,8 @@ describe("MCP stdio integration", () => {
 
   test("只读 Annotation 自动放行，破坏性 Tool 询问且单个 Spawn 失败不影响健康 Server", async () => {
     await withTempProject(async (cwd, storage) => {
-      const userConfigPath = join(storage.pillarHome, "mcp.json");
-      await mkdir(storage.pillarHome, {recursive: true});
+      const userConfigPath = join(storage.hicodeHome, "mcp.json");
+      await mkdir(storage.hicodeHome, {recursive: true});
       await writeFile(userConfigPath, JSON.stringify({
         mcpServers: {
           fixture: { command: process.execPath, args: [fixture] },

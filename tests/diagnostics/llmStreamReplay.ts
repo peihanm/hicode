@@ -3,8 +3,8 @@ import {dirname, resolve} from "node:path";
 import {loadEnv} from "../../src/cli/env.js";
 import {consumeOpenAICompatibleSSE} from "../../src/llm/providers/openAICompatibleStream.js";
 import type {LLMProviderName} from "../../src/llm/providerRegistry.js";
-import {loadPillarSettings} from "../../src/settings/index.js";
-import {createPillarStorageLayout} from "../../src/persistence/index.js";
+import {loadHiCodeSettings} from "../../src/settings/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import type {LLMStreamProgress} from "../../src/llm/types.js";
 
 interface PromptLogDocument {
@@ -43,7 +43,7 @@ const USAGE = [
     "  bun tests/diagnostics/llmStreamReplay.ts --prompt-log <path> [--stall-ms 180000]",
     "",
     "该诊断只发起一次真实请求，复用 Prompt Log 中的完整 request。",
-    "它同时观察原始 SSE 与 Pillar parser，不会打印 API Key、完整 Prompt 或模型输出。",
+    "它同时观察原始 SSE 与 HiCode parser，不会打印 API Key、完整 Prompt 或模型输出。",
 ].join("\n");
 
 function getReplayConnection(provider: LLMProviderName): ReplayConnection {
@@ -233,7 +233,7 @@ function printSummary({
     console.log(`- 总时长: ${elapsed(startedAt)}`);
     console.log(`- 原始传输: ${state.byteChunks} chunks / ${state.bytes} bytes / ${state.dataEvents} SSE data events`);
     console.log(`- 原始有效输出: ${state.outputCharacters} chars(reasoning ${state.reasoningCharacters}, content ${state.contentCharacters}, tool arguments ${state.toolArgumentCharacters})`);
-    console.log(`- Pillar parser 有效输出: ${parserCharacters} chars`);
+    console.log(`- HiCode parser 有效输出: ${parserCharacters} chars`);
     console.log(`- finish_reason: ${state.finishReason ?? "未收到"}`);
     if (state.lastByteAt) {
         console.log(`- 最后原始字节: ${elapsed(startedAt, state.lastByteAt)}`);
@@ -250,13 +250,13 @@ function printSummary({
 
     console.log("\n判断");
     if (state.outputCharacters > parserCharacters) {
-        console.log("- 原始 SSE 含有 Pillar parser 未消费的有效增量：优先排查 Pillar 流解析。 ");
+        console.log("- 原始 SSE 含有 HiCode parser 未消费的有效增量：优先排查 HiCode 流解析。 ");
     } else if (completed) {
-        console.log("- 同一 payload 已完整跑通，且原始 SSE 与 parser 计数一致：更像上游偶发停滞，而不是稳定的 Pillar 解析错误。");
+        console.log("- 同一 payload 已完整跑通，且原始 SSE 与 parser 计数一致：更像上游偶发停滞，而不是稳定的 HiCode 解析错误。");
     } else if (!state.finishReason && state.outputCharacters === parserCharacters) {
-        console.log("- 原始 SSE 和 Pillar parser 在同一点停止，且上游没有发送 finish_reason：停滞发生在模型或中转站，不是 TUI 刷新丢数据。");
+        console.log("- 原始 SSE 和 HiCode parser 在同一点停止，且上游没有发送 finish_reason：停滞发生在模型或中转站，不是 TUI 刷新丢数据。");
     } else {
-        console.log("- 原始流已经给出完成信号但 Pillar 未完成：优先排查 Pillar 的完成/取消边界。");
+        console.log("- 原始流已经给出完成信号但 HiCode 未完成：优先排查 HiCode 的完成/取消边界。");
     }
 }
 
@@ -264,9 +264,9 @@ async function main(): Promise<void> {
     const options = parseOptions(process.argv.slice(2));
     const projectCwd = projectCwdFromPromptLog(options.promptLogPath);
     process.chdir(projectCwd);
-    loadEnv(createPillarStorageLayout(), process.cwd());
-    const settings = loadPillarSettings({
-        storage: createPillarStorageLayout(),
+    loadEnv(createHiCodeStorageLayout(), process.cwd());
+    const settings = loadHiCodeSettings({
+        storage: createHiCodeStorageLayout(),
         cwd: projectCwd,
     });
     const document = JSON.parse(

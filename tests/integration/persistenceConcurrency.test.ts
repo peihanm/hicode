@@ -95,7 +95,7 @@ describe("cross-process persistence", () => {
     await withTempProject(async (cwd) => {
       await runConcurrentWorkers(cwd, "permission", 8);
       const settings = JSON.parse(
-        await readFile(join(cwd, ".pillar", "settings.local.json"), "utf8")
+        await readFile(join(cwd, ".hicode", "settings.local.json"), "utf8")
       );
       expect([...settings.permissions.allow].sort()).toEqual(
         ["a", "b"]
@@ -126,7 +126,7 @@ describe("cross-process persistence", () => {
     await withTempProject(async (cwd) => {
       await runConcurrentWorkers(cwd, "tool-result-quota", 1);
       const store = createTestToolResultStore(cwd, "shared-tool-result", {
-        pillarHome: join(cwd, "tool-result-artifacts"),
+        hicodeHome: join(cwd, "tool-result-artifacts"),
         maxArtifactBytes: 100,
         maxSessionBytes: 100,
       });
@@ -150,7 +150,7 @@ describe("cross-process persistence", () => {
         1
       );
       const store = createTestToolResultStore(cwd, "shared-binary", {
-        pillarHome: join(cwd, "tool-result-artifacts"),
+        hicodeHome: join(cwd, "tool-result-artifacts"),
       });
       const key = getArtifactKey("shared-binary", "shared-artifact");
       const metadata = JSON.parse(

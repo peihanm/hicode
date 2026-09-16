@@ -46,7 +46,7 @@ export const memoryCommand: SlashCommand = {
                 );
             }
             if (!status.enabled) {
-                lines.push("Configure memory.enabled in Settings, then restart Pillar.");
+                lines.push("Configure memory.enabled in Settings, then restart HiCode.");
             }
             await context.onEvent({type: "assistant_text", content: lines.join("\n")});
             return;
@@ -55,7 +55,7 @@ export const memoryCommand: SlashCommand = {
         if (!memory.enabled) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "Memory is disabled. Enable it in Settings and restart Pillar.",
+                content: "Memory is disabled. Enable it in Settings and restart HiCode.",
             });
             return;
         }

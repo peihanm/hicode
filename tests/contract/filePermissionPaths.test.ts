@@ -6,8 +6,8 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {matchesToolPermissionRule} from "../../src/permissions/resolvePermission.js";
 import {readFileTool} from "../../src/tools/readFile/readFile.js";
-import {pillarSettingsFileSchema} from "../../src/settings/schema.js";
-import {loadPillarSettings} from "../../src/settings/load.js";
+import {hicodeSettingsFileSchema} from "../../src/settings/schema.js";
+import {loadHiCodeSettings} from "../../src/settings/load.js";
 
 test("文件 deny 覆盖相对/绝对路径、目录别名和不存在的写目标", async () => {
     await withTempProject(async cwd => {
@@ -126,18 +126,18 @@ test("已批准的整工具与搜索根 ask 不会重复阻止同次遍历", asy
 
 test("Settings 拒绝文件 JSON 匹配和 Bash 前缀，接受路径 glob", () => {
     for (const rule of ['read_file({"path":"x"})', "read_file(src:*)", "read_file([)", "read_file(src/**"]) {
-        expect(pillarSettingsFileSchema.safeParse({permissions: {deny: [rule]}}).success).toBe(false);
+        expect(hicodeSettingsFileSchema.safeParse({permissions: {deny: [rule]}}).success).toBe(false);
     }
-    expect(pillarSettingsFileSchema.safeParse({permissions: {deny: ["read_file(src/**)", "bash(git push:*)"]}}).success).toBe(true);
+    expect(hicodeSettingsFileSchema.safeParse({permissions: {deny: ["read_file(src/**)", "bash(git push:*)"]}}).success).toBe(true);
 });
 
 test("无效文件权限规则不能被跳过后按默认权限启动", async () => {
     await withTempProject(async (cwd, storage) => {
-        await mkdir(join(cwd, ".pillar"));
-        await writeFile(join(cwd, ".pillar", "settings.json"), JSON.stringify({
+        await mkdir(join(cwd, ".hicode"));
+        await writeFile(join(cwd, ".hicode", "settings.json"), JSON.stringify({
             models: {primary: {model: 42}},
             permissions: {deny: ['read_file({"path":"private.txt"})']},
         }));
-        expect(() => loadPillarSettings({cwd, storage, sources: ["project"]})).toThrow("Invalid permission configuration");
+        expect(() => loadHiCodeSettings({cwd, storage, sources: ["project"]})).toThrow("Invalid permission configuration");
     });
 });

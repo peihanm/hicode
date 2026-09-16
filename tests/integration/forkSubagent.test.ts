@@ -98,7 +98,7 @@ describe("fork subagent", () => {
             const child = createFakeLLM([
                 (options) => {
                     const system = contentText(options.messages[0]!.content);
-                    expect(system).toContain("Pillar worker");
+                    expect(system).toContain("HiCode worker");
                     expect(system).toContain("restricted to read-only tools");
                     expect(system).toContain("no interactive approval channel");
                     expect(system).not.toContain("root system");
@@ -126,11 +126,11 @@ describe("fork subagent", () => {
                 (options, request) => createSubagentThreadForTest({
                     ...options,
                     agentOptions: {callLLM: child.callLLM},
-                    toolResultStoreOptions: {pillarHome: `${cwd}/child-results`},
+                    toolResultStoreOptions: {hicodeHome: `${cwd}/child-results`},
                 }, request)
             );
             const store = createTestToolResultStore(cwd, "fork-session", {
-                pillarHome: `${cwd}/root-results`,
+                hicodeHome: `${cwd}/root-results`,
             });
             const tasks = runtime.forSession({
                 sessionId: "fork-session",
@@ -176,7 +176,7 @@ describe("fork subagent", () => {
 
     test("写型 Fork 使用普通 cwd，无 Git 项目也可修改并保留真实名字", async () => {
         await withTempProject(async (cwd) => {
-            const projectsRoot = await mkdtemp(join(tmpdir(), "pillar-fork-worktree-"));
+            const projectsRoot = await mkdtemp(join(tmpdir(), "hicode-fork-worktree-"));
             let runtime: ReturnType<typeof createTaskRuntimeForTest> | undefined;
             try {
                 const childCwd = join(cwd, "worker");
@@ -236,13 +236,13 @@ describe("fork subagent", () => {
                         ...options,
                         agentOptions: {callLLM: child.callLLM},
                         toolResultStoreOptions: {
-                            pillarHome: join(projectsRoot, "child-results"),
+                            hicodeHome: join(projectsRoot, "child-results"),
                         },
                     }, request),
                     projectsRoot
                 );
                 const store = createTestToolResultStore(cwd, "fork-worktree", {
-                    pillarHome: join(projectsRoot, "root-results"),
+                    hicodeHome: join(projectsRoot, "root-results"),
                 });
                 const tasks = runtime.forSession({
                     sessionId: "fork-worktree",

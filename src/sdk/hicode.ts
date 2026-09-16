@@ -3,37 +3,37 @@ import type {McpApprovalRequest} from "../mcp/index.js";
 import {isPermissionMode} from "../permissions/index.js";
 import {isCollaborationMode} from "../collaboration/index.js";
 import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime/resources.js";
-import {isPillarRootConfiguration} from "../runtime/rootConfiguration.js";
+import {isHiCodeRootConfiguration} from "../runtime/rootConfiguration.js";
 import {loadSession} from "../session/index.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
 import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
 import type {InteractionRequest, InteractionResponse} from "./protocol.js";
 import {createSDKThread, prepareThreadSession} from "./thread.js";
-import {adaptPillarHostTools} from "./hostTools.js";
+import {adaptHiCodeHostTools} from "./hostTools.js";
 import {
-    PillarSDKError,
+    HiCodeSDKError,
     type HostDiagnostic,
-    type PillarOptions,
+    type HiCodeOptions,
     type StartThreadOptions,
     type Thread,
 } from "./types.js";
 import {randomUUID} from "node:crypto";
 
-export class Pillar {
+export class HiCode {
     private activeThread: Thread | undefined;
     private pendingThread: Promise<Thread> | undefined;
     private closePromise: Promise<void> | undefined;
     private closed = false;
 
     private constructor(
-        private readonly options: PillarOptions,
+        private readonly options: HiCodeOptions,
         private readonly resources: RootRuntimeResources,
         private readonly rootController: AbortController
     ) {}
 
-    static async create(options: PillarOptions): Promise<Pillar> {
-        validatePillarOptions(options);
-        const hostTools = adaptPillarHostTools(options.tools);
+    static async create(options: HiCodeOptions): Promise<HiCode> {
+        validateHiCodeOptions(options);
+        const hostTools = adaptHiCodeHostTools(options.tools);
         const rootController = new AbortController();
         const requestApproval = (
             request: McpApprovalRequest
@@ -65,9 +65,9 @@ export class Pillar {
             requestHookTrust: requestTrust,
             additionalTools: hostTools,
         });
-        const pillar = new Pillar(options, resources, rootController);
-        await pillar.reportStartupDiagnostics();
-        return pillar;
+        const hicode = new HiCode(options, resources, rootController);
+        await hicode.reportStartupDiagnostics();
+        return hicode;
     }
 
     getMcpServers() {
@@ -75,7 +75,7 @@ export class Pillar {
     }
 
     async reconnectMcpServer(name: string): Promise<void> {
-        if (this.closed) throw new Error("Pillar is closed");
+        if (this.closed) throw new Error("HiCode is closed");
         if (!this.resources.mcpManager) throw new Error("No MCP Servers configured");
         await this.resources.mcpManager.reconnect(name);
     }
@@ -88,7 +88,7 @@ export class Pillar {
             options.permissionMode !== undefined &&
             !isPermissionMode(options.permissionMode)
         ) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "invalid_permission_mode",
                 `Invalid permissionMode: ${String(options.permissionMode)}`
             );
@@ -97,12 +97,12 @@ export class Pillar {
             options.collaborationMode !== undefined &&
             !isCollaborationMode(options.collaborationMode)
         ) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "invalid_collaboration_mode",
                 `Invalid collaborationMode: ${String(options.collaborationMode)}`
             );
         }
-        if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new PillarSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
+        if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         const initial = prepareThreadSession(this.resources);
         initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;
         initial.state.collaborationMode = options.collaborationMode ?? initial.state.collaborationMode;
@@ -112,7 +112,7 @@ export class Pillar {
     async resumeThread(sessionId: string): Promise<Thread> {
         this.assertCanOpenThread();
         if (typeof sessionId !== "string" || !sessionId.trim()) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "invalid_session_id",
                 "resumeThread requires a non-empty sessionId"
             );
@@ -124,7 +124,7 @@ export class Pillar {
             this.resources.model
         );
         if (!loaded) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "session_not_found",
                 `Session not found: ${sessionId}`
             );
@@ -156,9 +156,9 @@ export class Pillar {
             });
             if (this.closed) {
                 await created.close();
-                throw new PillarSDKError(
-                    "pillar_closed",
-                    "Pillar was closed during Thread initialization"
+                throw new HiCodeSDKError(
+                    "hicode_closed",
+                    "HiCode was closed during Thread initialization"
                 );
             }
             this.activeThread = created;
@@ -177,12 +177,12 @@ export class Pillar {
 
     private assertCanOpenThread(): void {
         if (this.closed) {
-            throw new PillarSDKError("pillar_closed", "Pillar is closed");
+            throw new HiCodeSDKError("hicode_closed", "HiCode is closed");
         }
         if (this.activeThread || this.pendingThread) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "thread_already_open",
-                "A Pillar instance allows only one open Thread at a time"
+                "A HiCode instance allows only one open Thread at a time"
             );
         }
     }
@@ -234,17 +234,17 @@ export class Pillar {
     }
 }
 
-function validatePillarOptions(options: PillarOptions): void {
-    if (!isPillarRootConfiguration(options.configuration)) {
-        throw new PillarSDKError(
+function validateHiCodeOptions(options: HiCodeOptions): void {
+    if (!isHiCodeRootConfiguration(options.configuration)) {
+        throw new HiCodeSDKError(
             "invalid_options",
-            "Pillar requires a Root Configuration created by loadPillarHostConfig"
+            "HiCode requires a Root Configuration created by loadHiCodeHostConfig"
         );
     }
 }
 
 async function requestRootApproval(
-    options: PillarOptions,
+    options: HiCodeOptions,
     signal: AbortSignal,
     request: Extract<
         InteractionRequest,

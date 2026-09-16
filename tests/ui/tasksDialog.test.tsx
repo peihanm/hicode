@@ -96,7 +96,7 @@ for (const denied of [false, true]) {
         }
         expect((await rootSession.taskSession.get(newer.id))?.status).toBe("running");
         instance.stdin.write("\u001b"); await new Promise(resolve => setTimeout(resolve, 20));
-        instance.stdin.write("\u001b"); await until(() => instance.lastFrame()?.includes("Ask Pillar") === true);
+        instance.stdin.write("\u001b"); await until(() => instance.lastFrame()?.includes("Ask HiCode") === true);
       } finally {instance.unmount(); await resources.close();}
     });
   });

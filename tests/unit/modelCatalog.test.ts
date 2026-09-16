@@ -1,11 +1,11 @@
 import {describe, expect, test} from "bun:test";
 import {listConfiguredPrimaryModels} from "../../src/llm/modelCatalog.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
-import {resolvePillarSettings} from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/index.js";
 
 describe("primary model catalog", () => {
     test("一个有凭证的 source 暴露其全部已配置模型与 label", () => {
-        const sources = resolvePillarSettings([]).values.sources;
+        const sources = resolveHiCodeSettings([]).values.sources;
         const models = listConfiguredPrimaryModels(sources, {
             DASHSCOPE_API_KEY: "qwen-key",
             GLM_API_KEY: "glm-key",
@@ -46,7 +46,7 @@ describe("primary model catalog", () => {
     });
 
     test("Runtime 只允许切换到启动时确认可用的候选", () => {
-        const sources = resolvePillarSettings([]).values.sources;
+        const sources = resolveHiCodeSettings([]).values.sources;
         const initial = {
             source: "qwen" as const,
             model: "qwen3.6-plus",
@@ -74,7 +74,7 @@ describe("primary model catalog", () => {
 });
 
 test("可信来源声明的别名不会被模型家族前缀过滤，未声明目标仍拒绝", () => {
-    const sources = resolvePillarSettings([]).values.sources;
+    const sources = resolveHiCodeSettings([]).values.sources;
     sources.qwen = {...sources.qwen, models: [{id: "vendor/custom-alias", label: "Alias"}]};
     const available = listConfiguredPrimaryModels(sources, {DASHSCOPE_API_KEY: "fixture"});
     expect(available).toEqual([{source: "qwen", model: "vendor/custom-alias", label: "Alias"}]);

@@ -1,25 +1,25 @@
 import {getUserSettingsPath} from "../persistence/layout.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {loadSettingsDocuments, parseHostSettingsDocument} from "./document.js";
-import {resolvePillarSettings} from "./resolve.js";
+import {resolveHiCodeSettings} from "./resolve.js";
 import type {
-    PillarSettingsOverrides,
-    PillarSettingsFile,
-    LoadedPillarSettings,
+    HiCodeSettingsOverrides,
+    HiCodeSettingsFile,
+    LoadedHiCodeSettings,
     SettingsFileSource,
 } from "./types.js";
 
-export interface LoadPillarSettingsOptions {
-    storage: PillarStorageLayout;
+export interface LoadHiCodeSettingsOptions {
+    storage: HiCodeStorageLayout;
     cwd: string;
     sources?: readonly SettingsFileSource[];
-    cliOverrides?: PillarSettingsOverrides;
-    hostSettings?: PillarSettingsFile;
+    cliOverrides?: HiCodeSettingsOverrides;
+    hostSettings?: HiCodeSettingsFile;
 }
 
-export function loadPillarSettings(
-    options: LoadPillarSettingsOptions
-): LoadedPillarSettings {
+export function loadHiCodeSettings(
+    options: LoadHiCodeSettingsOptions
+): LoadedHiCodeSettings {
     const loaded = loadSettingsDocuments(options.cwd, {
         userSettingsPath: getUserSettingsPath(options.storage),
         sources: options.sources ?? ["user", "project", "local"],
@@ -38,7 +38,7 @@ export function loadPillarSettings(
     const invalidContext = issues.find(issue => issue.severity === "error" &&
         (issue.field === "context" || issue.field?.startsWith("context.")));
     if (invalidContext) throw new Error("Invalid context configuration; loading stopped: " + invalidContext.message);
-    const resolved = resolvePillarSettings(
+    const resolved = resolveHiCodeSettings(
         documents,
         options.cliOverrides ?? {}
     );

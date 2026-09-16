@@ -2,14 +2,14 @@ import {constants} from "node:fs";
 import {lstat, mkdir, open, realpath, type FileHandle} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {parse as parseEnv} from "dotenv";
-import {ensurePrivateStorageDirectory, hasFileSystemErrorCode, withFileLock, writeFileAtomically, type PillarStorageLayout} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory, hasFileSystemErrorCode, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
 import {getUserCredentialsPath, getUserSettingsPath} from "../persistence/layout.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PrimaryModelRuntime} from "../runtime/primaryModel.js";
-import {pillarSettingsFileSchema} from "./schema.js";
+import {hicodeSettingsFileSchema} from "./schema.js";
 import {getSettingsPath} from "./document.js";
-import {resolvePillarSettings, resolveModelSources} from "./resolve.js";
-import type {PillarSettingsFile, ModelTargetSettings, LoadedSettingsDocument} from "./types.js";
+import {resolveHiCodeSettings, resolveModelSources} from "./resolve.js";
+import type {HiCodeSettingsFile, ModelTargetSettings, LoadedSettingsDocument} from "./types.js";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 
@@ -22,7 +22,7 @@ export interface ModelConfiguration {
 }
 
 /** Trusted configuration UI only; never exposed in ToolContext or model events. */
-export function createModelConfiguration(storage: PillarStorageLayout, cwd: string, runtime: PrimaryModelRuntime, fixedTargets: readonly ModelTargetSettings[] = []): ModelConfiguration {
+export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: string, runtime: PrimaryModelRuntime, fixedTargets: readonly ModelTargetSettings[] = []): ModelConfiguration {
     const userPath = getUserSettingsPath(storage);
     const projectPath = getSettingsPath(cwd, "project");
     const localPath = getSettingsPath(cwd, "local");
@@ -31,16 +31,16 @@ export function createModelConfiguration(storage: PillarStorageLayout, cwd: stri
 
     async function ensureParent(path: string, create = true): Promise<void> {
         if (path === userPath || path === userEnv) {
-            if (create) ensurePrivateStorageDirectory(storage, storage.pillarHome);
+            if (create) ensurePrivateStorageDirectory(storage, storage.hicodeHome);
             else {
-                const info = await lstat(storage.pillarHome);
+                const info = await lstat(storage.hicodeHome);
                 if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Unsafe user configuration directory");
             }
         } else if (path === localPath || path === projectPath) {
             const directory = dirname(path);
             if (create) await mkdir(directory, {recursive: true, mode: 0o700});
             const info = await lstat(directory);
-            if (info.isSymbolicLink() || !info.isDirectory() || await realpath(directory) !== join(await realpath(cwd), ".pillar")) {
+            if (info.isSymbolicLink() || !info.isDirectory() || await realpath(directory) !== join(await realpath(cwd), ".hicode")) {
                 throw new Error("Unsafe project configuration directory");
             }
         } else if (path !== projectEnv) throw new Error("Unknown configuration path");
@@ -62,12 +62,12 @@ export function createModelConfiguration(storage: PillarStorageLayout, cwd: stri
         } finally {await handle?.close();}
     }
 
-    function decode(text: string): PillarSettingsFile {
-        try {return pillarSettingsFileSchema.parse(text.trim() ? JSON.parse(text) : {});}
+    function decode(text: string): HiCodeSettingsFile {
+        try {return hicodeSettingsFileSchema.parse(text.trim() ? JSON.parse(text) : {});}
         catch {throw new Error("Invalid settings file; existing contents were not overwritten");}
     }
 
-    async function update(path: string, modify: (settings: PillarSettingsFile) => void | Promise<void>): Promise<PillarSettingsFile> {
+    async function update(path: string, modify: (settings: HiCodeSettingsFile) => void | Promise<void>): Promise<HiCodeSettingsFile> {
         await ensureParent(path);
         return withFileLock(`${path}.lock`, async () => {
             const before = await read(path);
@@ -83,7 +83,7 @@ export function createModelConfiguration(storage: PillarStorageLayout, cwd: stri
         });
     }
 
-    function refresh(settings: PillarSettingsFile): void {
+    function refresh(settings: HiCodeSettingsFile): void {
         // Only connection metadata is refreshed; permissions and other Root resources stay with their owner.
         const sources = resolveModelSources([{source: "user", path: userPath, value: {sources: settings.sources}}]);
         runtime.updateSources(sources);
@@ -159,7 +159,7 @@ export function createModelConfiguration(storage: PillarStorageLayout, cwd: stri
                         const path = scope === "project" ? projectPath : localPath;
                         documents.push({source: scope, path, value: decode(await read(path))});
                     }
-                    const targets = resolvePillarSettings(documents).values.models;
+                    const targets = resolveHiCodeSettings(documents).values.models;
                     for (const slot of ["primary", "fast", "reviewer"] as const) {
                         if (matches(targets[slot])) throw new Error(`This model is referenced by ${slot} in ${scope} settings. Choose another model before deleting it.`);
                     }

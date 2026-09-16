@@ -1,7 +1,7 @@
 import {dirname} from "node:path";
 import {
     ensurePrivateStorageDirectory, getProjectKey, readPrivateStorageTextFile,
-    type PillarStorageLayout, withFileLock, writeFileAtomically,
+    type HiCodeStorageLayout, withFileLock, writeFileAtomically,
 } from "../persistence/index.js";
 import {decodeSessionEntry, hasCompleteToolPairs} from "./codec.js";
 import {ensureSessionsDirectory, getSessionSnapshotPath, getSessionPersistenceLockPath} from "./paths.js";
@@ -14,7 +14,7 @@ const MAX_SESSION_LOG_BYTES = 16 * 1024 * 1024;
 const MAX_SESSION_ENTRY_BYTES = 72 * 1024 * 1024;
 type StoredEntry = Omit<SessionSnapshotEntry, "conversation" | "uiEvents"> & {conversation: string[]; uiEvents: string[]};
 
-export function withSessionPersistenceLock<T>(storage: PillarStorageLayout, cwd: string, sessionIds: string | readonly string[], action: () => Promise<T>): Promise<T> {
+export function withSessionPersistenceLock<T>(storage: HiCodeStorageLayout, cwd: string, sessionIds: string | readonly string[], action: () => Promise<T>): Promise<T> {
     ensureSessionsDirectory(storage, cwd);
     const paths=[...new Set((typeof sessionIds === "string" ? [sessionIds] : sessionIds).map(id => getSessionPersistenceLockPath(storage,cwd,id)))].sort();
     const acquire=(index:number):Promise<T> => index===paths.length ? action() : withFileLock(paths[index]!,()=>acquire(index+1));
@@ -37,7 +37,7 @@ function decodeReferenceEntry(value: unknown): StoredEntry {
     return {...metadata, conversation: value.conversation, uiEvents: value.uiEvents};
 }
 
-function readReferences(storage: PillarStorageLayout, cwd: string, sessionId: string): StoredEntry[] {
+function readReferences(storage: HiCodeStorageLayout, cwd: string, sessionId: string): StoredEntry[] {
     const path = getSessionSnapshotPath(storage, cwd, sessionId);
     const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_LOG_BYTES);
     if (content === null) return [];
@@ -71,7 +71,7 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
 }
 
 /** Called under the project persistence lock; one Session owns this committer. */
-export function createSessionSnapshotCommitter(storage: PillarStorageLayout, cwd: string, sessionId: string) {
+export function createSessionSnapshotCommitter(storage: HiCodeStorageLayout, cwd: string, sessionId: string) {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     let lastCommit: string | undefined;
     let needsSweep = true;
@@ -138,24 +138,24 @@ export function createSessionSnapshotCommitter(storage: PillarStorageLayout, cwd
     };
 }
 
-export function hasNewerSessionCompaction(storage: PillarStorageLayout, cwd: string, sessionId: string, count: number): boolean {
+export function hasNewerSessionCompaction(storage: HiCodeStorageLayout, cwd: string, sessionId: string, count: number): boolean {
     const previous = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
     return (previous?.compactState?.compactCount ?? 0) > count;
 }
 
-export function readLatestSessionSnapshot(storage: PillarStorageLayout, cwd: string, sessionId: string): SessionSnapshotEntry | null {
+export function readLatestSessionSnapshot(storage: HiCodeStorageLayout, cwd: string, sessionId: string): SessionSnapshotEntry | null {
     const entry = readReferences(storage, cwd, sessionId).at(-1);
     if (!entry) return null;
     const result = hydrate(entry, new SessionContentStore(storage, cwd, sessionId));
     return result.type === "snapshot" ? result : null;
 }
 
-export function readSessionSourceIds(storage: PillarStorageLayout, cwd: string, sessionId: string): string[] {
+export function readSessionSourceIds(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string[] {
     const entry = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
     return entry ? [...new Set([...(entry.compactState?.archives ?? []).flatMap(archive => archive.messages), ...entry.conversation])] : [];
 }
 
-export function readSessionSourceMessages(storage: PillarStorageLayout, cwd: string, sessionId: string, hashes: readonly string[]) {
+export function readSessionSourceMessages(storage: HiCodeStorageLayout, cwd: string, sessionId: string, hashes: readonly string[]) {
     if (!hashes.length || hashes.length > 64 || hashes.some(hash => !isSessionContentId(hash))) throw new Error("Invalid Memory source count or hash");
     const allowed = new Set(readSessionSourceIds(storage, cwd, sessionId));
     if (hashes.some(hash => !allowed.has(hash))) throw new Error("Memory source is outside the current Session");
@@ -173,7 +173,7 @@ export function readSessionSourceMessages(storage: PillarStorageLayout, cwd: str
 }
 
 /** Select complete message bodies; skipped bytes are a declared coverage gap, never a guessed fact. */
-export function selectSessionMemorySource(storage:PillarStorageLayout,cwd:string,sessionId:string,baseline:readonly string[]) {
+export function selectSessionMemorySource(storage:HiCodeStorageLayout,cwd:string,sessionId:string,baseline:readonly string[]) {
     const seen=new Set(baseline);
     const fresh=readSessionSourceIds(storage,cwd,sessionId).filter(id=>!seen.has(id));
     const candidates=[...new Set([...fresh.slice(0,1),...fresh.slice(-63)])];

@@ -14,7 +14,7 @@ const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 test("大安装缓存不扫描，也不清空源码已读范围", async () => {
     await withTempProject(async (cwd, storage) => {
         const fileState = createFileStateTracker();
-        const ctx = createTestContext(cwd, {fileState, toolResultStore: createTestToolResultStore(cwd, "cache", {pillarHome: storage.pillarHome}),
+        const ctx = createTestContext(cwd, {fileState, toolResultStore: createTestToolResultStore(cwd, "cache", {hicodeHome: storage.hicodeHome}),
             shellRunner: {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, run: runShellCommand}});
         const tools = createToolRuntime();
         expect((await tools.executeTool("write_file", JSON.stringify({path: "App.tsx", content: "const value = 1;"}), ctx, "write")).outcome).toBe("ok");

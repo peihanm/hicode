@@ -1,10 +1,10 @@
 {
-  "name": "pillar",
+  "name": "hicode",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "pillar": "src/index.tsx"
+    "hicode": "src/index.tsx"
   },
   "exports": {
     "./sdk": "./src/sdk/index.ts"

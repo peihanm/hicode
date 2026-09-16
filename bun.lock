@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pillar",
+      "name": "hicode",
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.66",
         "@modelcontextprotocol/sdk": "^1.29.0",

@@ -13,8 +13,8 @@ import type {PermissionMode} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import {COLORS} from "./theme.js";
 import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
-import type {PillarRootConfiguration} from "../runtime/rootConfiguration.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
+import type {HiCodeRootConfiguration} from "../runtime/rootConfiguration.js";
 import type {InteractiveShutdown} from "../cli/interactiveShutdown.js";
 
 type RootState =
@@ -24,7 +24,7 @@ type RootState =
     | { view: "error"; message: string };
 
 function createRootState(
-    storage: PillarStorageLayout,
+    storage: HiCodeStorageLayout,
     cwd: string,
     model: string,
     resumeMode: ResumeMode
@@ -61,7 +61,7 @@ export function Root({
         initialImages,
                          resumeMode,
                      }: {
-    configuration: PillarRootConfiguration;
+    configuration: HiCodeRootConfiguration;
     shutdown: InteractiveShutdown;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;
@@ -132,7 +132,7 @@ export function Root({
         return (
             <Box flexDirection="column">
                 <Text color={COLORS.assistant}>● {state.message}</Text>
-                <Text color={COLORS.dim}>Run pillar directly to start a new session.</Text>
+                <Text color={COLORS.dim}>Run hicode directly to start a new session.</Text>
             </Box>
         );
     }

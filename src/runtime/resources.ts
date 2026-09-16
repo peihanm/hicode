@@ -1,6 +1,6 @@
 import {createModelConfiguration, type ModelConfiguration} from "../settings/modelConfiguration.js";
 import {acquireProjectActivity} from "../persistence/projectState.js";
-import {loadPillarSettings} from "../settings/index.js";
+import {loadHiCodeSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
@@ -12,7 +12,7 @@ import {createTaskRuntime, type TaskRuntimeLike,} from "../tasks/index.js";
 import {createShellRunner, type ShellRunnerLike,} from "../tools/bash/shellRunner.js";
 import {createSandboxRuntime, type SandboxRuntimeLike,} from "../sandbox/index.js";
 import {loadProjectInstructions, type ProjectInstructions,} from "../prompt/instructions.js";
-import type {ResolvedPillarSettings} from "../settings/index.js";
+import type {ResolvedHiCodeSettings} from "../settings/index.js";
 import {type AgentRuntime, createAgentRuntime} from "./agentRuntime.js";
 import {
     type AgentAuthoringRuntime,
@@ -34,28 +34,28 @@ import {createHookPromptExecutor, createHookRuntime, type HookRuntime, type Hook
 import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/index.js";
 import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
-import type {PillarStorageLayout} from "../persistence/index.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {createInputHistoryStore, type InputHistoryStore,} from "../session/inputHistory/index.js";
 import {
     createChildProcessEnvironment,
 } from "./childEnvironment.js";
-import type {PillarRootConfiguration} from "./rootConfiguration.js";
+import type {HiCodeRootConfiguration} from "./rootConfiguration.js";
 import type {Tool} from "../tools/types.js";
 
 export interface RootRuntimeResources {
     readonly approvalReviewer: AgentRuntime["reviewApproval"];
     readonly allowFullAccess: boolean;
-    readonly storage: PillarStorageLayout;
+    readonly storage: HiCodeStorageLayout;
     readonly inputHistory: InputHistoryStore;
     readonly cwd: string;
     readonly workspaceBoundary: string;
     readonly model: string;
-    readonly provider: ResolvedPillarSettings["models"]["primary"]["source"];
+    readonly provider: ResolvedHiCodeSettings["models"]["primary"]["source"];
     readonly fastModel: string;
-    readonly fastProvider: ResolvedPillarSettings["models"]["primary"]["source"];
+    readonly fastProvider: ResolvedHiCodeSettings["models"]["primary"]["source"];
     readonly primaryModel: PrimaryModelRuntime;
     readonly modelConfiguration?: ModelConfiguration;
-    readonly settings: ResolvedPillarSettings;
+    readonly settings: ResolvedHiCodeSettings;
     readonly agentRuntime: AgentRuntime;
     readonly subagents: SubagentCatalog;
     readonly agentDefinitions: AgentDefinitionManager;
@@ -79,7 +79,7 @@ export interface RootRuntimeResources {
 }
 
 export interface CreateRootRuntimeResourcesOptions {
-    configuration: PillarRootConfiguration;
+    configuration: HiCodeRootConfiguration;
     signal?: AbortSignal;
     headless?: boolean;
     requestMcpApproval?: McpManagerOptions["requestApproval"];
@@ -102,7 +102,7 @@ interface RootRuntimeDependencies {
     createHookRuntime: typeof createHookRuntime;
 
     createTaskRuntime(
-        storage: PillarStorageLayout,
+        storage: HiCodeStorageLayout,
         cwd: string,
         shellRunner: ShellRunnerLike,
         createSubagentThread: CreateSubagentThread,
@@ -114,7 +114,7 @@ interface RootRuntimeDependencies {
     createMemoryRuntime: typeof createMemoryRuntime;
 
     loadCustomAgentDefinitions(
-        storage: PillarStorageLayout,
+        storage: HiCodeStorageLayout,
         cwd: string,
         sources?: readonly AgentFileSource[],
         hostAgents?: readonly HostAgentContribution[]
@@ -191,7 +191,7 @@ export function createRootRuntimeResourcesFactory(
             dependencies.loadProjectInstructions({
                 cwd,
                 boundary: options.configuration.workspaceBoundary,
-                userPillarHome: storage.pillarHome,
+                userHiCodeHome: storage.hicodeHome,
                 sources: options.configuration.fileSources.instructions,
                 hostInstructions: options.configuration.contributions.instructions,
             }),
@@ -346,7 +346,7 @@ export function createRootRuntimeResourcesFactory(
                     if (hookUsers || hooksReloading || createdTaskRuntime.hasRunning()) throw new Error("A Turn, background task or Hook reload is still active");
                     hooksReloading = true;
                     try {
-                        const loaded = loadPillarSettings({storage, cwd, sources: options.configuration.fileSources.settings});
+                        const loaded = loadHiCodeSettings({storage, cwd, sources: options.configuration.fileSources.settings});
                         if (loaded.issues.length) throw new Error(loaded.issues.map(issue => issue.message).join("\n"));
                         // Host declarations are immutable contributions and are not re-read from disk.
                         for (const event of Object.keys(loaded.values.hooks) as (keyof typeof settings.hooks)[]) {

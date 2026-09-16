@@ -2,12 +2,12 @@ import type {
     HostDiagnostic,
     InteractionRequest,
     InteractionResponse,
-    ResolvedPillarSettings,
+    ResolvedHiCodeSettings,
     ThreadEvent,
     ThreadInfo,
     TurnOptions,
     TurnResult,
-} from "pillar/sdk";
+} from "hicode/sdk";
 
 export type EvalKeepPolicy = "all" | "failed" | "none";
 export type EvalFailureKind =
@@ -17,7 +17,7 @@ export type EvalFailureKind =
     | "runtime"
     | "verifier";
 export type EvalModelSource = NonNullable<
-    ResolvedPillarSettings["models"]["primary"]["source"]
+    ResolvedHiCodeSettings["models"]["primary"]["source"]
 >;
 export type EvalPermissionMode = NonNullable<TurnOptions["permissionMode"]>;
 
@@ -107,7 +107,7 @@ export interface EvalLiveStatus {
 export interface EvalRunPaths {
     runDirectory: string;
     workspace: string;
-    pillarHome: string;
+    hicodeHome: string;
     verifierHome: string;
     manifest: string;
     report: string;
@@ -206,7 +206,7 @@ export interface EvalReport {
     diagnostics: HostDiagnostic[];
     interactionCount: number;
     eventCount: number;
-    retained: {workspace: boolean; pillarHome: boolean};
+    retained: {workspace: boolean; hicodeHome: boolean};
     paths: EvalRunPaths;
     trend: {
         reportPath: string;
@@ -350,7 +350,7 @@ export interface EvalInspection {
         verification: string;
         diff: string;
         workspace: string;
-        pillarHome: string;
+        hicodeHome: string;
     };
 }
 

@@ -1,5 +1,5 @@
 import type {ThreadEvent, ThreadItem} from "./protocol.js";
-import {PillarSDKError, type TurnResult} from "./types.js";
+import {HiCodeSDKError, type TurnResult} from "./types.js";
 
 export async function collectTurnResult(
     events: AsyncIterable<ThreadEvent>
@@ -16,14 +16,14 @@ export async function collectTurnResult(
             previousSequence !== undefined &&
             event.sequence !== previousSequence + 1
         ) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "invalid_event_sequence",
                 `SDK event sequence is discontinuous: ${previousSequence} -> ${event.sequence}`
             );
         }
         previousSequence = event.sequence;
         if (terminal || failure) {
-            throw new PillarSDKError(
+            throw new HiCodeSDKError(
                 "event_after_terminal",
                 "SDK event received after the Turn terminal event"
             );
@@ -32,7 +32,7 @@ export async function collectTurnResult(
         switch (event.type) {
             case "turn.started":
                 if (turnId) {
-                    throw new PillarSDKError(
+                    throw new HiCodeSDKError(
                         "duplicate_turn_start",
                         "Multiple turn.started events in the same stream"
                     );
@@ -47,7 +47,7 @@ export async function collectTurnResult(
             case "item.started":
                 assertTurn(event.turnId, turnId);
                 if (activeItems.has(event.item.id)) {
-                    throw new PillarSDKError(
+                    throw new HiCodeSDKError(
                         "duplicate_item_start",
                         `Item started twice: ${event.item.id}`
                     );
@@ -57,7 +57,7 @@ export async function collectTurnResult(
             case "item.updated":
                 assertTurn(event.turnId, turnId);
                 if (!activeItems.has(event.item.id)) {
-                    throw new PillarSDKError(
+                    throw new HiCodeSDKError(
                         "unknown_item_update",
                         `Update received for an Item that was not started: ${event.item.id}`
                     );
@@ -66,7 +66,7 @@ export async function collectTurnResult(
             case "item.completed":
                 assertTurn(event.turnId, turnId);
                 if (!activeItems.delete(event.item.id)) {
-                    throw new PillarSDKError(
+                    throw new HiCodeSDKError(
                         "unknown_item_completion",
                         `Completion received for an Item that was not started: ${event.item.id}`
                     );
@@ -87,19 +87,19 @@ export async function collectTurnResult(
     }
 
     if (activeItems.size > 0) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "unclosed_items",
             `Turn ended with ${activeItems.size} unclosed Items`
         );
     }
     if (failure) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             failure.error.code,
             failure.error.message
         );
     }
     if (!turnId || !terminal) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "missing_turn_terminal",
             "SDK event stream lacks a complete turn.started/turn.completed pair"
         );
@@ -124,7 +124,7 @@ export async function collectTurnResult(
 
 function assertTurn(actual: string, expected: string | undefined): void {
     if (!expected || actual !== expected) {
-        throw new PillarSDKError(
+        throw new HiCodeSDKError(
             "event_turn_mismatch",
             `SDK event turnId mismatch: ${actual}`
         );
