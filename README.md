@@ -3,14 +3,14 @@
 简体中文 | [English](README.en.md)
 
 <p align="center">
-  <img src="assets/images/hicode.gif" alt="HiCode 粒子字标动画" width="100%">
+  <img src="assets/images/hicode.gif" alt="HiCode 粒子字标动画" width="640">
   <br>
   <sub>一段 Prompt，由 HiCode × DeepSeek Flash 实现。</sub>
 </p>
 
 ## 项目介绍
 
-HiCode 是一个由本人独立从 0 到 1 开发的终端 Code Agent，使用 TypeScript 构建。用自然语言描述需求，即可让它编写代码、修复问题并运行测试。
+HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心源码不到 4 万行。用自然语言描述需求，即可让它编写代码、修复问题并运行测试。
 
 **目前仅支持 macOS**，在本机运行，需自备模型 API Key。
 

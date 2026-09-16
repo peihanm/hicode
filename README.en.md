@@ -3,14 +3,14 @@
 [简体中文](README.md) | English
 
 <p align="center">
-  <img src="assets/images/hicode.gif" alt="HiCode particle wordmark animation" width="100%">
+  <img src="assets/images/hicode.gif" alt="HiCode particle wordmark animation" width="640">
   <br>
   <sub>One prompt. Built with HiCode × DeepSeek Flash.</sub>
 </p>
 
 ## About
 
-HiCode is a terminal coding agent I independently built from scratch in TypeScript. Describe what you need in natural language, and it writes code, fixes issues, and runs tests.
+HiCode is a lightweight terminal coding agent built in TypeScript with its own execution framework and under 40,000 lines of core source code. Describe what you need in natural language, and it writes code, fixes issues, and runs tests.
 
 **macOS only.** Runs locally with your own model API key.
 
