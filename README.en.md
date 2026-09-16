@@ -2,78 +2,95 @@
 
 [简体中文](README.md) | English
 
-**Describe a development task. HiCode works on it in your terminal.**
+<p align="center">
+  <img src="assets/images/hicode.gif" alt="HiCode particle wordmark animation" width="100%">
+  <br>
+  <sub>One prompt. Built with HiCode × DeepSeek Flash.</sub>
+</p>
 
-HiCode is a coding agent built with TypeScript. It reads your project, edits files, runs commands and tests, and uses the results to continue working. Ask it to build a new project, fix a bug, or extend an existing application.
+## About
 
-**Currently supports macOS only.** HiCode runs locally and connects to a model provider using your API key. No separate server deployment is needed.
+HiCode is a terminal coding agent I independently built from scratch in TypeScript. Describe what you need in natural language, and it writes code, fixes issues, and runs tests.
 
-## What you can do
+**macOS only.** Runs locally with your own model API key.
 
-- **Build from an idea:** describe a page, application, or small game and have HiCode create the files, implement it, and run checks.
-- **Work on existing code:** investigate errors, fix bugs, add features, or review a project before making changes.
-- **Continue longer tasks:** split work into subtasks, delegate to subagents, and use context management and project memory to carry work forward. You can add instructions while it runs.
-- **Extend its capabilities:** connect tools through MCP, add Skills and Hooks, or provide screenshots to an image-capable model. A TypeScript SDK is also available for programmatic use.
+<table width="100%">
+  <tr>
+    <th width="43.3%">Welcome screen</th>
+    <th width="56.7%">Task execution</th>
+  </tr>
+  <tr>
+    <td width="43.3%" valign="top"><img src="assets/images/img1.png" alt="HiCode welcome screen" width="100%"></td>
+    <td width="56.7%" valign="top"><img src="assets/images/img2.png" alt="HiCode inspecting code, running tests, and reporting results" width="100%"></td>
+  </tr>
+</table>
 
-## Install on macOS
+- **Build and maintain**: create projects from scratch, or review, fix, and extend existing code.
+- **Handle longer tasks**: subagent collaboration, context management, project memory, and instructions during execution.
+- **Extend capabilities**: MCP, Skills, Hooks, image input with supported models, and a TypeScript SDK.
 
-Run this in your terminal:
+### TODO
+
+- [ ] Build a test dataset and improve HiCode's capabilities through automated evaluations.
+
+## Quick start
+
+Run this in your macOS terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-The script downloads HiCode, reuses existing Bun and ripgrep installations or downloads their verified binaries, registers `hicode`, and configures PATH automatically. It requires no Homebrew, Node.js, or administrator password. Automatic shell setup supports zsh (the macOS default) and bash.
+The installer sets up dependencies and the `hicode` command automatically. It supports zsh and bash without administrator privileges.
 
-**After installation, open a new terminal**, enter your project directory, and start HiCode:
+After installation, **open a new terminal** and enter the project you want to work on:
 
 ```bash
 cd /path/to/your/project
 hicode
 ```
 
-You only install once. Run `hicode` from any project directory afterward; create an empty directory first if you want to build something new.
+Run `hicode` from any project directory afterward. First launch opens model setup:
 
-<details>
-<summary>Already downloaded or cloned the repository?</summary>
+1. **Choose a provider**: Alibaba Bailian (Qwen), Zhipu GLM, DeepSeek, or OpenRouter.
+2. **API key**: paste your key and press Enter to save.
+3. **API endpoint**: if the default does not match your account, enter your provider’s API base URL.
+4. **Choose model and start**: pick a model your account can access.
 
-Run the installer from your checkout:
+Model missing? Use **Add model** to enter its Model ID and an optional display name. Use `/providers` to change settings later.
+
+Configuration is saved automatically and reusable across projects. Model usage is billed by your provider.
+
+## Develop from source
+
+To develop HiCode itself, install Git first:
 
 ```bash
+git clone https://github.com/peihanm/hicode.git
+cd hicode
 bash install.sh
 ```
 
-It uses your local source. The downloaded installer otherwise stores source at `~/.local/share/hicode/source`. Keep that source directory: the `hicode` command links to it. To repair setup, run `bash install.sh` from that source directory. Existing source is never automatically replaced.
+The script points `hicode` to this checkout, replacing any launcher from a previous script installation. **Keep this directory in place.**
 
-</details>
+Open a new terminal, return to the checkout, and install development dependencies:
 
-## Configure a model
+```bash
+bun install --frozen-lockfile
+bun run start
+```
 
-**Complete setup in the terminal UI. There is no need to create an `.env` file or edit JSON first.** When no models are available, HiCode opens provider setup automatically. You can also open it by entering `/providers` inside HiCode.
+Restart after editing source. Running `hicode` from another project directory also uses this checkout.
 
-Supported providers are **Alibaba Bailian (Qwen), Zhipu GLM, DeepSeek, and OpenRouter**. Have an API key ready; usage is billed by your provider.
+Validate changes:
 
-1. **Choose a provider.** Select the provider that issued your API key, such as **DeepSeek** or **Alibaba Bailian**.
-2. **Save your key.** Open **API key**, paste the key, and press Enter. The input is masked.
-3. **Check the endpoint.** Open **API endpoint** if your account uses a different API base URL. The key, endpoint, and model must belong to the same service.
-4. **Choose a model.** Select **Choose model and start**, then pick a model you have access to. HiCode saves the selection and returns to chat automatically.
+```bash
+bun test          # Automated tests
+bun run check     # TypeScript checks
+```
 
-Use ↑/↓ to select and Enter to confirm. Until the current model is configured, Esc exits HiCode; once configured, Esc goes back or cancels an edit. Built-in endpoints and preset models can be used without entering them again.
+Full validation: `bun run verify` adds SDK package verification and requires Node.js 22.12+.
 
-**Model missing from the list?** Open `/providers`, choose its provider, and select **Add model**. Enter the exact **Model ID** expected by the API, then an optional **Display name**. Select **Choose model and start** to use it. Adding a model uses that provider's existing adapter; it does not add support for an arbitrary API protocol.
+## Contributing
 
-**Using Qwen?** HiCode currently defaults to `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`. If your account uses a different endpoint, change **API endpoint** before sending a task. Preset models also require access through your account.
-
-Keys are saved to `~/.hicode/.env` by default, and model configuration to `~/.hicode/settings.json`, so setup can be reused across projects. Existing project configuration can override these defaults: if the project's `.env` already contains the key variable, the panel updates that file and shows its location. Keep API keys out of Git.
-
-## Give it a task
-
-Once the model is selected, type what you want to accomplish:
-
-> Inspect this project and explain how it works. Identify the most important improvements, but don't edit files yet.
-
-Or ask it to make a concrete change:
-
-> Fix the failing tests. Find the cause, update the implementation, and rerun the relevant tests. Summarize what changed.
-
-HiCode works on files in the directory where you launched it. When an operation requires approval, it asks in the terminal. Available checks depend on your project's dependencies and connected tools; browser interaction requires a browser tool to be provided.
+Join us in building HiCode—bug reports, ideas, and code contributions are all welcome.
