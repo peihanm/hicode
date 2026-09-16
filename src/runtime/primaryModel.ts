@@ -3,6 +3,7 @@ import {listConfiguredPrimaryModels, sourceIsAvailable} from "../llm/modelCatalo
 
 export interface PrimaryModelRuntime {
     readonly target: ModelTargetSettings;
+    readonly isConfigured: boolean;
     readonly available: readonly ModelTargetSettings[];
     readonly sources: ResolvedHiCodeSettings["sources"];
     hasCredential(source: ModelTargetSettings["source"]): boolean;
@@ -21,6 +22,7 @@ export function createPrimaryModelRuntime(
     const candidates = () => supplied ?? listConfiguredPrimaryModels(sources);
     return {
         get target() {return {...target};},
+        get isConfigured() {return candidates().some(item => item.source === target.source && item.model === target.model);},
         get available() {return candidates().map(candidate => ({...candidate}));},
         get sources() {return structuredClone(sources);},
         hasCredential(source) {return sourceIsAvailable(sources[source], process.env);},

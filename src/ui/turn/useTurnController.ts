@@ -369,7 +369,7 @@ export function useTurnController({
                     onEvent: eventStore.handleEvent, getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()})})),
                 validateImages: content => {
                     if (!(typeof content === "string" && content.trim().startsWith("/")) &&
-                        !resources.primaryModel.available.some(item => item.source === resources.provider && item.model === resources.model)) {
+                        !resources.primaryModel.isConfigured) {
                         if (resources.primaryModel.available.length) openModel?.(); else openProviders?.();
                         throw new Error("Configure a provider with /providers and choose a model with /model. Your input is preserved.");
                     }

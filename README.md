@@ -1,79 +1,79 @@
 # HiCode
 
-English | [简体中文](README.zh-CN.md)
+简体中文 | [English](README.en.md)
 
-**Describe a development task. HiCode works on it in your terminal.**
+**用自然语言描述开发任务，让 HiCode 在终端里帮你完成。**
 
-HiCode is a coding agent built with TypeScript. It reads your project, edits files, runs commands and tests, and uses the results to continue working. Ask it to build a new project, fix a bug, or extend an existing application.
+HiCode 是一个基于 TypeScript 开发的 Code Agent。它可以读取项目、修改文件、执行命令和测试，并根据结果继续推进任务。你可以让它从零搭建项目，也可以让它修复 Bug、为已有应用增加功能。
 
-**Currently supports macOS only.** HiCode runs locally and connects to a model provider using your API key. No separate server deployment is needed.
+**目前仅支持 macOS。** HiCode 在本机运行，通过你的 API Key 调用模型服务，无需额外部署服务端。
 
-## What you can do
+## 能做什么
 
-- **Build from an idea:** describe a page, application, or small game and have HiCode create the files, implement it, and run checks.
-- **Work on existing code:** investigate errors, fix bugs, add features, or review a project before making changes.
-- **Continue longer tasks:** split work into subtasks, delegate to subagents, and use context management and project memory to carry work forward. You can add instructions while it runs.
-- **Extend its capabilities:** connect tools through MCP, add Skills and Hooks, or provide screenshots to an image-capable model. A TypeScript SDK is also available for programmatic use.
+- **从想法到项目：**描述一个页面、应用或小游戏，让 HiCode 创建文件、编写功能并运行检查。
+- **维护已有代码：**排查报错、修复 Bug、添加功能，或先审查项目再决定如何修改。
+- **持续推进长任务：**拆分任务、交给子 Agent 协作，通过上下文管理和项目记忆衔接后续工作。执行期间也可以继续补充要求。
+- **扩展能力：**通过 MCP 接入工具，添加 Skills 和 Hooks，或使用支持图片的模型理解截图。也提供 TypeScript SDK，方便程序调用。
 
-## Install on macOS
+## 在 macOS 上安装
 
-Run this in your terminal:
+在终端执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-The script downloads HiCode, reuses existing Bun and ripgrep installations or downloads their verified binaries, registers `hicode`, and configures PATH automatically. It requires no Homebrew, Node.js, or administrator password. Automatic shell setup supports zsh (the macOS default) and bash.
+脚本会自动下载 HiCode，优先复用已有的 Bun 和 ripgrep，缺少时直接下载并校验可执行文件，然后注册 `hicode` 命令、配置 PATH。无需 Homebrew、Node.js 或管理员密码。支持自动配置 zsh（macOS 默认 Shell）和 bash。
 
-**After installation, open a new terminal**, enter your project directory, and start HiCode:
+**安装完成后，重新打开一个终端窗口**，进入你的项目目录即可启动：
 
 ```bash
-cd /path/to/your/project
+cd /你的项目目录
 hicode
 ```
 
-You only install once. Run `hicode` from any project directory afterward; create an empty directory first if you want to build something new.
+只需要安装一次，以后在任意项目目录输入 `hicode` 就能使用。从零开发时，先创建一个空目录即可。
 
 <details>
-<summary>Already downloaded or cloned the repository?</summary>
+<summary>已经下载或 clone 了仓库？</summary>
 
-Run the installer from your checkout:
+在源码目录执行：
 
 ```bash
 bash install.sh
 ```
 
-It uses your local source. The downloaded installer otherwise stores source at `~/.local/share/hicode/source`. Keep that source directory: the `hicode` command links to it. To repair setup, run `bash install.sh` from that source directory. Existing source is never automatically replaced.
+脚本会使用当前源码。直接下载安装脚本时，源码默认存放在 `~/.local/share/hicode/source`。请保留源码目录，`hicode` 命令链接到这里。需要修复安装配置时，在该源码目录再次执行 `bash install.sh` 即可，不会自动覆盖已有源码。
 
 </details>
 
-## Configure a model
+## 配置模型
 
-**Complete setup in the terminal UI. There is no need to create an `.env` file or edit JSON first.** When no models are available, HiCode opens provider setup automatically. You can also open it by entering `/providers` inside HiCode.
+**直接在终端界面完成配置，不需要提前创建 `.env` 或手写 JSON。** 没有可用模型时，HiCode 会自动打开服务商配置面板；也可以在 HiCode 中输入 `/providers` 打开。
 
-Supported providers are **Alibaba Bailian (Qwen), Zhipu GLM, DeepSeek, and OpenRouter**. Have an API key ready; usage is billed by your provider.
+目前支持 **阿里云百炼（Qwen）、智谱 GLM、DeepSeek 和 OpenRouter**。准备好对应的 API Key，模型调用费用由服务商计收。
 
-1. **Choose a provider.** Select the provider that issued your API key, such as **DeepSeek** or **Alibaba Bailian**.
-2. **Save your key.** Open **API key**, paste the key, and press Enter. The input is masked.
-3. **Check the endpoint.** Open **API endpoint** if your account uses a different API base URL. The key, endpoint, and model must belong to the same service.
-4. **Choose a model.** Press Esc to leave setup, enter `/model`, and select a model you have access to. The selection is saved for future launches.
+1. **选择服务商。**选择签发你这个 API Key 的服务商，例如 **DeepSeek** 或 **Alibaba Bailian（阿里云百炼）**。
+2. **保存 Key。**进入 **API key**，粘贴 Key 后按 Enter 保存，输入内容会遮罩显示。
+3. **确认接口地址。**如果账号使用的地址与默认值不同，进入 **API endpoint** 填写 API 基础地址。Key、接口地址和模型需要对应同一个服务。
+4. **选择模型。**选择 **Choose model and start（选择模型并开始使用）**，再选择你的账号有权限使用的模型。HiCode 会保存选择并自动回到输入框。
 
-Use ↑/↓ to select, Enter to confirm, and Esc to go back in the setup panel.
+配置面板中，↑/↓ 选择，Enter 确认。当前模型尚未配置可用时，Esc 退出 HiCode；已有可用配置时，Esc 返回或取消编辑。内置接口地址和预置模型可以直接使用，不需要重复填写。
 
-**Model missing from the list?** Open `/providers`, choose its provider, and select **Add model**. Enter the exact **Model ID** expected by the API, then an optional **Display name**. Return to `/model` to select it. Adding a model uses that provider's existing adapter; it does not add support for an arbitrary API protocol.
+**列表里没有想用的模型？** 在 `/providers` 中选择对应服务商，进入 **Add model**，填写接口要求的准确 **Model ID（模型 ID）**，再填写可选的 **Display name（展示名称）**。保存后选择 **Choose model and start** 即可使用。新增模型会沿用该服务商已有的适配能力，不代表支持任意 API 协议。
 
-**Using Qwen?** HiCode currently defaults to `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`. If your account uses a different endpoint, change **API endpoint** before sending a task. Preset models also require access through your account.
+**使用 Qwen 时请注意：**目前默认接口为 `https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`。如果你的账号使用其他接口，请先修改 **API endpoint** 再发送任务。预置模型也需要你的账号具有对应访问权限。
 
-Keys are saved to `~/.hicode/.env` by default, and model configuration to `~/.hicode/settings.json`, so setup can be reused across projects. Existing project configuration can override these defaults: if the project's `.env` already contains the key variable, the panel updates that file and shows its location. Keep API keys out of Git.
+Key 默认保存在 `~/.hicode/.env`，模型配置保存在 `~/.hicode/settings.json`，换一个项目也可以复用。已有项目配置可以覆盖这些默认设置：如果项目 `.env` 中已经存在对应 Key 变量，面板会更新该文件并显示保存位置。不要将 API Key 提交到 Git。
 
-## Give it a task
+## 开始一个任务
 
-Once the model is selected, type what you want to accomplish:
+选好模型后，直接输入需求，例如：
 
-> Inspect this project and explain how it works. Identify the most important improvements, but don't edit files yet.
+> 看一下这个项目，介绍它的结构，找出最值得优化的地方，先不要修改代码。
 
-Or ask it to make a concrete change:
+也可以让它直接修改：
 
-> Fix the failing tests. Find the cause, update the implementation, and rerun the relevant tests. Summarize what changed.
+> 修复当前失败的测试。先定位原因，再修改实现，最后重新运行相关测试，并说明改了什么。
 
-HiCode works on files in the directory where you launched it. When an operation requires approval, it asks in the terminal. Available checks depend on your project's dependencies and connected tools; browser interaction requires a browser tool to be provided.
+HiCode 会在启动时所在的目录中处理文件。遇到需要授权的操作，会在终端中请求确认。能够执行哪些验证取决于项目依赖和已接入的工具；网页操作需要另外提供浏览器工具。

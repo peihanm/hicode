@@ -93,7 +93,7 @@ export function App({
         const [showAgents, setShowAgents] = useState(false);
         const [showGitDiff, setShowGitDiff] = useState(false);
         const [showProviders, setShowProviders] = useState(() => !!resources.modelConfiguration && resources.primaryModel.available.length === 0);
-        const [showModel, setShowModel] = useState(() => resources.primaryModel.available.length > 0 && !resources.primaryModel.available.some(item => item.source === resources.provider && item.model === resources.model));
+        const [showModel, setShowModel] = useState(() => resources.primaryModel.available.length > 0 && !resources.primaryModel.isConfigured);
         const [showPermissions, setShowPermissions] = useState(false);
         const openResume = useCallback(() => {
             setShowTasks(false);
@@ -182,6 +182,15 @@ export function App({
             resources.beginShutdown();
             exit();
         }, [exit, resources]);
+
+        const closeConfiguration = useCallback(() => {
+            if (!resources.primaryModel.isConfigured) {
+                requestExit();
+                return;
+            }
+            setShowProviders(false);
+            setShowModel(false);
+        }, [requestExit, resources.primaryModel]);
 
         const handleSubmit = useCallback(
             async (input: string) => {
@@ -289,7 +298,7 @@ export function App({
                         onClose={() => setShowResume(false)}
                     />
                 ) : showProviders && resources.modelConfiguration ? (
-                    <ProvidersDialog runtime={resources.primaryModel} configuration={resources.modelConfiguration} onClose={() => setShowProviders(false)}/>
+                    <ProvidersDialog runtime={resources.primaryModel} configuration={resources.modelConfiguration} onSelect={turn.setPrimaryModel} onClose={closeConfiguration}/>
                 ) : showModel ? (
                     <ModelDialog
                         models={turn.availableModels}
@@ -298,7 +307,8 @@ export function App({
                             await turn.setPrimaryModel(target);
                             setShowModel(false);
                         }}
-                        onClose={() => setShowModel(false)}
+                        escapeAction={resources.primaryModel.isConfigured ? "back" : "exit"}
+                        onClose={closeConfiguration}
                     />
                 ) : showPermissions ? (
                     <PermissionsDialog

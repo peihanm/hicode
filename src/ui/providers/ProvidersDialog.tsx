@@ -4,15 +4,18 @@ import TextInput from "ink-text-input";
 import {LLM_PROVIDER_NAMES, PROVIDER_BASE_URLS, type LLMProviderName} from "../../llm/providerRegistry.js";
 import type {PrimaryModelRuntime} from "../../runtime/primaryModel.js";
 import type {ModelConfiguration} from "../../settings/modelConfiguration.js";
+import type {ModelTargetSettings} from "../../settings/types.js";
+import {ModelDialog} from "../model/ModelDialog.js";
 import {COLORS} from "../theme.js";
 
-type Page = {kind: "list"} | {kind: "provider" | "remove-model" | "key" | "endpoint" | "model-id"; source: LLMProviderName}
+type Page = {kind: "select-model"; source: LLMProviderName | null} | {kind: "list"} | {kind: "provider" | "remove-model" | "key" | "endpoint" | "model-id"; source: LLMProviderName}
     | {kind: "confirm-remove"; source: LLMProviderName; id: string; label: string}
     | {kind: "model-label"; source: LLMProviderName; id: string};
 
-export function ProvidersDialog({runtime, configuration, onClose}: {
+export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
     runtime: PrimaryModelRuntime;
     configuration: ModelConfiguration;
+    onSelect(target: ModelTargetSettings): Promise<void>;
     onClose(): void;
 }) {
     const [page, setPage] = useState<Page>({kind: "list"});
@@ -24,13 +27,15 @@ export function ProvidersDialog({runtime, configuration, onClose}: {
     const mounted = useRef(true);
     useEffect(() => () => {mounted.current = false;}, []);
     const sources = runtime.sources;
-    const source = "source" in page ? sources[page.source] : undefined;
+    const source = "source" in page && page.source ? sources[page.source] : undefined;
+    const available = runtime.available;
+    const escapeAction = runtime.isConfigured ? "back" : "exit";
     const configured = (name: LLMProviderName) => runtime.hasCredential(name);
     const edit = ["key", "endpoint", "model-id", "model-label"].includes(page.kind);
-    const navigate = (next: Page, initial = "") => {setPage(next); setValue(initial); setSelected(0); setError(""); setNotice("");};
+    const navigate = (next: Page, initial = "", index = 0) => {setPage(next); setValue(initial); setSelected(index); setError(""); setNotice("");};
 
     const save = async (input: string) => {
-        if (!edit || busy || !("source" in page)) return;
+        if (!edit || busy || !("source" in page) || !page.source) return;
         if (page.kind === "model-id") {
             if (!input.trim() || input.trim().length > 200) {setError("Enter the API model ID (up to 200 characters)"); return;}
             navigate({kind: "model-label", source: page.source, id: input.trim()});
@@ -44,7 +49,11 @@ export function ProvidersDialog({runtime, configuration, onClose}: {
             if (page.kind === "key") message = `Key saved to ${await configuration.saveKey(page.source, input)}. Available immediately.`;
             else if (page.kind === "endpoint") await configuration.saveEndpoint(page.source, input);
             else if (page.kind === "model-label") await configuration.addModel(page.source, page.id, input);
-            if (mounted.current) {navigate({kind: "provider", source: page.source}); setNotice(message);}
+            if (mounted.current) {
+                const ready = runtime.available.some(model => model.source === page.source);
+                navigate({kind: "provider", source: page.source}, "", ready ? 4 : configured(page.source) ? 2 : 0);
+                setNotice(message);
+            }
         } catch (reason) {
             if (mounted.current) setError(reason instanceof Error ? reason.message : "Could not save configuration");
         } finally {if (mounted.current) setBusy(false);}
@@ -63,24 +72,32 @@ export function ProvidersDialog({runtime, configuration, onClose}: {
     useInput((_input, key) => {
         if (busy) return;
         if (key.escape) {
-            if (page.kind === "list") onClose();
-            else if (page.kind === "provider") navigate({kind: "list"});
+            if (!runtime.isConfigured || page.kind === "list") onClose();
+            else if (page.kind === "provider") navigate({kind: "list"}, "", available.length ? LLM_PROVIDER_NAMES.length : 0);
             else if (page.kind === "confirm-remove") navigate({kind: "remove-model", source: page.source});
-            else navigate({kind: "provider", source: page.source});
+            else if ("source" in page && page.source) navigate({kind: "provider", source: page.source});
             return;
         }
         if (edit) return;
-        const count = page.kind === "list" ? LLM_PROVIDER_NAMES.length : page.kind === "remove-model" ? (source?.models.length ?? 0) + 1 : page.kind === "confirm-remove" ? 2 : 5;
+        const count = page.kind === "list" ? (LLM_PROVIDER_NAMES.length + (available.length ? 2 : 1)) : page.kind === "remove-model" ? (source?.models.length ?? 0) + 1 : page.kind === "confirm-remove" ? 2 : 6;
         if (key.upArrow) setSelected(index => (index + count - 1) % count);
         else if (key.downArrow) setSelected(index => (index + 1) % count);
         else if (key.return) {
-            if (page.kind === "list") navigate({kind: "provider", source: LLM_PROVIDER_NAMES[selected]!});
+            if (page.kind === "list") {
+                const provider = LLM_PROVIDER_NAMES[selected];
+                if (provider) navigate({kind: "provider", source: provider});
+                else if (available.length && selected === LLM_PROVIDER_NAMES.length) navigate({kind: "select-model", source: null});
+                else onClose();
+            }
             else if (page.kind === "provider") {
                 if (selected === 0) navigate({kind: "key", source: page.source});
                 else if (selected === 1) navigate({kind: "endpoint", source: page.source}, source?.baseUrl ?? PROVIDER_BASE_URLS[page.source]);
                 else if (selected === 2) navigate({kind: "model-id", source: page.source});
                 else if (selected === 3) navigate({kind: "remove-model", source: page.source});
-                else navigate({kind: "list"});
+                else if (selected === 4) {
+                    if (available.some(model => model.source === page.source)) navigate({kind: "select-model", source: page.source});
+                    else setError(configured(page.source) ? "Add a model before continuing." : "Add an API key before continuing.");
+                } else navigate({kind: "list"}, "", available.length ? LLM_PROVIDER_NAMES.length : 0);
             } else if (page.kind === "remove-model") {
                 const model = source?.models[selected];
                 if (model) navigate({kind: "confirm-remove", source: page.source, id: model.id, label: model.label});
@@ -90,25 +107,43 @@ export function ProvidersDialog({runtime, configuration, onClose}: {
                 else void remove(page.source, page.id);
             }
         }
-    });
+    }, {isActive: page.kind !== "select-model"});
 
     const row = (text: string, index: number) => <Text key={text} color={index === selected ? COLORS.accent : undefined} bold={index === selected}>{index === selected ? "› " : "  "}{text}</Text>;
+    if (page.kind === "select-model") {
+        const provider = page.source;
+        return <ModelDialog
+            models={available.filter(model => provider === null || model.source === provider)}
+            current={runtime.target}
+            onSelect={async target => {await onSelect(target); onClose();}}
+            escapeAction={escapeAction}
+            onClose={() => {
+                if (!runtime.isConfigured) onClose();
+                else navigate(provider ? {kind: "provider", source: provider} : {kind: "list"}, "", provider ? 4 : LLM_PROVIDER_NAMES.length);
+            }}
+        />;
+    }
     return <Box flexDirection="column" paddingLeft={2} paddingRight={2}>
         <Text bold color={COLORS.accent}>◆ {source?.label ?? "PROVIDERS"}</Text>
         {page.kind === "list" ? <Box marginTop={1} flexDirection="column">
             {LLM_PROVIDER_NAMES.map((name, index) => row(`${sources[name].label} · ${configured(name) ? "Configured" : "Key required"}`, index))}
+            <Box marginTop={1} flexDirection="column">
+                {available.length > 0 && row("Choose model and start", LLM_PROVIDER_NAMES.length)}
+                {row(runtime.isConfigured ? "Back to chat" : "Exit HiCode", LLM_PROVIDER_NAMES.length + (available.length ? 1 : 0))}
+            </Box>
         </Box> : page.kind === "provider" ? <>
             <Box marginTop={1} flexDirection="column">
                 {row(`API key · ${configured(page.source) ? "Configured — replace" : "Add key"}`, 0)}
                 {row(`API endpoint · ${source?.baseUrl ? "Custom" : "Default"}`, 1)}
                 {row("Add model", 2)}
                 {row("Remove model", 3)}
-                {row("Back", 4)}
+                {row("Choose model and start", 4)}
+                {row("All providers", 5)}
             </Box>
             <Box marginTop={1} flexDirection="column">
-                <Text color={COLORS.dim}>Models · use /model to switch</Text>
+                <Text color={COLORS.dim}>Models</Text>
                 {source?.models.slice(0, 8).map(model => <Text key={model.id} wrap="truncate-end">  {model.label} · {model.id}</Text>)}
-                {source && source.models.length > 8 && <Text color={COLORS.dim}>  {source.models.length - 8} more models in /model</Text>}
+                {source && source.models.length > 8 && <Text color={COLORS.dim}>  {source.models.length - 8} more models available</Text>}
             </Box>
         </> : page.kind === "remove-model" ? <Box marginTop={1} flexDirection="column">
             <Text color={COLORS.dim}>Select a model to remove</Text>
@@ -129,6 +164,6 @@ export function ProvidersDialog({runtime, configuration, onClose}: {
         </Box>}
         {error && <Box marginTop={1}><Text color={COLORS.error}>{error}</Text></Box>}
         {notice && <Box marginTop={1}><Text color={COLORS.dim}>{notice}</Text></Box>}
-        <Box marginTop={1}><Text color={COLORS.dim}>{busy ? "Saving…" : edit ? "Enter save · Esc back" : "↑↓ select · Enter open · Esc back"}</Text></Box>
+        <Box marginTop={1}><Text color={COLORS.dim}>{busy ? "Saving…" : edit ? `Enter save · Esc ${escapeAction}` : `↑↓ select · Enter open · Esc ${escapeAction}`}</Text></Box>
     </Box>;
 }

@@ -31,11 +31,13 @@ export function ModelDialog({
     current,
     onSelect,
     onClose,
+    escapeAction = "back",
 }: {
     models: readonly ModelTargetSettings[];
     current: ModelTargetSettings;
     onSelect(target: ModelTargetSettings): Promise<void>;
     onClose(): void;
+    escapeAction?: "back" | "exit";
 }) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -124,7 +126,7 @@ export function ModelDialog({
 
             {error && <Text color={COLORS.error}>{error}</Text>}
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>{saving ? "Saving…" : "↑↓ select · enter switch and save · esc back"}</Text>
+                <Text color={COLORS.dim}>{saving ? "Saving…" : `↑↓ select · enter switch and save · esc ${escapeAction}`}</Text>
             </Box>
         </Box>
     );
