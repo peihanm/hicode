@@ -30,6 +30,7 @@ export function StatusBar({
                               mcpTotal = 0,
                               sandboxStatus,
                               backgroundTasks,
+                              showShortcuts = true,
                           }: {
     cwd: string;
     model: string;
@@ -43,6 +44,7 @@ export function StatusBar({
     mcpTotal?: number;
     sandboxStatus?: SandboxStatus;
     backgroundTasks?: RunningTaskSummary;
+    showShortcuts?: boolean;
 }) {
     const width = Math.max(1, useTerminalWidth() - 1);
     // Token colors: red on warning, yellow above 60%, otherwise gray.
@@ -126,14 +128,14 @@ export function StatusBar({
                 )}
                 {firstPadding}
             </Text>
-            <Text
+            {showShortcuts && <Text
                 backgroundColor={COLORS.surface}
                 color={COLORS.surfaceText}
                 wrap="truncate-end"
             >
                 {" "}{shortcuts}
                 {shortcutPadding}
-            </Text>
+            </Text>}
         </Box>
     );
 }

@@ -507,6 +507,11 @@ export function useTurnController({
             [eventStore, persistSnapshot, resources, rootSession, toolRuntime]
         );
 
+        const loadGitDiff = useCallback(
+            (signal: AbortSignal) => resources.gitWorkspace.diff(signal),
+            [resources.gitWorkspace]
+        );
+
         return {
             sessionId: rootSession.sessionId,
             sessionInitializationError,
@@ -549,7 +554,7 @@ export function useTurnController({
             inputReplacement,
             queuedMessages: messageQueueSnapshot.messages,
             backgroundTasks: taskSession.getRunningSummary(),
-            loadGitDiff: (signal: AbortSignal) => resources.gitWorkspace.diff(signal),
+            loadGitDiff,
             shutdown,
         };
 }

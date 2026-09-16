@@ -402,6 +402,7 @@ export function App({
                 )}
 
                 <StatusBar
+                    showShortcuts={!showGitDiff}
                     cwd={cwd}
                     model={turn.primaryModel.label}
                     permissionMode={turn.permissionMode}

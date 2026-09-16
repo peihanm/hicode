@@ -3,6 +3,10 @@ import {cleanup, render} from "ink-testing-library";
 import {GitDiffDialog} from "../../src/ui/git/GitDiffDialog.js";
 import type {GitDiffSnapshotResult} from "../../src/git/index.js";
 import type {GitFileStatus} from "../../src/git/types.js";
+import {AppForTest} from "../helpers/AppForTest.js";
+import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
+import {withTempProject} from "../helpers/tempProject.js";
+import stringWidth from "string-width";
 
 afterEach(() => cleanup());
 
@@ -57,6 +61,78 @@ function result(): GitDiffSnapshotResult {
 }
 
 describe("GitDiffDialog", () => {
+    test("App rerenders preserve the open diff; Escape returns before closing", async () => {
+        await withTempProject(async cwd => {
+            const resources = createTestRuntimeResources(cwd);
+            let reads = 0;
+            const configured = {...resources, gitWorkspace: {...resources.gitWorkspace,
+                diff: async () => {reads++; return result();},
+            }};
+            const view = render(<AppForTest resources={configured}/>);
+            try {
+                await waitForRender();
+                view.stdin.write("/diff"); await waitForRender();
+                view.stdin.write("\r"); await waitForRender();
+                view.stdin.write("\r"); await waitForRender();
+                expect((view.lastFrame() ?? "").replace(/\s+/g, " ")).toContain("Esc back to files");
+                expect(view.lastFrame()).not.toContain("ctrl+o transcript");
+                const before = reads;
+                view.rerender(<AppForTest resources={configured}/>);
+                await waitForRender();
+                expect(reads).toBe(before);
+                expect((view.lastFrame() ?? "").replace(/\s+/g, " ")).toContain("Esc back to files");
+                view.stdin.write("\u000f"); await waitForRender();
+                expect((view.lastFrame() ?? "").replace(/\s+/g, " ")).toContain("Esc back to files");
+                view.stdin.write("\u001b"); await waitForRender();
+                expect(view.lastFrame()).toContain("Enter view");
+                view.stdin.write("\u001b"); await waitForRender();
+                expect(view.lastFrame()).toContain("Ask HiCode");
+                expect(view.lastFrame()).toContain("ctrl+o transcript");
+            } finally {view.unmount(); await resources.close();}
+        });
+    });
+
+    test("refresh preserves file identity across reorder and a failed read", async () => {
+        const initial = result();
+        if (initial.status !== "available") throw new Error("fixture unavailable");
+        const file = initial.snapshot.files[0]!;
+        const other = {...file, status: {...file.status, path: "other.ts"}};
+        let reads = 0;
+        const view = render(<GitDiffDialog onClose={() => {}} loadDiff={async () => {
+            reads++;
+            if (reads === 3) throw new Error("Temporary Git error");
+            return {...initial, snapshot: {...initial.snapshot, files: reads === 1 ? [file, other] : [other, file]}};
+        }}/>);
+        await waitForRender();
+        view.stdin.write("\r"); await waitForRender();
+        for (let index = 0; index < 3; index++) {
+            view.stdin.write("r"); await waitForRender();
+            expect((view.lastFrame() ?? "").replace(/\s+/g, " ")).toContain("Esc back to files");
+        }
+        expect(reads).toBe(4);
+        expect(view.lastFrame()).toContain("current.ts");
+        expect(view.lastFrame()).not.toContain("other.ts");
+        view.stdin.write("\u001b"); await waitForRender();
+        expect(view.lastFrame()).toContain("❯ current.ts");
+    });
+
+    test("borderless list and detail fit narrow terminals", async () => {
+        const view = render(<GitDiffDialog loadDiff={async () => result()} onClose={() => {}}/>);
+        let columns = 90;
+        Object.defineProperty(view.stdout, "columns", {configurable: true, get: () => columns});
+        for (const width of [90, 56, 32]) {
+            columns = width; view.stdout.emit("resize");
+            await new Promise(resolve => setTimeout(resolve, 100));
+            expect(view.lastFrame()).not.toMatch(/[╭╰│]/);
+            expect(view.lastFrame()).not.toContain("Ctrl+O");
+            expect((view.lastFrame() ?? "").split("\n").every(line => stringWidth(line) <= width)).toBe(true);
+            view.stdin.write("\r"); await waitForRender();
+            expect((view.lastFrame() ?? "").replace(/\s+/g, " ")).toContain("Esc back to files");
+            expect((view.lastFrame() ?? "").split("\n").every(line => stringWidth(line) <= width)).toBe(true);
+            view.stdin.write("\u001b"); await waitForRender();
+        }
+    });
+
     test("只加载当前 Git 修改，左右键不切换来源", async () => {
         let loaded = 0;
         const view = render(<GitDiffDialog loadDiff={async () => {loaded++; return result();}} onClose={() => {}} />);
@@ -86,12 +162,13 @@ describe("GitDiffDialog", () => {
         }} onClose={() => {closed++;}} />);
         await waitForRender();
         expect(view.lastFrame()).not.toContain("line-43");
-        view.stdin.write("\u000f");
+        view.stdin.write("\r");
         await waitForRender();
         expect(view.lastFrame()).toContain("line-43");
-        view.stdin.write("\u000f");
+        view.stdin.write("\u001b");
         await waitForRender();
         expect(view.lastFrame()).not.toContain("line-43");
+        expect(closed).toBe(0);
         view.stdin.write("\r");
         await waitForRender();
         expect(view.lastFrame()).toContain("line-43");

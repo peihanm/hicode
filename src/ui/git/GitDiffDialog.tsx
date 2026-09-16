@@ -87,14 +87,11 @@ export function GitDiffDialog({
     onClose: () => void;
 }) {
     const width = useTerminalWidth();
-    const [selectedFile, setSelectedFile] = useState(0);
-    const [viewMode, setViewMode] = useState<ViewMode>("list");
+    const [selection, setSelection] = useState<{mode: ViewMode; path?: string}>({mode: "list"});
     const [reloadRevision, setReloadRevision] = useState(0);
     const [view, setView] = useState<ViewState>({status: "loading"});
 
     useEffect(() => {
-        setSelectedFile(0);
-        setViewMode("list");
         const controller = new AbortController();
         setView({status: "loading"});
         void loadDiff(controller.signal).then((result) => {
@@ -104,9 +101,13 @@ export function GitDiffDialog({
                 return;
             }
             const repository = result.snapshot.repository;
+            const files = result.snapshot.files.map(fromGitFile);
+            setSelection(current => files.some(file => file.path === current.path)
+                ? current
+                : {mode: "list", path: files[0]?.path});
             setView({
                 status: "ready",
-                files: result.snapshot.files.map(fromGitFile),
+                files,
                 repository: repository.repositoryRoot,
                 branch: repository.detached
                     ? `detached ${repository.headOid?.slice(0, 12) ?? ""}`
@@ -124,42 +125,34 @@ export function GitDiffDialog({
         return () => controller.abort("diff-view-reloaded-or-closed");
     }, [loadDiff, reloadRevision]);
 
+    const viewMode = selection.mode;
+    const selectedFile = view.status === "ready"
+        ? Math.max(0, view.files.findIndex(file => file.path === selection.path)) : 0;
+
     useInput((input, key) => {
         if (key.escape) {
             if (viewMode === "detail") {
-                setViewMode("list");
+                setSelection(current => ({...current, mode: "list"}));
             } else {
                 onClose();
             }
             return;
         }
-        if (viewMode === "detail") {
-            if (key.leftArrow || (key.ctrl && input === "o")) {
-                setViewMode("list");
-            } else if (input === "r") {
-                setReloadRevision((current) => current + 1);
-            }
+        if (key.ctrl || key.meta) return;
+        if (input === "r") {
+            setReloadRevision((current) => current + 1);
             return;
         }
-        if (view.status !== "ready") {
-            if (input === "r") {
-                setReloadRevision((current) => current + 1);
-            }
-            return;
-        }
+        if (viewMode === "detail" || view.status !== "ready") return;
         if (key.upArrow) {
-            setSelectedFile((current) => Math.max(0, current - 1));
+            setSelection({mode: "list", path: view.files[Math.max(0, selectedFile - 1)]?.path});
         } else if (key.downArrow) {
-            setSelectedFile((current) =>
-                Math.max(0, Math.min(view.files.length - 1, current + 1))
-            );
+            setSelection({mode: "list", path: view.files[Math.min(view.files.length - 1, selectedFile + 1)]?.path});
         } else if (
-            (key.return || (key.ctrl && input === "o")) &&
+            key.return &&
             view.files[selectedFile]
         ) {
-            setViewMode("detail");
-        } else if (input === "r") {
-            setReloadRevision((current) => current + 1);
+            setSelection({mode: "detail", path: view.files[selectedFile].path});
         }
     });
 
@@ -177,25 +170,24 @@ export function GitDiffDialog({
         view.files.every((file) => file.deletions !== null)
         ? view.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)
         : null;
-    const panelWidth = Math.max(40, Math.min(120, width - 1));
-    const contentWidth = Math.max(30, panelWidth - 4);
+    const panelWidth = Math.max(1, Math.min(100, width - 4));
+    const contentWidth = panelWidth;
+    const compact = contentWidth < 60;
 
     return (
         <Box
             flexDirection="column"
             marginTop={1}
-            width={panelWidth}
-            borderStyle="round"
-            borderColor={COLORS.border}
-            paddingX={1}
+            marginBottom={1}
+            width={panelWidth + 2}
+            paddingLeft={2}
         >
             <Box>
                 <Text bold color={COLORS.accent}>± Changes</Text>
-                <Text color={COLORS.dim}>  View code changes</Text>
             </Box>
 
             <Box flexDirection="column" marginTop={1}>
-                <Text bold>Current uncommitted changes</Text>
+                <Text color={COLORS.dim}>Current uncommitted changes</Text>
                 {view.status === "loading" && (
                     <Text color={COLORS.dim}>Reading Git changes…</Text>
                 )}
@@ -231,19 +223,19 @@ export function GitDiffDialog({
                     {fileWindow.files.map((file, offset) => {
                         const index = fileWindow.start + offset;
                         const isSelected = index === selectedFile;
-                        const maxPathWidth = Math.max(18, contentWidth - 24);
+                        const maxPathWidth = Math.max(1, contentWidth - (compact ? 2 : 26));
                         return (
-                            <Box key={file.path}>
+                            <Box key={file.path} flexDirection={compact ? "column" : "row"} marginBottom={compact ? 1 : 0}>
                                 <Text
                                     bold={isSelected}
-                                    inverse={isSelected}
                                     color={isSelected ? COLORS.accent : undefined}
                                 >
                                     {isSelected ? "❯ " : "  "}
                                     {truncateStart(file.path, maxPathWidth)}
                                 </Text>
-                                <Box flexGrow={1}/>
+                                {!compact && <Box flexGrow={1}/>}
                                 <Text>
+                                    {compact ? "  " : ""}
                                     {file.additions !== 0 && (
                                         <Text color={COLORS.diffAdded}>+{file.additions ?? "?"}</Text>
                                     )}
@@ -266,9 +258,9 @@ export function GitDiffDialog({
 
             {view.status === "ready" && selected && viewMode === "detail" && (
                 <Box flexDirection="column" marginTop={1}>
-                    <Box>
+                    <Box flexDirection="column">
                         <Text bold>{selected.path}</Text>
-                        <Text color={COLORS.dim}>  {selected.label}</Text>
+                        <Text color={COLORS.dim}>{selected.label}</Text>
                     </Box>
                     <Text color={COLORS.dim}>{"─".repeat(contentWidth)}</Text>
                     {selected.diffStatus === "unavailable" ? (
@@ -288,9 +280,11 @@ export function GitDiffDialog({
 
             <Box marginTop={1}>
                 <Text color={COLORS.dim} italic>
-                    {viewMode === "list"
-                        ? "↑/↓ select · Enter/Ctrl+O view · r refresh · Esc close"
-                        : "←/Esc back to list · Ctrl+O back · r refresh"}
+                    {viewMode === "detail"
+                        ? "r refresh · Esc back to files"
+                        : view.status === "ready" && view.files.length > 0
+                            ? "↑↓ select · Enter view · r refresh · Esc close"
+                            : "r refresh · Esc close"}
                 </Text>
             </Box>
         </Box>

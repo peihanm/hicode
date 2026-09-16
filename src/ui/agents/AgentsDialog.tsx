@@ -33,7 +33,32 @@ type Stage =
 interface DialogItem {
     label: string;
     value: string;
+    description?: string;
+    source?: string;
+    divider?: boolean;
 }
+
+function agentDescription(definition: AgentDefinition): string {
+    if (definition.source === "builtin") {
+        if (definition.agentType === "Explore") return "Explore code and trace behavior without changing files.";
+        if (definition.agentType === "Worker") return "Implement changes or investigate a focused task.";
+    }
+    return definition.whenToUse;
+}
+
+function AgentListItem({label, description, source, divider, isSelected}: Pick<DialogItem, "label" | "description" | "source" | "divider"> & {isSelected?: boolean}) {
+    const width = Math.max(1, Math.min(76, useTerminalWidth() - 4));
+    return <Box flexDirection="column" width={width} marginTop={divider ? 1 : 0} marginBottom={description ? 1 : 0}>
+        <Box>
+            <Text color={isSelected ? COLORS.accent : COLORS.dim}>{isSelected ? "❯ " : "  "}</Text>
+            <Text bold={isSelected} color={isSelected ? COLORS.accent : undefined}>{label}</Text>
+            {source && <Text color={COLORS.dim}> · {source}</Text>}
+        </Box>
+        {description && <Box paddingLeft={2}><Text color={COLORS.dim} wrap="truncate-end">{description.replace(/\s+/g, " ")}</Text></Box>}
+    </Box>;
+}
+
+function NoIndicator() {return null;}
 
 const EMPTY_DRAFT: AgentDefinitionDraft = {
     name: "",
@@ -56,8 +81,8 @@ const EDIT_FIELDS = [
 type EditField = typeof EDIT_FIELDS[number];
 
 function sourceLabel(definition: AgentDefinition): string {
-    if (definition.source === "builtin") return "Built-in · read-only";
-    if (definition.source === "host") return "Host · read-only";
+    if (definition.source === "builtin") return "Built-in";
+    if (definition.source === "host") return "Host";
     return definition.source === "project" ? "Project" : "Personal";
 }
 
@@ -125,7 +150,7 @@ export function AgentsDialog({
     fastModel: string;
     onClose(): void;
 }) {
-    const width = Math.min(100, useTerminalWidth());
+    const width = Math.max(1, Math.min(76, useTerminalWidth() - 4));
     const [stage, setStage] = useState<Stage>("list");
     const [selected, setSelected] = useState<AgentDefinition>();
     const [scope, setScope] = useState<AgentDefinitionScope>("project");
@@ -147,14 +172,16 @@ export function AgentsDialog({
     const definitions = catalog.listDefinitions();
     const listItems = useMemo<DialogItem[]>(() => [
         ...definitions.map((definition) => ({
-            label: `${definition.agentType}  ·  ${sourceLabel(definition)}`,
+            label: definition.agentType,
             value: `agent:${definition.agentType}`,
+            description: agentDescription(definition),
+            source: sourceLabel(definition),
         })),
         ...(catalog.issues.length > 0
             ? [{label: `⚠ Loading issues (${catalog.issues.length})`, value: "issues"}]
             : []),
-        {label: "＋ Create Agent", value: "create"},
-        {label: "↻ Reload Agent files", value: "reload"},
+        {label: "Create Agent", value: "create", divider: true},
+        {label: "Reload Agent files", value: "reload"},
         {label: "Close", value: "close"},
     ], [definitions, catalog.revision, catalog.issues.length]);
 
@@ -196,7 +223,7 @@ export function AgentsDialog({
         try {
             const result = await manager.reload();
             setNotice(
-                `Reload revision ${result.revision} · added ${result.added.length} · updated ${result.updated.length} · removed ${result.removed.length} · issues ${result.issues.length}`
+                `Reloaded · ${result.added.length} added · ${result.updated.length} updated · ${result.removed.length} removed${result.issues.length ? ` · ${result.issues.length} loading issues` : ""}`
             );
             setStage("list");
         } catch (reason) {
@@ -241,7 +268,7 @@ export function AgentsDialog({
                 )
                 : await manager.create(scope, finalDraft);
             setNotice(
-                `${stored ? "Updated" : "Created"} ${result.file.definition.agentType} · revision ${result.update.revision}`
+                `${stored ? "Updated" : "Created"} ${result.file.definition.agentType}`
             );
             setSelected(undefined);
             setStored(undefined);
@@ -255,12 +282,12 @@ export function AgentsDialog({
         if (!stored) return;
         setStage("busy");
         try {
-            const result = await manager.remove(
+            await manager.remove(
                 stored.scope,
                 stored.definition.agentType,
                 stored.contentHash
             );
-            setNotice(`Deleted ${stored.definition.agentType} · revision ${result.revision}`);
+            setNotice(`Deleted ${stored.definition.agentType}`);
             setSelected(undefined);
             setStored(undefined);
             setStage("list");
@@ -279,17 +306,14 @@ export function AgentsDialog({
     };
 
     return (
-        <Box marginTop={1} flexDirection="column">
+        <Box marginTop={1} marginBottom={1} paddingLeft={2} flexDirection="column">
             <Box
                 width={width}
                 flexDirection="column"
-                borderStyle="round"
-                borderColor={COLORS.border}
-                paddingX={1}
             >
-                <Box>
+                <Box flexDirection="column">
                     <Text bold color={COLORS.accent}>◆ Agents</Text>
-                    <Text color={COLORS.dim}>  Create and manage subagents</Text>
+                    {stage === "list" && <Text color={COLORS.dim}>{definitions.length} available · Select an agent to view details</Text>}
                 </Box>
 
                 {notice && stage === "list" && (
@@ -298,13 +322,11 @@ export function AgentsDialog({
 
                 {stage === "list" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text color={COLORS.dim}>
-                            Current revision {catalog.revision} · {definitions.length} available · {catalog.issues.length} loading issues
-                        </Text>
                         <SelectInput
                             items={listItems}
-                            indicatorComponent={DialogIndicator}
-                            itemComponent={DialogItem}
+                            indicatorComponent={NoIndicator}
+                            itemComponent={AgentListItem}
+                            limit={8}
                             onSelect={(item: DialogItem) => {
                                 if (item.value === "close") return onClose();
                                 if (item.value === "create") {
@@ -416,7 +438,7 @@ export function AgentsDialog({
                                     } else fail(reason, "generate");
                                 });
                             }}
-                            width={width - 4}
+                            width={Math.max(1, width - 2)}
                             maxRows={6}
                         />
                     </Box>
@@ -426,14 +448,14 @@ export function AgentsDialog({
                     <Box marginTop={1} flexDirection="column">
                         <Text bold>{stored ? "Edit" : "Create"} Agent · {fieldLabel(field)}</Text>
                         <Text color={COLORS.dim}>
-                            Step {fieldIndex + 1}/{EDIT_FIELDS.length} · Enter next · Shift+Tab previous · Esc cancel
+                            Step {fieldIndex + 1}/{EDIT_FIELDS.length}
                         </Text>
                         {field === "systemPrompt" ? (
                             <MultilineTextInput
                                 value={currentValue}
                                 onChange={(value) => setDraft(updateField(draft, field, value))}
                                 onSubmit={submitField}
-                                width={width - 4}
+                                width={Math.max(1, width - 2)}
                                 maxRows={10}
                             />
                         ) : (
@@ -451,12 +473,15 @@ export function AgentsDialog({
 
                 {stage === "detail" && selected && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>{selected.agentType} · {sourceLabel(selected)}</Text>
-                        <Text>{selected.whenToUse}</Text>
-                        <Text color={COLORS.dim}>
-                            Model {formatSubagentModel(selected.model, "Inherit Root", fastModel)} · maximum turns {selected.maxIterations ?? "Follow Root"}
-                        </Text>
-                        <Text color={COLORS.dim}>Tools · {selected.allowedTools.join(", ")}</Text>
+                        <Text bold>{selected.agentType}</Text>
+                        <Text color={COLORS.dim}>{sourceLabel(selected)}{selected.source === "builtin" || selected.source === "host" ? " · Definition cannot be edited" : ""}</Text>
+                        <Box marginTop={1}><Text>{agentDescription(selected)}</Text></Box>
+                        <Box marginY={1} flexDirection="column">
+                            <Text><Text color={COLORS.dim}>Model       </Text>{formatSubagentModel(selected.model, "Same as main agent", fastModel)}</Text>
+                            <Text><Text color={COLORS.dim}>Turn limit  </Text>{selected.maxIterations ?? "Same as main agent"}</Text>
+                        </Box>
+                        <Text color={COLORS.dim}>Tools · {selected.allowedTools.length}</Text>
+                        <Box marginBottom={1}><Text>{selected.allowedTools.join(" · ")}</Text></Box>
                         <SelectInput
                             items={selected.source === "builtin" || selected.source === "host"
                                 ? [{label: "Back", value: "back"}]
@@ -505,7 +530,6 @@ export function AgentsDialog({
                 {stage === "generating" && (
                     <Box marginTop={1} flexDirection="column">
                         <Text color={COLORS.dim}>Generating Agent candidate…</Text>
-                        <Text color={COLORS.dim}>Esc cancel generation</Text>
                     </Box>
                 )}
 
@@ -533,7 +557,15 @@ export function AgentsDialog({
                     </Box>
                 )}
             </Box>
-            <Text color={COLORS.dim}>Esc back or close</Text>
+            <Box marginTop={1} width={width}><Text color={COLORS.dim}>{
+                stage === "busy" ? "Please wait…"
+                    : stage === "generating" ? "Esc cancel generation"
+                    : stage === "edit" ? `Enter ${fieldIndex === EDIT_FIELDS.length - 1 ? "save" : "next"} · Shift+Tab previous · Esc cancel`
+                    : stage === "generate" ? "Enter generate · Esc cancel"
+                    : stage === "list" ? "↑↓ select · Enter open · Esc close"
+                    : stage === "scope" || stage === "method" ? "↑↓ select · Enter continue · Esc cancel"
+                    : "↑↓ select · Enter confirm · Esc back"
+            }</Text></Box>
         </Box>
     );
 }

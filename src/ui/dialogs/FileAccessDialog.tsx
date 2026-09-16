@@ -7,7 +7,7 @@ import {DialogIndicator, DialogItem} from "./DialogFrame.js";
 
 interface FileAccessOption {
     label: string;
-    value: "once" | "session" | "project" | "deny";
+    value: "once" | "session" | "deny";
 }
 
 export function isFileAccessRequest(
@@ -40,16 +40,12 @@ export function FileAccessDialog({
             ? "Edit"
             : "Write";
     const options: FileAccessOption[] = [
-        {label: "1. Allow this change once", value: "once"},
+        {label: "1. Allow once", value: "once"},
         {
-            label: `2. Allow ${suggestedDirectory} for this session`,
+            label: "2. Allow this directory for this session",
             value: "session",
         },
-        {
-            label: `3. Always allow ${suggestedDirectory} for this project`,
-            value: "project",
-        },
-        {label: "4. Deny", value: "deny"},
+        {label: "3. Deny", value: "deny"},
     ];
 
     const handleSelect = (option: FileAccessOption) => {
@@ -66,6 +62,10 @@ export function FileAccessDialog({
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>{action.toUpperCase()}</Text>
                 <Text>{targetPath}</Text>
+            </Box>
+            <Box marginTop={1} flexDirection="column">
+                <Text color={COLORS.dim} bold>DIRECTORY</Text>
+                <Text>{suggestedDirectory}</Text>
             </Box>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>ACTION</Text>

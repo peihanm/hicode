@@ -392,41 +392,47 @@ describe("permission confirmation UI", () => {
     });
   });
 
-  test("项目外文件使用目录范围审批", async () => {
-    const decisions: PermissionDecision[] = [];
-    const onDone = mock(() => {});
-    const instance = render(
-      <FileAccessDialog
-        req={{
-          id: 1,
-          question: "write",
-          toolName: "write_file",
-          input: {path: "/tmp/a.ts"},
-          presentation: {
-            kind: "filesystem_access",
-            operation: "write",
-            targetPath: "/tmp/a.ts",
-            suggestedDirectory: "/tmp",
-          },
-          resolve: (decision) => decisions.push(decision),
-        }}
-        onDone={onDone}
-      />
-    );
+  for (const [selection, expected] of [
+    ["1", {behavior: "allow", directoryScope: "once"}],
+    ["2", {behavior: "allow", directoryScope: "session"}],
+    ["3", {behavior: "deny", message: "User denied directory access"}],
+  ] satisfies Array<[string, PermissionDecision]>) {
+    test(`file access choice ${selection} resolves without a persistent grant`, async () => {
+      const decisions: PermissionDecision[] = [];
+      const onDone = mock(() => {});
+      const instance = render(
+        <FileAccessDialog
+          req={{
+            id: 1,
+            question: "write",
+            toolName: "write_file",
+            input: {path: "/tmp/a.ts"},
+            presentation: {
+              kind: "filesystem_access",
+              operation: "write",
+              targetPath: "/tmp/a.ts",
+              suggestedDirectory: "/tmp",
+            },
+            resolve: (decision) => decisions.push(decision),
+          }}
+          onDone={onDone}
+        />
+      );
 
-    await flush();
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("◆ FILE ACCESS");
-    expect(frame).toContain("/tmp/a.ts");
-    expect(frame).toContain("Allow /tmp for this session");
-    expect(frame).toContain("Always allow /tmp for this project");
+      await flush();
+      const frame = instance.lastFrame() ?? "";
+      expect(frame).toContain("◆ FILE ACCESS");
+      expect(frame).toContain("/tmp/a.ts");
+      expect(frame).toContain("DIRECTORY");
+      expect(frame).toContain("2. Allow this directory for this session");
+      expect(frame).toContain("3. Deny");
+      expect(frame).not.toContain("for this project");
+      expect(frame).not.toContain("4.");
 
-    instance.stdin.write("2");
-    await flush();
-    expect(decisions).toEqual([{
-      behavior: "allow",
-      directoryScope: "session",
-    }]);
-    expect(onDone).toHaveBeenCalledTimes(1);
-  });
+      instance.stdin.write(selection);
+      await flush();
+      expect(decisions).toEqual([expected]);
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+  }
 });
