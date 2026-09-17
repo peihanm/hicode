@@ -1,5 +1,6 @@
 import {createHash, randomUUID} from "node:crypto";
-import {encodeImageMessages, projectMessageForWire} from "../../images/wire.js";
+import {encodeImageMessages, ImageRequestError, projectMessageForWire} from "../../images/wire.js";
+import {projectImagesForRequest} from "../../images/request.js";
 import type {LLMProviderName} from "../providerRegistry.js";
 import {ContextLengthError, isContextLengthResponse} from "../errors.js";
 import {imageReferences} from "../../images/content.js";
@@ -296,9 +297,24 @@ async function callOpenAICompatibleCore(
     let completedRetryUsage = emptyUsage();
 
     if (options.signal) throwIfTurnAborted(options.signal);
-    const hasImages = options.messages.some(message => imageReferences(message.content).length > 0);
-    const providerMessages = toProviderMessages(options.messages, reasoningScope);
-    const wireMessages = await encodeImageMessages({messages: providerMessages, supported: endpoint.toolImages === true, readImage: options.readImage, signal: options.signal});
+    const providerMessages = projectImagesForRequest(toProviderMessages(options.messages, reasoningScope));
+    const hasImages = providerMessages.some(message => imageReferences(message.content).length > 0);
+    const logPreparationFailure = (error: unknown) => {
+        const log = beginPromptLog(options.storage, options.cwd, options.kind, options.model,
+            {messages: providerMessages.map(projectMessageForWire), model: options.model,
+                requestSent: false, imagesSubmitted: false, preparationStage: "images"},
+            [endpoint.apiKey], options.trace, 1);
+        log.finish({error: options.signal?.aborted ? "Image request preparation cancelled; request was not sent"
+            : error instanceof ImageRequestError ? error.message
+                : "Stored image preparation failed; request was not sent. Original history and references are preserved."});
+    };
+    let wireMessages: unknown[];
+    try {
+        wireMessages = await encodeImageMessages({messages: providerMessages, supported: endpoint.toolImages === true, readImage: options.readImage, signal: options.signal});
+    } catch (error) {
+        logPreparationFailure(error);
+        throw error;
+    }
     await options.onText?.({type: "reset"});
     for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt++) {
         if (options.signal) throwIfTurnAborted(options.signal);
@@ -313,7 +329,11 @@ async function callOpenAICompatibleCore(
         );
         requestBody.messages = wireMessages;
         const requestJson = JSON.stringify(requestBody);
-        if (hasImages && Buffer.byteLength(requestJson) > 20 * 1024 * 1024) throw new Error("Encoded multimodal request exceeds 20 MiB; request was not sent");
+        if (hasImages && Buffer.byteLength(requestJson) > 20 * 1024 * 1024) {
+            const error = new ImageRequestError("Encoded multimodal request exceeds 20 MiB; request was not sent");
+            logPreparationFailure(error);
+            throw error;
+        }
         const promptLog = beginPromptLog(
             options.storage,
             options.cwd,

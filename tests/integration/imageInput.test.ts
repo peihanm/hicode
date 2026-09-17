@@ -35,9 +35,14 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
         const resources = createTestRuntimeResources(cwd, {storage, settings: settings()});
         const oldFetch = globalThis.fetch, oldKey = process.env.HICODE_USER_IMAGE_TEST_KEY;
         const requests: {messages: {role: string; content: unknown}[]}[] = [];
+        let rereadIds: string[] = [];
         process.env.HICODE_USER_IMAGE_TEST_KEY = "offline-test";
         globalThis.fetch = (async (_url, init) => {
             requests.push(JSON.parse(String(init?.body)));
+            if (requests.length === 2) {
+                const response = {choices: [{index: 0, delta: {tool_calls: rereadIds.map((imageId, index) => ({index, id: `reread-${index}`, type: "function", function: {name: "view_image", arguments: JSON.stringify({image_id: imageId})}}))}, finish_reason: "tool_calls"}]};
+                return new Response(`data: ${JSON.stringify(response)}\n\ndata: [DONE]\n\n`, {headers: {"content-type": "text/event-stream"}});
+            }
             return new Response('data: {"choices":[{"index":0,"delta":{"content":"图片收到"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {headers: {"content-type": "text/event-stream"}});
         }) as typeof fetch;
         const first = await createSDKThread({resources, seed: {sessionId: "user-image", history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
@@ -59,6 +64,7 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             const loaded = loadSession(storage, cwd, first.id, resources.model)!;
             const refs = loaded.history.flatMap(message => imageReferences(message.content));
             expect(refs).toHaveLength(2);
+            rereadIds = refs.map(reference => reference.imageId);
             const store = createToolResultStore(storage, cwd, first.id);
             const metadataFile = (await readdir(store.sessionDir)).find(name => name.endsWith(".binary.json"))!;
             const metadata = JSON.parse(await readFile(join(store.sessionDir, metadataFile), "utf8"));
@@ -67,7 +73,11 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             expect(metadata).not.toHaveProperty("toolCallId");
             const resumed = await createSDKThread({resources, seed: {sessionId: loaded.sessionId, history: loaded.history, compactState: loaded.compactState!}, state, resumed: true, onClose() {}});
             try {expect((await resumed.run("比较两张图")).stopReason).toBe("completed");} finally {await resumed.close();}
-            expect(JSON.stringify(requests[1])).toContain("data:image/png;base64,");
+            expect(JSON.stringify(requests[1])).not.toContain("data:image/png;base64,");
+            for (const imageId of rereadIds) expect(JSON.stringify(requests[1])).toContain(imageId);
+            expect(JSON.stringify(requests[1])).toContain("图片收到");
+            expect(requests).toHaveLength(3);
+            expect(JSON.stringify(requests[2]).match(/data:image\/png;base64,/g)).toHaveLength(2);
             const logDir = getProjectStorageDirectory(storage, cwd);
             for (const name of await listPromptLogs(logDir)) {
                 const log = await readFile(join(logDir, name), "utf8");

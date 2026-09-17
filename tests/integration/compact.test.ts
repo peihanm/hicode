@@ -187,6 +187,8 @@ describe("compact integration", () => {
         (event) => events.push(event),
         createTestContext(cwd),
         {
+          // These threshold fixtures exercise compaction control flow, not tool-schema size.
+          getToolSchemas: () => [],
           callLLM: fake.callLLM,
           compactHistory: async ({ preTokenCount }) => {
             compactCalls += 1;
@@ -218,6 +220,8 @@ describe("compact integration", () => {
         (event) => events.push(event),
         createTestContext(cwd),
         {
+          // These threshold fixtures exercise compaction control flow, not tool-schema size.
+          getToolSchemas: () => [],
           callLLM: fake.callLLM,
           compactHistory: async ({ preTokenCount }) => ({
             compacted: false,
@@ -248,6 +252,8 @@ describe("compact integration", () => {
         (event) => events.push(event),
         createTestContext(cwd, { signal: controller.signal }),
         {
+          // These threshold fixtures exercise compaction control flow, not tool-schema size.
+          getToolSchemas: () => [],
           callLLM: fake.callLLM,
           compactHistory: async () => {
             controller.abort("user-cancel");

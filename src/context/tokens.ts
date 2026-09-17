@@ -1,4 +1,5 @@
 import {contentText, imageReferences, IMAGE_ESTIMATED_TOKENS} from "../images/content.js";
+import {projectImagesForRequest} from "../images/request.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 
 // Use chars/2, more conservative than chars/4 for English-heavy input.
@@ -22,7 +23,7 @@ export function estimateMessageTokens(msg: Message): number {
         total += roughTokenCountEstimation(msg.content);
     }
 
-    if (Array.isArray(msg.content)) total += roughTokenCountEstimation(contentText(msg.content)) + imageReferences(msg.content).length * IMAGE_ESTIMATED_TOKENS;
+    if (Array.isArray(msg.content)) total += roughTokenCountEstimation(contentText(msg.content)) + imageReferences(msg.content).filter(ref => !ref.referenceOnly).length * IMAGE_ESTIMATED_TOKENS;
 
     // Include assistant tool_calls using their JSON representation.
     if (msg.role === "assistant" && msg.tool_calls) {
@@ -53,7 +54,7 @@ export function tokenCountWithEstimation(
     messages: Message[],
     tools?: OpenAITool[]
 ): number {
-    const msgTokens = messages.reduce(
+    const msgTokens = projectImagesForRequest(messages).reduce(
         (sum, m) => sum + estimateMessageTokens(m),
         0
     );

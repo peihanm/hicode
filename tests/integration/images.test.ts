@@ -9,7 +9,8 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createTestRuntimeResources, createTestSettings} from "../helpers/runtimeResources.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {createImageAccess} from "../../src/images/access.js";
-import {imageReferences} from "../../src/images/content.js";
+import {imageReferences, IMAGE_MAX_BYTES} from "../../src/images/content.js";
+import {projectImagesForRequest} from "../../src/images/request.js";
 import {prepareImage} from "../../src/images/prepare.js";
 import {supportsToolImages} from "../../src/images/capability.js";
 import {encodeImageMessages} from "../../src/images/wire.js";
@@ -21,7 +22,9 @@ import {prepareSessionArchive, createSessionArchiveAccess} from "../../src/sessi
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {createCompactState} from "../../src/context/state.js";
 import {selectCompactInput} from "../../src/context/compactInput.js";
-import {estimateMessageTokens} from "../../src/context/tokens.js";
+import {estimateMessageTokens, tokenCountWithEstimation} from "../../src/context/tokens.js";
+import {prepareAgentInvoke} from "../../src/agent/invokePreparation.js";
+import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
 import {getProjectStorageDirectory} from "../../src/persistence/index.js";
 import {createOpenAICompatibleCaller} from "../../src/llm/providers/openAICompatible.js";
@@ -48,6 +51,123 @@ function fixture(cwd: string) {
         return result;
     }};
 }
+
+test("图片按回复边界只送一次，历史与重看权限保留，Resume 不重发旧像素", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd);
+        await writeFile(join(cwd, "screen.png"), await png());
+        for (let i = 0; i < 10; i++) await f.tool({path: "screen.png"});
+        const before = structuredClone(f.history);
+        expect(f.history.flatMap(m => imageReferences(m.content))).toHaveLength(10);
+        const pending = projectImagesForRequest(f.history);
+        expect(pending.flatMap(m => imageReferences(m.content))).toHaveLength(1);
+        expect(projectImagesForRequest(pending)).toEqual(pending);
+        expect(f.history).toEqual(before);
+        // Agent preparation uses exactly the same payload projection as the wire boundary.
+        const prepared = await prepareAgentInvoke({history: f.history, ctx: f.ctx, onEvent() {}, getToolSchemas: () => [],
+            compactHistory: async () => {throw new Error("Image count alone must not compact text history");}});
+        expect(prepared.invokeMessages.flatMap(m => imageReferences(m.content))).toHaveLength(1);
+        expect(tokenCountWithEstimation(f.history)).toBe(tokenCountWithEstimation(pending));
+        const [reference] = imageReferences(f.history.at(-1)!.content);
+        f.history.push({role: "assistant", content: "Observed a blue rectangle."});
+        await saveSessionSnapshot(storage, {...state, cwd, model: "qwen3.8-flash", sessionId: "images", history: f.history});
+        await unlink(join(cwd, "screen.png"));
+        const loaded = loadSession(storage, cwd, "images", "qwen3.8-flash")!;
+        const request = projectImagesForRequest(loaded.history);
+        expect(request.flatMap(m => imageReferences(m.content))).toHaveLength(0);
+        expect(JSON.stringify(request)).toContain("Observed a blue rectangle.");
+        expect(JSON.stringify(request)).toContain(reference!.imageId);
+        expect(await encodeImageMessages({messages: request, supported: false})).toBeArray();
+        // A new invocation, even of the same image ID, supplies pixels again.
+        expect((await f.tool({image_id: reference!.imageId})).outcome).toBe("ok");
+        const reread = projectImagesForRequest(f.history);
+        expect(reread.flatMap(m => imageReferences(m.content))).toHaveLength(1);
+        expect(JSON.stringify(await encodeImageMessages({messages: reread, supported: true, readImage: f.ctx.imageAccess!.read}))).toContain("data:image/png;base64,");
+    });
+});
+
+test("压缩删除回复后旧图片仍只作为引用，Resume 和显式重看保持可用", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd); await writeFile(join(cwd, "s.png"), await png());
+        const [ref] = imageReferences((await f.tool({path: "s.png"})).modelContent);
+        f.history.splice(0, f.history.length,
+            {role: "system", content: "system"},
+            {role: "user", origin: "user", content: [ref!] },
+            {role: "assistant", content: "Observed blue pixels. " + "x".repeat(150_000)},
+            {role: "user", origin: "runtime", content: "Continue the current task"});
+        const compact = createCompactHistoryRunner({generateSummary: async () => "The image showed blue pixels; continue implementation."});
+        const result = await compact({history: f.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, contextWindow: 40_000, force: true});
+        expect(result.compacted).toBe(true);
+        expect(f.history.some(m => m.role === "assistant")).toBe(false);
+        expect(f.history.flatMap(m => imageReferences(m.content))).toHaveLength(1);
+        expect(f.history.flatMap(m => imageReferences(m.content))[0]?.referenceOnly).toBe(true);
+        await saveSessionSnapshot(storage, {...state, cwd, sessionId: "images", model: "qwen3.8-flash", history: f.history, compactState: f.ctx.compactState});
+        const loaded = loadSession(storage, cwd, "images", "qwen3.8-flash")!;
+        expect(projectImagesForRequest(loaded.history).flatMap(m => imageReferences(m.content))).toHaveLength(0);
+        const reread = await f.tool({image_id: ref!.imageId});
+        expect(reread.outcome).toBe("ok");
+        expect(imageReferences(reread.modelContent)[0]?.referenceOnly).toBeUndefined();
+        expect(projectImagesForRequest(f.history).flatMap(m => imageReferences(m.content))).toHaveLength(1);
+    });
+});
+
+test("单个新图片批次按数量和字节预算明确延期，不破坏工具配对或原始历史", async () => {
+    await withTempProject(async cwd => {
+        const f = fixture(cwd); await writeFile(join(cwd, "s.png"), await png());
+        const [ref] = imageReferences((await f.tool({path: "s.png"})).modelContent);
+        const batch: Message[] = [{role: "assistant", content: null, tool_calls: Array.from({length: 10}, (_, i) => ({
+            id: `i${i}`, type: "function", function: {name: "view_image", arguments: '{"path":"s.png"}'},
+        }))}, ...Array.from({length: 10}, (_, i): Message => ({role: "tool", tool_call_id: `i${i}`, content: [ref!]}))];
+        const selected = projectImagesForRequest(batch);
+        expect(selected.flatMap(m => imageReferences(m.content))).toHaveLength(8);
+        expect(JSON.stringify(selected[1])).toContain("Pixels were NOT sent");
+        expect(JSON.stringify(selected[2])).toContain("view_image");
+        expect(imageReferences(selected.at(-1)!.content)).toHaveLength(1);
+        expect(selected.map(m => m.role === "tool" ? m.tool_call_id : null)).toEqual(batch.map(m => m.role === "tool" ? m.tool_call_id : null));
+        expect(batch.flatMap(m => imageReferences(m.content))).toHaveLength(10);
+        expect(JSON.stringify(await encodeImageMessages({messages: selected, supported: true, readImage: f.ctx.imageAccess!.read})).match(/data:image\/png;base64,/g)).toHaveLength(8);
+        const large = {...ref!, image: {...ref!.image, byteLength: IMAGE_MAX_BYTES}};
+        const input: Message[] = [{role: "user", origin: "user", content: Array.from({length: 6}, () => large)}];
+        expect(projectImagesForRequest(input).flatMap(m => imageReferences(m.content))).toHaveLength(5);
+        expect(JSON.stringify(projectImagesForRequest(input))).toContain("Pixels were NOT sent");
+    });
+});
+
+test("请求准备失败记录未发送日志，取消不消耗图片，重试仍可发送", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd); await writeFile(join(cwd, "s.png"), await png());
+        const [ref] = imageReferences((await f.tool({path: "s.png"})).modelContent);
+        const original = structuredClone(f.history);
+        const oldFetch = globalThis.fetch;
+        let requests = 0;
+        globalThis.fetch = (async (_url, _init) => {requests++; return new Response('data: {"choices":[{"delta":{"content":"seen"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');}) as typeof fetch;
+        const call = createOpenAICompatibleCaller({retryBaseDelayMs: 0});
+        const options = {storage, cwd, messages: f.history, tools: [], model: "qwen3.8-flash", kind: "main" as const, readImage: f.ctx.imageAccess!.read};
+        const endpoint = {baseUrl: "https://offline-image.invalid/v1", displayName: "fixture", apiKey: "fixture-preparation-key", toolImages: true};
+        try {
+            await expect(call(options, {...endpoint, toolImages: false})).rejects.toThrow("has no image capability");
+            expect(requests).toBe(0);
+            await expect(call({...options, readImage: async () => Buffer.from("corrupt")}, endpoint)).rejects.toThrow("integrity");
+            const controller = new AbortController();
+            await expect(call({...options, signal: controller.signal, readImage: async reference => {
+                const bytes = await f.ctx.imageAccess!.read(reference); controller.abort("user-cancel"); return bytes;
+            }}, endpoint)).rejects.toThrow();
+            expect(requests).toBe(0);
+            expect(f.history).toEqual(original);
+            await call(options, endpoint);
+            expect(requests).toBe(1);
+            const logs = getProjectStorageDirectory(storage, cwd);
+            const logged = (await Promise.all((await listPromptLogs(logs)).map(name => readFile(join(logs, name), "utf8")))).join("\n");
+            expect(logged).toContain('"requestSent": false');
+            expect(logged).toContain('"preparationStage": "images"');
+            expect(logged).toContain("has no image capability");
+            expect(logged).toContain("integrity check failed");
+            expect(logged).toContain("preparation cancelled");
+            expect(logged).not.toContain("fixture-preparation-key");
+            expect(logged).not.toContain((await f.ctx.imageAccess!.read(ref!)).toString("base64"));
+        } finally {globalThis.fetch = oldFetch;}
+    });
+});
 
 test("view_image saves pixels, gives no edit evidence, Resume and ID reread survive source deletion", async () => {
     await withTempProject(async (cwd, storage) => {
@@ -182,13 +302,21 @@ test("production Agent → Qwen Provider sends native tool pixels; logs and even
         process.env.HICODE_IMAGE_TEST_KEY = "test-only-key";
         globalThis.fetch = (async (_url, init) => {
             requests.push(String(init?.body));
-            const delta = requests.length === 1 ? {tool_calls: [{index: 0, id: "see", type: "function", function: {name: "view_image", arguments: '{"path":"screen.png"}'}}]} : {content: "已读取图片"};
-            return new Response(`data: ${JSON.stringify({choices: [{index: 0, delta, finish_reason: null}]})}\n\ndata: ${JSON.stringify({choices: [{index: 0, delta: {}, finish_reason: requests.length === 1 ? "tool_calls" : "stop"}]})}\n\ndata: [DONE]\n\n`, {headers: {"content-type": "text/event-stream"}});
+            const step = requests.length;
+            const reference = history.flatMap(message => imageReferences(message.content))[0];
+            const delta = step === 1 ? {tool_calls: [{index: 0, id: "see", type: "function", function: {name: "view_image", arguments: '{"path":"screen.png"}'}}]}
+                : step === 2 ? {content: "Observed blue pixels.", tool_calls: [{index: 0, id: "list", type: "function", function: {name: "list_files", arguments: '{"path":"."}'}}]}
+                : step === 3 ? {tool_calls: [{index: 0, id: "reread", type: "function", function: {name: "view_image", arguments: JSON.stringify({image_id: reference!.imageId})}}]}
+                : {content: "已读取图片"};
+            return new Response(`data: ${JSON.stringify({choices: [{index: 0, delta, finish_reason: null}]})}\n\ndata: ${JSON.stringify({choices: [{index: 0, delta: {}, finish_reason: step < 4 ? "tool_calls" : "stop"}]})}\n\ndata: [DONE]\n\n`, {headers: {"content-type": "text/event-stream"}});
         }) as typeof fetch;
         try {
             await resources.agentRuntime.runAgent("看 screen.png", history, event => {events.push(JSON.stringify(event));}, ctx, EMPTY_AGENT_INPUT_CHANNEL,
                 {getToolSchemas: resources.toolRuntime.getToolSchemas, executeTool: resources.toolRuntime.executeTool, isToolConcurrencySafe: resources.toolRuntime.isConcurrencySafe});
-            expect(requests).toHaveLength(2);
+            expect(requests).toHaveLength(4);
+            expect(requests[2]).not.toContain("data:image/");
+            expect(requests[2]).toContain("Observed blue pixels.");
+            expect(requests[3]!.match(/data:image\/png;base64,/g)).toHaveLength(1);
             expect(requests[1]).toContain('"role":"tool","content":[{"type":"text"');
             expect(requests[1]).toContain("data:image/png;base64,");
             expect(JSON.stringify(history)).not.toContain("base64,");

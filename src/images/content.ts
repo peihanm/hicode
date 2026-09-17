@@ -39,6 +39,8 @@ export const imageReferenceSchema = z.object({
     type: z.literal("image"),
     imageId: z.string().regex(/^image-[a-f0-9]{64}$/),
     label: z.string().min(1).max(256).optional(),
+    // Compaction may remove the assistant reply that closed this image input.
+    referenceOnly: z.literal(true).optional(),
     image: imageDescriptorSchema,
 }).strict();
 export type ImageReference = z.infer<typeof imageReferenceSchema>;

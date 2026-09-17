@@ -61,6 +61,18 @@ describe("English prompt contracts", () => {
         expect(custom).toContain("Working directory: /child");
         expect(custom).toContain("Available tools: read_file");
     });
+    test("Root and dispatched workers cannot improvise image-review infrastructure from view_image availability", () => {
+        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", "worker-model", ["view_image", "bash"]);
+        for (const prompt of [root(), worker]) {
+            expect(prompt).toContain("Screenshot or generated-image review requires either an explicit user request");
+            expect(prompt).toContain("or an available dedicated capture/render tool");
+            expect(prompt).toContain("do not install canvas/rendering packages");
+            expect(prompt).toContain("Existing test artifacts or installed packages do not authorize starting it");
+            expect(prompt).toContain("Reading user-provided images and producing images explicitly requested as deliverables remain valid uses");
+            expect(prompt).toContain("not a screenshot or evidence of actual browser/WebGL rendering");
+        }
+        expect(toolDescription("view_image")).toContain("does not provide screenshot or rendering capability");
+    });
     test("permission facts reflect interaction policy without mutating History or conversation", () => {
         const history = [...createInitialHistory("/project", "m"), {role: "user" as const, origin: "user" as const, content: "保留中文任务"}];
         const before = structuredClone(history);

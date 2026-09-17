@@ -10,6 +10,7 @@ import type {AgentEvent} from "./types.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {Todo} from "../todos.js";
 import {buildLiveStateContext} from "../context/liveState.js";
+import {projectImagesForRequest} from "../images/request.js";
 
 export type ToolSchemaProvider = () => OpenAITool[];
 export type {CompactHistoryRunner} from "../context/compact.js";
@@ -53,7 +54,7 @@ export async function prepareAgentInvoke({
         ...getUserContextBlocks(ctx.skills, ctx.instructions),
         ...runtimeBlocks,
     ];
-    let invokeMessages = withExecutionContext(buildInvokeMessages(history, userContextBlocks), ctx);
+    let invokeMessages = projectImagesForRequest(withExecutionContext(buildInvokeMessages(history, userContextBlocks), ctx));
     const tools = getToolSchemas();
     const scope = () => ({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
     contextWindow ??= ctx.contextUsage.contextWindow(scope());
@@ -99,7 +100,7 @@ export async function prepareAgentInvoke({
                 ...getUserContextBlocks(ctx.skills, ctx.instructions),
                 ...runtimeBlocks,
             ];
-            invokeMessages = withExecutionContext(buildInvokeMessages(history, userContextBlocks), ctx);
+            invokeMessages = projectImagesForRequest(withExecutionContext(buildInvokeMessages(history, userContextBlocks), ctx));
             estimatedTokens = ctx.contextUsage.estimate(scope(), invokeMessages, tools);
             await onEvent({
                 type: "compact_end",
