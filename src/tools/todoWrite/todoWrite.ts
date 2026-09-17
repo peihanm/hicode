@@ -26,7 +26,7 @@ type Input = z.infer<typeof inputSchema>;
 
 export const todoWriteTool: Tool<typeof inputSchema> = {
     name: "todo_write",
-    description: "Replace the complete task list. Use for multi-step work or multiple requested tasks, not trivial questions. Keep at most one item in_progress. At each meaningful transition, mark finished work completed and the next item in_progress before doing it; do not postpone all updates until the final answer. Prose does not update state. Keep unfinished items honest; adjust/remove obsolete scope and avoid redundant updates while still doing the same step. Write user-facing content/activeForm in the user's language.",
+    description: "Replace the complete task list. Use for multi-step work or multiple requested tasks, not trivial questions. Track deliverable stages, not individual commands. Keep at most one item in_progress. When moving between implementation, verification and delivery, mark finished work completed and the next item in_progress before doing it; do not postpone all updates until the final answer. Prose does not update state. Keep unfinished items honest; adjust/remove obsolete scope and avoid redundant updates while still doing the same step. Write user-facing content/activeForm in the user's language.",
     parameters: inputSchema,
 
     isReadOnly: () => true,
@@ -43,6 +43,6 @@ export const todoWriteTool: Tool<typeof inputSchema> = {
         await ctx.setTodos(allDone ? [] : todos);
         return allDone
             ? "All tasks completed; the list has been cleared."
-            : "Todos updated. Before starting the next task, update completed items and the next in-progress item.";
+            : "Todos updated.";
     },
 };

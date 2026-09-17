@@ -51,8 +51,8 @@ export class SandboxNetworkApproval {
         if (this.closed) return undefined;
         for (const execution of this.executions) {
             const access = execution.access;
-            if (execution.signal.aborted || !access || !access.canReview()) return undefined;
-            if (selected && access !== selected) return undefined;
+            if (execution.signal.aborted || !access) return undefined;
+            if (selected && access.session !== selected.session) return undefined;
             selected = access;
         }
         return selected;
@@ -65,7 +65,7 @@ export class SandboxNetworkApproval {
         host = host.toLowerCase().replace(/\.$/, "");
         const access = this.eligible();
         if (!access) {
-            this.recordDenial(host, port, "No interactive permission channel, or the authorization source for concurrent execution is ambiguous");
+            this.recordDenial(host, port, "authorization_source_unknown: no active owner, cancelled execution, or concurrent Sessions; no user decision was requested");
             return false;
         }
         const signal = this.revision.signal;
@@ -75,6 +75,16 @@ export class SandboxNetworkApproval {
             if (signal.aborted || this.eligible() !== access) return false;
             if (access.session.allows(host, port)) return true;
             if ([...this.executions].some((entry) => entry.denied.has(key))) return false;
+            if ([...this.executions].some(entry => !entry.access?.canReview())) {
+                this.recordDenial(host, port, "approval_unavailable: this execution cannot request new network approval; for a finite install/build, run in the foreground with timeout_ms; this is not a user denial");
+                return false;
+            }
+            // A Session grant is shared, but a new decision reviews a specific
+            // command. The proxy cannot tell which concurrent command to show.
+            if ([...this.executions].some(entry => entry.access !== access)) {
+                this.recordDenial(host, port, "approval_source_ambiguous: concurrent commands share a Session but the requesting command is unknown; retry the necessary command separately after they finish; no user decision was requested");
+                return false;
+            }
             const decision = await this.request(access, host, port, signal);
             if (signal.aborted || this.eligible() !== access) return false;
             if (decision.behavior !== "allow" || decision.answers !== undefined ||
@@ -83,7 +93,7 @@ export class SandboxNetworkApproval {
                 (decision.networkScope !== undefined && decision.networkScope !== "once" &&
                     decision.networkScope !== "session")) {
                 for (const entry of this.executions) entry.denied.add(key);
-                this.recordDenial(host, port, decision.behavior === "deny" ? decision.message.slice(0, 1000) : "Network approval returned an invalid decision");
+                this.recordDenial(host, port, decision.behavior === "deny" ? `approval_denied: ${decision.message.slice(0, 1000)}` : "approval_invalid: network approval returned an invalid decision");
                 return false;
             }
             if (decision.networkScope === "session") access.session.grant(host, port);

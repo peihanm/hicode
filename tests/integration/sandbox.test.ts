@@ -10,6 +10,8 @@ import {
 } from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
+import {cliTemporaryDirectories} from "../../src/cli/temporaryDirectories.js";
+import {realpath} from "node:fs/promises";
 import {createSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -31,6 +33,35 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe("OS Sandbox integration", () => {
+    test("CLI 标准临时目录可写且显式禁止仍生效", async () => {
+        if (!ENABLED) return;
+        await withTempProject(async (cwd, storage) => {
+            const scratch = await mkdtemp(join("/tmp", "hicode-temp-check-"));
+            const allowed = join(scratch, "backup.txt");
+            const denied = join(await realpath(scratch), "denied.txt");
+            const runtime = await createSandboxRuntime({cwd, storage,
+                writableRoots: await cliTemporaryDirectories(),
+                settings: {filesystem: {denyRead: [], denyWrite: [denied]},
+                    network: {allowedDomains: [], allowLocalBinding: false}},
+            });
+            try {
+                expect(runtime.status.kind).toBe("ready");
+                const runner = createShellRunner(runtime, testChildEnvironment);
+                const result = await runner.run({cwd, signal: new AbortController().signal,
+                    command: `printf backup > '${allowed}' && printf '%s' "$TMPDIR"`});
+                expect(result.termination).toMatchObject({kind: "exit", code: 0});
+                expect(await readFile(allowed, "utf8")).toBe("backup");
+                expect(result.stdout).toBe(await realpath(tmpdir()));
+                const rejected = await runner.run({cwd, signal: new AbortController().signal,
+                    command: `printf blocked > '${denied}'`});
+                expect(rejected.termination).toMatchObject({kind: "exit", code: 1});
+                expect(await exists(denied)).toBe(false);
+            } finally {
+                await runtime.close();
+                await rm(scratch, {recursive: true, force: true});
+            }
+        });
+    });
     test("实际代理批准域名后保留文件隔离，重复请求复用 Session 授权", async () => {
         if (!ENABLED) return;
         await withTempProject(async (cwd, storage) => {
@@ -96,7 +127,7 @@ describe("OS Sandbox integration", () => {
                 // An unrelated execution cannot consume another Session's allowance.
                 const denied = await runner.run({command, cwd, signal: new AbortController().signal});
                 expect(denied.termination).toMatchObject({kind: "exit", code: 22});
-                expect(denied.stderr).toContain("本地网络权限限制");
+                expect(denied.stderr).toContain("local network permission restriction");
                 expect(hits).toBe(4);
             } finally {
                 await tasks.close();

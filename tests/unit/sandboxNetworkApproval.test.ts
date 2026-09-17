@@ -1,7 +1,6 @@
 import {describe, expect, test} from "bun:test";
 import {SandboxNetworkApproval} from "../../src/sandbox/networkApproval.js";
 import {NetworkAccessSession, type NetworkAccessExecution} from "../../src/permissions/networkAccess.js";
-import type {PermissionDecision} from "../../src/permissions/types.js";
 import {UIPermissionRequests} from "../../src/ui/turn/permissionRequests.js";
 
 const target = {host: "registry.example.test", port: 443};
@@ -52,16 +51,14 @@ describe("Sandbox network approvals", () => {
         broker.close();
     });
 
-    test("无执行、非交互、未知来源、不同 Session 和不同 Host 并发均 fail closed", async () => {
+    test("无执行、未知来源和不同 Session 并发均 fail closed", async () => {
         const broker = new SandboxNetworkApproval();
         let asks = 0;
         const owner = access(async () => { asks++; return {behavior: "allow", networkScope: "session"}; });
         expect(await broker.ask(target)).toBe(false);
         const releaseOwner = broker.register(owner, signal()).release;
         expect(await broker.ask(target)).toBe(true);
-        for (const other of [undefined, {...owner, canReview: () => false},
-            {...owner, session: new NetworkAccessSession()},
-            {...owner, canUseTool: async (): Promise<PermissionDecision> => ({behavior: "allow"})}]) {
+        for (const other of [undefined, {...owner, session: new NetworkAccessSession()}]) {
             const releaseOther = broker.register(other, signal()).release;
             expect(await broker.ask(target)).toBe(false);
             releaseOther();
@@ -75,7 +72,7 @@ describe("Sandbox network approvals", () => {
         broker.close();
     });
 
-    test("同 Session 不同执行来源不能混用批准", async () => {
+    test("同 Session 新审批仍需确定具体命令，已有授权可被并发后台执行复用", async () => {
         const broker = new SandboxNetworkApproval();
         let asks = 0;
         const owner = access(async () => { asks++; return {behavior: "allow", networkScope: "session"}; });
@@ -85,6 +82,15 @@ describe("Sandbox network approvals", () => {
         releaseForeground();
         expect(await broker.ask(target)).toBe(true);
         expect(asks).toBe(1);
+        const background = broker.register({...owner, canReview: () => false}, signal());
+        const concurrent = broker.register({...owner}, signal());
+        expect(await broker.ask(target)).toBe(true);
+        expect(asks).toBe(1);
+        expect(await broker.ask({...target, port: 8443})).toBe(false);
+        expect(background.networkDenials.join(" ")).toContain("approval_unavailable");
+        expect(background.networkDenials.join(" ")).toContain("not a user denial");
+        background.release();
+        concurrent.release();
         releaseBackground();
         broker.close();
     });

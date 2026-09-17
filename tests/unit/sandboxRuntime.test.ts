@@ -5,6 +5,8 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {mkdir, realpath} from "node:fs/promises";
 import {join} from "node:path";
 import {execFileSync} from "node:child_process";
+import {tmpdir} from "node:os";
+import {cliTemporaryDirectories} from "../../src/cli/temporaryDirectories.js";
 
 const settings = {
     enabled: true,
@@ -19,6 +21,37 @@ const settings = {
 };
 
 describe("Sandbox Runtime lease", () => {
+    test("CLI 已授权临时目录覆盖底层 TMPDIR；Host 不声明时不扩大可写范围", async () => {
+        await withTempProject(async (cwd, storage) => {
+            let active = false;
+            const configs: SandboxRuntimeConfig[] = [];
+            const factory = createSandboxRuntimeFactory({
+                isSupportedPlatform: () => true, isSandboxingEnabled: () => active,
+                checkDependencies: () => ({errors: [], warnings: []}),
+                async initialize(config) {active = true; configs.push(config);},
+                async wrapWithSandboxArgv(command) {
+                    return {argv: ["/bin/bash", "-c", command], env: {TMPDIR: "/tmp/claude"}};
+                },
+                annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
+                cleanupAfterCommand() {}, async reset() {active = false;},
+            });
+            const roots = await cliTemporaryDirectories();
+            for (const writableRoots of [[], roots]) {
+                const runtime = await factory({cwd, storage, settings, writableRoots});
+                try {
+                    const wrapped = await runtime.wrapCommand('printf "%s" "$TMPDIR"', cwd, new AbortController().signal);
+                    const [file, ...args] = wrapped.argv;
+                    if (!file) throw new Error("Missing executable");
+                    expect(execFileSync(file, args, {env: wrapped.env, encoding: "utf8"})).toBe(
+                        writableRoots.length ? await realpath(tmpdir()) : "/tmp/claude"
+                    );
+                    if (writableRoots.length) expect(configs.at(-1)?.filesystem.allowWrite).toEqual(expect.arrayContaining(roots));
+                    else expect(configs.at(-1)?.filesystem.allowWrite).not.toContain(await realpath(tmpdir()));
+                    wrapped.release?.();
+                } finally {await runtime.close();}
+            }
+        });
+    });
     test("安全路径保护独立生效，额外目录授权不移除 denyRead/denyWrite", async () => {
         await withTempProject(async (root, storage) => {
             const project = join(root, "project"); await mkdir(project);

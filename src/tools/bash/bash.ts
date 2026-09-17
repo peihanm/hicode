@@ -14,6 +14,7 @@ import {
 import type {ShellExecutionResult} from "./process.js";
 import type {ShellTaskSnapshot} from "../../tasks/index.js";
 import {displayToolPath} from "../shared/paths.js";
+import {selectUtf8Range} from "../../toolResults/utf8.js";
 
 const inputSchema = z.object({
     command: z.string().describe(
@@ -30,13 +31,13 @@ const inputSchema = z.object({
         .min(100)
         .max(600_000)
         .optional()
-        .describe("Execution timeout in milliseconds, maximum 600000. Foreground and yielded commands terminate on expiry. Omit with run_in_background=true; an accidental value is ignored safely."),
+        .describe("Execution timeout in milliseconds, maximum 600000; foreground default is 30000. Set a sufficient timeout for finite installs/builds/tests instead of using a shell timeout utility. Foreground and yielded commands terminate on expiry. Omit with run_in_background=true; an accidental value is ignored safely."),
     run_in_background: z
         .boolean()
         .optional()
-        .describe("For services, GUIs and watchers. Returns a task ID immediately; use task to inspect/stop. Omit timeout_ms. Runs until exit, explicit stop or Runtime shutdown."),
+        .describe("For services, GUIs and watchers. Returns a task ID immediately; use task to inspect/stop. Omit timeout_ms. Runs until exit, explicit stop or Runtime shutdown. In Ask mode background tasks can use existing Session network grants but cannot request new ones; run installs in the foreground when approval may be needed."),
     yield_time_ms: z.number().int().min(100).max(30_000).optional()
-        .describe("Wait 100-30000ms; return final output if done, otherwise a Task ID while the same process continues. Requires a host supporting background tasks. timeout_ms still caps total execution; omitting it leaves no timeout. Do not combine with run_in_background=true."),
+        .describe("Wait 100-30000ms; return final output if done, otherwise a Task ID while the same process continues. Requires a host supporting background tasks. timeout_ms still caps total execution; omitting it leaves no timeout. In Ask mode this invocation cannot request new network approvals, even before yielding. Do not combine with run_in_background=true."),
     sandbox_permissions: z
         .enum(["use_default", "require_escalated"])
         .optional()
@@ -85,6 +86,17 @@ function backgroundSyntaxMessage(): string {
     return "Bash command cannot contain shell background operator &. Start a long-running service in a separate bash call with run_in_background=true; use task stop before restarting a managed task.";
 }
 
+function runningOutput(task: ShellTaskSnapshot): string {
+    if (!task.output) return task.outputIssue
+        ? `Output unavailable: ${task.outputIssue}`
+        : "No output captured yet. Use task status to check readiness and the actual address before probing a service; do not assume its default port.";
+    const bytes = Buffer.from(task.output, "utf8");
+    const limit = 4000;
+    const start = Math.max(0, bytes.length - limit);
+    const preview = selectUtf8Range(bytes.subarray(start), limit).content.toString("utf8");
+    return `Captured output (not a readiness check):\n${start ? "[Earlier output omitted; use task status for more]\n" : ""}${preview}`;
+}
+
 function formatShellResult(result: ShellExecutionResult): string {
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
     const termination = result.termination;
@@ -107,7 +119,7 @@ function formatShellResult(result: ShellExecutionResult): string {
     const detail =
         termination.kind === "spawn_error" ? termination.error.message : output;
     const timeoutNotice = termination.kind === "timeout"
-        ? "\nThe command and its child processes have terminated; they will not continue in the background. Use run_in_background=true for long-running tasks."
+        ? "\nThe command and its child processes have terminated; they will not continue in the background. Check partial effects before retrying. For a finite install, build or test, set a longer timeout_ms (maximum 600000). Use run_in_background=true only for persistent services/watchers; in Ask mode background and yielded commands cannot request new network approval."
         : "";
     return `Execution failed (${status}):\n${detail || "(no output)"}${timeoutNotice}`;
 }
@@ -172,6 +184,7 @@ function formatObservedBackgroundTask(task: ShellTaskSnapshot, yielded = false):
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
     description: `Run shell commands, project scripts, dependencies, builds and tests; return stdout/stderr. Use dedicated tools for file reading, editing and search.
+- Use $TMPDIR for temporary files and clean up only artifacts you created; directory grants and explicit denials still apply.
 - Each call is a separate process: pass cwd rather than relying on a previous cd. Run tests/builds directly; the runtime preserves and budgets output. Do not add tail/head/grep just to shorten results or mask failures with || echo. Search returned saved paths with grep, then read_file at relevant lines; rerun only after a relevant change or for a new check. Avoid byte truncation of non-ASCII text.
 - Access uses the runtime's current sandbox and approval policy. Network authorization follows actual domains/ports; dependency downloads do not inherently require leaving the sandbox. For a necessary command blocked by sandbox permissions, request require_escalated for that operation rather than changing implementation to evade the restriction. A denial or unavailable approval channel is not permission to bypass it.
 - Run a minimal existing syntax/build/test check before starting a server. Use run_in_background for services, GUIs and watchers, omit timeout_ms, and manage the returned task ID with task. Do not use shell &. A foreground timeout terminates the process and its children. Reuse an existing managed service; stop it before restarting and do not overlap instances or take over unrelated processes with lsof/kill.
@@ -361,6 +374,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                         ...(timeout_ms !== undefined && yield_time_ms === undefined
                             ? ["Ignored timeout_ms: background tasks do not use the foreground execution timeout."]
                             : []),
+                        runningOutput(task),
                         "Use task to inspect output, completion status or stop the task.",
                     ].join("\n"),
                     outcome: "ok" as const,

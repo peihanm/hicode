@@ -35,6 +35,19 @@ function sandboxRuntime(
 }
 
 describe("ShellRunner", () => {
+    test("已确认的沙箱违规附恢复建议，但不自动重跑或提权", async () => {
+        await withTempProject(async cwd => {
+            const events: string[] = [];
+            const sandbox = sandboxRuntime({kind: "ready", platform: "macos", warnings: []}, events);
+            sandbox.annotateStderr = (_command, stderr) => `${stderr}\n<sandbox_violations>file-write denied</sandbox_violations>`;
+            const runner = createShellRunner(sandbox, testChildEnvironment);
+            const result = await runner.run({command: "exit 1", cwd, signal: new AbortController().signal});
+            expect(result.stderr).toContain("sandbox_permissions=require_escalated");
+            expect(result.stderr).toContain("partial effects");
+            expect(events.filter(event => event.startsWith("wrap:"))).toHaveLength(1);
+            expect(result.termination).toMatchObject({kind: "exit", code: 1});
+        });
+    });
     test("已授权的宿主执行跳过 Sandbox 包装", async () => {
         await withTempProject(async (cwd) => {
             const events: string[] = [];

@@ -108,11 +108,14 @@ export function createShellRunner(
                 let stderr = result.stderr;
                 try {
                     stderr = sandbox.annotateStderr(command, stderr);
+                    if (stderr !== result.stderr) {
+                        stderr += "\nHiCode Sandbox reported a policy violation. Check the denied operation and any partial effects before retrying. If this necessary operation requires leaving the sandbox and has not been explicitly denied, request sandbox_permissions=require_escalated; this result itself grants no extra access.";
+                    }
                 } catch {
                 }
                 if (wrapped.networkDenials?.length) {
                     stderr += `\nHiCode Sandbox: network proxy denied ${wrapped.networkDenials.join(";")}.` +
-                        "This is a local network permission restriction, not a remote service failure. Do not change sources or escalate to bypass a user denial.";
+                        " This is a local network permission restriction, not a remote service failure. Follow the reason above; changing registry or offline/peer-dependency flags cannot grant network access. Do not bypass an explicit denial. The command may have partially executed; it was not automatically retried.";
                 }
                 return {...result, stderr};
             } finally {

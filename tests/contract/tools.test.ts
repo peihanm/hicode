@@ -377,6 +377,7 @@ describe("tool registry contract", () => {
       expect(unread.outcome).toBe("failed");
       expect(unread.modelContent).toContain("Write precondition failed");
       expect(unread.modelContent).toContain("read it fully with read_file");
+      expect(unread.modelContent).toContain("Bash cat");
       expect(unread.modelContent).not.toContain("Permission denied");
       expect(await readFile(path, "utf8")).toBe("before");
 

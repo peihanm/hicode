@@ -6,6 +6,8 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {isPathInside} from "../permissions/pathGuard.js";
 import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
 import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
 import {createSandboxRuntimeConfig} from "./config.js";
@@ -119,8 +121,15 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         }
         const approval = this.networkApproval.register(options?.networkAccess, signal);
         try {
+            const temporaryDirectory = await realpath(tmpdir());
+            const useStandardTemp = writableRoots.some(root => isPathInside(root, temporaryDirectory));
+            // The backend sets TMPDIR inside its shell wrapper, after spawn env.
+            // Override it inside the protected command, only with an existing grant.
+            const preparedCommand = useStandardTemp
+                ? `export TMPDIR='${temporaryDirectory.replaceAll("'", "'\\''")}'\n${command}`
+                : command;
             const wrapped = await this.backend.wrapWithSandboxArgv(
-                bashCommand(command),
+                bashCommand(preparedCommand),
                 shell,
                 customConfig,
                 signal,

@@ -10,6 +10,7 @@ import {TerminalCursorAnchorProvider} from "./ui/input/terminalCursorContext.js"
 import {TerminalSizeProvider} from "./ui/terminalSize.js";
 import {createHiCodeStorageLayout} from "./persistence/index.js";
 import {parse} from "node:path";
+import {cliTemporaryDirectories} from "./cli/temporaryDirectories.js";
 import {
     CLI_FILE_SOURCES,
     createHiCodeRootConfiguration,
@@ -76,7 +77,16 @@ const configuration = createHiCodeRootConfiguration({
     cwd,
     workspaceBoundary: parse(cwd).root,
     storage,
-    settings: loadedSettings.values,
+    settings: {
+        ...loadedSettings.values,
+        permissions: {
+            ...loadedSettings.values.permissions,
+            additionalDirectories: [...new Set([
+                ...loadedSettings.values.permissions.additionalDirectories,
+                ...await cliTemporaryDirectories(),
+            ])],
+        },
+    },
     fileSources: CLI_FILE_SOURCES,
 });
 

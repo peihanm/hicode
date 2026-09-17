@@ -424,6 +424,49 @@ describe("bash tool contract", () => {
       expect(result.modelContent).toContain("timeout 100ms");
       expect(result.modelContent).toContain("command and its child processes have terminated");
       expect(result.modelContent).toContain("run_in_background=true");
+      expect(result.modelContent).toContain("set a longer timeout_ms");
+      expect(result.modelContent).toContain("Check partial effects");
+    });
+  });
+
+  test("后台和 yielded 启动结果保留实际地址，中文预览有界且不代表就绪", async () => {
+    await withTempProject(async cwd => {
+      const {runtime, tasks} = createTaskSession(cwd);
+      try {
+        const ctx = createTestContext(cwd, {tasks});
+        for (const execution of [{run_in_background: true}, {yield_time_ms: 500}]) {
+          const started = await executeToolResult("bash", JSON.stringify({
+            command: `node -e 'process.stdout.write("粒子✨".repeat(1800) + "\\nLocal: http://127.0.0.1:5174/\\n"); setInterval(() => {}, 1000)'`,
+            ...execution,
+          }), ctx, `startup-${JSON.stringify(execution)}`);
+          expect(started.outcome).toBe("ok");
+          expect(started.modelContent).toContain("Status: running");
+          expect(started.modelContent).toContain("http://127.0.0.1:5174/");
+          expect(started.modelContent).toContain("Earlier output omitted");
+          expect(started.modelContent).toContain("not a readiness check");
+          expect(started.modelContent).not.toContain("�");
+          expect(Buffer.byteLength(contentText(started.modelContent))).toBeLessThan(5000);
+          const id = contentText(started.modelContent).match(/Task: ([0-9a-f-]+)/)?.[1];
+          expect(id).toBeDefined();
+          const status = await executeToolResult("task", JSON.stringify({action: "status", task_id: id}), ctx, "read-startup");
+          expect(Buffer.byteLength(contentText(status.modelContent))).toBeGreaterThan(10_000);
+          await executeToolResult("task", JSON.stringify({action: "stop", task_id: id}), ctx, "stop-startup");
+        }
+      } finally {await runtime.close();}
+    });
+  });
+
+  test("后台尚无输出时要求先查询实际地址，不猜默认端口", async () => {
+    await withTempProject(async cwd => {
+      const {runtime, tasks} = createTaskSession(cwd);
+      try {
+        const started = await executeToolResult("bash", JSON.stringify({command: "sleep 30", run_in_background: true}),
+          createTestContext(cwd, {tasks}), "silent-startup");
+        expect(started.outcome).toBe("ok");
+        expect(started.modelContent).toContain("No output captured yet");
+        expect(started.modelContent).toContain("Use task status");
+        expect(started.modelContent).toContain("do not assume its default port");
+      } finally {await runtime.close();}
     });
   });
 

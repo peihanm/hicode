@@ -24,7 +24,7 @@ function overwriteStateMessage(
     if (reason === "stale") {
         return `File ${path} has changed since the last read_file; read it again.`;
     }
-    return `Before overwriting existing file ${path} , read it fully with read_file (to prevent stale writes).`;
+    return `Before overwriting existing file ${path}, read it fully with read_file (to prevent stale writes). Bash cat and other tools do not establish this read record. No file was written.`;
 }
 
 export const writeFileTool: Tool<
@@ -35,7 +35,7 @@ export const writeFileTool: Tool<
 > = {
     name: "write_file",
     description:
-        "Create a file or replace its entire contents. Read an existing file fully before rewriting it; use edit_file for local changes. Provide complete working content, not a placeholder awaiting mechanical follow-up writes. User-supplied text and identifiers retain their intended language.",
+        "Create a file or replace its entire contents. Read an existing file fully with read_file before rewriting it; Bash cat does not establish the required read record. Use edit_file for local changes. Provide complete working content, not a placeholder awaiting mechanical follow-up writes. User-supplied text and identifiers retain their intended language.",
     parameters: z.object({
         path: z.string().describe("File path."),
         content: z.string().describe("Complete file contents."),
