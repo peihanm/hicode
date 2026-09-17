@@ -35,13 +35,15 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 
 ## 快速开始
 
-在 macOS 终端执行：
+在 macOS 终端安装或更新：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
 脚本自动安装依赖并配置 `hicode` 命令，支持 zsh 和 bash，无需管理员权限。
+
+**更新**：退出 HiCode 后重新执行上述命令。新版本检查通过后才切换，并清理旧版本；已有模型配置和历史会保留。
 
 安装完成后，**重新打开终端**，进入你要处理的项目目录：
 

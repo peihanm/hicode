@@ -35,13 +35,15 @@ HiCode is a lightweight terminal coding agent built in TypeScript with its own e
 
 ## Quick start
 
-Run this in your macOS terminal:
+Install or update from your macOS terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
 The installer sets up dependencies and the `hicode` command automatically. It supports zsh and bash without administrator privileges.
+
+**Updating:** exit HiCode and rerun the command above. The installer switches only after the new version passes its startup check, then removes old installed versions. Your model configuration and history are preserved.
 
 After installation, **open a new terminal** and enter the project you want to work on:
 

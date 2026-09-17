@@ -1,6 +1,6 @@
 import {describe, expect, test} from "bun:test";
 import {createHash} from "node:crypto";
-import {chmod, mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -10,6 +10,8 @@ const installer = await readFile(fileURLToPath(new URL("../../install.sh", impor
 async function fixture(run: (context: {
     home: string;
     source: string;
+    publish(version: string): Promise<void>;
+    runInstalled(): Promise<{code: number; output: string}>;
     execute(overrides?: Record<string, string>, remote?: boolean): Promise<{code: number; output: string}>;
 }) => Promise<void>) {
     const root = await mkdtemp(join(tmpdir(), "hicode-installer-"));
@@ -25,6 +27,7 @@ async function fixture(run: (context: {
         const mocks: Record<string, string> = {
             uname: 'if [[ "$1" == -m ]]; then echo "${TEST_ARCH:-arm64}"; else echo "${TEST_OS:-Darwin}"; fi',
             curl: `[[ "\${TEST_ALLOW_DOWNLOAD:-0}" == 1 ]] || exit 98
+[[ "\${TEST_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
 for arg in "$@"; do
   case "$arg" in
     https://registry.npmjs.org/@oven/*) package=bun ;;
@@ -37,12 +40,16 @@ cp "$TEST_ARCHIVES/$package.tgz" "\${@: -1}"
 if [[ "\${TEST_BAD_CHECKSUM:-0}" == 1 ]]; then printf corrupt >> "\${@: -1}"; fi`,
             brew: 'echo "Unexpected Homebrew execution" >&2; exit 98',
             git: 'echo "Unexpected Git execution" >&2; exit 98',
+            rm: `for arg in "$@"; do
+  if [[ "\${TEST_PRUNE_FAIL:-0}" == 1 && "$arg" == */releases/* ]]; then exit 13; fi
+done
+exec /bin/rm "$@"`,
             rg: '[[ "${TEST_MISSING_RG:-0}" != 1 || -f "$HOME/.local/share/hicode/bin/rg" ]]',
             bun: `case "$1" in
   --version)
     if [[ "\${TEST_OLD_BUN:-0}" == 1 && ! -e "$HOME/.local/share/hicode/bin/bun" ]]; then echo 1.2.0; else echo 1.3.14; fi ;;
   install) [[ "\${TEST_INSTALL_FAIL:-0}" != 1 ]] ;;
-  */src/index.tsx) [[ "$2" == --help ]] ;;
+  */src/index.tsx) [[ "$2" == --help && "\${TEST_START_FAIL:-0}" != 1 ]] && cat "$1" ;;
   *) exit 97 ;;
 esac`,
         };
@@ -74,9 +81,19 @@ esac`,
         await writeFile(join(remote, "src/index.tsx"), "");
         await writeFile(join(remote, "bun.lock"), "");
         await writeFile(join(remote, "install.sh"), fixtureInstaller);
-        const tar = Bun.spawn(["/usr/bin/tar", "-czf", join(archives, "source.tgz"), "-C", root, "hicode-main"]);
-        expect(await tar.exited).toBe(0);
-        await run({home, source, execute: async (overrides = {}, remote = false) => {
+        const publish = async (version: string) => {
+            await writeFile(join(remote, "src/index.tsx"), version);
+            const tar = Bun.spawn(["/usr/bin/tar", "-czf", join(archives, "source.tgz"), "-C", root, "hicode-main"]);
+            expect(await tar.exited).toBe(0);
+        };
+        await publish("v1");
+        await run({home, source, publish, runInstalled: async () => {
+            const child = Bun.spawn([join(home, ".local/share/hicode/bin/hicode"), "--help"], {
+                cwd: root, env: {HOME: home, PATH: `${bin}:/usr/bin:/bin`}, stdout: "pipe", stderr: "pipe",
+            });
+            const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+            return {code, output};
+        }, execute: async (overrides = {}, remote = false) => {
             const child = Bun.spawn(["/bin/bash", join(remote ? root : source, remote ? "downloaded.sh" : "install.sh")], {
                 cwd: root,
                 env: {HOME: home, SHELL: "/bin/zsh", PATH: `${bin}:/usr/bin:/bin`, BUN_INSTALL: root, TEST_ARCHIVES: archives, ...overrides},
@@ -145,13 +162,134 @@ describe("macOS installer (offline command fixtures)", () => {
         });
     }, 20_000);
 
-    test("downloads source without Git and preserves it on a repeated remote install", async () => {
-        await fixture(async ({home, execute}) => {
+    test("installs v1, switches to v2, then removes the old release and preserves config", async () => {
+        await fixture(async ({home, execute, publish, runInstalled}) => {
+            const config = join(home, ".hicode/settings.json");
+            await mkdir(dirname(config));
+            await writeFile(config, '{"fixture":"preserve"}');
             expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
-            const result = await execute({}, true);
-            expect(result.code).toBe(1);
-            expect(result.output).toContain("To repair that installation");
-            expect(await readFile(join(home, "download.log"), "utf8")).toBe("source\n");
+            expect(await runInstalled()).toEqual({code: 0, output: "v1"});
+            const oldEntry = await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8");
+            const oldReleases = await readdir(join(home, ".local/share/hicode/releases"));
+            await publish("v2");
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            expect(await runInstalled()).toEqual({code: 0, output: "v2"});
+            expect(await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8")).not.toBe(oldEntry);
+            expect(await readFile(config, "utf8")).toBe('{"fixture":"preserve"}');
+            const releases = await readdir(join(home, ".local/share/hicode/releases"));
+            expect(releases).toHaveLength(1);
+            expect(releases).not.toEqual(oldReleases);
+            // The same archive is reused without editing an active release's dependencies.
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1", TEST_INSTALL_FAIL: "1"}, true)).toMatchObject({code: 0});
+            expect(await readdir(join(home, ".local/share/hicode/releases"))).toEqual(releases);
+            expect((await readFile(join(home, ".zshrc"), "utf8")).match(/# HiCode installer/g)).toHaveLength(1);
+        });
+    }, 20_000);
+
+    test("download, dependency and startup failures preserve the old launcher and settings", async () => {
+        await fixture(async ({home, execute, publish, runInstalled}) => {
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            const entry = await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8");
+            const shell = await readFile(join(home, ".zshrc"), "utf8");
+            await publish("v2");
+            for (const failure of ["TEST_DOWNLOAD_FAIL", "TEST_INSTALL_FAIL", "TEST_START_FAIL"]) {
+                const result = await execute({TEST_ALLOW_DOWNLOAD: "1", [failure]: "1"}, true);
+                expect(result.code).not.toBe(0);
+                expect(result.output).not.toContain("HiCode installed.");
+                expect(await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8")).toBe(entry);
+                expect(await readFile(join(home, ".zshrc"), "utf8")).toBe(shell);
+                expect(await runInstalled()).toEqual({code: 0, output: "v1"});
+                expect(await readdir(join(home, ".local/share/hicode/releases"))).toHaveLength(1);
+            }
+        });
+    }, 20_000);
+
+    test("pruning skips unknown directories, symlinks and developer checkouts", async () => {
+        await fixture(async ({home, execute, publish, runInstalled}) => {
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            const root = join(home, ".local/share/hicode");
+            const releases = join(root, "releases");
+            const unknown = join(releases, "a".repeat(64));
+            const checkout = join(releases, "b".repeat(64));
+            const external = join(home, "external");
+            for (const directory of [unknown, checkout, external, join(root, "source")]) {
+                await mkdir(directory, {recursive: true});
+                await writeFile(join(directory, "keep.txt"), "user data");
+            }
+            await writeFile(join(checkout, ".install-ready"), "ready\n");
+            await writeFile(join(checkout, ".git"), "gitdir: elsewhere\n");
+            await writeFile(join(external, ".install-ready"), "ready\n");
+            await symlink(external, join(releases, "c".repeat(64)));
+            await publish("v2");
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            expect(await runInstalled()).toEqual({code: 0, output: "v2"});
+            for (const directory of [unknown, checkout, external, join(root, "source")]) {
+                expect(await readFile(join(directory, "keep.txt"), "utf8")).toBe("user data");
+            }
+        });
+    }, 20_000);
+
+    test("failed old-version cleanup reports a warning and keeps the new entry working", async () => {
+        await fixture(async ({home, execute, publish, runInstalled}) => {
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            await publish("v2");
+            const result = await execute({TEST_ALLOW_DOWNLOAD: "1", TEST_PRUNE_FAIL: "1"}, true);
+            expect(result.code).toBe(0);
+            expect(result.output).toContain("could not remove old version");
+            expect(await runInstalled()).toEqual({code: 0, output: "v2"});
+            expect(await readdir(join(home, ".local/share/hicode/releases"))).toHaveLength(2);
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            expect(await readdir(join(home, ".local/share/hicode/releases"))).toHaveLength(1);
+        });
+    }, 20_000);
+
+    test("remote update never replaces a developer checkout launcher", async () => {
+        await fixture(async ({home, execute}) => {
+            expect(await execute()).toMatchObject({code: 0});
+            const entry = await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8");
+            const result = await execute({TEST_ALLOW_DOWNLOAD: "1"}, true);
+            expect(result.code).not.toBe(0);
+            expect(result.output).toContain("source checkout");
+            expect(await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8")).toBe(entry);
+        });
+    }, 20_000);
+
+    test("removes a recognized previous source-layout installation only after successful update", async () => {
+        await fixture(async ({home, execute, runInstalled}) => {
+            expect(await execute()).toMatchObject({code: 0});
+            const command = join(home, ".local/share/hicode/bin/hicode");
+            const previous = await readFile(command, "utf8");
+            const legacySource = join(home, ".local/share/hicode/source");
+            await mkdir(join(legacySource, "src"), {recursive: true});
+            await writeFile(join(legacySource, "src/index.tsx"), "legacy");
+            await writeFile(join(legacySource, "bun.lock"), "");
+            // Ask Bash to quote the historical path exactly as the old installer did.
+            const quoted = Bun.spawn(["/bin/bash", "-c", 'printf "%q" "$1"', "fixture", join(legacySource, "src/index.tsx")], {stdout: "pipe"});
+            const path = await new Response(quoted.stdout).text();
+            expect(await quoted.exited).toBe(0);
+            const exec = previous.split("\n").find(line => line.startsWith("exec "))!;
+            const bunEnd = exec.indexOf(" ", 5); // Fixture's Bun path is outside the quoted home directory.
+            await writeFile(command, `#!/bin/bash\n${exec.slice(0, bunEnd)} ${path} "$@"\n`);
+            expect((await execute({TEST_ALLOW_DOWNLOAD: "1", TEST_START_FAIL: "1"}, true)).code).not.toBe(0);
+            expect(await readFile(join(legacySource, "src/index.tsx"), "utf8")).toBe("legacy");
+            expect(await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).toMatchObject({code: 0});
+            expect(await runInstalled()).toEqual({code: 0, output: "v1"});
+            expect(await Bun.file(join(legacySource, "src/index.tsx")).exists()).toBe(false);
+        });
+    }, 20_000);
+
+    test("rejects concurrent installation and symlink launchers without overwriting them", async () => {
+        await fixture(async ({home, execute}) => {
+            const root = join(home, ".local/share/hicode");
+            await mkdir(join(root, ".install.lock"), {recursive: true});
+            expect((await execute()).output).toContain("Another installer");
+            await rm(join(root, ".install.lock"), {recursive: true});
+            await mkdir(join(root, "bin"));
+            const target = join(home, "keep");
+            await writeFile(target, "user data");
+            await symlink(target, join(root, "bin/hicode"));
+            expect((await execute({TEST_ALLOW_DOWNLOAD: "1"}, true)).code).not.toBe(0);
+            expect(await readFile(target, "utf8")).toBe("user data");
         });
     }, 20_000);
 
