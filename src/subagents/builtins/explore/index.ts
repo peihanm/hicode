@@ -6,11 +6,8 @@ export const EXPLORE_SUBAGENT: SubagentRegistration = {
     concurrencySafe: true,
     createRuntimeConfig(parentContext) {
         return {
-            toolRuntimeOptions: {
-                allowedToolNames: EXPLORE_AGENT.allowedTools,
-            },
             contextResources: {
-                    toolNames: parentContext.toolNames,
+                    toolNames: parentContext.toolNames, availableTools: parentContext.availableTools,
                 readOnlyTools: true,
                 storage: parentContext.storage,
                 cwd: parentContext.cwd,

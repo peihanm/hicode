@@ -40,13 +40,14 @@ export function createSubagentLauncher({
             };
 
             if (input.runInBackground) {
-                if (!parentContext.tasks) {
+                if (!parentContext.tasks || !("startAgent" in parentContext.tasks)) {
                     throw new Error("This entry point does not support background Agent Tasks");
                 }
                 const task = await parentContext.tasks.startAgent({
                     request,
                     parentContext,
                 });
+                parentContext.agentJoin?.register(task);
                 return {kind: "background", task};
             }
             return {kind: "foreground", result: await runSubagent(request)};

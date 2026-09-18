@@ -1,3 +1,4 @@
+import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {createAgentRuntime} from "../../src/runtime/agentRuntime.js";
 import {createWriterRegistry} from "../helpers/writerAgent.js";
@@ -162,7 +163,7 @@ test("new child uses refreshed connection while an existing child retains its or
         const old = runtime.createSubagentThread({parentContext: parent, agentId: "old", onEvent() {}}, request);
         sources = {...sources, qwen: {...sources.qwen, baseUrl: "https://second.test/v1"}};
         const next = runtime.createSubagentThread({parentContext: parent, agentId: "new", onEvent() {}}, request);
-        const input = {prompt: "inspect", signal: new AbortController().signal, inputChannel: {drainInitial: () => [], drainSafeBoundary: () => []}};
+        const input = {prompt: "inspect", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL};
         await old.run(input); await next.run(input);
         expect(requests).toEqual(["https://first.test/v1/chat/completions", "https://second.test/v1/chat/completions"]);
         await memory.close();

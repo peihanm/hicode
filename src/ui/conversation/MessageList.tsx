@@ -137,6 +137,7 @@ function TaskNotificationView({
         ? describeToolCall("bash", JSON.stringify({command: thread.label})).detail
         : thread.label;
     const color = thread.status === "failed" ? COLORS.error : COLORS.toolName;
+    if (thread.kind === "agent") return <Box marginTop={1}><Text color={color} wrap="truncate-end">{`${thread.status === "completed" ? "✓" : "●"} ${label} · ${state} · /tasks`}</Text></Box>;
     return (
         <Box flexDirection="column" marginTop={1}>
             <Box>
@@ -396,7 +397,7 @@ function ThreadView({
             </Text>}
         </Box>;
     }
-    if (thread.role === "coordination_message") return <Box marginTop={1} flexDirection="column"><Text color={COLORS.accent}>Agent coordination</Text><Text>{thread.text}</Text></Box>;
+    if (thread.role === "coordination_message") return <Box marginTop={1} flexDirection="column"><Text color={COLORS.dim}>● Agent message received · /tasks</Text>{transcript && <TerminalMarkdown value={thread.text} width={Math.max(1, terminalWidth - 2)}/>}</Box>;
     if (thread.role === "task_notification") {
         return <TaskNotificationView thread={thread}/>;
     }

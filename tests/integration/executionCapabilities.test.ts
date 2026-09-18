@@ -43,7 +43,7 @@ describe("effective execution capabilities", () => {
             await mkdir(workspace);
             const registry = createSubagentRegistry({issues: [], definitions: [{
                 source: "host", id: "fixture", agentType: "Writer", whenToUse: "fixture", systemPrompt: "fixture",
-                allowedTools: ["write_file"], model: "inherit", maxIterations: 5,
+                allowedTools: ["write_file"],
             }]});
             let approvals = 0;
             const ctx = createTestContext(workspace, {permissionMode, collaborationMode: "plan", workspaceBoundary: cwd,
@@ -96,14 +96,14 @@ describe("effective execution capabilities", () => {
                 exposure: "direct", isReadOnly: () => false, async execute() { writes++; return "mutated"; }};
             const registry = createSubagentRegistry({issues: [], definitions: [{
                 source: "host", id: "fixture", agentType: "IndirectWriter", whenToUse: "fixture", systemPrompt: "fixture",
-                allowedTools: [toolName], model: "inherit", maxIterations: 4,
+                allowedTools: [toolName],
             }]});
             let approvals = 0;
             const ctx = createTestContext(cwd, {permissionMode: "full-access", collaborationMode: "plan",
                 mcpManager: {async initialize() {}, getSnapshots: () => [], getTools: () => [tool], subscribe: () => () => {}, async reconnect() {}, async closeAll() {}},
                 canUseTool: async () => { approvals++; return {behavior: "allow"}; }});
             // Only MCP is supplied dynamically. Bash uses the production tool/runner.
-            if (toolName === "bash") ctx.mcpManager = undefined;
+            if (toolName === "bash") {ctx.mcpManager = undefined; ctx.availableTools = createToolRuntime().getTools();}
             const child = createFakeLLM([
                 assistantToolCall(toolName, toolName === "bash" ? {command: "printf escaped > escaped.txt"} : {}, "write"),
                 options => {
@@ -155,7 +155,7 @@ describe("effective execution capabilities", () => {
         await withTempProject(async cwd => {
             const registry = createSubagentRegistry({issues: [], definitions: [{
                 source: "host", id: "fixture", agentType: "ShellHelper", whenToUse: "fixture",
-                systemPrompt: "fixture", allowedTools: ["bash"], model: "inherit", maxIterations: 4,
+                systemPrompt: "fixture", allowedTools: ["bash"],
             }]});
             let approvals = 0;
             const ctx = createTestContext(cwd, {permissionMode, collaborationMode: "plan",

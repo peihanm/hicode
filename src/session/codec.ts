@@ -156,6 +156,7 @@ const persistedUIEventSchema = z.discriminatedUnion("type", [
         requestId: idSchema, toolCallId: idSchema, turnId: idSchema, timestamp: timestampSchema,
         source: z.enum(["user", "auto-review", "preauthorized"]),
         outcome: z.enum(["allow", "deny", "needs_user", "error"]).optional(), reason: z.string().max(4000).optional(),
+        durationMs: nonNegativeIntegerSchema.optional(),
         code: z.enum(["policy_denied", "approval_required", "review_failed"]).optional(),
     }).strict(),
     z.object({

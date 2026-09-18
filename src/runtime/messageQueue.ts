@@ -222,6 +222,19 @@ export class RuntimeMessageQueue {
             return messages.map(asAgentInput);
         };
         return {
+            waitForInput: signal => {
+                signal.throwIfAborted();
+                if (this.messages.some(message => message.priority === "next")) return Promise.resolve();
+                return new Promise<void>((resolve, reject) => {
+                    const cleanup = () => {unsubscribe(); signal.removeEventListener("abort", abort);};
+                    const abort = () => {cleanup(); reject(signal.reason);};
+                    const unsubscribe = this.subscribe(() => {
+                        if (this.messages.some(message => message.priority === "next")) {cleanup(); resolve();}
+                    });
+                    signal.addEventListener("abort", abort, {once: true});
+                    if (signal.aborted) abort();
+                });
+            },
             drainInitial: () => consume(
                 (message) => message.type === "task_notification" || message.type === "agent_message"
             ),

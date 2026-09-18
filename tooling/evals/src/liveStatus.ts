@@ -22,6 +22,8 @@ export function reduceEvalLiveStatus(
         sequence: event.sequence,
     };
     switch (event.type) {
+        case "turn.agent_wait":
+            return {...base, phase: "item", detail: event.taskIds.length ? `waiting for ${event.taskIds.length} agents` : "continuing after agent wait"};
         case "turn.approval_review":
             return {...base, phase: "interaction", detail: event.review.phase === "start" ? "reviewing approval" : `approval ${event.review.outcome ?? "ended"}`};
         case "thread.started":

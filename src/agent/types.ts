@@ -5,10 +5,12 @@ import type {AgentType} from "../subagents/types.js";
 import type {ToolUIData} from "../fileChanges/index.js";
 import type {LLMStreamProgress} from "../llm/types.js";
 import type {MemoryChange} from "../memory/types.js";
+import type {Todo} from "../todos.js";
 import type {ApprovalEvent} from "../permissions/approval.js";
 
 export type StopReason =
     | "completed"
+    | "incomplete"
     | "max_turns"
     | "permission_denied"
     | "hook_blocked"
@@ -35,6 +37,7 @@ export interface AgentUsage {
 /** Runtime events published by the Agent loop to the Host. */
 export type AgentEvent =
     | {type: "coordination_message"; messageId: string; text: string}
+    | {type: "agent_wait"; taskIds: readonly string[]}
     | ApprovalEvent
     | HookLifecycleEvent
     | {type: "turn_end"; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}
@@ -123,7 +126,8 @@ export type AgentEvent =
                 type: "tool_end";
                 toolCallId: string;
             }
-            | {type: "token_update"; tokenCount: number};
+            | {type: "token_update"; tokenCount: number}
+            | {type: "todos"; todos: Todo[]};
     }
     | {
         type: "subagent_error";

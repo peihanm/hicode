@@ -136,7 +136,7 @@ describe("RootRuntimeResources", () => {
                 whenToUse: "读取长期记忆",
                 systemPrompt: "读取长期记忆",
                 allowedTools: ["memory"],
-                model: "inherit",
+
                 source: "project",
                 path: `${cwd}/.hicode/agents/memory-reader.md`,
               },
@@ -163,8 +163,8 @@ describe("RootRuntimeResources", () => {
         whenToUse: `使用 ${agentType} 检查代码`,
         systemPrompt: `你是 ${agentType}`,
         allowedTools: ["read_file", "grep"],
-        model: "inherit",
-        maxIterations: 8,
+
+
         source: "project",
         path: `${cwd}/.hicode/agents/${agentType}.md`,
       });
@@ -257,8 +257,8 @@ describe("RootRuntimeResources", () => {
             whenToUse: "读取 fixture MCP",
             systemPrompt: "read fixture",
             allowedTools: ["mcp__fixture__runtime"],
-            model: "inherit",
-            maxIterations: 5,
+
+
             source: "project",
             path: `${cwd}/.hicode/agents/mcp-reader.md`,
           }],

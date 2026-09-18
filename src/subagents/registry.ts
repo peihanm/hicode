@@ -10,7 +10,7 @@ function immutableRegistration(
 ): SubagentRegistration {
     const definition = Object.freeze({
         ...registration.definition,
-        allowedTools: Object.freeze([...registration.definition.allowedTools]),
+        allowedTools: registration.definition.allowedTools ? Object.freeze([...registration.definition.allowedTools]) : undefined,
     });
     return Object.freeze({...registration, definition});
 }
@@ -33,16 +33,10 @@ export interface SubagentRegistry {
 
 function validateRegistration(registration: SubagentRegistration): void {
     const {definition} = registration;
-    if (definition.allowedTools.length === 0) {
+    if (definition.allowedTools?.length === 0) {
         throw new Error(`Agent ${definition.agentType} has no available tools`);
     }
-    if (
-        definition.maxIterations !== undefined &&
-        (!Number.isInteger(definition.maxIterations) ||
-            definition.maxIterations < 2)
-    ) {
-        throw new Error(`Agent ${definition.agentType} has an invalid maxIterations`);
-    }
+
 }
 
 export function createSubagentRegistry(
@@ -82,7 +76,7 @@ export function createSubagentRegistry(
         }
         const runtimeDefinition = Object.freeze({
             ...definition,
-            allowedTools: Object.freeze([...definition.allowedTools]),
+            allowedTools: definition.allowedTools ? Object.freeze([...definition.allowedTools]) : undefined,
         });
         const registration = immutableRegistration(
             createCustomSubagentRegistration(runtimeDefinition)

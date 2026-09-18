@@ -5,7 +5,7 @@ export function createAgentSystemPrompt(
     definition: AgentDefinition,
     cwd: string,
     model: string,
-    allowedTools: readonly string[] = definition.allowedTools
+    allowedTools: readonly string[] = definition.allowedTools ?? []
 ): string {
     return [
         getWorkerInstructions(),

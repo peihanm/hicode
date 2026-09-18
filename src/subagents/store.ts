@@ -22,9 +22,8 @@ const AGENT_FILE_MODE = 0o600;
 export interface AgentDefinitionDraft {
     name: string;
     description: string;
-    tools: readonly string[];
-    model: string;
-    maxIterations: number;
+    tools?: readonly string[];
+    readOnly?: boolean;
     systemPrompt: string;
 }
 

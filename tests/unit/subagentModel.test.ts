@@ -1,40 +1,13 @@
-import {describe, expect, test} from "bun:test";
-import {
-    formatSubagentModel,
-} from "../../src/subagents/index.js";
-import {resolveSubagentModel} from "../../src/subagents/model.js";
+import {expect, test} from "bun:test";
+import {BUILTIN_SUBAGENT_REGISTRY, formatSubagentModel} from "../../src/subagents/index.js";
+import {usesFastSubagentModel} from "../../src/subagents/model.js";
 
-describe("subagent model routing", () => {
-    test("inherit 保留 Root 模型，fast 使用独立配置模型", () => {
-        expect(resolveSubagentModel({
-            definitionModel: "inherit",
-            parentModel: "qwen3.6-plus",
-            fastModel: "glm-4.7",
-        })).toBe("qwen3.6-plus");
-        expect(resolveSubagentModel({
-            definitionModel: "fast",
-            parentModel: "qwen3.6-plus",
-            fastModel: "glm-4.7",
-        })).toBe("glm-4.7");
-        expect(formatSubagentModel("fast")).toBe(
-            "fast (configured fast model)"
-        );
-        expect(formatSubagentModel("fast", "Inherit Root", "glm-4.7"))
-            .toBe("fast (glm-4.7)");
-    });
-
-    test("调用级选择优先于 Definition", () => {
-        expect(resolveSubagentModel({
-            definitionModel: "fast",
-            parentModel: "qwen3.6-plus",
-            fastModel: "glm-4.7",
-            override: "inherit",
-        })).toBe("qwen3.6-plus");
-        expect(resolveSubagentModel({
-            definitionModel: "inherit",
-            parentModel: "qwen3.6-plus",
-            fastModel: "glm-4.7",
-            override: "fast",
-        })).toBe("glm-4.7");
-    });
+test("Only the built-in Explore uses fast; all ordinary roles inherit the parent", () => {
+    const explore = BUILTIN_SUBAGENT_REGISTRY.get("Explore")!.definition;
+    const worker = BUILTIN_SUBAGENT_REGISTRY.get("Worker")!.definition;
+    expect(usesFastSubagentModel(explore)).toBe(true);
+    expect(usesFastSubagentModel(worker)).toBe(false);
+    expect(usesFastSubagentModel({...explore, source: "host", id: "test"})).toBe(false);
+    expect(formatSubagentModel(explore, "fast-model")).toBe("Explore model (fast-model)");
+    expect(formatSubagentModel(worker)).toBe("Same as main agent");
 });

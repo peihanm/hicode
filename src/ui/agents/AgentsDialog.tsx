@@ -21,7 +21,8 @@ type Stage =
     | "list"
     | "detail"
     | "issues"
-    | "scope"
+    | "preview"
+    | "tools"
     | "method"
     | "generate"
     | "edit"
@@ -63,18 +64,12 @@ function NoIndicator() {return null;}
 const EMPTY_DRAFT: AgentDefinitionDraft = {
     name: "",
     description: "",
-    tools: ["list_files", "read_file", "grep"],
-    model: "inherit",
-    maxIterations: 12,
     systemPrompt: "",
 };
 
 const EDIT_FIELDS = [
     "name",
     "description",
-    "tools",
-    "model",
-    "maxIterations",
     "systemPrompt",
 ] as const;
 
@@ -91,8 +86,7 @@ function draftFromStored(file: StoredAgentFile): AgentDefinitionDraft {
         name: file.definition.agentType,
         description: file.definition.whenToUse,
         tools: file.definition.allowedTools,
-        model: file.definition.model,
-        maxIterations: file.definition.maxIterations ?? 12,
+        readOnly: file.definition.readOnly,
         systemPrompt: file.definition.systemPrompt,
     };
 }
@@ -101,10 +95,7 @@ function fieldLabel(field: EditField): string {
     return {
         name: "Name",
         description: "Usage instructions",
-        tools: "Tools (comma-separated)",
-        model: "Model (inherit or fast)",
-        maxIterations: "Maximum turns (2–30)",
-        systemPrompt: "System Prompt (Shift+Enter for newline)",
+        systemPrompt: "Instructions (Shift+Enter for newline)",
     }[field];
 }
 
@@ -113,27 +104,14 @@ function updateField(
     field: EditField,
     value: string
 ): AgentDefinitionDraft {
-    if (field === "tools") {
-        return {
-            ...draft,
-            tools: value.split(",").map((item) => item.trim()).filter(Boolean),
-        };
-    }
-    if (field === "maxIterations") {
-        return {...draft, maxIterations: Number(value)};
-    }
     if (field === "name") return {...draft, name: value};
     if (field === "description") return {...draft, description: value};
-    if (field === "model") return {...draft, model: value || "inherit"};
     return {...draft, systemPrompt: value};
 }
 
 function fieldValue(draft: AgentDefinitionDraft, field: EditField): string {
-    if (field === "tools") return draft.tools.join(", ");
-    if (field === "maxIterations") return String(draft.maxIterations);
     if (field === "name") return draft.name;
     if (field === "description") return draft.description;
-    if (field === "model") return draft.model;
     return draft.systemPrompt;
 }
 
@@ -161,7 +139,7 @@ export function AgentsDialog({
     const [notice, setNotice] = useState<string>();
     const [error, setError] = useState<string>();
     const [errorReturnStage, setErrorReturnStage] = useState<
-        "list" | "detail" | "generate" | "edit"
+        "list" | "detail" | "generate" | "preview"
     >("list");
     const generationControllerRef = useRef<AbortController>();
 
@@ -186,10 +164,6 @@ export function AgentsDialog({
     ], [definitions, catalog.revision, catalog.issues.length]);
 
     useInput((_input, key) => {
-        if (stage === "edit" && key.shift && key.tab) {
-            setFieldIndex((index) => Math.max(0, index - 1));
-            return;
-        }
         if (!key.escape || stage === "busy") return;
         if (stage === "generating") {
             generationControllerRef.current?.abort("user-cancel");
@@ -202,6 +176,7 @@ export function AgentsDialog({
             setStage(errorReturnStage);
             return;
         }
+        if (stage === "edit" || stage === "tools") {setStage("preview"); return;}
         if (stage === "list") onClose();
         else {
             setError(undefined);
@@ -211,7 +186,7 @@ export function AgentsDialog({
 
     const fail = (
         reason: unknown,
-        returnStage: "list" | "detail" | "generate" | "edit" = "list"
+        returnStage: "list" | "detail" | "generate" | "preview" = "list"
     ) => {
         setError(reason instanceof Error ? reason.message : String(reason));
         setErrorReturnStage(returnStage);
@@ -251,8 +226,8 @@ export function AgentsDialog({
     const beginEditor = (next: AgentDefinitionDraft, file?: StoredAgentFile) => {
         setDraft(next);
         setStored(file);
-        setFieldIndex(file ? 1 : 0);
-        setStage("edit");
+        setScope(file?.scope ?? "project");
+        setStage("preview");
     };
 
     const save = async (finalDraft: AgentDefinitionDraft) => {
@@ -274,7 +249,7 @@ export function AgentsDialog({
             setStored(undefined);
             setStage("list");
         } catch (reason) {
-            fail(reason, "edit");
+            fail(reason, "preview");
         }
     };
 
@@ -301,8 +276,7 @@ export function AgentsDialog({
     const submitField = (value: string) => {
         const next = updateField(draft, field, value);
         setDraft(next);
-        if (fieldIndex === EDIT_FIELDS.length - 1) void save(next);
-        else setFieldIndex((index) => index + 1);
+        setStage("preview");
     };
 
     return (
@@ -330,7 +304,9 @@ export function AgentsDialog({
                             onSelect={(item: DialogItem) => {
                                 if (item.value === "close") return onClose();
                                 if (item.value === "create") {
-                                    setStage("scope");
+                                    setStored(undefined);
+                                    setScope("project");
+                                    setStage("method");
                                     return;
                                 }
                                 if (item.value === "reload") {
@@ -378,21 +354,49 @@ export function AgentsDialog({
                     </Box>
                 )}
 
-                {stage === "scope" && (
+                {stage === "preview" && (
                     <Box marginTop={1} flexDirection="column">
-                        <Text bold>Choose save scope</Text>
-                        <SelectInput
-                            items={[
-                                {label: "Project · .hicode/agents in this project", value: "project"},
-                                {label: "Personal · ~/.hicode/agents", value: "user"},
-                            ]}
-                            indicatorComponent={DialogIndicator}
-                            itemComponent={DialogItem}
+                        <Text bold>{draft.name || "New Agent"}</Text>
+                        <Text>{draft.description || "Add when this agent should be used."}</Text>
+                        <Box marginY={1}><Text wrap="truncate-end">{draft.systemPrompt ? draft.systemPrompt.slice(0, 1200).split("\n").slice(0, 8).join("\n") : "Add instructions for the assigned work."}</Text></Box>
+                        <Text color={COLORS.dim}>Model · Same as main agent</Text>
+                        <Text color={COLORS.dim}>Access · {draft.readOnly ? "Read-only" : "Parent-authorized work"}</Text>
+                        <Text color={COLORS.dim}>Tools · {draft.tools?.join(" · ") ?? "Inherited"}</Text>
+                        <Text color={COLORS.dim}>Save to · {scope === "project" ? "This project" : "Personal"}</Text>
+                        <SelectInput items={[
+                            {label: "Save Agent", value: "save"},
+                            ...EDIT_FIELDS.filter(field => !stored || field !== "name").map(field => ({label: `Edit ${fieldLabel(field)}`, value: field})),
+                            {label: draft.readOnly ? "Allow parent-authorized changes" : "Make read-only", value: "access"},
+                            {label: "Restrict tools (advanced)", value: "tools"},
+                            ...(!stored ? [{label: scope === "project" ? "Save as personal Agent" : "Save in this project", value: "scope"}] : []),
+                            {label: "Cancel", value: "cancel"},
+                        ]} indicatorComponent={DialogIndicator} itemComponent={DialogItem}
                             onSelect={(item: DialogItem) => {
-                                setScope(item.value as AgentDefinitionScope);
-                                setStage("method");
-                            }}
-                        />
+                                if (item.value === "save") {void save(draft); return;}
+                                if (item.value === "access") {setDraft({...draft, readOnly: !draft.readOnly}); return;}
+                                if (item.value === "scope") {setScope(scope === "project" ? "user" : "project"); return;}
+                                if (item.value === "tools") {setStage("tools"); return;}
+                                if (item.value === "cancel") {setStage("list"); return;}
+                                const index = EDIT_FIELDS.findIndex(field => field === item.value);
+                                if (index >= 0) {setFieldIndex(index); setStage("edit");}
+                            }}/>
+                    </Box>
+                )}
+                {stage === "tools" && (
+                    <Box marginTop={1} flexDirection="column">
+                        <Text bold>Tool restrictions</Text>
+                        <Text color={COLORS.dim}>Inherited tools follow parent permissions. Select only to narrow access.</Text>
+                        <SelectInput limit={10} items={[
+                            {label: "Inherit available tools", value: "inherit"},
+                            {label: "Done", value: "done"},
+                            ...manager.listTools().map(name => ({label: `${!draft.tools || draft.tools.includes(name) ? "☑" : "☐"} ${name}`, value: name})),
+                        ]} indicatorComponent={DialogIndicator} itemComponent={DialogItem}
+                            onSelect={(item: DialogItem) => {
+                                if (item.value === "inherit") {setDraft({...draft, tools: undefined}); setStage("preview"); return;}
+                                if (item.value === "done") {setStage("preview"); return;}
+                                const names = draft.tools ?? manager.listTools();
+                                setDraft({...draft, tools: names.includes(item.value) ? names.filter(name => name !== item.value) : [...names, item.value]});
+                            }}/>
                     </Box>
                 )}
 
@@ -418,7 +422,7 @@ export function AgentsDialog({
                     <Box marginTop={1} flexDirection="column">
                         <Text bold>Describe the Agent you need</Text>
                         <Text color={COLORS.dim}>
-                            Generated candidates open in the editor; they are not saved or authorized automatically.
+                            Review the generated candidate before saving. No extra permissions are granted.
                         </Text>
                         <MultilineTextInput
                             value={generateInput}
@@ -447,9 +451,6 @@ export function AgentsDialog({
                 {stage === "edit" && (
                     <Box marginTop={1} flexDirection="column">
                         <Text bold>{stored ? "Edit" : "Create"} Agent · {fieldLabel(field)}</Text>
-                        <Text color={COLORS.dim}>
-                            Step {fieldIndex + 1}/{EDIT_FIELDS.length}
-                        </Text>
                         {field === "systemPrompt" ? (
                             <MultilineTextInput
                                 value={currentValue}
@@ -477,11 +478,11 @@ export function AgentsDialog({
                         <Text color={COLORS.dim}>{sourceLabel(selected)}{selected.source === "builtin" || selected.source === "host" ? " · Definition cannot be edited" : ""}</Text>
                         <Box marginTop={1}><Text>{agentDescription(selected)}</Text></Box>
                         <Box marginY={1} flexDirection="column">
-                            <Text><Text color={COLORS.dim}>Model       </Text>{formatSubagentModel(selected.model, "Same as main agent", fastModel)}</Text>
-                            <Text><Text color={COLORS.dim}>Turn limit  </Text>{selected.maxIterations ?? "Same as main agent"}</Text>
+                            <Text><Text color={COLORS.dim}>Model       </Text>{formatSubagentModel(selected, fastModel)}</Text>
+                            <Text><Text color={COLORS.dim}>Access      </Text>{selected.readOnly ? "Read-only" : "Parent-authorized work"}</Text>
                         </Box>
-                        <Text color={COLORS.dim}>Tools · {selected.allowedTools.length}</Text>
-                        <Box marginBottom={1}><Text>{selected.allowedTools.join(" · ")}</Text></Box>
+                        <Text color={COLORS.dim}>Tools · {selected.allowedTools?.length ?? "Inherited"}</Text>
+                        <Box marginBottom={1}><Text>{selected.allowedTools?.join(" · ") ?? "Available tools from the main agent, excluding parent controls."}</Text></Box>
                         <SelectInput
                             items={selected.source === "builtin" || selected.source === "host"
                                 ? [{label: "Back", value: "back"}]
@@ -538,8 +539,8 @@ export function AgentsDialog({
                         <Text color={COLORS.error}>Operation failed: {error}</Text>
                         <SelectInput
                             items={[{
-                                label: errorReturnStage === "edit"
-                                    ? "Back to editing"
+                                label: errorReturnStage === "preview"
+                                    ? "Back to preview"
                                     : errorReturnStage === "generate"
                                         ? "Back to generation input"
                                         : errorReturnStage === "detail"
@@ -560,10 +561,10 @@ export function AgentsDialog({
             <Box marginTop={1} width={width}><Text color={COLORS.dim}>{
                 stage === "busy" ? "Please wait…"
                     : stage === "generating" ? "Esc cancel generation"
-                    : stage === "edit" ? `Enter ${fieldIndex === EDIT_FIELDS.length - 1 ? "save" : "next"} · Shift+Tab previous · Esc cancel`
+                    : stage === "edit" ? "Enter apply · Esc back"
                     : stage === "generate" ? "Enter generate · Esc cancel"
                     : stage === "list" ? "↑↓ select · Enter open · Esc close"
-                    : stage === "scope" || stage === "method" ? "↑↓ select · Enter continue · Esc cancel"
+                    : stage === "preview" || stage === "tools" || stage === "method" ? "↑↓ select · Enter continue · Esc cancel"
                     : "↑↓ select · Enter confirm · Esc back"
             }</Text></Box>
         </Box>

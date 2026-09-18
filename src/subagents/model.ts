@@ -1,28 +1,9 @@
-export type SubagentModelOverride = "inherit" | "fast";
+import type {AgentDefinition} from "./types.js";
 
-export function resolveSubagentModel({
-    definitionModel,
-    parentModel,
-    fastModel,
-    override,
-}: {
-    definitionModel: SubagentModelOverride;
-    parentModel: string;
-    fastModel: string;
-    override?: SubagentModelOverride;
-}): string {
-    const selection = override ?? definitionModel;
-    if (selection === "inherit") return parentModel;
-    return fastModel;
+export function usesFastSubagentModel(definition: AgentDefinition): boolean {
+    return definition.source === "builtin" && definition.agentType === "Explore";
 }
 
-export function formatSubagentModel(
-    selection: SubagentModelOverride,
-    inheritLabel = "Inherit parent model",
-    fastModel?: string
-): string {
-    if (selection === "inherit") return inheritLabel;
-    return fastModel
-        ? `fast (${fastModel})`
-        : "fast (configured fast model)";
+export function formatSubagentModel(definition: AgentDefinition, fastModel?: string): string {
+    return usesFastSubagentModel(definition) ? `Explore model (${fastModel ?? "configured fast model"})` : "Same as main agent";
 }

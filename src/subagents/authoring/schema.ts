@@ -8,16 +8,14 @@ export const generatedAgentDefinitionSchema = z.object({
     ),
     description: z.string().trim().min(1).max(500),
     system_prompt: z.string().trim().min(1).max(40_000),
-    suggested_tools: z.array(z.string().trim().min(1).max(128)).min(1).max(32),
-    model: z.enum(["inherit", "fast"]).default("inherit"),
-    max_iterations: z.number().int().min(2).max(30).default(12),
+    read_only: z.boolean(),
 }).strict();
 
 export const submitAgentDefinitionTool: OpenAITool = {
     type: "function",
     function: {
         name: "submit_agent_definition",
-        description: "Submit a custom Agent candidate designed with minimal tool permissions.",
+        description: "Submit a custom Agent responsibility and whether it must be read-only. Tools inherit from the parent and the model follows the main agent.",
         parameters: {
             type: "object",
             additionalProperties: false,
@@ -25,22 +23,13 @@ export const submitAgentDefinitionTool: OpenAITool = {
                 "name",
                 "description",
                 "system_prompt",
-                "suggested_tools",
-                "model",
-                "max_iterations",
+                "read_only",
             ],
             properties: {
                 name: {type: "string"},
                 description: {type: "string"},
                 system_prompt: {type: "string"},
-                suggested_tools: {
-                    type: "array",
-                    minItems: 1,
-                    maxItems: 32,
-                    items: {type: "string"},
-                },
-                model: {type: "string", enum: ["inherit", "fast"]},
-                max_iterations: {type: "integer", minimum: 2, maximum: 30},
+                read_only: {type: "boolean"},
             },
         },
     },

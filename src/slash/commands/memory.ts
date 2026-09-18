@@ -129,7 +129,7 @@ export const memoryCommand: SlashCommand = {
             if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
                 await context.onEvent({type: "assistant_text", content: "Cannot consolidate Memory in read-only/Plan mode."}); return;
             }
-            if(!context.ctx.tasks) {await context.onEvent({type:"assistant_text",content:"This Runtime has no Memory maintenance task capability."});return;}
+            if(!context.ctx.tasks || !("startMemory" in context.ctx.tasks)) {await context.onEvent({type:"assistant_text",content:"This Runtime has no Memory maintenance task capability."});return;}
             const task=await context.ctx.tasks.startMemory({turnId:context.ctx.turnId,signal:context.ctx.signal,background:false});
             await context.onEvent({type:"assistant_text",content:task?task.resultPreview??task.outputIssue??`Memory task ${task.status}`:"No pending sources, or consolidation is already running; no new model call was started."});
             return;

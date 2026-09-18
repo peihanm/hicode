@@ -22,8 +22,6 @@ function customDefinition(
         | "whenToUse"
         | "systemPrompt"
         | "allowedTools"
-        | "model"
-        | "maxIterations"
     >> = {}
 ): AgentDefinition {
     return {
@@ -31,8 +29,8 @@ function customDefinition(
         whenToUse: "检查当前项目并返回结论",
         systemPrompt: "你是项目审查 Agent。",
         allowedTools: ["read_file"],
-        model: "inherit",
-        maxIterations: 6,
+
+
         source: "project",
         path: "/fixture/.hicode/agents/project-reviewer.md",
         ...overrides,
@@ -115,19 +113,19 @@ describe("custom subagent runtime", () => {
         });
     });
 
-    test("使用定义中的 fast 模型和精确工具集，并在 default 模式拒绝嵌套写入确认", async () => {
+    test("使用主模型和精确工具集，并在 default 模式拒绝嵌套写入确认", async () => {
         await withTempProject(async (cwd) => {
             let confirmations = 0;
             const registry = createSubagentRegistry({
                 definitions: [customDefinition({
                     allowedTools: ["read_file", "write_file"],
-                    model: "fast",
+
                 })],
                 issues: [],
             });
             const child = createFakeLLM([
                 (options) => {
-                    expect(options.model).toBe("glm-fast-test");
+                    expect(options.model).toBe("glm-test");
                     expect(options.tools.map((tool) => tool.function.name)).toEqual([
                         "read_file",
                         "write_file",

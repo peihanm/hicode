@@ -186,7 +186,7 @@ export function createRootSessionRuntime({
         createContext({signal, host, onEvent, turnId, getSnapshotState}) {
             const ctx = createToolContext({
                 signal, turnId,
-                resources: {...resources, toolNames: resources.toolRuntime.toolNames, contextSettings: resources.settings.context, tasks: taskSession, agentMessaging: taskSession.messaging},
+                resources: {...resources, availableTools: resources.toolRuntime.getTools(), toolNames: resources.toolRuntime.toolNames, contextSettings: resources.settings.context, tasks: taskSession, agentMessaging: taskSession.messaging},
                 session: {
                     approvalEpoch,
                     sessionId: seed.sessionId,
@@ -216,6 +216,7 @@ export function createRootSessionRuntime({
             ctx.commitToolBatch = async () => {
                 if (!hasCompleteToolPairs(history)) throw new Error("Tool batch is not completely paired; refusing another model request");
                 await persistence.save(snapshot(getSnapshotState()));
+                await ctx.agentJoin?.acknowledgeReported();
             };
             ctx.holdHookConfiguration = resources.holdHookConfiguration;
             ctx.onHookEvent = onEvent;

@@ -27,13 +27,13 @@ function definition(
         whenToUse: `${agentType} description`,
         systemPrompt: `${agentType} prompt`,
         allowedTools: ["read_file"],
-        model: "inherit",
-        maxIterations: 12,
+
+
     };
 }
 
 describe("custom agent definitions", () => {
-    test("解析 YAML frontmatter、工具数组、模型和正文", () => {
+    test("解析 YAML frontmatter、工具限制、只读设置和正文", () => {
         const parsed = parseCustomAgentDocument({
             source: "project",
             path: "/repo/.hicode/agents/reviewer.md",
@@ -44,8 +44,7 @@ tools:
   - read_file
   - grep
   - read_file
-model: fast
-max_iterations: 9
+read_only: true
 ---
 
 你是严格的代码审查 Agent。`,
@@ -56,8 +55,8 @@ max_iterations: 9
             agentType: "code-reviewer",
             source: "project",
             allowedTools: ["read_file", "grep"],
-            model: "fast",
-            maxIterations: 9,
+
+
             systemPrompt: "你是严格的代码审查 Agent。",
         });
     });
@@ -89,7 +88,7 @@ review carefully`,
 name: 1bad
 description: bad
 tools: []
-max_iterations: 99
+read_only: invalid
 ---
 body`,
         });

@@ -40,6 +40,7 @@ export interface ApprovalEvent {
     source: ApprovalSource;
     outcome?: "allow" | "deny" | "needs_user" | "error";
     reason?: string;
+    durationMs?: number;
     code?: "policy_denied" | "approval_required" | "review_failed";
 }
 
@@ -130,10 +131,21 @@ export async function requestApproval(
                 source: "user", outcome: "needs_user", code, reason: message.slice(0, 4000)});
             return {source: "user", code, decision: {behavior: "deny", message: `[${code}] This Host does not support permission interaction: ${message}`}};
         }
-        const decision = await withAbort(ctx.canUseTool(toolName, message, structuredClone(input), {...options, signal}), signal);
-        signal.throwIfAborted();
-        if (decision.behavior === "allow") ctx.approvalBudget.record(false);
-        return {source: "user", decision};
+        const startedAt = Date.now();
+        const emit = async (phase: "start" | "end", outcome?: ApprovalEvent["outcome"]) => {
+            if (toolName === "ask_user") return;
+            await ctx.onApprovalEvent?.({type: "approval_review", phase, requestId, turnId: ctx.turnId, toolCallId,
+                source: "user", ...(outcome ? {outcome, durationMs: Math.max(0, Date.now() - startedAt)} : {}),
+                reason: message.startsWith("Rule requires approval:") ? "Explicit ask rule" : options.presentation?.kind ?? "Tool requires additional authorization"});
+        };
+        await emit("start");
+        try {
+            const decision = await withAbort(ctx.canUseTool(toolName, message, structuredClone(input), {...options, signal}), signal);
+            signal.throwIfAborted();
+            if (decision.behavior === "allow") ctx.approvalBudget.record(false);
+            await emit("end", decision.behavior === "allow" ? "allow" : "deny");
+            return {source: "user", decision};
+        } catch (error) {await emit("end", "error"); throw error;}
     };
     if (toolName === "ask_user") return human("approval_required", reason);
     if (mode === "full-access" && ctx.allowFullAccess) return {source: "preauthorized", decision: {behavior: "allow"}};

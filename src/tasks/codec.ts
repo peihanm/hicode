@@ -21,6 +21,9 @@ export type TaskJournalEntry =
     notificationId: string;
 };
 
+const taskTodosSchema = z.array(z.object({content: z.string().max(1024), activeForm: z.string().max(1024),
+    status: z.enum(["pending", "in_progress", "completed"])}).strict()).max(100);
+
 const MAX_ID_CHARACTERS = 512;
 const MAX_LABEL_CHARACTERS = 256;
 const MAX_PATH_CHARACTERS = 16_384;
@@ -31,7 +34,7 @@ const TASK_STATUSES = new Set<AgentTaskStatus>([
     "running", "completed", "failed", "cancelled", "interrupted",
 ]);
 const STOP_REASONS = new Set<StopReason>([
-    "completed", "max_turns", "permission_denied", "hook_blocked", "hook_error", "hook_limit",
+    "completed", "incomplete", "max_turns", "permission_denied", "hook_blocked", "hook_error", "hook_limit",
     "no_tool_calls", "interrupted",
 ]);
 const ABORT_REASONS = new Set([
@@ -209,7 +212,7 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
     const common = decodeCommon(value);
     if (!isRecord(value.progress) || !hasOnlyKeys(value.progress, [
         "runCount", "iterations", "toolUseCount", "pendingMessages",
-        "tokenCount", "lastActivity",
+        "tokenCount", "lastActivity", "lastMessage", "todos",
     ])) return undefined;
     const outputResult = value.outputResult === undefined
         ? undefined
@@ -224,6 +227,8 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
         !safeCount(value.progress.iterations) ||
         !safeCount(value.progress.toolUseCount) ||
         !safeCount(value.progress.pendingMessages) ||
+        (value.progress.todos !== undefined && !taskTodosSchema.safeParse(value.progress.todos).success) ||
+        (value.progress.lastMessage !== undefined && (typeof value.progress.lastMessage !== "string" || value.progress.lastMessage.length > 32 * 1024)) ||
         (value.progress.tokenCount !== undefined && !safeCount(value.progress.tokenCount)) ||
         (value.progress.lastActivity !== undefined &&
             !boundedString(value.progress.lastActivity, MAX_LABEL_CHARACTERS)) ||
@@ -247,6 +252,8 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
             iterations: value.progress.iterations,
             toolUseCount: value.progress.toolUseCount,
             pendingMessages: value.progress.pendingMessages,
+            ...(value.progress.todos !== undefined ? {todos: taskTodosSchema.parse(value.progress.todos)} : {}),
+            ...(typeof value.progress.lastMessage === "string" ? {lastMessage: value.progress.lastMessage} : {}),
             ...(typeof value.progress.tokenCount === "number"
                 ? {tokenCount: value.progress.tokenCount}
                 : {}),

@@ -43,6 +43,8 @@ export function createAgentTask(
                 const queued = binding.messageQueue!.enqueueAgent(message, {
                     sender: id, recipient: "parent", runCount: task.runCount, intent: "message",
                 });
+                task.lastMessage = message;
+                await publishProgress(task);
                 return {messageId: queued.id};
             },
             wait: (timeoutMs: number, signal: AbortSignal) => messageQueue.waitForAgentMessage(timeoutMs, signal),
@@ -151,6 +153,7 @@ export function resetAgentRun(task: ManagedAgentTask, runCount: number): void {
     task.tokenCount = undefined;
     task.lastPublishedTokenCount = 0;
     task.lastActivity = undefined;
+    task.lastMessage = undefined;
     task.reason = undefined;
     task.resultPreview = undefined;
     task.outputResult = undefined;
@@ -164,7 +167,10 @@ async function recordAgentProgress(
     publish: (task: ManagedAgentTask) => Promise<void>
 ): Promise<void> {
     let shouldPublish = false;
-    if (event.type === "iteration") {
+    if (event.type === "subagent_progress" && event.event.type === "todos") {
+        task.todos = event.event.todos.slice(0, 100).map(todo => ({...todo, content: todo.content.slice(0, 1024), activeForm: todo.activeForm.slice(0, 1024)}));
+        shouldPublish = true;
+    } else if (event.type === "iteration") {
         task.iterations = event.current;
         shouldPublish = true;
     } else if (event.type === "tool_call_start") {

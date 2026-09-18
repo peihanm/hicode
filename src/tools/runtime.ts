@@ -10,6 +10,8 @@ import type {Tool, ToolContext} from "./types.js";
 export interface ToolRuntime {
     readonly toolNames: readonly string[];
 
+    getTools(): readonly Tool[];
+
     getToolSchemas(): OpenAITool[];
 
     isConcurrencySafe(name: string, argsJson: string): boolean;
@@ -64,6 +66,7 @@ export function createToolRuntime(
 
     return {
         get toolNames() { synchronize(); return catalog.tools.map(tool => tool.name); },
+        getTools() { synchronize(); return [...catalog.tools]; },
         getToolSchemas() {
             synchronize();
             return discovery.getVisibleSchemas();

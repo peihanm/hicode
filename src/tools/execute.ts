@@ -251,7 +251,8 @@ export async function executeRegisteredTool(
         }
     }
 
-    if (permission.behavior === "ask" || executionMode === "full-access") permissionApproved = true;
+    // A policy allow is authorization too, including the normal workspace scope.
+    permissionApproved = true;
 
 
     let result;

@@ -20,7 +20,7 @@ export function createAgentAuthoringPrompt({
     return [
         "Generate one custom HiCode Agent candidate. Write system_prompt in English; write the user-facing description in the request's language.",
         "Call submit_agent_definition exactly once, with no ordinary response text.",
-        "Give the agent one clear responsibility, explicit invocation criteria and minimal tools. Do not request Agent, Task, Memory, Plan, Todo or Skill control capabilities, or require automatic Git commits.",
+        "Give the agent one clear responsibility and explicit invocation criteria. Set read_only=true for investigation/review that must not change files. Ordinary tools and the main model are inherited; do not invent model tiers, turn limits or a required tool list. Child-owned Todo, Skills and Shell tasks are available within existing permissions. Do not request recursive agents, direct user questions, parent task/Memory management or automatic Git commits.",
         "Specify capability boundaries, work method and final reporting requirements. Do not claim tools outside the list.",
         `Available tools: ${availableToolNames.join(", ")}`,
         `Existing agent names: ${existingAgentNames.join(", ") || "none"}`,

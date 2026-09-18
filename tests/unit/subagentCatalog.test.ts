@@ -13,8 +13,8 @@ function definition(name: string, description = `use ${name}`): AgentDefinition 
         whenToUse: description,
         systemPrompt: `you are ${name}`,
         allowedTools: ["read_file"],
-        model: "inherit",
-        maxIterations: 6,
+
+
         source: "project",
         path: `/tmp/${name}.md`,
     };
@@ -78,7 +78,7 @@ describe("subagent catalog", () => {
         const catalog = createSubagentCatalog({
             initial: {definitions: [definition("stable")], issues: []},
             load: async () => ({
-                definitions: [{...definition("invalid"), maxIterations: 1}],
+                definitions: [{...definition("invalid"), allowedTools: []}],
                 issues: [],
             }),
         });

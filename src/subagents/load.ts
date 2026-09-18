@@ -17,14 +17,12 @@ const MAX_AGENT_PROMPT_CHARS = 40_000;
 const MAX_AGENT_ISSUES = 50;
 const MAX_AGENT_ISSUE_MESSAGE_CHARS = 240;
 const MAX_AGENT_ISSUE_FIELD_CHARS = 80;
-const DEFAULT_CUSTOM_AGENT_ITERATIONS = 12;
 
 const KNOWN_FRONTMATTER_FIELDS = new Set([
     "name",
     "description",
     "tools",
-    "model",
-    "max_iterations",
+    "read_only",
 ]);
 
 const customAgentFrontmatterSchema = z
@@ -39,9 +37,8 @@ const customAgentFrontmatterSchema = z
                 "Must start with a letter and contain only letters, digits, - and _"
             ),
         description: z.string().trim().min(1).max(500),
-        tools: z.array(z.string().trim().min(1).max(128)).min(1).max(32),
-        model: z.enum(["inherit", "fast"]).optional(),
-        max_iterations: z.number().int().min(2).max(30).optional(),
+        read_only: z.boolean().optional(),
+        tools: z.array(z.string().trim().min(1).max(128)).min(1).max(128).optional(),
     })
     .passthrough();
 
@@ -191,16 +188,14 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
         return {issues};
     }
 
-    const allowedTools = [...new Set(parsed.data.tools)];
+    const allowedTools = parsed.data.tools ? [...new Set(parsed.data.tools)] : undefined;
     return {
         definition: {
             agentType: parsed.data.name,
             whenToUse: parsed.data.description,
             systemPrompt: body,
             allowedTools,
-            model: parsed.data.model ?? "inherit",
-            maxIterations:
-                parsed.data.max_iterations ?? DEFAULT_CUSTOM_AGENT_ITERATIONS,
+            readOnly: parsed.data.read_only,
             source: input.source,
             path: input.path,
         },
@@ -390,10 +385,10 @@ export function validateCustomAgentTools(
         if (definition.source === "builtin") {
             throw new Error("LoadedCustomAgents must not include built-in definitions");
         }
-        const forbidden = definition.allowedTools.filter((name) =>
+        const forbidden = (definition.allowedTools ?? []).filter((name) =>
             CUSTOM_AGENT_FORBIDDEN_TOOLS.has(name)
         );
-        const unknown = definition.allowedTools.filter(
+        const unknown = (definition.allowedTools ?? []).filter(
             (name) => !available.has(name)
         );
         if (forbidden.length > 0 || unknown.length > 0) {
@@ -444,9 +439,8 @@ export async function loadCustomAgentDefinitions(
             agentType: agent.name,
             whenToUse: agent.description,
             systemPrompt: agent.systemPrompt,
-            allowedTools: [...new Set(agent.tools)],
-            model: agent.model ?? "inherit",
-            maxIterations: agent.maxIterations ?? DEFAULT_CUSTOM_AGENT_ITERATIONS,
+            allowedTools: agent.tools ? [...new Set(agent.tools)] : undefined,
+            readOnly: agent.readOnly,
             source: "host" as const,
             id: agent.name,
         })),

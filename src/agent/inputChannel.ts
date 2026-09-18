@@ -14,9 +14,15 @@ export interface AgentInputChannel {
     drainInitial(): readonly QueuedAgentInput[];
 
     drainSafeBoundary(): readonly QueuedAgentInput[];
+
+    waitForInput(signal: AbortSignal): Promise<void>;
 }
 
 export const EMPTY_AGENT_INPUT_CHANNEL: AgentInputChannel = {
     drainInitial: () => [],
     drainSafeBoundary: () => [],
+    waitForInput: signal => new Promise((_, reject) => {
+        if (signal.aborted) {reject(signal.reason); return;}
+        signal.addEventListener("abort", () => reject(signal.reason), {once: true});
+    }),
 };

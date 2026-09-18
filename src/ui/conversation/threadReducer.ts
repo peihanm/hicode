@@ -136,6 +136,7 @@ function subagentCompletionLabel(
     event: Extract<AgentEvent, { type: "subagent_end" }>
 ): string {
     if (
+        event.reason === "incomplete" ||
         event.reason === "max_turns" ||
         event.reason === "permission_denied" ||
         event.reason === "interrupted"
@@ -151,7 +152,7 @@ function updateSubagentProgress(
     items: SubagentProgressItem[] | undefined,
     event: Extract<AgentEvent, {type: "subagent_progress"}>["event"]
 ): SubagentProgressItem[] | undefined {
-    if (event.type === "token_update") return items;
+    if (event.type === "token_update" || event.type === "todos") return items;
     if (event.type === "tool_start") {
         return [
             ...(items ?? []),
@@ -189,8 +190,9 @@ export function reduceThreads(
             return [...threads, {id: createId(), role: "coordination_message", text: event.text}];
         case "approval_review":
             return threads.map(thread => thread.role === "tool_call" && thread.toolCallId === event.toolCallId
-                ? {...thread, approvalReview: event.phase === "start" ? "Reviewing permissions automatically" : undefined} : thread);
+                ? {...thread, approvalReview: event.phase === "start" ? event.source === "user" ? "Waiting for approval" : "Reviewing permissions automatically" : undefined} : thread);
         case "iteration":
+        case "agent_wait":
             return threads;
         case "assistant_draft":
         case "assistant_draft_end":

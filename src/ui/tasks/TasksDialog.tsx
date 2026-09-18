@@ -1,16 +1,15 @@
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import type {TaskSessionLike, TaskSnapshot} from "../../tasks/types.js";
 import {COLORS} from "../theme.js";
-import {layoutInputRows} from "../input/MultilineTextInput.js";
-import {useTerminalWidth} from "../terminalSize.js";
+import {layoutTerminalMarkdown} from "../conversation/TerminalMarkdown.js";
+import {useTerminalSize} from "../terminalSize.js";
 import {stripVTControlCharacters} from "node:util";
 import stringWidth from "string-width";
 
 const labels = {running: "Running", completed: "Completed", failed: "Failed", cancelled: "Stopped", interrupted: "Interrupted"};
 const markers = {running: "●", completed: "✓", failed: "!", cancelled: "○", interrupted: "◷"};
 const statusColors = {running: COLORS.accent, completed: COLORS.diffAdded, failed: COLORS.error, cancelled: COLORS.dim, interrupted: COLORS.dim};
-const visibleTasks = 5;
 const title = (task: TaskSnapshot) => (task.kind === "shell" ? task.command : task.kind === "memory" ? "Memory consolidation" : task.description).replace(/\s+/g, " ").trim();
 const clean = (value: string) => stripVTControlCharacters(value).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
 const graphemes = new Intl.Segmenter(undefined, {granularity: "grapheme"});
@@ -26,12 +25,12 @@ function fit(value: string, width: number): string {
 }
 
 function metadata(task: TaskSnapshot): string {
-    const kind = task.kind === "shell" ? "Command" : task.kind === "agent" ? "Agent" : "Memory";
+    const kind = task.kind === "shell" ? "Command" : task.kind === "agent" ? clean(task.agentName ?? task.agentType) : "Memory";
     const elapsed = Math.max(0, Math.floor(((task.completedAt ? Date.parse(task.completedAt) : Date.now()) - Date.parse(task.startedAt)) / 1000));
     if (!Number.isFinite(elapsed)) return kind;
     const duration = elapsed < 60 ? `${elapsed}s` : elapsed < 3600
         ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed / 60) % 60}m`;
-    return `${kind} · ${task.status === "running" ? "Elapsed" : "Run"} ${duration}`;
+    return `${kind} · ${duration}`;
 }
 
 export function TasksDialog({tasks, stopTask, onClose}: {
@@ -49,8 +48,10 @@ export function TasksDialog({tasks, stopTask, onClose}: {
     const alive = useRef(false);
     const revision = useRef(0);
     const detailId = useRef<string>();
-    const width = useTerminalWidth();
-    const panelWidth = Math.max(16, Math.min(88, width - 4));
+    const {width, height} = useTerminalSize();
+    const panelWidth = Math.max(8, Math.min(120, width - 4));
+    const visibleTasks = Math.max(1, Math.floor((height - 13) / 3));
+    const visibleLines = Math.max(2, height - 15 - (panelWidth < 60 ? 1 : 0));
     const compact = panelWidth < 60;
     const refresh = useCallback(async () => {
         const current = ++revision.current;
@@ -74,8 +75,13 @@ export function TasksDialog({tasks, stopTask, onClose}: {
     const index = Math.max(0, items.findIndex(task => task.id === selectedId));
     const active = detail ?? items[index];
     const output = detail?.kind === "shell" ? detail.output : detail?.resultPreview;
-    const rows = layoutInputRows(clean(output || detail?.outputIssue || "No output yet"), Math.max(8, panelWidth - 2));
-    const start = Math.min(offset, Math.max(0, rows.length - 12));
+    const report = detail?.kind === "agent" ? [
+        ...(detail.progress.todos?.length ? ["## Progress", ...detail.progress.todos.map(todo => `${todo.status === "completed" ? "✓" : todo.status === "in_progress" ? "›" : "☐"} ${todo.content}`), ""] : []),
+        ...(detail.progress.lastMessage ? ["## Latest message", detail.progress.lastMessage, ""] : []),
+        "## Result", output || detail.outputIssue || (detail.status === "running" ? "Working…" : "No output yet"),
+    ].join("\n") : output || detail?.outputIssue || "No output yet";
+    const rows = useMemo(() => layoutTerminalMarkdown(clean(report), panelWidth, detail?.kind !== "shell"), [report, panelWidth, detail?.kind]);
+    const start = Math.min(offset, Math.max(0, rows.length - visibleLines));
     useInput((input, key) => {
         if (key.escape) {if (detailId.current) {detailId.current = undefined; setDetail(undefined); setOffset(0);} else onClose(); return;}
         if (busy) return;
@@ -89,55 +95,48 @@ export function TasksDialog({tasks, stopTask, onClose}: {
         if (key.return && !detailId.current && active) {detailId.current = active.id; setOffset(0); void refresh();}
         if (key.upArrow || key.downArrow) {
             const delta = key.upArrow ? -1 : 1;
-            if (detailId.current) setOffset(Math.max(0, Math.min(start + delta, rows.length - 12)));
+            if (detailId.current) setOffset(Math.max(0, Math.min(start + delta, rows.length - visibleLines)));
             else setSelectedId(items[Math.max(0, Math.min(index + delta, items.length - 1))]?.id);
         }
     });
     const listStart = Math.max(0, index - visibleTasks + 1);
     const running = items.filter(task => task.status === "running").length;
-    const rule = "─".repeat(panelWidth);
     const badge = (task: TaskSnapshot) => `${markers[task.status]} ${labels[task.status]}`;
-    const actions = detail ? "↑/↓ scroll · r refresh" : items.length ? "Enter view output · ↑/↓ select" : "r refresh";
-    const secondaryActions = `${active?.status === "running" ? "s stop · " : ""}${!detail && items.length ? "r refresh · " : ""} Esc back`;
+    const actions = detail ? "↑/↓ scroll · r refresh" : items.length ? "↑/↓ select · Enter view output" : "r refresh";
+    const secondaryActions = `${active?.status === "running" ? "s stop · " : ""}Esc ${detail ? "back" : "close"}`;
     return <Box flexDirection="column" marginTop={1} marginBottom={1} paddingLeft={2} width={panelWidth + 2}>
         <Box justifyContent="space-between">
-            <Text bold color={COLORS.accent}>{detail ? "◆ Task output" : panelWidth < 28 ? "◆ Tasks" : "◆ Background tasks"}</Text>
+            <Text bold color={COLORS.accent}>{detail ? "◆ Task output" : "◆ Tasks"}</Text>
             <Text color={COLORS.dim}>{items.length ? `${index + 1} / ${items.length}` : "0 tasks"}</Text>
         </Box>
         {!detail && <Text color={COLORS.dim} wrap="truncate-end">{loaded ? `${running} running · ${items.length - running} finished` : "Loading tasks…"}</Text>}
-        <Text color={COLORS.border}>{rule}</Text>
-        {error && <Box marginTop={1}><Text color={COLORS.error}>{clean(error)}</Text></Box>}
+        {error && <Text color={COLORS.error} wrap="truncate-end">{clean(error)}</Text>}
         {detail ? <>
-            <Box marginTop={1}><Text bold>{clean(title(detail))}</Text></Box>
-            {detail.kind === "shell" && <Text color={COLORS.dim}>{`Launch environment: ${detail.executionMode === "host" ? "Host execution" : "Sandbox execution"}(later permission changes do not affect an already running process)`}</Text>}
-            <Text><Text color={statusColors[detail.status]}>{badge(detail)}</Text><Text color={COLORS.dim}>{` · ${metadata(detail)}`}</Text></Text>
-            {detail.kind === "agent" && <Text color={COLORS.dim}>{`${detail.progress.iterations} rounds · ${detail.progress.toolUseCount} tool calls · ${clean(detail.progress.lastActivity ?? "")}`}</Text>}
-            <Box flexDirection="column" marginTop={1} marginBottom={1} paddingLeft={1}>
-                {rows.slice(start, start + 12).map((row, rowIndex) => <Text key={rowIndex}>{row.text}</Text>)}
+            <Box marginTop={1}><Text bold wrap="truncate-end">{clean(title(detail))}</Text></Box>
+            <Text wrap="truncate-end"><Text color={statusColors[detail.status]}>{badge(detail)}</Text><Text color={COLORS.dim}>{` · ${metadata(detail)}`}</Text></Text>
+            {detail.kind === "shell" && <Text color={COLORS.dim} wrap="truncate-end">{`Environment · ${detail.executionMode === "host" ? "Host" : "Sandbox"}`}</Text>}
+            <Box flexDirection="column" marginTop={1} marginBottom={1}>
+                {rows.slice(start, start + visibleLines).map((row, rowIndex) => <Text key={rowIndex}>{row || " "}</Text>)}
             </Box>
-            <Text color={COLORS.dim}>{`${start + 1}–${Math.min(rows.length, start + 12)} / ${rows.length} lines · current output preview`}</Text>
-        </> : items.length ? items.slice(listStart, listStart + visibleTasks).map((task, position) => {
+            <Text color={COLORS.dim} wrap="truncate-end">{`${start + 1}–${Math.min(rows.length, start + visibleLines)} / ${rows.length} lines`}</Text>
+        </> : items.length ? <Box flexDirection="column" marginTop={1}>{items.slice(listStart, listStart + visibleTasks).map((task, position) => {
             const focused = index === listStart + position;
-            const previous = position > 0 ? items[listStart + position - 1] : undefined;
-            const groupStart = !previous || (previous.status === "running") !== (task.status === "running");
-            const status = badge(task);
-            const commandWidth = panelWidth - stringWidth(status) - 5;
-            return <Box key={task.id} flexDirection="column">
-                {groupStart && <Box marginTop={1} marginBottom={1}><Text color={COLORS.dim} bold>{task.status === "running" ? "Running" : "Recently finished"}</Text></Box>}
+            const progress = task.kind === "agent" ? task.progress.todos?.find(todo => todo.status === "in_progress") : undefined;
+            return <Box key={task.id} flexDirection="column" marginBottom={1}>
                 <Text backgroundColor={focused ? COLORS.surface : undefined}>
                     <Text color={focused ? COLORS.accent : COLORS.dim}>{focused ? "❯ " : "  "}</Text>
-                    <Text bold={focused} color={focused ? COLORS.accent : undefined}>{fit(clean(title(task)), commandWidth)}</Text>
-                    <Text color={statusColors[task.status]}>{`  ${status} `}</Text>
+                    <Text bold={focused}>{fit(clean(title(task)), panelWidth - 2)}</Text>
                 </Text>
-                <Text backgroundColor={focused ? COLORS.surface : undefined} color={COLORS.dim}>{fit(`  ${metadata(task)}`, panelWidth)}</Text>
+                <Text wrap="truncate-end"><Text color={statusColors[task.status]}>{`  ${badge(task)}`}</Text><Text color={COLORS.dim}>{` · ${metadata(task)}${progress ? ` · ${clean(progress.activeForm)}` : ""}`}</Text></Text>
             </Box>;
-        }) : loaded && !error ? <Box flexDirection="column" marginTop={1} marginBottom={1}>
+        })}</Box> : loaded && !error ? <Box flexDirection="column" marginTop={1} marginBottom={1}>
             <Text>○ No background tasks</Text>
             <Text color={COLORS.dim}>Background commands and Agents will appear here.</Text>
         </Box> : null}
-        <Box marginTop={1}><Text color={COLORS.border}>{rule}</Text></Box>
-        {busy ? <Text color={COLORS.accent}>Stopping the selected task…</Text> : compact ? <>
-            <Text color={COLORS.dim}>{actions}</Text><Text color={COLORS.dim}>{secondaryActions}</Text>
-        </> : <Text color={COLORS.dim}>{`${actions} · ${secondaryActions}`}</Text>}
+        <Box marginTop={1} flexDirection="column">
+            {busy ? <Text color={COLORS.accent}>Stopping the selected task…</Text> : compact ? <>
+                <Text color={COLORS.dim}>{actions}</Text><Text color={COLORS.dim}>{secondaryActions}</Text>
+            </> : <Text color={COLORS.dim}>{`${actions} · ${secondaryActions}`}</Text>}
+        </Box>
     </Box>;
 }

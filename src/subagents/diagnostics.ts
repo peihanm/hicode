@@ -73,21 +73,15 @@ export function formatAgentRegistryReport(
 ): string {
     const definitions = registry.listDefinitions();
     const active = definitions.flatMap((definition, index) => {
-        const model = formatSubagentModel(
-            definition.model,
-            "Inherit Root",
-            fastModel
-        );
-        const iterations = definition.maxIterations === undefined
-            ? "Follow Root"
-            : String(definition.maxIterations);
+        const model = formatSubagentModel(definition, fastModel);
+
         return [
             ...(index > 0 ? [""] : []),
             `  ${definition.agentType} · ${definition.source}`,
             ...wrapDetail(definition.whenToUse),
-            `    Model ${model} · maximum turns ${iterations}`,
+            `    Model ${model}`,
             ...wrapDetail(
-                `Tools (${definition.allowedTools.length}) ${definition.allowedTools.join(" · ")}`
+                definition.allowedTools ? `Tools (${definition.allowedTools.length}) ${definition.allowedTools.join(" · ")}` : "Tools inherited from the main agent"
             ),
         ];
     });

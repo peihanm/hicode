@@ -4,10 +4,7 @@ import type {SubagentRegistration} from "./registration.js";
 export const CUSTOM_AGENT_FORBIDDEN_TOOLS = new Set([
     "agent",
     "ask_user",
-    "todo_write",
-    "skill",
     "memory",
-    "task",
 ]);
 
 
@@ -21,15 +18,10 @@ export function createCustomSubagentRegistration(
         definition,
         concurrencySafe: false,
         createRuntimeConfig(parentContext) {
-            const mcpTools = parentContext.mcpManager?.getTools() ?? [];
             return {
-                toolRuntimeOptions: {
-                    allowedToolNames: definition.allowedTools,
-                    additionalTools: mcpTools,
-                },
                 contextResources: {
-                    toolNames: parentContext.toolNames,
-                readOnlyTools: true,
+                    toolNames: parentContext.toolNames, availableTools: parentContext.availableTools,
+                    readOnlyTools: true,
                     storage: parentContext.storage,
                     cwd: parentContext.cwd,
                     workspaceBoundary:

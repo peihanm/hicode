@@ -22,7 +22,7 @@ import { attachSubagentLauncher } from "../helpers/subagentLauncher.js";
 import { executeToolResult } from "../helpers/executeTool.js";
 
 describe("synchronous subagent", () => {
-  test("FixtureWriter 只在 Root 启动时确认一次并使用结构化文件工具", async () => {
+  test("FixtureWriter 在授权工作区内无需重复确认并使用结构化文件工具", async () => {
     await withTempProject(async (cwd) => {
       let confirmations = 0;
       const child = createFakeLLM([
@@ -76,7 +76,7 @@ describe("synchronous subagent", () => {
       );
 
       expect(result.outcome).toBe("ok");
-      expect(confirmations).toBe(1);
+      expect(confirmations).toBe(0);
       expect(await readFile(`${cwd}/general-purpose.txt`, "utf8"))
         .toBe("implemented\n");
     });
@@ -330,12 +330,12 @@ describe("synchronous subagent", () => {
     });
   });
 
-  test("Explore 继承主安全上限并保留最后一次无工具总结", async () => {
+  test("Explore 超过 30 轮仍保留工具并正常完成", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/loop.ts`, "export {};\n");
       const child = createFakeLLM(
         [
-          ...Array.from({ length: 29 }, (_, index) =>
+          ...Array.from({ length: 35 }, (_, index) =>
             assistantToolCall(
               "read_file",
               { path: "loop.ts" },
@@ -343,14 +343,14 @@ describe("synchronous subagent", () => {
             )
           ),
           (options) => {
-            expect(options.tools).toEqual([]);
+            expect(options.tools.map(tool => tool.function.name)).toContain("read_file");
             expect(
               options.messages.some(
                 (message) =>
                   message.role === "user" &&
                   contentText(message.content).includes("The tool execution stage has ended")
               )
-            ).toBe(true);
+            ).toBe(false);
             return assistantText("根据已有证据完成最终报告");
           },
         ]
@@ -372,8 +372,8 @@ describe("synchronous subagent", () => {
 
       expect(result.reason).toBe("completed");
       expect(result.reply).toBe("根据已有证据完成最终报告");
-      expect(result.iterations).toBe(30);
-      expect(child.calls).toHaveLength(30);
+      expect(result.iterations).toBe(36);
+      expect(child.calls).toHaveLength(36);
     });
   });
 

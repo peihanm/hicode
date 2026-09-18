@@ -124,16 +124,17 @@ describe("tool registry contract", () => {
     expect(agent?.function.description).toContain("Complexity or many files alone do not justify delegation");
     expect(agent?.function.description).toContain("Keep immediate blocking work local");
     expect(agent?.function.description).not.toContain("3 个以上文件");
-    expect(JSON.stringify(agent?.function.parameters)).toContain("fast");
+    expect(JSON.stringify(agent?.function.parameters)).not.toContain("fast");
     expect(JSON.stringify(agent?.function.parameters)).toContain("run_in_background");
   });
 
-  test("agent 调用把显式模型层级传给 registered runner", async () => {
+  test("agent 调用不携带模型覆盖", async () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd);
       let selectedModel: string | undefined;
       attachSubagentLauncher(ctx, async (request) => {
-        selectedModel = request.model;
+        expect(request).not.toHaveProperty("model");
+        selectedModel = request.agentType;
         return {
           agentId: "agent-model-test",
           agentType: request.agentType,
@@ -152,14 +153,13 @@ describe("tool registry contract", () => {
           description: "快速调查",
           prompt: "调查一个边界明确的问题",
           subagent_type: "Explore",
-          model: "inherit",
         }),
         ctx,
         "agent-model-call"
       );
 
       expect(result.outcome).toBe("ok");
-      expect(selectedModel).toBe("inherit");
+      expect(selectedModel).toBe("Explore");
     });
   });
 

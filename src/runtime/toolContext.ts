@@ -1,3 +1,5 @@
+import {isParentTaskSession, type ChildTaskAccess} from "../tasks/childAccess.js";
+import {AgentTaskJoin} from "../tasks/agentJoin.js";
 import type {AgentMessaging} from "./agentMessaging.js";
 import type {ContextUsageTracker} from "../context/usage.js";
 import {ApprovalBudget, ApprovalEpoch, type ApprovalReviewer} from "../permissions/approval.js";
@@ -10,7 +12,7 @@ import type {CollaborationMode} from "../collaboration/index.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {Todo} from "../todos.js";
-import type {ToolContext} from "../tools/types.js";
+import type {Tool, ToolContext} from "../tools/types.js";
 import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {FileStateTracker} from "../tools/shared/fileState.js";
@@ -26,6 +28,7 @@ import {
 
 export interface ToolContextResources {
     toolNames: readonly string[];
+    availableTools: readonly Tool[];
     contextSettings: ToolContext["contextSettings"];
     allowFullAccess?: boolean;
     readOnlyTools?: boolean;
@@ -43,7 +46,7 @@ export interface ToolContextResources {
     instructions?: ProjectInstructions;
     mcpManager?: McpManagerLike;
     taskRuntime?: TaskRuntimeLike;
-    tasks?: TaskSessionLike;
+    tasks?: TaskSessionLike | ChildTaskAccess;
     agentMessaging?: AgentMessaging;
     shellRunner: ShellRunnerLike;
     memoryFiles?: MemoryFileAccess;
@@ -90,6 +93,11 @@ export function createToolContext({
     session: ToolContextSession;
     host: ToolContextHost;
 }): ToolContext {
+    const tasks: ToolContext["tasks"] = resources.tasks ?? resources.taskRuntime?.forSession({
+        sessionId: session.sessionId,
+        toolResultStore: session.toolResultStore,
+        allowBackgroundTasks: session.allowBackgroundTasks,
+    });
     return {
         signal,
         allowFullAccess: resources.allowFullAccess ?? false,
@@ -115,6 +123,7 @@ export function createToolContext({
         },
         setTodos: host.setTodos,
         skills: resources.skills,
+        availableTools: resources.availableTools,
         instructions: resources.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
         model: resources.model,
         provider: resources.provider,
@@ -142,11 +151,8 @@ export function createToolContext({
         }),
         mcpManager: resources.mcpManager,
         agentMessaging: resources.agentMessaging,
-        tasks: resources.tasks ?? resources.taskRuntime?.forSession({
-            sessionId: session.sessionId,
-            toolResultStore: session.toolResultStore,
-            allowBackgroundTasks: session.allowBackgroundTasks,
-        }),
+        tasks,
+        ...(tasks && isParentTaskSession(tasks) ? {agentJoin: new AgentTaskJoin(tasks)} : {}),
         ...(session.hookSession ? {hookSession: session.hookSession} : {}),
         shellRunner: resources.shellRunner,
     };

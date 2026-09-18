@@ -1,3 +1,4 @@
+import type {Todo} from "../todos.js";
 import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {SandboxExecutionPreference} from "../sandbox/index.js";
@@ -44,6 +45,8 @@ interface AgentTaskProgress {
     pendingMessages: number;
     tokenCount?: number;
     lastActivity?: string;
+    lastMessage?: string;
+    todos?: Todo[];
 }
 
 export interface AgentTaskSnapshot {

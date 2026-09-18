@@ -7,7 +7,7 @@ import {createAgentTool} from "../../src/tools/agent/agent.js";
 describe("agent definitions", () => {
   test("内置 Agent 各自使用收窄工具集", () => {
     const explore = BUILTIN_SUBAGENT_REGISTRY.get("Explore")!.definition;
-    expect(explore.maxIterations).toBeUndefined();
+    expect(explore).not.toHaveProperty("maxIterations");
     expect(explore.allowedTools).toEqual([
       "list_files",
       "glob",
@@ -21,7 +21,8 @@ describe("agent definitions", () => {
     expect(explore.whenToUse).toContain("can run alongside other work");
     expect(explore.whenToUse).toContain("immediately blocks Root");
     expect(explore.whenToUse).not.toContain("3 个以上文件");
-    expect(explore.model).toBe("fast");
+    expect(explore.readOnly).toBe(true);
+    expect(BUILTIN_SUBAGENT_REGISTRY.get("Worker")!.definition.allowedTools).toBeUndefined();
 
   });
 

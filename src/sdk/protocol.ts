@@ -191,6 +191,7 @@ export type TurnProgressPhase =
     | "stalled";
 
 export type ThreadEventPayload =
+    | {type: "turn.agent_wait"; turnId: string; taskIds: readonly string[]}
     | {type: "turn.approval_review"; turnId: string; review: import("../permissions/approval.js").ApprovalEvent}
     | {type: "turn.settled"; turnId: string; input: Extract<HookInput, {hook_event_name: "TurnEnd"}>}
     | {type: "turn.draft"; turnId: string; responseId: string; text: string; truncated: boolean}

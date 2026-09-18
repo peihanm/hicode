@@ -86,39 +86,82 @@ function parseMarkdown(value: string): MarkdownBlock[] {
     return blocks;
 }
 
-function inlineMarkdown(value: string): ReactNode[] {
+interface MarkdownSpan {text: string; bold?: boolean; color?: string; underline?: boolean}
+
+function inlineSpans(value: string): MarkdownSpan[] {
     const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\[[^\]\n]+]\([^)\n]+\))/g;
-    const nodes: ReactNode[] = [];
+    const spans: MarkdownSpan[] = [];
     let cursor = 0;
     for (const match of value.matchAll(pattern)) {
         const start = match.index ?? 0;
-        if (start > cursor) nodes.push(value.slice(cursor, start));
+        if (start > cursor) spans.push({text: value.slice(cursor, start)});
         const token = match[0];
-        if (token.startsWith("`")) {
-            nodes.push(
-                <Text key={`${start}:code`} color={COLORS.toolName}>
-                    {token.slice(1, -1)}
-                </Text>
-            );
-        } else if (token.startsWith("**") || token.startsWith("__")) {
-            nodes.push(
-                <Text key={`${start}:bold`} bold>
-                    {token.slice(2, -2)}
-                </Text>
-            );
-        } else {
+        if (token.startsWith("`")) spans.push({text: token.slice(1, -1), color: COLORS.toolName});
+        else if (token.startsWith("**") || token.startsWith("__")) spans.push({text: token.slice(2, -2), bold: true});
+        else {
             const link = token.match(/^\[([^\]]+)]\(([^)]+)\)$/)!;
-            nodes.push(
-                <Text key={`${start}:link`}>
-                    <Text color={COLORS.accent} underline>{link[1]}</Text>
-                    <Text color={COLORS.dim}> ({link[2]})</Text>
-                </Text>
-            );
+            spans.push({text: link[1]!, color: COLORS.accent, underline: true}, {text: ` (${link[2]})`, color: COLORS.dim});
         }
         cursor = start + token.length;
     }
-    if (cursor < value.length) nodes.push(value.slice(cursor));
-    return nodes;
+    if (cursor < value.length) spans.push({text: value.slice(cursor)});
+    return spans;
+}
+
+function renderSpans(spans: readonly MarkdownSpan[]): ReactNode {
+    return spans.map(({text, ...style}, index) => <Text key={index} {...style}>{text}</Text>);
+}
+
+function inlineMarkdown(value: string): ReactNode {return renderSpans(inlineSpans(value));}
+
+/** Parse before wrapping and slicing: styles and code fences survive viewport boundaries. */
+export function layoutTerminalMarkdown(value: string, width: number, markdown = true): ReactNode[] {
+    const lines: ReactNode[] = [];
+    const columns = Math.max(1, width);
+    const segmenter = new Intl.Segmenter(undefined, {granularity: "grapheme"});
+    const wrap = (spans: readonly MarkdownSpan[], code = false) => {
+        let row: MarkdownSpan[] = [];
+        let used = 0;
+        const flush = () => {lines.push(renderSpans(row)); row = []; used = 0;};
+        for (const span of spans) {
+            const words = code ? [span.text] : span.text.split(/(\s+)/);
+            for (const word of words) {
+                if (!code && used && word.trim() && stringWidth(word) <= columns && used + stringWidth(word) > columns) flush();
+                for (const {segment} of segmenter.segment(word.replace(/\t/g, "    "))) {
+                    const size = stringWidth(segment);
+                    if (used && used + size > columns) flush();
+                    if (!code && !used && segment === " " && word.trim() === "") continue;
+                    if (size > columns) continue;
+                    const last = row.at(-1);
+                    if (last && last.bold === span.bold && last.color === span.color && last.underline === span.underline) last.text += segment;
+                    else row.push({...span, text: segment});
+                    used += size;
+                }
+            }
+        }
+        flush();
+    };
+    if (!markdown) {
+        for (const line of value.split("\n")) wrap([{text: line}], true);
+        return lines;
+    }
+    for (const block of parseMarkdown(value)) {
+        if (block.type === "blank") lines.push(" ");
+        else if (block.type === "code") for (const line of block.lines) wrap([{text: line || " ", color: COLORS.toolResult}], true);
+        else if (block.type === "table") {
+            const widths = tableColumnWidths(block.rows, columns);
+            for (const [index, row] of block.rows.entries()) wrap([{text: widths.map((size, column) => {
+                const text = truncateDisplay(inlineSpans(row[column] ?? "").map(span => span.text).join(""), size);
+                return text + " ".repeat(Math.max(0, size - stringWidth(text)));
+            }).join("  "), bold: index === 0}], true);
+        } else {
+            const spans = inlineSpans(block.text);
+            if (block.type === "heading") for (const span of spans) {span.bold = true; span.color ??= COLORS.accent;}
+            if (block.type === "bullet") spans.unshift({text: `${block.indent}${block.marker} `});
+            wrap(spans);
+        }
+    }
+    return lines.length ? lines : [" "];
 }
 
 function truncateDisplay(value: string, width: number): string {

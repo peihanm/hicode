@@ -30,9 +30,8 @@ export interface HostAgentContribution {
     readonly name: string;
     readonly description: string;
     readonly systemPrompt: string;
-    readonly tools: readonly string[];
-    readonly model?: "inherit" | "fast";
-    readonly maxIterations?: number;
+    readonly tools?: readonly string[];
+    readonly readOnly?: boolean;
 }
 
 export interface HiCodeRootContributions {
@@ -58,9 +57,8 @@ const agentSchema: z.ZodType<HostAgentContribution> = z.object({
     name: agentNameSchema,
     description: z.string().trim().min(1).max(500),
     systemPrompt: z.string().trim().min(1).max(MAX_INLINE_CONTENT_CHARS),
-    tools: z.array(z.string().trim().min(1).max(128)).min(1).max(32),
-    model: z.enum(["inherit", "fast"]).optional(),
-    maxIterations: z.number().int().min(2).max(30).optional(),
+    readOnly: z.boolean().optional(),
+    tools: z.array(z.string().trim().min(1).max(128)).min(1).max(128).optional(),
 }).strict();
 
 const contributionsSchema: z.ZodType<HiCodeRootContributions> = z.object({

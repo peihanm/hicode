@@ -1,3 +1,5 @@
+import type {ChildTaskAccess} from "../tasks/childAccess.js";
+import type {AgentTaskJoin} from "../tasks/agentJoin.js";
 import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {ContextUsageTracker} from "../context/usage.js";
 import type {ImageAccess} from "../images/access.js";
@@ -95,6 +97,7 @@ export interface ToolContext {
 
     // Skills loaded at startup for the Skill tool.
     skills: LoadedSkill[];
+    availableTools: readonly Tool[];
     instructions: ProjectInstructions;
 
     // Current model name for environment and context-window calculations.
@@ -152,7 +155,8 @@ export interface ToolContext {
     mcpManager?: McpManagerLike;
 
     // Session task view; Root owns task state and children do not inherit it by default.
-    tasks?: TaskSessionLike;
+    tasks?: TaskSessionLike | ChildTaskAccess;
+    agentJoin?: AgentTaskJoin;
     agentMessaging?: AgentMessaging;
 
     // Session Hook lifecycle state for atomic once claims.

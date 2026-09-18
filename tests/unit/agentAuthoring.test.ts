@@ -23,22 +23,19 @@ describe("agent authoring", () => {
                 name: "frontend-specialist",
                 description: "实现前端结构和样式",
                 system_prompt: "只处理前端任务，修改后报告文件。",
-                suggested_tools: ["list_files", "read_file", "grep", "edit_file"],
-                model: "inherit",
-                max_iterations: 10,
+                read_only: false,
             }
         )]);
         const candidate = await runtime(fake).generate("创建一个前端 Agent");
         expect(candidate).toMatchObject({
             name: "frontend-specialist",
-            maxIterations: 10,
-            model: "inherit",
+            readOnly: false,
         });
         expect(fake.calls[0]?.kind).toBe("agent_authoring");
         expect(fake.calls[0]?.tools).toHaveLength(1);
     });
 
-    test("拒绝正文、未知工具和重名候选", async () => {
+    test("拒绝正文、扩权字段和重名候选", async () => {
         await expect(runtime(createFakeLLM([
             assistantText("{\"name\":\"bad\"}"),
         ])).generate("create")).rejects.toThrow("ordinary text");
@@ -47,13 +44,12 @@ describe("agent authoring", () => {
             "submit_agent_definition",
             {
                 name: "unknown-tool",
+                suggested_tools: ["agent"],
                 description: "bad",
                 system_prompt: "bad",
-                suggested_tools: ["bash"],
-                model: "inherit",
-                max_iterations: 8,
+                read_only: false,
             }
-        )])).generate("create")).rejects.toThrow("tools unavailable in this Runtime");
+        )])).generate("create")).rejects.toThrow("validation failed");
 
         await expect(runtime(createFakeLLM([assistantToolCall(
             "submit_agent_definition",
@@ -61,9 +57,7 @@ describe("agent authoring", () => {
                 name: "Explore",
                 description: "duplicate",
                 system_prompt: "duplicate",
-                suggested_tools: ["read_file"],
-                model: "inherit",
-                max_iterations: 8,
+                read_only: false,
             }
         )])).generate("create")).rejects.toThrow("already exists");
     });
@@ -73,9 +67,7 @@ describe("agent authoring", () => {
             name: "mixed-response",
             description: "mixed",
             system_prompt: "mixed",
-            suggested_tools: ["read_file"],
-            model: "inherit",
-            max_iterations: 8,
+            read_only: false,
         });
         response.message = {
             ...response.message,

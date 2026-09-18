@@ -3,7 +3,6 @@ import type {LLMCaller} from "../../llm/types.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
 import type {ModelSourceSettings, ModelTargetSettings} from "../../settings/types.js";
 import type {HiCodeStorageLayout} from "../../persistence/index.js";
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "../custom.js";
 import type {AgentDefinitionDraft} from "../store.js";
 import {createAgentAuthoringPrompt} from "./prompt.js";
 import {generatedAgentDefinitionSchema, submitAgentDefinitionTool,} from "./schema.js";
@@ -34,7 +33,6 @@ export function createAgentDefinitionGenerator(
         availableToolNames: readonly string[];
         getExistingAgentNames(): readonly string[];
     }): AgentAuthoringRuntime {
-        const allowedTools = new Set(availableToolNames);
         return {
             async generate(requirement, signal) {
                 const normalized = requirement.trim();
@@ -83,17 +81,6 @@ export function createAgentDefinitionGenerator(
                 if (!parsed.success) {
                     throw new Error(`Agent candidate validation failed: ${parsed.error.message}`);
                 }
-                const suggestedTools = [...new Set(parsed.data.suggested_tools)];
-                const forbidden = suggestedTools.filter((tool) =>
-                    CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool)
-                );
-                if (forbidden.length > 0) {
-                    throw new Error(`The model suggested forbidden tools: ${forbidden.join(", ")}`);
-                }
-                const unknown = suggestedTools.filter((tool) => !allowedTools.has(tool));
-                if (unknown.length > 0) {
-                    throw new Error(`The model suggested tools unavailable in this Runtime: ${unknown.join(", ")}`);
-                }
                 if (getExistingAgentNames().some((name) =>
                     name.toLocaleLowerCase("en-US") ===
                     parsed.data.name.toLocaleLowerCase("en-US")
@@ -104,9 +91,7 @@ export function createAgentDefinitionGenerator(
                     name: parsed.data.name,
                     description: parsed.data.description,
                     systemPrompt: parsed.data.system_prompt,
-                    tools: suggestedTools,
-                    model: parsed.data.model,
-                    maxIterations: parsed.data.max_iterations,
+                    readOnly: parsed.data.read_only,
                 };
             },
         };

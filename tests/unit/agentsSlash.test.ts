@@ -15,8 +15,8 @@ describe("/agents slash command", () => {
                 whenToUse: "审查实现风险",
                 systemPrompt: "review",
                 allowedTools: ["read_file", "grep"],
-                model: "fast",
-                maxIterations: 7,
+
+
                 source: "project",
                 path: `${cwd}/.hicode/agents/reviewer.md`,
             };
@@ -55,7 +55,7 @@ describe("/agents slash command", () => {
             expect(messages).toHaveLength(1);
             expect(messages[0]).toContain("Agents · 3 available");
             expect(messages[0]).toContain("reviewer · project");
-            expect(messages[0]).toContain("Model fast (glm-fast-test) · maximum turns 7");
+            expect(messages[0]).toContain("Model Same as main agent");
             expect(messages[0]).toContain("Tools (2) read_file · grep");
             expect(messages[0]).toContain("Loading issues · 1");
             expect(messages[0]).toContain("ERROR · user · broken.md · tools");

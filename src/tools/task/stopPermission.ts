@@ -9,7 +9,7 @@ export async function checkTaskStopPermission(
     if (!taskId) return {behavior: "deny", message: "stop requires task_id"};
     // list does not consume notifications; Runtime revalidates ownership when stopping.
     const task = (await ctx.tasks.list()).find(task =>
-        task.id === taskId && task.owner.sessionId === ctx.sessionId
+        task.id === taskId && task.owner.sessionId === ctx.tasks?.sessionId
     );
     if (!task) return {behavior: "deny", message: `Background task not found: ${taskId}`};
     return {behavior: "allow"};

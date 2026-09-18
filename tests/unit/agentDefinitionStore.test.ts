@@ -12,8 +12,8 @@ function draft(description = "检查项目实现"): AgentDefinitionDraft {
         name: "project-reviewer",
         description,
         tools: ["read_file", "grep"],
-        model: "inherit",
-        maxIterations: 8,
+
+
         systemPrompt: "你只负责检查项目并返回证据。",
     };
 }

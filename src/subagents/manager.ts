@@ -25,19 +25,21 @@ export interface AgentDefinitionManager {
     ): Promise<AgentCatalogUpdate>;
 
     reload(): Promise<AgentCatalogUpdate>;
+
+    listTools(): readonly string[];
 }
 
 function validateTools(
     draft: AgentDefinitionDraft,
     availableTools: ReadonlySet<string>
 ): void {
-    const forbidden = draft.tools.filter((tool) =>
+    const forbidden = (draft.tools ?? []).filter((tool) =>
         CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool)
     );
     if (forbidden.length > 0) {
         throw new Error(`Agent cannot use control-plane tools: ${forbidden.join(", ")}`);
     }
-    const unknown = draft.tools.filter((tool) => !availableTools.has(tool));
+    const unknown = (draft.tools ?? []).filter((tool) => !availableTools.has(tool));
     if (unknown.length > 0) {
         throw new Error(`Tool does not exist in this Runtime: ${unknown.join(", ")}`);
     }
@@ -53,6 +55,7 @@ export function createAgentDefinitionManager({
     getAvailableToolNames(): readonly string[];
 }): AgentDefinitionManager {
     return {
+        listTools: () => getAvailableToolNames().filter(name => !CUSTOM_AGENT_FORBIDDEN_TOOLS.has(name)),
         read: (scope, name) => store.read(scope, name),
         async create(scope, draft) {
             validateTools(draft, new Set(getAvailableToolNames()));

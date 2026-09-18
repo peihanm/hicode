@@ -1,3 +1,7 @@
+import {childTaskTool} from "../tools/task/task.js";
+import {createToolCatalog} from "../tools/catalog.js";
+import {createChildTaskAccess} from "../tasks/childAccess.js";
+import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./custom.js";
 import {ensureSessionIdentity} from "../persistence/projectState.js";
 import {finishPromptLogRun} from "../llm/promptLog.js";
 import type {LLMTrace} from "../llm/types.js";
@@ -7,7 +11,7 @@ import {persistPreparedImage} from "../images/persist.js";
 import {imageReferences} from "../images/content.js";
 import type {HookInput} from "../hooks/types.js";
 import {randomUUID} from "node:crypto";
-import {DEFAULT_SUBAGENT_MAX_ITERATIONS} from "../agent/constants.js";
+import type {Todo} from "../todos.js";
 import type {AgentRunner} from "../agent/runner.js";
 import {createCompactState} from "../context/state.js";
 import type {ToolResultStore} from "../toolResults/index.js";
@@ -30,7 +34,7 @@ import type {
 } from "./types.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../agent/inputChannel.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
-import {resolveSubagentModel} from "./model.js";
+import {usesFastSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/shared/fileState.js";
 import {resolveSubagentDirectory, subagentInstructions, subagentPermissionRules} from "./workspace.js";
 
@@ -41,12 +45,6 @@ interface SubagentRunnerDependencies {
 
     createToolResultStore(cwd: string, sessionId: string): ToolResultStore;
 }
-
-const DEFAULT_FINALIZE_PROMPT = [
-    "The tool execution stage has ended.",
-    "Do not call tools. Produce the final task report from evidence already in History.",
-    "Answer the assigned task in the user's language. Report completed changes, actual verification and unfinished work; never claim unperformed checks passed.",
-].join("\n");
 
 async function emit(
     callback: CreateSubagentRunnerOptions["onEvent"],
@@ -75,30 +73,32 @@ export function createSubagentFactories(
         }
         const {definition} = registration;
         const runtimeConfig = registration.createRuntimeConfig(parentContext);
-        const writable = request.workspaceWriteApproved === true && request.readOnly !== true &&
+        const writable = request.workspaceWriteApproved === true && request.readOnly !== true && !definition.readOnly &&
             !parentContext.readOnlyTools && parentContext.collaborationMode !== "plan";
         runtimeConfig.contextResources.readOnlyTools = !writable;
         runtimeConfig.permissionRules = subagentPermissionRules(parentContext);
-        const runtime = createToolRuntime({...runtimeConfig.toolRuntimeOptions,
-            allowedToolNames: [...(runtimeConfig.toolRuntimeOptions.allowedToolNames ?? []), ...(options.agentMessaging ? ["agent_message"] : [])]
-                .filter(name => parentContext.toolNames.includes(name))
-                .filter(name => writable || definition.agentType !== "Worker" || ["list_files", "glob", "read_file", "grep", "agent_message"].includes(name)),
+        const canMessageParent = options.agentMessaging !== undefined && parentContext.toolNames.includes("agent_message");
+        const tools = parentContext.availableTools.filter(tool =>
+            parentContext.toolNames.includes(tool.name) && !CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool.name) &&
+            (definition.allowedTools === undefined || definition.allowedTools.includes(tool.name) || (tool.name === "agent_message" && canMessageParent)) &&
+            (tool.name !== "agent_message" || canMessageParent) &&
+            (tool.name !== "task" || parentContext.tasks !== undefined) &&
+            (tool.name !== "skill" || parentContext.skills.length > 0))
+            .map(tool => tool.name === "task" ? childTaskTool(tool) : tool);
+        const builtinNames = new Set(createToolCatalog({}).tools.map(tool => tool.name));
+        const runtime = createToolRuntime({
+            allowedToolNames: tools.map(tool => tool.name),
+            toolOverrides: tools.filter(tool => builtinNames.has(tool.name)),
+            additionalTools: tools.filter(tool => !builtinNames.has(tool.name)),
         });
+        const childSkills = definition.source === "builtin" && definition.agentType === "Explore" ? [] : structuredClone(parentContext.skills);
+        const childTasks = parentContext.tasks ? createChildTaskAccess(parentContext.tasks, parentContext.toolResultFiles) : undefined;
         const initialToolNames = runtime.getToolSchemas()
             .map((tool) => tool.function.name);
-        const modelSelection = request.model ?? definition.model;
-        const childModel = resolveSubagentModel({
-            definitionModel: definition.model,
-            parentModel: parentContext.model,
-            fastModel: parentContext.fastModel,
-            override: request.model,
-        });
-        const runChildAgent = modelSelection === "fast"
-            ? dependencies.fastRunAgent
-            : dependencies.primaryRunAgent;
-        const childProvider = modelSelection === "fast"
-            ? parentContext.fastProvider
-            : parentContext.provider;
+        const useFastModel = usesFastSubagentModel(definition);
+        const childModel = useFastModel ? parentContext.fastModel : parentContext.model;
+        const runChildAgent = useFastModel ? dependencies.fastRunAgent : dependencies.primaryRunAgent;
+        const childProvider = useFastModel ? parentContext.fastProvider : parentContext.provider;
         const childSessionId = `subagent-${agentId}`;
         const childHistory: Message[] = request.contextSnapshot !== undefined
             ? structuredClone(request.contextSnapshot.history)
@@ -124,6 +124,7 @@ export function createSubagentFactories(
         let transcriptStarted = false;
         let transcriptDisabled = false;
         let transcriptIssue: string | undefined;
+        let childTodos: Todo[] = [];
         let running = false;
         let runCount = 0;
         let childCwd: string | undefined;
@@ -176,9 +177,11 @@ export function createSubagentFactories(
                         // Construct fields explicitly so future Root capabilities cannot leak into children automatically.
                         resources: {
                             ...runtimeConfig.contextResources,
-                            cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames,
+                            cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames, availableTools: runtime.getTools(),
+                            skills: childSkills,
+                            tasks: childTasks?.tasks,
                             fileCommits: parentContext.fileCommits,
-                            agentMessaging: options.agentMessaging,
+                            agentMessaging: canMessageParent ? options.agentMessaging : undefined,
                             // Children gain edit authority only from their own actual reads.
                             model: childModel,
                             provider: childProvider,
@@ -192,7 +195,7 @@ export function createSubagentFactories(
                             compactState: childCompactState,
                             contextUsage: childContextUsage,
                             toolResultStore: childToolResultStore,
-                            toolResultFiles: childToolResultFiles,
+                            toolResultFiles: {resolveFile: async path => await (childToolResultFiles ?? childToolResultStore).resolveFile(path) ?? await childTasks?.files.resolveFile(path) ?? null},
                         },
                         host: {
                             canUseTool: async () => ({
@@ -204,7 +207,10 @@ export function createSubagentFactories(
                             getCollaborationMode: () => runtimeConfig.collaborationMode,
                             getPermissionPromptPolicy: () =>
                                 runtimeConfig.permissionPromptPolicy,
-                            setTodos() {
+                            async setTodos(todos) {
+                                childTodos = structuredClone(todos);
+                                await recordChildEvent({type: "subagent_progress", agentId,
+                                    event: {type: "todos", todos: structuredClone(childTodos)}});
                             },
                         },
                     });
@@ -307,11 +313,9 @@ export function createSubagentFactories(
                                 },
                             });
                         }
+                        if (event.type === "subagent_progress") await emit(onEvent, event);
                         await onChildEvent?.(event);
                     };
-                    const totalBudget =
-                        definition.maxIterations ?? DEFAULT_SUBAGENT_MAX_ITERATIONS;
-                    const explorationBudget = Math.max(1, totalBudget - 1);
                     const childPrompt = firstRun && request.contextSnapshot !== undefined
                         ? createForkDirective({
                             name: request.name ?? definition.agentType,
@@ -327,36 +331,17 @@ export function createSubagentFactories(
                         childContext,
                         input.inputChannel,
                         {
-                            maxIterations: explorationBudget,
+                            getTodos: () => childTodos,
                             inputOrigin: "agent",
                             getToolSchemas: runtime.getToolSchemas,
                             isToolConcurrencySafe: runtime.isConcurrencySafe,
                             executeTool: executeChildTool,
                         }
                     );
-                    let totalIterations = result.iterations;
-                    if (
-                        (result.reason === "max_turns" ||
-                            result.reason === "permission_denied") &&
-                        !input.signal.aborted &&
-                        totalBudget > 1
-                    ) {
-                        const finalized = await runChildAgent(
-                            DEFAULT_FINALIZE_PROMPT,
-                            childHistory,
-                            recordChildEvent,
-                            childContext,
-                            input.inputChannel,
-                            {
-                                maxIterations: 1,
-                                inputOrigin: "agent",
-                                getToolSchemas: () => [],
-                                isToolConcurrencySafe: runtime.isConcurrencySafe,
-                                executeTool: executeChildTool,
-                            }
-                        );
-                        result = finalized;
-                        totalIterations += finalized.iterations;
+                    if ((result.reason === "completed" || result.reason === "no_tool_calls") &&
+                        childTodos.some(todo => todo.status !== "completed")) {
+                        result = {...result, reason: "incomplete",
+                            reply: `${result.reply}\n\nUnfinished child tasks:\n${childTodos.filter(todo => todo.status !== "completed").map(todo => `- ${todo.content}`).join("\n")}`};
                     }
                     const subagentResult: SubagentResult = {
                         agentId,
@@ -365,7 +350,7 @@ export function createSubagentFactories(
                         description: request.description,
                         reply: result.reply,
                         reason: result.reason,
-                        iterations: totalIterations,
+                        iterations: result.iterations,
                         toolUseCount,
                         durationMs: Date.now() - startedAt,
                         ...(transcriptPath ? {transcriptPath} : {}),

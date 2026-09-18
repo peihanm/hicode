@@ -73,7 +73,7 @@ describe("fork subagent", () => {
         });
     });
 
-    test("只读 Fork 继承父对话、使用固定工具集并以具名 Task 返回", async () => {
+    test("只读 Fork 继承父对话、继承正常工具但保留只读限制并以具名 Task 返回", async () => {
         await withTempProject(async (cwd) => {
             const parentToolCallId = "fork-frontend-call";
             const history: Message[] = [
@@ -107,12 +107,9 @@ describe("fork subagent", () => {
                         message.role === "user" &&
                         contentText(message.content).includes("主题为白色")
                     )).toBe(true);
-                    expect(options.tools.map((tool) => tool.function.name)).toEqual([
-                        "list_files",
-                        "read_file",
-                        "grep",
-                        "glob",
-                    ]);
+                    expect(options.tools.map(tool => tool.function.name)).toContain("todo_write");
+                        expect(options.tools.map(tool => tool.function.name)).not.toContain("agent");
+                        expect(options.tools.map(tool => tool.function.name)).not.toContain("ask_user");
                     return assistantText("frontend 已理解父上下文");
                 },
             ]);
@@ -197,17 +194,9 @@ describe("fork subagent", () => {
                 ];
                 const child = createFakeLLM([
                     (options) => {
-                        expect(options.tools.map((tool) => tool.function.name).sort())
-                            .toEqual([
-                                "list_files",
-                                "glob",
-                                "read_file",
-                                "grep",
-                                "edit_file",
-                                "write_file",
-                                "delete_file",
-                                "bash",
-                            ].sort());
+                        expect(options.tools.map(tool => tool.function.name)).toContain("todo_write");
+                        expect(options.tools.map(tool => tool.function.name)).not.toContain("agent");
+                        expect(options.tools.map(tool => tool.function.name)).not.toContain("ask_user");
                         return assistantToolCall(
                             "write_file",
                             {
@@ -316,7 +305,7 @@ describe("fork subagent", () => {
                 for (const context of ["fresh", "inherit"] as const) {
                     attachSubagentLauncher(ctx, async request => {
                         expect(request.agentType).toBe(role);
-                        expect(request.model).toBe("fast");
+                        expect(request).not.toHaveProperty("model");
                         expect(request.contextSnapshot !== undefined).toBe(context === "inherit");
                         if (request.contextSnapshot) {
                             expect(request.contextSnapshot.history[1]?.content).toBe("shared background");
@@ -327,7 +316,7 @@ describe("fork subagent", () => {
                     }, () => history);
                     const result = await executeToolResult("agent", JSON.stringify({
                         description: "inspect", prompt: "inspect", subagent_type: role,
-                        context, model: "fast", read_only: true,
+                        context, read_only: true,
                     }), ctx, "spawn");
                     expect(result.outcome).toBe("ok");
                 }

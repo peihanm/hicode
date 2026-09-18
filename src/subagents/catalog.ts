@@ -22,8 +22,7 @@ function definitionFingerprint(definition: AgentDefinition): string {
         whenToUse: definition.whenToUse,
         systemPrompt: definition.systemPrompt,
         allowedTools: definition.allowedTools,
-        model: definition.model,
-        maxIterations: definition.maxIterations,
+        readOnly: definition.readOnly,
         source: definition.source,
         origin: definition.source === "host"
             ? definition.id

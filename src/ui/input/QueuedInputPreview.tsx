@@ -19,9 +19,10 @@ export function QueuedInputPreview({
 }) {
     const terminalWidth = useTerminalWidth();
     const userInputs = messages.filter(
-        (message) => message.type === "user_input" || message.type === "agent_message"
+        (message) => message.type === "user_input"
     );
-    if (userInputs.length === 0) return null;
+    const agentMessages = messages.filter(message => message.type === "agent_message").length;
+    if (userInputs.length === 0) return agentMessages ? <Text color={COLORS.dim}>{`● ${agentMessages} agent ${agentMessages === 1 ? "message" : "messages"} pending · /tasks`}</Text> : null;
 
     const contentWidth = Math.max(1, terminalWidth - 4);
     const visible = userInputs.slice(0, MAX_VISIBLE_INPUTS);
@@ -31,7 +32,7 @@ export function QueuedInputPreview({
         <Box flexDirection="column">
             {visible.map((message) => {
                 const rows = layoutInputRows(
-                    sanitizePreview(`${message.type === "agent_message" ? "Agent: " : ""}${userContentText(message.content)}`),
+                    sanitizePreview(userContentText(message.content)),
                     contentWidth
                 );
                 const shown = rows.slice(0, MAX_VISUAL_LINES_PER_INPUT);
@@ -49,7 +50,7 @@ export function QueuedInputPreview({
                 );
             })}
             <Text color={COLORS.dim}>
-                {userInputs.some(message => message.type === "user_input") ? "↑ Edit queued message" : "Agent messages will be delivered at the next safe boundary"}
+                ↑ Edit queued message
                 {remaining > 0 ? ` · plus ${remaining} more` : ""}
             </Text>
         </Box>

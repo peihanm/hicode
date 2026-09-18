@@ -80,25 +80,26 @@ test("未公开工具的取消批次仍完整配对", async () => {
     });
 });
 
-test("子 Agent 用尽预算后的无工具总结不能再次写入文件", async () => {
+test("子 Agent 显式工具限制在后续请求中仍拒绝未提供的写入工具", async () => {
     await withTempProject(async cwd => {
         const registry = createSubagentRegistry({issues: [], definitions: [{
-            agentType: "writer", whenToUse: "fixture", systemPrompt: "fixture", allowedTools: ["list_files", "write_file"],
-            model: "inherit", maxIterations: 2, source: "host", id: "writer",
+            agentType: "writer", whenToUse: "fixture", systemPrompt: "fixture", allowedTools: ["list_files"],
+            source: "host", id: "writer",
         }]});
         const fake = createFakeLLM([
             assistantToolCall("list_files", {}, "first"),
             options => {
-                expect(options.tools).toEqual([]);
+                expect(options.tools.map(tool => tool.function.name)).toEqual(["list_files"]);
                 return assistantToolCall("write_file", {path: "late.txt", content: "unexpected"}, "late");
             },
+            assistantText("The role cannot write files."),
         ]);
         const runner = createSubagentRunnerForTest({registry, parentContext: createTestContext(cwd),
             onEvent() {}, agentOptions: {callLLM: fake.callLLM}});
         const result = await runner({ agentType: "writer", description: "fixture",
             prompt: "test", parentToolCallId: "parent"});
-        expect(result.reason).toBe("max_turns");
-        expect(fake.calls).toHaveLength(2);
+        expect(result.reason).toBe("completed");
+        expect(fake.calls).toHaveLength(3);
         await expect(access(join(cwd, "late.txt"))).rejects.toThrow();
     });
 });

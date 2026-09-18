@@ -71,6 +71,7 @@ export function createTestContext(
   const context = createToolContext({
     signal: options.signal ?? new AbortController().signal,
     resources: {
+      availableTools: [...createToolRuntime().getTools().filter(tool => !options.mcpManager?.getTools().some(extra => extra.name === tool.name)), ...(options.mcpManager?.getTools() ?? [])],
       toolNames: options.toolNames ?? [...new Set([...createToolRuntime().toolNames, ...(options.mcpManager?.getTools().map(tool => tool.name) ?? [])])],
       contextSettings: options.contextSettings ?? DEFAULT_CONTEXT_SETTINGS,
       allowFullAccess: options.allowFullAccess ?? true,

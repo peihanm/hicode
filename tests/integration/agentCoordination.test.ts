@@ -36,9 +36,10 @@ test("background worker exchanges bounded messages through tools; idle messages 
             options => {
                 const names = options.tools.map(tool => tool.function.name);
                 expect(names).toContain("agent_message");
-                expect(names).not.toContain("task");
+                expect(names).toContain("task");
+                expect(JSON.stringify(options.tools.find(tool => tool.function.name === "task")?.function.parameters)).not.toContain("followup");
                 expect(names).not.toContain("agent");
-                expect(names).not.toContain("write_file");
+                expect(JSON.stringify(options.messages)).toContain("restricted to read-only tools");
                 const send = assistantToolCall("agent_message", {action: "send", target: "parent", message: "Which interface?"}, "child-send");
                 const wait = assistantToolCall("agent_message", {action: "wait", timeout_ms: 1000}, "child-wait");
                 const calls = [...send.toolCalls, ...wait.toolCalls];

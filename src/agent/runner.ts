@@ -168,10 +168,12 @@ async function runAgentCore(
     };
 
     const appendQueuedInputs = async (inputs: readonly QueuedAgentInput[]) => {
-        for (const input of inputs) {
+        const accepted = inputs.filter(input => !ctx.agentJoin || ctx.agentJoin.accepts(input));
+        for (const input of accepted) {
             history.push({role: "user", origin: input.source === "user_input" ? "user" : input.source === "agent_message" ? "agent" : "task_notification", content: input.content});
         }
-        for (const input of inputs) {
+        for (const input of accepted) {
+            await ctx.agentJoin?.consume(input);
             if (input.source === "agent_message") await onEvent({type: "coordination_message", messageId: input.id, text: contentText(input.content)});
         }
     };
@@ -190,6 +192,10 @@ async function runAgentCore(
             i++
         ) {
             iterations = i + 1;
+            // Capture terminal delegates even for headless Hosts without a UI notification pump.
+            const completedDelegates = await ctx.agentJoin?.collect() ?? [];
+            await appendQueuedInputs(completedDelegates);
+            if (completedDelegates.length) await ctx.commitToolBatch?.();
             await onEvent({
                 type: "iteration",
                 current: i + 1,
@@ -320,6 +326,32 @@ async function runAgentCore(
 
             // Without tool calls, the response is expected to be the final answer.
             if (toolCalls.length === 0) {
+                if (hasNextIteration && ctx.agentJoin?.ids.length) {
+                    history.pop();
+                    await draft.finish("discarded");
+                    let queued = inputChannel.drainSafeBoundary().filter(input => !ctx.agentJoin || ctx.agentJoin.accepts(input));
+                    await appendQueuedInputs(queued);
+                    let ready = await ctx.agentJoin.collect();
+                    while (!queued.length && !ready.length && ctx.agentJoin.ids.length) {
+                        await onEvent({type: "agent_wait", taskIds: ctx.agentJoin.ids});
+                        const wake = new AbortController();
+                        const waitSignal = AbortSignal.any([ctx.signal, wake.signal]);
+                        try {
+                            await Promise.race([ctx.agentJoin.wait(waitSignal), inputChannel.waitForInput(waitSignal)]);
+                        } finally {
+                            wake.abort();
+                            await onEvent({type: "agent_wait", taskIds: []});
+                        }
+                        throwIfTurnAborted(ctx.signal);
+                        queued = inputChannel.drainSafeBoundary().filter(input => !ctx.agentJoin || ctx.agentJoin.accepts(input));
+                        await appendQueuedInputs(queued);
+                        ready = await ctx.agentJoin.collect();
+                    }
+                    await appendQueuedInputs(ready);
+                    await ctx.commitToolBatch?.();
+                    completionNudge = "Continue the current task. Inspect delegated results, integrate changes, and run the remaining checks before the final answer.";
+                    continue;
+                }
                 if (!textContent && !emptyResponseRetryUsed && hasNextIteration) {
                     history.pop();
                     emptyResponseRetryUsed = true;
@@ -343,7 +375,7 @@ async function runAgentCore(
                     continue;
                 }
                 if (hasNextIteration) {
-                    const queued = inputChannel.drainSafeBoundary();
+                    const queued = inputChannel.drainSafeBoundary().filter(input => !ctx.agentJoin || ctx.agentJoin.accepts(input));
                     if (queued.length > 0) {
                         if (textContent) {
                             await onEvent({
@@ -453,7 +485,7 @@ async function runAgentCore(
                 };
             }
             if (hasNextIteration) {
-                await appendQueuedInputs(inputChannel.drainSafeBoundary());
+                await appendQueuedInputs(inputChannel.drainSafeBoundary().filter(input => !ctx.agentJoin || ctx.agentJoin.accepts(input)));
             }
         }
 

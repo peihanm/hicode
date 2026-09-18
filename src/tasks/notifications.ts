@@ -62,7 +62,7 @@ function notificationSummary(task: TaskSnapshot): string {
     return task.kind==="agent"?task.reason ?? task.status:task.status;
 }
 
-function notificationFor(task: TaskSnapshot): TaskNotification {
+export function notificationFor(task: TaskSnapshot): TaskNotification {
     const label = task.kind === "memory"?"Memory maintenance":task.kind === "shell"
         ? task.command
         : `${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType} · ${task.description}`;

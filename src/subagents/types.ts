@@ -3,7 +3,6 @@ import type {AgentInputChannel} from "../agent/inputChannel.js";
 import type {AgentEvent, StopReason} from "../agent/types.js";
 import type {ToolContext} from "../tools/types.js";
 import type {ForkContextSnapshot} from "./fork.js";
-import type {SubagentModelOverride} from "./model.js";
 
 type AgentName = string;
 export type AgentType = AgentName;
@@ -14,10 +13,9 @@ interface AgentDefinitionContent {
     agentType: AgentName;
     whenToUse: string;
     systemPrompt: string;
-    allowedTools: readonly string[];
-    model: SubagentModelOverride;
-    // When unset, inherit the runtime safety limit; built-in Explore declares no dedicated limit.
-    maxIterations?: number;
+    /** Omission inherits parent tools eligible for delegation; an explicit list only narrows them. */
+    allowedTools?: readonly string[];
+    readOnly?: boolean;
 }
 
 export type AgentDefinition = AgentDefinitionContent & (
@@ -54,7 +52,6 @@ export interface SubagentRequest extends SubagentWorkspace {
     description: string;
     prompt: string;
     parentToolCallId: string;
-    model?: SubagentModelOverride;
     /** Absent for fresh context; inherited history never grants file-read authority. */
     contextSnapshot?: ForkContextSnapshot;
 }

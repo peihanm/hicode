@@ -1,3 +1,4 @@
+import {createSubagentCatalog, loadCustomAgentDefinitions} from "../../src/subagents/index.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import {AppForTest as App} from "../helpers/AppForTest.js";
@@ -34,7 +35,8 @@ describe("Agents dialog", () => {
                     view.stdin.write("\r"); await tick();
                     const detail = view.lastFrame() ?? "";
                     expect(detail.replace(/\s+/g, " ")).toContain("Definition cannot be edited");
-                    expect(detail).toContain("Turn limit");
+                    expect(detail).toContain("Read-only");
+                expect(detail).not.toContain("Turn limit");
                     expect(detail).toContain("Tools · 4");
                     expect(detail).not.toContain("Root");
                     expect(detail.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
@@ -44,36 +46,33 @@ describe("Agents dialog", () => {
                 view.stdin.write("\r"); await tick();
                 const worker = view.lastFrame() ?? "";
                 expect(worker).toContain("Worker");
-                expect(worker).toContain("write_file");
+                expect(worker).toContain("Inherited");
                 expect(worker).not.toContain("read-only");
             } finally {view.unmount(); await resources.close();}
         });
     });
 
-    test("manual creation has a single step-specific footer and ends with Save", async () => {
+    test("manual creation previews all settings and edits one field without a wizard", async () => {
         await withTempProject(async cwd => {
             const resources = createTestRuntimeResources(cwd);
             const view = render(<AgentsDialog manager={resources.agentDefinitions}
-                authoring={resources.agentAuthoring} catalog={resources.subagents}
-                fastModel="Qwen 3.8 Flash" onClose={() => {}}/>);
+                authoring={resources.agentAuthoring} catalog={resources.subagents} fastModel="fast" onClose={() => {}}/>);
+            const press = async (key: string) => {view.stdin.write(key); await tick();};
             try {
                 await tick();
-                for (const key of ["\u001b[B", "\u001b[B", "\r", "\r", "\u001b[B", "\r"]) {
-                    view.stdin.write(key); await tick();
-                }
-                expect(view.lastFrame()).toContain("Step 1/6");
-                for (const key of ["reviewer", "\r", "Review application code", "\r", "\r", "\r", "\r"]) {
-                    view.stdin.write(key); await tick();
-                }
-                const frame = view.lastFrame() ?? "";
-                expect(frame).toContain("Step 6/6");
-                expect(frame).toContain("Enter save");
-                expect(frame).not.toContain("Enter next");
-                expect(frame.match(/Esc cancel/g)?.length).toBe(1);
-                view.stdin.write("\u001b[Z"); await tick();
-                expect(view.lastFrame()).toContain("Step 5/6");
-                view.stdin.write("\u001b"); await tick();
-                expect(view.lastFrame()).toContain("Create Agent");
+                for (const key of ["\u001b[B", "\u001b[B", "\r", "\u001b[B", "\r"]) await press(key);
+                expect(view.lastFrame()).toContain("New Agent");
+                expect(view.lastFrame()).toContain("Save Agent");
+                expect(view.lastFrame()).toContain("Tools · Inherited");
+                expect(view.lastFrame()).not.toContain("Step 1/");
+                await press("\u001b[B"); await press("\r");
+                await press("reviewer"); await press("\r");
+                expect(view.lastFrame()).toContain("reviewer");
+                expect(view.lastFrame()).toContain("Save Agent");
+                // Esc from a field returns to the preview; it does not save the definition.
+                await press("\u001b[B"); await press("\r"); await press("\u001b");
+                expect(view.lastFrame()).toContain("Save Agent");
+                expect(resources.subagents.has("reviewer")).toBe(false);
             } finally {view.unmount(); await resources.close();}
         });
     });
@@ -84,7 +83,7 @@ describe("Agents dialog", () => {
                 agentType: `reviewer-${index}`, source: "project" as const,
                 path: `${cwd}/.hicode/agents/reviewer-${index}.md`,
                 whenToUse: "Review a focused module", systemPrompt: "Review only.",
-                allowedTools: ["read_file"], model: "inherit" as const,
+                allowedTools: ["read_file"],
             })), issues: []});
             const resources = createTestRuntimeResources(cwd, {subagents});
             let closed = false;
@@ -158,5 +157,34 @@ describe("Agents dialog", () => {
             await new Promise((resolve) => setTimeout(resolve, 30));
             expect(instance.lastFrame()).toContain("Loading issues (1)");
         });
+    });
+});
+
+test("generated candidates go straight to preview and save without model, turn or tool fields", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const catalog = createSubagentCatalog({load: () => loadCustomAgentDefinitions(storage, cwd, ["project"])});
+        const resources = createTestRuntimeResources(cwd, {storage, subagents: catalog, agentAuthoring: {async generate() {
+            return {name: "reviewer", description: "Review real defects", systemPrompt: "Report evidence and do not edit files.", readOnly: true};
+        }}});
+        const view = render(<AgentsDialog manager={resources.agentDefinitions} authoring={resources.agentAuthoring}
+            catalog={resources.subagents} fastModel="fast" onClose={() => {}}/>);
+        const press = async (key: string) => {view.stdin.write(key); await tick();};
+        try {
+            await tick();
+            for (const key of ["\u001b[B", "\u001b[B", "\r", "\r", "Create a reviewer", "\r"]) await press(key);
+            expect(view.lastFrame()).toContain("Save Agent");
+            expect(view.lastFrame()).toContain("Read-only");
+            expect(view.lastFrame()).not.toContain("Maximum turns");
+            expect(view.lastFrame()).not.toContain("Step 1/");
+            await press("\r");
+            for (let attempt = 0; attempt < 100 && !resources.subagents.has("reviewer"); attempt++) await tick();
+            expect(view.lastFrame()).toContain("Created reviewer");
+            expect(resources.subagents.has("reviewer")).toBe(true);
+            const definition = resources.subagents.get("reviewer")!.definition;
+            expect(definition.allowedTools).toBeUndefined();
+            expect(definition.readOnly).toBe(true);
+            expect(definition).not.toHaveProperty("model");
+            expect(definition).not.toHaveProperty("maxIterations");
+        } finally {view.unmount(); await resources.close();}
     });
 });

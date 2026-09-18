@@ -1,3 +1,4 @@
+import type {Todo} from "../todos.js";
 import type {MemoryTaskSnapshot} from "./types.js";
 import {type FileHandle, open} from "node:fs/promises";
 import type {StopReason} from "../agent/types.js";
@@ -49,6 +50,8 @@ export interface ManagedAgentTask extends ManagedTaskBase<AgentTaskStatus> {
     tokenCount?: number;
     lastPublishedTokenCount: number;
     lastActivity?: string;
+    lastMessage?: string;
+    todos?: Todo[];
     reason?: StopReason;
     resultPreview?: string;
     outputResult?: AgentTaskSnapshot["outputResult"];
@@ -130,6 +133,8 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
                 ? {tokenCount: task.tokenCount}
                 : {}),
             ...(task.lastActivity ? {lastActivity: task.lastActivity} : {}),
+            ...(task.lastMessage ? {lastMessage: task.lastMessage} : {}),
+            ...(task.todos ? {todos: structuredClone(task.todos)} : {}),
         },
         ...(task.completedAt ? {completedAt: task.completedAt} : {}),
         ...(task.reason ? {reason: task.reason} : {}),

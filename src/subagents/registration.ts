@@ -1,18 +1,16 @@
 import type {PermissionMode, PermissionPromptPolicy, PermissionRules} from "../permissions/index.js";
 import type {CollaborationMode} from "../collaboration/index.js";
 import type {ToolContextResources} from "../runtime/toolContext.js";
-import type {CreateToolRuntimeOptions} from "../tools/runtime.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentDefinition} from "./types.js";
 
 export function hasAgentWriteTools(definition: AgentDefinition): boolean {
-    return definition.allowedTools.some(name => ![
-        "list_files", "glob", "read_file", "grep", "web_fetch", "agent_message",
-    ].includes(name));
+    return !definition.readOnly && (definition.allowedTools === undefined || definition.allowedTools.some(name => ![
+        "list_files", "glob", "read_file", "grep", "web_fetch", "agent_message", "view_image", "todo_write", "skill",
+    ].includes(name)));
 }
 
 export interface SubagentRuntimeConfig {
-    toolRuntimeOptions: CreateToolRuntimeOptions;
     contextResources: Omit<
         ToolContextResources,
         "model" | "provider" | "fastModel" | "fastProvider" | "fileCommits" | "contextSettings"

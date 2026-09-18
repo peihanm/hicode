@@ -5,9 +5,8 @@ export function serializeAgentDefinition(draft: AgentDefinitionDraft): string {
     const frontmatter = stringifyYaml({
         name: draft.name.trim(),
         description: draft.description.trim(),
-        tools: [...new Set(draft.tools.map((tool) => tool.trim()))],
-        model: draft.model.trim() || "inherit",
-        max_iterations: draft.maxIterations,
+        ...(draft.readOnly ? {read_only: true} : {}),
+        ...(draft.tools ? {tools: [...new Set(draft.tools.map((tool) => tool.trim()))]} : {}),
     }, {
         lineWidth: 0,
     }).trimEnd();
