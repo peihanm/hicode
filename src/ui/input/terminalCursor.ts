@@ -54,6 +54,8 @@ export function createTerminalCursorOutput(
 ): TerminalCursorOutput {
     let anchored = false;
     let scrollback = "";
+    let scrollbackRows = 0;
+    let scrollbackColumns = target.columns;
     let recoverAfterOverflow = false;
     let inkResizeListener: ((...args: unknown[]) => void) | undefined;
 
@@ -71,6 +73,7 @@ export function createTerminalCursorOutput(
         // Ink 5 can clear the terminal when a live dialog exceeds its height.
         // Restore the latest committed presentation, never its stale Static cache.
         const inkClear = "\u001B[2J\u001B[3J\u001B[H";
+        const eraseLive = /^(?:\u001B\[2K(?:\u001B\[1A\u001B\[2K)*\u001B\[G)/;
         let frame = data;
         if (data.startsWith(inkClear)) {
             frame = inkClear + scrollback + data.slice(inkClear.length);
@@ -79,11 +82,23 @@ export function createTerminalCursorOutput(
             // Ink's overflow branch bypasses log-update, leaving its previous line
             // count stale. A later erase cannot remove live rows already scrolled
             // offscreen. Rebuild once from retained history before resuming deltas.
-            frame = inkClear + scrollback + data.replace(
-                /^(?:\u001B\[2K(?:\u001B\[1A\u001B\[2K)*\u001B\[G)/,
-                ""
-            );
+            frame = inkClear + scrollback + data.replace(eraseLive, "");
             recoverAfterOverflow = false;
+        } else if (target.isTTY && scrollbackRows > 0 && target.columns === scrollbackColumns) {
+            const erased = data.match(eraseLive)?.[0];
+            if (erased) {
+                const next = data.slice(erased.length);
+                const previousRows = (erased.match(/\u001B\[2K/g) ?? []).length;
+                const nextRows = next.split("\n").length;
+                // log-update moves upward on shrink but cannot pull old history
+                // back from terminal scrollback. Refill only when content scrolled;
+                // short conversations stay at the top. A bare log.clear belongs to
+                // the transcript append transaction and must not replay history.
+                if (next.length > 0 && nextRows < previousRows &&
+                    scrollbackRows + previousRows >= target.rows) {
+                    frame = inkClear + scrollback + next;
+                }
+            }
         }
         const formatted = formatTerminalCursorWrite(frame, anchored);
         anchored = formatted.anchored;
@@ -102,11 +117,15 @@ export function createTerminalCursorOutput(
             if (property === "recordScrollback") {
                 return (mode: "append" | "replay", rendered: string) => {
                     scrollback = mode === "replay" ? rendered : scrollback + rendered;
+                    const rows = (rendered.match(/\n/g) ?? []).length;
+                    scrollbackRows = mode === "replay" ? rows : scrollbackRows + rows;
+                    scrollbackColumns = target.columns;
                 };
             }
             if (property === "disposeCursorOutput") {
                 return () => {
                     scrollback = "";
+                    scrollbackRows = 0;
                     recoverAfterOverflow = false;
                     inkResizeListener = undefined;
                     if (anchored) target.write(RESTORE_CURSOR);

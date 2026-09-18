@@ -12,6 +12,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 // Run in a fresh process with CI=0: Ink chooses its real terminal renderer at import time.
 const tick = (ms = 120) => new Promise(resolve => setTimeout(resolve, ms));
 const clears = (chunks: string[]) => chunks.filter(chunk => chunk.includes("\x1b[2J")).length;
+const sourceReplays = (chunks: string[]) => chunks.filter(chunk => chunk.includes("\x1b[3J\x1b[2J\x1b[H")).length;
 await withTempProject(async cwd => {
     const chunks: string[] = [];
     const target = Object.assign(new Writable({write(chunk, _encoding, done) {
@@ -60,28 +61,39 @@ await withTempProject(async cwd => {
         let offset = chunks.length;
         input.write("\x0f"); await tick(600);
         const expanded = chunks.slice(offset);
-        assert.equal(clears(expanded), 1, "expand must replay only once despite animation ticks");
+        assert.equal(sourceReplays(expanded), 1, "expand must render history only once despite animation ticks");
+        assert(clears(expanded) <= 2, "at most one additional live-height refill");
         assert.equal(expanded.filter(chunk => chunk.includes("first-DETAIL-80")).length, 1);
 
         offset = chunks.length;
         read("second"); await tick(300);
         const appended = chunks.slice(offset).join("");
-        assert.equal(clears(chunks.slice(offset)), 0, "new result appends without clearing history");
+        // The completed tool also removes its live progress rows. A scrolled
+        // viewport may refill once for that shrink, but never on animation ticks.
+        assert(clears(chunks.slice(offset)) <= 1, "a result may refill once when live progress shrinks");
         assert(appended.includes("second-DETAIL-80"));
-        assert(!appended.includes("first-DETAIL-80"));
+        if (clears(chunks.slice(offset))) {
+            const refill = appended.slice(appended.lastIndexOf("\x1b[2J"));
+            assert(refill.includes("first-DETAIL-80") && refill.includes("second-DETAIL-80"));
+        } else assert(!appended.includes("first-DETAIL-80"));
+        offset = chunks.length;
+        await tick(250);
+        assert.equal(clears(chunks.slice(offset)), 0, "same-height animation never refills history");
 
         offset = chunks.length;
         target.rows = 35; target.emit("resize"); await tick(250);
         assert.equal(clears(chunks.slice(offset)), 0, "height-only resize does not replay");
         offset = chunks.length;
         target.columns = 90; target.emit("resize"); await tick(300);
-        assert.equal(clears(chunks.slice(offset)), 1, "width resize replays once");
+        assert.equal(sourceReplays(chunks.slice(offset)), 1, "width resize renders history once");
+        assert(clears(chunks.slice(offset)) <= 2, "footer reflow may refill once after width changes");
         assert(chunks.slice(offset).join("").includes("second-DETAIL-80"));
 
         offset = chunks.length;
         input.write("\x0f"); await tick(400);
         const collapsed = chunks.slice(offset);
-        assert.equal(clears(collapsed), 1, "collapse must erase expanded physical history");
+        assert.equal(sourceReplays(collapsed), 1, "collapse must erase expanded physical history");
+        assert(clears(collapsed) <= 2, "collapse may also refill a shrinking live region once");
         assert(!collapsed.join("").includes("DETAIL-80"));
 
         offset = chunks.length;
