@@ -32,7 +32,7 @@ test("custom child inherits ordinary tools and parent model, owns Todo and Skill
                 expect(options.model).toBe("main-model");
                 const names = options.tools.map(tool => tool.function.name);
                 for (const name of ["read_file", "write_file", "bash", "view_image", "skill", "todo_write"]) expect(names).toContain(name);
-                for (const name of ["agent", "ask_user", "task"]) expect(names).not.toContain(name);
+                for (const name of ["agent", "agent_followup", "ask_user", "task"]) expect(names).not.toContain(name);
                 return assistantToolCall("todo_write", {todos: [todo]}, "own-plan");
             },
             options => {
@@ -65,6 +65,8 @@ test("unfinished Todo returns incomplete after one reminder and stays available 
             assistantText("Finished."), assistantText("Still missing access."),
             options => {
                 expect(JSON.stringify(options.messages)).toContain("in_progress");
+                expect(JSON.stringify(options.messages)).toContain("The unfinished plan is carried forward");
+                expect(JSON.stringify(options.messages)).toContain("Todo updated this run: no");
                 return assistantToolCall("todo_write", {todos: [{...todo, status: "completed"}]}, "done");
             }, assistantText("Verified after receiving access."),
         ]);

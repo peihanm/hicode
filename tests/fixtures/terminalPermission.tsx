@@ -10,16 +10,16 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {TerminalScreen} from "../helpers/terminalScreen.js";
 
 const tick = (ms = 150) => new Promise(resolve => setTimeout(resolve, ms));
-const cases = [[24, "allow"], [35, "allow"], [50, "allow"], [35, "deny"]] as const;
-for (const [height, answer] of cases) {
+const cases = [[100, 24, "allow"], [100, 35, "allow"], [190, 50, "allow"], [100, 35, "deny"], [190, 60, "queued"]] as const;
+for (const [width, height, answer] of cases) {
     await withTempProject(async cwd => {
         const chunks: string[] = [];
-        const screen = new TerminalScreen(100, height);
+        const screen = new TerminalScreen(width, height);
         const target = Object.assign(new Writable({write(chunk, _encoding, done) {
             chunks.push(String(chunk));
             screen.write(String(chunk));
             done();
-        }}), {columns: 100, rows: height, isTTY: true});
+        }}), {columns: width, rows: height, isTTY: true});
         const stdout = createTerminalCursorOutput(target as NodeJS.WriteStream);
         const input = Object.assign(new PassThrough(), {
             isTTY: true, setRawMode() {return this;}, ref() {return this;}, unref() {return this;},
@@ -31,10 +31,14 @@ for (const [height, answer] of cases) {
         }});
         const resources = createTestRuntimeResources(cwd);
         let release!: () => void, ready!: () => void, permitted!: () => void;
+        let openingOffset = 0;
         const gate = new Promise<void>(resolve => {release = resolve;});
         const started = new Promise<void>(resolve => {ready = resolve;});
         const allowed = new Promise<void>(resolve => {permitted = resolve;});
         const runner: AgentRunner = async (_input, _history, emit, ctx) => {
+            await emit({type: "model_stream_start"});
+            await emit({type: "assistant_draft", responseId: "draft", text: Array.from({length: 8}, (_, index) => `Preparing implementation ${index}`).join("\n"), truncated: false});
+            await tick(80);
             await ctx.setTodos(Array.from({length: 5}, (_, index) => ({
                 content: `Stage ${index}`, activeForm: `Stage ${index}`,
                 status: index ? "pending" as const : "in_progress" as const,
@@ -49,18 +53,26 @@ for (const [height, answer] of cases) {
                             content: index === 16 ? "CODE_END" : `Code line ${index} 浏览器任务看板`, newLineNumber: index + 1}))}],
                 }}});
             await tick(50);
+            await emit({type: "assistant_draft_end", responseId: "draft", disposition: "discarded"});
+            await emit({type: "model_stream_end"});
             await emit({type: "iteration", current: 2});
             await emit({type: "assistant_text", phase: "commentary", content: "AFTER_CODE install dependencies now"});
             await emit({type: "tool_call_start", turnId: "turn", toolCallId: "bash",
                 name: "bash", args: '{"command":"bun install && bun run build"}'});
+            await tick(100);
+            openingOffset = chunks.length;
             ready();
             // Exercise the real permission host and Ink dialog, without running a command or making a network request.
-            const decision = await ctx.canUseTool("bash", "network", {}, {
+            const requests = [ctx.canUseTool("bash", "network", {}, {
                 allowPersistent: false, presentation: {kind: "network_access", host: "registry.npmjs.org", port: 443},
-            });
+            })];
+            if (answer === "queued") requests.push(ctx.canUseTool("bash", "network", {}, {
+                allowPersistent: false, presentation: {kind: "network_access", host: "example.com", port: 443},
+            }));
+            const [decision] = await Promise.all(requests);
             await emit({type: "tool_call_end", turnId: "turn", toolCallId: "bash",
-                outcome: decision.behavior === "allow" ? "ok" : "denied",
-                result: decision.behavior === "allow" ? "Resolving dependencies" : "User denied network access"});
+                outcome: decision!.behavior === "allow" ? "ok" : "denied",
+                result: decision!.behavior === "allow" ? "Resolving dependencies" : "User denied network access"});
             permitted();
             await gate;
             return {reply: "done", reason: "completed", iterations: 2};
@@ -72,9 +84,32 @@ for (const [height, answer] of cases) {
         try {
             await tick(); input.write("build"); await tick(); input.write("\r");
             await started; await tick(300);
+            assert.equal(chunks.slice(openingOffset).filter(chunk => chunk.includes("\x1b[3J\x1b[2J\x1b[H")).length, 1,
+                "permission opening must reestablish the transcript boundary exactly once");
+            const openingLines = screen.allLines;
+            const openingEnd = openingLines.findIndex(line => line.includes("CODE_END"));
+            const openingAfter = openingLines.findIndex(line => line.includes("AFTER_CODE"));
+            assert(openingEnd >= 0 && openingAfter > openingEnd && openingAfter - openingEnd <= 3,
+                `opening width=${width},height=${height},gap=${openingAfter - openingEnd}\n${openingLines.join("\n")}`);
+            const selectedReplayCount = chunks.filter(chunk => chunk.includes("\x1b[3J\x1b[2J\x1b[H")).length;
             input.write("\x1b[B"); await tick();
+            assert.equal(chunks.filter(chunk => chunk.includes("\x1b[3J\x1b[2J\x1b[H")).length, selectedReplayCount,
+                "selection changes must not replay the transcript");
+            if (answer === "queued") {
+                const beforeSwitch = chunks.length;
+                input.write("\r"); await tick(300);
+                assert.equal(chunks.slice(beforeSwitch).filter(chunk => chunk.includes("\x1b[3J\x1b[2J\x1b[H")).length, 1,
+                    "switching to the next permission must reestablish the boundary once");
+                const switched = screen.allLines;
+                assert(switched.some(line => line.includes("example.com")));
+                assert(!switched.some(line => line.includes("Connect to registry.npmjs.org")));
+                assert.equal(switched.filter(line => line.includes("CODE_END")).length, 1, "replay must not duplicate code");
+                const end = switched.findIndex(line => line.includes("CODE_END"));
+                const after = switched.findIndex(line => line.includes("AFTER_CODE"));
+                assert(after > end && after - end <= 3, "replacement must not separate code from commentary");
+            }
             const offset = chunks.length;
-            input.write(answer === "allow" ? "\r" : "3");
+            input.write(answer === "deny" ? "3" : "\r");
             await allowed; await tick(400);
             const closed = chunks.slice(offset);
             assert.equal(closed.filter(chunk => chunk.includes("\x1b[3J\x1b[2J\x1b[H")).length, 1,

@@ -1,3 +1,4 @@
+import {agentFollowupTool} from "./agentFollowup/agentFollowup.js";
 import {agentMessageTool} from "./agentMessage/agentMessage.js";
 import {viewImageTool} from "./viewImage/viewImage.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
@@ -58,6 +59,7 @@ function createBuiltinTools(): Tool[] {
         createAgentTool(BUILTIN_SUBAGENT_REGISTRY),
         taskTool,
         agentMessageTool,
+        agentFollowupTool,
         webFetchTool,
     ];
 }

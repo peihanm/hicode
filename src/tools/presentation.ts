@@ -213,6 +213,8 @@ export function describeToolCall(
                 label: "Bash",
                 detail: summarizeShellCommand(stringArg(args, "command") ?? ""),
             };
+        case "agent_followup":
+            return {label: "Continue Agent", detail: stringArg(args, "target") ?? ""};
         case "task":
             return {label: "Task", detail: taskDetail(args)};
         case "write_file":

@@ -1,4 +1,4 @@
-import {afterEach, expect, test} from "bun:test";
+import {afterEach, expect, test, setSystemTime} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import {App} from "../../src/ui/App.js";
 import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
@@ -134,7 +134,7 @@ for (const denied of [false, true]) {
       const task = await rootSession.taskSession.startShell({command: "printf ready;\nsleep 30", cwd, toolCallId: "fixture"});
       const instance = render(<App resources={configured} rootSession={rootSession}/>);
       try {
-        await new Promise(resolve => setTimeout(resolve, 40));
+        await new Promise(resolve => setTimeout(resolve, 100));
         instance.stdin.write("/tasks"); await new Promise(resolve => setTimeout(resolve, 20)); instance.stdin.write("\r");
         await until(() => instance.lastFrame()?.includes("Enter view output") === true);
         expect(instance.lastFrame()).toContain("printf ready; sleep 30");
@@ -159,3 +159,39 @@ for (const denied of [false, true]) {
     });
   });
 }
+
+test("followup displays the current run duration and excludes idle time from the detail total", async () => {
+  await withTempProject(async cwd => {
+    const ctx = createTestContext(cwd);
+    const base = Date.parse("2026-09-19T00:00:00.000Z");
+    let run = 0;
+    const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner, options => ({agentId: options.agentId, async run() {
+      run++;
+      setSystemTime(new Date(base + (run === 1 ? 10000 : 130000)));
+      return {agentId: options.agentId, agentType: "Worker", description: "Board", reply: "Verified", reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 0};
+    }}));
+    const tasks = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
+    try {
+      setSystemTime(new Date(base));
+      const task = await tasks.startAgent({request: {agentType: "Worker", name: "board", description: "Board", prompt: "work", parentToolCallId: "spawn"}, parentContext: ctx});
+      await until(async () => (await tasks.get(task.id))?.status === "completed");
+      setSystemTime(new Date(base + 110000));
+      await tasks.followup(task.id, "next");
+      await until(async () => (await tasks.get(task.id))?.status === "completed");
+      const view = render(<TasksDialog tasks={tasks} stopTask={async () => {}} onClose={() => {}}/>);
+      try {
+        await until(() => view.lastFrame()?.includes("Run 2 · 20s") === true);
+        view.stdin.write("\r");
+        await until(() => view.lastFrame()?.includes("Total execution: 30s") === true);
+        expect(view.lastFrame()).toContain("Todos this run: not updated");
+        expect(view.lastFrame()).not.toContain("2m 10s");
+        for (const width of [50, 30]) {
+          Object.defineProperty(view.stdout, "columns", {configurable: true, value: width});
+          view.stdout.emit("resize");
+          await new Promise(resolve => setTimeout(resolve, 100));
+          expect(view.lastFrame()!.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
+        }
+      } finally {view.unmount();}
+    } finally {await runtime.close(); setSystemTime();}
+  });
+});

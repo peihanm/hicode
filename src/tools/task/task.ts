@@ -4,23 +4,18 @@ import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot} from "../../tas
 import type {Tool} from "../types.js";
 import {checkTaskStopPermission} from "./stopPermission.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../agent/inputChannel.js";
+import {agentRunTiming} from "../../tasks/timing.js";
 import {waitForAgentActivity} from "../../tasks/agentJoin.js";
 
 const inputSchema = z.object({
     action: z
-        .enum(["list", "status", "wait", "followup", "interrupt", "stop"])
+        .enum(["list", "status", "wait", "interrupt", "stop"])
         .default("list")
-        .describe("Manage tasks. wait awaits any pending delegated Agent or incoming message without polling; followup assigns work; interrupt retains the Agent thread; stop closes it."),
+        .describe("Manage tasks. wait awaits any pending delegated Agent or incoming message without polling; interrupt retains the Agent thread; stop closes it."),
     task_id: z
         .string()
         .optional()
         .describe("Required except for list and wait. wait defaults to pending delegates; an explicit Agent ID is included alongside them."),
-    message: z
-        .string()
-        .min(1)
-        .max(32 * 1024)
-        .optional()
-        .describe("Required for followup: inject at a safe boundary while running, or continue the same finished Agent thread."),
 }).strict();
 
 function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
@@ -57,6 +52,7 @@ function formatTask(task: TaskSnapshot): string {
             task.output ? `Output:\n${task.output}` : "Output: (no output)",
         ].join("\n") + result + issue;
     }
+    const timing = agentRunTiming(task);
     const progress = [
         `run ${task.progress.runCount}`,
         `${task.progress.iterations} iterations`,
@@ -76,6 +72,8 @@ function formatTask(task: TaskSnapshot): string {
         `Agent: ${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType}`,
         `Description: ${task.description}`,
         `Progress: ${progress}`,
+        `Run time: ${Math.floor(timing.runMs / 1000)}s · Total execution: ${Math.floor(timing.totalMs / 1000)}s`,
+        `Todos this run: ${task.progress.todosUpdated ? "updated" : "not updated"}${!task.progress.todosUpdated && task.progress.todos?.length ? "; unfinished plan carried forward" : ""}`,
         task.progress.lastActivity
             ? `Last activity: ${task.progress.lastActivity}`
             : undefined,
@@ -89,22 +87,15 @@ function formatTask(task: TaskSnapshot): string {
 export const taskTool: Tool<typeof inputSchema> = {
     name: "task",
     description:
-        "Manage this session's background Shell/Agent tasks with list/status/wait/followup/interrupt/stop. Use wait when an Agent result blocks further work; omit task_id to wait for any pending delegate. Completion, coordination messages or user input wake the wait; no periodic timeout. Complete integration before your final answer. Avoid repeated status polling. followup steers a running Agent at a safe boundary or continues a finished thread. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
+        "Manage this session's background Shell/Agent tasks with list/status/wait/interrupt/stop. Use wait when an Agent result blocks further work; omit task_id to wait for any pending delegate. Completion, coordination messages or user input wake the wait; no periodic timeout. Complete integration before your final answer. Avoid repeated status polling. Use agent_followup to assign additional work to an existing Agent. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; agent_followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "list" || action === "status" || action === "wait",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
     checkPermissions: async ({action, task_id}, ctx) => {
         if (action === "stop" || action === "interrupt") return checkTaskStopPermission(ctx, task_id);
-        if (action === "followup" && task_id) {
-            const task = await ctx.tasks?.get(task_id);
-            if (!task || task.kind !== "agent" || !await ctx.directoryAccess.canAccess(task.cwd)) {
-                return {behavior: "deny", message: "The Agent task must remain within the authorized directories"};
-            }
-            return {behavior: "allow"};
-        }
         return {behavior: "passthrough"};
     },
-    async execute({action, task_id, message}, ctx) {
+    async execute({action, task_id}, ctx) {
         if (!ctx.tasks) {
             return {content: "This Runtime does not support background tasks", outcome: "failed"};
         }
@@ -132,33 +123,10 @@ export const taskTool: Tool<typeof inputSchema> = {
             };
         }
         if (!task_id) return {content: `${action} requires task_id`, outcome: "failed"};
-        if ((action === "interrupt" || action === "followup") && !(action in ctx.tasks)) return {content: "Child Agents can manage only their own Shell tasks", outcome: "denied"};
+        if (action === "interrupt" && !(action in ctx.tasks)) return {content: "Child Agents can manage only their own Shell tasks", outcome: "denied"};
         if (action === "interrupt" && "interrupt" in ctx.tasks) {
             try {return {content: formatTask(await ctx.tasks.interrupt(task_id)), outcome: "ok"};}
             catch (error) {return {content: error instanceof Error ? error.message : String(error), outcome: "failed"};}
-        }
-        if (action === "followup" && "followup" in ctx.tasks) {
-            if (!message?.trim()) {
-                return {
-                    content: "followup requires a non-empty message",
-                    outcome: "failed",
-                };
-            }
-            try {
-                const task = await ctx.tasks.followup(task_id, message);
-                ctx.agentJoin?.register(task);
-                return {
-                    content: formatTask(task),
-                    outcome: "ok",
-                };
-            } catch (error) {
-                return {
-                    content: error instanceof Error
-                        ? error.message
-                        : String(error),
-                    outcome: "failed",
-                };
-            }
         }
         const task = action === "stop"
             ? await ctx.tasks.stop(task_id)
@@ -175,7 +143,7 @@ export const taskTool: Tool<typeof inputSchema> = {
 
 /** Keep the parent's permission/execution handlers, but expose only child-owned Shell actions. */
 export function childTaskTool(parent: Tool): Tool {
-    const parameters = inputSchema.omit({message: true}).extend({action: z.enum(["list", "status", "stop"]).default("list")}).strict();
+    const parameters = inputSchema.extend({action: z.enum(["list", "status", "stop"]).default("list")}).strict();
     return {...parent,
         parameters: parent.parameters.and(parameters),
         inputJsonSchema: zodToJsonSchema(parameters, {target: "jsonSchema7"}),

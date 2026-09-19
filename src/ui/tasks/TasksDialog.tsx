@@ -1,3 +1,4 @@
+import {agentRunTiming} from "../../tasks/timing.js";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import type {TaskSessionLike, TaskSnapshot} from "../../tasks/types.js";
@@ -24,13 +25,16 @@ function fit(value: string, width: number): string {
     return result + "…" + " ".repeat(Math.max(0, width - stringWidth(result) - 1));
 }
 
+function duration(ms: number): string {
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    return seconds < 60 ? `${seconds}s` : seconds < 3600
+        ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds / 60) % 60}m`;
+}
+
 function metadata(task: TaskSnapshot): string {
-    const kind = task.kind === "shell" ? "Command" : task.kind === "agent" ? clean(task.agentName ?? task.agentType) : "Memory";
-    const elapsed = Math.max(0, Math.floor(((task.completedAt ? Date.parse(task.completedAt) : Date.now()) - Date.parse(task.startedAt)) / 1000));
-    if (!Number.isFinite(elapsed)) return kind;
-    const duration = elapsed < 60 ? `${elapsed}s` : elapsed < 3600
-        ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${Math.floor(elapsed / 3600)}h ${Math.floor(elapsed / 60) % 60}m`;
-    return `${kind} · ${duration}`;
+    if (task.kind === "agent") return `${clean(task.agentName ?? task.agentType)} · Run ${task.progress.runCount} · ${duration(agentRunTiming(task).runMs)}`;
+    const elapsed = (task.completedAt ? Date.parse(task.completedAt) : Date.now()) - Date.parse(task.startedAt);
+    return `${task.kind === "shell" ? "Command" : "Memory"} · ${duration(elapsed)}`;
 }
 
 export function TasksDialog({tasks, stopTask, onClose}: {
@@ -76,7 +80,10 @@ export function TasksDialog({tasks, stopTask, onClose}: {
     const active = detail ?? items[index];
     const output = detail?.kind === "shell" ? detail.output : detail?.resultPreview;
     const report = detail?.kind === "agent" ? [
-        ...(detail.progress.todos?.length ? ["## Progress", ...detail.progress.todos.map(todo => `${todo.status === "completed" ? "✓" : todo.status === "in_progress" ? "›" : "☐"} ${todo.content}`), ""] : []),
+        `Total execution: ${duration(agentRunTiming(detail).totalMs)}`,
+        `Todos this run: ${detail.progress.todosUpdated ? "updated" : "not updated"}`,
+        "",
+        ...(detail.progress.todos?.length ? [detail.progress.todosUpdated ? "## Progress" : "## Unfinished plan from previous run", ...detail.progress.todos.map(todo => `${todo.status === "completed" ? "✓" : todo.status === "in_progress" ? "›" : "☐"} ${todo.content}`), ""] : []),
         ...(detail.progress.lastMessage ? ["## Latest message", detail.progress.lastMessage, ""] : []),
         "## Result", output || detail.outputIssue || (detail.status === "running" ? "Working…" : "No output yet"),
     ].join("\n") : output || detail?.outputIssue || "No output yet";
@@ -121,7 +128,7 @@ export function TasksDialog({tasks, stopTask, onClose}: {
             <Text color={COLORS.dim} wrap="truncate-end">{`${start + 1}–${Math.min(rows.length, start + visibleLines)} / ${rows.length} lines`}</Text>
         </> : items.length ? <Box flexDirection="column" marginTop={1}>{items.slice(listStart, listStart + visibleTasks).map((task, position) => {
             const focused = index === listStart + position;
-            const progress = task.kind === "agent" ? task.progress.todos?.find(todo => todo.status === "in_progress") : undefined;
+            const progress = task.kind === "agent" && task.progress.todosUpdated ? task.progress.todos?.find(todo => todo.status === "in_progress") : undefined;
             return <Box key={task.id} flexDirection="column" marginBottom={1}>
                 <Text backgroundColor={focused ? COLORS.surface : undefined}>
                     <Text color={focused ? COLORS.accent : COLORS.dim}>{focused ? "❯ " : "  "}</Text>

@@ -55,6 +55,7 @@ export function createAgentTask(
             publishProgress
         ),
     }, input.request);
+    const startedAt = new Date().toISOString();
     task = {
         id,
         owner: {
@@ -72,7 +73,10 @@ export function createAgentTask(
         status: "running",
         interruptRequested: false,
         stopRequested: false,
-        startedAt: new Date().toISOString(),
+        startedAt,
+        runStartedAt: startedAt,
+        previousDurationMs: 0,
+        todosUpdated: false,
         store: binding.toolResultStore,
         controller: createTurnAbortController(),
         runCount: 1,
@@ -146,6 +150,11 @@ export async function runAgentTask(
 }
 
 export function resetAgentRun(task: ManagedAgentTask, runCount: number): void {
+    const now = new Date().toISOString();
+    task.previousDurationMs += Math.max(0, Date.parse(task.completedAt ?? now) - Date.parse(task.runStartedAt));
+    task.runStartedAt = now;
+    task.todosUpdated = false;
+    if (task.todos?.every(todo => todo.status === "completed")) task.todos = undefined;
     task.interruptRequested = false;
     task.runCount = runCount;
     task.iterations = 0;
@@ -168,6 +177,7 @@ async function recordAgentProgress(
 ): Promise<void> {
     let shouldPublish = false;
     if (event.type === "subagent_progress" && event.event.type === "todos") {
+        task.todosUpdated = true;
         task.todos = event.event.todos.slice(0, 100).map(todo => ({...todo, content: todo.content.slice(0, 1024), activeForm: todo.activeForm.slice(0, 1024)}));
         shouldPublish = true;
     } else if (event.type === "iteration") {

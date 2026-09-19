@@ -88,7 +88,7 @@ function formatAgentToolDescription(
     return [
         "Delegate only a concrete independent subtask that can run alongside useful Root work, or a bounded investigation that materially reduces context noise. Complexity or many files alone do not justify delegation. Keep immediate blocking work local and do not duplicate delegated work.",
         "Choose a role and context independently: Worker for implementation, Explore for read-only investigation, or a registered specialist. fresh needs a complete briefing; inherit copies parent background with a worker system prompt. Assign disjoint file ownership, shared interfaces and module-level verification. Root runs full integration checks after dependencies are ready; workers report unfinished sibling dependencies instead of repeatedly checking or editing them. Preserve others' changes. read_only narrows access. cwd must already exist and be authorized; directory creation and integration use ordinary tools.",
-        "Use run_in_background=true for parallel work and two-way agent_message communication. task followup assigns new work to a running or finished thread with its History/cwd; interrupt ends only its current run; stop closes it. Cancelled tasks and tasks from an old process cannot continue. Children report missing directory, network or elevated access to Root; they cannot expand permissions. After independent work, use task wait without task_id for any pending result or incoming message, then integrate and verify before the final answer. Do not end the turn merely to wait; avoid polling.",
+        "Use run_in_background=true for parallel work and two-way agent_message communication. agent_followup assigns new work to a running or finished thread with its History/cwd; interrupt ends only its current run; stop closes it. Cancelled tasks and tasks from an old process cannot continue. Children report missing directory, network or elevated access to Root; they cannot expand permissions. After independent work, use task wait without task_id for any pending result or incoming message, then integrate and verify before the final answer. Do not end the turn merely to wait; avoid polling.",
         "Available agents:",
         ...agents,
     ].join("\n");
@@ -138,7 +138,7 @@ export function createAgentTool(
                 const task = launched.task;
                 return {content: ["Agent Task started.", `Task: ${task.id}`, `Agent: ${task.agentName ?? task.agentType}`,
                     `Description: ${task.description}`, `Status: ${task.status}`, `Cwd: ${task.cwd}`,
-                    "Use task wait without task_id when delegated results block further work; completion or incoming messages wake it without polling, then integrate and verify before your final answer. Use agent_message for coordination or task followup for additional work. Do not poll."].join("\n"), outcome: "ok"};
+                    "Use task wait without task_id when delegated results block further work; completion or incoming messages wake it without polling, then integrate and verify before your final answer. Use agent_message for coordination or agent_followup for additional work. Do not poll."].join("\n"), outcome: "ok"};
             } catch (error) {return {content: error instanceof Error ? error.message : String(error), outcome: "failed"};}
         },
     };

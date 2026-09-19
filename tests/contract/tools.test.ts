@@ -36,7 +36,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(16);
+    expect(schemas).toHaveLength(17);
     expect(names).not.toContain("bash_task");
     expect(names).toContain("view_image");
     expect(new Set(names).size).toBe(names.length);

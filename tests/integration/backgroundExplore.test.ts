@@ -232,7 +232,8 @@ describe("background Explore", () => {
             const [task] = await tasks.list();
             if (!task || task.kind !== "agent") throw new Error("Agent Task 未启动");
             const queued = await tasks.followup(task.id, "请重点检查消息队列");
-            expect(queued).toMatchObject({
+            expect(queued.delivery).toBe("queued");
+            expect(queued.task).toMatchObject({
                 id: task.id,
                 status: "running",
                 progress: {runCount: 1, pendingMessages: 1},
@@ -326,10 +327,9 @@ describe("background Explore", () => {
                 resolveFinished = resolve;
             });
             const continued = await executeToolResult(
-                "task",
+                "agent_followup",
                 JSON.stringify({
-                    action: "followup",
-                    task_id: started.id,
+                    target: started.id,
                     message: "继续检查测试覆盖",
                 }),
                 ctx,
@@ -337,7 +337,7 @@ describe("background Explore", () => {
             );
             expect(continued.outcome).toBe("ok");
             expect(continued.modelContent).toContain(`Task: ${started.id}`);
-            expect(continued.modelContent).toContain("Progress: run 2");
+            expect(continued.modelContent).toContain("Run: 2");
             await finished;
             expect(finishedCount).toBe(2);
             expect(await tasks.get(started.id)).toMatchObject({

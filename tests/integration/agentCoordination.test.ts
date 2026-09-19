@@ -39,6 +39,7 @@ test("background worker exchanges bounded messages through tools; idle messages 
                 expect(names).toContain("task");
                 expect(JSON.stringify(options.tools.find(tool => tool.function.name === "task")?.function.parameters)).not.toContain("followup");
                 expect(names).not.toContain("agent");
+                expect(names).not.toContain("agent_followup");
                 expect(JSON.stringify(options.messages)).toContain("restricted to read-only tools");
                 const send = assistantToolCall("agent_message", {action: "send", target: "parent", message: "Which interface?"}, "child-send");
                 const wait = assistantToolCall("agent_message", {action: "wait"}, "child-wait");
@@ -80,7 +81,7 @@ test("background worker exchanges bounded messages through tools; idle messages 
             expect(await tasks.get(started.id)).toMatchObject({status: "completed", progress: {runCount: 1, pendingMessages: 1}});
             expect(child.calls).toHaveLength(2);
             const nextDone = finished(tasks);
-            const continued = await executeToolResult("task", JSON.stringify({action: "followup", task_id: started.id, message: "Now check the interface"}), parent, "followup");
+            const continued = await executeToolResult("agent_followup", JSON.stringify({target: started.id, message: "Now check the interface"}), parent, "followup");
             expect(continued.outcome).toBe("ok");
             await nextDone;
             expect(await tasks.get(started.id)).toMatchObject({status: "completed", progress: {runCount: 2, pendingMessages: 0}});

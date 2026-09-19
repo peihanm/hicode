@@ -27,6 +27,7 @@ import {
 } from "./agentTask.js";
 import type {
     AgentTaskSnapshot,
+    AgentFollowupResult,
     ShellTaskSnapshot,
     StartAgentTaskInput,
     StartShellTaskInput,
@@ -117,7 +118,7 @@ class TaskSession implements TaskSessionLike {
         return this.runtime.stop(this.sessionId, id);
     }
 
-    async followup(id: string, message: string): Promise<AgentTaskSnapshot> {
+    async followup(id: string, message: string): Promise<AgentFollowupResult> {
         await this.ready;
         return this.runtime.followupAgent(this.binding, id, message);
     }
@@ -322,7 +323,7 @@ class TaskRuntime implements TaskRuntimeLike {
         return {messageId: queued.id};
     }
 
-    async followupAgent(binding: TaskSessionBinding, id: string, message: string): Promise<AgentTaskSnapshot> {
+    async followupAgent(binding: TaskSessionBinding, id: string, message: string): Promise<AgentFollowupResult> {
         this.assertOpen();
         const task = this.ownedTask(binding.sessionId, id);
         if (!task) throw new Error(`Live-session Agent not found: ${id}; persisted state cannot continue in this process`);
@@ -331,10 +332,10 @@ class TaskRuntime implements TaskRuntimeLike {
             this.assertOpen();
             if (task.stopRequested || task.status === "cancelled") throw new Error("A cancelled Agent cannot continue; start a new Agent");
         };
-        const enqueue = async () => {
+        const enqueue = async (): Promise<AgentFollowupResult> => {
             task.messageQueue.enqueueAgent(message, {sender: "parent", recipient: id, runCount: task.runCount, intent: "followup"});
             await this.publish("task_progress", task);
-            return snapshotAgent(task);
+            return {task: snapshotAgent(task), delivery: "queued"};
         };
         assertAvailable();
         if (task.status === "running" && !task.controller.signal.aborted) return enqueue();
@@ -367,7 +368,7 @@ class TaskRuntime implements TaskRuntimeLike {
         );
         void task.completion.catch(() => {});
         await started;
-        return snapshotAgent(task);
+        return {task: snapshotAgent(task), delivery: "started"};
     }
 
     async get(binding: TaskSessionBinding, id: string): Promise<TaskSnapshot | undefined> {
@@ -623,7 +624,7 @@ class TaskRuntime implements TaskRuntimeLike {
         task: TaskSnapshot
     ): TaskEventEnvelope {
         return {
-            version: 5,
+            version: 6,
             sequence: ++this.sequence,
             sessionId: task.owner.sessionId,
             task,

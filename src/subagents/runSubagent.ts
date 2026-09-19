@@ -172,6 +172,8 @@ export function createSubagentFactories(
                     catch {transcriptIssue = "Subagent storage identity could not be recorded; task execution continues.";}
                     const firstRun = runCount === 0;
                     runCount += 1;
+                    if (childTodos.every(todo => todo.status === "completed")) childTodos = [];
+                    let todosUpdatedThisRun = false;
                     const childContext: ToolContext = createToolContext({
                         signal: input.signal,
                         // Construct fields explicitly so future Root capabilities cannot leak into children automatically.
@@ -208,6 +210,7 @@ export function createSubagentFactories(
                             getPermissionPromptPolicy: () =>
                                 runtimeConfig.permissionPromptPolicy,
                             async setTodos(todos) {
+                                todosUpdatedThisRun = true;
                                 childTodos = structuredClone(todos);
                                 await recordChildEvent({type: "subagent_progress", agentId,
                                     event: {type: "todos", todos: structuredClone(childTodos)}});
@@ -332,6 +335,12 @@ export function createSubagentFactories(
                         input.inputChannel,
                         {
                             getTodos: () => childTodos,
+                            getAdditionalUserContextBlocks: async () => [
+                                `Worker run ${runCount}${firstRun ? "" : ": continuation with existing History, FileState and cwd"}. ` +
+                                `Todo updated this run: ${todosUpdatedThisRun ? "yes" : "no"}. ` +
+                                (childTodos.length && !todosUpdatedThisRun ? "The unfinished plan is carried forward; continue or revise it honestly. " : "") +
+                                "For multi-step work, use todo_write for this assignment and update it at phase changes. A prior completed plan does not track new work. Do not claim progress updates without calling the tool. Trivial follow-ups need no plan.",
+                            ],
                             inputOrigin: "agent",
                             getToolSchemas: runtime.getToolSchemas,
                             isToolConcurrencySafe: runtime.isConcurrencySafe,

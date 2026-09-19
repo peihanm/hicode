@@ -3,6 +3,7 @@ import type {SubagentRegistration} from "./registration.js";
 
 export const CUSTOM_AGENT_FORBIDDEN_TOOLS = new Set([
     "agent",
+    "agent_followup",
     "ask_user",
     "memory",
 ]);

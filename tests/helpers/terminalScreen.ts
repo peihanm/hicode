@@ -3,6 +3,7 @@ import stringWidth from "string-width";
 /** Small screen model for Ink's output protocol, including erase, scrolling and saved cursor. */
 export class TerminalScreen {
     private grid: string[][];
+    private scrollback: string[][] = [];
     private x = 0;
     private y = 0;
     private saved = {x: 0, y: 0};
@@ -12,7 +13,7 @@ export class TerminalScreen {
     private lineFeed(): void {
         this.x = 0;
         if (++this.y >= this.rows) {
-            this.grid.shift(); this.grid.push([]); this.y = this.rows - 1;
+            this.scrollback.push(this.grid.shift()!); this.grid.push([]); this.y = this.rows - 1;
         }
     }
     write(value: string): void {
@@ -30,6 +31,7 @@ export class TerminalScreen {
                 else if (action === "G") this.x = Math.min(this.columns - 1, count - 1);
                 else if (action === "H") {this.y = Math.min(this.rows - 1, count - 1); this.x = Math.min(this.columns - 1, (args[1] || 1) - 1);}
                 else if (action === "K" && args[0] === 2) this.grid[this.y] = [];
+                else if (action === "J" && args[0] === 3) this.scrollback = [];
                 else if (action === "J" && args[0] === 2) this.grid = Array.from({length: this.rows}, () => []);
                 else if (!["m", "h", "l", "J"].includes(action ?? "")) throw new Error(`Unsupported terminal sequence: ${JSON.stringify(token)}`);
                 continue;
@@ -47,5 +49,6 @@ export class TerminalScreen {
         }
     }
     get lines(): string[] {return this.grid.map(line => line.join(""));}
+    get allLines(): string[] {return [...this.scrollback, ...this.grid].map(line => line.join(""));}
     get cursor(): {x: number; y: number} {return {x: this.x, y: this.y};}
 }

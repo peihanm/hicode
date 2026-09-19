@@ -13,7 +13,7 @@ import type {
 export type TaskJournalEntry =
     | TaskEventEnvelope
     | {
-    version: 5;
+    version: 6;
     type: "task_notification_claimed";
     sequence: number;
     sessionId: string;
@@ -211,7 +211,7 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
     ])) return undefined;
     const common = decodeCommon(value);
     if (!isRecord(value.progress) || !hasOnlyKeys(value.progress, [
-        "runCount", "iterations", "toolUseCount", "pendingMessages",
+        "runCount", "runStartedAt", "previousDurationMs", "todosUpdated", "iterations", "toolUseCount", "pendingMessages",
         "tokenCount", "lastActivity", "lastMessage", "todos",
     ])) return undefined;
     const outputResult = value.outputResult === undefined
@@ -222,6 +222,9 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
         !boundedString(value.agentType, MAX_LABEL_CHARACTERS) ||
         (value.agentName !== undefined && !boundedString(value.agentName, MAX_LABEL_CHARACTERS)) ||
         !boundedString(value.description, MAX_TEXT_CHARACTERS) ||
+        !isoDate(value.progress.runStartedAt) ||
+        !safeCount(value.progress.previousDurationMs) ||
+        typeof value.progress.todosUpdated !== "boolean" ||
         !safeCount(value.progress.runCount) ||
         value.progress.runCount === 0 ||
         !safeCount(value.progress.iterations) ||
@@ -249,6 +252,9 @@ function decodeAgentTask(value: Record<string, unknown>): AgentTaskSnapshot | un
         description: value.description,
         progress: {
             runCount: value.progress.runCount,
+            runStartedAt: value.progress.runStartedAt,
+            previousDurationMs: value.progress.previousDurationMs,
+            todosUpdated: value.progress.todosUpdated,
             iterations: value.progress.iterations,
             toolUseCount: value.progress.toolUseCount,
             pendingMessages: value.progress.pendingMessages,
@@ -286,13 +292,13 @@ export function decodeTaskJournalEntry(
     value: unknown,
     expectedSessionId: string
 ): TaskJournalEntry | undefined {
-    if (!isRecord(value) || value.version !== 5 || !safeCount(value.sequence) ||
+    if (!isRecord(value) || value.version !== 6 || !safeCount(value.sequence) ||
         value.sequence === 0 || value.sessionId !== expectedSessionId) return undefined;
     if (value.type === "task_notification_claimed") {
         if (!hasOnlyKeys(value, ["version", "type", "sequence", "sessionId", "taskId", "notificationId"]) ||
             !boundedString(value.taskId, MAX_ID_CHARACTERS) || typeof value.notificationId !== "string" || !/^[a-f0-9]{64}$/.test(value.notificationId)) return undefined;
         return {
-            version: 5,
+            version: 6,
             type: "task_notification_claimed",
             sequence: value.sequence,
             sessionId: expectedSessionId,
@@ -315,7 +321,7 @@ export function decodeTaskJournalEntry(
         (value.type === "task_finished" && task.status === "running")
     ) return undefined;
     return {
-        version: 5,
+        version: 6,
         type: value.type,
         sequence: value.sequence,
         sessionId: expectedSessionId,

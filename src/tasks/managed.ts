@@ -45,6 +45,9 @@ export interface ManagedAgentTask extends ManagedTaskBase<AgentTaskStatus> {
     agentName?: string;
     description: string;
     runCount: number;
+    runStartedAt: string;
+    previousDurationMs: number;
+    todosUpdated: boolean;
     iterations: number;
     toolUseCount: number;
     tokenCount?: number;
@@ -126,6 +129,9 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
         startedAt: task.startedAt,
         progress: {
             runCount: task.runCount,
+            runStartedAt: task.runStartedAt,
+            previousDurationMs: task.previousDurationMs,
+            todosUpdated: task.todosUpdated,
             iterations: task.iterations,
             toolUseCount: task.toolUseCount,
             pendingMessages: task.messageQueue.list().length,

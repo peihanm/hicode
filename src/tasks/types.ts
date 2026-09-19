@@ -40,6 +40,9 @@ export interface ShellTaskSnapshot {
 
 interface AgentTaskProgress {
     runCount: number;
+    runStartedAt: string;
+    previousDurationMs: number;
+    todosUpdated: boolean;
     iterations: number;
     toolUseCount: number;
     pendingMessages: number;
@@ -66,6 +69,11 @@ export interface AgentTaskSnapshot {
     outputResult?: PersistedToolResult;
     transcriptPath?: string;
     outputIssue?: string;
+}
+
+export interface AgentFollowupResult {
+    task: AgentTaskSnapshot;
+    delivery: "queued" | "started";
 }
 
 export interface MemoryTaskSnapshot {
@@ -114,7 +122,7 @@ export interface TaskNotification {
 }
 
 export interface TaskEventEnvelope {
-    version: 5;
+    version: 6;
     sequence: number;
     sessionId: string;
     task: TaskSnapshot;
@@ -139,7 +147,7 @@ export interface TaskSessionLike {
 
     stop(id: string): Promise<TaskSnapshot | undefined>;
 
-    followup(id: string, message: string): Promise<AgentTaskSnapshot>;
+    followup(id: string, message: string): Promise<AgentFollowupResult>;
 
     interrupt(id: string): Promise<AgentTaskSnapshot>;
 
