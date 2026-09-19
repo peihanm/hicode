@@ -29,6 +29,10 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 - **长任务执行**：子 Agent 协作、上下文管理和项目记忆，支持执行中补充要求。
 - **能力扩展**：支持 MCP、Skills、Hooks、图片输入（需模型支持）和 TypeScript SDK。
 
+### 近期重点优化
+
+- [x] 完善主 Agent 的任务分派与子 Agent 派生，优化子 Agent 的并行执行、双向沟通和上下文续跑。
+
 ### TODO
 
 - [ ] 构建测试数据集，通过自动化评测持续提升 HiCode 能力。

@@ -29,6 +29,10 @@ HiCode is a lightweight terminal coding agent built in TypeScript with its own e
 - **Handle longer tasks**: subagent collaboration, context management, project memory, and instructions during execution.
 - **Extend capabilities**: MCP, Skills, Hooks, image input with supported models, and a TypeScript SDK.
 
+### Recent improvements
+
+- [x] Improved the main agent's task delegation and subagent spawning, along with parallel execution, two-way messaging, and context-preserving follow-ups.
+
 ### TODO
 
 - [ ] Build a test dataset and improve HiCode's capabilities through automated evaluations.
