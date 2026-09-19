@@ -270,7 +270,8 @@ export function App({
         );
         return (
             <Box flexDirection="column">
-                <ScrollbackTranscript threads={display.settled} showWelcome expanded={showTranscript}/>
+                <ScrollbackTranscript threads={display.settled} showWelcome expanded={showTranscript}
+                    transientPanelOpen={!!turn.confirmRequest}/>
 
                 <MessageList
                     threads={display.live}

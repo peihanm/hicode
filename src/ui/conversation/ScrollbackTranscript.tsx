@@ -13,6 +13,7 @@ interface TranscriptSnapshot {
     width: number;
     threads: UIThread[];
     expanded: boolean;
+    layoutRevision: number;
 }
 
 function supportsScrollbackRecording(
@@ -35,7 +36,10 @@ export function planTranscriptEmission(
     if (!previous) return {kind: "append", from: 0, includeWelcome: showWelcome};
     const isAppendOnly = previous.threads.length <= current.threads.length &&
         previous.threads.every((thread, index) => current.threads[index] === thread);
-    if (previous.width !== current.width || previous.expanded !== current.expanded || !isAppendOnly) {
+    // A permission panel can scroll live rows into terminal history. On dismissal,
+    // rebuild the transcript boundary instead of trusting Ink's old erase count.
+    const layoutChanged = previous.layoutRevision !== current.layoutRevision;
+    if (layoutChanged || previous.width !== current.width || previous.expanded !== current.expanded || !isAppendOnly) {
         return {kind: "replay", includeWelcome: showWelcome};
     }
     return previous.threads.length === current.threads.length
@@ -124,19 +128,24 @@ export function ScrollbackTranscript({
     threads,
     showWelcome = false,
     expanded = false,
+    transientPanelOpen = false,
 }: {
     threads: UIThread[];
     showWelcome?: boolean;
     expanded?: boolean;
+    transientPanelOpen?: boolean;
 }) {
     const {stdout, write} = useStdout();
     const {width, height} = useTerminalSize();
     const previousRef = useRef<TranscriptSnapshot>();
+    const panelLayout = useRef({open: transientPanelOpen, revision: 0});
     const isInteractive = stdout.isTTY === true;
 
     useEffect(() => {
         if (!isInteractive) return;
-        const current: TranscriptSnapshot = {width, threads, expanded};
+        if (panelLayout.current.open && !transientPanelOpen) panelLayout.current.revision += 1;
+        panelLayout.current.open = transientPanelOpen;
+        const current: TranscriptSnapshot = {width, threads, expanded, layoutRevision: panelLayout.current.revision};
         const plan = planTranscriptEmission(previousRef.current, current, showWelcome);
         if (plan.kind === "none") return;
 
@@ -168,7 +177,7 @@ export function ScrollbackTranscript({
             active = false;
             clearTimeout(timer);
         };
-    }, [expanded, height, isInteractive, showWelcome, threads, width, write, stdout]);
+    }, [expanded, height, isInteractive, showWelcome, threads, transientPanelOpen, width, write, stdout]);
 
     // Redirected output cannot retract terminal rows. Retain append-only output there.
     // Interactive history must not also enter Ink's immutable Static cache: otherwise
