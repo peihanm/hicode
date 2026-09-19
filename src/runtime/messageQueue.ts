@@ -169,22 +169,6 @@ export class RuntimeMessageQueue {
         return this.enqueue({type: "agent_message", content, priority: "next", route: valid});
     }
 
-    async waitForAgentMessage(timeoutMs: number, signal: AbortSignal): Promise<"message" | "timeout"> {
-        if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) throw new Error("Wait must be between 1 and 60000ms");
-        signal.throwIfAborted();
-        if (this.messages.some(message => message.type === "agent_message")) return "message";
-        return new Promise((resolve, reject) => {
-            const finish = (result: "message" | "timeout") => {cleanup(); resolve(result);};
-            const onAbort = () => {cleanup(); reject(signal.reason);};
-            const unsubscribe = this.subscribe(() => {
-                if (this.messages.some(message => message.type === "agent_message")) finish("message");
-            });
-            const timer = setTimeout(() => finish("timeout"), timeoutMs);
-            const cleanup = () => {clearTimeout(timer); unsubscribe(); signal.removeEventListener("abort", onAbort);};
-            signal.addEventListener("abort", onAbort, {once: true});
-        });
-    }
-
     dequeueFollowup(): RuntimeQueuedMessage | undefined {
         const index = this.messages.findIndex(message => message.type === "agent_message" && message.route.intent === "followup");
         if (index < 0) return undefined;

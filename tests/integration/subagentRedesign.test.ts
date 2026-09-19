@@ -178,7 +178,7 @@ test("a messaging endpoint cannot add a tool excluded by the parent's actual sco
         ]);
         const thread = createSubagentThreadForTest({agentId: "no-messaging", parentContext: parent, onEvent() {}, registry: registry(),
             agentOptions: {callLLM: fake.callLLM}, agentMessaging: {
-                async send() {sent = true; return {messageId: "unexpected"};}, async wait() {return "timeout";},
+                async send() {sent = true; return {messageId: "unexpected"};}, async wait() {throw new Error("Messaging must remain unavailable");},
             }}, assignment);
         await thread.run({prompt: "work", signal: parent.signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(sent).toBe(false);

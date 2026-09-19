@@ -104,39 +104,44 @@ if (cliOptions.printPrompt !== undefined) {
     const shutdown = new InteractiveShutdown();
     let unmount: (() => void) | undefined;
     let exitRequested = false;
+    let notifyExit!: () => void;
+    const requestedExit = new Promise<void>(resolve => {notifyExit = resolve;});
     const removeSignals = bindInteractiveSignals(shutdown, () => {
         exitRequested = true;
-        unmount?.();
+        notifyExit();
+        // Ink may throw while restoring raw mode or writing to a revoked terminal.
+        // Resource cleanup must not depend on Ink's exit promise resolving.
+        try {unmount?.();} catch {}
     });
     const stdout = createTerminalCursorOutput(process.stdout);
-    const app = render(
-        <TerminalSizeProvider>
-            <TerminalCursorAnchorProvider enabled>
-                <Root
-                    shutdown={shutdown}
-                    configuration={configuration}
-                    initialImages={cliOptions.images}
-                    initialPermissionMode={cliOptions.permissionMode}
-                    initialCollaborationMode={cliOptions.collaborationMode}
-                    resumeMode={cliOptions.resumeMode}
-                />
-            </TerminalCursorAnchorProvider>
-        </TerminalSizeProvider>,
-        {patchConsole: false, exitOnCtrlC: false, stdout}
-    );
-    unmount = app.unmount;
-    if (exitRequested) app.unmount();
     try {
-        await app.waitUntilExit();
+        const app = render(
+            <TerminalSizeProvider>
+                <TerminalCursorAnchorProvider enabled>
+                    <Root
+                        shutdown={shutdown}
+                        configuration={configuration}
+                        initialImages={cliOptions.images}
+                        initialPermissionMode={cliOptions.permissionMode}
+                        initialCollaborationMode={cliOptions.collaborationMode}
+                        resumeMode={cliOptions.resumeMode}
+                    />
+                </TerminalCursorAnchorProvider>
+            </TerminalSizeProvider>,
+            {patchConsole: false, exitOnCtrlC: false, stdout}
+        );
+        unmount = app.unmount;
+        if (exitRequested) {try {app.unmount();} catch {}}
+        await Promise.race([app.waitUntilExit(), requestedExit]);
     } finally {
         const timeout = setTimeout(() => {
-            process.stderr.write("HiCode shutdown cleanup timed out; terminating the process.\n");
+            try {process.stderr.write("HiCode shutdown cleanup timed out; terminating the process.\n");} catch {}
             process.exit(process.exitCode || 1);
         }, 10_000);
         await shutdown.close();
         clearTimeout(timeout);
+        try {stdout.disposeCursorOutput();} catch {}
         removeSignals();
-        stdout.disposeCursorOutput();
     }
     // Resource cleanup has completed; unrelated handles must not keep the CLI alive indefinitely.
     const forceExit = setTimeout(() => process.exit(process.exitCode || 0), 1_000);

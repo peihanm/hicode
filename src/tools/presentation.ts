@@ -30,6 +30,10 @@ function parseArgs(argsJson: string): ParsedArgs {
     }
 }
 
+export function isBackgroundAgentCall(name: string, argsJson: string): boolean {
+    return name === "agent" && parseArgs(argsJson).run_in_background === true;
+}
+
 function stringArg(args: ParsedArgs, key: string): string | undefined {
     const value = args[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;

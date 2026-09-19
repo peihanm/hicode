@@ -24,12 +24,19 @@ export function isToolCall(item: UIThread): item is ToolCallThread {
     return item.role === "tool_call";
 }
 
+export function isCoordinationWait(thread: ToolCallThread): boolean {
+    if (thread.name !== "task" && thread.name !== "agent_message") return false;
+    try {return (JSON.parse(thread.args) as {action?: unknown} | null)?.action === "wait";}
+    catch {return false;}
+}
+
 /** Default projection folds successful stages using deterministic tool semantics; failures, denials and cancellations retain raw rows. */
 export function projectDefaultThreads(threads: UIThread[]): ConversationItem[] {
     const items: ConversationItem[] = [];
     for (let index = 0; index < threads.length;) {
         const thread = threads[index]!;
-        if (isToolCall(thread) && thread.hiddenByFileChange) {
+        if (isToolCall(thread) && (thread.hiddenByFileChange ||
+            (isCoordinationWait(thread) && (thread.status === "running" || thread.outcome === "ok")))) {
             index += 1;
             continue;
         }

@@ -334,12 +334,9 @@ async function runAgentCore(
                     let ready = await ctx.agentJoin.collect();
                     while (!queued.length && !ready.length && ctx.agentJoin.ids.length) {
                         await onEvent({type: "agent_wait", taskIds: ctx.agentJoin.ids});
-                        const wake = new AbortController();
-                        const waitSignal = AbortSignal.any([ctx.signal, wake.signal]);
                         try {
-                            await Promise.race([ctx.agentJoin.wait(waitSignal), inputChannel.waitForInput(waitSignal)]);
+                            await ctx.agentJoin.wait(ctx.signal, signal => inputChannel.waitForInput(signal));
                         } finally {
-                            wake.abort();
                             await onEvent({type: "agent_wait", taskIds: []});
                         }
                         throwIfTurnAborted(ctx.signal);

@@ -3,17 +3,15 @@ import {notificationFor, taskNotificationId} from "./notifications.js";
 import type {AgentTaskSnapshot, TaskSessionLike} from "./types.js";
 
 /** Subscribe before reading so completion between registration and inspection cannot be lost. */
-export function waitForAgentTasks(tasks: TaskSessionLike, ids: readonly string[], signal: AbortSignal, timeoutMs?: number): Promise<void> {
+export function waitForAgentTasks(tasks: TaskSessionLike, ids: readonly string[], signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
     return new Promise((resolve, reject) => {
         let settled = false;
-        let timer: ReturnType<typeof setTimeout> | undefined;
         let unsubscribe = () => {};
         const finish = (error?: unknown) => {
             if (settled) return;
             settled = true;
             unsubscribe();
-            clearTimeout(timer);
             signal.removeEventListener("abort", abort);
             if (error !== undefined) reject(error); else resolve();
         };
@@ -29,9 +27,27 @@ export function waitForAgentTasks(tasks: TaskSessionLike, ids: readonly string[]
             if (ids.includes(event.task.id) && event.type === "task_finished") void inspect();
         });
         signal.addEventListener("abort", abort, {once: true});
-        if (timeoutMs !== undefined) timer = setTimeout(() => finish(), timeoutMs);
         if (signal.aborted) abort(); else void inspect();
     });
+}
+
+/** Race task completion against safe-boundary input, cancelling the losing subscription. */
+export async function waitForAgentActivity(
+    tasks: TaskSessionLike,
+    ids: readonly string[],
+    signal: AbortSignal,
+    waitForInput: (signal: AbortSignal) => Promise<void>,
+): Promise<void> {
+    signal.throwIfAborted();
+    const wake = new AbortController();
+    const waitSignal = AbortSignal.any([signal, wake.signal]);
+    try {
+        await Promise.race([
+            waitForAgentTasks(tasks, ids, waitSignal),
+            waitForInput(waitSignal),
+        ]);
+        signal.throwIfAborted();
+    } finally {wake.abort();}
 }
 
 /** Turn-owned dependency IDs only; task state remains owned by TaskRuntime. */
@@ -83,5 +99,7 @@ export class AgentTaskJoin {
     }
 
     get ids(): readonly string[] {return [...this.pending];}
-    wait(signal: AbortSignal): Promise<void> {return waitForAgentTasks(this.tasks, this.ids, signal);}
+    wait(signal: AbortSignal, waitForInput: (signal: AbortSignal) => Promise<void>): Promise<void> {
+        return waitForAgentActivity(this.tasks, this.ids, signal, waitForInput);
+    }
 }

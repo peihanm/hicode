@@ -7,6 +7,7 @@ import {TerminalMarkdown} from "./TerminalMarkdown.js";
 import {useTerminalWidth} from "../terminalSize.js";
 import {
     describeToolCall,
+    isBackgroundAgentCall,
     summarizePhaseToolCall,
     summarizeToolResult,
 } from "../../tools/presentation.js";
@@ -25,24 +26,23 @@ const MAX_ASSISTANT_DISPLAY_CHARS = 200_000;
 const MAX_SUBAGENT_REPORT_DISPLAY_CHARS = 20_000;
 function agentIdentity(
     thread: Extract<UIThread, { role: "tool_call" }>
-): { type: string; description?: string } | undefined {
+): { type: string; background: boolean; description?: string } | undefined {
     if (thread.name !== "agent") return undefined;
     try {
         const parsed = JSON.parse(thread.args) as Record<string, unknown>;
-        const type = thread.subagentName
-            ? `${thread.subagentName} (${thread.subagentType ?? "Worker"})`
-            : thread.subagentType ??
-            (typeof parsed.subagent_type === "string"
-                ? parsed.subagent_type
-                : "Agent");
+        const role = thread.subagentType ?? (typeof parsed.subagent_type === "string" ? parsed.subagent_type : "Worker");
+        const name = thread.subagentName ?? (typeof parsed.name === "string" ? parsed.name : undefined);
+        const type = name ? `${name} (${role})` : role;
         return {
             type,
+            background: isBackgroundAgentCall(thread.name, thread.args),
             ...(typeof parsed.description === "string"
                 ? {description: parsed.description}
                 : {}),
         };
     } catch {
         return {
+            background: false,
             type: thread.subagentName
                 ? `${thread.subagentName} (${thread.subagentType ?? "Worker"})`
                 : thread.subagentType ?? "Agent",
@@ -95,6 +95,9 @@ function ToolResultLines({
     transcript: boolean;
 }) {
     if (!thread.result) return null;
+    if (!transcript && agentIdentity(thread)?.background && thread.outcome === "ok") {
+        return <Box marginLeft={2}><Text color={COLORS.dim}>Started in background · /tasks</Text></Box>;
+    }
     const lines = transcript
         ? transcriptResultLines(thread.result)
         : summarizeToolResult(thread.name, thread.result, thread.outcome);
@@ -168,6 +171,7 @@ function AgentProgress({
     thread: ToolCallThread;
     transcript: boolean;
 }) {
+    if (agentIdentity(thread)?.background) return null;
     const progress = thread.subagentProgress ?? [];
     if (progress.length === 0 || (thread.status === "done" && !transcript)) {
         return null;
@@ -287,14 +291,20 @@ function PhaseGroupView({group}: {group: PhaseGroup}) {
 }
 
 function AgentBatchView({batch, transcript}: {batch: AgentBatch; transcript: boolean}) {
-    const running = batch.calls.some((call) => call.status === "running");
+    const running = batch.calls.some(call => call.status === "running");
+    const failed = batch.calls.some(call => call.status !== "running" && call.outcome !== undefined && call.outcome !== "ok");
+    const confirmed = batch.calls.every(call => call.outcome === "ok");
+    const allBackground = batch.calls.every(call => agentIdentity(call)?.background);
+    const allForeground = batch.calls.every(call => !agentIdentity(call)?.background);
+    const title = running ? `${allBackground ? "Starting" : "Running"} ${batch.calls.length} agents…`
+        : failed ? `${batch.calls.length} agent calls · some unsuccessful`
+        : !confirmed ? `${batch.calls.length} agent calls`
+        : allBackground ? `Started ${batch.calls.length} agents · /tasks`
+        : allForeground ? `${batch.calls.length} agents finished`
+        : `${batch.calls.length} agent calls · started / completed`;
     return (
         <Box marginTop={1} flexDirection="column">
-            <Text color={COLORS.toolName} bold>
-                {SYMBOLS.assistantMark} {running
-                    ? `Running ${batch.calls.length} agents…`
-                    : `${batch.calls.length} agents finished`}
-            </Text>
+            <Text color={failed ? COLORS.error : COLORS.toolName} bold>{SYMBOLS.assistantMark} {title}</Text>
             {batch.calls.map((call, index) => {
                 const identity = agentIdentity(call);
                 const branch = index === batch.calls.length - 1 ? "└─" : "├─";
@@ -303,13 +313,9 @@ function AgentBatchView({batch, transcript}: {batch: AgentBatch; transcript: boo
                         <Text color={COLORS.toolResult}>
                             {branch} {identity?.type ?? "Agent"} · {identity?.description ?? "task"}
                         </Text>
-                        <Box marginLeft={3}>
-                            <Text color={COLORS.dim}>
-                                ⎿ {call.status === "running"
-                                    ? `${call.subagentToolUseCount ?? call.subagentProgress?.length ?? 0} tool uses${call.subagentTokenCount ? ` · ${call.subagentTokenCount} tokens` : ""}`
-                                    : call.result ?? "Done"}
-                            </Text>
-                        </Box>
+                        {call.status === "running" ? <Box marginLeft={3}><Text color={COLORS.dim}>
+                            {identity?.background ? "Starting…" : `${call.subagentToolUseCount ?? call.subagentProgress?.length ?? 0} tool uses`}
+                        </Text></Box> : <ToolResultLines thread={call} transcript={transcript}/>}
                         {transcript && <AgentProgress thread={call} transcript/>}
                     </Box>
                 );

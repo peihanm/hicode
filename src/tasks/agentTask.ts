@@ -47,7 +47,7 @@ export function createAgentTask(
                 await publishProgress(task);
                 return {messageId: queued.id};
             },
-            wait: (timeoutMs: number, signal: AbortSignal) => messageQueue.waitForAgentMessage(timeoutMs, signal),
+            wait: (signal: AbortSignal) => messageQueue.createAgentInputChannel(() => {}).waitForInput(signal),
         }} : {}),
         onChildEvent: (event) => recordAgentProgress(
             task,

@@ -179,24 +179,120 @@ test("headless joins acknowledge notifications only after paired History is pers
     });
 });
 
-test("explicit wait timeout reports running and never spins another model request", async () => {
+test("explicit wait includes sibling delegates and leaves unfinished work pending", async () => {
+    await withTempProject(async cwd => {
+        const gates = [latch(), latch()];
+        let index = 0;
+        const base = createTestContext(cwd);
+        const runtime = createTaskRuntimeForTest(cwd, base.shellRunner, (options, request) => {
+            const gate = gates[index++]!;
+            return {agentId: options.agentId, async run() {
+                await gate.promise;
+                return {agentId: options.agentId, agentType: request.agentType, description: request.description,
+                    reply: request.description, reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
+            }};
+        });
+        const tasks = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore});
+        const ctx = createTestContext(cwd, {tasks});
+        try {
+            const board = await tasks.startAgent({request: {agentType: "Worker", description: "board result", prompt: "work", parentToolCallId: "board"}, parentContext: ctx});
+            const ui = await tasks.startAgent({request: {agentType: "Worker", description: "ui result", prompt: "work", parentToolCallId: "ui"}, parentContext: ctx});
+            ctx.agentJoin!.register(board);
+            ctx.agentJoin!.register(ui);
+            const waiting = executeToolResult("task", JSON.stringify({action: "wait", task_id: ui.id}), ctx, "wait");
+            gates[0]!.resolve();
+            const result = await waiting;
+            expect(result.outcome).toBe("ok");
+            expect(result.modelContent).toContain("board result");
+            expect(result.modelContent).not.toContain("ui result");
+            expect(ctx.agentJoin!.ids).toEqual([ui.id]);
+            const remaining = executeToolResult("task", JSON.stringify({action: "wait"}), ctx, "wait-any");
+            gates[1]!.resolve();
+            expect((await remaining).modelContent).toContain("ui result");
+            expect(ctx.agentJoin!.ids).toEqual([]);
+            expect((await executeToolResult("task", '{"action":"wait"}', ctx, "empty")).modelContent).toContain("No delegated");
+        } finally {gates.forEach(gate => gate.resolve()); await runtime.close();}
+    });
+});
+
+test.each(["user", "agent", "cancel"] as const)("task wait wakes on %s and preserves safe-boundary input", async kind => {
     await withTempProject(async cwd => {
         const gate = latch();
         const base = createTestContext(cwd);
+        const queue = new RuntimeMessageQueue();
+        const controller = createTurnAbortController();
         const runtime = createTaskRuntimeForTest(cwd, base.shellRunner, (options, request) => ({agentId: options.agentId, async run() {
             await gate.promise;
             return {agentId: options.agentId, agentType: request.agentType, description: request.description,
                 reply: "done", reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
         }}));
-        const tasks = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore});
-        const ctx = createTestContext(cwd, {tasks});
+        const tasks = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore, messageQueue: queue});
+        const ctx = createTestContext(cwd, {tasks, signal: controller.signal});
+        ctx.agentMessaging = tasks.messaging;
         try {
             const started = await tasks.startAgent({request: {agentType: "Worker", description: "work", prompt: "work", parentToolCallId: "spawn"}, parentContext: ctx});
             ctx.agentJoin!.register(started);
-            const result = await executeToolResult("task", JSON.stringify({action: "wait", task_id: started.id, timeout_ms: 5}), ctx, "wait");
-            expect(result.outcome).toBe("ok");
-            expect(result.modelContent).toContain("Status: running");
+            let returned = false;
+            const waiting = executeToolResult("task", '{"action":"wait"}', ctx, "wait").then(result => {returned = true; return result;});
+            queue.enqueueUser("next turn only", "later");
+            await tasks.get(started.id);
+            expect(returned).toBe(false);
+            if (kind === "cancel") controller.abort("user-cancel");
+            else if (kind === "user") queue.enqueueUser("new requirement");
+            else queue.enqueueAgent("interface question", {sender: started.id, recipient: "parent", runCount: 1, intent: "message"});
+            const result = await waiting;
+            expect(result.outcome).toBe(kind === "cancel" ? "interrupted" : "ok");
             expect(ctx.agentJoin!.ids).toEqual([started.id]);
+            const inputs = queue.createAgentInputChannel(() => {}).drainSafeBoundary();
+            expect(inputs).toHaveLength(kind === "cancel" ? 0 : 1);
+            expect(queue.list()).toHaveLength(1);
+            expect(queue.list()[0]!.priority).toBe("later");
         } finally {gate.resolve(); await runtime.close();}
+    });
+});
+
+test("one explicit wait spans child progress without another model call and pairs its result", async () => {
+    await withTempProject(async cwd => {
+        const gate = latch();
+        const waiting = latch();
+        const base = createTestContext(cwd);
+        const progress = latch();
+        const progressed = latch();
+        const runtime = createTaskRuntimeForTest(cwd, base.shellRunner, (options, request) => ({agentId: options.agentId, async run() {
+            await progress.promise;
+            await options.onChildEvent?.({type: "iteration", current: 2});
+            progressed.resolve();
+            await gate.promise;
+            return {agentId: options.agentId, agentType: request.agentType, description: request.description,
+                reply: "module verification evidence", reason: "completed", iterations: 2, toolUseCount: 0, durationMs: 1};
+        }}));
+        const tasks = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore});
+        const ctx = createTestContext(cwd, {tasks});
+        attachSubagentLauncher(ctx, async () => {throw new Error("must run in background");});
+        const history: Message[] = [];
+        const fake = createFakeLLM([
+            assistantToolCall("agent", {description: "module", prompt: "implement", run_in_background: true}, "spawn"),
+            assistantToolCall("task", {action: "wait"}, "wait-any"),
+            options => {
+                expect(JSON.stringify(options.messages)).toContain("module verification evidence");
+                expect(options.messages.filter(message => message.role === "tool" && message.tool_call_id === "wait-any")).toHaveLength(1);
+                return assistantText("Integrated the module.");
+            },
+        ]);
+        let run: ReturnType<typeof runAgentForTest> | undefined;
+        try {
+            run = runAgentForTest("implement", history, event => {
+                if (event.type === "tool_call_start" && event.toolCallId === "wait-any") waiting.resolve();
+            }, ctx, {callLLM: fake.callLLM});
+            await waiting.promise;
+            progress.resolve();
+            await progressed.promise;
+            expect(fake.calls).toHaveLength(2);
+            expect((await tasks.list())[0]?.status).toBe("running");
+            gate.resolve();
+            expect((await run).reply).toBe("Integrated the module.");
+            expect(fake.calls).toHaveLength(3);
+            expect(ctx.agentJoin!.ids).toEqual([]);
+        } finally {progress.resolve(); gate.resolve(); await run; await runtime.close();}
     });
 });

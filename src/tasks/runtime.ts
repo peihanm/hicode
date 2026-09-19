@@ -73,7 +73,7 @@ class TaskSession implements TaskSessionLike {
                 await this.ready;
                 return runtime.messageAgent(binding.sessionId, target, message);
             },
-            wait: (timeoutMs, signal) => binding.messageQueue!.waitForAgentMessage(timeoutMs, signal),
+            wait: signal => binding.messageQueue!.createAgentInputChannel(() => {}).waitForInput(signal),
         };
     }
 

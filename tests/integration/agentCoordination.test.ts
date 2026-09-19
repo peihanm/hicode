@@ -41,7 +41,7 @@ test("background worker exchanges bounded messages through tools; idle messages 
                 expect(names).not.toContain("agent");
                 expect(JSON.stringify(options.messages)).toContain("restricted to read-only tools");
                 const send = assistantToolCall("agent_message", {action: "send", target: "parent", message: "Which interface?"}, "child-send");
-                const wait = assistantToolCall("agent_message", {action: "wait", timeout_ms: 1000}, "child-wait");
+                const wait = assistantToolCall("agent_message", {action: "wait"}, "child-wait");
                 const calls = [...send.toolCalls, ...wait.toolCalls];
                 return {...send, message: {...send.message, tool_calls: calls}, toolCalls: calls};
             },
@@ -70,7 +70,7 @@ test("background worker exchanges bounded messages through tools; idle messages 
         try {
             const done = finished(tasks);
             const started = await tasks.startAgent({request, parentContext: parent});
-            expect(await inbox.waitForAgentMessage(1000, new AbortController().signal)).toBe("message");
+            await inbox.createAgentInputChannel(() => {}).waitForInput(new AbortController().signal);
             expect(inbox.list()[0]).toMatchObject({type: "agent_message", route: {sender: started.id, recipient: "parent", runCount: 1, intent: "message"}});
             const sent = await executeToolResult("agent_message", JSON.stringify({action: "send", target: started.id, message: "Use interface A"}), parent, "parent-send");
             expect(sent.outcome).toBe("ok");
@@ -95,7 +95,7 @@ test("interrupt cancels a tool batch, pairs its result and permits continuation 
     await withTempProject(async cwd => {
         const parent = createTestContext(cwd);
         const child = createFakeLLM([
-            () => assistantToolCall("agent_message", {action: "wait", timeout_ms: 60000}, "wait-for-parent"),
+            () => assistantToolCall("agent_message", {action: "wait"}, "wait-for-parent"),
             options => {
                 expectPaired(options.messages);
                 expect(JSON.stringify(options.messages)).toContain("wait-for-parent");

@@ -1,27 +1,27 @@
 import {zodToJsonSchema} from "zod-to-json-schema";
 import {z} from "zod";
-import type {ShellTaskSnapshot, TaskSnapshot} from "../../tasks/index.js";
+import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot} from "../../tasks/index.js";
 import type {Tool} from "../types.js";
 import {checkTaskStopPermission} from "./stopPermission.js";
-import {waitForAgentTasks} from "../../tasks/agentJoin.js";
+import {EMPTY_AGENT_INPUT_CHANNEL} from "../../agent/inputChannel.js";
+import {waitForAgentActivity} from "../../tasks/agentJoin.js";
 
 const inputSchema = z.object({
     action: z
         .enum(["list", "status", "wait", "followup", "interrupt", "stop"])
         .default("list")
-        .describe("Manage tasks. wait awaits one Agent result without polling; followup assigns work; interrupt retains the Agent thread; stop closes it."),
-    timeout_ms: z.number().int().min(1).max(60_000).optional().describe("wait only: maximum wait in milliseconds, default 60000. Running on timeout is not a failure."),
+        .describe("Manage tasks. wait awaits any pending delegated Agent or incoming message without polling; followup assigns work; interrupt retains the Agent thread; stop closes it."),
     task_id: z
         .string()
         .optional()
-        .describe("Required except for list; returned by background bash or agent."),
+        .describe("Required except for list and wait. wait defaults to pending delegates; an explicit Agent ID is included alongside them."),
     message: z
         .string()
         .min(1)
         .max(32 * 1024)
         .optional()
         .describe("Required for followup: inject at a safe boundary while running, or continue the same finished Agent thread."),
-});
+}).strict();
 
 function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
     const termination = snapshot.termination;
@@ -89,7 +89,7 @@ function formatTask(task: TaskSnapshot): string {
 export const taskTool: Tool<typeof inputSchema> = {
     name: "task",
     description:
-        "Manage this session's background Shell/Agent tasks with list/status/wait/followup/interrupt/stop. Use wait when an Agent result blocks further work; a running timeout is not failure. Complete integration before your final answer. Avoid repeated status polling. followup steers a running Agent at a safe boundary or continues a finished thread. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
+        "Manage this session's background Shell/Agent tasks with list/status/wait/followup/interrupt/stop. Use wait when an Agent result blocks further work; omit task_id to wait for any pending delegate. Completion, coordination messages or user input wake the wait; no periodic timeout. Complete integration before your final answer. Avoid repeated status polling. followup steers a running Agent at a safe boundary or continues a finished thread. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "list" || action === "status" || action === "wait",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
@@ -104,7 +104,7 @@ export const taskTool: Tool<typeof inputSchema> = {
         }
         return {behavior: "passthrough"};
     },
-    async execute({action, task_id, message, timeout_ms}, ctx) {
+    async execute({action, task_id, message}, ctx) {
         if (!ctx.tasks) {
             return {content: "This Runtime does not support background tasks", outcome: "failed"};
         }
@@ -114,20 +114,24 @@ export const taskTool: Tool<typeof inputSchema> = {
                 ? "This Session has no background tasks."
                 : tasks.map(formatTask).join("\n\n");
         }
-        if (!task_id) {
-            return {
-                content: `${action} requires task_id`,
-                outcome: "failed",
-            };
-        }
         if (action === "wait") {
             if (!("subscribe" in ctx.tasks)) return {content: "Agent waiting is available only to the parent", outcome: "denied"};
-            await waitForAgentTasks(ctx.tasks, [task_id], ctx.signal, timeout_ms ?? 60_000);
-            const task = await ctx.tasks.get(task_id);
-            if (!task || task.kind !== "agent") return {content: "Agent task is unavailable", outcome: "failed"};
-            ctx.agentJoin?.markReported(task);
-            return {content: formatTask(task), outcome: task.status === "failed" ? "failed" : "ok"};
+            const ids = [...new Set([...(ctx.agentJoin?.ids ?? []), ...(task_id ? [task_id] : [])])];
+            if (!ids.length) return "No delegated Agent results are pending.";
+            const initial = await Promise.all(ids.map(id => ctx.tasks!.get(id)));
+            if (initial.some(task => !task || task.kind !== "agent")) return {content: "Cannot wait for an unavailable Agent task", outcome: "failed"};
+            await waitForAgentActivity(ctx.tasks, ids, ctx.signal,
+                signal => ctx.agentMessaging ? ctx.agentMessaging.wait(signal) : EMPTY_AGENT_INPUT_CHANNEL.waitForInput(signal));
+            const snapshots = await Promise.all(ids.map(id => ctx.tasks!.get(id)));
+            const completed = snapshots.filter((task): task is AgentTaskSnapshot => task?.kind === "agent" && task.status !== "running");
+            for (const task of completed) ctx.agentJoin?.markReported(task);
+            return {
+                content: completed.length ? completed.map(formatTask).join("\n\n")
+                    : "New input is available and will be delivered after this tool batch. Delegated agents may still be running.",
+                outcome: completed.some(task => task.status === "failed") ? "failed" : "ok",
+            };
         }
+        if (!task_id) return {content: `${action} requires task_id`, outcome: "failed"};
         if ((action === "interrupt" || action === "followup") && !(action in ctx.tasks)) return {content: "Child Agents can manage only their own Shell tasks", outcome: "denied"};
         if (action === "interrupt" && "interrupt" in ctx.tasks) {
             try {return {content: formatTask(await ctx.tasks.interrupt(task_id)), outcome: "ok"};}
@@ -171,7 +175,7 @@ export const taskTool: Tool<typeof inputSchema> = {
 
 /** Keep the parent's permission/execution handlers, but expose only child-owned Shell actions. */
 export function childTaskTool(parent: Tool): Tool {
-    const parameters = inputSchema.omit({message: true, timeout_ms: true}).extend({action: z.enum(["list", "status", "stop"]).default("list")}).strict();
+    const parameters = inputSchema.omit({message: true}).extend({action: z.enum(["list", "status", "stop"]).default("list")}).strict();
     return {...parent,
         parameters: parent.parameters.and(parameters),
         inputJsonSchema: zodToJsonSchema(parameters, {target: "jsonSchema7"}),

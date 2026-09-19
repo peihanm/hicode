@@ -1,3 +1,4 @@
+import {isCoordinationWait} from "./conversation/projection.js";
 import {ProvidersDialog} from "./providers/ProvidersDialog.js";
 import type {MessageContent} from "../images/content.js";
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
@@ -36,7 +37,8 @@ import {ResumeDialog} from "./resume/ResumeDialog.js";
 
 function runningActivityLabel(
     threads: UIThread[],
-    subagents: SubagentRegistry
+    subagents: SubagentRegistry,
+    runningAgents: number
 ): string | undefined {
     const hook = [...threads].reverse().find(thread => thread.role === "hook" && thread.status === "running");
     if (hook?.role === "hook") return `Running Hook ${hook.execution.event}...`;
@@ -46,6 +48,9 @@ function runningActivityLabel(
     );
     if (!running) return undefined;
     if (running.approvalReview) return running.approvalReview;
+    if (isCoordinationWait(running)) return running.name === "task"
+        ? `Waiting for agents · ${runningAgents} running · /tasks`
+        : "Waiting for an agent message...";
     if (running.name !== "agent") return `Executing ${running.name}...`;
 
     let agentType = running.subagentType;
@@ -260,7 +265,8 @@ export function App({
         const mcpSnapshots = mcpManager?.getSnapshots() ?? [];
         const activityLabel = runningActivityLabel(
             turn.liveThreads,
-            resources.subagents
+            resources.subagents,
+            turn.backgroundTasks.agent
         );
         return (
             <Box flexDirection="column">

@@ -8,5 +8,6 @@ export interface AgentMessageRoute {
 
 export interface AgentMessaging {
     send(target: string, message: string): Promise<{messageId: string}>;
-    wait(timeoutMs: number, signal: AbortSignal): Promise<"message" | "timeout">;
+    /** Observe next input without consuming it; only the runner delivers at a safe boundary. */
+    wait(signal: AbortSignal): Promise<void>;
 }
