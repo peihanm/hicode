@@ -1,3 +1,4 @@
+import {createAgentReceipt} from "./receipt.js";
 import {z} from "zod";
 import type {SubagentRegistry} from "../../subagents/registry.js";
 import type {SubagentResult} from "../../subagents/types.js";
@@ -138,7 +139,8 @@ export function createAgentTool(
                 const task = launched.task;
                 return {content: ["Agent Task started.", `Task: ${task.id}`, `Agent: ${task.agentName ?? task.agentType}`,
                     `Description: ${task.description}`, `Status: ${task.status}`, `Cwd: ${task.cwd}`,
-                    "Use task wait without task_id when delegated results block further work; completion or incoming messages wake it without polling, then integrate and verify before your final answer. Use agent_message for coordination or agent_followup for additional work. Do not poll."].join("\n"), outcome: "ok"};
+                    "Use task wait without task_id when delegated results block further work; completion or incoming messages wake it without polling, then integrate and verify before your final answer. Use agent_message for coordination or agent_followup for additional work. Do not poll."].join("\n"), outcome: "ok",
+                    uiData: {type: "agent_receipt", receipt: createAgentReceipt(task.agentName ?? task.agentType, task.description, "started")}};
             } catch (error) {return {content: error instanceof Error ? error.message : String(error), outcome: "failed"};}
         },
     };

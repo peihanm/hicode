@@ -1,3 +1,4 @@
+import {agentReceiptSchema} from "../tools/agent/receipt.js";
 import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
 import {reasoningStateSchema} from "../llm/reasoning.js";
@@ -166,6 +167,7 @@ const persistedUIEventSchema = z.discriminatedUnion("type", [
         toolCallId: idSchema,
         timestamp: timestampSchema,
         outcome: z.enum(["ok", "failed", "denied", "interrupted"]),
+        agentReceipt: agentReceiptSchema.optional(),
     }).strict(),
     z.object({
         version: z.literal(1),

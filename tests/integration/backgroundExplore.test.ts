@@ -60,6 +60,7 @@ describe("background Explore", () => {
                 run_in_background: true,
             }), ctx, "background-agent-call");
             expect(launched.outcome).toBe("ok");
+            expect(launched.uiData).toMatchObject({type: "agent_receipt", receipt: {delivery: "started"}});
             expect(launched.modelContent).toContain("Agent Task started");
             const running = await tasks.list();
             expect(running).toHaveLength(1);

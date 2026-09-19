@@ -1,3 +1,4 @@
+import type {AgentReceipt} from "../tools/agent/receipt.js";
 import type {ToolOutcome} from "../toolResults/types.js";
 export type DiffLineType = "context" | "add" | "remove";
 
@@ -36,9 +37,9 @@ export interface FileChange {
 export type ToolUIData = {
     type: "file_change";
     change: FileChange;
-};
+} | {type: "agent_receipt"; receipt: AgentReceipt};
 
 export function toolFileChanges(data?: ToolUIData, outcome?: ToolOutcome): readonly FileChange[] {
-    if (!data || (outcome !== undefined && outcome !== "ok")) return [];
+    if (!data || data.type !== "file_change" || (outcome !== undefined && outcome !== "ok")) return [];
     return [data.change];
 }

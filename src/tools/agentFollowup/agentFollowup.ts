@@ -1,3 +1,4 @@
+import {createAgentReceipt} from "../agent/receipt.js";
 import {z} from "zod";
 import type {Tool} from "../types.js";
 
@@ -39,7 +40,8 @@ export const agentFollowupTool: Tool<typeof inputSchema> = {
                 queued ? "Delivery occurs at a safe boundary; this receipt is not a completion report."
                     : "A new run uses the existing Agent context; this receipt is not a completion report.",
                 "Continue independent work, then use task wait to collect results and integrate.",
-            ].join("\n"), outcome: "ok"};
+            ].join("\n"), outcome: "ok",
+                uiData: {type: "agent_receipt", receipt: createAgentReceipt(task.agentName ?? task.agentType, task.description, queued ? "queued" : "continued")}};
         } catch (error) {
             return {content: error instanceof Error ? error.message : String(error), outcome: "failed"};
         }

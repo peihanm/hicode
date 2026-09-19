@@ -114,6 +114,7 @@ export function threadsFromHistory(
         if (!target || target.role !== "tool_call") continue;
         if (event.type === "tool_call") {
             target.outcome = event.outcome;
+            if (event.agentReceipt && event.outcome === "ok") target.uiData = {type: "agent_receipt", receipt: event.agentReceipt};
             continue;
         }
         threads = reduceThreads(threads, {

@@ -303,7 +303,7 @@ describe("phase-based tool presentation", () => {
         expect(transcript).toContain("src/4.ts");
     });
 
-    test("同一批并行 Agent 使用树形批次摘要", () => {
+    test("同一批 Agent 保持独立工具条目", () => {
         const threads: UIThread[] = [
             {
                 id: "a1",
@@ -335,9 +335,9 @@ describe("phase-based tool presentation", () => {
             },
         ];
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
-        expect(frame).toContain("● 2 agents finished");
-        expect(frame).toContain("├─ Explore · 调查前端");
-        expect(frame).toContain("└─ Explore · 调查后端");
+        expect(frame).not.toContain("agents finished");
+        expect(frame).toContain("● Agent Explore · 调查前端");
+        expect(frame).toContain("● Agent Explore · 调查后端");
     });
 
     test("后台任务失败使用专用行并直接展示首要原因", () => {

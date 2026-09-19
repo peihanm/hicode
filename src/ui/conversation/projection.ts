@@ -12,13 +12,7 @@ export interface PhaseGroup {
     calls: ToolCallThread[];
 }
 
-export interface AgentBatch {
-    kind: "agent_batch";
-    id: string;
-    calls: ToolCallThread[];
-}
-
-export type ConversationItem = UIThread | PhaseGroup | AgentBatch;
+export type ConversationItem = UIThread | PhaseGroup;
 
 export function isToolCall(item: UIThread): item is ToolCallThread {
     return item.role === "tool_call";
@@ -66,30 +60,6 @@ export function projectDefaultThreads(threads: UIThread[]): ConversationItem[] {
                     label: phase.label,
                     calls,
                 });
-            }
-            continue;
-        }
-        if (isToolCall(thread) && thread.name === "agent") {
-            const calls: ToolCallThread[] = [];
-            const turnId = thread.turnId;
-            while (index < threads.length) {
-                const candidate = threads[index]!;
-                if (
-                    !isToolCall(candidate) ||
-                    candidate.name !== "agent" ||
-                    candidate.turnId !== turnId
-                ) break;
-                calls.push(candidate);
-                index += 1;
-            }
-            if (calls.length > 1) {
-                items.push({
-                    kind: "agent_batch",
-                    id: `agents:${calls[0]!.id}:${calls.at(-1)!.id}`,
-                    calls,
-                });
-            } else {
-                items.push(calls[0]!);
             }
             continue;
         }

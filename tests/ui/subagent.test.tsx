@@ -68,7 +68,7 @@ describe("subagent UI", () => {
 
     expect(threads).toHaveLength(1);
     const instance = render(<MessageList threads={threads} />);
-    expect(instance.lastFrame()).toContain("Explore Agent · 调查 Session");
+    expect(instance.lastFrame()).toContain("Agent Explore · 调查 Session");
     expect(instance.lastFrame()).toContain("Done (5 tool calls · 3 iterations");
     expect(instance.lastFrame()).not.toContain("完整 Explore 调查报告");
 
@@ -145,7 +145,7 @@ describe("subagent UI", () => {
 
       const frame = instance.lastFrame() ?? "";
       const label = agentName ? `${agentName} (project-reviewer)` : "project-reviewer";
-      expect(frame).toContain(`● ${label} Agent · 独立审查本轮实现`);
+      expect(frame).toContain(`● Agent ${agentName ?? "project-reviewer"} · 独立审查本轮实现`);
       expect(frame).toContain(`Running ${label} Agent...`);
       expect(frame).not.toContain("✻ project-reviewer Agent");
       expect(frame).not.toContain("project-reviewer: 独立审查本轮实现");
@@ -310,10 +310,10 @@ describe("subagent UI", () => {
         instance.stdin.write("\x0f");
         await new Promise((resolve) => setTimeout(resolve, 30));
         const frame = instance.lastFrame() ?? "";
-        expect(frame.match(/● Explore Agent/g) ?? []).toHaveLength(1);
+        expect(frame.match(/● Agent Explore/g) ?? []).toHaveLength(1);
         const rootListIndex = frame.indexOf("● List .");
         const agentIndex = frame.indexOf(
-          "● Explore Agent · 调查刷题网站项目现状",
+          "● Agent Explore · 调查刷题网站项目现状",
           rootListIndex
         );
         expect(rootListIndex).toBeGreaterThanOrEqual(0);

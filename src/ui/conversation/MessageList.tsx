@@ -13,7 +13,6 @@ import {
 } from "../../tools/presentation.js";
 import {limitTerminalText} from "./presentationLimits.js";
 import {
-    type AgentBatch,
     type ConversationItem,
     layoutUserMessageRows,
     type PhaseGroup,
@@ -24,30 +23,25 @@ import {
 const MAX_USER_DISPLAY_CHARS = 100_000;
 const MAX_ASSISTANT_DISPLAY_CHARS = 200_000;
 const MAX_SUBAGENT_REPORT_DISPLAY_CHARS = 20_000;
-function agentIdentity(
-    thread: Extract<UIThread, { role: "tool_call" }>
-): { type: string; background: boolean; description?: string } | undefined {
-    if (thread.name !== "agent") return undefined;
-    try {
-        const parsed = JSON.parse(thread.args) as Record<string, unknown>;
-        const role = thread.subagentType ?? (typeof parsed.subagent_type === "string" ? parsed.subagent_type : "Worker");
-        const name = thread.subagentName ?? (typeof parsed.name === "string" ? parsed.name : undefined);
-        const type = name ? `${name} (${role})` : role;
-        return {
-            type,
-            background: isBackgroundAgentCall(thread.name, thread.args),
-            ...(typeof parsed.description === "string"
-                ? {description: parsed.description}
-                : {}),
-        };
-    } catch {
-        return {
-            background: false,
-            type: thread.subagentName
-                ? `${thread.subagentName} (${thread.subagentType ?? "Worker"})`
-                : thread.subagentType ?? "Agent",
-        };
+function agentIdentity(thread: ToolCallThread): {
+    name: string; background: boolean; description?: string; delivery?: "started" | "continued" | "queued";
+} | undefined {
+    if (thread.name !== "agent" && thread.name !== "agent_followup") return undefined;
+    const receipt = thread.outcome === "ok" && thread.uiData?.type === "agent_receipt" ? thread.uiData.receipt : undefined;
+    let parsed: Record<string, unknown> = {};
+    try {const value: unknown = JSON.parse(thread.args); if (value && typeof value === "object" && !Array.isArray(value)) parsed = value as Record<string, unknown>;} catch {}
+    const name = receipt?.name ?? thread.subagentName ?? (thread.name === "agent"
+        ? typeof parsed.name === "string" ? parsed.name : thread.subagentType ?? (typeof parsed.subagent_type === "string" ? parsed.subagent_type : "Worker")
+        : "");
+    let description = receipt?.description ?? (typeof parsed.description === "string" ? parsed.description : undefined);
+    description = description?.replace(/\s+/g, " ").trim();
+    for (const separator of [":", "："]) {
+        if (name && description?.startsWith(name + separator)) description = description.slice(name.length + separator.length).trimStart();
     }
+    return {name, description,
+        background: thread.name === "agent_followup" || isBackgroundAgentCall(thread.name, thread.args),
+        delivery: receipt?.delivery,
+    };
 }
 
 function transcriptResultLines(result: string): string[] {
@@ -95,8 +89,11 @@ function ToolResultLines({
     transcript: boolean;
 }) {
     if (!thread.result) return null;
-    if (!transcript && agentIdentity(thread)?.background && thread.outcome === "ok") {
-        return <Box marginLeft={2}><Text color={COLORS.dim}>Started in background · /tasks</Text></Box>;
+    const agent = agentIdentity(thread);
+    if (!transcript && agent?.background && thread.outcome === "ok") {
+        const status = agent.delivery === "queued" ? "Queued" : agent.delivery === "continued" ? "Continued"
+            : thread.name === "agent" ? "Started" : "Assignment accepted";
+        return <Box marginLeft={2}><Text color={COLORS.dim}>{status} · /tasks</Text></Box>;
     }
     const lines = transcript
         ? transcriptResultLines(thread.result)
@@ -216,23 +213,18 @@ function ToolCallView({
     const presentation = describeToolCall(thread.name, thread.args);
     return (
         <Box flexDirection="column" marginTop={1}>
-            <Box>
-                <Text color={paused ? COLORS.assistant : COLORS.accent}>
-                    {SYMBOLS.assistantMark}
-                </Text>
-                <Text color={COLORS.toolName} bold>
-                    {" "}
-                    {agent ? `${agent.type} Agent` : presentation.label}
-                </Text>
-                {agent?.description ? (
-                    <Text color={COLORS.toolArgs}> · {agent.description}</Text>
-                ) : (
-                    presentation.detail ? <>
-                        <Text color={COLORS.dim}> </Text>
-                        <Text color={COLORS.toolArgs}>{presentation.detail}</Text>
-                    </> : null
-                )}
-            </Box>
+            {agent ? <Text wrap="truncate-end">
+                <Text color={paused ? COLORS.assistant : COLORS.accent}>{SYMBOLS.assistantMark} </Text>
+                <Text color={COLORS.toolName} bold>{`Agent${agent.name ? ` ${agent.name}` : ""}`}</Text>
+                {agent.description && <Text color={COLORS.toolArgs}> · {agent.description}</Text>}
+            </Text> : <Box>
+                <Text color={paused ? COLORS.assistant : COLORS.accent}>{SYMBOLS.assistantMark}</Text>
+                <Text color={COLORS.toolName} bold> {presentation.label}</Text>
+                {presentation.detail && <>
+                    <Text color={COLORS.dim}> </Text>
+                    <Text color={COLORS.toolArgs}>{presentation.detail}</Text>
+                </>}
+            </Box>}
             {agent && <AgentProgress thread={thread} transcript={transcript}/>}
             <ToolResultLines thread={thread} transcript={transcript}/>
             {transcript && thread.subagentReport && (
@@ -290,40 +282,6 @@ function PhaseGroupView({group}: {group: PhaseGroup}) {
     );
 }
 
-function AgentBatchView({batch, transcript}: {batch: AgentBatch; transcript: boolean}) {
-    const running = batch.calls.some(call => call.status === "running");
-    const failed = batch.calls.some(call => call.status !== "running" && call.outcome !== undefined && call.outcome !== "ok");
-    const confirmed = batch.calls.every(call => call.outcome === "ok");
-    const allBackground = batch.calls.every(call => agentIdentity(call)?.background);
-    const allForeground = batch.calls.every(call => !agentIdentity(call)?.background);
-    const title = running ? `${allBackground ? "Starting" : "Running"} ${batch.calls.length} agents…`
-        : failed ? `${batch.calls.length} agent calls · some unsuccessful`
-        : !confirmed ? `${batch.calls.length} agent calls`
-        : allBackground ? `Started ${batch.calls.length} agents · /tasks`
-        : allForeground ? `${batch.calls.length} agents finished`
-        : `${batch.calls.length} agent calls · started / completed`;
-    return (
-        <Box marginTop={1} flexDirection="column">
-            <Text color={failed ? COLORS.error : COLORS.toolName} bold>{SYMBOLS.assistantMark} {title}</Text>
-            {batch.calls.map((call, index) => {
-                const identity = agentIdentity(call);
-                const branch = index === batch.calls.length - 1 ? "└─" : "├─";
-                return (
-                    <Box key={call.id} marginLeft={2} flexDirection="column">
-                        <Text color={COLORS.toolResult}>
-                            {branch} {identity?.type ?? "Agent"} · {identity?.description ?? "task"}
-                        </Text>
-                        {call.status === "running" ? <Box marginLeft={3}><Text color={COLORS.dim}>
-                            {identity?.background ? "Starting…" : `${call.subagentToolUseCount ?? call.subagentProgress?.length ?? 0} tool uses`}
-                        </Text></Box> : <ToolResultLines thread={call} transcript={transcript}/>}
-                        {transcript && <AgentProgress thread={call} transcript/>}
-                    </Box>
-                );
-            })}
-        </Box>
-    );
-}
-
 function ThreadView({
                         item,
                         paused,
@@ -337,9 +295,6 @@ function ThreadView({
 }) {
     if ("kind" in item && item.kind === "phase_group") {
         return <PhaseGroupView group={item}/>;
-    }
-    if ("kind" in item && item.kind === "agent_batch") {
-        return <AgentBatchView batch={item} transcript={transcript}/>;
     }
     const thread = item as UIThread;
     if (thread.role === "user") {

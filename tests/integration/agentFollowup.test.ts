@@ -53,6 +53,7 @@ test("followup has a strict standalone tool, respects ownership and never relaun
             const nextDone = finished(tasks);
             const reply = await executeToolResult("agent_followup", JSON.stringify({target: task.id, message: "next"}), parent, "valid");
             expect(reply.outcome).toBe("ok");
+            expect(reply.uiData).toMatchObject({type: "agent_receipt", receipt: {name: "board", delivery: "continued"}});
             expect(reply.modelContent).toContain("Agent continued: board");
             expect(reply.modelContent).toContain("Run: 2");
             await nextDone;

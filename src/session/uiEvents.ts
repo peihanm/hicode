@@ -1,3 +1,4 @@
+import type {AgentReceipt} from "../tools/agent/receipt.js";
 import type {FileChange} from "../fileChanges/types.js";
 import type {ToolOutcome} from "../toolResults/index.js";
 
@@ -17,6 +18,7 @@ export interface PersistedToolCallUIEvent {
     toolCallId: string;
     timestamp: string;
     outcome: ToolOutcome;
+    agentReceipt?: AgentReceipt;
 }
 
 export type PersistedUIEvent =

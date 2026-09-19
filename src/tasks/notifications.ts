@@ -65,7 +65,10 @@ function notificationSummary(task: TaskSnapshot): string {
 export function notificationFor(task: TaskSnapshot): TaskNotification {
     const label = task.kind === "memory"?"Memory maintenance":task.kind === "shell"
         ? task.command
-        : `${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType} · ${task.description}`;
+        : task.agentName ?? task.description;
+    const messageLabel = task.kind === "agent"
+        ? `${task.agentName ? `${task.agentName} (${task.agentType})` : task.agentType} · ${task.description}`
+        : label;
     const result = task.kind==="memory"?undefined:task.outputResult;
     const resultId = result?.resultId;
     const output = resultId
@@ -82,7 +85,7 @@ export function notificationFor(task: TaskSnapshot): TaskNotification {
         status: task.status as TaskNotification["status"],
         summary,
         ...(resultId ? {resultId} : {}),
-        message: `Background ${task.kind === "shell" ? "task" : "Agent"} ${task.id}(${label}) is ${
+        message: `Background ${task.kind === "shell" ? "task" : "Agent"} ${task.id}(${messageLabel}) is ${
             task.status === "completed"
                 ? "completed"
                 : task.status === "interrupted"
