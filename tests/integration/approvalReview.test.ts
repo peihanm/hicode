@@ -126,7 +126,7 @@ describe("automatic approval through the production tool chain", () => {
             await Bun.write(`${cwd}/evidence.txt`, "verified evidence");
             const fake = createFakeLLM([
                 options => {
-                    expect(options.tools?.map(tool => tool.function.name)).toEqual(["list_files", "read_file", "grep", "glob"]);
+                    expect(options.tools?.map(tool => tool.function.name)).toEqual(["read_file", "bash"]);
                     return assistantToolCall("read_file", {path: "evidence.txt"}, "read");
                 },
                 options => {

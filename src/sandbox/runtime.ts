@@ -1,4 +1,5 @@
 import {bashCommand, bashExecutable} from "../tools/bash/command.js";
+import {readOnlySandboxArgv} from "./readOnly.js";
 import {
     SandboxManager,
     type SandboxRuntimeConfig,
@@ -89,6 +90,10 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         options?: SandboxCommandOptions
     ): Promise<SandboxedCommand> {
         if (this.closePromise) throw new Error("Sandbox Runtime is closed");
+        if (options?.readOnlyAccess) {
+            signal.throwIfAborted();
+            return {argv: await readOnlySandboxArgv(bashCommand(command), options.readOnlyAccess, this.baseConfig.filesystem.denyRead, cwd), env: {}};
+        }
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
             .map((path) => resolve(path));

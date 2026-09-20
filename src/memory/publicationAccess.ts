@@ -83,7 +83,7 @@ export function createPublicationFileAccess(store: MemoryPublicationStore, owner
         classify: path => classifyPublicationPath(store.directory, path),
         async prepare(path, toolName) {
             const managed = requirePath(path);
-            const reading = toolName === "read_file" || toolName === "grep";
+            const reading = toolName === "read_file";
             const writingNote = managed.kind === "note" && (toolName === "write_file" || toolName === "edit_file");
             const forgetting = managed.kind !== "index" && toolName === "delete_file";
             if (!reading && !writingNote && !forgetting)

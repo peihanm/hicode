@@ -47,9 +47,7 @@ export function buildPersistedToolResultMessage(
         escapeProtocolText(result.preview),
         "",
         ...(result.complete ? [] : ["This preview ends at the saved portion, not necessarily the end of the original output."]),
-        ...(result.byteLength <= 64 * 1024 * 1024
-            ? ["To locate details, use grep on the saved file path with a keyword pattern, context=3 and head_limit=20. Use read_file on the same path to read surrounding lines."]
-            : ["This saved file exceeds grep's 64 MiB explicit-file limit; use read_file on the saved path with line offset/limit."]),
+        "To locate details, use Bash rg -n -F -C 3 -e 'keyword' on the exact saved file path. Use read_file on the same path to read surrounding lines.",
         `Use read_file with path=${JSON.stringify(result.path)} and line offset/limit to read more.`,
         "Inspect the saved output instead of rerunning the command just to obtain another excerpt.",
         "</persisted-output>",

@@ -22,11 +22,11 @@ describe("large tool result integration", () => {
           expect(content).not.toContain("ERR_ASSERTION");
           const path = content.match(/^Full output saved at: (.+)$/m)?.[1];
           expect(path).toBeDefined();
-          return assistantToolCall("grep", {path: JSON.parse(path!), pattern: "ERR_ASSERTION", head_limit: 20}, "find-assertion");
+          return assistantToolCall("bash", {command: `rg -n -e ERR_ASSERTION '${JSON.parse(path!)}'`}, "find-assertion");
         },
         options => {
           const result = options.messages.find(message => message.role === "tool" && message.tool_call_id === "find-assertion");
-          expect(result?.content).toContain(":3: ERR_ASSERTION at game.test.ts:93");
+          expect(result?.content).toContain("3:ERR_ASSERTION at game.test.ts:93");
           return assistantText("已定位断言");
         },
       ]);
@@ -34,7 +34,8 @@ describe("large tool result integration", () => {
       const result = await runAgent("定位失败", history, () => {}, createTestContext(cwd), {callLLM: fake.callLLM});
       expect(result.reply).toBe("已定位断言");
       const bashCalls = history.flatMap(message => message.role === "assistant" ? message.tool_calls ?? [] : []).filter(call => call.function.name === "bash");
-      expect(bashCalls).toHaveLength(1);
+      expect(bashCalls).toHaveLength(2);
+      expect(bashCalls.filter(call => JSON.parse(call.function.arguments).command.startsWith("node -e"))).toHaveLength(1);
     });
   });
   test("模型只收到引用并能通过 read_file 恢复内容", async () => {

@@ -9,9 +9,6 @@ import {askUserTool} from "./askUser/askUser.js";
 import {bashTool} from "./bash/bash.js";
 import {editFileTool} from "./editFile/editFile.js";
 import {deleteFileTool} from "./deleteFile/deleteFile.js";
-import {globTool} from "./glob/glob.js";
-import {grepTool} from "./grep/grep.js";
-import {listFilesTool} from "./listFiles/listFiles.js";
 import {readFileTool} from "./readFile/readFile.js";
 import {skillTool} from "./skill/skill.js";
 import {taskTool} from "./task/task.js";
@@ -44,14 +41,11 @@ function createBuiltinTools(): Tool[] {
     // The default Agent implementation is for the base Catalog and capability validation. Root
     // builds an override from the current Subagent Catalog; do not export a global Tool instance.
     return [
-        listFilesTool,
         readFileTool,
         viewImageTool,
         writeFileTool,
         editFileTool,
         deleteFileTool,
-        grepTool,
-        globTool,
         bashTool,
         askUserTool,
         todoWriteTool,

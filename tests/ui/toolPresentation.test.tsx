@@ -44,14 +44,14 @@ describe("phase-based tool presentation", () => {
         });
         threads = completeTool(threads, {
             id: "list",
-            name: "list_files",
-            args: {dir: "src"},
+            name: "bash",
+            args: {command: "ls src"},
             result: "agent/\nruntime/",
         });
         threads = completeTool(threads, {
             id: "grep",
-            name: "grep",
-            args: {pattern: "createRuntime", path: "src"},
+            name: "bash",
+            args: {command: "rg -n -e createRuntime src"},
             result: "src/runtime/resources.ts:10",
         });
         threads = completeTool(threads, {
@@ -64,8 +64,8 @@ describe("phase-based tool presentation", () => {
         expect(projectDefaultThreads(threads)).toHaveLength(1);
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).toContain("● Inspecting project");
-        expect(frame).toContain("✓ Listed src · Found 2 results");
-        expect(frame).toContain("✓ Searched for \"createRuntime\"");
+        expect(frame).toContain("✓ Listed src");
+        expect(frame).toContain("✓ Searched \"createRuntime\"");
         expect(frame).toContain("✓ Read src/runtime/resources.ts · 20 lines");
         expect(frame).not.toContain("Tool search");
     });
@@ -141,8 +141,8 @@ describe("phase-based tool presentation", () => {
         });
         threads = completeTool(threads, {
             id: "grep-failed",
-            name: "grep",
-            args: {pattern: "x", path: "missing"},
+            name: "bash",
+            args: {command: "rg -e x missing"},
             result: "工具执行出错: 搜索目录不存在",
             outcome: "failed",
         });
@@ -159,7 +159,7 @@ describe("phase-based tool presentation", () => {
         expect(frame.match(/● Inspecting project/g)).toHaveLength(2);
         expect(frame).toContain("✓ Read before.ts · 1 line");
         expect(frame).toContain("✓ Read after.ts · 1 line");
-        expect(frame).toContain("● Search pattern: \"x\", path: missing");
+        expect(frame).toContain("● Search rg -e x missing");
         expect(frame).toContain("工具执行出错: 搜索目录不存在");
     });
 

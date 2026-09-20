@@ -38,7 +38,7 @@ describe("ToolResultStore", () => {
         const message = buildPersistedToolResultMessage(result);
         expect(message).toContain("Complete: yes");
         expect(message).toContain(JSON.stringify(result.path));
-        expect(message).toContain("use grep on the saved file path");
+        expect(message).toContain("use Bash rg -n -F -C 3");
         expect(message).toContain("read_file");
         expect(message).not.toContain("Preview (first");
       }
@@ -66,7 +66,7 @@ describe("ToolResultStore", () => {
       const result = await store.persistText({toolCallId: "large", toolName: "test", content: "x".repeat(1024 * 1024 + 1)});
       const message = buildPersistedToolResultMessage(result);
       expect(message).not.toContain("exceeds grep");
-      expect(message).toContain("use grep on the saved file path");
+      expect(message).toContain("use Bash rg -n -F -C 3");
       expect(message).toContain(JSON.stringify(result.path));
     });
   });

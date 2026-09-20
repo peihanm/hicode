@@ -10,7 +10,7 @@ function runtime(fake: ReturnType<typeof createFakeLLM>) {
         cwd: "/fixture",
         model: "glm-test",
         instructions: EMPTY_PROJECT_INSTRUCTIONS,
-        availableToolNames: ["list_files", "read_file", "grep", "edit_file"],
+        availableToolNames: ["read_file", "bash", "edit_file"],
         getExistingAgentNames: () => ["Explore"],
     });
 }

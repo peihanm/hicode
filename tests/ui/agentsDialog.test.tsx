@@ -37,7 +37,7 @@ describe("Agents dialog", () => {
                     expect(detail.replace(/\s+/g, " ")).toContain("Definition cannot be edited");
                     expect(detail).toContain("Read-only");
                 expect(detail).not.toContain("Turn limit");
-                    expect(detail).toContain("Tools · 4");
+                    expect(detail).toContain("Tools · 2");
                     expect(detail).not.toContain("Root");
                     expect(detail.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
                     view.stdin.write("\u001b"); await tick();

@@ -30,7 +30,7 @@ describe("synchronous subagent", () => {
           expect(options.model).toBe("glm-test");
           const names = options.tools.map((tool) => tool.function.name);
           expect(names).toContain("write_file");
-          expect(names).not.toContain("bash");
+          expect(names).toContain("bash");
           expect(names).not.toContain("agent");
           expect(names).not.toContain("task");
           return assistantToolCall(
@@ -146,12 +146,7 @@ describe("synchronous subagent", () => {
               contentText(message.content).includes("root-only CODE instruction")
             )
           ).toBe(true);
-          expect(options.tools.map((tool) => tool.function.name)).toEqual([
-            "list_files",
-            "read_file",
-            "grep",
-            "glob",
-          ]);
+          expect(options.tools.map((tool) => tool.function.name)).toEqual(["read_file", "bash"]);
           expect(
             options.messages.some(
               (message) =>

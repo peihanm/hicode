@@ -2,10 +2,9 @@ import {realpath} from "node:fs/promises";
 import {dirname, isAbsolute, posix, relative, resolve} from "node:path";
 import picomatch from "picomatch";
 import type {PermissionMatcher} from "../tools/types.js";
-import type {PermissionRules} from "./types.js";
 
 export function isFilePermissionTool(name: string): boolean {
-    return ["read_file", "write_file", "edit_file", "delete_file", "view_image", "grep", "glob", "list_files"].includes(name);
+    return ["read_file", "write_file", "edit_file", "delete_file", "view_image"].includes(name);
 }
 
 export function validateFilePattern(pattern: string): boolean {
@@ -65,22 +64,4 @@ async function prepareFileMatcher(cwd: string, patterns: readonly string[]) {
 
 export async function createFilePermissionMatcher(cwd: string, path: string, patterns: readonly string[]): Promise<PermissionMatcher> {
     return (await prepareFileMatcher(cwd, patterns))(path);
-}
-
-/** Descendant ask rules need a later explicit call; searching a parent never grants them. */
-export function createSearchPathFilter(cwd: string, root: string, name: string, rules: PermissionRules): (path: string) => Promise<boolean> {
-    const denied = rules.deny.filter(rule => rule.toolName === name && rule.content !== undefined);
-    const asked = rules.ask.filter(rule => rule.toolName === name && rule.content !== undefined);
-    let prepared: ReturnType<typeof prepareFileMatcher> | undefined;
-    let restrictions: Promise<typeof denied> | undefined;
-    return async path => {
-        if (resolve(path) === resolve(root) || (denied.length === 0 && asked.length === 0)) return true;
-        const getMatcher = await (prepared ??= prepareFileMatcher(cwd, [...denied, ...asked].map(rule => rule.content!)));
-        restrictions ??= getMatcher(root).then(match =>
-            [...denied, ...asked.filter(rule => !match(rule.content!, "deny"))]);
-        const restricted = await restrictions;
-        if (restricted.length === 0) return true;
-        const match = await getMatcher(path);
-        return !restricted.some(rule => match(rule.content!, "deny"));
-    };
 }

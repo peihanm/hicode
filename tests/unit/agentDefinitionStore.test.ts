@@ -11,7 +11,7 @@ function draft(description = "检查项目实现"): AgentDefinitionDraft {
     return {
         name: "project-reviewer",
         description,
-        tools: ["read_file", "grep"],
+        tools: ["read_file", "bash"],
 
 
         systemPrompt: "你只负责检查项目并返回证据。",

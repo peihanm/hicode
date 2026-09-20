@@ -58,14 +58,9 @@ export function toolPathInput(
 ): string | undefined {
     if (!input || typeof input !== "object") return undefined;
     const value = input as Record<string, unknown>;
-    if (toolName === "list_files") {
-        return typeof value.dir === "string" ? value.dir : ".";
-    }
     if (
         toolName === "read_file" ||
         toolName === "view_image" ||
-        toolName === "glob" ||
-        toolName === "grep" ||
         toolName === "edit_file" ||
         toolName === "write_file" ||
         toolName === "delete_file"

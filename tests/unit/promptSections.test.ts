@@ -41,7 +41,7 @@ describe("English prompt contracts", () => {
         expect(prompt).toContain("Once the goal has sufficient evidence, stop");
         expect(prompt).not.toContain("64 MiB");
         expect(prompt).not.toContain("timeout_ms");
-        expect(toolDescription("grep")).toContain("64 MiB");
+        expect(toolDescription("bash")).toContain("rg --files");
         expect(toolDescription("bash")).toContain("omit timeout_ms");
         expect(toolDescription("bash")).toContain("stop it before restarting");
         expect(toolDescription("bash")).toContain("Do not use git add . or git add -A");

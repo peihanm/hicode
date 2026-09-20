@@ -1,4 +1,5 @@
 import {finishPromptLogRun} from "../llm/promptLog.js";
+import {createReadOnlyBashTool} from "../tools/bash/bash.js";
 import type {ContextSettings} from "../context/config.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import { mkdir, readdir, rm } from "node:fs/promises";
@@ -55,7 +56,7 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
             logRunId?{scope:"maintenance",ownerCwd:options.cwd,runId:logRunId}:undefined);
     };
     const runAgent = createAgentRunner({ callLLM, compactHistory: async () => { throw new Error("Memory consolidation exceeded its fixed input budget; recursive compaction is disabled"); } });
-    const tools = createToolRuntime({ allowedToolNames: ["read_file", "grep", "list_files", "write_file", "edit_file", "delete_file"] });
+    const tools = createToolRuntime({ allowedToolNames: ["read_file", "bash", "write_file", "edit_file", "delete_file"], toolOverrides: [createReadOnlyBashTool()] });
     return { async consolidate(input) {
             logRunId=undefined;
             const remaining = Date.parse(input.lease.expiresAt) - Date.now();

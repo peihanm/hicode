@@ -58,33 +58,19 @@ test("绝对规则解析目录别名，项目路径中的 glob 字符不参与�
     });
 });
 
-test("Grep/Glob 根目录搜索不会读取或展示 deny/ask 候选", async () => {
+test("Bash search does not bypass explicit file rules", async () => {
     await withTempProject(async cwd => {
-        await mkdir(join(cwd, "private"));
-        await writeFile(join(cwd, "private", "hidden.txt"), "private evidence");
-        await writeFile(join(cwd, "ask.txt"), "pending evidence");
-        await writeFile(join(cwd, "public.txt"), "public evidence");
+        await writeFile(join(cwd, "private.txt"), "private evidence");
         const ctx = createTestContext(cwd);
-        for (const toolName of ["grep", "glob", "list_files"]) {
-            ctx.permissionRules.deny.push({toolName, content: "private/**", source: "local"});
-            ctx.permissionRules.ask.push({toolName, content: "ask.txt", source: "local"});
-        }
+        ctx.permissionRules.deny.push({toolName: "read_file", content: "private.txt", source: "local"});
         const runtime = createToolRuntime();
-        for (const [name, args] of [
-            ["grep", {path: ".", pattern: "evidence", output_mode: "content", search_mode: "complete"}],
-            ["glob", {path: ".", pattern: "**/*.txt"}],
-            ["list_files", {dir: "."}],
-        ] as const) {
-            const result = await runtime.executeTool(name, JSON.stringify(args), ctx, name);
-            expect(result.outcome).toBe("ok");
-            expect(result.modelContent).toContain("public");
-            expect(result.modelContent).not.toContain("hidden.txt");
-            expect(result.modelContent).not.toContain("ask.txt");
-            expect(result.modelContent).toContain("deny/ask rules");
-        }
-        // An explicit path can ask once; parent-directory traversal cannot silently grant it.
-        const explicit = await runtime.executeTool("grep", JSON.stringify({path: "ask.txt", pattern: "pending"}), ctx, "explicit");
-        expect(explicit.outcome).toBe("ok");
+        const result = await runtime.executeTool("bash", JSON.stringify({command: "rg -e evidence private.txt"}), ctx, "denied");
+        expect(result.outcome).toBe("denied");
+        expect(result.modelContent).not.toContain("private evidence");
+        ctx.permissionRules.deny = [{toolName: "read_file", content: "**/*.secret", source: "local"}];
+        const unsupported = await runtime.executeTool("bash", JSON.stringify({command: "rg -e evidence ."}), ctx, "unsupported");
+        expect(unsupported.outcome).toBe("denied");
+        expect(unsupported.modelContent).toContain("cannot safely enforce");
     });
 });
 
@@ -107,21 +93,22 @@ test("批准期间目录别名改变后拒绝读取新目标", async () => {
     });
 });
 
-test("已批准的整工具与搜索根 ask 不会重复阻止同次遍历", async () => {
+test("Bash explicit ask is approved once per invocation", async () => {
     await withTempProject(async cwd => {
-        await mkdir(join(cwd, "src"));
-        await writeFile(join(cwd, "src", "public.txt"), "visible");
+        await writeFile(join(cwd, "public.txt"), "visible");
         let approvals = 0;
-        const ctx = createTestContext(cwd, {canUseTool: async () => {
-            approvals++; return {behavior: "allow"};
-        }});
-        ctx.permissionRules.ask.push({toolName: "grep", source: "local"});
-        const runtime = createToolRuntime();
-        expect((await runtime.executeTool("grep", JSON.stringify({path: "src", pattern: "visible"}), ctx, "whole")).modelContent).toContain("public.txt");
-        ctx.permissionRules.ask.splice(0, 1, {toolName: "grep", content: "src/**", source: "local"});
-        expect((await runtime.executeTool("grep", JSON.stringify({path: "src", pattern: "visible"}), ctx, "root")).modelContent).toContain("public.txt");
-        expect(approvals).toBe(2);
+        const ctx = createTestContext(cwd, {canUseTool: async () => {approvals++; return {behavior: "allow"};}});
+        ctx.permissionRules.ask.push({toolName: "bash", source: "local"});
+        const result = await createToolRuntime().executeTool("bash", JSON.stringify({command: "rg -n -H -e visible public.txt"}), ctx, "whole");
+        expect(result.modelContent).toContain("public.txt");
+        expect(approvals).toBe(1);
     });
+});
+
+test("removed search tool rules fail configuration instead of silently losing protection", () => {
+    for (const name of ["list_files", "glob", "grep"]) {
+        expect(hicodeSettingsFileSchema.safeParse({permissions: {deny: [`${name}(private/**)`]}}).success).toBe(false);
+    }
 });
 
 test("Settings 拒绝文件 JSON 匹配和 Bash 前缀，接受路径 glob", () => {

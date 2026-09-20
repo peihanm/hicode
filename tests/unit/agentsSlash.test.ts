@@ -14,7 +14,7 @@ describe("/agents slash command", () => {
                 agentType: "reviewer",
                 whenToUse: "审查实现风险",
                 systemPrompt: "review",
-                allowedTools: ["read_file", "grep"],
+                allowedTools: ["read_file", "bash"],
 
 
                 source: "project",
@@ -56,7 +56,7 @@ describe("/agents slash command", () => {
             expect(messages[0]).toContain("Agents · 3 available");
             expect(messages[0]).toContain("reviewer · project");
             expect(messages[0]).toContain("Model Same as main agent");
-            expect(messages[0]).toContain("Tools (2) read_file · grep");
+            expect(messages[0]).toContain("Tools (2) read_file · bash");
             expect(messages[0]).toContain("Loading issues · 1");
             expect(messages[0]).toContain("ERROR · user · broken.md · tools");
             expect(messages[0]).not.toMatch(/Ag\n\s*ent/);

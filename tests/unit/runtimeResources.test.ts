@@ -162,7 +162,7 @@ describe("RootRuntimeResources", () => {
         agentType,
         whenToUse: `使用 ${agentType} 检查代码`,
         systemPrompt: `你是 ${agentType}`,
-        allowedTools: ["read_file", "grep"],
+        allowedTools: ["read_file", "bash"],
 
 
         source: "project",

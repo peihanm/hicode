@@ -353,7 +353,7 @@ describe("agent loop", () => {
       const history = initialHistory();
       const fake = createFakeLLM([
         assistantToolCall("read_file", {path: "a.ts"}, "reused-call"),
-        assistantToolCall("grep", {pattern: "x"}, "reused-call"),
+        assistantToolCall("bash", {command: "rg -e x ."}, "reused-call"),
       ]);
       let executions = 0;
 

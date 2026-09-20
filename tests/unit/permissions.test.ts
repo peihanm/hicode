@@ -282,7 +282,7 @@ describe("permission rule persistence", () => {
         "write_file",
         "bash(git status:*)",
         "read_file(*)",
-        "list_files()",
+        "view_image()",
       ]) {
         rules = await addToAllowList(rule, rules, cwd);
       }
@@ -291,7 +291,7 @@ describe("permission rule persistence", () => {
         { toolName: "write_file", source: "local" },
         { toolName: "bash", content: "git status:*", source: "local" },
         { toolName: "read_file", source: "local" },
-        { toolName: "list_files", source: "local" },
+        { toolName: "view_image", source: "local" },
       ]);
     });
   });

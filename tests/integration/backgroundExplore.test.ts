@@ -181,8 +181,8 @@ describe("background Explore", () => {
                     markStarted();
                     await gate;
                     return assistantToolCall(
-                        "list_files",
-                        {path: "."},
+                        "bash",
+                        {command: "pwd"},
                         "queued-input-boundary"
                     );
                 },

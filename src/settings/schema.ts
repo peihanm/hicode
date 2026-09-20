@@ -41,7 +41,10 @@ const strictModelSourceSchema = z.object({
     models: z.array(strictModelDefinitionSchema).max(100).optional(),
 }).strict();
 
-const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value => {
+const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value =>
+    !["list_files", "glob", "grep"].includes(parsePermissionRule(value).toolName),
+    "list_files, glob and grep tools were removed. Configure Bash command rules and read_file/Sandbox file restrictions explicitly; old rules are not ignored or migrated."
+).refine(value => {
     const rule = parsePermissionRule(value);
     const declaredName = value.split("(")[0]!;
     if (isFilePermissionTool(declaredName) && declaredName !== rule.toolName) return false;

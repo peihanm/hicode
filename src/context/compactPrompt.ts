@@ -37,7 +37,7 @@ Original user requests and later corrections take precedence. Use current runtim
 
 ${summary}
 
-Continue the current task from its stopping point. For exact requests, parameters or results, consult cited sources with read_file/grep; read current files before editing.
+Continue the current task from its stopping point. For exact requests, parameters or results, consult cited sources with read_file or Bash rg; read current files before editing.
 Do not replan, redo completed work or rerun all tests merely because of compaction. Resolve conflicts using sources; retain uncertainty when verification is unavailable.
 </system-reminder>`};
 }

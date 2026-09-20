@@ -6,7 +6,7 @@ import type {AgentDefinition} from "./types.js";
 
 export function hasAgentWriteTools(definition: AgentDefinition): boolean {
     return !definition.readOnly && (definition.allowedTools === undefined || definition.allowedTools.some(name => ![
-        "list_files", "glob", "read_file", "grep", "web_fetch", "agent_message", "view_image", "todo_write", "skill",
+        "read_file", "web_fetch", "agent_message", "view_image", "todo_write", "skill",
     ].includes(name)));
 }
 

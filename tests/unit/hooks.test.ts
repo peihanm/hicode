@@ -114,7 +114,7 @@ describe("Hooks", () => {
                         if: "read_file(elsewhere)"}], "^read_.*$")});
                 const runtime = createToolRuntime({hooks});
                 expect(runtime.isConcurrencySafe("read_file", '{"path":"README.md"}')).toBe(false);
-                expect(runtime.isConcurrencySafe("grep", '{"pattern":"needle"}')).toBe(true);
+                expect(runtime.isConcurrencySafe("bash", '{"command":"rg -e needle ."}')).toBe(true);
                 expect(runtime.isConcurrencySafe("read_file", '{"path":"README.md"}')).toBe(false);
             }
             expect(executions).toBe(0);

@@ -87,7 +87,7 @@ test("连续五次压缩保留原文、工具配对及大结果，Resume 可用 
             expect(index.outcome).toBe("ok");
             expect(index.modelContent).toContain("Other archive indexes in the current branch");
             const part = indexPath.replace("-index.txt", "-1.txt");
-            const found = await f.resources.toolRuntime.executeTool("grep", JSON.stringify({path: part, pattern: "禁止默认丢弃", context: 1}), ctx, "archive-grep");
+            const found = await f.resources.toolRuntime.executeTool("bash", JSON.stringify({command: `rg -n -C 1 -e 禁止默认丢弃 '${part}'`}), ctx, "archive-grep");
             expect(found.outcome).toBe("ok");
             expect(found.modelContent).toContain("禁止默认丢弃");
             const read = await f.resources.toolRuntime.executeTool("read_file", JSON.stringify({path: part, limit: 10}), ctx, "archive-read");

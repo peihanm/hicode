@@ -1,5 +1,6 @@
 import type {ResolvedHiCodeSettings} from "../settings/index.js";
 import type {NetworkAccessExecution} from "../permissions/networkAccess.js";
+import type {ReadOnlyAccess} from "./readOnly.js";
 
 export type ResolvedSandboxSettings = ResolvedHiCodeSettings["sandbox"];
 export type SandboxPlatform = "macos" | "linux" | "windows";
@@ -29,6 +30,7 @@ export interface SandboxedCommand {
 export interface SandboxCommandOptions {
     writableRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
+    readOnlyAccess?: ReadOnlyAccess;
 }
 
 export interface SandboxRuntimeLike {

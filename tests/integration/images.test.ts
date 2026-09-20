@@ -305,7 +305,7 @@ test("production Agent → Qwen Provider sends native tool pixels; logs and even
             const step = requests.length;
             const reference = history.flatMap(message => imageReferences(message.content))[0];
             const delta = step === 1 ? {tool_calls: [{index: 0, id: "see", type: "function", function: {name: "view_image", arguments: '{"path":"screen.png"}'}}]}
-                : step === 2 ? {content: "Observed blue pixels.", tool_calls: [{index: 0, id: "list", type: "function", function: {name: "list_files", arguments: '{"path":"."}'}}]}
+                : step === 2 ? {content: "Observed blue pixels.", tool_calls: [{index: 0, id: "list", type: "function", function: {name: "bash", arguments: '{"command":"pwd"}'}}]}
                 : step === 3 ? {tool_calls: [{index: 0, id: "reread", type: "function", function: {name: "view_image", arguments: JSON.stringify({image_id: reference!.imageId})}}]}
                 : {content: "已读取图片"};
             return new Response(`data: ${JSON.stringify({choices: [{index: 0, delta, finish_reason: null}]})}\n\ndata: ${JSON.stringify({choices: [{index: 0, delta: {}, finish_reason: step < 4 ? "tool_calls" : "stop"}]})}\n\ndata: [DONE]\n\n`, {headers: {"content-type": "text/event-stream"}});

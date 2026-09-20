@@ -13,7 +13,7 @@ const past = (): Message[] => [{role: "system", content: "fixture"},
 
 test("实际输入用量影响下一次模型请求前的压缩，重试计费不参与窗口", async () => {
     await withTempProject(async (cwd, storage) => {
-        const call = assistantToolCall("list_files", {path: "."}, "list");
+        const call = assistantToolCall("bash", {command: "pwd"}, "list");
         const fake = createFakeLLM([{...call, usage: {prompt_tokens: 999999, completion_tokens: 100, total_tokens: 1000099},
             contextUsage: {inputTokens: 7900, tokenCount: 7920, contextWindow: 10000}}, assistantText("completed")]);
         const f = continuityFixture(cwd, storage, fake.callLLM, past());

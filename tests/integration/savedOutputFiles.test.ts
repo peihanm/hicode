@@ -51,14 +51,14 @@ test("只读结果路径例外不放开目录、不绕过规则或伪造 metadat
         await mkdir(boundary);
         const ctx = createTestContext(cwd, {workspaceBoundary: boundary});
         const saved = await ctx.toolResultStore.persistText({toolCallId: "owned", toolName: "test", content: "ERR_ASSERTION\ncontext"});
-        for (const tool of ["read_file", "grep"]) {
-            const args = JSON.stringify({path: saved.path, ...(tool === "grep" ? {pattern: "ERR_ASSERTION"} : {})});
+        for (const tool of ["read_file", "bash"]) {
+            const args = JSON.stringify(tool === "bash" ? {command: `rg -n -e ERR_ASSERTION '${saved.path}'`} : {path: saved.path});
             expect((await executeToolResult(tool, args, ctx, tool)).outcome).toBe("ok");
             ctx.permissionRules.deny.push({toolName: tool, source: "project"});
             expect((await executeToolResult(tool, args, ctx, `denied-${tool}`)).outcome).toBe("denied");
             ctx.permissionRules.deny = [];
         }
-        expect((await executeToolResult("grep", JSON.stringify({path: ctx.toolResultStore.sessionDir, pattern: "."}), ctx, "directory")).outcome).toBe("denied");
+        expect((await executeToolResult("bash", JSON.stringify({command: `rg -e . '${ctx.toolResultStore.sessionDir}'`}), ctx, "directory")).outcome).toBe("denied");
         const other = createTestToolResultStore(cwd, "other");
         const foreign = await other.persistText({toolCallId: "foreign", toolName: "test", content: "private"});
         expect((await executeToolResult("read_file", JSON.stringify({path: foreign.path}), ctx, "foreign")).outcome).toBe("denied");

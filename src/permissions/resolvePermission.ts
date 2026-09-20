@@ -62,7 +62,7 @@ async function resolvePermissionInner(
         try {managed = await checkSessionArchivePath(ctx.storage, path);}
         catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
         if (managed) {
-            if (tool.name !== "read_file" && tool.name !== "grep") return {behavior: "deny", message: "Session compaction archives may only be read by exact read_file/grep requests"};
+            if (tool.name !== "read_file") return {behavior: "deny", message: "Session compaction archives require an exact read_file request or authorized Bash search"};
             try {archiveRead = !!await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, path);}
             catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
         }
@@ -72,7 +72,7 @@ async function resolvePermissionInner(
         const path = toolPathInput(tool.name, input);
         if (path !== undefined) {
             let savedOutput = false;
-            if (tool.name === "read_file" || tool.name === "grep") {
+            if (tool.name === "read_file") {
                 try {
                     savedOutput = (await ctx.toolResultFiles.resolveFile(resolveToolPath(ctx.cwd, path))) !== null;
                 } catch (error) {

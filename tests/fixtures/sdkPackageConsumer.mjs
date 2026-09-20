@@ -29,7 +29,7 @@ globalThis.fetch = async (input, init) => {
     if (requestCount === 3) sawGlobResult = body.includes("fixture.ts");
     if (requestCount === 4) sawImageResult = body.includes("data:image/png;base64,") && body.includes('"tool_call_id":"sdk-package-image"');
 
-    if (requestCount === 5) sawGrepResult = body.includes("fixture.ts:1: export const fixture = true;");
+    if (requestCount === 5) sawGrepResult = body.includes("fixture.ts:1:export const fixture = true;");
 
     const event = requestCount === 1
         ? {
@@ -64,10 +64,9 @@ globalThis.fetch = async (input, init) => {
                         id: "sdk-package-glob",
                         type: "function",
                         function: {
-                            name: "glob",
+                            name: "bash",
                             arguments: JSON.stringify({
-                                pattern: "**/*.ts",
-                                path: ".",
+                                command: "rg --files -g '*.ts' .",
                             }),
                         },
                     }],
@@ -85,7 +84,7 @@ globalThis.fetch = async (input, init) => {
             function: {name: "view_image", arguments: JSON.stringify({path: "image.png"})}}]}, finish_reason: "tool_calls"}]}
         : requestCount === 4
         ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-grep", type: "function",
-            function: {name: "grep", arguments: JSON.stringify({path: "fixture.ts", pattern: "fixture"})}}]}, finish_reason: "tool_calls"}]}
+            function: {name: "bash", arguments: JSON.stringify({command: "rg -n -H -e fixture fixture.ts"})}}]}, finish_reason: "tool_calls"}]}
         : {
             choices: [{
                 delta: {
@@ -177,7 +176,7 @@ try {
         item.type === "tool_call" && item.name === "host_lookup"
     );
     const glob = result.items.find((item) =>
-        item.type === "tool_call" && item.name === "glob"
+        item.type === "tool_call" && item.name === "bash" && item.arguments.command.startsWith("rg --files")
     );
     if (
         result.finalResponse !== "SDK_PACKAGE_AGENT_OK" ||

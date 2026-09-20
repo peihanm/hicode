@@ -1,6 +1,7 @@
 interface ShellSegment {
     raw: string;
     tokens: string[];
+    next?: ";" | "&&" | "||" | "|";
 }
 
 /** Only literal simple commands are statically authorizable; expansion is never executed. */
@@ -54,6 +55,7 @@ export function parseShellCommand(command: string): {segments: ShellSegment[]; l
                 if (char === "\n" && !hadCommand && needsCommand) continue;
                 if (!hadCommand && (needsCommand || char !== "\n")) literal = false;
                 finishSegment(i);
+                if (segments.length) segments[segments.length - 1]!.next = pair === "&&" || pair === "||" ? pair : char === "|" ? "|" : ";";
                 needsCommand = char === "|" || pair === "&&";
                 if (pair === "&&" || pair === "||") i++;
                 start = i + 1;

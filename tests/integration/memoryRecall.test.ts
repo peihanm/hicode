@@ -15,7 +15,7 @@ test("自动 pending 可经普通 Read/Grep 读取，保留助手声称类别；
  await memory.captureSource("evidence",[],memoryOwner().signal);await expect(memory.maintain(memoryOwner())).rejects.toThrow("offline failure");
  const context=await memory.contextForTurn("继续");expect(context.block).toContain("assistant-claimed");const entry=(await memory.read("unverified"))!;expect(entry.path).toContain("views/unverified.md");
  const tools=createToolRuntime();const ctx=createTestContext(cwd,{memoryFiles:memory.fileAccess(memoryOwner())});const execute=(name:string,input:object,id:string)=>executeDeliveredTool(tools,name,JSON.stringify(input),ctx,id);
- const read=await execute("read_file",{path:entry.path},"read");expect(read.outcome).toBe("ok");expect(read.modelContent).toContain("assistant-claimed");expect((await execute("grep",{path:entry.path,pattern:"未独立验证"},"grep")).modelContent).toContain("未独立验证");
+ const read=await execute("read_file",{path:entry.path},"read");expect(read.outcome).toBe("ok");expect(read.modelContent).toContain("assistant-claimed");expect((await execute("bash",{command:`rg -n -e 未独立验证 '${entry.path}'`},"grep")).modelContent).toContain("未独立验证");
  const indexPath=join(memory.directory,"views/MEMORY.md"); await expect(readFile(indexPath,"utf8")).rejects.toThrow();
  expect((await execute("read_file",{path:indexPath},"index")).modelContent).toContain("unverified");
  await memory.forget("unverified",memoryOwner().signal);await writeFile(entry.path,"被忘记的旧缓存");const stale=await execute("read_file",{path:entry.path},"stale");expect(stale.outcome).toBe("denied");expect(stale.modelContent).not.toContain("被忘记的旧缓存");await memory.close();

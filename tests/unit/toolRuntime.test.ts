@@ -9,11 +9,11 @@ import { withTempProject } from "../helpers/tempProject.js";
 describe("scoped tool runtime", () => {
   test("schema 和执行层都只允许白名单工具", async () => {
     await withTempProject(async (cwd) => {
-      const runtime = createToolRuntime({allowedToolNames: ["read_file", "grep"]});
-      expect(runtime.toolNames).toEqual(["read_file", "grep"]);
+      const runtime = createToolRuntime({allowedToolNames: ["read_file", "bash"]});
+      expect(runtime.toolNames).toEqual(["read_file", "bash"]);
       expect(runtime.getToolSchemas().map((tool) => tool.function.name)).toEqual([
         "read_file",
-        "grep",
+        "bash",
       ]);
       expect(
         runtime.isConcurrencySafe(
@@ -48,7 +48,7 @@ describe("scoped tool runtime", () => {
         (tool) => tool.function.name
       );
       expect(initialNames).not.toContain("tool_search");
-      expect(initialNames).toContain("glob");
+      expect(initialNames).toContain("bash");
       expect(initialNames).toContain("web_fetch");
 
       const blocked = await runtime.executeTool(

@@ -27,6 +27,9 @@ const shape = Object.fromEntries(HOOK_EVENTS.map(event => [event,
     z.array(hookMatcherSettingsSchema).max(50).optional()])) as Record<HookEvent, z.ZodOptional<z.ZodArray<typeof hookMatcherSettingsSchema>>>;
 export const hooksSettingsFileSchema: z.ZodType<HooksSettingsFile> = z.object(shape).strict().superRefine((settings, ctx) => {
     for (const event of HOOK_EVENTS) settings[event]?.forEach((matcher, mi) => {
+        if (["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(event) && matcher.matcher?.split("|").some(name => ["list_files", "glob", "grep"].includes(name.replace(/^\^|\$$/g, "")))) {
+            ctx.addIssue({code: "custom", path: [event, mi, "matcher"], message: "Search tools were removed; search commands now emit Bash events. Update this Hook matcher explicitly."});
+        }
         const cleanup = event === "TurnEnd" || event === "SessionEnd";
         if (matcher.timeoutMs && matcher.timeoutMs > (event === "TurnEnd" ? 5000 : event === "SessionEnd" ? 1500 : 30000)) {
             ctx.addIssue({code: "custom", path: [event, mi, "timeoutMs"], message: "Event deadline exceeds the limit allowed for this lifecycle"});

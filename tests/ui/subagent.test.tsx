@@ -235,8 +235,8 @@ describe("subagent UI", () => {
           type: "tool_call_start",
           turnId: "turn-1",
           toolCallId: "root-list",
-          name: "list_files",
-          args: JSON.stringify({ dir: "." }),
+          name: "bash",
+          args: JSON.stringify({ command: "ls ." }),
         });
         onEvent({
           type: "tool_call_end",
@@ -268,8 +268,8 @@ describe("subagent UI", () => {
           event: {
             type: "tool_start",
             toolCallId: "child-list",
-            name: "list_files",
-            args: JSON.stringify({ dir: "." }),
+            name: "bash",
+            args: JSON.stringify({ command: "ls ." }),
           },
         });
         started();
@@ -311,7 +311,7 @@ describe("subagent UI", () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         const frame = instance.lastFrame() ?? "";
         expect(frame.match(/● Agent Explore/g) ?? []).toHaveLength(1);
-        const rootListIndex = frame.indexOf("● List .");
+        const rootListIndex = frame.indexOf("● List ls .");
         const agentIndex = frame.indexOf(
           "● Agent Explore · 调查刷题网站项目现状",
           rootListIndex

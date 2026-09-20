@@ -97,7 +97,7 @@ function ToolResultLines({
     }
     const lines = transcript
         ? transcriptResultLines(thread.result)
-        : summarizeToolResult(thread.name, thread.result, thread.outcome);
+        : summarizeToolResult(thread.name, thread.result);
     const color = thread.outcome && thread.outcome !== "ok"
         ? COLORS.error
         : COLORS.toolResult;

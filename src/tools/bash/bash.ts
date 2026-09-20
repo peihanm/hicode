@@ -15,6 +15,8 @@ import type {ShellExecutionResult} from "./process.js";
 import type {ShellTaskSnapshot} from "../../tasks/index.js";
 import {displayToolPath} from "../shared/paths.js";
 import {selectUtf8Range} from "../../toolResults/utf8.js";
+import {prepareCommandReadAccess} from "./readAccess.js";
+import {analyzeReadCommand} from "../../permissions/shellRead.js";
 
 const inputSchema = z.object({
     command: z.string().describe(
@@ -97,9 +99,10 @@ function runningOutput(task: ShellTaskSnapshot): string {
     return `Captured output (not a readiness check):\n${start ? "[Earlier output omitted; use task status for more]\n" : ""}${preview}`;
 }
 
-function formatShellResult(result: ShellExecutionResult): string {
+function formatShellResult(result: ShellExecutionResult, noMatches = false): string {
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
     const termination = result.termination;
+    if (noMatches) return "No matches found (rg exit code 1).";
     if (termination.kind === "exit" && termination.code === 0) {
         return output || "(no output)";
     }
@@ -185,8 +188,9 @@ export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
     description: `Run shell commands, project scripts, dependencies, builds and tests; return stdout/stderr. Use dedicated tools for file reading, editing and search.
 - Use $TMPDIR for temporary files and clean up only artifacts you created; directory grants and explicit denials still apply.
-- Each call is a separate process: pass cwd rather than relying on a previous cd. Run tests/builds directly; the runtime preserves and budgets output. Do not add tail/head/grep just to shorten results or mask failures with || echo. Search returned saved paths with grep, then read_file at relevant lines; rerun only after a relevant change or for a new check. Avoid byte truncation of non-ASCII text.
+- Each call is a separate process: pass cwd rather than relying on a previous cd. Run tests/builds directly; the runtime preserves and budgets output. Do not add tail/head/grep just to shorten results or mask failures with || echo. Search returned saved paths with rg, then read_file at relevant lines; rerun only after a relevant change or for a new check. Avoid byte truncation of non-ASCII text.
 - Access uses the runtime's current sandbox and approval policy. Network authorization follows actual domains/ports; dependency downloads do not inherently require leaving the sandbox. For a necessary command blocked by sandbox permissions, request require_escalated for that operation rather than changing implementation to evade the restriction. A denial or unavailable approval channel is not permission to bypass it.
+- Local search uses rg --files (paths), ls (directory entries), rg -n (content) and rg -F (literal text). Quote globs and paths; use -e for the pattern. Recognized read commands run with no writes or network, trusted host programs, no rg config/global-ignore files, and exact authorized read scopes. Read-only roles support literal rg/ls/pwd/cat/head/tail/wc/echo commands and safe combinations, not shell expansion, redirection, preprocessing or arbitrary programs. Search saved output using its exact provided path; private storage directory scans are forbidden. Use read_file before editing: Bash output does not establish a file read version. Missing rg is a host setup issue, not a reason to install during the task.
 - Run a minimal existing syntax/build/test check before starting a server. Use run_in_background for services, GUIs and watchers, omit timeout_ms, and manage the returned task ID with task. Do not use shell &. A foreground timeout terminates the process and its children. Reuse an existing managed service; stop it before restarting and do not overlap instances or take over unrelated processes with lsof/kill.
 - For a port conflict, use supported temporary CLI/env options without changing project defaults or stopping unrelated processes. A genuine permission denial must not be bypassed by switching ports.
 - Local HTTP probes verify endpoints only: use bounded readiness retries and fail on HTTP errors (for example --fail-with-body); inspect required status/fields. Do not use fixed sleeps or treat HTTP 200 as browser verification. Do not create missing browser capability; existing E2E runs unchanged, and new automation infrastructure requires an explicit user request.
@@ -195,10 +199,10 @@ export const bashTool: Tool<typeof inputSchema> = {
     maxResultSizeChars: 30_000,
     isReadOnly: ({command, sandbox_permissions}) =>
         sandbox_permissions !== "require_escalated" &&
-        isShellCommandReadOnly(command),
+        (!!analyzeReadCommand(command) || isShellCommandReadOnly(command)),
     isConcurrencySafe: ({command, sandbox_permissions}) =>
         sandbox_permissions !== "require_escalated" &&
-        isShellCommandReadOnly(command),
+        (!!analyzeReadCommand(command) || isShellCommandReadOnly(command)),
     requiresExplicitApproval: ({sandbox_permissions}) => sandbox_permissions === "require_escalated",
     getDefaultApprovalScope: ({sandbox_permissions}, ctx) =>
         sandbox_permissions !== "require_escalated" &&
@@ -213,6 +217,13 @@ export const bashTool: Tool<typeof inputSchema> = {
         if (!commandCwd.ok) {
             return {behavior: "deny", message: commandCwd.message};
         }
+        if ((ctx.readOnlyTools || ctx.collaborationMode === "plan") && sandbox_permissions === "require_escalated") {
+            return {behavior: "deny", message: "Read-only command execution cannot leave the Sandbox"};
+        }
+        if (sandbox_permissions !== "require_escalated") {
+            try {await prepareCommandReadAccess(command, commandCwd.path, ctx);}
+            catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
+        }
         if (sandbox_permissions === "require_escalated") {
             return {
                 behavior: "ask",
@@ -223,7 +234,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 ].join("\n"),
             };
         }
-        if (isShellCommandReadOnly(command)) {
+        if (analyzeReadCommand(command) || isShellCommandReadOnly(command)) {
             return {behavior: "allow"};
         }
 
@@ -292,7 +303,12 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {content: resolvedCwd.message, outcome: "failed" as const};
         }
         const commandCwd = resolvedCwd.path;
-        const effectiveSandboxPermissions = ctx.permissionMode === "full-access" && ctx.allowFullAccess
+        const readAccess = sandbox_permissions !== "require_escalated"
+            ? await prepareCommandReadAccess(command, commandCwd, ctx) : undefined;
+        if (readAccess && (run_in_background || yield_time_ms !== undefined)) {
+            return {content: "Read-only searches run in the foreground with a timeout; do not start them as background tasks.", outcome: "failed" as const};
+        }
+        const effectiveSandboxPermissions = readAccess ? "use_default" as const : ctx.permissionMode === "full-access" && ctx.allowFullAccess
             ? "require_escalated" as const : sandbox_permissions;
         const networkEvidence = structuredClone(ctx.approvalEvidence?.() ?? []);
         const detached = run_in_background === true || yield_time_ms !== undefined;
@@ -386,7 +402,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 };
             }
         }
-        return ctx.fileCommits.exclusive(ctx.signal, async () => {
+        const execute = async () => {
             const capturePath = await ctx.toolResultStore.createCapture();
             try {
                 const result = await ctx.shellRunner.run({
@@ -400,14 +416,18 @@ export const bashTool: Tool<typeof inputSchema> = {
                     sandboxPermissions: effectiveSandboxPermissions,
                     writableRoots: ctx.directoryAccess.listDirectories(),
                     networkAccess,
+                    ...(readAccess ? {readAccess} : {}),
                 });
+                const noMatches = readAccess?.plan.singleSearch === true && result.termination.kind === "exit" &&
+                    result.termination.code === 1 && result.termination.signal === null && !result.stdout.trim() &&
+                    !result.stderr.trim() && result.outputComplete !== false;
                 const shouldPersist =
                     (result.outputBytes ?? 0) > 30_000 ||
                     result.outputComplete === false;
                 if (!shouldPersist || result.termination.kind === "aborted") {
                     return {
-                        content: formatShellResult(result),
-                        outcome: shellOutcome(result),
+                        content: formatShellResult(result, noMatches),
+                        outcome: noMatches ? "ok" as const : shellOutcome(result),
                     };
                 }
                 try {
@@ -433,6 +453,20 @@ export const bashTool: Tool<typeof inputSchema> = {
             } finally {
                 await ctx.toolResultStore.removeTemporaryFile(capturePath);
             }
-        });
+        };
+        return readAccess ? execute() : ctx.fileCommits.exclusive(ctx.signal, execute);
     },
 };
+
+/** Maintenance and review can search through Bash without gaining its general execution capability. */
+export function createReadOnlyBashTool(): Tool<typeof inputSchema> {
+    return {...bashTool,
+        async checkPermissions(input, ctx) {
+            if (input.run_in_background || input.yield_time_ms !== undefined) return {behavior: "deny", message: "Restricted searches must finish in the current invocation"};
+            return bashTool.checkPermissions!(input, {...ctx, readOnlyTools: true});
+        },
+        execute(input, ctx, invocation) {
+            return bashTool.execute(input, {...ctx, readOnlyTools: true}, invocation);
+        },
+    };
+}

@@ -302,7 +302,7 @@ describe("Unified Settings", () => {
             document("project", {
                 hooks: {
                     PreToolUse: [{
-                        matcher: "grep",
+                        matcher: "bash",
                         hooks: [{type: "command", purpose: "observe", command: "project-hook"}],
                     }],
                 },
@@ -327,7 +327,7 @@ describe("Unified Settings", () => {
                 path: "/user/settings.json",
             },
             {
-                matcher: "grep",
+                matcher: "bash",
                 source: "project",
                 path: "/project/settings.json",
             },

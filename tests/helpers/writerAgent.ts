@@ -4,6 +4,6 @@ export function createWriterRegistry() {
         agentType: "FixtureWriter", source: "host", id: "fixture-writer",
         whenToUse: "Test a bounded custom implementation", systemPrompt: "Implement the assigned file change.",
 
-        allowedTools: ["list_files", "glob", "read_file", "grep", "write_file", "edit_file", "delete_file"],
+        allowedTools: ["read_file", "bash", "write_file", "edit_file", "delete_file"],
     }]});
 }

@@ -35,9 +35,9 @@ test("同批工具暴露变化不能追认调用，下一次请求实际提供�
     await withTempProject(async cwd => {
         const history: Message[] = [{role: "system", content: "test"}];
         const runtime = createToolRuntime();
-        const allowed = new Set(["list_files"]);
+        const allowed = new Set(["bash"]);
         const calls: ToolCall[] = [
-            {id: "list", type: "function", function: {name: "list_files", arguments: "{}"}},
+            {id: "list", type: "function", function: {name: "bash", arguments: '{"command":"pwd"}'}},
             {id: "early-write", type: "function", function: {name: "write_file", arguments: JSON.stringify({path: "early.txt", content: "bad"})}},
         ];
         const fake = createFakeLLM([
@@ -83,13 +83,13 @@ test("未公开工具的取消批次仍完整配对", async () => {
 test("子 Agent 显式工具限制在后续请求中仍拒绝未提供的写入工具", async () => {
     await withTempProject(async cwd => {
         const registry = createSubagentRegistry({issues: [], definitions: [{
-            agentType: "writer", whenToUse: "fixture", systemPrompt: "fixture", allowedTools: ["list_files"],
+            agentType: "writer", whenToUse: "fixture", systemPrompt: "fixture", allowedTools: ["bash"],
             source: "host", id: "writer",
         }]});
         const fake = createFakeLLM([
-            assistantToolCall("list_files", {}, "first"),
+            assistantToolCall("bash", {command: "pwd"}, "first"),
             options => {
-                expect(options.tools.map(tool => tool.function.name)).toEqual(["list_files"]);
+                expect(options.tools.map(tool => tool.function.name)).toEqual(["bash"]);
                 return assistantToolCall("write_file", {path: "late.txt", content: "unexpected"}, "late");
             },
             assistantText("The role cannot write files."),

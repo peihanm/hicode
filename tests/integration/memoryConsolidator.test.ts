@@ -25,7 +25,7 @@ test("Memory 整理复用真实标准工具和私有草稿目录，发布前不�
             async options => {
                 await expect(access(join(getMemoryWorkspacePaths(store.directory, job.lease.id).root, "repository"))).rejects.toThrow();
                 await expect(access(join(getMemoryWorkspacePaths(store.directory, job.lease.id).draft, ".git"))).rejects.toThrow();
-                expect(options.tools.some(tool => ["bash", "agent", "task", "web_fetch"].includes(tool.function.name))).toBe(false);
+                expect(options.tools.some(tool => ["agent", "task", "web_fetch"].includes(tool.function.name))).toBe(false);
                 expect(options.messages.some(message => message.role === "tool" && contentText(message.content).includes(job.lease.sourceIds[0]!))).toBe(true);
                 return assistantToolCall("write_file", {path: "topics/structure.md", content: serializeDraftTopic({key: "structure", name: "结构偏好",
                     description: "用户的文件组织偏好", type: "feedback", content: "文件结构保持简洁", sources: job.lease.sourceIds})}, "topic");

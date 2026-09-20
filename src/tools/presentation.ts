@@ -1,3 +1,4 @@
+import {analyzeReadCommand} from "../permissions/shellRead.js";
 import type {ToolOutcome} from "../toolResults/index.js";
 
 export type ToolPhaseKind = "inspect";
@@ -98,13 +99,6 @@ export function describeToolPhase(
                 success: "Tools loaded",
                 hidden: true,
             };
-        case "list_files":
-            return {
-                kind: "inspect",
-                label: "Inspecting project",
-                activity: `Listing ${stringArg(args, "dir") ?? "."}`,
-                success: `Listed ${stringArg(args, "dir") ?? "."}`,
-            };
         case "read_file":
             return {
                 kind: "inspect",
@@ -112,23 +106,13 @@ export function describeToolPhase(
                 activity: `Reading ${stringArg(args, "path") ?? "file"}`,
                 success: `Read ${stringArg(args, "path") ?? "file"}`,
             };
-        case "grep": {
-            const target = stringArg(args, "pattern") ?? "pattern";
-            return {
-                kind: "inspect",
-                label: "Inspecting project",
-                activity: `Searching for ${quotedTarget(target)}`,
-                success: `Searched for ${quotedTarget(target)}`,
-            };
-        }
-        case "glob": {
-            const target = stringArg(args, "pattern") ?? "pattern";
-            return {
-                kind: "inspect",
-                label: "Inspecting project",
-                activity: `Finding ${quotedTarget(target)}`,
-                success: `Found paths for ${quotedTarget(target)}`,
-            };
+        case "bash": {
+            const command = analyzeReadCommand(stringArg(args, "command") ?? "");
+            if (!command || command.segments.length !== 1 || command.kind === "read") return undefined;
+            const target = command.kind === "search" ? quotedTarget(command.pattern ?? "pattern") : command.paths.join(", ") || ".";
+            const action = command.kind === "search" ? "Searching" : command.kind === "files" ? "Finding files in" : "Listing";
+            const done = command.kind === "search" ? "Searched" : command.kind === "files" ? "Found files in" : "Listed";
+            return {kind: "inspect", label: "Inspecting project", activity: `${action} ${target}`, success: `${done} ${target}`};
         }
         default:
             return undefined;
@@ -149,25 +133,14 @@ export function summarizePhaseToolCall(input: {
     if (input.name === "read_file" && input.result) {
         const detail = summarizeToolResult(
             input.name,
-            input.result,
-            input.outcome
+            input.result
         )[0];
         return detail?.startsWith("Read ")
             ? `${phase.success} · ${detail.slice(5)}`
             : phase.success;
     }
-    if (
-        input.result &&
-        (input.name === "grep" ||
-            input.name === "glob" ||
-            input.name === "list_files")
-    ) {
-        const noResults = /^\s*(?:No match|Directory\s+.+\s+is empty)/.test(input.result);
-        if (noResults) return `${phase.success} · No results`;
-        const count = normalizeDisplayLines(input.result).filter(
-            (line) => line.trim().length > 0
-        ).length;
-        return `${phase.success} · Found ${count} result${count === 1 ? "" : "s"}`;
+    if (input.name === "bash" && input.result?.startsWith("No matches found (rg exit code 1).")) {
+        return `${phase.success} · No results`;
     }
     return phase.success;
 }
@@ -183,36 +156,18 @@ export function describeToolCall(
             const target = stringArg(args, "path") ?? "file";
             return {label: "Read", detail: target};
         }
-        case "grep": {
-            const query = stringArg(args, "pattern") ?? "pattern";
-            const scope = stringArg(args, "path");
-            return {
-                label: "Search",
-                detail: `pattern: ${JSON.stringify(query)}${scope ? `, path: ${scope}` : ""}`,
-            };
-        }
-        case "glob": {
-            const query = stringArg(args, "pattern") ?? "pattern";
-            const scope = stringArg(args, "path");
-            return {
-                label: "Search",
-                detail: `glob: ${JSON.stringify(query)}${scope ? `, path: ${scope}` : ""}`,
-            };
-        }
-        case "list_files": {
-            const target = stringArg(args, "dir") ?? ".";
-            return {label: "List", detail: target};
-        }
         case "tool_search":
             return {
                 label: "Tool search",
                 detail: stringArg(args, "query") ?? "",
             };
-        case "bash":
-            return {
-                label: "Bash",
-                detail: summarizeShellCommand(stringArg(args, "command") ?? ""),
-            };
+        case "bash": {
+            const raw = stringArg(args, "command") ?? "";
+            const command = analyzeReadCommand(raw);
+            const kind = command?.segments.length === 1 ? command.kind : undefined;
+            return {label: kind === "search" ? "Search" : kind === "files" ? "Find files" : kind === "directory" ? "List" : "Bash",
+                detail: summarizeShellCommand(raw)};
+        }
         case "agent_followup":
             return {label: "Continue Agent", detail: stringArg(args, "target") ?? ""};
         case "task":
@@ -294,8 +249,7 @@ export function isSuccessfulToolActivity(input: {
 
 export function summarizeToolResult(
     name: string,
-    result: string,
-    outcome?: ToolOutcome
+    result: string
 ): string[] {
     if (name === "read_file") {
         const match = result.match(
@@ -309,15 +263,6 @@ export function summarizeToolResult(
             return [start === 1 && end === total
                 ? `Read ${count} line${count === 1 ? "" : "s"}`
                 : `Read lines ${start}-${end} of ${total}`];
-        }
-    }
-
-    if (name === "grep" || name === "glob" || name === "list_files") {
-        const lines = normalizeDisplayLines(result).filter(
-            (line) => line.trim().length > 0
-        );
-        if (outcome === "ok" && lines.length > 1) {
-            return [`Found ${lines.length} result${lines.length === 1 ? "" : "s"}`];
         }
     }
 

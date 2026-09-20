@@ -42,7 +42,7 @@ name: code-reviewer
 description: 审查实现和回归风险
 tools:
   - read_file
-  - grep
+  - bash
   - read_file
 read_only: true
 ---
@@ -54,7 +54,7 @@ read_only: true
         expect(parsed.definition).toMatchObject({
             agentType: "code-reviewer",
             source: "project",
-            allowedTools: ["read_file", "grep"],
+            allowedTools: ["read_file", "bash"],
 
 
             systemPrompt: "你是严格的代码审查 Agent。",
@@ -191,7 +191,7 @@ user prompt`, "utf8");
             await writeFile(join(userDirectory, "user-only.md"), `---
 name: user-only
 description: user only
-tools: [grep]
+tools: [bash]
 ---
 user only prompt`, "utf8");
             await writeFile(join(projectDirectory, "reviewer.md"), `---

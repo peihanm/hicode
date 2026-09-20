@@ -36,7 +36,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(17);
+    expect(schemas).toHaveLength(14);
     expect(names).not.toContain("bash_task");
     expect(names).toContain("view_image");
     expect(new Set(names).size).toBe(names.length);
@@ -176,24 +176,13 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("list_files 将目录放在文件前并保持排序", async () => {
-    await withTempProject(async (cwd) => {
-      await mkdir(join(cwd, "z-dir"));
-      await mkdir(join(cwd, "a-dir"));
-      await writeFile(join(cwd, "z.txt"), "z");
+  test("Bash ls lists directories and files", async () => {
+    await withTempProject(async cwd => {
+      await mkdir(join(cwd, "empty"));
       await writeFile(join(cwd, "a.txt"), "a");
-
-      const result = await executeTool(
-        "list_files",
-        JSON.stringify({ dir: "." }),
-        createTestContext(cwd)
-      );
-      expect(result.split("\n")).toEqual([
-        "a-dir/",
-        "z-dir/",
-        "a.txt",
-        "z.txt",
-      ]);
+      const result = await executeTool("bash", JSON.stringify({command: "ls -1 ."}), createTestContext(cwd));
+      expect(result).toContain("empty");
+      expect(result).toContain("a.txt");
     });
   });
 
@@ -207,14 +196,14 @@ describe("tool registry contract", () => {
       await writeFile(join(cwd, ".git", "hidden.ts"), "ignored");
 
       const result = await executeTool(
-        "glob",
-        JSON.stringify({ pattern: "**/*.ts", path: "." }),
+        "bash",
+        JSON.stringify({ command: "rg --files -g '*.ts' --sort path ." }),
         createTestContext(cwd)
       );
 
-      expect(result.split("\n")).toEqual([
-        "src/main.ts",
-        "src/nested/helper.ts",
+      expect(result.trimEnd().split("\n")).toEqual([
+        "./src/main.ts",
+        "./src/nested/helper.ts",
       ]);
     });
   });
@@ -293,13 +282,13 @@ describe("tool registry contract", () => {
       await writeFile(join(cwd, "many.txt"), lines.join("\n"));
       const ctx = createTestContext(cwd);
       const result = await executeToolResult(
-        "grep",
-        JSON.stringify({ pattern: "MATCH-", path: "." }),
+        "bash",
+        JSON.stringify({ command: "rg -n -e MATCH- many.txt" }),
         ctx,
         "large-grep"
       );
       expect(result.persisted?.complete).toBe(true);
-      expect(result.modelContent).toContain("Total: 320 matches");
+      expect(result.modelContent).toContain("MATCH-319");
 
       const recovered = await executeTool("read_file", JSON.stringify({path: result.persisted!.path}), ctx);
       expect(recovered).toContain("MATCH-100");
@@ -307,58 +296,16 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("grep 支持类型过滤、输出模式、分页和跨行匹配", async () => {
-    await withTempProject(async (cwd) => {
-      await writeFile(
-        join(cwd, "theme.ts"),
-        ["const", "  theme = 'dark'", "const accent = 'blue'", "const end = true"].join("\n")
-      );
-      await writeFile(join(cwd, "theme.py"), "theme = 'python'\n");
+  test("Bash rg supports native type filtering, multiline and counts", async () => {
+    await withTempProject(async cwd => {
+      await writeFile(join(cwd, "theme.ts"), "const\n  theme = 'dark'\nconst accent = 'blue'\nconst end = true");
+      await writeFile(join(cwd, "theme.py"), "theme = 'python'");
       const ctx = createTestContext(cwd);
-
-      const multiline = await executeToolResult(
-        "grep",
-        JSON.stringify({
-          pattern: "const\\s+theme",
-          path: ".",
-          type: "ts",
-          multiline: true,
-          output_mode: "files_with_matches",
-        }),
-        ctx,
-        "grep-multiline"
-      );
-      expect(multiline.modelContent).toContain("theme.ts");
-      expect(multiline.modelContent).not.toContain("theme.py");
-
-      const paged = await executeToolResult(
-        "grep",
-        JSON.stringify({
-          pattern: "const",
-          path: "theme.ts",
-          output_mode: "content",
-          offset: 1,
-          head_limit: 1,
-        }),
-        ctx,
-        "grep-page"
-      );
-      expect(paged.modelContent).toContain("theme.ts:3");
-      expect(paged.modelContent).not.toContain("theme.ts:1");
-      expect(paged.modelContent).toContain("showing offset=1: 1/3");
-
-      const counted = await executeToolResult(
-        "grep",
-        JSON.stringify({
-          pattern: "const",
-          path: ".",
-          type: "ts",
-          output_mode: "count",
-        }),
-        ctx,
-        "grep-count"
-      );
-      expect(counted.modelContent).toContain("theme.ts: 3");
+      const multiline = await executeTool("bash", JSON.stringify({command: "rg -U -l -t ts -e 'const\\s+theme' ."}), ctx);
+      expect(multiline).toContain("theme.ts");
+      expect(multiline).not.toContain("theme.py");
+      const counted = await executeTool("bash", JSON.stringify({command: "rg -c -t ts -e const ."}), ctx);
+      expect(counted).toContain("theme.ts:3");
     });
   });
 

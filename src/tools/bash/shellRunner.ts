@@ -1,4 +1,6 @@
 import {normalizeTurnAbortReason} from "../../runtime/abort.js";
+import {prepareReadCommand} from "./readCommand.js";
+import type {CommandReadAccess} from "./readAccess.js";
 import type {NetworkAccessExecution} from "../../permissions/networkAccess.js";
 import {mergeChildProcessEnvironment, type ChildProcessEnvironment,} from "../../runtime/childEnvironment.js";
 import type {SandboxExecutionPreference, SandboxRuntimeLike, SandboxStatus,} from "../../sandbox/index.js";
@@ -8,6 +10,7 @@ interface ShellRunnerRequest extends ShellCommandOptions {
     sandboxPermissions?: SandboxExecutionPreference;
     writableRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
+    readAccess?: CommandReadAccess;
 }
 
 export interface ShellRunnerLike {
@@ -55,10 +58,14 @@ export function createShellRunner(
                 sandboxPermissions = "use_default",
                 writableRoots,
                 networkAccess,
+                readAccess,
                 command,
                 env,
                 ...processOptions
             } = request;
+            if (readAccess && sandboxPermissions === "require_escalated") {
+                return sandboxFailure(request.signal, new Error("Read-only command execution cannot leave the Sandbox"));
+            }
             if (
                 sandboxPermissions === "require_escalated"
             ) {
@@ -77,18 +84,21 @@ export function createShellRunner(
 
             let wrapped;
             try {
+                const prepared = readAccess ? await prepareReadCommand(readAccess, request.cwd, childEnvironment) : undefined;
                 wrapped = await sandbox.wrapCommand(
-                    command,
+                    prepared?.command ?? command,
                     request.cwd,
                     request.signal,
-                    {writableRoots, networkAccess}
+                    prepared ? {readOnlyAccess: prepared.access} : {writableRoots, networkAccess}
                 );
             } catch (error) {
                 return sandboxFailure(request.signal, error);
             }
 
             try {
-                const commandEnvironment = mergeChildProcessEnvironment(childEnvironment, wrapped.env, env);
+                const commandEnvironment = readAccess
+                    ? {PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", TERM: "dumb"}
+                    : mergeChildProcessEnvironment(childEnvironment, wrapped.env, env);
                 if (wrapped.env.npm_config_cache !== undefined) {
                     // npm accepts case-insensitive config names. Remove inherited aliases so
                     // a parent npm run cannot silently restore an unwritable user cache.
@@ -108,7 +118,7 @@ export function createShellRunner(
                 let stderr = result.stderr;
                 try {
                     stderr = sandbox.annotateStderr(command, stderr);
-                    if (stderr !== result.stderr) {
+                    if (stderr !== result.stderr && !readAccess) {
                         stderr += "\nHiCode Sandbox reported a policy violation. Check the denied operation and any partial effects before retrying. If this necessary operation requires leaving the sandbox and has not been explicitly denied, request sandbox_permissions=require_escalated; this result itself grants no extra access.";
                     }
                 } catch {
