@@ -1,3 +1,7 @@
+import {basename, dirname} from "node:path";
+import stringWidth from "string-width";
+import {useFileSuggestions} from "./useFileSuggestions.js";
+import type {FileSuggestions} from "../../runtime/fileSuggestions.js";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import {COLORS, SYMBOLS} from "../theme.js";
@@ -101,8 +105,12 @@ export function createInputBox(
                                  clearRevision,
                                  onDraftPresenceChange,
                                  takeQueuedInputsForEditing,
+                                 fileSuggestions,
+                                 onEscapeHandlerChange,
                              }: {
         onSubmit: (input: string) => void;
+        fileSuggestions?: Pick<FileSuggestions, "search" | "cancel">;
+        onEscapeHandlerChange?: (handler: (() => boolean) | undefined) => void;
         onPasteImage?: (path: string, originalText: string) => boolean;
         imageCount?: number;
         imagePreparing?: boolean;
@@ -309,13 +317,20 @@ export function createInputBox(
             [pasteCapsules, value]
         );
 
+        const files = useFileSuggestions(fileSuggestions, disabled, atomicRanges, onEscapeHandlerChange);
+        const fileColumnGap = width >= 60 ? 10 : width >= 40 ? 4 : 2;
+        const fileNameWidth = Math.max(1, Math.min(
+            Math.max(1, ...files.menu.paths.map(path => stringWidth(basename(path)))),
+            Math.floor(Math.max(1, width - 5 - fileColumnGap) * 0.6)
+        ));
+
         useEffect(() => {
             setSelectedSuggestion(0);
         }, [value]);
 
         useInput(
             (_input, key) => {
-                if (!showSuggestions) return;
+                if (!showSuggestions || files.active) return;
                 if (key.upArrow) {
                     setSelectedSuggestion((prev) =>
                         prev <= 0 ? suggestions.length - 1 : prev - 1
@@ -365,7 +380,9 @@ export function createInputBox(
                         placeholder="Ask HiCode to build, inspect, or fix something"
                         leadingContent={leadingContent}
                         onBackspaceAtStart={onRemoveImage}
-                        handleVerticalNavigation={!showSuggestions}
+                        handleVerticalNavigation={!showSuggestions && !files.active}
+                        onEditStateChange={files.onEdit}
+                        onKey={files.onKey}
                         onVerticalBoundary={(direction, state) =>
                             navigateHistory(direction, {
                                 value: expandPasteCapsules(
@@ -447,7 +464,28 @@ export function createInputBox(
                     />
                 </Box>
                 <Text color={COLORS.border}>{line}</Text>
-                {showSuggestions && (
+                {files.active && (
+                    <Box paddingLeft={2} flexDirection="column" width={Math.max(1, width - 1)}>
+                        {files.menu.loading ? <Text color={COLORS.dim}>Finding files…</Text>
+                            : files.menu.error ? <Text color={COLORS.dim} wrap="truncate-end">{`File suggestions unavailable · ${files.menu.error.replace(/[\x00-\x1f\x7f-\x9f]/g, " ")}`}</Text>
+                            : files.menu.paths.length === 0 ? <Text color={COLORS.dim}>No matching files</Text>
+                            : files.menu.paths.map((path, index) => (
+                                <Box key={path}>
+                                    <Box width={2} flexShrink={0}>
+                                        <Text color={COLORS.prompt}>{index === files.selected ? "› " : "  "}</Text>
+                                    </Box>
+                                    <Box width={fileNameWidth} marginRight={fileColumnGap} flexShrink={0}>
+                                        <Text color={index === files.selected ? COLORS.prompt : undefined} bold={index === files.selected} wrap="truncate-middle">{basename(path)}</Text>
+                                    </Box>
+                                    <Box minWidth={0} flexGrow={1} flexShrink={1}>
+                                        <Text color={COLORS.dim} wrap="truncate-middle">{dirname(path) === "." ? "./" : `${dirname(path)}/`}</Text>
+                                    </Box>
+                                </Box>
+                            ))}
+                        <Text color={COLORS.dim} wrap="truncate-end">{files.menu.limited ? "Partial file list · " : ""}↑↓ select · Tab/Enter insert · Esc close</Text>
+                    </Box>
+                )}
+                {showSuggestions && !files.active && (
                     <Box flexDirection="column">
                         {visibleSuggestions.map((suggestion, index) => {
                             const suggestionIndex = suggestionWindowStart + index;

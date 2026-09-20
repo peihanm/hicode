@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, Transform, useInput} from "ink";
+import {Box, Text, Transform, useInput, type Key} from "ink";
 import stringWidth from "string-width";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {useTerminalCursorTransform} from "./terminalCursorContext.js";
@@ -141,6 +141,8 @@ export function MultilineTextInput({
                                        onAtomicRangeDelete,
                                        onInsertText,
                                        onInputBoundary,
+                                       onEditStateChange,
+                                       onKey,
                                    }: {
     value: string;
     onChange: (value: string) => void;
@@ -162,6 +164,8 @@ export function MultilineTextInput({
         state: InputBoundaryState
     ) => InputBoundaryReplacement | undefined;
     onInputBoundary?: () => void;
+    onEditStateChange?: (state: InputBoundaryState) => void;
+    onKey?: (input: string, key: Key, state: InputBoundaryState) => true | InputBoundaryReplacement | undefined;
 }) {
     const [cursor, setCursor] = useState(value.length);
     const cursorRef = useRef(value.length);
@@ -169,6 +173,7 @@ export function MultilineTextInput({
     const moveCursor = (offset: number) => {
         cursorRef.current = offset;
         setCursor(offset);
+        onEditStateChange?.({value: expectedValueRef.current, cursorOffset: offset});
     };
     const safeCursor = Math.min(cursor, value.length);
     // Attachments are a display prefix. Text offsets and submitted values never contain their labels.
@@ -191,6 +196,8 @@ export function MultilineTextInput({
         if (value !== expectedValueRef.current) {
             expectedValueRef.current = value;
             moveCursor(value.length);
+        } else {
+            onEditStateChange?.({value: expectedValueRef.current, cursorOffset: cursorRef.current});
         }
     }, [value]);
 
@@ -228,6 +235,12 @@ export function MultilineTextInput({
         // Multiple stdin chunks can arrive before React commits the previous insertion.
         const value = expectedValueRef.current;
         const safeCursor = Math.min(cursorRef.current, value.length);
+        const consumed = onKey?.(input, key, {value, cursorOffset: safeCursor});
+        if (consumed) {
+            onInputBoundary?.();
+            if (consumed !== true) applyReplacement(consumed);
+            return;
+        }
         if (key.return || key.leftArrow || key.rightArrow || key.upArrow || key.downArrow ||
             key.backspace || key.delete || key.tab || key.escape || key.ctrl || key.meta ||
             key.pageDown || key.pageUp || !input) onInputBoundary?.();

@@ -91,6 +91,8 @@ export function App({
         requestSessionSwitch?: (sessionId: string) => Promise<void>;
     }) {
         const {exit} = useApp();
+        const inputEscapeRef = useRef<(() => boolean) | undefined>(undefined);
+        const setInputEscapeHandler = useCallback((handler: (() => boolean) | undefined) => {inputEscapeRef.current = handler;}, []);
         const [showResume, setShowResume] = useState(false);
         const [resumeError, setResumeError] = useState<string>();
         const [resumeSessions, setResumeSessions] = useState<SessionIndexEntry[]>([]);
@@ -216,6 +218,7 @@ export function App({
             if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
             if (showResume || showTasks || showAgents || showGitDiff || showModel || showProviders || showPermissions) return;
+            if ((key.escape || input === "\u001B") && !turn.confirmRequest && inputEscapeRef.current?.()) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             if (
                 (turn.busy || turn.attachmentState.preparing) &&
@@ -384,6 +387,8 @@ export function App({
                         )}
                         <QueuedInputPreview messages={turn.queuedMessages}/>
                         <InputBox
+                            fileSuggestions={turn.fileSuggestions}
+                            onEscapeHandlerChange={setInputEscapeHandler}
                             persistentHistory={resources.inputHistory}
                             onSubmit={handleSubmit}
                             onPasteImage={turn.pasteImage}

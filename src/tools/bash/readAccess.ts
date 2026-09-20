@@ -13,7 +13,7 @@ export interface CommandReadAccess {
     artifacts: string[];
     deniedPaths: string[];
     privateRoot: string;
-    workspaceRoot: string;
+    projectRoot: string;
 }
 
 /** Preparing a view or validating a result grants only that exact managed file for this invocation. */
@@ -26,7 +26,8 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
     }
     if (plan.paths.length > 128) throw new Error("Too many search paths; narrow the command");
     const privateRoot = await resolveFilePermissionPath(ctx.cwd, ctx.storage.hicodeHome);
-    const workspaceRoot = await realpath(ctx.workspaceBoundary ?? ctx.cwd);
+    // The Host ceiling may be filesystem root; it is not the project supplying untrusted programs.
+    const projectRoot = await realpath(ctx.cwd);
     const paths: string[] = [];
     const artifacts: string[] = [];
     const deniedPaths: string[] = [];
@@ -77,7 +78,7 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
                     // Grant only existing regular ignore files inside this Agent's workspace.
                     if (plan.segments.some(segment => segment.program.split("/").at(-1) === "rg")) {
                         let directory = (await lstat(canonical)).isDirectory() ? canonical : dirname(canonical);
-                        while (isPathInside(workspaceRoot, directory)) {
+                        while (isPathInside(projectRoot, directory)) {
                             for (const name of [".gitignore", ".ignore", ".rgignore", ".git/info/exclude"]) {
                                 const ignore = resolve(directory, name);
                                 try {
@@ -85,14 +86,14 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
                                     if (info.isSymbolicLink()) throw new Error("Search ignore files must not be symbolic links");
                                     if (info.isFile()) {
                                         const resolved = await realpath(ignore);
-                                        if (!isPathInside(workspaceRoot, resolved) || isPathInside(privateRoot, resolved)) throw new Error("Search ignore file is outside the authorized workspace");
+                                        if (!isPathInside(projectRoot, resolved) || isPathInside(privateRoot, resolved)) throw new Error("Search ignore file is outside the authorized workspace");
                                         paths.push(resolved);
                                     }
                                 } catch (error) {
                                     if (!(error instanceof Error && "code" in error && ["ENOENT", "ENOTDIR"].includes(String(error.code)))) throw error;
                                 }
                             }
-                            if (directory === workspaceRoot) break;
+                            if (directory === projectRoot) break;
                             directory = dirname(directory);
                         }
                     }
@@ -105,5 +106,5 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
             }
         }
     }
-    return {plan, paths: [...new Set(paths)], artifacts, deniedPaths: [...new Set(deniedPaths)], privateRoot, workspaceRoot};
+    return {plan, paths: [...new Set(paths)], artifacts, deniedPaths: [...new Set(deniedPaths)], privateRoot, projectRoot};
 }

@@ -1,3 +1,4 @@
+import {FileSuggestions} from "../../runtime/fileSuggestions.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/capability.js";
 import {imageReferences, type MessageContent} from "../../images/content.js";
@@ -290,6 +291,19 @@ export function useTurnController({
             [permissionRequests]
         );
 
+        const fileSuggestionsRef = useRef<FileSuggestions | null>(null);
+        fileSuggestionsRef.current ??= new FileSuggestions(signal => rootSession.createContext({
+            signal, onEvent: () => {},
+            host: {
+                canUseTool: async () => ({behavior: "deny", message: "File suggestions cannot request additional permissions; type a path directly"}),
+                getPermissionRules: () => permissionRulesRef.current!,
+                getPermissionMode: () => "ask", getCollaborationMode: () => "plan",
+                getPermissionPromptPolicy: () => "never", setTodos() {},
+            },
+            getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()}),
+        }));
+        const fileSuggestions = fileSuggestionsRef.current;
+
         const turnControllerRef = useRef<UITurnController | null>(null);
         if (turnControllerRef.current === null) {
             const toolContextHost = {
@@ -347,7 +361,7 @@ export function useTurnController({
                                 `${issue.message}:${issue.error instanceof Error ? issue.error.message : String(issue.error)}`
                             );
                         },
-                        onTurnSettled: () => eventStore.settleTurn(),
+                        onTurnSettled: () => {fileSuggestions.invalidate(); eventStore.settleTurn();},
                         getSnapshotState: () => ({
                             todos: todosRef.current,
                             permissionMode: permissionModeRef.current,
@@ -411,6 +425,7 @@ export function useTurnController({
             if (shutdownPromiseRef.current) return shutdownPromiseRef.current;
             shutdownPromiseRef.current = (async () => {
                 turnController.dispose();
+                await fileSuggestions.close();
                 permissionRequests.dispose();
                 await turnController.waitForSettled();
                 sessionHookControllerRef.current?.abort("shutdown");
@@ -421,7 +436,7 @@ export function useTurnController({
                 await rootSession.flushSnapshots();
             })();
             return shutdownPromiseRef.current;
-        }, [permissionRequests, persistSnapshot, rootSession, turnController]);
+        }, [fileSuggestions, permissionRequests, persistSnapshot, rootSession, turnController]);
 
         useEffect(() => {
             void startSessionHooks();
@@ -513,6 +528,7 @@ export function useTurnController({
         );
 
         return {
+            fileSuggestions,
             sessionId: rootSession.sessionId,
             sessionInitializationError,
             busy: turnStatus.busy,

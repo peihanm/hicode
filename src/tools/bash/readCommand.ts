@@ -33,7 +33,7 @@ export async function prepareReadCommand(accessScope: CommandReadAccess, cwd: st
         }
         if (!executable) throw new Error("ripgrep (rg) is unavailable. Install rg on the host PATH; HiCode does not download programs during a search.");
         executable = await realpath(executable);
-        if (isPathInside(accessScope.workspaceRoot, executable) || isPathInside(accessScope.privateRoot, executable)) throw new Error("Read-only commands cannot execute a program from the task workspace or private storage");
+        if (isPathInside(accessScope.projectRoot, executable) || isPathInside(accessScope.privateRoot, executable)) throw new Error("Read-only commands cannot execute a program from the task workspace or private storage");
         if (segment.program.includes("/") && await realpath(resolve(cwd, segment.program)) !== executable) throw new Error("Read-only commands must use the trusted host executable, not a project-supplied program");
         executables.push(executable);
         const args = name === "rg" ? ["--no-config", "--no-ignore-global", ...segment.args] : segment.args;

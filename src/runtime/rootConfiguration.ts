@@ -33,6 +33,7 @@ export interface HiCodeRootConfiguration {
     readonly allowFullAccess: boolean;
     readonly [rootConfigurationBrand]: true;
     readonly cwd: string;
+    /** Host access ceiling (filesystem root in CLI), not the current project directory. */
     readonly workspaceBoundary: string;
     readonly storage: HiCodeStorageLayout;
     readonly settings: ResolvedHiCodeSettings;

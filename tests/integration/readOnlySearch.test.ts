@@ -30,7 +30,7 @@ test.skipIf(!enabled)("real macOS command searches preserve read-only, private r
             expect(sandbox.status.kind).toBe("ready");
             const runner = createShellRunner(sandbox, testChildEnvironment);
             let approvals = 0;
-            const ctx = createTestContext(cwd, {shellRunner: runner, readOnlyTools: true,
+            const ctx = createTestContext(cwd, {shellRunner: runner, readOnlyTools: true, workspaceBoundary: "/",
                 canUseTool: async () => {approvals++; return {behavior: "deny", message: "Unexpected approval"};}});
             const run = (command: string) => executeToolResult("bash", JSON.stringify({command}), ctx, command);
             const found = await run("rg -n needle src");
@@ -64,7 +64,7 @@ test.skipIf(!enabled)("real macOS command searches preserve read-only, private r
             await writeFile(join(cwd, "bin", "rg"), "#!/bin/sh\necho PROJECT_EXECUTED\n");
             await chmod(join(cwd, "bin", "rg"), 0o755);
             const fakeRunner = createShellRunner(sandbox, createChildProcessEnvironment({PATH: `${join(cwd, "bin")}:${process.env.PATH}`}, []));
-            const fake = await executeToolResult("bash", JSON.stringify({command: "rg needle .", cwd: "src"}), createTestContext(cwd, {shellRunner: fakeRunner, readOnlyTools: true}), "fake-program");
+            const fake = await executeToolResult("bash", JSON.stringify({command: "rg needle .", cwd: "src"}), createTestContext(cwd, {shellRunner: fakeRunner, readOnlyTools: true, workspaceBoundary: "/"}), "fake-program");
             expect(fake.outcome).toBe("failed");
             expect(fake.modelContent).not.toContain("PROJECT_EXECUTED");
             expect(approvals).toBe(0);
