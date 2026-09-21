@@ -12,7 +12,7 @@ describe("Sandbox config", () => {
                 denyWrite: ["secrets"],
             },
             network: {
-                allowedDomains: ["api.example.com"],
+                mode: "restricted", allowedDomains: ["api.example.com"],
                 allowLocalBinding: true,
             },
         }, ["output"]);
@@ -42,7 +42,7 @@ describe("Sandbox config", () => {
                 denyWrite: [],
             },
             network: {
-                allowedDomains: [],
+                mode: "restricted", allowedDomains: [],
                 allowLocalBinding: false,
             },
         });

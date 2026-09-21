@@ -62,7 +62,7 @@ describe("StatusBar background tasks", () => {
   test("正常 Sandbox 隐藏，异常保留诊断入口", () => {
     const props = {cwd: "/project", model: "Qwen", permissionMode: "ask" as const,
       collaborationMode: "build" as const, tokenCount: 1, percentUsed: 0, warning: false, tokenStatus: "actual" as const};
-    const instance = render(<StatusBar {...props} sandboxStatus={{kind: "ready", platform: "macos", warnings: []}}/>);
+    const instance = render(<StatusBar {...props} sandboxStatus={{kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}}/>);
     expect(instance.lastFrame()).not.toContain("Sandbox");
     instance.unmount();
     const failed = render(<StatusBar {...props} sandboxStatus={{kind: "unavailable", reason: "fixture", warnings: []}}/>);

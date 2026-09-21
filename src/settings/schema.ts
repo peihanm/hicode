@@ -110,6 +110,7 @@ export const hicodeSettingsFileSchema: z.ZodType<HiCodeSettingsFile> = z
                     .optional(),
                 network: z
                     .object({
+                        mode: z.enum(["restricted", "open"]).optional(),
                         allowedDomains: z.array(z.string().trim().min(1)).optional(),
                         allowLocalBinding: z.boolean().optional(),
                     })
@@ -168,6 +169,7 @@ export const hicodeHostSettingsSchema: z.ZodType<HiCodeSettingsFile> = z
                     denyWrite: z.array(z.string().trim().min(1)).optional(),
                 }).strict().optional(),
                 network: z.object({
+                    mode: z.enum(["restricted", "open"]).optional(),
                     allowedDomains: z.array(z.string().trim().min(1)).optional(),
                     allowLocalBinding: z.boolean().optional(),
                 }).strict().optional(),

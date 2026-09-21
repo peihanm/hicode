@@ -7,7 +7,7 @@ describe("/sandbox", () => {
     test("格式化 ready 和 unavailable 状态", () => {
         expect(formatSandboxStatus({
             kind: "ready",
-            platform: "macos",
+            networkMode: "restricted", platform: "macos",
             warnings: [],
         })).toContain("Platform: macos");
         expect(formatSandboxStatus({

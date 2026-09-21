@@ -44,6 +44,7 @@ export interface UITurnControllerDependencies {
     openResume?(): void;
     openAgents?(): void;
     openSkills?(): void;
+    openSandbox?(): void;
     openTasks?(): void;
     toolRuntime: Pick<ToolRuntime, "executeTool">;
 
@@ -205,6 +206,7 @@ export class UITurnController {
                     openResume: this.dependencies.openResume,
                     openAgents: this.dependencies.openAgents,
                     openSkills: this.dependencies.openSkills,
+                    openSandbox: this.dependencies.openSandbox,
                     openTasks: this.dependencies.openTasks,
                     openGitDiff: this.dependencies.openGitDiff,
                     openModel: this.dependencies.openModel,
@@ -352,6 +354,7 @@ export class UITurnController {
             openResume: this.dependencies.openResume,
             openAgents: this.dependencies.openAgents,
             openSkills: this.dependencies.openSkills,
+                    openSandbox: this.dependencies.openSandbox,
             openTasks: this.dependencies.openTasks,
             openGitDiff: this.dependencies.openGitDiff,
             openModel: this.dependencies.openModel,

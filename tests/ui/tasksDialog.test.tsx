@@ -76,7 +76,7 @@ test("Agent detail uses terminal height, scrolls, preserves selection and return
 
 test("任务面板区分层级，停止任务不提示停止，窄屏中文标题不溢出", async () => {
   await withTempProject(async cwd => {
-    const runtime = createTaskRuntimeForTest(cwd, {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, async run() {
+    const runtime = createTaskRuntimeForTest(cwd, {sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}, async run() {
       return {stdout: "", stderr: "", termination: {kind: "aborted", reason: "shutdown"}, outputBytes: 0, outputComplete: true};
     }});
     const ctx = createTestContext(cwd);

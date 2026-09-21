@@ -17,6 +17,42 @@ import type {McpApprovalRequest, McpApprovalDecision} from "../../src/mcp/index.
 afterEach(() => cleanup());
 
 describe("RuntimeBootstrap lifecycle", () => {
+  test("startup shows the input area and context before enabling input", async () => {
+    await withTempProject(async (cwd, storage) => {
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => {release = resolve;});
+      const resources = createTestRuntimeResources(cwd);
+      const shutdown = new InteractiveShutdown();
+      const configuration = createTestRootConfiguration(cwd, createTestSettings(), storage);
+      const RuntimeBootstrap = createRuntimeBootstrap({createResources: async () => {
+        await gate;
+        return resources;
+      }});
+      const instance = render(<RuntimeBootstrap shutdown={shutdown} configuration={configuration}/>);
+      try {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const loading = instance.lastFrame()!;
+        expect(loading).toContain("❯ Starting HiCode… Input will be ready shortly.");
+        expect(loading).toContain(configuration.settings.models.primary.label);
+        expect(loading).toContain("Ctrl+C to exit");
+        expect(loading).not.toContain("Initializing Runtime");
+        expect(loading).not.toContain("ctrl+o transcript");
+        expect(loading).toContain("╔");
+        expect(loading).toContain("╚");
+        instance.stdin.write("/help\r");
+        release();
+        await new Promise(resolve => setTimeout(resolve, 80));
+        expect(instance.lastFrame()).toContain("Ask HiCode to build, inspect, or fix something");
+        expect(instance.lastFrame()).not.toContain("Starting HiCode");
+        expect(instance.lastFrame()).not.toContain("Input will be ready shortly");
+      } finally {
+        release();
+        instance.unmount();
+        await shutdown.close();
+      }
+    });
+  });
+
   test.each(["ctrl-c", "unmount"])("MCP 授权页 %s 先取消 Root，再返回非持久跳过", async action => {
     await withTempProject(async (cwd, storage) => {
       const resources = createTestRuntimeResources(cwd);
@@ -400,7 +436,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(instance.lastFrame()).toContain("Initializing Runtime");
+      expect(instance.lastFrame()).toContain("❯ Starting HiCode");
       instance.unmount();
       release();
       await new Promise((resolve) => setTimeout(resolve, 20));

@@ -7,7 +7,6 @@ describe("Slash busy behavior", () => {
         for (const input of [
             "/help",
             "/?",
-            "/sandbox",
             "/skills",
             "/tasks",
         ]) {
@@ -17,6 +16,7 @@ describe("Slash busy behavior", () => {
 
     test("会改变对话或打开交互界面的命令等待当前 Turn 结束", () => {
         for (const input of [
+            "/sandbox",
             "/mcp",
             "/mcp reconnect fixture",
             "/compact",

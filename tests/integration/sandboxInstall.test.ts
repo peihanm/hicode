@@ -45,7 +45,7 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
             annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
             cleanupAfterCommand() {}, async reset() {active = false;}});
         const sandbox = await factory({cwd, storage, settings: {filesystem: {denyRead: [], denyWrite: []},
-            network: {allowedDomains: [], allowLocalBinding: false}}});
+            network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false}}});
         expect(sandbox.status.kind).toBe("ready");
         const npmConfig = join(root, "empty.npmrc");
         const npmGlobalConfig = join(root, "global.npmrc");

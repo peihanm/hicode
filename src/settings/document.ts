@@ -33,6 +33,7 @@ const KNOWN_SANDBOX_FILESYSTEM_KEYS = new Set([
     "denyWrite",
 ]);
 const KNOWN_SANDBOX_NETWORK_KEYS = new Set([
+    "mode",
     "allowedDomains",
     "allowLocalBinding",
 ]);

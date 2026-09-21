@@ -11,7 +11,7 @@ import {withTempProject} from "../helpers/tempProject.js";
         await withTempProject(async cwd => {
             let approvals = 0;
             const shellRunner: ShellRunnerLike = {
-                sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+                sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
                 async run(request) {
                     await new Promise<void>(resolve => {
                         if (request.signal.aborted) resolve();

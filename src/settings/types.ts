@@ -30,6 +30,7 @@ interface SandboxSettingsFile {
         denyWrite?: string[];
     };
     network?: {
+        mode?: "restricted" | "open";
         allowedDomains?: string[];
         allowLocalBinding?: boolean;
     };
@@ -132,6 +133,7 @@ export interface ResolvedHiCodeSettings {
             denyWrite: string[];
         };
         network: {
+            mode: "restricted" | "open";
             allowedDomains: string[];
             allowLocalBinding: boolean;
         };

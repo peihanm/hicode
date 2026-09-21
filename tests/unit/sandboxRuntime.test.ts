@@ -15,7 +15,7 @@ const settings = {
         denyWrite: [],
     },
     network: {
-        allowedDomains: [],
+        mode: "restricted" as const, allowedDomains: [],
         allowLocalBinding: false,
     },
 };

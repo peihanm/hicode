@@ -89,7 +89,7 @@ test.skipIf(!sandboxEnabled)("real macOS suggestions use restricted rg and exclu
         await mkdir(storage.hicodeHome, {recursive: true});
         await writeFile(join(storage.hicodeHome, "private.txt"), "private");
         const sandbox = await createSandboxRuntime({cwd, storage, settings: {
-            filesystem: {denyRead: [], denyWrite: []}, network: {allowedDomains: [], allowLocalBinding: false},
+            filesystem: {denyRead: [], denyWrite: []}, network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false},
         }});
         const runner = createShellRunner(sandbox, testChildEnvironment);
         let approvals = 0;
@@ -150,7 +150,7 @@ for (const [termination, reason] of [
 ] satisfies Array<[ShellTermination, string]>) test(`file enumeration distinguishes ${reason}`, async () => {
     await withTempProject(async cwd => {
         const source = new FileSuggestions(abort => createTestContext(cwd, {signal: abort, shellRunner: {
-            sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+            sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
             run: async () => ({stdout: "", stderr: "", termination}),
         }}));
         try {await expect(source.search("", signal())).rejects.toThrow(reason);}

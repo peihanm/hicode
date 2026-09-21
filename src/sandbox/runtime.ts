@@ -2,9 +2,11 @@ import {bashCommand, bashExecutable} from "../tools/bash/command.js";
 import {readOnlySandboxArgv} from "./readOnly.js";
 import {
     SandboxManager,
+    getDefaultWritePaths,
     type SandboxRuntimeConfig,
     type SandboxAskCallback,
 } from "@anthropic-ai/sandbox-runtime";
+import {wrapCommandWithSandboxMacOS} from "@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
 import {tmpdir} from "node:os";
@@ -133,14 +135,31 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             const preparedCommand = useStandardTemp
                 ? `export TMPDIR='${temporaryDirectory.replaceAll("'", "'\\''")}'\n${command}`
                 : command;
-            const wrapped = await this.backend.wrapWithSandboxArgv(
-                bashCommand(preparedCommand),
-                shell,
-                customConfig,
-                signal,
-                cwd
-            );
-            return {...wrapped, env: {...wrapped.env, BUN_INSTALL_CACHE_DIR: this.bunCacheDirectory, npm_config_cache: this.npmCacheDirectory}, ...approval};
+            // The high-level ASRT config always enables its proxy. Its macOS wrapper
+            // lets us retain the same filesystem policy with unrestricted networking.
+            const wrapped = this.status.networkMode === "open"
+                ? {argv: [shell, "-c", wrapCommandWithSandboxMacOS({
+                    command: bashCommand(preparedCommand), binShell: shell,
+                    needsNetworkRestriction: false,
+                    readConfig: {denyOnly: this.baseConfig.filesystem.denyRead},
+                    writeConfig: {
+                        allowOnly: [...getDefaultWritePaths(), ...writableRoots],
+                        denyWithinAllow: customConfig?.filesystem.denyWrite ?? this.baseConfig.filesystem.denyWrite,
+                    },
+                })], env: {}}
+                : await this.backend.wrapWithSandboxArgv(
+                    bashCommand(preparedCommand), shell, customConfig, signal, cwd
+                );
+            return {
+                ...wrapped,
+                env: {
+                    ...wrapped.env,
+                    ...(this.status.networkMode === "restricted" ? {NODE_USE_ENV_PROXY: "1"} : {}),
+                    BUN_INSTALL_CACHE_DIR: this.bunCacheDirectory,
+                    npm_config_cache: this.npmCacheDirectory,
+                },
+                ...approval,
+            };
         } catch (error) {
             approval.release();
             throw error;
@@ -185,6 +204,9 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             });
         }
 
+        if (settings.network.mode === "open" && platform !== "macos") {
+            return new InactiveSandboxRuntime({kind: "unavailable", reason: "Open network with filesystem isolation currently requires macOS", warnings: []});
+        }
         let dependencies;
         try {
             dependencies = backend.checkDependencies();
@@ -254,6 +276,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             return new ActiveSandboxRuntime({
                 kind: "ready",
                 platform,
+                networkMode: settings.network.mode,
                 warnings: dependencies.warnings,
             }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.hicodeHome));
         } catch (error) {

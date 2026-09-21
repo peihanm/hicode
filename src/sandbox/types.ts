@@ -12,6 +12,7 @@ export type SandboxStatus =
     | {
         kind: "ready";
         platform: SandboxPlatform;
+        networkMode: "restricted" | "open";
         warnings: readonly string[];
     }
     | {

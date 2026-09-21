@@ -38,6 +38,7 @@ export interface UseTurnControllerOptions {
     openResume?: () => void;
     openAgents?: () => void;
     openSkills?: () => void;
+    openSandbox?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
@@ -67,6 +68,7 @@ export function useTurnController({
                                           openResume,
                                           openAgents,
                                           openSkills,
+                                          openSandbox,
                                           openTasks,
                                           openGitDiff,
                                           openModel,
@@ -340,6 +342,7 @@ export function useTurnController({
                 openResume,
                 openAgents,
                 openSkills,
+                openSandbox,
                 openTasks,
                 toolRuntime,
                 openGitDiff,

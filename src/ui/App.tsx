@@ -28,6 +28,8 @@ import type {UIThread} from "./conversation/types.js";
 import type {SubagentRegistry} from "../subagents/registry.js";
 import {GitDiffDialog} from "./git/GitDiffDialog.js";
 import {TasksDialog} from "./tasks/TasksDialog.js";
+import {SandboxDialog} from "./sandbox/SandboxDialog.js";
+import {saveLocalNetworkMode} from "../settings/permissionUpdate.js";
 import {SkillsDialog} from "./skills/SkillsDialog.js";
 import {join} from "node:path";
 import {AgentsDialog} from "./agents/AgentsDialog.js";
@@ -101,13 +103,15 @@ export function App({
         const [showTasks, setShowTasks] = useState(false);
         const [showAgents, setShowAgents] = useState(false);
         const [showSkills, setShowSkills] = useState(false);
+        const [showSandbox, setShowSandbox] = useState(false);
+        const [configuredNetworkMode, setConfiguredNetworkMode] = useState(resources.settings.sandbox.network.mode);
         const [showGitDiff, setShowGitDiff] = useState(false);
         const [showProviders, setShowProviders] = useState(() => !!resources.modelConfiguration && resources.primaryModel.available.length === 0);
         const [showModel, setShowModel] = useState(() => resources.primaryModel.available.length > 0 && !resources.primaryModel.isConfigured);
         const [showPermissions, setShowPermissions] = useState(false);
         const openResume = useCallback(() => {
             setShowTasks(false);
-            setShowAgents(false); setShowSkills(false);
+            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
             setShowGitDiff(false);
             setShowProviders(false);
             setShowModel(false);
@@ -117,7 +121,7 @@ export function App({
             setShowResume(true);
         }, [resources.cwd, resources.storage]);
         const openAgents = useCallback(() => {
-            setShowSkills(false);
+            setShowSkills(false); setShowSandbox(false);
             setShowResume(false);
             setShowGitDiff(false);
             setShowProviders(false);
@@ -126,27 +130,33 @@ export function App({
             setShowAgents(true);
         }, []);
         const openSkills = useCallback(() => {
+            setShowSandbox(false);
             setShowResume(false); setShowTasks(false); setShowAgents(false);
             setShowGitDiff(false); setShowProviders(false); setShowModel(false);
             setShowPermissions(false); setShowSkills(true);
         }, []);
+        const openSandbox = useCallback(() => {
+            setShowResume(false); setShowTasks(false); setShowAgents(false); setShowSkills(false);
+            setShowGitDiff(false); setShowProviders(false); setShowModel(false);
+            setShowPermissions(false); setShowSandbox(true);
+        }, []);
         const openGitDiff = useCallback(() => {
             setShowResume(false);
             setShowTasks(false);
-            setShowAgents(false); setShowSkills(false);
+            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
             setShowProviders(false);
             setShowModel(false);
             setShowPermissions(false);
             setShowGitDiff(true);
         }, []);
         const openProviders = useCallback(() => {
-            setShowResume(false); setShowTasks(false); setShowAgents(false); setShowSkills(false); setShowGitDiff(false);
+            setShowResume(false); setShowTasks(false); setShowAgents(false); setShowSkills(false); setShowSandbox(false); setShowGitDiff(false);
             setShowModel(false); setShowPermissions(false); setShowProviders(true);
         }, []);
         const openModel = useCallback(() => {
             setShowResume(false);
             setShowTasks(false);
-            setShowAgents(false); setShowSkills(false);
+            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
             setShowGitDiff(false);
             setShowPermissions(false);
             setShowProviders(false);
@@ -155,14 +165,14 @@ export function App({
         const openPermissions = useCallback(() => {
             setShowResume(false);
             setShowTasks(false);
-            setShowAgents(false); setShowSkills(false);
+            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
             setShowGitDiff(false);
             setShowProviders(false);
             setShowModel(false);
             setShowPermissions(true);
         }, []);
         const openTasks = useCallback(() => {
-            setShowResume(false); setShowAgents(false); setShowSkills(false); setShowGitDiff(false);
+            setShowResume(false); setShowAgents(false); setShowSkills(false); setShowSandbox(false); setShowGitDiff(false);
             setShowProviders(false);
             setShowModel(false); setShowPermissions(false); setShowTasks(true);
         }, []);
@@ -176,6 +186,7 @@ export function App({
             openResume: requestSessionSwitch ? openResume : undefined,
             openAgents,
             openSkills,
+            openSandbox,
             openTasks,
             openGitDiff,
             openModel,
@@ -227,7 +238,7 @@ export function App({
         useInput((input, key) => {
             if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showResume || showTasks || showAgents || showSkills || showGitDiff || showModel || showProviders || showPermissions) return;
+            if (showResume || showTasks || showAgents || showSkills || showSandbox || showGitDiff || showModel || showProviders || showPermissions) return;
             if ((key.escape || input === "\u001B") && !turn.confirmRequest && inputEscapeRef.current?.()) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             if (
@@ -291,14 +302,14 @@ export function App({
                     paused={!!turn.confirmRequest}
                 />
 
-                {!showResume && !showTasks && !showAgents && !showSkills && !showGitDiff && !showModel && !showProviders && !showPermissions && (
+                {!showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showSkills && !showGitDiff && !showModel && !showProviders && !showPermissions && (
+                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
                     <>
                         <AssistantDraftView store={turn.draftStore} phase={turn.modelStream?.phase}/>
                         <ModelStreamStatus
@@ -342,6 +353,12 @@ export function App({
                     />
                 ) : showTasks && !turn.confirmRequest ? (
                     <TasksDialog tasks={rootSession.taskSession} stopTask={turn.stopTask} onClose={() => setShowTasks(false)}/>
+                ) : showSandbox && !turn.confirmRequest ? (
+                    <SandboxDialog status={resources.shellRunner.sandboxStatus}
+                        configured={configuredNetworkMode}
+                        fullAccess={turn.permissionMode === "full-access"}
+                        onSave={async mode => {await saveLocalNetworkMode(resources.cwd, mode); setConfiguredNetworkMode(mode);}}
+                        onClose={() => setShowSandbox(false)}/>
                 ) : showSkills && !turn.confirmRequest ? (
                     <SkillsDialog skills={resources.skills}
                         projectDirectory={join(resources.cwd, ".hicode", "skills")}
@@ -429,7 +446,7 @@ export function App({
                 )}
 
                 <StatusBar
-                    showShortcuts={!showGitDiff && !showSkills}
+                    showShortcuts={!showGitDiff && !showSkills && !showSandbox}
                     cwd={cwd}
                     model={turn.primaryModel.label}
                     permissionMode={turn.permissionMode}

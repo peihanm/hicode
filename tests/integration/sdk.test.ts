@@ -163,7 +163,7 @@ describe("TypeScript SDK", () => {
             });
             const sandbox = await createSandbox({cwd, storage, settings: {
                 filesystem: {denyRead: [], denyWrite: []},
-                network: {allowedDomains: [], allowLocalBinding: false},
+                network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false},
             }});
             const fake = createFakeLLM([
                 assistantToolCall("bash", {command: "printf first"}, "network-sdk-1"),

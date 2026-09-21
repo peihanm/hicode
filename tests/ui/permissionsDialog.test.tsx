@@ -35,7 +35,7 @@ describe("PermissionsDialog", () => {
         const title = lines.find(line => line.includes("Ask for approval"))!;
         const description = lines.find(line => line.includes("Workspace reads"))!;
         expect(title.indexOf("Ask")).toBe(description.indexOf("Workspace"));
-        expect(frame).toMatch(/require approval\.\n\s*\n/);
+        expect(frame).toMatch(/Network policy follows \/sandbox settings\.\n\s*\n/);
         expect(frame).toContain("this controls access and approval");
         expect(frame).not.toContain("Read Only");
         expect(frame).not.toContain("Bypass");

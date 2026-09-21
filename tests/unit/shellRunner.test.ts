@@ -38,7 +38,7 @@ describe("ShellRunner", () => {
     test("已确认的沙箱违规附恢复建议，但不自动重跑或提权", async () => {
         await withTempProject(async cwd => {
             const events: string[] = [];
-            const sandbox = sandboxRuntime({kind: "ready", platform: "macos", warnings: []}, events);
+            const sandbox = sandboxRuntime({kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}, events);
             sandbox.annotateStderr = (_command, stderr) => `${stderr}\n<sandbox_violations>file-write denied</sandbox_violations>`;
             const runner = createShellRunner(sandbox, testChildEnvironment);
             const result = await runner.run({command: "exit 1", cwd, signal: new AbortController().signal});
@@ -52,7 +52,7 @@ describe("ShellRunner", () => {
         await withTempProject(async (cwd) => {
             const events: string[] = [];
             const runner = createShellRunner(
-                sandboxRuntime({kind: "ready", platform: "macos", warnings: []}, events),
+                sandboxRuntime({kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}, events),
                 testChildEnvironment
             );
             const result = await runner.run({
@@ -76,7 +76,7 @@ describe("ShellRunner", () => {
                 SESSION_TOKEN: "token-secret",
             }, ["CUSTOM_MODEL_CREDENTIAL"]);
             const runner = createShellRunner(
-                sandboxRuntime({kind: "ready", platform: "macos", warnings: []}),
+                sandboxRuntime({kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}),
                 childEnvironment
             );
             const result = await runner.run({
@@ -100,7 +100,7 @@ describe("ShellRunner", () => {
             const runner = createShellRunner(
                 sandboxRuntime({
                     kind: "ready",
-                    platform: "macos",
+                    networkMode: "restricted", platform: "macos",
                     warnings: [],
                 }, events),
                 testChildEnvironment
@@ -124,7 +124,7 @@ describe("ShellRunner", () => {
             const runner = createShellRunner(
                 sandboxRuntime({
                     kind: "ready",
-                    platform: "macos",
+                    networkMode: "restricted", platform: "macos",
                     warnings: [],
                 }),
                 testChildEnvironment
@@ -145,7 +145,7 @@ describe("ShellRunner", () => {
             const runner = createShellRunner(
                 sandboxRuntime({
                     kind: "ready",
-                    platform: "macos",
+                    networkMode: "restricted", platform: "macos",
                     warnings: [],
                 }),
                 testChildEnvironment

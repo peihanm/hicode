@@ -90,7 +90,7 @@ export function createTestSettings(
         denyRead: ["~/.ssh", "~/.aws", "~/.config/gcloud"],
         denyWrite: [".hicode", ".env"],
       },
-      network: { allowedDomains: [], allowLocalBinding: true },
+      network: { mode: "restricted", allowedDomains: [], allowLocalBinding: true },
     },
     ...overrides,
   };

@@ -19,7 +19,9 @@ export function formatSandboxStatus(status: SandboxStatus): string {
     const lines = [
         "Bash Sandbox: ready",
         `Platform: ${status.platform}`,
-        "File and network boundaries are enforced by the OS; permission rules still apply independently.",
+        status.networkMode === "open"
+            ? "Network: open (direct access). Filesystem write restrictions remain enforced."
+            : "Network: restricted (proxy and domain approvals). Filesystem restrictions remain enforced.",
     ];
     if (status.warnings.length > 0) {
         lines.push("Warnings:", ...status.warnings.map((item) => `- ${item}`));
@@ -28,7 +30,7 @@ export function formatSandboxStatus(status: SandboxStatus): string {
 }
 
 export const sandboxCommand: SlashCommand = {
-    busyBehavior: "immediate",
+    busyBehavior: "defer",
     name: "sandbox",
     description: "Show Bash OS Sandbox status",
     async execute(args, context) {
@@ -39,6 +41,7 @@ export const sandboxCommand: SlashCommand = {
             });
             return;
         }
+        if (context.openSandbox) {context.openSandbox(); return;}
         await context.onEvent({
             type: "assistant_text",
             content: context.ctx.permissionMode === "full-access"

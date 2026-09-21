@@ -24,7 +24,7 @@ test.skipIf(!enabled)("real macOS command searches preserve read-only, private r
         await symlink(join(cwd, "private"), join(cwd, "src", "alias"));
         const sandbox = await createSandboxRuntime({cwd, storage, settings: {
             filesystem: {denyRead: [join(cwd, "private")], denyWrite: []},
-            network: {allowedDomains: [], allowLocalBinding: false},
+            network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false},
         }});
         try {
             expect(sandbox.status.kind).toBe("ready");

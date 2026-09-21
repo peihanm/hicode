@@ -26,7 +26,7 @@ describe("Bash pipeline status", () => {
                 });
                 const sandbox = mode === "disabled" ? createDisabledSandboxRuntime() : await factory({cwd, storage,
                     settings: {filesystem: {denyRead: [], denyWrite: []},
-                        network: {allowedDomains: [], allowLocalBinding: false}}});
+                        network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false}}});
                 const runner = createShellRunner(sandbox, testChildEnvironment);
                 try {
                     for (const [command, code] of [

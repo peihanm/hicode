@@ -18,6 +18,9 @@ import {COLORS, SYMBOLS} from "../theme.js";
 import {HookApprovalDialog} from "./HookApprovalDialog.js";
 import {McpApprovalDialog} from "./McpApprovalDialog.js";
 import {Welcome} from "./Welcome.js";
+import {formatInputDivider} from "../input/InputBox.js";
+import {StatusBar} from "../status/StatusBar.js";
+import {useTerminalWidth} from "../terminalSize.js";
 import type {HiCodeRootConfiguration} from "../../runtime/rootConfiguration.js";
 import {createUITurnSessionRuntime, type UITurnSessionRuntime,} from "../turn/sessionRuntime.js";
 
@@ -61,6 +64,7 @@ export function createRuntimeBootstrap(
         onSessionSwitch,
     }: RuntimeBootstrapProps) {
         const {cwd, settings, storage} = configuration;
+        const terminalWidth = useTerminalWidth();
         const initialImageSession = useRef(session?.sessionId ?? "new");
         const {exit} = useApp();
         const pendingRef = useRef<PendingMcpApproval | null>(null);
@@ -203,7 +207,15 @@ export function createRuntimeBootstrap(
             return (
                 <Box flexDirection="column">
                     <Welcome/>
-                    <Text color={COLORS.dim}>{SYMBOLS.spinner} Initializing Runtime…</Text>
+                    <Box marginTop={1} flexDirection="column">
+                        <Text color={COLORS.dim}>{SYMBOLS.prompt} Starting HiCode… Input will be ready shortly.</Text>
+                        <Text color={COLORS.dim}>{formatInputDivider(terminalWidth)}</Text>
+                    </Box>
+                    <StatusBar cwd={cwd} model={settings.models.primary.label}
+                        permissionMode={initialPermissionMode ?? session?.permissionMode ?? settings.permissions.defaultMode}
+                        collaborationMode={initialCollaborationMode ?? session?.collaborationMode ?? "build"}
+                        tokenCount={0} percentUsed={0} warning={false} tokenStatus="unavailable" showShortcuts={false}/>
+                    <Text color={COLORS.dim}> Ctrl+C to exit</Text>
                 </Box>
             );
         }

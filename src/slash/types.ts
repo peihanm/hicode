@@ -17,6 +17,7 @@ interface SlashCommandContext {
     openResume?: () => void;
     openAgents?: () => void;
     openSkills?: () => void;
+    openSandbox?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;

@@ -15,7 +15,7 @@ test("大安装缓存不扫描，也不清空源码已读范围", async () => {
     await withTempProject(async (cwd, storage) => {
         const fileState = createFileStateTracker();
         const ctx = createTestContext(cwd, {fileState, toolResultStore: createTestToolResultStore(cwd, "cache", {hicodeHome: storage.hicodeHome}),
-            shellRunner: {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, run: runShellCommand}});
+            shellRunner: {sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}, run: runShellCommand}});
         const tools = createToolRuntime();
         expect((await tools.executeTool("write_file", JSON.stringify({path: "App.tsx", content: "const value = 1;"}), ctx, "write")).outcome).toBe("ok");
         const script = "const fs=require('node:fs');fs.mkdirSync('.npm-cache');const fd=fs.openSync('.npm-cache/large','w');fs.ftruncateSync(fd,33*1024*1024);fs.closeSync(fd);fs.writeFileSync('package-lock.json','generated');";
@@ -32,7 +32,7 @@ test("大安装缓存不扫描，也不清空源码已读范围", async () => {
 test("Bash 改源码仍要求重读；同 Turn 外部修改不被后续 Edit 掩盖", async () => {
     await withTempProject(async cwd => {
         const fileState = createFileStateTracker();
-        const ctx = createTestContext(cwd, {fileState, shellRunner: {sandboxStatus: {kind: "ready", platform: "macos", warnings: []}, run: runShellCommand}});
+        const ctx = createTestContext(cwd, {fileState, shellRunner: {sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}, run: runShellCommand}});
         const tools = createToolRuntime();
         await tools.executeTool("write_file", JSON.stringify({path: "app.txt", content: "B"}), ctx, "first");
         expect((await tools.executeTool("bash", JSON.stringify({command: "printf C > app.txt"}), ctx, "external")).outcome).toBe("ok");

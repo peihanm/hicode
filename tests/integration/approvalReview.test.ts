@@ -51,7 +51,7 @@ describe("automatic approval through the production tool chain", () => {
             let trigger!: () => void;
             const ready = new Promise<void>(resolve => {trigger = resolve;});
             let allowed = false;
-            const runner: ShellRunnerLike = {sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+            const runner: ShellRunnerLike = {sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
                 async run(input) {
                     await ready;
                     expect(input.networkAccess?.canReview()).toBe(true);

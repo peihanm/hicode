@@ -13,7 +13,7 @@ const SHORT_LABELS: Record<PermissionMode, string> = {
 };
 
 const DESCRIPTIONS: Record<PermissionMode, string> = {
-    ask: "Workspace reads, edits and ordinary commands run directly; network access and edits outside the workspace require approval.",
+    ask: "Workspace reads, edits and ordinary commands run directly; extra access requires approval. Network policy follows /sandbox settings.",
     "auto-review": "An independent Agent reviews extra access; you are asked when a decision is needed.",
     "full-access": "Access files and the network as the current OS account without confirming each additional access request.",
 };

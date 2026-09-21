@@ -207,6 +207,7 @@ export function resolveHiCodeSettings(
     let autoExtractDisabled = false;
     let sandboxDenyRead = ["~/.ssh", "~/.aws", "~/.config/gcloud"];
     let sandboxDenyWrite = [".hicode", ".env"];
+    let sandboxNetworkMode: "restricted" | "open" = "open";
     let sandboxAllowedDomains: string[] = [];
     let sandboxAllowLocalBinding = true;
     const origins: SettingsOrigins = {
@@ -276,6 +277,7 @@ export function resolveHiCodeSettings(
         if (value.sandbox?.filesystem?.denyWrite !== undefined) {
             sandboxDenyWrite = [...value.sandbox.filesystem.denyWrite];
         }
+        if (value.sandbox?.network?.mode !== undefined) sandboxNetworkMode = value.sandbox.network.mode;
         if (value.sandbox?.network?.allowedDomains !== undefined) {
             sandboxAllowedDomains = [...value.sandbox.network.allowedDomains];
         }
@@ -334,6 +336,7 @@ export function resolveHiCodeSettings(
                     denyWrite: sandboxDenyWrite,
                 },
                 network: {
+                    mode: sandboxNetworkMode,
                     allowedDomains: sandboxAllowedDomains,
                     allowLocalBinding: sandboxAllowLocalBinding,
                 },

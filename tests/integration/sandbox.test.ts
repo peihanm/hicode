@@ -42,7 +42,7 @@ describe("OS Sandbox integration", () => {
             const runtime = await createSandboxRuntime({cwd, storage,
                 writableRoots: await cliTemporaryDirectories(),
                 settings: {filesystem: {denyRead: [], denyWrite: [denied]},
-                    network: {allowedDomains: [], allowLocalBinding: false}},
+                    network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false}},
             });
             try {
                 expect(runtime.status.kind).toBe("ready");
@@ -77,7 +77,7 @@ describe("OS Sandbox integration", () => {
             const blockedPath = join(cwd, ".hicode", "network-must-not-enable-write.txt");
             const runtime = await createSandboxRuntime({cwd, storage, settings: {
                 filesystem: {denyRead: [], denyWrite: []},
-                network: {allowedDomains: [], allowLocalBinding: false},
+                network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false},
             }});
             const runner = createShellRunner(runtime, testChildEnvironment);
             const tasks = createTaskRuntimeForTest(cwd, runner, () => ({
@@ -173,7 +173,7 @@ describe("OS Sandbox integration", () => {
                         denyWrite: [],
                     },
                     network: {
-                        allowedDomains: [],
+                        mode: "restricted", allowedDomains: [],
                         allowLocalBinding: true,
                     },
                 },

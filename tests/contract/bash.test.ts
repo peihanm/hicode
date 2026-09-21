@@ -18,7 +18,7 @@ import type {ToolContext} from "../../src/tools/types.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 const readySandboxRunner: ShellRunnerLike = {
-  sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+  sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
   run: runShellCommand,
 };
 
@@ -36,7 +36,7 @@ function networkCaptureRunner(): {
   return {
     calls,
     runner: {
-      sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+      sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
       async run(request) {
         calls.push({
           command: request.command,
@@ -512,7 +512,7 @@ describe("bash tool contract", () => {
   test("后台 Bash 在启动观察期内失败时直接返回失败且不重复通知", async () => {
     await withTempProject(async (cwd) => {
       const sandboxDeniedRunner: ShellRunnerLike = {
-        sandboxStatus: {kind: "ready", platform: "macos", warnings: []},
+        sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
         async run(request) {
           const output = "Error: listen EPERM: operation not permitted 127.0.0.1:8000\n";
           await appendFile(request.outputFilePath!, output);

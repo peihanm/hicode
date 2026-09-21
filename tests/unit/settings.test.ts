@@ -43,7 +43,7 @@ describe("Unified Settings", () => {
                 denyWrite: [".hicode", ".env"],
             },
             network: {
-                allowedDomains: [],
+                mode: "open", allowedDomains: [],
                 allowLocalBinding: true,
             },
         });
@@ -244,14 +244,14 @@ describe("Unified Settings", () => {
                         denyRead: ["~/.ssh"],
                     },
                     network: {
-                        allowedDomains: ["registry.npmjs.org"],
+                        mode: "restricted", allowedDomains: ["registry.npmjs.org"],
                     },
                 },
             }),
             document("project", {
                 sandbox: {
                     network: {
-                        allowedDomains: ["api.example.com"],
+                        mode: "restricted", allowedDomains: ["api.example.com"],
                         allowLocalBinding: true,
                     },
                 },
@@ -267,7 +267,7 @@ describe("Unified Settings", () => {
                 denyWrite: [".hicode", ".env"],
             },
             network: {
-                allowedDomains: ["api.example.com"],
+                mode: "restricted", allowedDomains: ["api.example.com"],
                 allowLocalBinding: true,
             },
         });
@@ -470,4 +470,15 @@ test("非法 context 不静默回退到默认，Host 同样校验", async () => 
         expect(loaded.issues).toEqual([]);
         expect(() => loadHiCodeSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("Invalid context configuration");
     });
+});
+
+
+test("network mode follows explicit settings precedence without changing permissions", () => {
+    const resolved = resolveHiCodeSettings([
+        document("user", {sandbox: {network: {mode: "open"}}}),
+        document("project", {sandbox: {network: {allowedDomains: ["example.com"]}}}),
+        document("local", {sandbox: {network: {mode: "restricted"}}}),
+    ]);
+    expect(resolved.values.sandbox.network).toMatchObject({mode: "restricted", allowedDomains: ["example.com"]});
+    expect(resolveHiCodeSettings([document("local", {sandbox: {network: {mode: "open"}}})]).values.permissions.defaultMode).toBe("ask");
 });
