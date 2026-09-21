@@ -10,6 +10,7 @@ describe("/mcp slash command", () => {
       const ctx = createTestContext(cwd);
       const reconnected: string[] = [];
       ctx.mcpManager = {
+        async waitForRefresh() {},
         async initialize() {},
         getSnapshots: () => [{name: "fixture", source: "project", status, toolCount: 0}],
         getTools: () => [], subscribe: () => () => {}, async closeAll() {},
@@ -32,6 +33,7 @@ describe("/mcp slash command", () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd);
       ctx.mcpManager = {
+        async waitForRefresh() {},
         async initialize() {},
         getSnapshots: () => [{
           name: "fixture",

@@ -204,6 +204,7 @@ async function runAgentCore(
             const hasNextIteration =
                 maxIterations === undefined || i + 1 < maxIterations;
             await draft.finish("discarded");
+            await ctx.mcpManager?.waitForRefresh(ctx.signal);
             const toolSchemas = getToolSchemasImpl();
             const todoReminder = todoProgress.takeReminder(
                 options.getTodos?.() ?? [],
@@ -446,7 +447,7 @@ async function runAgentCore(
                 executeTool: (name, args, context, callId) => offeredToolNames.has(name)
                     ? executeToolImpl(name, args, context, callId)
                     : Promise.resolve(inlineToolResult(
-                        "Tool " + name + " was not provided in this model request and was not executed. Use only the provided tools; if none are available, summarize existing evidence.",
+                        "Tool " + name + " was not provided in this model request and was not executed. Use only the tools provided in this request. For an MCP/deferred tool removed by a catalog update or budget eviction, call tool_search to rediscover its current definition before retrying. If the server is unavailable, report the blocker.",
                         "denied",
                     )),
                 isToolConcurrencySafe: (name, args) => offeredToolNames.has(name) && isToolConcurrencySafeImpl(name, args),

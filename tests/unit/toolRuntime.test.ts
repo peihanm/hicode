@@ -317,6 +317,8 @@ describe("scoped tool runtime", () => {
       expect(visible).toContain("deferred_01");
       expect(visible).not.toContain("deferred_02");
       expect(visible).toContain("deferred_25");
+      expect(runtime.getToolSchemas().find(tool => tool.function.name === "tool_search")?.function.description)
+        .toContain("budget eviction (not server removal): deferred_02");
     });
   });
 
@@ -355,5 +357,31 @@ describe("scoped tool runtime", () => {
         names.slice(0, 2)
       );
     });
+  });
+});
+
+
+test("search batches protect all promised definitions until the next request", async () => {
+  await withTempProject(async cwd => {
+    const names = Array.from({length: 30}, (_, i) => `batch_${i}`);
+    const runtime = createToolRuntime({additionalTools: names.map(name => ({
+      name, description: name, parameters: z.object({}), exposure: "deferred" as const,
+      isReadOnly: () => true, execute: async () => name,
+    }))});
+    const ctx = createTestContext(cwd);
+    runtime.getToolSchemas();
+    for (let i = 0; i < 30; i += 10) {
+      const result = await runtime.executeTool("tool_search", JSON.stringify({query: `select:${names.slice(i, i + 10).join(",")}`}), ctx, `batch-${i}`);
+      expect(result.outcome).toBe("ok");
+      if (i === 20) expect(result.modelContent).toContain("batch_24 — not loaded: working-set budget reached");
+    }
+    expect(runtime.getToolDiscoverySnapshot().loadedNames).toEqual(names.slice(0, 24));
+    expect(runtime.getToolSchemas().filter(t => t.function.name.startsWith("batch_")).map(t => t.function.name)).toEqual(names.slice(0, 24));
+    // Once a request has seen the promised set, normal LRU admission resumes.
+    await runtime.executeTool("tool_search", JSON.stringify({query: "select:batch_24"}), ctx, "later");
+    expect((await runtime.executeTool("batch_0", "{}", ctx, "current-request-tool")).outcome).toBe("ok");
+    const visible = runtime.getToolSchemas().map(t => t.function.name);
+    expect(visible).not.toContain("batch_0");
+    expect(visible).toContain("batch_24");
   });
 });

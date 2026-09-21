@@ -4,6 +4,7 @@ import {planCommand, buildCommand} from "./commands/collaboration.js";
 import {compactCommand} from "./commands/compact.js";
 import {permissionsCommand} from "./commands/permissions.js";
 import {mcpCommand} from "./commands/mcp.js";
+import {skillsCommand} from "./commands/skills.js";
 import {agentsCommand} from "./commands/agents.js";
 import {memoryCommand} from "./commands/memory.js";
 import {sandboxCommand} from "./commands/sandbox.js";
@@ -25,6 +26,7 @@ const COMMANDS: readonly SlashCommand[] = [
     permissionsCommand,
     addDirCommand,
     mcpCommand,
+    skillsCommand,
     agentsCommand,
     memoryCommand,
     diffCommand,

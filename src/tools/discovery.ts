@@ -57,6 +57,9 @@ export function createToolDiscovery(
     const loadedSequences = new Map<string, number>();
     const pendingDiscoveries = new Map<string, PendingDiscovery>();
     let nextSequence = 1;
+    // Promises made by successful searches in this batch survive until the next request.
+    const awaitingExposure = new Set<string>();
+    let recentEvictions: string[] = [];
 
     const orderedLoadedNames = (): string[] =>
         [...loadedSequences]
@@ -71,6 +74,7 @@ export function createToolDiscovery(
             (total, name) => total + (schemaCharsByName.get(name) ?? 0),
             0
         );
+        const evicted: string[] = [];
         while (
             loadedSequences.size > 1 &&
             (
@@ -78,16 +82,18 @@ export function createToolDiscovery(
                 totalSchemaChars() > MAX_LOADED_SCHEMA_CHARS
             )
         ) {
-            const oldest = orderedLoadedNames()[0];
+            const oldest = orderedLoadedNames().find(name => !awaitingExposure.has(name));
             if (!oldest) break;
             loadedSequences.delete(oldest);
+            evicted.push(oldest);
         }
+        if (evicted.length) recentEvictions = evicted.slice(-MAX_LOADED_DEFERRED_TOOLS);
     };
     const reservedNewNames = (): Set<string> => {
-        const names = new Set<string>();
+        const names = new Set<string>(awaitingExposure);
         for (const pending of pendingDiscoveries.values()) {
             for (const name of pending.names.keys()) {
-                if (!loadedSequences.has(name)) names.add(name);
+                names.add(name);
             }
         }
         return names;
@@ -107,11 +113,6 @@ export function createToolDiscovery(
                         .some(([id, pending]) =>
                             id !== transactionId && pending.names.has(name)
                         );
-                    if (loadedSequences.has(name)) {
-                        alreadyLoaded.push(name);
-                        transaction.names.set(name, nextSequence++);
-                        continue;
-                    }
                     if (pendingElsewhere) {
                         newlyLoaded.push(name);
                         transaction.names.set(name, nextSequence++);
@@ -120,9 +121,7 @@ export function createToolDiscovery(
 
                     const reserved = reservedNewNames();
                     for (const reservedName of transaction.names.keys()) {
-                        if (!loadedSequences.has(reservedName)) {
-                            reserved.add(reservedName);
-                        }
+                        reserved.add(reservedName);
                     }
                     const reservedChars = [...reserved].reduce(
                         (total, reservedName) =>
@@ -131,16 +130,16 @@ export function createToolDiscovery(
                     );
                     const candidateChars = schemaCharsByName.get(name) ?? 0;
                     const overCount =
-                        reserved.size >= MAX_LOADED_DEFERRED_TOOLS;
+                        !reserved.has(name) && reserved.size >= MAX_LOADED_DEFERRED_TOOLS;
                     const overChars =
                         reserved.size > 0 &&
-                        reservedChars + candidateChars > MAX_LOADED_SCHEMA_CHARS;
+                        reservedChars + (reserved.has(name) ? 0 : candidateChars) > MAX_LOADED_SCHEMA_CHARS;
                     if (overCount || overChars) {
                         skipped.push(name);
                         continue;
                     }
 
-                    newlyLoaded.push(name);
+                    (loadedSequences.has(name) ? alreadyLoaded : newlyLoaded).push(name);
                     transaction.names.set(name, nextSequence++);
                 }
                 if (transaction.names.size > 0) {
@@ -166,7 +165,10 @@ export function createToolDiscovery(
     const getVisibleSchemas = (): OpenAITool[] => {
         const visible = [
             ...directRegistrations.map((registration) => registration.schema()),
-            ...(searchSchema ? [searchSchema] : []),
+            ...(searchSchema ? [{...searchSchema, function: {...searchSchema.function,
+                description: searchSchema.function.description + (recentEvictions.length
+                    ? `\nMost recent budget eviction (not server removal): ${recentEvictions.join(", ")}. Rediscover a tool if needed.` : ""),
+            }}] : []),
             ...deferredRegistrations
                 .filter((registration) =>
                     loadedSequences.has(registration.tool.name)
@@ -174,6 +176,7 @@ export function createToolDiscovery(
                 .map((registration) => registration.schema()),
         ];
         exposedNames = new Set(visible.map((schema) => schema.function.name));
+        awaitingExposure.clear();
         return visible;
     };
 
@@ -192,6 +195,7 @@ export function createToolDiscovery(
             if (succeeded && pending) {
                 for (const [name, sequence] of pending.names) {
                     loadedSequences.set(name, sequence);
+                    awaitingExposure.add(name);
                 }
                 trimLoadedTools();
             }
@@ -210,6 +214,8 @@ export function createToolDiscovery(
         restore(snapshot) {
             loadedSequences.clear();
             pendingDiscoveries.clear();
+            awaitingExposure.clear();
+            recentEvictions = [];
             if (
                 snapshot?.version === 2 &&
                 Array.isArray(snapshot.loadedNames)

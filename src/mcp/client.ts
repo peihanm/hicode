@@ -72,8 +72,9 @@ export async function connectMcpServer(
     };
     client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
         dirty = true;
-        if (!connected || closed || refresh) return;
+        if (!connected || closed) return;
         onToolsChanged?.(undefined);
+        if (refresh) return;
         refresh = (async () => {
             try {
                 // Coalesce bursts, but stop a server that never settles its catalog.

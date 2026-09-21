@@ -100,7 +100,8 @@ describe("effective execution capabilities", () => {
             }]});
             let approvals = 0;
             const ctx = createTestContext(cwd, {permissionMode: "full-access", collaborationMode: "plan",
-                mcpManager: {async initialize() {}, getSnapshots: () => [], getTools: () => [tool], subscribe: () => () => {}, async reconnect() {}, async closeAll() {}},
+                mcpManager: {async waitForRefresh() {},
+        async initialize() {}, getSnapshots: () => [], getTools: () => [tool], subscribe: () => () => {}, async reconnect() {}, async closeAll() {}},
                 canUseTool: async () => { approvals++; return {behavior: "allow"}; }});
             // Only MCP is supplied dynamically. Bash uses the production tool/runner.
             if (toolName === "bash") {ctx.mcpManager = undefined; ctx.availableTools = createToolRuntime().getTools();}

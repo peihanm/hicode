@@ -9,8 +9,10 @@ const tool = (name: string) => ({name, inputSchema: {type: "object" as const, pr
     annotations: {readOnlyHint: true}});
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     lists++;
+    if (mode === "slow") await new Promise(resolve => setTimeout(resolve, 200));
     if (mode === "storm") await server.notification({method: "notifications/tools/list_changed"});
-    const tools = [tool("control"), tool(mode === "initial" ? "old" : "new")];
+    const tools = [tool("control"), tool(["initial", "same", "slow", "changed"].includes(mode) ? "old" : "new")];
+    if (mode === "changed") tools[1] = {...tool("old"), annotations: {readOnlyHint: false}};
     if (mode === "invalid") tools.push({name: "bad", inputSchema: {type: "object", properties: {action: {type: "not-a-type"}}}, annotations: {readOnlyHint: true}});
     return {tools};
 });
@@ -18,7 +20,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     const action = request.params.arguments?.action;
     if (request.params.name === "control" && typeof action === "string") {
         if (action === "disconnect") setTimeout(() => {void server.close();}, 10);
-        else if (["refresh", "invalid", "storm"].includes(action)) {
+        else if (["refresh", "invalid", "storm", "same", "slow", "changed"].includes(action)) {
             mode = action;
             setTimeout(() => {void server.notification({method: "notifications/tools/list_changed"});}, 10);
         }

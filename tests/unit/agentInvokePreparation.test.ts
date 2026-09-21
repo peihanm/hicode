@@ -322,3 +322,23 @@ test("实际请求准备使用配置阈值，DeepSeek 默认不会在 95k 压缩
     }
   });
 });
+
+test("MCP refresh diagnostics are bounded request context, not duplicated History", async () => {
+  await withTempProject(async cwd => {
+    const messages = history();
+    const before = structuredClone(messages);
+    const ctx = createTestContext(cwd, {mcpManager: {
+      initialize: async () => {}, waitForRefresh: async () => {}, closeAll: async () => {}, reconnect: async () => {},
+      subscribe: () => () => {}, getTools: () => [],
+      getSnapshots: () => [{name: "fixture", source: "project", status: "connected", toolCount: 25,
+        catalog: {notifications: 1, revision: 1, added: [], changed: [], removed: [], unchanged: 25}}],
+    }});
+    const prepared = await prepareAgentInvoke({history: messages, ctx, onEvent: () => {},
+      getToolSchemas: () => [], compactHistory: async ({preTokenCount}) => noCompactResult(preTokenCount)});
+    const input = JSON.stringify(prepared.invokeMessages);
+    expect(input).toContain("MCP runtime catalog state");
+    expect(input).toContain('\\"notifications\\":1');
+    expect(input).toContain('\\"unchanged\\":25');
+    expect(messages).toEqual(before);
+  });
+});

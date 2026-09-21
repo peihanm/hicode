@@ -8,6 +8,7 @@ describe("Slash busy behavior", () => {
             "/help",
             "/?",
             "/sandbox",
+            "/skills",
             "/tasks",
         ]) {
             expect(slashCommandProcessor.getBusyBehavior(input)).toBe("immediate");

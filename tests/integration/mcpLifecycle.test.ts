@@ -172,3 +172,55 @@ test("重连重新批准修改后的配置，关闭不等待迟到的批准或�
         expect(manager.getSnapshots()[0]?.status).toBe("closed");
     } finally {allow?.("always"); await manager.closeAll();}
 }));
+
+test.each(["same", "changed", "slow"])("catalog refresh %s preserves unchanged discovery and gates execution", async action => {
+    await withTempProject(async (cwd, storage) => {
+        await mkdir(storage.hicodeHome, {recursive: true});
+        await writeFile(join(storage.hicodeHome, "mcp.json"), JSON.stringify({mcpServers: {fixture: {
+            command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000,
+        }}}));
+        const manager = createMcpManager({cwd, storage, childEnvironment: testChildEnvironment, headless: true});
+        try {
+            await manager.initialize();
+            const before = manager.getTools();
+            const runtime = createToolRuntime({getAdditionalTools: () => manager.getTools()});
+            const frozen = createToolRuntime({additionalTools: before});
+            const ctx = createTestContext(cwd, {mcpManager: manager});
+            for (const target of [runtime, frozen]) {
+                target.getToolSchemas();
+                await target.executeTool("tool_search", JSON.stringify({query: "select:mcp__fixture__control,mcp__fixture__old"}), ctx, "discover");
+                target.getToolSchemas();
+            }
+            expect((await runtime.executeTool("mcp__fixture__control", JSON.stringify({action}), ctx, "trigger")).outcome).toBe("ok");
+            if (action === "slow") {
+                await until(() => manager.getSnapshots()[0]?.status === "refreshing");
+                expect(runtime.getToolSchemas().map(t => t.function.name)).toContain("mcp__fixture__old");
+                const abort = new AbortController();
+                const waiting = manager.waitForRefresh(abort.signal);
+                abort.abort(new Error("cancel-refresh-wait"));
+                await expect(waiting).rejects.toThrow("cancel-refresh-wait");
+                // The aborted waiter does not cancel the Root-owned refresh.
+                const result = await runtime.executeTool("mcp__fixture__old", "{}", ctx, "during-refresh");
+                expect(result.outcome).toBe("ok");
+                expect(manager.getSnapshots()[0]?.status).toBe("connected");
+            }
+            await until(() => manager.getSnapshots()[0]?.catalog?.notifications === 1 && manager.getSnapshots()[0]?.status === "connected");
+            const visible = runtime.getToolSchemas().map(t => t.function.name);
+            expect(visible).toContain("mcp__fixture__control");
+            expect(manager.getTools().find(t => t.name === "mcp__fixture__control")).toBe(before[0]);
+            const catalog = manager.getSnapshots()[0]?.catalog;
+            if (action === "changed") {
+                expect(visible).not.toContain("mcp__fixture__old");
+                expect(catalog?.changed).toEqual(["mcp__fixture__old"]);
+                expect((await frozen.executeTool("mcp__fixture__old", "{}", ctx, "stale-definition")).outcome).toBe("failed");
+                await runtime.executeTool("tool_search", JSON.stringify({query: "select:mcp__fixture__old"}), ctx, "rediscover");
+                runtime.getToolSchemas();
+                expect((await runtime.executeTool("mcp__fixture__old", "{}", ctx, "updated")).outcome).toBe("ok");
+            } else {
+                expect(visible).toContain("mcp__fixture__old");
+                expect(catalog).toMatchObject({revision: 1, changed: [], removed: [], unchanged: 2});
+                expect((await runtime.executeTool("mcp__fixture__old", "{}", ctx, "unchanged")).outcome).toBe("ok");
+            }
+        } finally {await manager.closeAll();}
+    });
+});

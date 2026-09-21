@@ -37,6 +37,7 @@ export interface UseTurnControllerOptions {
     resumedDraft?: MessageContent;
     openResume?: () => void;
     openAgents?: () => void;
+    openSkills?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;
@@ -65,6 +66,7 @@ export function useTurnController({
                                           resumedDraft,
                                           openResume,
                                           openAgents,
+                                          openSkills,
                                           openTasks,
                                           openGitDiff,
                                           openModel,
@@ -337,6 +339,7 @@ export function useTurnController({
                 }),
                 openResume,
                 openAgents,
+                openSkills,
                 openTasks,
                 toolRuntime,
                 openGitDiff,

@@ -1,3 +1,5 @@
+import {buildMcpToolName} from "./names.js";
+import {stableJson} from "./json.js";
 import {join} from "node:path";
 import {createMcpApprovalIdentity, getMcpApproval, saveMcpApproval} from "./approval.js";
 import {connectMcpServer} from "./client.js";
@@ -18,7 +20,7 @@ interface MutableConnection {
     connected?: McpConnectedServer;
     tools: Tool[];
     generation: number;
-    catalogVersion: number;
+    definitions: Map<string, {fingerprint: string; token: symbol}>;
     controller?: AbortController;
     pending?: Promise<void>;
     connecting?: Promise<void>;
@@ -54,7 +56,7 @@ class McpManager implements McpManagerLike {
     }
 
     getSnapshots(): readonly McpServerSnapshot[] {
-        return this.connections.map((item) => ({...item.snapshot}));
+        return this.connections.map((item) => structuredClone(item.snapshot));
     }
 
     getTools(): readonly Tool[] {
@@ -107,7 +109,7 @@ class McpManager implements McpManagerLike {
                 status: server.config.disabled ? "disabled" : "pending-approval",
                 toolCount: 0,
             },
-            tools: [], generation: 0, catalogVersion: 0,
+            tools: [], generation: 0, definitions: new Map(),
         }));
         for (const issue of loaded.issues) {
             const name = issue.serverName ?? `config:${issue.source}`;
@@ -140,7 +142,7 @@ class McpManager implements McpManagerLike {
                         },
                     },
                 snapshot: {name, source: issue.source, status: "failed", toolCount: 0, error: issue.message},
-                tools: [], generation: 0, catalogVersion: 0,
+                tools: [], generation: 0, definitions: new Map(),
             });
         }
         this.emit();
@@ -172,27 +174,78 @@ class McpManager implements McpManagerLike {
         await Promise.all(Array.from({length: Math.min(3, active.length)}, () => worker()));
     }
 
-    private invalidate(connection: MutableConnection, status: "closed" | "failed" | "connecting", error?: unknown): void {
+    private invalidate(connection: MutableConnection, status: "closed" | "failed", error?: unknown): void {
         connection.tools = [];
-        connection.catalogVersion++;
+        connection.definitions.clear();
         connection.snapshot.toolCount = 0;
         connection.snapshot.status = status;
         if (error !== undefined) connection.snapshot.error = errorMessage(error).slice(0, 2000);
         this.emit();
     }
 
+    async waitForRefresh(signal: AbortSignal): Promise<void> {
+        signal.throwIfAborted();
+        if (!this.connections.some(item => item.snapshot.status === "refreshing")) return;
+        await new Promise<void>((resolve, reject) => {
+            const finish = () => {
+                if (!signal.aborted && this.connections.some(item => item.snapshot.status === "refreshing")) return;
+                unsubscribe();
+                signal.removeEventListener("abort", finish);
+                if (signal.aborted) reject(signal.reason);
+                else resolve();
+            };
+            const unsubscribe = this.subscribe(finish);
+            signal.addEventListener("abort", finish, {once: true});
+            finish();
+        });
+    }
+
     private publishTools(connection: MutableConnection, connected: McpConnectedServer, generation: number, strict = false): void {
-        const version = connection.catalogVersion + 1;
+        const definitions = new Map<string, {fingerprint: string; token: symbol}>();
+        const callTokens = new Map<string, symbol>();
+        const previous = new Map(connection.tools.map(tool => [tool.name, tool]));
+        // Compare complete wire definitions, including annotations, before reusing capabilities.
+        const added: string[] = [], changed: string[] = [];
+        let unchanged = 0;
+        const next: Tool[] = [];
+        // Validate the full catalog before publishing any portion of it.
         const adapted = adaptMcpTools({...connected, callTool: async (name, args, signal) => {
-            if (this.closed || this.options.signal?.aborted || connection.controller?.signal.aborted || connection.generation !== generation || connection.catalogVersion !== version ||
-                connection.snapshot.status !== "connected") throw new Error("MCP tool capability expired; discover the tools again");
+            await this.waitForRefresh(signal);
+            const qualifiedName = buildMcpToolName(connection.server.name, name);
+            if (this.closed || this.options.signal?.aborted || connection.controller?.signal.aborted ||
+                connection.generation !== generation || connection.snapshot.status !== "connected" ||
+                !callTokens.has(qualifiedName) || connection.definitions.get(qualifiedName)?.token !== callTokens.get(qualifiedName)) {
+                throw new Error("MCP tool definition changed or the server disconnected; use tool_search to rediscover it before retrying");
+            }
             return connected.callTool(name, args, signal);
         }});
         if (strict && adapted.issues.length) throw new Error(adapted.issues.join("; ").slice(0, 2000));
-        connection.catalogVersion = version;
-        connection.tools = adapted.tools;
+        for (const tool of adapted.tools) {
+            const remote = connected.tools.find(item => buildMcpToolName(connection.server.name, item.name) === tool.name)!;
+            const fingerprint = stableJson(remote);
+            const prior = connection.definitions.get(tool.name);
+            const existing = previous.get(tool.name);
+            const same = existing && prior?.fingerprint === fingerprint;
+            const definition = same ? prior : {fingerprint, token: Symbol(tool.name)};
+            definitions.set(tool.name, definition);
+            callTokens.set(tool.name, definition.token);
+            if (same) {
+                next.push(existing);
+                unchanged++;
+            } else {
+                next.push(tool);
+                (existing ? changed : added).push(tool.name);
+            }
+        }
+        const removed = [...previous.keys()].filter(name => !definitions.has(name));
+        const oldCatalog = connection.snapshot.catalog;
+        connection.definitions = definitions;
+        connection.tools = next;
         connection.snapshot.status = "connected";
-        connection.snapshot.toolCount = adapted.tools.length;
+        connection.snapshot.toolCount = next.length;
+        connection.snapshot.catalog = {notifications: oldCatalog?.notifications ?? 0,
+            revision: (oldCatalog?.revision ?? 0) + Number(added.length + changed.length + removed.length > 0),
+            added, changed, removed, unchanged};
         delete connection.snapshot.error;
         if (adapted.issues.length) connection.snapshot.error = adapted.issues.join("; ").slice(0, 2000);
         this.emit();
@@ -215,7 +268,12 @@ class McpManager implements McpManagerLike {
                     error => { if (current()) {this.invalidate(connection, "failed", error); controller.abort(); void connection.connected?.close();} },
                     server => { if (current()) {
                         if (server) this.publishTools(connection, server, generation, true);
-                        else this.invalidate(connection, "connecting");
+                        else {
+                            connection.snapshot.status = "refreshing";
+                            const catalog = connection.snapshot.catalog;
+                            if (catalog) catalog.notifications++;
+                            this.emit();
+                        }
                     } });
                 if (!current()) { await connected.close(); return; }
                 connection.connected = connected;
@@ -283,7 +341,7 @@ class McpManager implements McpManagerLike {
             item.generation++;
             item.controller?.abort();
             item.tools = [];
-            item.catalogVersion++;
+            item.definitions.clear();
             item.snapshot.status = "closed";
             item.snapshot.toolCount = 0;
         }

@@ -80,6 +80,7 @@ export function createToolRuntime(
             return isToolConcurrencySafe(runtimeMap, name, argsJson);
         },
         async executeTool(name, argsJson, ctx, toolCallId) {
+            await ctx.mcpManager?.waitForRefresh(ctx.signal);
             synchronize();
             const executionDiscovery = discovery;
             if (discovery.isDeferred(name) && !discovery.isExposed(name)) {

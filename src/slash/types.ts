@@ -16,6 +16,7 @@ interface SlashCommandContext {
     memory?: MemoryRuntimeLike;
     openResume?: () => void;
     openAgents?: () => void;
+    openSkills?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;
     openModel?: () => void;

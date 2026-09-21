@@ -59,6 +59,7 @@ type McpServerStatus =
     | "denied"
     | "connecting"
     | "connected"
+    | "refreshing"
     | "failed"
     | "disabled"
     | "closed";
@@ -69,6 +70,14 @@ export interface McpServerSnapshot {
     status: McpServerStatus;
     toolCount: number;
     error?: string;
+    catalog?: {
+        notifications: number;
+        revision: number;
+        added: string[];
+        changed: string[];
+        removed: string[];
+        unchanged: number;
+    };
 }
 
 export interface McpApprovalRequest {
@@ -109,6 +118,8 @@ export interface McpManagerOptions {
 
 export interface McpManagerLike {
     initialize(): Promise<void>;
+
+    waitForRefresh(signal: AbortSignal): Promise<void>;
 
     getSnapshots(): readonly McpServerSnapshot[];
 
