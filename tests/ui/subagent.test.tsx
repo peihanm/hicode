@@ -405,15 +405,16 @@ describe("subagent UI", () => {
 
     const frame = render(<MessageList threads={threads} />).lastFrame() ?? "";
     expect(frame).toContain("● Inspecting project");
-    expect(frame).toContain("✓ Read /project/README.md · 60 lines");
+    expect(frame).toContain("✓ Read README.md · 60 lines");
     expect(frame).not.toContain("left-hand line numbers are not file content");
 
     const transcript = render(
       <MessageList threads={threads} transcript />
     ).lastFrame() ?? "";
-    expect(transcript).toContain("Read /project/README.md");
-    expect(transcript).toContain("Line range: 1-60 / 60");
-    expect(transcript).toContain("left-hand line numbers are not file content");
+    expect(transcript).toContain("Read README.md · 60 lines");
+    expect(transcript).not.toContain("Line range:");
+    expect(transcript).not.toContain("left-hand line numbers are not file content");
+    expect(transcript).toContain("README");
   });
 
   test("Assistant 常用 Markdown 转为终端层级且标记间距稳定", () => {

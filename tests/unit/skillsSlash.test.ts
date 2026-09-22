@@ -31,7 +31,8 @@ describe("/skills", () => {
             };
             expect(await processSlashCommand("/skills", context)).toBe(true);
             expect(messages).toHaveLength(1);
-            expect(messages[0]).toContain("Skills · 1 loaded");
+            expect(messages[0]).toContain("Skills · 2 loaded");
+            expect(messages[0]).toContain("hicode-guide · Built-in");
             expect(messages[0]).toContain("review · Project");
             expect(messages[0]).toContain("Review project code");
             expect(messages[0]).toContain("When to use: Before a release");

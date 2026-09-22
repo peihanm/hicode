@@ -1,7 +1,9 @@
 import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
-import {join} from "node:path";
+import {dirname, join} from "node:path";
 import {loadSkills} from "../../src/skills/loader.js";
+import {getUserContextBlocks} from "../../src/prompt/attachments.js";
+import {prepareCommandReadAccess} from "../../src/tools/bash/readAccess.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 async function writeSkill(
@@ -148,12 +150,59 @@ test("未知 Skill 通过统一工具链报告 failed，并列出当前实际可
     });
 });
 
-test("未配置 Skill 时不注入内置工作流，允许用户自行定义 debug", async () => {
+test("product guide is bundled without restoring removed debug workflows", async () => {
     await withTempProject(async (cwd, storage) => {
-        expect(loadSkills({storage, cwd, sources: []})).toEqual([]);
+        expect(loadSkills({storage, cwd, sources: []})).toMatchObject([{name: "hicode-guide", source: "bundled"}]);
         await writeSkill(join(cwd, ".hicode/skills"), "debug", "project debugging");
         expect(loadSkills({storage, cwd, sources: ["project"]})).toMatchObject([
+            {name: "hicode-guide", source: "bundled"},
             {name: "debug", source: "project", description: "project debugging"},
         ]);
+    });
+});
+
+test("bundled guide loads progressively and reads exact references across a strict workspace boundary", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const skills = loadSkills({storage, cwd, sources: []});
+        const guide = skills.find(skill => skill.name === "hicode-guide");
+        if (!guide || guide.source !== "bundled") throw new Error("Missing bundled guide");
+        const root = dirname(guide.filePath);
+        const ctx = {...createTestContext(cwd, {workspaceBoundary: cwd, readOnlyTools: true,
+            canUseTool: async () => {throw new Error("Unexpected approval request");}}), skills};
+        const listing = getUserContextBlocks(skills).join("\n");
+        expect(listing).toContain("hicode-guide");
+        expect(listing).not.toContain("## Choose a reference");
+        const loaded = await executeToolResult("skill", '{"skill":"hicode-guide"}', ctx, "guide");
+        expect(loaded.outcome).toBe("ok");
+        expect(loaded.modelContent).toContain(JSON.stringify(root));
+        expect(loaded.modelContent).not.toContain("## Command reference");
+        const path = join(root, "references", "commands.md");
+        const result = await executeToolResult("read_file", JSON.stringify({path}), ctx, "guide-reference");
+        expect(result.outcome).toBe("ok");
+        expect(result.modelContent).toContain("## Command reference");
+        const access = await prepareCommandReadAccess(`rg -n model '${path}'`, cwd, ctx);
+        expect(access?.artifacts).toContain(path);
+        expect(access?.artifactDirectories).toEqual([]);
+
+        ctx.permissionRules.deny.push({toolName: "read_file", content: path, source: "host"});
+        expect((await executeToolResult("read_file", JSON.stringify({path}), ctx, "denied-guide")).outcome).toBe("denied");
+        await expect(prepareCommandReadAccess(`cat '${path}'`, cwd, ctx)).rejects.toThrow("restricted");
+    });
+});
+
+test("bundled file access does not authorize installation writes, adjacent files or overridden guides", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const skills = loadSkills({storage, cwd, sources: []});
+        const guide = skills.find(skill => skill.source === "bundled");
+        if (!guide || guide.source !== "bundled") throw new Error("Missing bundled guide");
+        const ctx = {...createTestContext(cwd, {workspaceBoundary: cwd}), skills};
+        expect((await executeToolResult("write_file", JSON.stringify({path: guide.filePath, content: "changed"}), ctx, "write-guide")).outcome).toBe("denied");
+        const adjacent = join(dirname(guide.filePath), "..", "..", "bundled.ts");
+        expect((await executeToolResult("read_file", JSON.stringify({path: adjacent}), ctx, "adjacent")).outcome).toBe("denied");
+        await expect(prepareCommandReadAccess(`rg --files '${dirname(guide.filePath)}'`, cwd, ctx)).rejects.toThrow();
+        await writeSkill(join(cwd, ".hicode/skills"), "hicode-guide", "Project-specific guide");
+        ctx.skills = loadSkills({storage, cwd, sources: ["project"]});
+        expect(ctx.skills.find(skill => skill.name === "hicode-guide")?.source).toBe("project");
+        expect((await executeToolResult("read_file", JSON.stringify({path: guide.filePath}), ctx, "overridden")).outcome).toBe("denied");
     });
 });

@@ -14,6 +14,7 @@ let sawHostToolResult = false;
 let sawGlobResult = false;
 let sawGrepResult = false;
 let sawImageResult = false;
+let sawGuideReference = false;
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -21,6 +22,7 @@ globalThis.fetch = async (input, init) => {
         throw new Error(`unexpected fixture request: ${request.method} ${request.url}`);
     }
     const body = await request.text();
+    const payload = JSON.parse(body);
     requestCount += 1;
     if (requestCount === 1 && !body.includes("data:image/png;base64,")) throw new Error("SDK user attachment pixels missing");
     if (requestCount === 2) {
@@ -30,6 +32,16 @@ globalThis.fetch = async (input, init) => {
     if (requestCount === 4) sawImageResult = body.includes("data:image/png;base64,") && body.includes('"tool_call_id":"sdk-package-image"');
 
     if (requestCount === 5) sawGrepResult = body.includes("fixture.ts:1:export const fixture = true;");
+    let guideRoot;
+    if (requestCount === 6) {
+        const result = payload.messages.find(message => message.role === "tool" && message.tool_call_id === "sdk-package-guide");
+        if (typeof result?.content !== "string") throw new Error("Bundled Skill result missing");
+        guideRoot = JSON.parse(result.content.split("\n")[1]).resourceRoot;
+        if (typeof guideRoot !== "string") throw new Error("Bundled Skill resource root missing");
+    }
+    if (requestCount === 7) sawGuideReference = payload.messages.some(message =>
+        message.role === "tool" && message.tool_call_id === "sdk-package-guide-reference" &&
+        typeof message.content === "string" && message.content.includes("## Command reference"));
 
     const event = requestCount === 1
         ? {
@@ -85,10 +97,16 @@ globalThis.fetch = async (input, init) => {
         : requestCount === 4
         ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-grep", type: "function",
             function: {name: "bash", arguments: JSON.stringify({command: "rg -n -H -e fixture fixture.ts"})}}]}, finish_reason: "tool_calls"}]}
+        : requestCount === 5
+        ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-guide", type: "function",
+            function: {name: "skill", arguments: JSON.stringify({skill: "hicode-guide"})}}]}, finish_reason: "tool_calls"}]}
+        : requestCount === 6
+        ? {choices: [{delta: {tool_calls: [{index: 0, id: "sdk-package-guide-reference", type: "function",
+            function: {name: "read_file", arguments: JSON.stringify({path: resolve(guideRoot, "references/commands.md")})}}]}, finish_reason: "tool_calls"}]}
         : {
             choices: [{
                 delta: {
-                    content: sawHostToolResult && sawGlobResult && sawImageResult && sawGrepResult
+                    content: sawHostToolResult && sawGlobResult && sawImageResult && sawGrepResult && sawGuideReference
                         ? "SDK_PACKAGE_AGENT_OK"
                         : "SDK_PACKAGE_TOOL_RESULT_MISSING",
                 },
@@ -170,7 +188,7 @@ try {
     const thread = await hicode.startThread();
     const result = await thread.run([{type: "text", text: "Use host_lookup, then glob TypeScript files, then view image.png and grep fixture.ts for fixture."},
         {type: "image", data: await readFile(resolve(workspace, "image.png"))}], {
-        maxIterations: 5,
+        maxIterations: 7,
     });
     const hostLookup = result.items.find((item) =>
         item.type === "tool_call" && item.name === "host_lookup"
@@ -180,12 +198,13 @@ try {
     );
     if (
         result.finalResponse !== "SDK_PACKAGE_AGENT_OK" ||
-        requestCount !== 5 ||
+        requestCount !== 7 ||
         hostToolCalls !== 1 ||
         !sawHostToolResult ||
         !sawGlobResult ||
         !sawImageResult ||
         !sawGrepResult ||
+        !sawGuideReference ||
         !hostLookup ||
         hostLookup.status !== "completed" ||
         hostLookup.outcome !== "ok" ||
@@ -201,6 +220,9 @@ try {
             hostToolCalls,
             sawHostToolResult,
             sawGlobResult,
+            sawImageResult,
+            sawGrepResult,
+            sawGuideReference,
             hostLookup,
             glob,
         })}`);

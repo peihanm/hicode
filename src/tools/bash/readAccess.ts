@@ -6,6 +6,7 @@ import {isPathInside, validateWorkspacePath} from "../../permissions/pathGuard.j
 import {checkMemoryStoragePath} from "../../memory/publicationAccess.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../../session/archiveAccess.js";
 import type {ToolContext} from "../types.js";
+import {isBundledSkillFile} from "../../skills/bundled.js";
 
 export interface CommandReadAccess {
     plan: ReadCommand;
@@ -60,7 +61,7 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
         } else if (await checkSessionArchivePath(ctx.storage, path)) {
             managed = !!await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, path);
         } else {
-            managed = (await ctx.toolResultFiles.resolveFile(path)) !== null;
+            managed = (await ctx.toolResultFiles.resolveFile(path)) !== null || await isBundledSkillFile(ctx.skills, path);
         }
         if ((isPathInside(resolve(ctx.storage.hicodeHome), path) || isPathInside(privateRoot, await resolveFilePermissionPath(cwd, path))) && !managed) throw new Error("Search of private HiCode storage requires an exact authorized result, archive or Memory file");
         const match = await createFilePermissionMatcher(ctx.cwd, path, rules.map(rule => rule.content!));

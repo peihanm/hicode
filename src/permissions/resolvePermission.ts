@@ -12,6 +12,7 @@ import {resolveToolPath} from "../tools/shared/paths.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
 import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
 import {createFilePermissionMatcher} from "./filePattern.js";
+import {isBundledSkillFile} from "../skills/bundled.js";
 
 /** Match a rule using the tool's real permission matcher. Hook if shares matching semantics but only filters Hook execution; it never changes permission decisions. */
 export async function matchesToolPermissionRule(
@@ -72,11 +73,13 @@ async function resolvePermissionInner(
         const path = toolPathInput(tool.name, input);
         if (path !== undefined) {
             let savedOutput = false;
+            let bundledRead = false;
             if (tool.name === "read_file") {
                 try {
                     savedOutput = (await ctx.toolResultFiles.resolveFile(resolveToolPath(ctx.cwd, path))) !== null;
+                    bundledRead = await isBundledSkillFile(ctx.skills, resolveToolPath(ctx.cwd, path));
                 } catch (error) {
-                    return {behavior: "deny", message: `Cannot validate result file: ${error instanceof Error ? error.message : String(error)}`};
+                    return {behavior: "deny", message: `Cannot validate read capability: ${error instanceof Error ? error.message : String(error)}`};
                 }
             }
             const scoped = await validateWorkspacePath(
@@ -84,7 +87,7 @@ async function resolvePermissionInner(
                 ctx.cwd,
                 path
             );
-            if (!scoped.ok && !savedOutput && !archiveRead && !memoryAccess) {
+            if (!scoped.ok && !savedOutput && !archiveRead && !memoryAccess && !bundledRead) {
                 return {behavior: "deny", message: scoped.message};
             }
         }

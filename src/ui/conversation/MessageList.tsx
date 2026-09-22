@@ -12,6 +12,7 @@ import {
     summarizeToolResult,
 } from "../../tools/presentation.js";
 import {limitTerminalText} from "./presentationLimits.js";
+import {documentRead} from "./documentRead.js";
 import {
     type ConversationItem,
     layoutUserMessageRows,
@@ -84,11 +85,20 @@ function ResultLine({
 function ToolResultLines({
                              thread,
                              transcript,
+                             terminalWidth,
                          }: {
     thread: ToolCallThread;
     transcript: boolean;
+    terminalWidth: number;
 }) {
     if (!thread.result) return null;
+    const document = transcript ? documentRead(thread) : undefined;
+    if (document) {
+        return <Box marginLeft={2} flexDirection="column">
+            <TerminalMarkdown value={transcriptResultLines(document.body).join("\n")} width={Math.max(1, terminalWidth - 2)}/>
+            {thread.persisted && <Text color={COLORS.dim}>{`saved as ${thread.persisted.resultId}${thread.persisted.complete ? "" : " (partial)"}`}</Text>}
+        </Box>;
+    }
     const agent = agentIdentity(thread);
     if (!transcript && agent?.background && thread.outcome === "ok") {
         const status = agent.delivery === "queued" ? "Queued" : agent.delivery === "continued" ? "Continued"
@@ -97,6 +107,8 @@ function ToolResultLines({
     }
     const lines = transcript
         ? transcriptResultLines(thread.result)
+        : thread.name === "skill" && thread.status === "done" && thread.outcome === "ok"
+        ? ["Instructions loaded · ctrl+o to expand"]
         : summarizeToolResult(thread.name, thread.result);
     const color = thread.outcome && thread.outcome !== "ok"
         ? COLORS.error
@@ -201,16 +213,20 @@ function ToolCallView({
                           thread,
                           paused,
                           transcript,
+                          terminalWidth,
                           includeHidden = false,
                       }: {
     thread: ToolCallThread;
     paused: boolean;
     transcript: boolean;
+    terminalWidth: number;
     includeHidden?: boolean;
 }) {
     if (thread.hiddenByFileChange && !includeHidden) return null;
     const agent = agentIdentity(thread);
     const presentation = describeToolCall(thread.name, thread.args);
+    const document = documentRead(thread);
+    if (document) presentation.detail = document.detail;
     return (
         <Box flexDirection="column" marginTop={1}>
             {agent ? <Text wrap="truncate-end">
@@ -226,7 +242,7 @@ function ToolCallView({
                 </>}
             </Box>}
             {agent && <AgentProgress thread={thread} transcript={transcript}/>}
-            <ToolResultLines thread={thread} transcript={transcript}/>
+            <ToolResultLines thread={thread} transcript={transcript} terminalWidth={terminalWidth}/>
             {transcript && thread.subagentReport && (
                 <Box marginLeft={2} marginTop={1} flexDirection="column">
                     <Text color={COLORS.dim}>
@@ -254,7 +270,7 @@ function ToolCallView({
 
 function PhaseGroupView({group}: {group: PhaseGroup}) {
     const calls = group.calls.flatMap((call) => {
-        const summary = summarizePhaseToolCall(call);
+        const summary = documentRead(call)?.summary ?? summarizePhaseToolCall(call);
         return summary ? [{call, summary}] : [];
     });
     const running = calls.some(({call}) => call.status === "running");
@@ -376,6 +392,7 @@ function ThreadView({
             thread={thread}
             paused={paused}
             transcript={transcript}
+            terminalWidth={terminalWidth}
             includeHidden={transcript}
         />
     );

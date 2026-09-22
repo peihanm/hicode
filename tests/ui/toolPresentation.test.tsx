@@ -34,6 +34,36 @@ function completeTool(
 }
 
 describe("phase-based tool presentation", () => {
+    test("Skill success is compact while expanded and restored views retain the complete result", () => {
+        const result = '<skill-source>\n{"source":"project","filePath":"/project/.hicode/skills/westock-data/SKILL.md","resourceRoot":"/project/.hicode/skills/westock-data"}\nResolve Skill-relative scripts/references/assets against resourceRoot.\n</skill-source>\n\nRead the stock data documentation.';
+        const args = JSON.stringify({skill: "westock-data"});
+        const live = completeTool([], {id: "skill-1", name: "skill", args: {skill: "westock-data"}, result});
+        const restored = threadsFromHistory([
+            {role: "assistant", content: null, tool_calls: [{id: "skill-1", type: "function", function: {name: "skill", arguments: args}}]},
+            {role: "tool", tool_call_id: "skill-1", content: result},
+        ], [{version: 1, type: "tool_call", turnId: "turn-1", toolCallId: "skill-1", timestamp: "2026-09-22T00:00:00.000Z", outcome: "ok"}]);
+        for (const threads of [live, restored]) {
+            const view = render(<MessageList threads={threads}/>);
+            expect(view.lastFrame()).toContain("Skill westock-data");
+            expect(view.lastFrame()).toContain("Instructions loaded · ctrl+o to expand");
+            expect(view.lastFrame()).not.toContain("<skill-source>");
+            expect(view.lastFrame()).not.toContain("resourceRoot");
+            expect(view.lastFrame()).not.toContain("/project/");
+            const expanded = render(<MessageList threads={threads} transcript/>).lastFrame() ?? "";
+            expect(expanded).toContain("<skill-source>");
+            expect(expanded).toContain("Read the stock data documentation.");
+            view.rerender(<MessageList threads={threads}/>);
+            expect(view.lastFrame()).not.toContain("<skill-source>");
+        }
+    });
+
+    test.each(["failed", "denied", "interrupted"] as const)("Skill %s keeps its diagnostic instead of claiming it loaded", outcome => {
+        const threads = completeTool([], {id: "skill-error", name: "skill", args: {skill: "missing"}, result: "Skill loading did not complete: diagnostic details", outcome});
+        const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
+        expect(frame).toContain("diagnostic details");
+        expect(frame).not.toContain("Instructions loaded");
+    });
+
     test("连续成功探索合并为项目检查阶段，tool_search 静默吸收", () => {
         let threads: UIThread[] = [];
         threads = completeTool(threads, {

@@ -345,10 +345,14 @@ describe("RootRuntimeResources", () => {
   });
 });
 
-test("没有实际 Skill 的 Root 不暴露 skill 工具", async () => {
+test("Root exposes the bundled guide even with user/project Skill sources disabled", async () => {
  await withTempProject(async cwd => {
   const resources = await createRootRuntimeResources({cwd,settings:createTestSettings(),fileSources:{settings:[],instructions:[],skills:[],agents:[],mcp:[]}}, {mcpManager:false});
-  try {expect(resources.toolRuntime.toolNames).not.toContain("skill");expect(resources.toolRuntime.getToolSchemas().some(tool=>tool.function.name==="skill")).toBe(false);}
+  try {
+    expect(resources.skills).toMatchObject([{name: "hicode-guide", source: "bundled"}]);
+    expect(resources.toolRuntime.toolNames).toContain("skill");
+    expect(resources.toolRuntime.getToolSchemas().some(tool=>tool.function.name==="skill")).toBe(true);
+  }
   finally {await resources.close();}
  });
 });
