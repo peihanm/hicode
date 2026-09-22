@@ -38,6 +38,7 @@ export interface ToolContextResources {
     storage: HiCodeStorageLayout;
     cwd: string;
     workspaceBoundary?: string;
+    shellWorkspace?: string;
     model: string;
     provider: LLMProviderName;
     fastModel: string;
@@ -132,6 +133,7 @@ export function createToolContext({
         storage: resources.storage,
         cwd: resources.cwd,
         workspaceBoundary: resources.workspaceBoundary,
+        shellWorkspace: resources.shellWorkspace,
         compactState: session.compactState,
         contextUsage: session.contextUsage,
         contextSettings: resources.contextSettings,

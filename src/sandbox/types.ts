@@ -32,6 +32,7 @@ export interface SandboxCommandOptions {
     writableRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
     readOnlyAccess?: ReadOnlyAccess;
+    fileWorkspace?: {root: string; writable: boolean};
 }
 
 export interface SandboxRuntimeLike {

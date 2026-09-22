@@ -11,7 +11,7 @@ import type { ModelTargetSettings } from "../settings/types.js";
 import type { ShellRunnerLike } from "../tools/bash/shellRunner.js";
 import type { HiCodeStorageLayout } from "../persistence/index.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
-import { getMemoryInboxDirectory, getMemoryViewsDirectory } from "../persistence/layout.js";
+import { getMemoryTopicsDirectory } from "../persistence/layout.js";
 import { join } from "node:path";
 import { createMemoryConsolidator, type MemoryConsolidator } from "./consolidator.js";
 import { createPublicationFileAccess } from "./publicationAccess.js";
@@ -21,7 +21,7 @@ import type { MemoryChange, MemoryContextResult, MemoryEntry, MemoryFileAccess, 
 // Preserve Chinese opt-out phrases (ignore memory; do not use/read/refer to memory) alongside English.
 const SUPPRESS_MEMORY = [/\u5ffd\u7565.{0,8}(?:memory|\u8bb0\u5fc6)/i, /\u4e0d\u8981.{0,8}(?:\u4f7f\u7528|\u8bfb\u53d6|\u53c2\u8003).{0,8}(?:memory|\u8bb0\u5fc6)/i,
     /(?:ignore|do not use|don't use).{0,20}memor/i];
-type FileOwner = Parameters<typeof createPublicationFileAccess>[1];
+type FileOwner = {sessionId: string; turnId: string; signal: AbortSignal};
 interface MemoryMaintenanceResult {
     status: "empty" | "busy" | "published";
     topics: number;
@@ -32,7 +32,6 @@ export interface MemoryRuntimeLike {
     readonly directory: string;
     list(): Promise<MemoryScanResult>;
     read(key: string): Promise<MemoryEntry | undefined>;
-    forget(key: string, signal: AbortSignal): Promise<MemoryChange | undefined>;
     status(): Promise<MemoryRuntimeStatus>;
     contextForTurn(userInput: string): Promise<MemoryContextResult>;
     fileAccess(owner: FileOwner): MemoryFileAccess;
@@ -75,28 +74,13 @@ class MemoryRuntime implements MemoryRuntimeLike {
             return { entries: [], issues: [] };
         const state = this.store.snapshot();
         const entries: MemoryEntry[] = state.topics.map(topic => ({ version: 2, key: topic.key, name: topic.name,
-            description: topic.description, type: topic.type, source: state.sources.some(source => topic.sources.includes(source.id) && source.origin.kind === "explicit") ? "explicit" : "automatic",
+            description: topic.description, type: topic.type, source: topic.sources.length === 0 ? "explicit" : "automatic",
             evidence: state.sources.filter(source => topic.sources.includes(source.id)).map(source => source.origin),
-            createdAt: topic.createdAt, updatedAt: topic.updatedAt, content: topic.content, path: join(getMemoryViewsDirectory(this.directory), `${topic.key}.md`) }));
-        for (const source of state.sources.filter(source => !source.consumed)) {
-            const existing = entries.findIndex(entry => entry.key === source.key);
-            const pending: MemoryEntry = { version: 2, key: source.key, name: source.key, description: "Recorded; pending consolidation",
-                type: source.type, source: source.origin.kind === "explicit" ? "explicit" : "automatic", evidence: [source.origin], createdAt: source.createdAt,
-                updatedAt: source.createdAt, content: source.content, path: join(source.origin.kind === "explicit" ? getMemoryInboxDirectory(this.directory) : getMemoryViewsDirectory(this.directory), `${source.key}.md`) };
-            if (existing >= 0)
-                entries[existing] = pending;
-            else
-                entries.push(pending);
-        }
-        return { entries, issues: [state.lastIssue, this.store.viewIssue].filter((issue): issue is string => !!issue).map(message => ({ path: this.directory, message })) };
+            createdAt: topic.createdAt, updatedAt: topic.updatedAt, content: topic.content, path: join(getMemoryTopicsDirectory(this.directory), `${topic.key}.md`) }));
+        return { entries, issues: state.lastIssue ? [{path: this.directory, message: state.lastIssue}] : [] };
     }
     async read(key: string): Promise<MemoryEntry | undefined> { return (await this.list()).entries.find(entry => entry.key === key); }
-    async forget(key: string, signal: AbortSignal): Promise<MemoryChange | undefined> {
-        this.requireOpen();
-        const existing = await this.read(key);
-        const removed = await this.store.forget(key, signal);
-        return removed && existing ? { action: "forgotten", key, memoryType: existing.type } : undefined;
-    }
+
     async status(): Promise<MemoryRuntimeStatus> {
         const scan = await this.list();
         const state = this.enabled ? this.store.snapshot() : undefined;
@@ -121,12 +105,12 @@ class MemoryRuntime implements MemoryRuntimeLike {
         }
     }
     fileAccess(owner: FileOwner): MemoryFileAccess {
-        const access = createPublicationFileAccess(this.store, owner);
+        const access = createPublicationFileAccess(this.store);
         return { ...access,
             prepare: async (path, tool) => { this.requireOpen(); await access.prepare(path, tool); },
             validateWrite: (path, content) => { this.requireOpen(); access.validateWrite(path, content); },
-            write: async (...args) => { this.requireOpen(); return this.record(await access.write(...args), owner); },
-            delete: async (...args) => { this.requireOpen(); const change = await access.delete(...args); return change ? this.record(change, owner) : undefined; } };
+            written: (...args) => this.record(access.written(...args), owner),
+            shellDirectory: async path => {this.requireOpen(); return access.shellDirectory(path); } };
     }
     async captureBaseline(sessionId: string, prompt: string): Promise<string[] | undefined> {
         if (!this.enabled || !this.autoExtract || this.closed || SUPPRESS_MEMORY.some(pattern => pattern.test(prompt)))
@@ -226,12 +210,12 @@ class MemoryRuntime implements MemoryRuntimeLike {
                     if (source.origin.kind === "session")
                         readSessionSourceMessages(this.storage, this.cwd, source.origin.sessionId, source.origin.messageHashes);
                 }
-                await this.store.publish(job.lease, draft.topics, draft.summary, signal);
+                await this.store.publish(job.lease, draft.topics, signal);
             });
             return { status: "published", topics: draft.topics.length };
         }
         catch (error) {
-            await this.store.fail(job.lease, signal.aborted ? "Memory consolidation cancelled; notes remain pending" : "Memory consolidation failed; published content was not replaced and notes remain pending");
+            await this.store.fail(job.lease, signal.aborted ? "Memory consolidation cancelled; inspect status for pending sources and partial file edits" : "Memory consolidation failed; inspect status and topic files before retrying");
             throw error;
         }
     }

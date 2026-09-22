@@ -182,11 +182,6 @@ export function describeToolCall(
                 label: "Edit",
                 detail: stringArg(args, "path") ?? "file",
             };
-        case "delete_file":
-            return {
-                label: "Delete",
-                detail: stringArg(args, "path") ?? "file",
-            };
         case "todo_write":
             return {label: "Update todos", detail: ""};
         case "ask_user": {

@@ -7,6 +7,7 @@ export interface ReadOnlyAccess {
     deniedPaths: readonly string[];
     privateRoot: string;
     artifacts: readonly string[];
+    artifactDirectories: readonly string[];
 }
 
 function quote(path: string): string {
@@ -15,7 +16,7 @@ function quote(path: string): string {
 }
 
 /** Exact path grants and final denials avoid broad read exceptions overriding private-file restrictions. */
-export async function readOnlySandboxArgv(command: string, access: ReadOnlyAccess, configuredDenials: readonly string[], cwd: string): Promise<string[]> {
+export async function scopedFileSandboxArgv(command: string, access: ReadOnlyAccess, configuredDenials: readonly string[], cwd: string, workspace?: {root: string; writable: boolean; deniedWrites: readonly string[]}): Promise<string[]> {
     if (process.platform !== "darwin") throw new Error("Restricted command search currently requires the macOS Sandbox");
     const pattern = (path: string) => {
         if (!isAbsolute(path) || /[\0\r\n{}()!\\]/.test(path)) throw new Error("Cannot safely enforce this read-deny pattern in the read-only Sandbox");
@@ -31,16 +32,21 @@ export async function readOnlySandboxArgv(command: string, access: ReadOnlyAcces
         }).join("") + "$";
         return `(regex ${JSON.stringify(regex)})`;
     };
-    const denials = new Set(configuredDenials);
-    for (const path of configuredDenials) {
-        const magic = path.search(/[*?\[\]]/);
-        if (magic < 0) denials.add(await resolveFilePermissionPath(cwd, path));
-        else {
-            const slash = path.lastIndexOf("/", magic);
-            const prefix = path.slice(0, slash) || "/";
-            denials.add(resolve(await resolveFilePermissionPath(cwd, prefix), path.slice(slash + 1)));
+    const canonicalDenials = async (paths: readonly string[]) => {
+        const result = new Set(paths);
+        for (const path of paths) {
+            const magic = path.search(/[*?\[\]]/);
+            if (magic < 0) result.add(await resolveFilePermissionPath(cwd, path));
+            else {
+                const slash = path.lastIndexOf("/", magic);
+                const prefix = path.slice(0, slash) || "/";
+                result.add(resolve(await resolveFilePermissionPath(cwd, prefix), path.slice(slash + 1)));
+            }
         }
-    }
+        return [...result];
+    };
+    const denials = await canonicalDenials(configuredDenials);
+    const writeDenials = await canonicalDenials(workspace?.deniedWrites ?? []);
     const readable = [...new Set(["/System/Library", "/usr/lib", "/private/var/db/dyld", "/dev/null",
         "/bin/bash", ...access.executables, ...access.paths].map(path => resolve(path)))];
     const profile = [
@@ -56,8 +62,16 @@ export async function readOnlySandboxArgv(command: string, access: ReadOnlyAcces
         "(allow file-write* (literal \"/dev/null\"))",
         `(deny file-read* (subpath ${quote(access.privateRoot)}))`,
         ...access.artifacts.map(path => `(allow file-read* (literal ${quote(path)}))`),
+        ...access.artifactDirectories.map(path => `(allow file-read* (subpath ${quote(path)}))`),
         ...access.deniedPaths.map(path => `(deny file-read* (subpath ${quote(path)}))`),
         ...[...denials].map(path => `(deny file-read* ${pattern(path)})`),
+        ...(workspace ? [
+            `(allow file-read* (subpath ${quote(workspace.root)}))`,
+            ...(workspace.writable ? [`(allow file-write* (subpath ${quote(workspace.root)}))`, `(deny file-write-unlink (literal ${quote(workspace.root)}))`] : []),
+            ...access.deniedPaths.map(path => `(deny file-read* (subpath ${quote(path)}))`),
+            ...[...denials].map(path => `(deny file-read* ${pattern(path)})`),
+            ...writeDenials.map(path => `(deny file-write* ${pattern(path)})`),
+        ] : []),
         "(deny network*)",
     ].join("\n");
     return ["/usr/bin/sandbox-exec", "-p", profile, "/bin/bash", "--noprofile", "--norc", "-c", command];

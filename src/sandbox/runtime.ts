@@ -1,5 +1,5 @@
 import {bashCommand, bashExecutable} from "../tools/bash/command.js";
-import {readOnlySandboxArgv} from "./readOnly.js";
+import {scopedFileSandboxArgv} from "./readOnly.js";
 import {
     SandboxManager,
     getDefaultWritePaths,
@@ -13,7 +13,7 @@ import {tmpdir} from "node:os";
 import {isPathInside} from "../permissions/pathGuard.js";
 import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
 import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
-import {createSandboxRuntimeConfig} from "./config.js";
+import {createSandboxRuntimeConfig, resolveSandboxPaths} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
 import type {
     ResolvedSandboxSettings,
@@ -82,7 +82,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         private readonly networkApproval: SandboxNetworkApproval,
         private readonly bunCacheDirectory: string,
         private readonly npmCacheDirectory: string,
-        private readonly hicodeHome: string
+        private readonly hicodeHome: string,
+        private readonly configuredDenyWrite: readonly string[]
     ) {}
 
     async wrapCommand(
@@ -94,7 +95,15 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         if (this.closePromise) throw new Error("Sandbox Runtime is closed");
         if (options?.readOnlyAccess) {
             signal.throwIfAborted();
-            return {argv: await readOnlySandboxArgv(bashCommand(command), options.readOnlyAccess, this.baseConfig.filesystem.denyRead, cwd), env: {}};
+            return {argv: await scopedFileSandboxArgv(bashCommand(command), options.readOnlyAccess, this.baseConfig.filesystem.denyRead, cwd), env: {}};
+        }
+        if (options?.fileWorkspace) {
+            const root = await realpath(options.fileWorkspace.root);
+            if (!isPathInside(root, await realpath(cwd))) throw new Error("Memory command cwd is outside its file workspace");
+            const executables = ["/bin/rm", "/bin/mv", "/bin/cp", "/bin/mkdir", "/bin/ls", "/bin/cat", "/usr/bin/touch", "/usr/bin/sed", "/usr/bin/awk", "/usr/bin/find", "/usr/bin/head", "/usr/bin/tail", "/usr/bin/wc"];
+            return {argv: await scopedFileSandboxArgv(bashCommand(command), {
+                paths: [], artifacts: [], artifactDirectories: [], deniedPaths: [], privateRoot: this.hicodeHome, executables,
+            }, this.baseConfig.filesystem.denyRead, cwd, {root, writable: options.fileWorkspace.writable, deniedWrites: this.configuredDenyWrite}), env: {}};
         }
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
@@ -278,7 +287,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 platform,
                 networkMode: settings.network.mode,
                 warnings: dependencies.warnings,
-            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.hicodeHome));
+            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.hicodeHome), resolveSandboxPaths(cwd, [...settings.filesystem.denyWrite, ...settings.filesystem.denyRead]));
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({

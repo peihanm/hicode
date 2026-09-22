@@ -5,10 +5,10 @@ import type {ToolExecutionResult} from "../../toolResults/index.js";
 
 type ByteRange = readonly [start: number, end: number];
 interface FileEditRange { start: number; end: number; insertedBytes: number }
-interface Source { path: string; hash: string; size: number; identity?: string }
+interface Source { path: string; hash: string; size: number }
 interface Segment { source: Source; start: number; end: number; fileStart: number }
-interface Evidence { content: string; segments: Segment[]; targets: Source[] }
-interface FileReadState { hash: string; size: number; ranges: ByteRange[]; identity?: string }
+interface Evidence { content: string; segments: Segment[] }
+interface FileReadState { hash: string; size: number; ranges: ByteRange[] }
 
 export function normalizeFileText(content: string): string {
     return content.replace(/\r\n?/g, "\n");
@@ -39,11 +39,10 @@ export class FileStateTracker {
 
     stageRead(input: {
         toolCallId: string; path: string; content: string | Buffer; normalizedBytes: number;
-        output: string; segments: Array<readonly [number, number, number]>; identity?: string;
+        output: string; segments: Array<readonly [number, number, number]>;
     }): void {
-        const source: Source = {path: resolve(input.path), hash: hash(input.content), size: input.normalizedBytes,
-            ...(input.identity ? {identity: input.identity} : {})};
-        this.pending.set(input.toolCallId, {content: input.output, targets: [source],
+        const source: Source = {path: resolve(input.path), hash: hash(input.content), size: input.normalizedBytes};
+        this.pending.set(input.toolCallId, {content: input.output,
             segments: input.segments.map(([start, end, fileStart]) => ({source, start, end, fileStart}))});
     }
 
@@ -60,7 +59,6 @@ export class FileStateTracker {
             if (message.role !== "tool") continue;
             const evidence = this.pending.get(message.tool_call_id);
             if (!evidence || evidence.content !== message.content) continue;
-            for (const source of evidence.targets) this.observe(source, []);
             for (const segment of evidence.segments) this.observe(segment.source,
                 [[segment.fileStart, segment.fileStart + segment.end - segment.start]]);
         }
@@ -69,16 +67,15 @@ export class FileStateTracker {
 
     private observe(source: Source, ranges: ByteRange[]): void {
         const previous = this.states.get(source.path);
-        this.states.set(source.path, {hash: source.hash, size: source.size, identity: source.identity,
-            ranges: merge([...(previous?.hash === source.hash ? previous.ranges : []), ...ranges])});
+        this.states.set(source.path, {hash: source.hash, size: source.size, ranges: merge([...(previous?.hash === source.hash ? previous.ranges : []), ...ranges])});
     }
 
     check(path: string, content: string | Buffer, options: {
-        requireFullRead?: boolean; replaceAll?: boolean; ranges?: readonly ByteRange[]; identity?: string;
+        requireFullRead?: boolean; replaceAll?: boolean; ranges?: readonly ByteRange[];
     } = {}): FileStateCheck {
         const state = this.states.get(resolve(path));
         if (!state) return {ok: false, reason: "not_read"};
-        if (state.hash !== hash(content) || (options.identity && options.identity !== state.identity)) {
+        if (state.hash !== hash(content)) {
             return {ok: false, reason: "stale"};
         }
         const required = options.requireFullRead || options.replaceAll ? [[0, state.size] as const] : options.ranges ?? [];
@@ -87,7 +84,7 @@ export class FileStateTracker {
     }
 
     recordWrite(input: {path: string; content: string; beforeContent?: string;
-        edits?: readonly FileEditRange[]; modelKnowsWholeFile?: boolean; identity?: string}): void {
+        edits?: readonly FileEditRange[]; modelKnowsWholeFile?: boolean}): void {
         const key = resolve(input.path);
         const previous = this.states.get(key);
         const size = Buffer.byteLength(normalizeFileText(input.content));
@@ -103,10 +100,9 @@ export class FileStateTracker {
                 ranges.push([edit.start, edit.start + edit.insertedBytes]);
             }
         }
-        this.states.set(key, {hash: hash(input.content), size, ranges: merge(ranges), identity: input.identity});
+        this.states.set(key, {hash: hash(input.content), size, ranges: merge(ranges)});
     }
 
-    forget(path: string): void { this.states.delete(resolve(path)); }
     clear(): void { this.states.clear(); this.pending.clear(); }
 }
 

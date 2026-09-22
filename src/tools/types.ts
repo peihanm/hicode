@@ -116,6 +116,7 @@ export interface ToolContext {
 
     // Enforced child Agent file boundary; unset by default for Root.
     workspaceBoundary?: string;
+    shellWorkspace?: string;
 
     // Directories authorized for this Session; cannot override Host/child hard boundaries.
     directoryAccess: DirectoryAccessRuntimeLike;

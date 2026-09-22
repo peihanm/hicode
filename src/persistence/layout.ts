@@ -118,16 +118,16 @@ export function getProjectMemoryDirectory(storage: HiCodeStorageLayout, cwd: str
     return join(getProjectStorageDirectory(storage, cwd), "memory");
 }
 
-export function getMemoryPublicationPath(directory: string): string {
-    return join(directory, "publication.json");
+export function getMemoryStatePath(directory: string): string {
+    return join(directory, "state.json");
 }
 
-export function getMemoryViewsDirectory(directory: string): string {
-    return join(directory, "views");
+export function getMemoryIndexPath(directory: string): string {
+    return join(directory, "MEMORY.md");
 }
 
-export function getMemoryInboxDirectory(directory: string): string {
-    return join(directory, "inbox");
+export function getMemoryTopicsDirectory(directory: string): string {
+    return join(directory, "topics");
 }
 
 export function getMemoryWorkspacesDirectory(directory: string): string {

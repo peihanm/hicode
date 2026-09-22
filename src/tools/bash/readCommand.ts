@@ -39,6 +39,6 @@ export async function prepareReadCommand(accessScope: CommandReadAccess, cwd: st
         const args = name === "rg" ? ["--no-config", "--no-ignore-global", ...segment.args] : segment.args;
         commands.push([executable, ...args].map(quote).join(" ") + (segment.next ? ` ${segment.next}` : ""));
     }
-    return {command: commands.join(" "), access: {paths: accessScope.paths, artifacts: accessScope.artifacts,
+    return {command: commands.join(" "), access: {paths: accessScope.paths, artifacts: accessScope.artifacts, artifactDirectories: accessScope.artifactDirectories,
         deniedPaths: accessScope.deniedPaths, privateRoot: accessScope.privateRoot, executables: [...new Set(executables)]}};
 }

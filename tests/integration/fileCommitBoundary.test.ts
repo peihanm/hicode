@@ -10,7 +10,6 @@ import {executeDeliveredTool} from "../helpers/executeTool.js";
 const calls = [
     {name: "edit_file", input: {path: "file.txt", edits: [{old_string: "before", new_string: "after"}]}},
     {name: "write_file", input: {path: "file.txt", content: "after"}},
-    {name: "delete_file", input: {path: "file.txt"}},
 ] as const;
 
 test("取消排队的写入不会阻塞后续提交", async () => {

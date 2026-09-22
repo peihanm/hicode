@@ -7,10 +7,9 @@ export async function commitFileWrite(input: {
     path: string;
     beforeContent: string | Buffer | null;
     afterContent: string | Buffer | null;
-}): Promise<{identity?: string}> {
+}): Promise<void> {
     return input.coordinator.run(input.path, input.signal, async canonical => {
         const commit = prepareFileCommit(input.path, canonical, input.beforeContent);
-        const identity = await commit(input.afterContent, input.signal);
-        return identity ? {identity} : {};
+        await commit(input.afterContent, input.signal);
     });
 }

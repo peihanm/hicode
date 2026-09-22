@@ -2,14 +2,14 @@ import { basename, dirname, relative, resolve } from "node:path";
 import { realpath } from "node:fs/promises";
 import type { HiCodeStorageLayout } from "../persistence/layout.js";
 import { memoryKeySchema } from "./schema.js";
-import { parseMemoryNote } from "./note.js";
+import {parseMemoryTopic} from "./topic.js";
 import type { MemoryPublicationStore } from "./publicationStore.js";
 import type { MemoryChange } from "./types.js";
 export type PublicationPath = {
     kind: "index";
     path: string;
 } | {
-    kind: "topic" | "note";
+    kind: "topic";
     key: string;
     path: string;
 };
@@ -18,17 +18,17 @@ export interface PublicationFileAccess {
     classify(path: string): PublicationPath | undefined;
     prepare(path: string, toolName: string): Promise<void>;
     validateWrite(path: string, content: string): void;
-    write(path: string, content: string, expectedContent: string | null, toolCallId: string): Promise<MemoryChange>;
-    delete(path: string, expectedContent: string): Promise<MemoryChange | undefined>;
+    written(path: string, content: string, created: boolean): MemoryChange;
+    shellDirectory(path: string): Promise<string | undefined>;
 }
 export function classifyPublicationPath(directory: string, inputPath: string): PublicationPath | undefined {
     const path = resolve(inputPath);
     const rel = relative(resolve(directory), path);
-    if (rel === "views/MEMORY.md")
+    if (rel === "MEMORY.md")
         return { kind: "index", path };
-    const match = /^(views|inbox)\/([^/]+)\.md$/.exec(rel);
+    const match = /^(topics)\/([^/]+)\.md$/.exec(rel);
     const key = memoryKeySchema.safeParse(match?.[2]);
-    return match && key.success ? { kind: match[1] === "inbox" ? "note" : "topic", key: key.data, path } : undefined;
+    return match && key.success ? { kind: "topic", key: key.data, path } : undefined;
 }
 export function isMemoryStoragePath(storage: HiCodeStorageLayout, path: string): boolean {
     const rel = relative(storage.projectsRoot, resolve(path));
@@ -67,15 +67,11 @@ export async function checkMemoryStoragePath(storage: HiCodeStorageLayout, path:
         }
     }
 }
-export function createPublicationFileAccess(store: MemoryPublicationStore, owner: {
-    sessionId: string;
-    turnId: string;
-    signal: AbortSignal;
-}): PublicationFileAccess {
+export function createPublicationFileAccess(store: MemoryPublicationStore): PublicationFileAccess {
     const requirePath = (path: string) => {
         const managed = classifyPublicationPath(store.directory, path);
         if (!managed)
-            throw new Error("Memory path is not a public note/topic view in the current project");
+            throw new Error("Memory path is not a public topic or index in the current project");
         return managed;
     };
     return {
@@ -84,35 +80,24 @@ export function createPublicationFileAccess(store: MemoryPublicationStore, owner
         async prepare(path, toolName) {
             const managed = requirePath(path);
             const reading = toolName === "read_file";
-            const writingNote = managed.kind === "note" && (toolName === "write_file" || toolName === "edit_file");
-            const forgetting = managed.kind !== "index" && toolName === "delete_file";
-            if (!reading && !writingNote && !forgetting)
-                throw new Error("Published Memory is read-only. Write inbox notes to remember/correct; delete a previously read topic to forget.");
-            const view = await store.prepareView(managed);
-            if (!view && !writingNote)
-                throw new Error("Memory content does not exist or was revoked");
+            const writing = managed.kind === "topic" && (toolName === "write_file" || toolName === "edit_file");
+            if (!reading && !writing) throw new Error("Only Memory topics can be edited; the index is generated from files");
+            if (writing) store.prepareTopicsDirectory();
+            else if (!await store.prepareView(managed)) throw new Error("Memory file does not exist");
         },
         validateWrite(path, content) {
-            if (requirePath(path).kind !== "note")
-                throw new Error("Submit Memory through inbox notes; do not edit published topics or indexes directly");
-            parseMemoryNote(content);
-        },
-        async write(path, content, expectedContent, toolCallId) {
             const managed = requirePath(path);
-            if (managed.kind !== "note")
-                throw new Error("Only Memory notes can be written");
-            const note = parseMemoryNote(content);
-            await store.acceptNote(managed.key, note, { kind: "explicit", sessionId: owner.sessionId, turnId: owner.turnId, toolCallId }, expectedContent, owner.signal);
-            return { action: expectedContent === null ? "created" : "updated", key: managed.key, memoryType: note.type };
+            if (managed.kind !== "topic") throw new Error("The Memory index is generated from topic files");
+            parseMemoryTopic(content, managed.key);
         },
-        async delete(path, expectedContent) {
+        written(path, content, created) {
             const managed = requirePath(path);
-            if (managed.kind === "index")
-                throw new Error("Cannot delete the Memory index");
-            const snapshot = store.snapshot();
-            const type = snapshot.sources.findLast(source => source.key === managed.key)?.type ?? snapshot.topics.find(topic => topic.key === managed.key)?.type;
-            const removed = await store.forget(managed.key, owner.signal, { kind: managed.kind, content: expectedContent });
-            return removed && type ? { action: "forgotten", key: managed.key, memoryType: type } : undefined;
+            if (managed.kind !== "topic") throw new Error("Only Memory topics can be written");
+            return {action: created ? "created" : "updated", key: managed.key, memoryType: parseMemoryTopic(content, managed.key).type};
+        },
+        async shellDirectory(path) {
+            if (resolve(path) !== resolve(store.directory, "topics")) return undefined;
+            return store.prepareTopicsDirectory();
         },
     };
 }

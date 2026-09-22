@@ -1,13 +1,11 @@
 import {expect,test} from "bun:test";
-import {parseMemoryNote} from "../../src/memory/note.js";
-import {serializeMemoryNote} from "../../src/memory/note.js";
-test("note round trip 与坏格式、未知字段和 UTF-8 上限",()=>{
- const note={operation:"remember" as const,type:"feedback" as const,content:"保持简洁"};expect(parseMemoryNote(serializeMemoryNote(note))).toEqual(note);
- for(const raw of ["---\noperation: remember\n---\n内容","---\noperation: remember\ntype: invalid\n---\n内容","---\noperation: remember\ntype: user\nversion: 1\n---\n内容","界".repeat(9000)])expect(()=>parseMemoryNote(raw)).toThrow();
+import {parseMemoryTopic,serializeMemoryTopic} from "../../src/memory/topic.js";
+test("topics accept plain Markdown or small descriptive headers, never require workflow IDs",()=>{
+ const topic={name:"Style",description:"Response style",type:"feedback" as const,content:"保持简洁"};
+ expect(parseMemoryTopic(serializeMemoryTopic(topic),"style")).toEqual(topic);
+ expect(parseMemoryTopic("# 人工记忆\n\n内容","manual").content).toContain("内容");
+ for(const raw of ["", "---\nname: x\n---\nbody", "---\nname: x\ndescription: x\ntype: wrong\n---\nbody", "界".repeat(15000)])expect(()=>parseMemoryTopic(raw,"test")).toThrow();
 });
-
-test("note 校验错误给出可修复字段，不回显恶意枚举值或字段名",()=>{
- for(const raw of ["---\noperation: SECRET_VALUE\ntype: OTHER_SECRET\n---\n正文", "---\noperation: remember\ntype: user\nSECRET_FIELD: secret\n---\n正文"]){
-  try{parseMemoryNote(raw);throw new Error("unexpected success");}catch(error){expect(error).toBeInstanceOf(Error);const message=(error as Error).message;expect(message).not.toContain("SECRET");expect(message.length).toBeLessThan(500);}
- }
+test("bad header errors do not echo secret values",()=>{
+ try{parseMemoryTopic("---\nname: x\ndescription: x\ntype: SECRET_VALUE\n---\nbody","test");throw new Error("unexpected success");}catch(error){expect((error as Error).message).not.toContain("SECRET_VALUE");}
 });

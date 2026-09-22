@@ -6,7 +6,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {createTestMemoryRuntime, remember} from "../helpers/memory.js";
 
 describe("/memory slash command", () => {
-    test("显示状态、读取并精确遗忘主题", async () => {
+    test("显示状态和读取文件；删除不再提供专用 Slash", async () => {
         await withTempProject(async (cwd) => {
             const memory = createTestMemoryRuntime(cwd);
             await remember(memory, "user-response-style", "直接回答，不重复总结。");
@@ -34,9 +34,9 @@ describe("/memory slash command", () => {
             expect(await processSlashCommand.process("/memory forget user-response-style", context)).toBe(true);
             expect(events.some((line) => line.includes("Memory: enabled"))).toBe(true);
             expect(events.some((line) => line.includes("直接回答"))).toBe(true);
-            expect(events).toContain("memory_update");
-            expect(events).toContain("Memory forgotten: user-response-style");
-            expect(await memory.read("user-response-style")).toBeUndefined();
+            expect(events).not.toContain("memory_update");
+            expect(events.some(line => line.includes("Usage: /memory"))).toBe(true);
+            expect(await memory.read("user-response-style")).toBeDefined();
             await memory.close();
         });
     });

@@ -36,7 +36,7 @@ describe("tool registry contract", () => {
     const schemas = getToolSchemas();
     const names = schemas.map((tool) => tool.function.name);
 
-    expect(schemas).toHaveLength(14);
+    expect(schemas).toHaveLength(13);
     expect(names).not.toContain("bash_task");
     expect(names).toContain("view_image");
     expect(new Set(names).size).toBe(names.length);
@@ -243,34 +243,8 @@ describe("tool registry contract", () => {
     });
   });
 
-  test("delete_file 要求完整读取并返回删除结果", async () => {
-    await withTempProject(async (cwd) => {
-      const path = join(cwd, "remove.txt");
-      await writeFile(path, "remove me\n");
-      const ctx = createTestContext(cwd, {permissionMode: "ask"});
-
-      const unread = await executeToolResult(
-        "delete_file",
-        JSON.stringify({path: "remove.txt"}),
-        ctx,
-        "delete-unread"
-      );
-      expect(unread.outcome).toBe("denied");
-
-      await executeTool("read_file", JSON.stringify({path: "remove.txt"}), ctx);
-      const deleted = await executeToolResult(
-        "delete_file",
-        JSON.stringify({path: "remove.txt"}),
-        ctx,
-        "delete-read"
-      );
-      expect(deleted.outcome).toBe("ok");
-      expect(deleted.uiData).toMatchObject({
-        type: "file_change",
-        change: {kind: "delete", linesAdded: 0, linesRemoved: 1},
-      });
-      expect(existsSync(path)).toBe(false);
-    });
+  test("removed delete_file is not registered or exposed", () => {
+    expect(getToolSchemas().some(tool => tool.function.name === "delete_file")).toBe(false);
   });
 
   test("grep 超过旧 100 条限制后保留完整可恢复结果", async () => {

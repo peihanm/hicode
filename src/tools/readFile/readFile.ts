@@ -65,10 +65,8 @@ export const readFileTool: Tool<typeof inputSchema> = {
                 `Type: ${binary ? "binary" : "large text"}`,
                 `Size: ${snapshot.content.length} bytes`,
                 `SHA256: ${createHash("sha256").update(snapshot.content).digest("hex")}`,
-                "Target version confirmed; contents were not shown and cannot authorize edit_file/write_file. delete_file may remove this version if permitted.",
+                "Contents were not shown and cannot authorize edit_file/write_file.",
             ].join("\n");
-            ctx.fileState.stageRead({toolCallId: invocation.toolCallId, path: absPath, content: snapshot.content,
-                normalizedBytes: snapshot.content.length, output, segments: [], identity: snapshot.identity});
             return output;
         }
         const content = snapshot.content.toString("utf8");
@@ -110,7 +108,7 @@ export const readFileTool: Tool<typeof inputSchema> = {
             return segment;
         });
         ctx.fileState.stageRead({toolCallId: invocation.toolCallId, path: absPath, content,
-            normalizedBytes: Buffer.byteLength(normalized), output, segments, identity: snapshot.identity});
+            normalizedBytes: Buffer.byteLength(normalized), output, segments});
         return output;
     },
 };

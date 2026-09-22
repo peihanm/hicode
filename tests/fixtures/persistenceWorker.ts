@@ -72,8 +72,7 @@ if (mode === "session") {
 } else if (mode === "memory") {
   const store = new MemoryPublicationStore(storage, cwd);
   for (let index = 0; index < count; index++) {
-    await store.acceptNote(`${prefix}-topic-${index}`, {operation:"remember", type:"project", content:`${prefix} content ${index}`},
-      {kind:"explicit", sessionId:prefix, turnId:"turn", toolCallId:`write-${index}`}, null, new AbortController().signal);
+    await writeFile(join(store.prepareTopicsDirectory(), `${prefix}-topic-${index}.md`), `${prefix} content ${index}`);
   }
 } else {
   throw new Error(`unknown persistence worker mode: ${mode}`);

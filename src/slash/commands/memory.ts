@@ -9,7 +9,7 @@ export const memoryCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "memory",
     description: "View and maintain persistent Memory across Sessions",
-    argumentHint: "[list [type] | show <key> | forget <key> | maintain]",
+    argumentHint: "[list [type] | show <key> | maintain]",
     async execute(args, context) {
         const memory = context.memory;
         if (!memory) {
@@ -23,7 +23,7 @@ export const memoryCommand: SlashCommand = {
         if (rest.length > 0) {
             await context.onEvent({
                 type: "assistant_text",
-                content: "Usage: /memory [list [type] | show <key> | forget <key> | maintain]",
+                content: "Usage: /memory [list [type] | show <key> | maintain]",
             });
             return;
         }
@@ -35,7 +35,7 @@ export const memoryCommand: SlashCommand = {
                 `Auto extract: ${status.autoExtract ? "enabled" : "disabled"}`,
                 `Directory: ${status.directory}`,
                 `Entries: user ${status.counts.user} · feedback ${status.counts.feedback} · project ${status.counts.project} · reference ${status.counts.reference}`,
-                `Pending notes: ${status.pending} · Published topics: ${status.published} · Maintaining: ${status.maintaining ? "yes" : "no"}`,
+                `Pending sources: ${status.pending} · Published topics: ${status.published} · Maintaining: ${status.maintaining ? "yes" : "no"}`,
             ];
             if (status.issues.length > 0) {
                 lines.push(
@@ -97,34 +97,6 @@ export const memoryCommand: SlashCommand = {
             return;
         }
 
-        if (action === "forget") {
-            if (!value) {
-                await context.onEvent({type: "assistant_text", content: "Usage: /memory forget <key>"});
-                return;
-            }
-            if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
-                await context.onEvent({type: "assistant_text", content: "Cannot delete Memory in read-only/Plan mode."}); return;
-            }
-            const change = await memory.forget(value, context.ctx.signal);
-            if (change) {
-                await context.onEvent({
-                    type: "memory_update",
-                    source: "explicit",
-                    changes: [change],
-                });
-                await context.onEvent({
-                    type: "assistant_text",
-                    content: `Memory forgotten: ${change.key}`,
-                });
-            } else {
-                await context.onEvent({
-                    type: "assistant_text",
-                    content: `Memory not found: ${value}`,
-                });
-            }
-            return;
-        }
-
         if (action === "maintain") {
             if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
                 await context.onEvent({type: "assistant_text", content: "Cannot consolidate Memory in read-only/Plan mode."}); return;
@@ -137,7 +109,7 @@ export const memoryCommand: SlashCommand = {
 
         await context.onEvent({
             type: "assistant_text",
-            content: "Usage: /memory [list [type] | show <key> | forget <key> | maintain]",
+            content: "Usage: /memory [list [type] | show <key> | maintain]",
         });
     },
 };

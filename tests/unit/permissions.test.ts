@@ -255,7 +255,6 @@ describe("permission rule persistence", () => {
     );
     expect(generateRuleForTool("write_file", {path: "/tmp/a"})).toBeNull();
     expect(generateRuleForTool("edit_file", {path: "/tmp/a"})).toBeNull();
-    expect(generateRuleForTool("delete_file", {path: "/tmp/a"})).toBeNull();
   });
   test("新增 local allow rule 同时更新文件和返回值且重复追加幂等", async () => {
     await withTempProject(async (cwd) => {

@@ -25,8 +25,8 @@ describe("Memory paths", () => {
     });
 
     test("主题路径只接受公开视图和安全 key", () => {
-        expect(classifyPublicationPath("/memory", "/memory/views/project-release.md")?.kind).toBe("topic");
+        expect(classifyPublicationPath("/memory", "/memory/topics/project-release.md")?.kind).toBe("topic");
         expect(classifyPublicationPath("/memory", "/memory/../secret.md")).toBeUndefined();
-        expect(classifyPublicationPath("/memory", "/memory/publication.json")).toBeUndefined();
+        expect(classifyPublicationPath("/memory", "/memory/state.json")).toBeUndefined();
     });
 });

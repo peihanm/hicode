@@ -28,7 +28,7 @@ export interface MemoryScanResult {
     issues: MemoryIssue[];
 }
 export interface MemoryChange {
-    action: "created" | "updated" | "forgotten";
+    action: "created" | "updated";
     key: string;
     memoryType: MemoryType;
 }

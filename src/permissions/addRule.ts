@@ -19,8 +19,7 @@ export function generateRuleForTool(
 ): string | null {
     if (
         toolName === "write_file" ||
-        toolName === "edit_file" ||
-        toolName === "delete_file"
+        toolName === "edit_file"
     ) {
         return null;
     }

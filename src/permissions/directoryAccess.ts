@@ -181,6 +181,5 @@ export function directoryOperationForTool(
 ): DirectoryAccessRequest["operation"] | undefined {
     if (toolName === "write_file") return "write";
     if (toolName === "edit_file") return "edit";
-    if (toolName === "delete_file") return "delete";
     return undefined;
 }

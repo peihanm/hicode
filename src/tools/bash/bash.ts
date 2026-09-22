@@ -16,6 +16,7 @@ import type {ShellTaskSnapshot} from "../../tasks/index.js";
 import {displayToolPath} from "../shared/paths.js";
 import {selectUtf8Range} from "../../toolResults/utf8.js";
 import {prepareCommandReadAccess} from "./readAccess.js";
+import {checkMemoryStoragePath} from "../../memory/publicationAccess.js";
 import {analyzeReadCommand} from "../../permissions/shellRead.js";
 
 const inputSchema = z.object({
@@ -82,6 +83,19 @@ async function resolveCommandCwd(
             }`,
         };
     }
+}
+
+async function commandWorkspace(ctx: ToolContext, cwd: string | undefined): Promise<{root: string; writable: boolean} | undefined> {
+    const target = resolve(ctx.cwd, cwd ?? ".");
+    const root = ctx.shellWorkspace ?? await ctx.memoryFiles?.shellDirectory(target);
+    if (!root) {
+        if (await checkMemoryStoragePath(ctx.storage, target)) throw new Error("This Agent has no Memory file workspace capability for this directory");
+        return undefined;
+    }
+    // A Bash directory capability never overrides explicit file-tool denial/approval rules.
+    if ([...ctx.permissionRules.deny, ...ctx.permissionRules.ask].some(rule => ["read_file", "write_file", "edit_file"].includes(rule.toolName)))
+        throw new Error("Memory Bash cannot bypass explicit file access rules; use the file tools or revise the applicable rules");
+    return {root, writable: !ctx.readOnlyTools && ctx.collaborationMode !== "plan"};
 }
 
 function backgroundSyntaxMessage(): string {
@@ -186,7 +200,7 @@ function formatObservedBackgroundTask(task: ShellTaskSnapshot, yielded = false):
 
 export const bashTool: Tool<typeof inputSchema> = {
     name: "bash",
-    description: `Run shell commands, project scripts, dependencies, builds and tests; return stdout/stderr. Use dedicated tools for file reading, editing and search.
+    description: `Run shell commands, project scripts, dependencies, builds and tests; return stdout/stderr. Use read_file/write_file/edit_file for file contents, Bash rg for search, and rm for authorized file deletion.
 - Use $TMPDIR for temporary files and clean up only artifacts you created; directory grants and explicit denials still apply.
 - Each call is a separate process: pass cwd rather than relying on a previous cd. Run tests/builds directly; the runtime preserves and budgets output. Do not add tail/head/grep just to shorten results or mask failures with || echo. Search returned saved paths with rg, then read_file at relevant lines; rerun only after a relevant change or for a new check. Avoid byte truncation of non-ASCII text.
 - Access uses the runtime's current sandbox and approval policy. Network authorization follows actual domains/ports; dependency downloads do not inherently require leaving the sandbox. For a necessary command blocked by sandbox permissions, request require_escalated for that operation rather than changing implementation to evade the restriction. A denial or unavailable approval channel is not permission to bypass it.
@@ -209,11 +223,15 @@ export const bashTool: Tool<typeof inputSchema> = {
             ctx.shellRunner.sandboxStatus.kind === "ready"
             ? {kind: "sandboxed"}
             : undefined,
-    async checkPermissions({command, cwd, sandbox_permissions}, ctx) {
+    async checkPermissions({command, cwd, sandbox_permissions, run_in_background, yield_time_ms}, ctx) {
         if (hasShellBackgroundOperator(command)) {
             return {behavior: "deny", message: backgroundSyntaxMessage()};
         }
-        const commandCwd = await resolveCommandCwd(ctx.cwd, cwd, ctx.permissionMode === "full-access" && ctx.allowFullAccess);
+        let workspace;
+        try {workspace = await commandWorkspace(ctx, cwd);} catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
+        if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {behavior: "deny", message: "Read-only Memory commands cannot modify files or execute arbitrary programs"};
+        if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {behavior: "deny", message: "Memory file commands must run in the foreground inside their Sandbox"};
+        const commandCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, !workspace && ctx.permissionMode === "full-access" && ctx.allowFullAccess);
         if (!commandCwd.ok) {
             return {behavior: "deny", message: commandCwd.message};
         }
@@ -221,7 +239,7 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {behavior: "deny", message: "Read-only command execution cannot leave the Sandbox"};
         }
         if (sandbox_permissions !== "require_escalated") {
-            try {await prepareCommandReadAccess(command, commandCwd.path, ctx);}
+            try {await prepareCommandReadAccess(command, workspace ? resolve(workspace.root, cwd ?? ".") : commandCwd.path, ctx);}
             catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
         }
         if (sandbox_permissions === "require_escalated") {
@@ -298,17 +316,20 @@ export const bashTool: Tool<typeof inputSchema> = {
                 outcome: "failed" as const,
             };
         }
-        const resolvedCwd = await resolveCommandCwd(ctx.cwd, cwd, ctx.permissionMode === "full-access" && ctx.allowFullAccess);
+        const workspace = await commandWorkspace(ctx, cwd);
+        if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {content: "Read-only Memory commands cannot modify files or execute arbitrary programs", outcome: "failed" as const};
+        if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {content: "Memory file commands must run in the foreground inside their Sandbox", outcome: "failed" as const};
+        const resolvedCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, !workspace && ctx.permissionMode === "full-access" && ctx.allowFullAccess);
         if (!resolvedCwd.ok) {
             return {content: resolvedCwd.message, outcome: "failed" as const};
         }
-        const commandCwd = resolvedCwd.path;
+        const commandCwd = workspace ? resolve(workspace.root, cwd ?? ".") : resolvedCwd.path;
         const readAccess = sandbox_permissions !== "require_escalated"
             ? await prepareCommandReadAccess(command, commandCwd, ctx) : undefined;
         if (readAccess && (run_in_background || yield_time_ms !== undefined)) {
             return {content: "Read-only searches run in the foreground with a timeout; do not start them as background tasks.", outcome: "failed" as const};
         }
-        const effectiveSandboxPermissions = readAccess ? "use_default" as const : ctx.permissionMode === "full-access" && ctx.allowFullAccess
+        const effectiveSandboxPermissions = readAccess || workspace ? "use_default" as const : ctx.permissionMode === "full-access" && ctx.allowFullAccess
             ? "require_escalated" as const : sandbox_permissions;
         const networkEvidence = structuredClone(ctx.approvalEvidence?.() ?? []);
         const detached = run_in_background === true || yield_time_ms !== undefined;
@@ -417,6 +438,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                     writableRoots: ctx.directoryAccess.listDirectories(),
                     networkAccess,
                     ...(readAccess ? {readAccess} : {}),
+                    ...(workspace ? {fileWorkspace: workspace} : {}),
                 });
                 const noMatches = readAccess?.plan.singleSearch === true && result.termination.kind === "exit" &&
                     result.termination.code === 1 && result.termination.signal === null && !result.stdout.trim() &&

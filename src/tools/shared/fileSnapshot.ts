@@ -8,7 +8,7 @@ function identity(info: BigIntStats): string {
 }
 
 /** Bounded bytes from one regular-file descriptor, including its version identity. */
-export async function readFileSnapshot(path: string): Promise<{content: Buffer; identity: string}> {
+export async function readFileSnapshot(path: string): Promise<{content: Buffer}> {
     const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
         const before = await handle.stat({bigint: true});
@@ -23,6 +23,6 @@ export async function readFileSnapshot(path: string): Promise<{content: Buffer; 
         }
         const after = await handle.stat({bigint: true});
         if (position !== content.length || identity(before) !== identity(after)) throw new Error("File changed while reading; use read_file again");
-        return {content, identity: identity(after)};
+        return {content};
     } finally { await handle.close(); }
 }

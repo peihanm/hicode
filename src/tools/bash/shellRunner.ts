@@ -11,6 +11,7 @@ interface ShellRunnerRequest extends ShellCommandOptions {
     writableRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
     readAccess?: CommandReadAccess;
+    fileWorkspace?: {root: string; writable: boolean};
 }
 
 export interface ShellRunnerLike {
@@ -59,11 +60,12 @@ export function createShellRunner(
                 writableRoots,
                 networkAccess,
                 readAccess,
+                fileWorkspace,
                 command,
                 env,
                 ...processOptions
             } = request;
-            if (readAccess && sandboxPermissions === "require_escalated") {
+            if ((readAccess || fileWorkspace) && sandboxPermissions === "require_escalated") {
                 return sandboxFailure(request.signal, new Error("Read-only command execution cannot leave the Sandbox"));
             }
             if (
@@ -89,14 +91,14 @@ export function createShellRunner(
                     prepared?.command ?? command,
                     request.cwd,
                     request.signal,
-                    prepared ? {readOnlyAccess: prepared.access} : {writableRoots, networkAccess}
+                    prepared ? {readOnlyAccess: prepared.access} : {writableRoots, networkAccess, fileWorkspace}
                 );
             } catch (error) {
                 return sandboxFailure(request.signal, error);
             }
 
             try {
-                const commandEnvironment = readAccess
+                const commandEnvironment = readAccess || fileWorkspace
                     ? {PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", TERM: "dumb"}
                     : mergeChildProcessEnvironment(childEnvironment, wrapped.env, env);
                 if (wrapped.env.npm_config_cache !== undefined) {

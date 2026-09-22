@@ -71,7 +71,7 @@ test.skipIf(!enabled)("real macOS command searches preserve read-only, private r
             expect(await stat(join(cwd, "changed")).then(() => true, () => false)).toBe(false);
             expect(await readFile(join(cwd, "private", "secret.txt"), "utf8")).toBe("PRIVATE_NEEDLE\n");
             const scope = {paths: [await realpath(cwd)], executables: ["/usr/bin/nc"],
-                deniedPaths: [], artifacts: [], privateRoot: await realpath(storage.hicodeHome)};
+                deniedPaths: [], artifacts: [], artifactDirectories: [], privateRoot: await realpath(storage.hicodeHome)};
             // Exercise the OS boundary even when the tool's grammar would reject the command.
             const raw = async (command: string, signal = new AbortController().signal) => {
                 const wrapped = await sandbox.wrapCommand(command, await realpath(cwd), signal, {readOnlyAccess: scope});

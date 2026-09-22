@@ -11,6 +11,7 @@ export interface CommandReadAccess {
     plan: ReadCommand;
     paths: string[];
     artifacts: string[];
+    artifactDirectories: string[];
     deniedPaths: string[];
     privateRoot: string;
     projectRoot: string;
@@ -30,6 +31,7 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
     const projectRoot = await realpath(ctx.cwd);
     const paths: string[] = [];
     const artifacts: string[] = [];
+    const artifactDirectories: string[] = [];
     const deniedPaths: string[] = [];
     const rules = [...ctx.permissionRules.deny, ...ctx.permissionRules.ask].filter(rule => rule.toolName === "read_file");
     if (rules.some(rule => rule.content === undefined)) throw new Error("File reading is restricted by an explicit read_file rule; command search cannot bypass it");
@@ -49,9 +51,11 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
         if (input.includes("\0")) throw new Error("Search paths cannot contain NUL");
         const path = resolve(cwd, input);
         let managed = false;
+        let memoryDirectory = false;
         if (await checkMemoryStoragePath(ctx.storage, path)) {
             if (!ctx.memoryFiles) throw new Error("This Agent has no Memory file capability");
-            await ctx.memoryFiles.prepare(path, "read_file");
+            memoryDirectory = !!await ctx.memoryFiles.shellDirectory(path);
+            if (!memoryDirectory) await ctx.memoryFiles.prepare(path, "read_file");
             managed = true;
         } else if (await checkSessionArchivePath(ctx.storage, path)) {
             managed = !!await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, path);
@@ -63,8 +67,8 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
         if (rules.some(rule => match(rule.content!, "deny"))) throw new Error("Search path is restricted by a read_file rule");
         if (managed) {
             const info = await lstat(path);
-            if (!info.isFile() || info.isSymbolicLink()) throw new Error("Managed search input must be a regular file, not a symbolic link");
-            artifacts.push(await realpath(path));
+            if ((!info.isFile() && !(memoryDirectory && info.isDirectory())) || info.isSymbolicLink()) throw new Error("Managed search input must be a regular file, not a symbolic link");
+            (memoryDirectory ? artifactDirectories : artifacts).push(await realpath(path));
         } else {
             const within = await validateWorkspacePath(ctx.workspaceBoundary ?? ctx.cwd, cwd, path);
             if (!within.ok && !(ctx.permissionMode === "full-access" && ctx.allowFullAccess && !ctx.workspaceBoundary && !restricted) && !await ctx.directoryAccess.canAccess(path)) throw new Error(within.message);
@@ -106,5 +110,5 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
             }
         }
     }
-    return {plan, paths: [...new Set(paths)], artifacts, deniedPaths: [...new Set(deniedPaths)], privateRoot, projectRoot};
+    return {plan, paths: [...new Set(paths)], artifacts, artifactDirectories, deniedPaths: [...new Set(deniedPaths)], privateRoot, projectRoot};
 }

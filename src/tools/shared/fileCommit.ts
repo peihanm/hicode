@@ -86,7 +86,7 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
     if (canonicalPath(path) !== canonical) throw new Error(`File path changed while waiting: ${path}`);
     const version = readVersion(path);
     assertContent(version, expected, path);
-    return async (content: string | Buffer | null, signal: AbortSignal): Promise<string | undefined> => {
+    return async (content: string | Buffer | null, signal: AbortSignal): Promise<void> => {
         let temporary: string | undefined;
         try {
             throwIfTurnAborted(signal);
@@ -112,17 +112,10 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
             else if (expected === null) {
                 // Unlike rename, link cannot replace a file created by an external writer.
                 linkSync(temporary!, canonical);
-                // Unlink changes ctime on the shared inode; capture the receipt afterwards.
                 try { unlinkSync(temporary!); temporary = undefined; }
-                catch { return undefined; } // Committed, but final cleanup may change its identity.
+                catch { return; } // The finalizer retries cleanup; the file is already committed.
             } else renameSync(temporary!, canonical);
-            if (content !== null) {
-                try {
-                    const info = lstatSync(canonical, {bigint: true});
-                    return [info.dev, info.ino, info.size, info.mode, info.mtimeNs, info.ctimeNs].join(":");
-                } catch { /* The write committed; a missing receipt only requires a new read. */ }
-            }
-            return undefined;
+
         } finally {
             if (temporary) await unlink(temporary).catch(() => undefined);
         }

@@ -111,14 +111,14 @@ describe("cross-process persistence", () => {
     await withTempProject(async (cwd) => {
       await runConcurrentWorkers(cwd, "memory", 8);
       const scan = new MemoryPublicationStore(createTestStorage(cwd),cwd).snapshot();
-      expect(scan.sources.map((entry) => entry.key).sort()).toEqual(
+      expect(scan.topics.map((entry) => entry.key).sort()).toEqual(
         ["a", "b"]
           .flatMap((prefix) =>
             Array.from({ length: 8 }, (_, index) => `${prefix}-topic-${index}`)
           )
           .sort()
       );
-      expect(scan.revision).toBe(16);
+      expect(scan.topics).toHaveLength(16);
     });
   });
 

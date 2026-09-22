@@ -5,44 +5,47 @@ const id = z.string().uuid();
 const text = (max: number) => z.string().trim().min(1).max(max)
     .refine(value => Buffer.byteLength(value) <= max, `Exceeds ${max} bytes`);
 const singleLine = (max: number) => text(max).refine(value => !/[\r\n]/.test(value), "Must be single-line text");
-export const memoryNoteSchema = z.object({
-    operation: z.enum(["remember", "correct"]),
-    type: z.enum(MEMORY_TYPES),
-    content: text(8000),
+const originSchema = z.object({kind: z.literal("session"), sessionId: text(200),
+    messageHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(100),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/), basis: z.enum(["user-stated", "assistant-claimed", "tool-observed"]),
 }).strict();
-const originSchema = z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("explicit"), sessionId: text(200), turnId: text(200), toolCallId: text(200) }).strict(),
-    z.object({ kind: z.literal("session"), sessionId: text(200),
-        messageHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(100),
-        contentHash: z.string().regex(/^[a-f0-9]{64}$/), basis: z.enum(["user-stated", "assistant-claimed", "tool-observed"]) }).strict(),
-]);
 export const memorySourceRecordSchema = z.object({
-    id, key: memoryKeySchema, type: z.enum(MEMORY_TYPES), content: text(8000),
+    id, key: memoryKeySchema, type: z.enum(MEMORY_TYPES), content: z.string().max(8000),
     origin: originSchema, createdAt: z.string().datetime(), consumed: z.boolean(),
-}).strict();
+}).strict().refine(source => source.consumed ? source.content === "" : source.content.trim().length > 0 && Buffer.byteLength(source.content) <= 8000,
+    "Consumed sources keep provenance only; pending facts require bounded text");
 export const memoryDraftTopicSchema = z.object({
     key: memoryKeySchema, name: singleLine(120), description: singleLine(300),
     type: z.enum(MEMORY_TYPES), content: text(32 * 1024),
-    sources: z.array(id).min(1).max(32),
+    sources: z.array(id).max(32),
 }).strict();
 const topicSchema = memoryDraftTopicSchema.extend({ createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict();
 export const memoryFrameSchema = z.object({ id: z.string().regex(/^[a-f0-9]{64}$/), sessionId: text(200),
     messageHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(64), omitted: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
     status: z.enum(["pending", "no_output", "extracted", "unavailable"]), createdAt: z.string().datetime() }).strict();
 export type MemoryFrame = z.infer<typeof memoryFrameSchema>;
-export const memoryPublicationSchema = z.object({
-    version: z.literal(3), revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
-    summary: z.string().max(4000), topics: z.array(topicSchema).max(200),
+const publicationFields = z.object({
+    version: z.literal(4), revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
+    topics: z.array(topicSchema).max(200),
     sources: z.array(memorySourceRecordSchema).max(1000),
     frames: z.array(memoryFrameSchema).max(1000),
     completedFrames: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096),
     retiredSources: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4096),
     revoked: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(10000),
     lease: z.object({ id, revision: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(),
-        phase: z.enum(["extract", "consolidate"]), frameIds: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4),
+        publishing: z.literal(true).optional(), filesHash: z.string().regex(/^[a-f0-9]{64}$/), phase: z.enum(["extract", "consolidate"]), frameIds: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(4),
         sourceIds: z.array(id).max(16), expiresAt: z.string().datetime() }).strict().optional(),
     lastIssue: z.string().max(1000).optional(),
-}).strict().superRefine((value, ctx) => {
+}).strict();
+export const memoryStateSchema = publicationFields.omit({topics: true}).extend({
+    topics: z.array(z.object({key: memoryKeySchema, hash: z.string().regex(/^[a-f0-9]{64}$/), sources: z.array(id).max(32), createdAt: z.string().datetime(), updatedAt: z.string().datetime()}).strict()).max(200),
+}).strict().superRefine((state, ctx) => {
+    const sourceIds = new Set(state.sources.map(source => source.id));
+    if (new Set(state.topics.map(topic => topic.key)).size !== state.topics.length || sourceIds.size !== state.sources.length ||
+        state.topics.some(topic => topic.sources.some(id => !sourceIds.has(id)))) ctx.addIssue({code: "custom", message: "Invalid Memory file provenance"});
+    if (state.lease?.publishing && state.lease.phase !== "consolidate") ctx.addIssue({code: "custom", message: "Only consolidation can publish files"});
+});
+export const memoryPublicationSchema = publicationFields.superRefine((value, ctx) => {
     const keys = new Set(value.topics.map(topic => topic.key));
     const sourceIds = new Set(value.sources.map(source => source.id));
     if (keys.size !== value.topics.length || sourceIds.size !== value.sources.length) {
@@ -66,7 +69,6 @@ export const memoryPublicationSchema = z.object({
     }
 });
 export type MemoryPublication = z.infer<typeof memoryPublicationSchema>;
-export type MemoryNote = z.infer<typeof memoryNoteSchema>;
 export type MemorySourceRecord = z.infer<typeof memorySourceRecordSchema>;
 export type MemoryDraftTopic = z.infer<typeof memoryDraftTopicSchema>;
 export type MemoryLease = NonNullable<MemoryPublication["lease"]>;

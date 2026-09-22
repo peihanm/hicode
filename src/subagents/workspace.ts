@@ -20,7 +20,7 @@ export async function resolveSubagentDirectory(parent: ToolContext, path = paren
 
 /** File rules retain their original project-relative meaning after switching cwd. */
 export function subagentPermissionRules(parent: ToolContext): PermissionRules {
-    const pathTools = new Set(["read_file", "edit_file", "write_file", "delete_file", "view_image"]);
+    const pathTools = new Set(["read_file", "edit_file", "write_file", "view_image"]);
     const anchor = (rules: PermissionRules["allow"]) => rules.map(rule => ({...rule,
         ...(pathTools.has(rule.toolName) && rule.content !== undefined && !isAbsolute(rule.content)
             ? {content: resolve(parent.cwd, rule.content)} : {}),

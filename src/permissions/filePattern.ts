@@ -4,7 +4,7 @@ import picomatch from "picomatch";
 import type {PermissionMatcher} from "../tools/types.js";
 
 export function isFilePermissionTool(name: string): boolean {
-    return ["read_file", "write_file", "edit_file", "delete_file", "view_image"].includes(name);
+    return ["read_file", "write_file", "edit_file", "view_image"].includes(name);
 }
 
 export function validateFilePattern(pattern: string): boolean {

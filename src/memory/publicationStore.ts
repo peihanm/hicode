@@ -1,14 +1,17 @@
-import { serializeMemoryNote } from "./note.js";
+import {parseMemoryTopic, serializeMemoryTopic} from "./topic.js";
+import {readdirSync, lstatSync} from "node:fs";
+import {prepareFileCommit} from "../tools/shared/fileCommit.js";
+import {realpath} from "node:fs/promises";
 import type { ExtractedMemoryFact } from "./sourceExtractor.js";
 import { memoryFrameSchema, type MemoryFrame } from "./publicationSchema.js";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readdir, unlink, rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout } from "../persistence/index.js";
-import { getMemoryWorkspacesDirectory, getMemoryWorkspacePaths, getMemoryInboxDirectory, getMemoryPublicationPath, getMemoryViewsDirectory, getProjectMemoryDirectory } from "../persistence/layout.js";
+import { getMemoryWorkspacesDirectory, getMemoryWorkspacePaths, getMemoryStatePath, getMemoryIndexPath, getMemoryTopicsDirectory, getProjectMemoryDirectory } from "../persistence/layout.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
-import { memoryDraftTopicSchema, memoryNoteSchema, memoryPublicationSchema, memorySourceRecordSchema, type MemoryDraftTopic, type MemoryLease, type MemoryNote, type MemoryPublication, type MemorySourceRecord } from "./publicationSchema.js";
+import { memoryDraftTopicSchema, memoryPublicationSchema, memoryStateSchema, memorySourceRecordSchema, type MemoryDraftTopic, type MemoryLease, type MemoryPublication, type MemorySourceRecord } from "./publicationSchema.js";
 import { memoryKeySchema } from "./schema.js";
 const MAX_PUBLICATION_BYTES = 8 * 1024 * 1024;
 const LEASE_MS = 5 * 60000;
@@ -16,35 +19,93 @@ function originHash(origin: MemorySourceRecord["origin"]): string {
     return createHash("sha256").update(JSON.stringify(origin)).digest("hex");
 }
 function emptyPublication(): MemoryPublication {
-    return { version: 3, revision: 0, epoch: 0, summary: "", topics: [], sources: [], frames: [], completedFrames: [], retiredSources: [], revoked: [] };
+    return { version: 4, revision: 0, epoch: 0, topics: [], sources: [], frames: [], completedFrames: [], retiredSources: [], revoked: [] };
 }
 export function serializeDraftTopic(topic: MemoryDraftTopic): string {
     const { content, ...header } = memoryDraftTopicSchema.parse(topic);
     return `---\n${stringifyYaml(header)}---\n${content}\n`;
 }
-/** One atomic publication owns topics, pending inputs, revocation and the consumed cursor. */
+/** Markdown owns content; the locked workflow stores provenance, leases and bounded receipts. */
 export class MemoryPublicationStore {
     readonly directory: string;
-    private cleanupIssue: string | undefined;
-    get viewIssue(): string | undefined { return this.cleanupIssue; }
     constructor(private readonly storage: HiCodeStorageLayout, cwd: string) {
         this.directory = getProjectMemoryDirectory(storage, cwd);
     }
-    snapshot(): MemoryPublication {
-        const raw = readPrivateStorageTextFile(this.storage, getMemoryPublicationPath(this.directory), MAX_PUBLICATION_BYTES);
-        if (raw === null)
-            return emptyPublication();
-        let parsed: unknown;
+    private readState() {
+        const raw = readPrivateStorageTextFile(this.storage, getMemoryStatePath(this.directory), MAX_PUBLICATION_BYTES);
+        if (raw === null) return memoryStateSchema.parse(emptyPublication());
+        try { return memoryStateSchema.parse(JSON.parse(raw)); }
+        catch { throw new Error("Invalid Memory workflow state; original files were preserved"); }
+    }
+    private scanFiles(): Map<string, {raw: string; hash: string; topic: ReturnType<typeof parseMemoryTopic>; date: string}> {
+        const root = getMemoryTopicsDirectory(this.directory);
+        const files = new Map<string, {raw: string; hash: string; topic: ReturnType<typeof parseMemoryTopic>; date: string}>();
+        // Validate the directory even when it is empty; aliases never grant access.
         try {
-            parsed = JSON.parse(raw);
+            const stat = lstatSync(root);
+            if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Memory topics must be a regular directory");
+        } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return files;
+            throw error;
         }
-        catch {
-            throw new Error("Invalid Memory publication JSON");
+        const entries = readdirSync(root, {withFileTypes: true});
+        const topics = entries.filter(entry => entry.name.endsWith(".md"));
+        if (topics.length > 200) throw new Error("Memory topics exceed 200");
+        for (const entry of topics) {
+            const key = memoryKeySchema.parse(entry.name.slice(0, -3));
+            const path = join(root, entry.name);
+            const raw = readPrivateStorageTextFile(this.storage, path, 40 * 1024);
+            if (raw === null) throw new Error("Memory changed while scanning; retry");
+            files.set(key, {raw, hash: createHash("sha256").update(raw).digest("hex"), topic: parseMemoryTopic(raw, key), date: lstatSync(path).mtime.toISOString()});
         }
-        const result = memoryPublicationSchema.safeParse(parsed);
-        if (!result.success)
-            throw new Error("Invalid Memory publication format or source reference");
-        return result.data;
+        return files;
+    }
+    private filesHash(): string {
+        return createHash("sha256").update(JSON.stringify([...this.scanFiles()].map(([key, file]) => [key, file.hash]).sort((a,b) => a[0]!.localeCompare(b[0]!)))).digest("hex");
+    }
+    snapshot(): MemoryPublication {
+        const saved = this.readState();
+        const files = this.scanFiles();
+        const changed = new Set([...saved.topics.filter(topic => files.get(topic.key)?.hash !== topic.hash).map(topic => topic.key),
+            ...[...files.keys()].filter(key => !saved.topics.some(topic => topic.key === key))]);
+        const revokedIds = new Set(saved.topics.filter(topic => changed.has(topic.key)).flatMap(topic => topic.sources));
+        // Once file publication starts, an interrupted batch is never replayed into files.
+        // This favors preserving human deletions over reconstructing an ambiguous partial commit.
+        const publishing = saved.lease?.publishing === true;
+        const interrupted = publishing && Date.parse(saved.lease!.expiresAt) <= Date.now();
+        const attempted = new Set(interrupted ? saved.lease!.sourceIds : []);
+        const discarded = publishing && !interrupted ? [] : saved.sources.filter(source => changed.has(source.key) || revokedIds.has(source.id) || attempted.has(source.id));
+        const state: MemoryPublication = {...saved, topics: [], sources: saved.sources.filter(source => !discarded.includes(source))};
+        if ((!publishing && changed.size) || interrupted) {
+            if (interrupted) state.lastIssue = "Memory publication was interrupted. Completed file edits remain; this source batch will not be replayed. Inspect topic files before continuing.";
+            state.epoch++;
+            delete state.lease;
+            state.revoked = [...new Set([...state.revoked, ...discarded.map(source => originHash(source.origin))])];
+            for (const frame of state.frames) if (frame.status === "pending") frame.status = "no_output";
+        }
+        const ids = new Set(state.sources.map(source => source.id));
+        state.topics = [...files].map(([key, file]) => {
+            const old = saved.topics.find(topic => topic.key === key);
+            return {key, ...file.topic, sources: changed.has(key) ? [] : (old?.sources ?? []).filter(id => ids.has(id)),
+                createdAt: old?.createdAt ?? file.date, updatedAt: changed.has(key) ? file.date : old?.updatedAt ?? file.date};
+        });
+        return memoryPublicationSchema.parse(state);
+    }
+    private async saveState(state: MemoryPublication): Promise<void> {
+        this.collect(state);
+        const files = this.scanFiles();
+        if (files.size !== state.topics.length || state.topics.some(topic => {
+            const actual = files.get(topic.key)?.topic;
+            return !actual || actual.content !== topic.content || actual.name !== topic.name || actual.description !== topic.description || actual.type !== topic.type;
+        })) throw new Error("Memory files changed before workflow commit; external changes were preserved");
+        const {topics, ...workflow} = memoryPublicationSchema.parse(state);
+        const data = memoryStateSchema.parse({...workflow, topics: topics.filter(topic => files.has(topic.key)).map(topic => ({
+            key: topic.key, hash: files.get(topic.key)!.hash, sources: topic.sources, createdAt: topic.createdAt, updatedAt: topic.updatedAt,
+        }))});
+        const encoded = JSON.stringify(data);
+        if (Buffer.byteLength(encoded) > MAX_PUBLICATION_BYTES) throw new Error("Memory workflow exceeds 8 MiB");
+        readPrivateStorageTextFile(this.storage, getMemoryStatePath(this.directory), MAX_PUBLICATION_BYTES);
+        await writeFileAtomically(getMemoryStatePath(this.directory), encoded, 0o600);
     }
     private async transaction<T>(action: (state: MemoryPublication) => {
         result: T;
@@ -56,21 +117,15 @@ export class MemoryPublicationStore {
                 throwIfTurnAborted(signal);
             const state = this.snapshot();
             const { result, changed } = action(state);
-            if (!changed)
+            if (!changed && state.epoch === this.readState().epoch)
                 return result;
             this.collect(state);
             if (state.frames.length > 1000) throw new Error("Memory pending sources reached 1000; run /memory maintain first");
             if (state.sources.length > 1000) throw new Error("Memory active sources reached 1000; consolidate or forget unneeded topics first");
             if (state.revoked.length > 10000) throw new Error("Memory forget receipts reached 10000; receipts and the original version were preserved");
             state.revision++;
-            const encoded = JSON.stringify(memoryPublicationSchema.parse(state));
-            if (Buffer.byteLength(encoded) > MAX_PUBLICATION_BYTES)
-                throw new Error("Memory exceeds 8 MiB; original version preserved");
-            // Validate an existing leaf too: atomic rename must not turn an unsafe target into an allowed write.
-            readPrivateStorageTextFile(this.storage, getMemoryPublicationPath(this.directory), MAX_PUBLICATION_BYTES);
-            if (signal)
-                throwIfTurnAborted(signal);
-            await writeFileAtomically(getMemoryPublicationPath(this.directory), encoded, 0o600);
+            if (signal) throwIfTurnAborted(signal);
+            await this.saveState(state);
             return result;
         });
     }
@@ -84,66 +139,9 @@ export class MemoryPublicationStore {
         const referenced = new Set([...state.topics.flatMap(topic => topic.sources), ...(state.lease?.sourceIds ?? [])]);
         const removed = state.sources.filter(source => source.consumed && !referenced.has(source.id));
         state.retiredSources = [...new Set([...state.retiredSources, ...removed.map(source => originHash(source.origin))])].slice(-4096);
-        // The free-form summary may paraphrase discarded evidence; do not retain untraceable memory.
-        if (removed.length) state.summary = "";
         const removedIds = new Set(removed.map(source => source.id));
         state.sources = state.sources.filter(source => !removedIds.has(source.id));
         // Revocations are permanent exclusion evidence, never ordinary eviction candidates.
-    }
-    async acceptNote(key: string, note: MemoryNote, origin: Extract<MemorySourceRecord["origin"], {
-        kind: "explicit";
-    }>, expectedContent: string | null, signal: AbortSignal): Promise<void> {
-        memoryKeySchema.parse(key);
-        const parsed = memoryNoteSchema.parse(note);
-        const source = memorySourceRecordSchema.parse({ id: randomUUID(), key, type: parsed.type, content: parsed.content,
-            origin, createdAt: new Date().toISOString(), consumed: false });
-        await this.transaction(state => {
-            if (state.retiredSources.includes(originHash(origin)) || state.sources.some(item => originHash(item.origin) === originHash(origin)))
-                return { result: undefined, changed: false };
-            if (this.noteContent(state, key) !== expectedContent)
-                throw new Error("Memory note changed; read it again before editing");
-            if (state.revoked.includes(originHash(origin)))
-                throw new Error("Memory source was revoked");
-            if (parsed.operation === "correct") {
-                if (!this.revokeKey(state, key)) state.epoch++;
-                delete state.lease;
-            }
-            state.sources.push(source);
-            delete state.lastIssue;
-            return { result: undefined, changed: true };
-        }, signal);
-        await this.invalidateViews();
-    }
-    private revokeKey(state: MemoryPublication, key: string): boolean {
-        const ids = new Set([...state.sources.filter(source => source.key === key).map(source => source.id),
-            ...state.topics.filter(topic => topic.key === key).flatMap(topic => topic.sources)]);
-        const affected = state.topics.some(topic => topic.key === key || topic.sources.some(id => ids.has(id))) || ids.size > 0;
-        if (!affected)
-            return false;
-        state.revoked = [...new Set([...state.revoked, ...state.sources.filter(source => ids.has(source.id)).map(source => originHash(source.origin))])];
-        state.sources = state.sources.filter(source => !ids.has(source.id));
-        state.topics = state.topics.filter(topic => topic.key !== key && !topic.sources.some(id => ids.has(id)));
-        // A summary may paraphrase any forgotten source. Clear it instead of guessing which sentence to remove.
-        state.summary = "";
-        state.epoch++;
-        delete state.lease;
-        return affected;
-    }
-    async forget(key: string, signal: AbortSignal, expected?: {
-        kind: "topic" | "note";
-        content: string;
-    }): Promise<boolean> {
-        memoryKeySchema.parse(key);
-        const removed = await this.transaction(state => {
-            if (expected && (expected.kind === "note" ? this.noteContent(state, key) : this.topicContent(state, key)) !== expected.content) {
-                throw new Error("Memory content changed; read it again before forgetting");
-            }
-            const changed = this.revokeKey(state, key);
-            return { result: changed, changed };
-        }, signal);
-        if (removed)
-            await this.invalidateViews();
-        return removed;
     }
     async offerFrame(frame: Omit<MemoryFrame, "epoch" | "status" | "createdAt">, signal: AbortSignal): Promise<void> {
         await this.transaction(state => {
@@ -170,14 +168,14 @@ export class MemoryPublicationStore {
             const frames = state.frames.filter(frame => frame.status === "pending").slice(0, 4);
             if (!frames.length)
                 return { result: undefined, changed };
-            state.lease = { id: randomUUID(), phase: "extract", frameIds: frames.map(frame => frame.id), sourceIds: [], revision: state.revision + 1, epoch: state.epoch, expiresAt: new Date(Date.now() + LEASE_MS).toISOString() };
+            state.lease = { id: randomUUID(), filesHash: this.filesHash(), phase: "extract", frameIds: frames.map(frame => frame.id), sourceIds: [], revision: state.revision + 1, epoch: state.epoch, expiresAt: new Date(Date.now() + LEASE_MS).toISOString() };
             return { result: { lease: structuredClone(state.lease), frames: structuredClone(frames) }, changed: true };
         }, signal);
     }
     private requireLease(state: MemoryPublication, lease: MemoryLease, phase: MemoryLease["phase"]): void {
         const current = state.lease;
         if (!current || current.id !== lease.id || current.phase !== phase || lease.phase !== phase || state.epoch !== lease.epoch ||
-            current.revision !== lease.revision || current.epoch !== lease.epoch || current.expiresAt !== lease.expiresAt || Date.parse(current.expiresAt) <= Date.now() ||
+            current.filesHash !== lease.filesHash || lease.filesHash !== this.filesHash() || current.revision !== lease.revision || current.epoch !== lease.epoch || current.expiresAt !== lease.expiresAt || Date.parse(current.expiresAt) <= Date.now() ||
             current.sourceIds.join(",") !== lease.sourceIds.join(",") || current.frameIds.join(",") !== lease.frameIds.join(",")) {
             throw new Error("Memory version/lease expired or the source set changed; nothing was published");
         }
@@ -216,7 +214,7 @@ export class MemoryPublicationStore {
                 state.lastIssue = "Some session sources are inaccessible; they were skipped without generating facts. Other notes can still be consolidated.";
             return { result: undefined, changed: true };
         }, signal);
-        await this.invalidateViews();
+
     }
     async claim(signal: AbortSignal): Promise<{
         lease: MemoryLease;
@@ -237,101 +235,93 @@ export class MemoryPublicationStore {
             }
             if (!pending.length)
                 return { result: undefined, changed };
-            state.lease = { id: randomUUID(), phase: "consolidate", frameIds: [], revision: state.revision + 1, epoch: state.epoch,
+            state.lease = { id: randomUUID(), filesHash: this.filesHash(), phase: "consolidate", frameIds: [], revision: state.revision + 1, epoch: state.epoch,
                 sourceIds: pending, expiresAt: new Date(Date.now() + LEASE_MS).toISOString() };
             return { result: { lease: structuredClone(state.lease), baseline: structuredClone(state) }, changed: true };
         }, signal);
     }
-    async publish(lease: MemoryLease, topics: readonly MemoryDraftTopic[], summary: string, signal: AbortSignal): Promise<void> {
+    async publish(lease: MemoryLease, topics: readonly MemoryDraftTopic[], signal: AbortSignal): Promise<void> {
         const drafts = topics.map(topic => memoryDraftTopicSchema.parse(topic));
-        if (summary.length > 4000)
-            throw new Error("Memory summary exceeds 4000 characters");
-        await this.transaction(state => {
+        if (drafts.length > 200 || new Set(drafts.map(topic => topic.key)).size !== drafts.length) throw new Error("Invalid Memory draft topic set");
+        ensurePrivateStorageDirectory(this.storage, this.directory);
+        await withFileLock(join(this.directory, ".memory.lock"), async () => {
+            const state = this.snapshot();
             this.requireLease(state, lease, "consolidate");
             const allowed = new Set([...state.topics.flatMap(topic => topic.sources), ...lease.sourceIds]);
-            if (drafts.some(topic => topic.sources.some(id => !allowed.has(id))))
-                throw new Error("Memory draft cites an unavailable source");
-            const represented = new Set(drafts.flatMap(topic => topic.sources));
-            if (state.sources.some(source => source.origin.kind === "explicit" && allowed.has(source.id) && !represented.has(source.id))) {
-                throw new Error("Memory draft omitted an explicit note; nothing was consumed or published");
+            if (drafts.some(topic => topic.sources.some(id => !allowed.has(id)))) throw new Error("Memory draft cites an unavailable source");
+            // Human-authored files cannot be silently dropped by an automatic consolidation.
+            if (state.topics.some(topic => !topic.sources.length && !drafts.some(draft => draft.key === topic.key))) throw new Error("Memory draft omitted a manually maintained topic");
+            const files = this.scanFiles();
+            const root = getMemoryTopicsDirectory(this.directory);
+            ensurePrivateStorageDirectory(this.storage, root);
+            const keys = new Set([...files.keys(), ...drafts.map(topic => topic.key)]);
+            throwIfTurnAborted(signal);
+            state.lease!.publishing = true;
+            await this.saveState(state);
+            for (const key of keys) {
+                throwIfTurnAborted(signal);
+                // Recheck the whole baseline between commits; never overwrite a concurrent editor.
+                const current = this.scanFiles();
+                if (current.size !== files.size || [...files].some(([name, file]) => current.get(name)?.hash !== file.hash)) throw new Error("Memory files changed during publication; completed file edits remain, external edits were preserved");
+                const draft = drafts.find(topic => topic.key === key);
+                const after = draft ? serializeMemoryTopic({name: draft.name, description: draft.description, type: draft.type, content: draft.content}) : null;
+                const before = files.get(key)?.raw ?? null;
+                if (after === before) continue;
+                const path = join(root, `${key}.md`);
+                const canonical = join(await realpath(root), `${key}.md`);
+                await prepareFileCommit(path, canonical, before, 0o600)(after, signal);
+                if (after === null) files.delete(key);
+                else files.set(key, {raw: after, hash: createHash("sha256").update(after).digest("hex"), topic: parseMemoryTopic(after, key), date: new Date().toISOString()});
             }
             const now = new Date().toISOString();
-            state.topics = drafts.map(topic => ({ ...topic,
-                createdAt: state.topics.find(old => old.key === topic.key)?.createdAt ?? now, updatedAt: now }));
-            state.summary = summary;
-            state.sources = state.sources.map(source => lease.sourceIds.includes(source.id) ? { ...source, consumed: true } : source);
-            delete state.lease;
-            delete state.lastIssue;
-            return { result: undefined, changed: true };
-        }, signal);
-        await this.invalidateViews();
+            state.topics = drafts.map(topic => ({...topic, createdAt: state.topics.find(old => old.key === topic.key)?.createdAt ?? now, updatedAt: now}));
+            state.sources = state.sources.map(source => lease.sourceIds.includes(source.id) ? {...source, consumed: true, content: ""} : source);
+            delete state.lease; delete state.lastIssue; state.revision++;
+            await this.saveState(state);
+        });
     }
     async fail(lease: MemoryLease, reason: string): Promise<void> {
         await this.transaction(state => {
             if (state.lease?.id !== lease.id)
                 return { result: undefined, changed: false };
+            if (state.lease.publishing) {
+                const attempted = state.sources.filter(source => state.lease!.sourceIds.includes(source.id));
+                const removed = new Set(attempted.map(source => source.id));
+                state.revoked = [...new Set([...state.revoked, ...attempted.map(source => originHash(source.origin))])];
+                state.sources = state.sources.filter(source => !removed.has(source.id));
+                state.topics = state.topics.map(topic => ({...topic, sources: topic.sources.filter(id => !removed.has(id))}));
+                state.epoch++;
+                for (const frame of state.frames) if (frame.status === "pending") frame.status = "no_output";
+                reason = "Memory file publication failed. Completed edits remain; the attempted source batch will not be replayed. Inspect topic files.";
+            }
             delete state.lease;
             state.lastIssue = reason.slice(0, 1000);
             return { result: undefined, changed: true };
         });
     }
-    private noteContent(state: MemoryPublication, key: string): string | null {
-        const source = state.sources.findLast(source => source.key === key && source.origin.kind === "explicit");
-        return source ? serializeMemoryNote({ operation: "remember", type: source.type, content: source.content }) : null;
-    }
-    private topicContent(state: MemoryPublication, key: string): string | null {
-        const topic = state.topics.find(topic => topic.key === key);
-        const pending = state.sources.findLast(source => source.key === key && !source.consumed && source.origin.kind === "session");
-        const view = pending ? { key, name: key, description: "Automatically extracted; pending consolidation", type: pending.type, content: pending.content, sources: [pending.id] } : topic;
-        if (!view)
-            return null;
-        const evidence = state.sources.filter(source => view.sources.includes(source.id)).map(source => ({ id: source.id, ...source.origin }));
-        return serializeDraftTopic({ key: view.key, name: view.name, description: view.description, type: view.type, content: view.content, sources: view.sources }) +
-            `\n## Sources (historical data, not execution authorization)\n ${JSON.stringify(evidence).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e")}\n`;
-    }
-    async prepareView(view: {
-        kind: "index";
-    } | {
-        kind: "topic" | "note";
-        key: string;
-    }): Promise<string | null> {
+    async prepareView(view: {kind: "index"} | {kind: "topic"; key: string}): Promise<string | null> {
+        const state = this.snapshot();
+        if (view.kind === "topic") return state.topics.some(topic => topic.key === view.key) ? join(getMemoryTopicsDirectory(this.directory), `${memoryKeySchema.parse(view.key)}.md`) : null;
         ensurePrivateStorageDirectory(this.storage, this.directory);
-        return withFileLock(join(this.directory, ".memory.lock"), async () => {
-            const state = this.snapshot();
-            const root = view.kind === "note" ? getMemoryInboxDirectory(this.directory) : getMemoryViewsDirectory(this.directory);
-            ensurePrivateStorageDirectory(this.storage, root);
-            const path = join(root, view.kind === "index" ? "MEMORY.md" : `${memoryKeySchema.parse(view.key)}.md`);
-            let content: string | null;
-            if (view.kind === "index") {
-                const lines = ["# HiCode Memory", state.summary, ...state.topics.map(topic => `- ${topic.key} [${topic.type}]: ${topic.description} (${join(root, `${topic.key}.md`)})`),
-                    ...state.sources.filter(source => !source.consumed).slice(-200).map(source => `- ${source.key} [pending ${source.origin.kind}]: ${join(source.origin.kind === "explicit" ? getMemoryInboxDirectory(this.directory) : root, `${source.key}.md`)}`)];
-                const selected: string[] = [];
-                let bytes = 0;
-                for (const line of lines) {
-                    const cost = Buffer.byteLength(line) + 1;
-                    if (bytes + cost > 120 * 1024)
-                        break;
-                    selected.push(line);
-                    bytes += cost;
-                }
-                content = selected.join("\n") + "\n" + (selected.length < lines.length ? `Index budget omitted ${lines.length - selected.length} lines; use /memory list to view entries.\n` : "");
-            }
-            else if (view.kind === "note")
-                content = this.noteContent(state, view.key);
-            else
-                content = this.topicContent(state, view.key);
-            const existing = readPrivateStorageTextFile(this.storage, path, 128 * 1024);
-            if (content === null) {
-                if (existing !== null)
-                    await unlink(path);
-                return null;
-            }
-            if (Buffer.byteLength(content) > 128 * 1024)
-                throw new Error("Memory read view exceeds 128 KiB");
-            if (existing !== content)
-                await writeFileAtomically(path, content, 0o600);
-            return path;
-        });
+        const path = getMemoryIndexPath(this.directory);
+        const lines: string[] = ["# HiCode Memory"];
+        let bytes = 0;
+        for (const topic of state.topics) {
+            const line = `- ${topic.key} [${topic.type}]: ${topic.description} (${join(getMemoryTopicsDirectory(this.directory), `${topic.key}.md`)})`;
+            if (bytes + Buffer.byteLength(line) > 120 * 1024) break;
+            lines.push(line); bytes += Buffer.byteLength(line) + 1;
+        }
+        const omitted = state.topics.length - (lines.length - 1);
+        if (omitted) lines.push(`Index omitted ${omitted} topics; use /memory list for the complete list.`);
+        const content = lines.join("\n") + "\n";
+        readPrivateStorageTextFile(this.storage, path, 128 * 1024);
+        await writeFileAtomically(path, content, 0o600);
+        return path;
+    }
+    prepareTopicsDirectory(): string {
+        const root = getMemoryTopicsDirectory(this.directory);
+        ensurePrivateStorageDirectory(this.storage, root);
+        return root;
     }
     async recoverWorkspaces(signal: AbortSignal): Promise<void> {
         ensurePrivateStorageDirectory(this.storage, this.directory);
@@ -356,31 +346,5 @@ export class MemoryPublicationStore {
                 await rm(paths.root, { recursive: true, force: true });
             }
         });
-    }
-    private async invalidateViews(): Promise<void> {
-        try {
-            await withFileLock(join(this.directory, ".memory.lock"), async () => {
-                for (const root of [getMemoryViewsDirectory(this.directory), getMemoryInboxDirectory(this.directory)]) {
-                    ensurePrivateStorageDirectory(this.storage, root);
-                    await this.clearViewDirectory(root);
-                }
-            });
-            this.cleanupIssue = undefined;
-        }
-        catch {
-            // Publication already committed. Access checks still consult its current contents before reading a cache.
-            this.cleanupIssue = "Memory committed; derived-cache cleanup is incomplete. Reads still validate against the current publication.";
-        }
-    }
-    private async clearViewDirectory(root: string): Promise<void> {
-        for (const entry of await readdir(root, { withFileTypes: true })) {
-            if (!/^(?:MEMORY|[a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.test(entry.name))
-                continue;
-            const path = join(root, entry.name);
-            const info = await lstat(path);
-            if (!info.isFile() || info.isSymbolicLink())
-                throw new Error("Memory read view is not a regular file");
-            await unlink(path);
-        }
     }
 }

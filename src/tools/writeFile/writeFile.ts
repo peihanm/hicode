@@ -57,8 +57,7 @@ export const writeFileTool: Tool<
     },
     execute: async (
         {path, content},
-        ctx,
-        invocation
+        ctx
     ) => {
         // Permissions already passed; execute directly.
         // Create missing parent directories.
@@ -82,16 +81,6 @@ export const writeFileTool: Tool<
         if (exists && oldContent === content) {
             return `No write needed for ${path}(content unchanged)`;
         }
-        if (ctx.memoryFiles?.classify(absPath)) {
-            await ctx.memoryFiles.write(
-                absPath,
-                content,
-                exists ? oldContent : null,
-                invocation.toolCallId
-            );
-            ctx.fileState.forget(absPath);
-            return `Memory note recorded and available for recall; pending consolidation: ${path}. Read the normalized note before further changes; no index maintenance is needed.`;
-        }
         const change = createFileChange({
             path: displayToolPath(ctx.cwd, absPath),
             kind: exists ? "update" : "create",
@@ -99,15 +88,15 @@ export const writeFileTool: Tool<
             newContent: content,
         });
 
-        const {identity} = await commitFileWrite({
+        await commitFileWrite({
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
             path: absPath,
             beforeContent: exists ? oldContent : null,
             afterContent: content,
         });
+        if (ctx.memoryFiles?.classify(absPath)) ctx.memoryFiles.written(absPath, content, !exists);
         ctx.fileState.recordWrite({
-            identity,
             path: absPath,
             content,
             modelKnowsWholeFile: true,

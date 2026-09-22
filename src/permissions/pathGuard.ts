@@ -62,8 +62,7 @@ export function toolPathInput(
         toolName === "read_file" ||
         toolName === "view_image" ||
         toolName === "edit_file" ||
-        toolName === "write_file" ||
-        toolName === "delete_file"
+        toolName === "write_file"
     ) {
         return typeof value.path === "string" ? value.path : undefined;
     }

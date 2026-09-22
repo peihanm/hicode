@@ -135,8 +135,7 @@ export const editFileTool: Tool<typeof inputSchema> = {
     },
     execute: async (
         {path, edits: requestedEdits},
-        ctx,
-        invocation
+        ctx
     ) => {
         const absPath = resolveToolPath(ctx.cwd, path);
         const validation = await validateEdits(absPath, requestedEdits, ctx);
@@ -172,12 +171,6 @@ export const editFileTool: Tool<typeof inputSchema> = {
             return `No changes needed for ${path}(content unchanged)`;
         }
 
-        if (ctx.memoryFiles?.classify(absPath)) {
-            await ctx.memoryFiles.write(absPath, newContent, originalContent, invocation.toolCallId);
-            ctx.fileState.forget(absPath);
-            return `Memory note recorded and available for recall; pending consolidation: ${path}. Read the normalized note again before further changes.`;
-        }
-
         const change = createFileChange({
             path: displayToolPath(ctx.cwd, absPath),
             kind: "update",
@@ -186,15 +179,15 @@ export const editFileTool: Tool<typeof inputSchema> = {
             replacements: count,
         });
 
-        const {identity} = await commitFileWrite({
+        await commitFileWrite({
             coordinator: ctx.fileCommits,
             signal: ctx.signal,
             path: absPath,
             beforeContent: originalContent,
             afterContent: newContent,
         });
+        if (ctx.memoryFiles?.classify(absPath)) ctx.memoryFiles.written(absPath, newContent, false);
         ctx.fileState.recordWrite({
-            identity,
             path: absPath,
             content: newContent,
             beforeContent: originalContent,

@@ -8,7 +8,6 @@ import {createAgentTool} from "./agent/agent.js";
 import {askUserTool} from "./askUser/askUser.js";
 import {bashTool} from "./bash/bash.js";
 import {editFileTool} from "./editFile/editFile.js";
-import {deleteFileTool} from "./deleteFile/deleteFile.js";
 import {readFileTool} from "./readFile/readFile.js";
 import {skillTool} from "./skill/skill.js";
 import {taskTool} from "./task/task.js";
@@ -45,7 +44,6 @@ function createBuiltinTools(): Tool[] {
         viewImageTool,
         writeFileTool,
         editFileTool,
-        deleteFileTool,
         bashTool,
         askUserTool,
         todoWriteTool,
