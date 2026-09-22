@@ -31,7 +31,11 @@ HiCode is a lightweight terminal coding agent built in TypeScript with its own e
 
 ### Recent improvements
 
-- [x] Improved the main agent's task delegation and subagent spawning, along with parallel execution, two-way messaging, and context-preserving follow-ups.
+- 🌐 **09-21 · Network policy**: switch between open and restricted network modes via `/sandbox`, reducing network approval prompts while preserving filesystem isolation.
+
+- 🔍 **09-20 · Tools and search**: simplified built-in tools and unified local search through Bash and ripgrep, reducing duplicate implementations and improving search efficiency.
+
+- 🤝 **09-19 · Subagent collaboration**: improved task delegation and subagent spawning, along with parallel execution, two-way messaging, and context-preserving follow-ups.
 
 ### TODO
 
