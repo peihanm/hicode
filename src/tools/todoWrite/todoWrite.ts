@@ -3,7 +3,6 @@ import type {Tool, ToolContext} from "../types.js";
 import type {PermissionResult} from "../../permissions/index.js";
 
 // TodoWrite replaces the complete task list.
-// Based on Claude Code src/tools/TodoWriteTool/TodoWriteTool.ts.
 //
 // Each call provides the complete todos array, not a delta.
 //
@@ -37,7 +36,6 @@ export const todoWriteTool: Tool<typeof inputSchema> = {
     },
 
     async execute({todos}: Input, ctx: ToolContext): Promise<string> {
-        // Clear todos when all are complete, following Claude Code TodoWriteTool.
         // Hide the completed list instead of leaving all checkmarks on screen.
         const allDone = todos.length > 0 && todos.every((t) => t.status === "completed");
         await ctx.setTodos(allDone ? [] : todos);

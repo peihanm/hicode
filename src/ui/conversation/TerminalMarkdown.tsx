@@ -114,32 +114,37 @@ function renderSpans(spans: readonly MarkdownSpan[]): ReactNode {
 
 function inlineMarkdown(value: string): ReactNode {return renderSpans(inlineSpans(value));}
 
+function wrapSpans(spans: readonly MarkdownSpan[], width: number, code = false): MarkdownSpan[][] {
+    const rows: MarkdownSpan[][] = [];
+    const columns = Math.max(1, width);
+    const segmenter = new Intl.Segmenter(undefined, {granularity: "grapheme"});
+    let row: MarkdownSpan[] = [];
+    let used = 0;
+    const flush = () => {rows.push(row); row = []; used = 0;};
+    for (const span of spans) {
+        const words = code ? [span.text] : span.text.split(/(\s+)/);
+        for (const word of words) {
+            if (!code && used && word.trim() && stringWidth(word) <= columns && used + stringWidth(word) > columns) flush();
+            for (const {segment} of segmenter.segment(word.replace(/\t/g, "    "))) {
+                const size = stringWidth(segment);
+                if (used && used + size > columns) flush();
+                if (!code && !used && segment === " " && word.trim() === "") continue;
+                const last = row.at(-1);
+                if (last && last.bold === span.bold && last.color === span.color && last.underline === span.underline) last.text += segment;
+                else row.push({...span, text: segment});
+                used += size;
+            }
+        }
+    }
+    flush();
+    return rows;
+}
+
 /** Parse before wrapping and slicing: styles and code fences survive viewport boundaries. */
 export function layoutTerminalMarkdown(value: string, width: number, markdown = true): ReactNode[] {
     const lines: ReactNode[] = [];
-    const columns = Math.max(1, width);
-    const segmenter = new Intl.Segmenter(undefined, {granularity: "grapheme"});
     const wrap = (spans: readonly MarkdownSpan[], code = false) => {
-        let row: MarkdownSpan[] = [];
-        let used = 0;
-        const flush = () => {lines.push(renderSpans(row)); row = []; used = 0;};
-        for (const span of spans) {
-            const words = code ? [span.text] : span.text.split(/(\s+)/);
-            for (const word of words) {
-                if (!code && used && word.trim() && stringWidth(word) <= columns && used + stringWidth(word) > columns) flush();
-                for (const {segment} of segmenter.segment(word.replace(/\t/g, "    "))) {
-                    const size = stringWidth(segment);
-                    if (used && used + size > columns) flush();
-                    if (!code && !used && segment === " " && word.trim() === "") continue;
-                    if (size > columns) continue;
-                    const last = row.at(-1);
-                    if (last && last.bold === span.bold && last.color === span.color && last.underline === span.underline) last.text += segment;
-                    else row.push({...span, text: segment});
-                    used += size;
-                }
-            }
-        }
-        flush();
+        lines.push(...wrapSpans(spans, width, code).map(renderSpans));
     };
     if (!markdown) {
         for (const line of value.split("\n")) wrap([{text: line}], true);
@@ -148,13 +153,8 @@ export function layoutTerminalMarkdown(value: string, width: number, markdown = 
     for (const block of parseMarkdown(value)) {
         if (block.type === "blank") lines.push(" ");
         else if (block.type === "code") for (const line of block.lines) wrap([{text: line || " ", color: COLORS.toolResult}], true);
-        else if (block.type === "table") {
-            const widths = tableColumnWidths(block.rows, columns);
-            for (const [index, row] of block.rows.entries()) wrap([{text: widths.map((size, column) => {
-                const text = truncateDisplay(inlineSpans(row[column] ?? "").map(span => span.text).join(""), size);
-                return text + " ".repeat(Math.max(0, size - stringWidth(text)));
-            }).join("  "), bold: index === 0}], true);
-        } else {
+        else if (block.type === "table") lines.push(...layoutTable(block.rows, width).map(renderSpans));
+        else {
             const spans = inlineSpans(block.text);
             if (block.type === "heading") for (const span of spans) {span.bold = true; span.color ??= COLORS.accent;}
             if (block.type === "bullet") spans.unshift({text: `${block.indent}${block.marker} `});
@@ -164,28 +164,12 @@ export function layoutTerminalMarkdown(value: string, width: number, markdown = 
     return lines.length ? lines : [" "];
 }
 
-function truncateDisplay(value: string, width: number): string {
-    if (stringWidth(value) <= width) return value;
-    const limit = Math.max(1, width - 1);
-    let result = "";
-    let used = 0;
-    for (const {segment} of new Intl.Segmenter(undefined, {
-        granularity: "grapheme",
-    }).segment(value)) {
-        const next = stringWidth(segment);
-        if (used + next > limit) break;
-        result += segment;
-        used += next;
-    }
-    return `${result.trimEnd()}…`;
-}
-
 function tableColumnWidths(rows: readonly string[][], width: number): number[] {
     const columns = Math.max(...rows.map((row) => row.length), 1);
     const gapWidth = Math.max(0, columns - 1) * 2;
     const available = Math.max(columns * 3, width - gapWidth);
     const widths = Array.from({length: columns}, (_, column) =>
-        Math.max(3, ...rows.map((row) => stringWidth(row[column] ?? "")))
+        Math.max(3, ...rows.map((row) => stringWidth(inlineSpans(row[column] ?? "").map(span => span.text).join(""))))
     );
     while (widths.reduce((sum, item) => sum + item, 0) > available) {
         let widest = -1;
@@ -200,27 +184,46 @@ function tableColumnWidths(rows: readonly string[][], width: number): number[] {
     return widths;
 }
 
-function MarkdownTable({rows, width}: {rows: string[][]; width: number}) {
+function layoutTable(rows: readonly string[][], width: number): MarkdownSpan[][] {
     const widths = tableColumnWidths(rows, width);
-    return (
-        <Box flexDirection="column">
-            {rows.map((row, rowIndex) => (
-                <Box key={`row:${rowIndex}`}>
-                    {widths.map((columnWidth, columnIndex) => (
-                        <Box
-                            key={`cell:${columnIndex}`}
-                            width={columnWidth}
-                            marginRight={columnIndex + 1 < widths.length ? 2 : 0}
-                        >
-                            <Text bold={rowIndex === 0}>
-                                {truncateDisplay(row[columnIndex] ?? "", columnWidth)}
-                            </Text>
-                        </Box>
-                    ))}
-                </Box>
-            ))}
-        </Box>
-    );
+    const lines: MarkdownSpan[][] = [];
+    if (width < widths.length * 18 + (widths.length - 1) * 2) {
+        const header = rows[0] ?? [];
+        for (const [index, row] of rows.slice(1).entries()) {
+            if (index) lines.push([{text: " "}]);
+            for (let column = 0; column < widths.length; column++) {
+                const label = header[column] || `Column ${column + 1}`;
+                lines.push(...wrapSpans([
+                    ...inlineSpans(label).map(span => ({...span, bold: true})),
+                    {text: ": "}, ...inlineSpans(row[column] ?? ""),
+                ], width));
+            }
+        }
+        if (rows.length === 1) lines.push(...wrapSpans(inlineSpans(header.join(" · ")), width));
+        return lines;
+    }
+    for (const [index, row] of rows.entries()) {
+        const cells = widths.map((size, column) => wrapSpans(inlineSpans(row[column] ?? "").map(span =>
+            index === 0 ? {...span, bold: true} : span), size));
+        const height = Math.max(...cells.map(cell => cell.length));
+        for (let line = 0; line < height; line++) {
+            const spans: MarkdownSpan[] = [];
+            cells.forEach((cell, column) => {
+                const content = cell[line] ?? [];
+                spans.push(...content);
+                if (column < cells.length - 1) spans.push({text: " ".repeat(Math.max(0,
+                    widths[column]! - stringWidth(content.map(span => span.text).join(""))) + 2)});
+            });
+            lines.push(spans);
+        }
+    }
+    return lines;
+}
+
+function MarkdownTable({rows, width}: {rows: string[][]; width: number}) {
+    return <Box flexDirection="column">
+        {layoutTable(rows, width).map((line, index) => <Text key={index}>{renderSpans(line)}</Text>)}
+    </Box>;
 }
 
 export function TerminalMarkdown({value, width}: {value: string; width: number}) {

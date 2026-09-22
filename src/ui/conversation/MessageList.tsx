@@ -398,7 +398,7 @@ function ThreadView({
     );
 }
 
-// Message list with Codebuddy-style markers.
+// Message list markers.
 // User: ❯ {text}
 // assistant：● {text}
 export function MessageList({

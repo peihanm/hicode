@@ -1,8 +1,8 @@
 import {memo, useSyncExternalStore} from "react";
-import {Box, Text} from "ink";
+import {Box, Text, useStdout} from "ink";
 import type {UIModelStreamInfo, UITurnEventStore} from "../turn/eventStore.js";
 import {useTerminalSize} from "../terminalSize.js";
-import {textRows} from "../textRows.js";
+import {layoutDraft} from "./draftLayout.js";
 import {COLORS} from "../theme.js";
 
 export const AssistantDraftView = memo(function AssistantDraftView({store, phase}: {
@@ -11,16 +11,15 @@ export const AssistantDraftView = memo(function AssistantDraftView({store, phase
 }) {
     const draft = useSyncExternalStore(store.subscribeDraft, store.getDraftSnapshot, store.getDraftSnapshot);
     const terminal = useTerminalSize();
+    const {stdout} = useStdout();
     if (!draft) return null;
-    const text = draft.text.trimEnd();
-    if (!text) return null;
-    const width = Math.max(10, terminal.width - 4);
-    const rows = textRows(text, width);
-    const limit = Math.max(1, Math.min(6, Math.floor(terminal.height / 3)));
+    const layout = layoutDraft(draft.text, terminal.width);
+    if (!layout.text) return null;
+    const inScrollback = stdout.isTTY === true && !!layout.completed;
     const label = phase === "tool_input" ? undefined : phase && phase !== "content" ? "Response draft" : "Generating";
-    const heading = [label, draft.truncated || rows.length > limit ? "showing recent text" : undefined].filter(Boolean).join(" · ");
-    return <Box flexDirection="column" marginTop={1} paddingLeft={2} width={width + 2}>
+    const heading = [inScrollback ? undefined : label, draft.truncated ? "display limit reached" : undefined].filter(Boolean).join(" · ");
+    return <Box flexDirection="column" marginTop={inScrollback ? 0 : 1} paddingLeft={2} width={Math.max(3, terminal.width)}>
         {heading && <Text color={COLORS.dim}>{heading}</Text>}
-        <Text>{rows.slice(-limit).join("\n")}</Text>
+        <Text>{stdout.isTTY === true ? layout.tail : layout.text}</Text>
     </Box>;
 });

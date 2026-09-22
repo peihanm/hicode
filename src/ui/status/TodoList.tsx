@@ -9,12 +9,7 @@ import {COLORS, SYMBOLS} from "../theme.js";
 // in_progress -> themed dot, with a spinner while the agent runs
 // completed -> green check, hidden after 30 seconds
 //
-// The 30-second expiry follows Claude Code TaskListV2.tsx RECENT_COMPLETED_TTL_MS.
 // Show completion feedback without accumulating old completed items.
-
-// pending -> gray checkbox
-// in_progress -> themed dot; static when paused, otherwise a spinner
-// completed -> green check, hidden after 30 seconds
 function TodoItem({todo, paused}: { todo: Todo; paused: boolean }) {
     if (todo.status === "completed") {
         return (

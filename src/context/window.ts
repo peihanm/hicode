@@ -1,13 +1,10 @@
 import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "./config.js";
 
 // Context-window configuration and token-threshold state.
-// Based on Claude Code src/utils/context.ts getContextWindowForModel
-// and services/compact/autoCompact.ts calculateTokenWarningState.
 
-// Reserve tokens for summary output during compaction; Claude Code uses COMPACT_MAX_OUTPUT_TOKENS=20_000.
+// Reserve tokens for summary output during compaction.
 const RESERVED_FOR_SUMMARY = 20_000;
 
-// Auto-Compact thresholds follow Claude Code services/compact/autoCompact.ts.
 // effectiveWindow = contextWindow - summaryReserve
 // autoCompactThreshold = effectiveWindow - 13_000
 const AUTOCOMPACT_BUFFER_TOKENS = 13_000;

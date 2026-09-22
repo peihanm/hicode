@@ -68,7 +68,7 @@ function loadSkillsFromDir(
     const skills: LoadedSkill[] = [];
     for (const entry of entries) {
         // Only directory-form Skills are supported: <basePath>/<skill-name>/SKILL.md.
-        // Standalone .md Skills are unsupported, matching Claude Code.
+        // Standalone .md Skills are unsupported.
         if (!entry.isDirectory()) continue;
 
         const skillDir = join(basePath, entry.name);

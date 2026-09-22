@@ -1,5 +1,4 @@
 // Permission-system types.
-// Based on Claude Code src/types/permissions.ts:240-266.
 
 // Tools declare permission intent through checkPermissions.
 // executeTool uses that intent to request approval, execute directly or deny.
@@ -48,7 +47,6 @@ export type PermissionPromptPolicy = "onRequest" | "never";
 type PermissionRuleSource = "user" | "project" | "local" | "host";
 
 // One permission rule.
-// Based on Claude Code src/types/permissions.ts:67-79.
 export interface PermissionRule {
     toolName: string;
     content?: string; // undefined matches the whole tool; otherwise match the argument pattern.

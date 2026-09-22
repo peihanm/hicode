@@ -90,7 +90,6 @@ function assertFreshToolCallIds(
 }
 
 // Agent loop: call LLM, execute tools, feed results back, repeat until a final answer.
-// needsFollowUp continues after tool calls and stops otherwise, following Claude Code query.ts.
 //
 // onEvent streams progress to the UI instead of console.log; the UI decides rendering.
 // ctx injects confirmation and other dependencies so tools do not couple to readline/Ink.

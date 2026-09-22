@@ -295,12 +295,16 @@ export function App({
         return (
             <Box flexDirection="column">
                 <ScrollbackTranscript threads={display.settled} showWelcome expanded={showTranscript}
-                    transientPanelId={turn.confirmRequest?.id}/>
+                    transientPanelId={turn.confirmRequest?.id} draftStore={turn.draftStore}/>
 
                 <MessageList
                     threads={display.live}
                     paused={!!turn.confirmRequest}
                 />
+
+                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
+                    <AssistantDraftView store={turn.draftStore} phase={turn.modelStream?.phase}/>
+                )}
 
                 {!showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
                     <TodoList
@@ -311,7 +315,6 @@ export function App({
 
                 {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
                     <>
-                        <AssistantDraftView store={turn.draftStore} phase={turn.modelStream?.phase}/>
                         <ModelStreamStatus
                             modelStream={turn.modelStream}
                             progressRef={turn.modelStreamProgressRef}

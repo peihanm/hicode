@@ -6,19 +6,13 @@ import {COLORS} from "../theme.js";
 
 // Multiple-choice dialog shown when the LLM calls ask_user.
 //
-// Based on Claude Code's AskUserQuestionPermissionRequest:
 // - Supports 1-4 questions, displayed individually.
 // - Choosing an option advances automatically.
 // - Type something opens text entry with a Submit button.
 // - After the last answer, show a review screen with Submit/Cancel.
 // - For a single question, submit immediately without the review screen.
 //
-// Simplifications relative to Claude Code:
-// - Single choice only; no multiSelect.
-// - No QuestionNavigationBar tabs.
-// - No Tab/Shift+Tab navigation between questions; forward only.
-// - No preview or annotations.
-// - No extra Chat about this / Respond to Claude options.
+// Questions are single-choice and advance forward without tab navigation.
 //
 // Data flow:
 // LLM calls ask_user({questions: [...]})
@@ -77,7 +71,6 @@ export function AskDialog({
         const newAnswers = {...answers, [currentQ.question]: answer};
 
         // Single-question shortcut: submit directly without the review screen.
-        // See the isSingleQuestion branch in Claude Code's handleQuestionAnswer.
         if (totalQuestions === 1) {
             submitAll(newAnswers);
             return;

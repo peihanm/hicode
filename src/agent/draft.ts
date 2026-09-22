@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import type {AgentEvent} from "./types.js";
 import type {LLMTextUpdate} from "../llm/types.js";
 
-const PREVIEW_CHARS = 8_000;
+const PREVIEW_CHARS = 200_000;
 const PUBLISH_INTERVAL_MS = 80;
 
 export class ResponseDraft {
@@ -22,9 +22,10 @@ export class ResponseDraft {
         }
         await this.drain();
         this.id ??= randomUUID();
+        const available = Math.max(0, PREVIEW_CHARS - this.characters);
         this.characters += update.text.length;
-        this.text = (this.text + update.text).slice(-PREVIEW_CHARS);
-        if (/^[\uDC00-\uDFFF]/.test(this.text)) this.text = this.text.slice(1);
+        this.text += update.text.slice(0, available);
+        if (this.characters > PREVIEW_CHARS && /[\uD800-\uDBFF]$/.test(this.text)) this.text = this.text.slice(0, -1);
         const remaining = PUBLISH_INTERVAL_MS - (Date.now() - this.lastPublished);
         if (remaining <= 0) {
             this.cancelTimer();

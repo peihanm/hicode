@@ -110,13 +110,16 @@ export class UITurnEventStore {
         }
 
         if (event.type === "assistant_draft") {
+            if (!this.draft?.text.trim() && event.text.trim()) this.archiveSettledThreads();
             this.updateDraft(event);
             return;
         }
         if (event.type === "assistant_draft_end") {
-            if (this.draft?.responseId === event.responseId) this.updateDraft(null);
+            if (event.disposition === "discarded" && this.draft?.responseId === event.responseId) this.updateDraft(null);
             return;
         }
+        // Keep the draft until its final text arrives, so the terminal replaces it in one transition.
+        if (event.type === "assistant_text" && event.responseId === this.draft?.responseId) this.updateDraft(null);
         if (event.type === "turn_interrupted") this.updateDraft(null);
         if (event.type === "iteration") {
             this.activeIteration = event.current;
@@ -148,7 +151,7 @@ export class UITurnEventStore {
                     ? {idleMilliseconds: event.idleMilliseconds}
                     : {}),
             };
-            // Like Claude Code's responseLengthRef, each delta updates only the ref;
+            // Each delta updates only the ref;
             // progress within the same phase does not update the root App external store.
             this.modelStreamProgressRef.current = modelStream;
             const phaseChanged = current?.phase !== event.phase;
@@ -364,6 +367,7 @@ export class UITurnEventStore {
     getSnapshot = (): UITurnEventSnapshot => this.snapshot;
 
     settleTurn(): void {
+        this.updateDraft(null);
         this.archiveSettledThreads();
     }
 

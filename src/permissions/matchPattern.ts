@@ -1,5 +1,4 @@
 // Wildcard matching.
-// Based on Claude Code src/utils/permissions/shellRuleMatching.ts.
 //
 // Two modes:
 // 1. prefix:* prefix-rule syntax.

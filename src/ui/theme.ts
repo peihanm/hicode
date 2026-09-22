@@ -26,7 +26,7 @@ export const COLORS = {
     diffText: "#202124",
 } as const;
 
-// Visual symbols in the Codebuddy/Claude Code style.
+// Shared terminal symbols.
 export const SYMBOLS = {
     prompt: "❯",        // Input prompt
     userMark: "❯",      // User message marker

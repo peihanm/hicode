@@ -1,6 +1,4 @@
 // UserContext injection.
-// Based on Claude Code prependUserContext in src/utils/api.ts
-// and normalizeMessagesForAPI, which merges consecutive user messages.
 //
 // A synchronous function returns userContext text fragments without a message wrapper.
 // invokeMessages.ts joins these fragments into one transient user message

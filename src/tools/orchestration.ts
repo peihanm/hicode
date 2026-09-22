@@ -7,7 +7,7 @@ export interface ToolCallBatch {
     calls: ToolCall[];
 }
 
-// Like Claude Code, group adjacent concurrency-safe tools; unsafe tools get exclusive batches.
+// Group adjacent concurrency-safe tools; unsafe tools get exclusive batches.
 export function partitionToolCalls(
     calls: ToolCall[],
     isConcurrencySafe: (name: string, argsJson: string) => boolean

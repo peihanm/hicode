@@ -1,10 +1,5 @@
-// Minimal YAML frontmatter parser.
-// Based on parseSkillFrontmatterFields in Claude Code src/skills/loadSkillsDir.ts.
-//
-// Claude Code supports additional fields such as description, when_to_use, name and allowed-tools,
-// argument-hint/arguments/model/effort/user-invocable/disable-model-invocation/
-// plus version, context, agent, hooks, shell and paths using the yaml package.
-// This parser splits only description and when_to_use without the yaml package.
+// Minimal frontmatter parser for single-line description and when_to_use fields.
+// This is not a general YAML parser; other fields are ignored.
 //
 // Format:
 // ---

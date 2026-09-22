@@ -5,9 +5,32 @@ import {AssistantDraftView} from "../../src/ui/conversation/AssistantDraftView.j
 import {ResponseDraft} from "../../src/agent/draft.js";
 import {Box} from "ink";
 import {ModelStreamStatus} from "../../src/ui/status/ModelStreamStatus.js";
+import {layoutDraft} from "../../src/ui/conversation/draftLayout.js";
 
 afterEach(cleanup);
 const flush = () => new Promise(resolve => setTimeout(resolve, 90));
+
+test("draft layout appends complete rows without emitting terminal control sequences", () => {
+    const first = layoutDraft("first row\nsecond row\nlast", 30);
+    const next = layoutDraft("first row\nsecond row\nlast continued\nnew tail", 30);
+    expect(next.completed).toStartWith(first.completed);
+    expect(next.tail).toBe("new tail");
+    const unsafe = layoutDraft("start\x1b[2J\nnext\x07\ntail", 30);
+    expect(unsafe.completed).not.toContain("\x1b");
+    expect(unsafe.completed).not.toContain("\x07");
+    expect(unsafe.completed).toContain("start");
+});
+
+test("a committed draft remains until final text, but settlement clears an abandoned handoff", () => {
+    const store = new UITurnEventStore();
+    store.handleEvent({type: "assistant_draft", responseId: "pending", text: "visible", truncated: false});
+    store.handleEvent({type: "assistant_draft_end", responseId: "pending", disposition: "committed"});
+    expect(store.getDraftSnapshot()?.text).toBe("visible");
+    expect(store.getPersistedUIEvents()).toHaveLength(0);
+    store.settleTurn();
+    expect(store.getDraftSnapshot()).toBeNull();
+    expect(store.getSnapshot().threads).toHaveLength(0);
+});
 
 test.each(["", "\n\n", "\r\n  \r\n", "\n".repeat(10)])("草稿尾部空白 %j 不扩大与工具状态的间距", (suffix) => {
     const store = new UITurnEventStore();
@@ -60,12 +83,13 @@ test("草稿有界更新独立区域，不改 Static；窄屏 resize 和撤销�
     const draft = new ResponseDraft(store.handleEvent);
     await draft.update({type: "delta", text: "# 代码说明\n```ts\n" + "中".repeat(30_000) + "\n尾部正在生成"});
     await flush();
-    expect(store.getDraftSnapshot()?.text.length).toBeLessThanOrEqual(8_000);
+    expect(store.getDraftSnapshot()?.text.length).toBeLessThanOrEqual(200_000);
+    expect(store.getDraftSnapshot()?.text).toStartWith("# 代码说明");
+    expect(view.lastFrame()).toContain("# 代码说明");
     expect(view.lastFrame()).toContain("尾部正在生成");
     view.rerender(<AssistantDraftView store={store} phase="tool_input"/>);
-    expect(view.lastFrame()).toContain("showing recent text");
+    expect(view.lastFrame()).not.toContain("showing recent text");
     expect(view.lastFrame()).not.toContain("Response commentary");
-    expect(view.lastFrame()?.split("\n").length).toBeLessThanOrEqual(8);
     expect(rootUpdates).toBe(0);
     expect(store.getSnapshot().staticThreads).toBe(staticBefore);
     columns = 28;

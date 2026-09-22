@@ -41,7 +41,6 @@ function boundedErrorMessage(error: unknown): string {
 }
 
 // Menu confirmation dialog: arrow keys select and Enter confirms.
-// Codebuddy-style presentation.
 // resolve returns a PermissionDecision (allow/deny), not a boolean.
 // yes_no_ask invokes onAddToAllowList to generate and persist a rule.
 export function ConfirmDialog({

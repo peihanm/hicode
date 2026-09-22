@@ -4,6 +4,24 @@ import type {AgentEvent} from "../../src/agent/types.js";
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 120));
 
+test("stream snapshots retain the beginning past 8k, with an explicit stable display cap", async () => {
+    const events: AgentEvent[] = [];
+    const draft = new ResponseDraft(event => {events.push(event);});
+    await draft.update({type: "delta", text: "BEGIN " + "a".repeat(10_000)});
+    expect(events[0]).toMatchObject({type: "assistant_draft", text: "BEGIN " + "a".repeat(10_000), truncated: false});
+    await draft.update({type: "delta", text: "b".repeat(210_000)});
+    await settle();
+    const capped = events.at(-1);
+    if (capped?.type !== "assistant_draft") throw new Error("Missing snapshot");
+    expect(capped.text).toStartWith("BEGIN ");
+    expect(capped.text).toHaveLength(200_000);
+    expect(capped.truncated).toBe(true);
+    await draft.update({type: "delta", text: "EXTRA"});
+    await settle();
+    expect(events.at(-1)).toMatchObject({text: capped.text, truncated: true});
+    await draft.finish("discarded");
+});
+
 test("正文最后一段在没有后续 delta 时也会补发", async () => {
     const events: AgentEvent[] = [];
     const draft = new ResponseDraft(event => {events.push(event);});

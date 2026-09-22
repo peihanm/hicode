@@ -6,7 +6,7 @@ import type {Message, OpenAITool} from "../llm/types.js";
 // CJK input is still supported; chars/4 would underestimate it and delay Auto-Compact.
 const DEFAULT_ESTIMATION_CHARS_PER_TOKEN = 2;
 
-// Coarse chars/N estimate; bytesPerToken retains Claude Code's parameter naming.
+// Coarse estimate based on string length rather than UTF-8 byte length.
 function roughTokenCountEstimation(
     content: string,
     bytesPerToken: number = DEFAULT_ESTIMATION_CHARS_PER_TOKEN
@@ -41,8 +41,6 @@ export function estimateMessageTokens(msg: Message): number {
 
 // Estimate tool-schema tokens.
 // The request tools field consumes tokens too, often more than messages, due to descriptions and parameters.
-// Claude Code's tokenCountWithEstimation does not count tools separately, but splitSysPromptPrefix
-// includes them in cache scope. This implementation counts them explicitly.
 function estimateToolsTokens(tools: OpenAITool[]): number {
     return roughTokenCountEstimation(JSON.stringify(tools));
 }

@@ -1,5 +1,4 @@
 // A loaded Skill instance.
-// Simplified from Claude Code's Command type in src/skills/loadSkillsDir.ts.
 export type SkillFileSource = "user" | "project";
 
 interface LoadedSkillContent {
