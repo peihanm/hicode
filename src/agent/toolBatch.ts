@@ -56,6 +56,12 @@ export async function executeToolCallBatch({
                                                executeTool,
                                                isToolConcurrencySafe,
                                            }: ExecuteToolCallBatchInput): Promise<ToolCallBatchResult> {
+    let failure: {error: unknown} | undefined;
+    const notify = async (event: AgentEvent): Promise<void> => {
+        try { await onEvent(event); }
+        catch (error) { failure ??= {error}; }
+    };
+    const throwIfFailed = () => {if (failure) throw failure.error;};
     let nextToolIndex = 0;
     const outcomes: ToolCallOutcome[] = [];
     const startedToolCallIds = new Set<string>();
@@ -84,7 +90,7 @@ export async function executeToolCallBatch({
         }
         budgetEntries = [];
         for (const replacement of replacements) {
-            await onEvent({
+            await notify({
                 type: "tool_result_persisted",
                 toolCallId: replacement.toolCallId,
                 persisted: replacement.persisted,
@@ -94,7 +100,7 @@ export async function executeToolCallBatch({
 
     const emitStart = async (toolCall: ToolCall): Promise<void> => {
         startedToolCallIds.add(toolCall.id);
-        await onEvent({
+        await notify({
             type: "tool_call_start",
             turnId,
             toolCallId: toolCall.id,
@@ -123,7 +129,7 @@ export async function executeToolCallBatch({
             history.push({role: "tool", content, tool_call_id: toolCall.id});
             outcomes.push({toolCallId: toolCall.id, name: toolCall.function.name,
                 argsJson: toolCall.function.arguments, outcome, result: content});
-            await onEvent({
+            await notify({
                 type: "tool_call_end",
                 turnId,
                 toolCallId: toolCall.id,
@@ -135,24 +141,33 @@ export async function executeToolCallBatch({
 
     const executeOne = async (toolCall: ToolCall): Promise<ToolExecutionResult> => {
         await emitStart(toolCall);
-        const execution = await executeTool(
-            toolCall.function.name,
-            toolCall.function.arguments,
-            ctx,
-            toolCall.id
-        );
-        return typeof execution === "string"
-            ? {
-                modelContent: execution,
-                displayContent: execution,
-                outcome: "ok",
-            }
-            : execution;
+        if (failure) return {modelContent: "Tool was not executed because the batch failed", displayContent: "Tool was not executed because the batch failed", outcome: "failed"};
+        try {
+            const execution = await executeTool(
+                toolCall.function.name,
+                toolCall.function.arguments,
+                ctx,
+                toolCall.id
+            );
+            return typeof execution === "string"
+                ? {
+                    modelContent: execution,
+                    displayContent: execution,
+                    outcome: "ok",
+                }
+                : execution;
+        } catch (error) {
+            failure ??= {error};
+            const content = isTurnInterruptedError(error, ctx.signal) ? formatInterruptedToolResult(ctx.signal)
+                : `Tool execution error: ${error instanceof Error ? error.message : String(error)}`;
+            return {modelContent: content, displayContent: content, outcome: ctx.signal.aborted ? "interrupted" : "failed"};
+        }
     };
 
     try {
         const groups = partitionToolCalls(toolCalls, isToolConcurrencySafe);
         for (const group of groups) {
+            throwIfFailed();
             if (ctx.signal.aborted) {
                 await appendSyntheticResults(nextToolIndex, "interrupted");
                 await finalizeBudget();
@@ -171,21 +186,14 @@ export async function executeToolCallBatch({
             for (let index = 0; index < group.calls.length; index++) {
                 const toolCall = group.calls[index]!;
                 const execution = executions[index]!;
+                if (history.some(message => message.role === "tool" && message.tool_call_id === toolCall.id)) {
+                    nextToolIndex++;
+                    continue;
+                }
                 const interrupted = ctx.signal.aborted && toolFileChanges(execution.uiData).length === 0;
                 const interruptedContent = interrupted
                     ? formatInterruptedToolResult(ctx.signal)
                     : undefined;
-                await onEvent({
-                    type: "tool_call_end",
-                    turnId,
-                    toolCallId: toolCall.id,
-                    result: interruptedContent ?? execution.displayContent,
-                    outcome: interrupted ? "interrupted" : execution.outcome,
-                    ...(execution.persisted ? {persisted: execution.persisted} : {}),
-                    ...(!interrupted && execution.uiData
-                        ? {uiData: execution.uiData}
-                        : {}),
-                });
                 const messageIndex = history.length;
                 history.push({
                     role: "tool",
@@ -211,8 +219,20 @@ export async function executeToolCallBatch({
                     });
                 }
                 nextToolIndex += 1;
+                await notify({
+                    type: "tool_call_end",
+                    turnId,
+                    toolCallId: toolCall.id,
+                    result: interruptedContent ?? execution.displayContent,
+                    outcome: interrupted ? "interrupted" : execution.outcome,
+                    ...(execution.persisted ? {persisted: execution.persisted} : {}),
+                    ...(!interrupted && execution.uiData
+                        ? {uiData: execution.uiData}
+                        : {}),
+                });
             }
 
+            throwIfFailed();
             if (ctx.signal.aborted) {
                 await appendSyntheticResults(nextToolIndex, "interrupted");
                 await finalizeBudget();
@@ -222,6 +242,7 @@ export async function executeToolCallBatch({
         }
 
         await finalizeBudget();
+        throwIfFailed();
         status = "completed";
         return {status: "completed", outcomes};
     } catch (error) {

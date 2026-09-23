@@ -13,6 +13,7 @@ import {hasCompleteToolPairs} from "./codec.js";
 
 import type {SessionArchiveRecord} from "./archiveSchema.js";
 export interface SessionArchiveDraft {
+    indexPath: string;
     record: SessionArchiveRecord;
     messages: Exclude<Message, {role: "system"}>[];
 }
@@ -37,7 +38,7 @@ export function prepareSessionArchive(storage: HiCodeStorageLayout, cwd: string,
     });
     if (!messages.length || !hasCompleteToolPairs(messages)) throw new Error("Compaction archive requires complete tool groups");
     const data = {createdAt: new Date().toISOString(), messages: messages.map(value => blocks.stage({kind: "message", value}))};
-    return {record: {...data, id: recordId(data)}, messages};
+    return {indexPath: archiveIndexPath(storage, cwd, sessionId, recordId(data)), record: {...data, id: recordId(data)}, messages};
 }
 
 export function readArchiveMessages(record: SessionArchiveRecord, blocks: SessionContentStore): Exclude<Message, {role: "system"}>[] {
@@ -87,13 +88,16 @@ export async function collectArchiveViews(storage: HiCodeStorageLayout, cwd: str
 }
 
 /** A derived view grants access only while its record belongs to this Session's active state. */
-export function createSessionArchiveAccess(storage: HiCodeStorageLayout, cwd: string, sessionId: string, getState: () => CompactState): SessionArchiveAccess {
+export function createSessionArchiveAccess(storage: HiCodeStorageLayout, cwd: string, sessionId: string, getState: () => CompactState, inherited?: SessionArchiveAccess): SessionArchiveAccess {
     const directory = getSessionArchiveDirectory(storage, cwd, sessionId);
     return {async resolve(path) {
         path = resolve(path);
         if (!isSessionArchivePath(storage, path)) return null;
+        if (dirname(path) !== directory) {
+            if (inherited) return inherited.resolve(path);
+            throw new Error("Cannot read compaction archives from another Session");
+        }
         return withFileLock(getSessionPersistenceLockPath(storage, cwd, sessionId), async () => {
-        if (dirname(path) !== directory) throw new Error("Cannot read compaction archives from another Session");
         const match = /^([a-f0-9]{64})-(index|[1-9][0-9]{0,3})\.txt$/.exec(basename(path));
         const record = match && getState().archives?.find(item => item.id === match[1]);
         if (!record || !match) throw new Error("Compaction archive is outside the current resumed branch");

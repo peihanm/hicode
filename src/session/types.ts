@@ -26,6 +26,7 @@ export interface SessionIndexFile {
 }
 
 export interface SessionSnapshotEntry {
+    visibility?: "internal";
     type: "snapshot";
     version: typeof SESSION_ENTRY_VERSION;
     sessionId: string;

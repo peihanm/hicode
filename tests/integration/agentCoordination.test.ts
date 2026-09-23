@@ -49,13 +49,13 @@ test("background worker exchanges bounded messages through tools; idle messages 
             options => {
                 expectPaired(options.messages);
                 expect(options.messages.find(item => item.role === "user" && typeof item.content === "string" && item.content.includes("Use interface A")))
-                    .toMatchObject({origin: "agent"});
+                    .toMatchObject({origin: "assignment"});
                 return assistantText("Implemented interface A");
             },
             options => {
                 expectPaired(options.messages);
                 for (const text of ["An idle note", "Now check the interface"]) {
-                    expect(options.messages.find(item => item.role === "user" && typeof item.content === "string" && item.content.includes(text))).toMatchObject({origin: "agent"});
+                    expect(options.messages.find(item => item.role === "user" && typeof item.content === "string" && item.content.includes(text))).toMatchObject({origin: "assignment"});
                 }
                 expect(JSON.stringify(options.messages)).toContain("An idle note");
                 expect(JSON.stringify(options.messages)).toContain("Now check the interface");

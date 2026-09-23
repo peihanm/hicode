@@ -31,7 +31,7 @@ import {
 import {createSessionValueFreezer} from "./contentStore.js";
 
 /** Serial persistence belongs to the Session, shared by tools, compaction and every Host. */
-export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: string, sessionId: string) {
+export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: string, sessionId: string, visibility: "listed" | "internal" = "listed") {
     const commit = createSessionSnapshotCommitter(storage, cwd, sessionId);
     const limitUIEvents = createSessionUIEventLimiter();
     const freezeSessionValue = createSessionValueFreezer();
@@ -47,7 +47,7 @@ export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: stri
             uiEvents: preserveConversation ? [] : input.uiEvents?.map(event => freezeSessionValue(event)),
             ...(preserveConversation ? {summaryHint: summarizeSessionHistory(input.history).summary ?? input.summaryHint} : {}),
         };
-        const operation = pending.then(() => saveSnapshot(storage, snapshot, commit, limitUIEvents, preserveConversation, message => {if (issues.size < 8) issues.add(message);}, compaction));
+        const operation = pending.then(() => saveSnapshot(storage, snapshot, commit, limitUIEvents, preserveConversation, message => {if (issues.size < 8) issues.add(message);}, compaction, visibility));
         pending = operation.catch(() => undefined);
         return operation;
     };
@@ -65,7 +65,7 @@ export function createSessionId(): string {
 
 async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnapshotInput,
     commit: ReturnType<typeof createSessionSnapshotCommitter>, limitUIEvents: ReturnType<typeof createSessionUIEventLimiter>,
-    preserveConversation: boolean, onIssue: (message: string) => void, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}): Promise<void> {
+    preserveConversation: boolean, onIssue: (message: string) => void, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, visibility: "listed" | "internal"): Promise<void> {
     const conversation = stripSystemMessage(input.history);
     const summarized = summarizeSessionHistory(conversation);
     const hint = input.summaryHint
@@ -85,6 +85,7 @@ async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnap
         const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
         const entry: SessionSnapshotEntry = {
             type: "snapshot",
+            ...(visibility === "internal" ? {visibility} : {}),
             version: SESSION_ENTRY_VERSION,
             sessionId: input.sessionId,
             cwd: input.cwd,
@@ -103,7 +104,7 @@ async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnap
             ...(toolDiscovery ? {toolDiscovery} : {}),
         };
 
-        if (!await commit(entry, compaction, preserveConversation)) return;
+        if (!await commit(entry, compaction, preserveConversation) || visibility === "internal") return;
         let priorIndex: SessionIndexEntry | undefined;
         try { priorIndex = preserveConversation ? readSessionIndex(storage, input.cwd).sessions.find(item => item.sessionId === input.sessionId) : undefined; } catch {}
         const updateProjections = async () => {
@@ -144,7 +145,7 @@ export function loadSession(
     model: string
 ): LoadedSession | null {
     const snapshot = readLatestSessionSnapshot(storage, cwd, sessionId);
-    if (!snapshot) return null;
+    if (!snapshot || snapshot.visibility === "internal") return null;
     let index: SessionIndexEntry | undefined;
     try { index = readSessionIndex(storage, cwd).sessions.find(entry => entry.sessionId === sessionId); } catch {}
     return {

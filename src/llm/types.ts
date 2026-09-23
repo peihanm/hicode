@@ -15,7 +15,7 @@ export interface ToolCall {
     };
 }
 
-export type UserMessageOrigin = "user" | "task_notification" | "runtime" | "compaction" | "agent";
+export type UserMessageOrigin = "user" | "task_notification" | "runtime" | "compaction" | "agent" | "assignment";
 
 export type Message =
     | { role: "system"; content: string }

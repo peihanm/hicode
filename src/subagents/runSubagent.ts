@@ -1,3 +1,5 @@
+import {createSessionPersistence} from "../session/storage.js";
+import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {childTaskTool} from "../tools/task/task.js";
 import {createToolCatalog} from "../tools/catalog.js";
 import {createChildTaskAccess} from "../tasks/childAccess.js";
@@ -103,6 +105,13 @@ export function createSubagentFactories(
             ? structuredClone(request.contextSnapshot.history)
             : [];
         const childCompactState = createCompactState();
+        const storageCwd = options.storageCwd ?? parentContext.cwd;
+        const persistence = createSessionPersistence(parentContext.storage, storageCwd, childSessionId, "internal");
+        const inheritedState = request.contextSnapshot ? structuredClone(parentContext.compactState) : undefined;
+        const inheritedArchives = inheritedState ? createSessionArchiveAccess(parentContext.storage, storageCwd,
+            parentContext.sessionId, () => inheritedState) : undefined;
+        const archiveAccess = createSessionArchiveAccess(parentContext.storage, storageCwd, childSessionId,
+            () => childCompactState, inheritedArchives);
         const childContextUsage = new ContextUsageTracker();
         const childFileState = createFileStateTracker();
         const childToolResultStore = dependencies.createToolResultStore(
@@ -216,6 +225,17 @@ export function createSubagentFactories(
                             },
                         },
                     });
+                    const snapshot = (history = childHistory, compactState = childCompactState) => ({
+                        cwd: storageCwd, sessionId: childSessionId, model: childModel, history, compactState,
+                        todos: childTodos, permissionMode: "ask" as const, collaborationMode, allowEmpty: true,
+                        toolDiscovery: runtime.getToolDiscoverySnapshot(),
+                    });
+                    childContext.sessionArchives = archiveAccess;
+                    childContext.sessionCompaction = {
+                        prepare: history => prepareSessionArchive(parentContext.storage, storageCwd, childSessionId, history),
+                        commit: (history, state, draft) => persistence.compact(snapshot(history, state), draft, input.signal),
+                    };
+                    childContext.commitToolBatch = () => persistence.save(snapshot());
                     const executeChildTool: typeof runtime.executeTool = async (name, args, context, callId) => {
                         try {
                             const current = await resolveSubagentDirectory(parentContext, request.cwd);
@@ -340,12 +360,14 @@ export function createSubagentFactories(
                                 (childTodos.length && !todosUpdatedThisRun ? "The unfinished plan is carried forward; continue or revise it honestly. " : "") +
                                 "For multi-step work, use todo_write for this assignment and update it at phase changes. A prior completed plan does not track new work. Do not claim progress updates without calling the tool. Trivial follow-ups need no plan.",
                             ],
-                            inputOrigin: "agent",
+                            inputOrigin: "assignment",
                             getToolSchemas: runtime.getToolSchemas,
                             isToolConcurrencySafe: runtime.isConcurrencySafe,
                             executeTool: executeChildTool,
                         }
                     );
+                    try { await persistence.save(snapshot()); }
+                    catch { transcriptIssue = "Subagent snapshot could not be saved; the report is available only in this process."; }
                     if ((result.reason === "completed" || result.reason === "no_tool_calls") &&
                         childTodos.some(todo => todo.status !== "completed")) {
                         result = {...result, reason: "incomplete",

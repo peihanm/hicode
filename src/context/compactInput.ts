@@ -24,7 +24,7 @@ export function selectCompactInput(input: {
     const mandatory = new Set<number>();
     // The prior handoff is part of History, not a second mutable state object.
     if (conversation[0]?.role === "user" && conversation[0].origin === "compaction") mandatory.add(0);
-    const latest = conversation.findLastIndex(message => message.role === "user" && (message.origin === "user" || message.origin === "agent"));
+    const latest = conversation.findLastIndex(message => message.role === "user" && (message.origin === "user" || message.origin === "assignment"));
     if (latest >= 0) mandatory.add(latest);
     const fixed = tokenCountWithEstimation([system, {role: "user", origin: "runtime" as const, content: prompt}]) +
         [...mandatory].reduce((sum, index) => sum + estimateMessageTokens(labelled[index]!), 0);

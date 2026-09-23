@@ -358,8 +358,7 @@ describe("Agent tool-call batch", () => {
         "safe-ok",
         "unsafe-tail",
       ]);
-      expect(toolMessages(history).every((message) => contentText(message.content).includes("parallel exploded")))
-        .toBe(true);
+      expect(toolMessages(history).map(message => message.content)).toEqual(["Tool execution error: parallel exploded", "completed but not committed", "Tool execution error: parallel exploded"]);
     });
   });
 
@@ -425,5 +424,37 @@ describe("Agent tool-call batch", () => {
           .map((event) => event.result)
       ).toEqual(["safe-large display", "write-large display"]);
     });
+  });
+});
+
+test.each([false, true])("observer failure preserves executed results and completes all pairs (parallel=%s)", async parallel => {
+  await withTempProject(async cwd => {
+    const calls = [call("read_file", "one"), call("read_file", "two"), call("write_file", "three")];
+    const history: Message[] = [{role: "assistant", content: null, tool_calls: calls}];
+    let executed = 0;
+    await expect(executeToolCallBatch({toolCalls: calls, history, ctx: createTestContext(cwd), turnId: "observer",
+      isToolConcurrencySafe: name => parallel && name === "read_file",
+      onEvent: event => {if (event.type === "tool_call_end") throw new Error("display unavailable");},
+      executeTool: async () => {executed++; return "committed";},
+    })).rejects.toThrow("display unavailable");
+    const results = toolMessages(history);
+    expect(results).toHaveLength(3);
+    expect(new Set(results.map(result => result.tool_call_id)).size).toBe(3);
+    expect(executed).toBe(parallel ? 2 : 1);
+    expect(results.slice(0, executed).every(result => result.content === "committed")).toBe(true);
+  });
+});
+
+test("a throwing parallel executor does not erase its successful sibling", async () => {
+  await withTempProject(async cwd => {
+    const calls = [call("read_file", "bad"), call("read_file", "good")];
+    const history: Message[] = [{role: "assistant", content: null, tool_calls: calls}];
+    const bothStarted = deferred(); let count = 0;
+    await expect(executeToolCallBatch({toolCalls: calls, history, ctx: createTestContext(cwd), turnId: "parallel-error",
+      isToolConcurrencySafe: () => true, onEvent: () => {},
+      executeTool: async (_name, _args, _ctx, id) => {if (++count === 2) bothStarted.resolve(); await bothStarted.promise;
+        if (id === "bad") throw new Error("executor failed"); return "observed";},
+    })).rejects.toThrow("executor failed");
+    expect(toolMessages(history).map(result => result.content)).toEqual(["Tool execution error: executor failed", "observed"]);
   });
 });

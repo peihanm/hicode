@@ -25,7 +25,7 @@ export interface AgentToolBindings {
 }
 
 export interface AgentRunOptions extends AgentToolBindings {
-    inputOrigin?: "user" | "agent";
+    inputOrigin?: "user" | "assignment";
     maxIterations?: number;
     /** Read Host-owned Todo truth for progress reminders and completion checks. */
     getTodos?: () => readonly Todo[];
@@ -169,7 +169,7 @@ async function runAgentCore(
     const appendQueuedInputs = async (inputs: readonly QueuedAgentInput[]) => {
         const accepted = inputs.filter(input => !ctx.agentJoin || ctx.agentJoin.accepts(input));
         for (const input of accepted) {
-            history.push({role: "user", origin: input.source === "user_input" ? "user" : input.source === "agent_message" ? "agent" : "task_notification", content: input.content});
+            history.push({role: "user", origin: input.source === "user_input" ? "user" : input.source === "agent_message" ? (options.inputOrigin === "assignment" ? "assignment" : "agent") : "task_notification", content: input.content});
         }
         for (const input of accepted) {
             await ctx.agentJoin?.consume(input);

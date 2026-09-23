@@ -35,6 +35,7 @@ export async function repairSessionIndex(storage:HiCodeStorageLayout,cwd:string)
      getSessionStorageDirectory(storage,cwd,raw.sessionId)!==join(root,directory.name))throw new Error("Session identity mismatch");
     const snapshot=readLatestSessionSnapshot(storage,cwd,raw.sessionId);
     if(!snapshot)throw new Error("Missing snapshot");
+    if(snapshot.visibility === "internal")continue;
     sessions.push({sessionId:snapshot.sessionId,cwd:snapshot.cwd,model:snapshot.model,
      createdAt:snapshot.timestamp,updatedAt:snapshot.timestamp,messageCount:countSessionConversationMessages(snapshot.conversation),
      summary:summarizeSessionHistory(snapshot.conversation).summary});

@@ -75,7 +75,7 @@ const toolCallSchema = z.object({
 const messageSchema = z.discriminatedUnion("role", [
     z.object({
         role: z.literal("user"),
-        origin: z.enum(["user", "task_notification", "runtime", "compaction", "agent"]),
+        origin: z.enum(["user", "task_notification", "runtime", "compaction", "agent", "assignment"]),
         content: z.union([boundedString(MAX_MESSAGE_CONTENT_BYTES), z.array(z.union([z.object({type: z.literal("text"), text: boundedString(MAX_MESSAGE_CONTENT_BYTES)}).strict(), imageReferenceSchema])).min(1).max(32)]),
     }).strict(),
     z.object({
@@ -203,6 +203,7 @@ export function decodeSessionContentBlock(value: unknown) {
 
 const sessionEntryBase = {
     version: z.literal(SESSION_ENTRY_VERSION),
+    visibility: z.literal("internal").optional(),
     sessionId: idSchema,
     cwd: z.string().min(1).max(MAX_PATH_CHARS),
     model: z.string().min(1).max(MAX_MODEL_CHARS),
