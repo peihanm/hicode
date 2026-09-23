@@ -162,6 +162,7 @@ class TaskRuntime implements TaskRuntimeLike {
     private readonly notifications = new TaskNotificationCenter();
     private readonly pendingAgentStarts = new Map<string, number>();
     private pendingTaskStarts = 0;
+    private readonly starts = new Set<Promise<unknown>>();
     private sequence = 0;
     private closed = false;
     private closePromise: Promise<void> | undefined;
@@ -187,7 +188,24 @@ class TaskRuntime implements TaskRuntimeLike {
         return new TaskSession(this, binding);
     }
 
-    async startMemory(binding:TaskSessionBinding,input:StartMemoryTaskInput):Promise<MemoryTaskSnapshot|undefined> {
+    private trackStart<T>(operation: () => Promise<T>): Promise<T> {
+        this.assertOpen();
+        const started = Promise.resolve().then(operation);
+        this.starts.add(started);
+        return started.finally(() => this.starts.delete(started));
+    }
+
+    startMemory(binding: TaskSessionBinding, input: StartMemoryTaskInput): Promise<MemoryTaskSnapshot | undefined> {
+        return this.trackStart(() => this.startMemoryOwned(binding, input));
+    }
+    startShell(binding: TaskSessionBinding, input: StartShellTaskInput): Promise<ShellTaskSnapshot> {
+        return this.trackStart(() => this.startShellOwned(binding, input));
+    }
+    startAgent(binding: TaskSessionBinding, input: StartAgentTaskInput): Promise<AgentTaskSnapshot> {
+        return this.trackStart(() => this.startAgentOwned(binding, input));
+    }
+
+    private async startMemoryOwned(binding:TaskSessionBinding,input:StartMemoryTaskInput):Promise<MemoryTaskSnapshot|undefined> {
         this.assertOpen();
         if(!this.memory.enabled)return undefined;
         if(input.baseline)await this.memory.captureSource(binding.sessionId,input.baseline,input.signal);
@@ -225,7 +243,7 @@ class TaskRuntime implements TaskRuntimeLike {
         }finally{release();}
     }
 
-    async startShell(
+    private async startShellOwned(
         binding: TaskSessionBinding,
         input: StartShellTaskInput
     ): Promise<ShellTaskSnapshot> {
@@ -278,13 +296,13 @@ class TaskRuntime implements TaskRuntimeLike {
         }
     }
 
-    async startAgent(
+    private async startAgentOwned(
         binding: TaskSessionBinding,
         input: StartAgentTaskInput
     ): Promise<AgentTaskSnapshot> {
         this.assertOpen();
         validateAgentTaskInput(input, this.subagents);
-        const releaseTaskSlot = this.reserveTaskSlot();
+        const releaseTaskSlot = this.reserveTaskSlot(true);
         let releaseAgentSlot: (() => void) | undefined;
         try {
             releaseAgentSlot = this.reserveAgentSlot(binding.sessionId);
@@ -509,7 +527,9 @@ class TaskRuntime implements TaskRuntimeLike {
                 if (isAgentTask(task)) {task.stopRequested = true; task.interruptRequested = false;}
                 task.controller.abort("shutdown");
             }
-            await Promise.allSettled(running.map((task) => task.completion));
+            // Starts own allocation/publication too; a Task may still hold its placeholder completion.
+            await Promise.allSettled([...this.starts]);
+            await Promise.allSettled([...this.tasks.values()].map(task => task.completion));
         })();
         return this.closePromise;
     }
@@ -545,14 +565,16 @@ class TaskRuntime implements TaskRuntimeLike {
         ).length;
     }
 
-    private reserveTaskSlot(): () => void {
-        if (
-            this.tasks.size + this.archived.size + this.pendingTaskStarts >=
-            MAX_TRACKED_TASKS
-        ) {
+    private reserveTaskSlot(agent = false): () => void {
+        const retainedAgent = (task: ManagedTask) => isAgentTask(task) && !task.stopRequested && task.status !== "cancelled";
+        const retained = [...this.tasks.values()].filter(retainedAgent).length;
+        if (agent && retained >= MAX_TRACKED_TASKS) {
+            throw new Error(`Retained Agent limit reached: ${MAX_TRACKED_TASKS}; use task stop to explicitly close an Agent before starting another. Existing threads remain available for follow-up.`);
+        }
+        while (this.tasks.size - retained + this.archived.size + this.pendingTaskStarts + (agent ? 0 : 1) > MAX_TRACKED_TASKS) {
             let evicted = false;
             for (const [id, task] of this.tasks) {
-                if (task.status === "running" || task.notificationPending) continue;
+                if (retainedAgent(task) || task.status === "running" || task.notificationPending) continue;
                 this.tasks.delete(id);
                 evicted = true;
                 break;

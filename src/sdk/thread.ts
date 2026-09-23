@@ -159,7 +159,7 @@ class SDKThreadImpl implements SessionThread {
         input: TurnInput,
         options: TurnOptions = {}
     ): Promise<StreamedTurn> {
-        validateTurnOptions(options);
+        this.validateOptions(options);
         if (this.closed) throw new HiCodeSDKError("thread_closed", `Thread is closed: ${this.id}`);
         if (this.activeRun || this.preparing) throw new HiCodeSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
         let copied: TurnInput;
@@ -182,8 +182,15 @@ class SDKThreadImpl implements SessionThread {
         }, options);
     }
 
-    private async prepareImageInput(prepare: (signal: AbortSignal) => Promise<MessageContent>, options: TurnOptions): Promise<StreamedTurn> {
+    private validateOptions(options: TurnOptions): void {
         validateTurnOptions(options);
+        if ((options.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) {
+            throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
+        }
+    }
+
+    private async prepareImageInput(prepare: (signal: AbortSignal) => Promise<MessageContent>, options: TurnOptions): Promise<StreamedTurn> {
+        this.validateOptions(options);
         if (this.closed) throw new HiCodeSDKError("thread_closed", `Thread is closed: ${this.id}`);
         if (this.activeRun || this.preparing) throw new HiCodeSDKError("thread_busy", `Thread already has an active Turn: ${this.id}`);
         const controller = new AbortController();
@@ -210,6 +217,7 @@ class SDKThreadImpl implements SessionThread {
         prompt: MessageContent,
         turnOptions: TurnOptions
     ): AsyncGenerator<ThreadEvent> {
+        this.validateOptions(turnOptions);
         if (this.closed) {
             throw new HiCodeSDKError(
                 "thread_closed",
@@ -294,7 +302,6 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
-        if ((turnOptions.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         if (turnOptions.permissionMode !== undefined || turnOptions.collaborationMode !== undefined) this.options.session.invalidateApprovals();
         if (turnOptions.permissionMode !== undefined) {
             this.options.state.permissionMode = turnOptions.permissionMode;

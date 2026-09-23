@@ -958,3 +958,12 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
         } finally {await thread.close(); await resources.close();}
     });
 });
+
+ test("Host-disallowed per-turn Full Access fails before opening an SDK stream", async () => withTempProject(async (cwd, storage) => {
+    const resources = createTestRuntimeResources(cwd, {storage, allowFullAccess: false});
+    const thread = await createSDKThread({resources,
+        seed: {sessionId: "denied-stream", history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+        state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+    try {await expect(thread.runStreamed("hello", {permissionMode: "full-access"})).rejects.toMatchObject({code: "permission_mode_not_allowed"});}
+    finally {await thread.close(); await resources.close();}
+}));

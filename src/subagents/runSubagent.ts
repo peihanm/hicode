@@ -87,10 +87,14 @@ export function createSubagentFactories(
             (tool.name !== "skill" || parentContext.skills.length > 0))
             .map(tool => tool.name === "task" ? childTaskTool(tool) : tool);
         const builtinNames = new Set(createToolCatalog({}).tools.map(tool => tool.name));
+        const allowedNames = new Set(tools.map(tool => tool.name));
+        const inheritedMcpNames = new Set(tools.filter(tool => tool.name.startsWith("mcp__")).map(tool => tool.name));
+        const fixedAdditional = tools.filter(tool => !builtinNames.has(tool.name) && !inheritedMcpNames.has(tool.name));
         const runtime = createToolRuntime({
             allowedToolNames: tools.map(tool => tool.name),
             toolOverrides: tools.filter(tool => builtinNames.has(tool.name)),
-            additionalTools: tools.filter(tool => !builtinNames.has(tool.name)),
+            getAdditionalTools: () => [...fixedAdditional,
+                ...parentContext.mcpManager?.getTools().filter(tool => allowedNames.has(tool.name)) ?? []],
         });
         const childSkills = definition.source === "builtin" && definition.agentType === "Explore" ? [] : structuredClone(parentContext.skills);
         const childTasks = parentContext.tasks ? createChildTaskAccess(parentContext.tasks, parentContext.toolResultFiles) : undefined;

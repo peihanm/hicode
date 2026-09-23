@@ -421,3 +421,61 @@ describe("TaskRuntime", () => {
         });
     });
 });
+
+test("close waits for a Shell startup and its cancellation cleanup", async () => withTempProject(async cwd => {
+    let finish!: () => void, started!: () => void;
+    const cleanup = new Promise<void>(resolve => {finish = resolve;});
+    const executing = new Promise<void>(resolve => {started = resolve;});
+    let closed = false, close: Promise<void> | undefined;
+    const runner: ShellRunnerLike = {sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
+        async run(request) {expect(request.signal.aborted).toBe(true); started(); await cleanup;
+            return {stdout: "", stderr: "", termination: {kind: "aborted", reason: "shutdown"}, outputBytes: 0, outputComplete: true};}};
+    const runtime = createTaskRuntimeForTest(cwd, runner);
+    const session = runtime.forSession({sessionId: "startup-close", toolResultStore: createTestToolResultStore(cwd, "startup-close")});
+    session.subscribe(event => {if (event.type === "task_started") close = runtime.close().then(() => {closed = true;});});
+    const pending = session.startShell({command: "fixture", cwd, toolCallId: "start", waitMs: 100});
+    await executing; await Promise.resolve();
+    expect(closed).toBe(false);
+    finish(); await pending; await close;
+    expect(closed).toBe(true); expect(session.hasRunning()).toBe(false);
+}));
+
+test("Shell history eviction preserves idle Agent threads and follow-up", async () => withTempProject(async cwd => {
+    const runner: ShellRunnerLike = {sandboxStatus: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []},
+        async run() {return {stdout: "", stderr: "", termination: {kind: "exit", code: 0, signal: null}, outputBytes: 0, outputComplete: true};}};
+    let runs = 0;
+    const runtime = createTaskRuntimeForTest(cwd, runner, (options, request) => ({agentId: options.agentId, async run() {
+        runs++; return {agentId: options.agentId, agentType: request.agentType, description: request.description,
+            reply: "done", reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 0};}}));
+    try {
+        const session = runtime.forSession({sessionId: "retain-agent", toolResultStore: createTestToolResultStore(cwd, "retain-agent")});
+        let finish!: () => void;
+        const completed = new Promise<void>(resolve => {finish = resolve;});
+        session.subscribe(event => {if (event.type === "task_finished" && event.task.kind === "agent") finish();});
+        const first = await session.startAgent({parentContext: createTestContext(cwd), request: {
+            agentType: "Worker", description: "keep", prompt: "finish", parentToolCallId: "spawn"}});
+        await completed;
+        for (const notification of await session.pendingNotifications()) await session.acknowledgeNotification(notification);
+        for (let i = 0; i < 34; i++) await session.startShell({command: `fixture-${i}`, cwd, toolCallId: `shell-${i}`});
+        expect(await session.get(first.id)).toMatchObject({kind: "agent", status: "completed"});
+        expect((await session.list()).filter(task => task.kind === "shell")).toHaveLength(32);
+        await session.followup(first.id, "continue");
+        await session.interrupt(first.id);
+        expect(runs).toBe(2);
+        // A new Agent never silently evicts another thread at the retention limit.
+        for (let i = 0; i < 31; i++) {
+            const completed = new Promise<void>(resolve => {finish = resolve;});
+            await session.startAgent({parentContext: createTestContext(cwd), request: {
+                agentType: "Worker", description: `retained-${i}`, prompt: "finish", parentToolCallId: `spawn-${i}`}});
+            await completed;
+            for (const notification of await session.pendingNotifications()) await session.acknowledgeNotification(notification);
+        }
+        await expect(session.startAgent({parentContext: createTestContext(cwd), request: {
+            agentType: "Worker", description: "overflow", prompt: "finish", parentToolCallId: "overflow"}})).rejects.toThrow("Retained Agent limit");
+        expect(await session.get(first.id)).toBeDefined();
+        await session.stop(first.id);
+        await session.startAgent({parentContext: createTestContext(cwd), request: {
+            agentType: "Worker", description: "replacement", prompt: "finish", parentToolCallId: "replacement"}});
+        expect((await session.list()).length).toBeLessThanOrEqual(64);
+    } finally {await runtime.close();}
+}));
