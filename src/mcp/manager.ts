@@ -183,12 +183,12 @@ class McpManager implements McpManagerLike {
         this.emit();
     }
 
-    async waitForRefresh(signal: AbortSignal): Promise<void> {
+    private async waitForRefresh(connection: MutableConnection, signal: AbortSignal): Promise<void> {
         signal.throwIfAborted();
-        if (!this.connections.some(item => item.snapshot.status === "refreshing")) return;
+        if (connection.snapshot.status !== "refreshing") return;
         await new Promise<void>((resolve, reject) => {
             const finish = () => {
-                if (!signal.aborted && this.connections.some(item => item.snapshot.status === "refreshing")) return;
+                if (!signal.aborted && connection.snapshot.status === "refreshing") return;
                 unsubscribe();
                 signal.removeEventListener("abort", finish);
                 if (signal.aborted) reject(signal.reason);
@@ -210,7 +210,7 @@ class McpManager implements McpManagerLike {
         const next: Tool[] = [];
         // Validate the full catalog before publishing any portion of it.
         const adapted = adaptMcpTools({...connected, callTool: async (name, args, signal) => {
-            await this.waitForRefresh(signal);
+            await this.waitForRefresh(connection, signal);
             const qualifiedName = buildMcpToolName(connection.server.name, name);
             if (this.closed || this.options.signal?.aborted || connection.controller?.signal.aborted ||
                 connection.generation !== generation || connection.snapshot.status !== "connected" ||

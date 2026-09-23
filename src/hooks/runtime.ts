@@ -192,7 +192,7 @@ class ConfiguredHookRuntime implements HookRuntime {
                     }
                 }
                 if (expired()) {await fail(signal.aborted ? "Hook cancelled" : "Hook dispatch deadline exhausted"); continue;}
-                let envelope: HookEnvelope = {version: 2, cwd: this.options.cwd, hook_id: identity.hookId,
+                let envelope: HookEnvelope = {version: 2, cwd: this.options.cwd, ...(context?.actor ? {actor: context.actor} : {}), hook_id: identity.hookId,
                     dispatch_id: dispatchId, execution_id: identity.executionId, purpose: hook.purpose,
                     source: matcher.source === "host" ? {source: "host", id: matcher.id} : {source: matcher.source, path: matcher.path},
                     event: effectiveInput};

@@ -1,5 +1,5 @@
 import {expect, test} from "bun:test";
-import {mkdir, writeFile} from "node:fs/promises";
+import {mkdir, writeFile, realpath} from "node:fs/promises";
 import {join} from "node:path";
 import {createAgentRunner, EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/index.js";
 import type {AgentEvent} from "../../src/agent/types.js";
@@ -276,3 +276,45 @@ test("Root /hooks reload 仅重读声明来源，活动 Turn 禁止重载，坏�
         } finally {await resources.close();}
     });
 });
+
+test("delegated tools enforce approved policies and keep independent once state across follow-up", async () => withTempProject(async (cwd, storage) => {
+    const envelopes: HookEnvelope[] = [];
+    const hooks = {...resolvedHooks("PreToolUse", [{type:"command",purpose:"control",command:"policy"}]),
+        PostToolUse: resolvedHooks("PostToolUse", [{type:"command",purpose:"observe",command:"audit",once:true}]).PostToolUse};
+    const resources = await createRootRuntimeResourcesFactory({createHookRuntime:createHookRuntimeFactory({
+        getTrust:async()=>"allow",executeCommand:async({stdin})=>{
+            const envelope:HookEnvelope=JSON.parse(stdin);envelopes.push(envelope);
+            const event=envelope.event;
+            const blocked=event.hook_event_name==="PreToolUse"&&String(event.tool_input.path).includes("blocked");
+            return {stdout:JSON.stringify(blocked?{decision:"block",reason:"project policy"}:event.hook_event_name==="PreToolUse"?{decision:"pass"}:{}),stderr:"",termination:{kind:"exit",code:0}};
+        },
+    })})({configuration:createTestRootConfiguration(cwd,createTestSettings({hooks}),storage,sources)});
+    const session=sessionFor(resources);
+    const childCwd=join(cwd,"child");await mkdir(childCwd);await writeFile(join(childCwd,"allowed.txt"),"allowed");
+    try {
+        await session.initialize();
+        const ctx=session.createContext({signal:new AbortController().signal,host,onEvent:()=>{},getSnapshotState:state});
+        expect(ctx.toolHooks).toBeDefined();
+        expect("reload" in ctx.toolHooks!).toBe(false);
+        const workerModel=createFakeLLM([
+            assistantToolCall("read_file",{path:"allowed.txt"},"read-1"),assistantText("read"),
+            assistantToolCall("read_file",{path:"allowed.txt"},"read-2"),assistantText("read again"),
+            assistantToolCall("write_file",{path:"blocked.txt",content:"must not be written"},"blocked-write"),
+            options=>{expect(JSON.stringify(options.messages)).toContain("project policy");return assistantText("blocked as required");},
+        ]);
+        const worker=createSubagentThreadForTest({parentContext:ctx,onEvent:()=>{},agentId:"policy-worker",agentOptions:{callLLM:workerModel.callLLM}},
+            {agentType:"Worker",cwd:childCwd,workspaceWriteApproved:true,description:"worker",prompt:"read",parentToolCallId:"spawn"});
+        for(const prompt of ["read","read again","try blocked write"])await worker.run({prompt,signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
+        const explorerModel=createFakeLLM([assistantToolCall("read_file",{path:"allowed.txt"},"explore-read"),assistantText("done")]);
+        const explorer=createSubagentThreadForTest({parentContext:ctx,onEvent:()=>{},agentId:"policy-explore",agentOptions:{callLLM:explorerModel.callLLM}},
+            {agentType:"Explore",cwd:childCwd,description:"explore",prompt:"read",parentToolCallId:"spawn-explore"});
+        await explorer.run({prompt:"read",signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
+        expect(await Bun.file(join(childCwd,"blocked.txt")).exists()).toBe(false);
+        expect((await resources.toolRuntime.executeTool("read_file",JSON.stringify({path:join(childCwd,"allowed.txt")}),ctx,"root-read")).outcome).toBe("ok");
+        const audits=envelopes.filter(item=>item.event.hook_event_name==="PostToolUse");
+        expect(audits.map(item=>item.actor?.agent_id??"root")).toEqual(["policy-worker","policy-explore","root"]);
+        expect(audits[0]?.actor).toMatchObject({kind:"subagent",cwd:await realpath(childCwd),parent_session_id:session.sessionId});
+        expect(audits[0]?.cwd).toBe(resources.cwd);
+        await expect(Promise.resolve().then(() => ctx.toolHooks!.execute({hook_event_name:"SessionEnd",session_id:session.sessionId,reason:"invalid"},ctx.signal))).rejects.toThrow("tool events only");
+    }finally{await resources.close();}
+}));

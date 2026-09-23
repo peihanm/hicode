@@ -340,7 +340,7 @@ describe("custom subagent runtime", () => {
                 },
             };
             const mcpManager: McpManagerLike = {
-                waitForRefresh: async () => {},
+
                 async initialize() {},
                 getSnapshots: () => [],
                 getTools: () => [readTool, writeTool],

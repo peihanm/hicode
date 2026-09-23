@@ -75,3 +75,5 @@ An allow for a tool name covers its ordinary calls, not just one current argumen
 - **List changed:** servers may send `notifications/tools/list_changed`; HiCode refreshes definitions and invalidates changed ones. Unchanged discovered definitions remain available; a refreshed name alone is not proof of an identical schema.
 
 See [Storage](storage.md) for logs and [Permissions](permissions.md) for approval categories.
+
+Catalog refresh waits are isolated by server: local tools and healthy servers remain usable. Existing subagents can rediscover refreshed or reconnected tools within their original authorized names. Newly added names require a new delegation scope; reconnecting does not expand child permissions.

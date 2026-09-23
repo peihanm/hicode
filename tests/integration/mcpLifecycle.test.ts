@@ -196,9 +196,9 @@ test.each(["same", "changed", "slow"])("catalog refresh %s preserves unchanged d
                 await until(() => manager.getSnapshots()[0]?.status === "refreshing");
                 expect(runtime.getToolSchemas().map(t => t.function.name)).toContain("mcp__fixture__old");
                 const abort = new AbortController();
-                const waiting = manager.waitForRefresh(abort.signal);
+                const waiting = runtime.executeTool("mcp__fixture__old", "{}", createTestContext(cwd, {mcpManager: manager, signal: abort.signal}), "cancel-refresh");
                 abort.abort(new Error("cancel-refresh-wait"));
-                await expect(waiting).rejects.toThrow("cancel-refresh-wait");
+                expect((await waiting).outcome).toBe("interrupted");
                 // The aborted waiter does not cancel the Root-owned refresh.
                 const result = await runtime.executeTool("mcp__fixture__old", "{}", ctx, "during-refresh");
                 expect(result.outcome).toBe("ok");
@@ -224,3 +224,25 @@ test.each(["same", "changed", "slow"])("catalog refresh %s preserves unchanged d
         } finally {await manager.closeAll();}
     });
 });
+
+test("refreshing one MCP catalog does not block local tools or another server", async () => withTempProject(async (cwd, storage) => {
+    const release = join(cwd, "release-refresh");
+    await mkdir(storage.hicodeHome, {recursive:true});
+    const config = {command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts"), release], timeoutMs: 2000};
+    await writeFile(join(storage.hicodeHome, "mcp.json"), JSON.stringify({mcpServers: {first: config, second: config}}));
+    await writeFile(join(cwd, "local.txt"), "local content");
+    const manager = createMcpManager({cwd,storage,childEnvironment:testChildEnvironment,headless:true});
+    try {
+        await manager.initialize();
+        const runtime = createToolRuntime({getAdditionalTools:()=>manager.getTools()});
+        const ctx = createTestContext(cwd,{mcpManager:manager});
+        runtime.getToolSchemas();
+        await runtime.executeTool("tool_search", '{"query":"select:mcp__first__control,mcp__second__old"}',ctx,"discover");
+        runtime.getToolSchemas();
+        await runtime.executeTool("mcp__first__control",'{"action":"paused"}',ctx,"pause");
+        await until(()=>manager.getSnapshots()[0]?.status==="refreshing");
+        expect((await runtime.executeTool("read_file",'{"path":"local.txt"}',ctx,"local")).outcome).toBe("ok");
+        expect((await runtime.executeTool("mcp__second__old",'{}',ctx,"healthy")).outcome).toBe("ok");
+        expect(manager.getSnapshots()[0]?.status).toBe("refreshing");
+    } finally {await writeFile(release,"done");await manager.closeAll();}
+}));

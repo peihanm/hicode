@@ -119,8 +119,6 @@ export interface McpManagerOptions {
 export interface McpManagerLike {
     initialize(): Promise<void>;
 
-    waitForRefresh(signal: AbortSignal): Promise<void>;
-
     getSnapshots(): readonly McpServerSnapshot[];
 
     getTools(): readonly Tool[];

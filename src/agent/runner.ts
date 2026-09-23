@@ -203,7 +203,6 @@ async function runAgentCore(
             const hasNextIteration =
                 maxIterations === undefined || i + 1 < maxIterations;
             await draft.finish("discarded");
-            await ctx.mcpManager?.waitForRefresh(ctx.signal);
             const toolSchemas = getToolSchemasImpl();
             const todoReminder = todoProgress.takeReminder(
                 options.getTodos?.() ?? [],

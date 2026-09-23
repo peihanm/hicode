@@ -87,3 +87,5 @@ process.stdin.on('end', () => {
 ```
 
 Prompt Hooks use the effective fast model, have no project tools and can incur API cost. Do not add a Prompt Hook for simple deterministic checks that a command can perform, or install any Hook merely to explain this feature.
+
+Approved tool hooks also apply to Worker, Explore and custom subagents. Each child thread has independent `once` state retained across follow-up runs. Tool events carry child session/turn IDs; `actor` identifies the child and its working directory. Hook commands still run in the approved root project directory; resolve relative tool paths against `actor.cwd` when present. Root-only scripts can skip events with an `actor`. Children cannot approve, reload or manage hook configuration.

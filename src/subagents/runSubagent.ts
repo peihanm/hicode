@@ -11,7 +11,7 @@ import {throwIfTurnAborted} from "../runtime/abort.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {persistPreparedImage} from "../images/persist.js";
 import {imageReferences} from "../images/content.js";
-import type {HookInput} from "../hooks/types.js";
+import {createHookSessionRuntime, type HookInput} from "../hooks/types.js";
 import {randomUUID} from "node:crypto";
 import type {Todo} from "../todos.js";
 import type {AgentRunner} from "../agent/runner.js";
@@ -91,6 +91,17 @@ export function createSubagentFactories(
         const inheritedMcpNames = new Set(tools.filter(tool => tool.name.startsWith("mcp__")).map(tool => tool.name));
         const fixedAdditional = tools.filter(tool => !builtinNames.has(tool.name) && !inheritedMcpNames.has(tool.name));
         const runtime = createToolRuntime({
+            hooks: parentContext.toolHooks ? {
+                get enabled() {return parentContext.toolHooks!.enabled;},
+                hasToolHooks: name => parentContext.toolHooks!.hasToolHooks(name),
+                execute(input, signal, context) {
+                    if (!childCwd) throw new Error("Child Hook scope is not initialized");
+                    return parentContext.toolHooks!.execute(input, signal, {...context, actor: {
+                        kind: "subagent", agent_id: agentId, agent_type: definition.agentType,
+                        parent_session_id: parentContext.sessionId, cwd: childCwd,
+                    }});
+                },
+            } : undefined,
             allowedToolNames: tools.map(tool => tool.name),
             toolOverrides: tools.filter(tool => builtinNames.has(tool.name)),
             getAdditionalTools: () => [...fixedAdditional,
@@ -136,6 +147,7 @@ export function createSubagentFactories(
         let transcriptStarted = false;
         let transcriptDisabled = false;
         let transcriptIssue: string | undefined;
+        const hookSession = createHookSessionRuntime();
         let childTodos: Todo[] = [];
         let running = false;
         let runCount = 0;
@@ -150,11 +162,13 @@ export function createSubagentFactories(
                 }
                 running = true;
                 let logTrace: LLMTrace | undefined;
+                let releaseHookConfiguration: (() => void) | undefined;
                 let hookStart: Extract<HookInput, {hook_event_name: "SubagentStart"}> | undefined;
                 let hookStatus: "completed" | "failed" | "cancelled" = "failed";
                 let hookReason = "error";
                 try {
                     throwIfTurnAborted(input.signal);
+                    releaseHookConfiguration = parentContext.holdHookConfiguration?.();
                     const cwd = await resolveSubagentDirectory(parentContext, request.cwd);
                     throwIfTurnAborted(input.signal);
                     if (childCwd !== undefined && cwd !== childCwd) throw new Error("Child Agent working directory changed before continuation");
@@ -205,6 +219,7 @@ export function createSubagentFactories(
                         },
                         session: {
                             fileState: childFileState,
+                            hookSession,
                             sessionId: childSessionId,
                             compactState: childCompactState,
                             contextUsage: childContextUsage,
@@ -342,6 +357,7 @@ export function createSubagentFactories(
                         if (event.type === "subagent_progress") await emit(onEvent, event);
                         await onChildEvent?.(event);
                     };
+                    childContext.onHookEvent = recordChildEvent;
                     const childPrompt = firstRun && request.contextSnapshot !== undefined
                         ? createForkDirective({
                             name: request.name ?? definition.agentType,
@@ -457,7 +473,7 @@ export function createSubagentFactories(
                         if (hookStart) await parentContext.runHook?.({...hookStart, hook_event_name: "SubagentStop",
                             status: input.signal.aborted ? "cancelled" : hookStatus,
                             reason: input.signal.aborted ? "cancelled" : hookReason}, input.signal);
-                    } finally {if (logTrace) finishPromptLogRun(parentContext.storage, logTrace); running = false;}
+                    } finally {releaseHookConfiguration?.(); if (logTrace) finishPromptLogRun(parentContext.storage, logTrace); running = false;}
                 }
             },
         };

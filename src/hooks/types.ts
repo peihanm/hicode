@@ -89,7 +89,15 @@ export type HookInput = {session_id: string; turn_id?: string} & (
     | ({hook_event_name: "SubagentStop"; status: "completed" | "failed" | "cancelled"; reason: string} & SubagentHookInput)
     | {hook_event_name: "SessionEnd"; reason: string}
 );
+interface SubagentHookActor {
+    kind: "subagent";
+    agent_id: string;
+    agent_type: string;
+    parent_session_id: string;
+    cwd: string;
+}
 export interface HookEnvelope {
+    actor?: SubagentHookActor;
     version: 2;
     cwd: string;
     hook_id: string;
@@ -143,7 +151,10 @@ export interface HookRuntime {
     reload(settings: ResolvedHookSettings, signal: AbortSignal): Promise<void>;
     execute(input: HookInput, signal: AbortSignal, context?: HookExecutionContext): Promise<HookBatchResult>;
 }
+/** Executing approved tool policies does not grant configuration or lifecycle management. */
+export type ToolHookRuntime = Pick<HookRuntime, "enabled" | "hasToolHooks" | "execute">;
 export interface HookExecutionContext {
+    actor?: SubagentHookActor;
     matchesToolCondition?: (condition: string, toolInput: Record<string, unknown>) => Promise<boolean>;
     session?: HookSessionRuntime;
     store?: ToolResultStore;

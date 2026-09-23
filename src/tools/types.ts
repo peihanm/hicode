@@ -17,7 +17,7 @@ import type {TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "./bash/shellRunner.js";
 import type {FileStateTracker} from "./shared/fileState.js";
 import type {ProjectInstructions} from "../prompt/instructions.js";
-import type {HookSessionRuntime, HookInput, HookBatchResult, HookLifecycleEvent, HookRuntime} from "../hooks/index.js";
+import type {HookSessionRuntime, HookInput, HookBatchResult, HookLifecycleEvent, HookRuntime, ToolHookRuntime} from "../hooks/index.js";
 import type {MemoryFileAccess} from "../memory/types.js";
 import type {SessionArchiveAccess} from "../session/archiveAccess.js";
 import type {SessionCompaction} from "../session/archive.js";
@@ -163,6 +163,7 @@ export interface ToolContext {
     // Session Hook lifecycle state for atomic once claims.
     // Session Runtime owns this state, not Root Hook Runtime.
     hookSession?: HookSessionRuntime;
+    toolHooks?: ToolHookRuntime;
     turnId: string;
     holdHookConfiguration?: () => () => void;
     onHookEvent?: (event: HookLifecycleEvent) => void | Promise<void>;

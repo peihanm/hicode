@@ -1,4 +1,4 @@
-import type {HookRuntime} from "../hooks/index.js";
+import type {ToolHookRuntime} from "../hooks/index.js";
 import type {OpenAITool} from "../llm/types.js";
 import type {ToolExecutionResult} from "../toolResults/index.js";
 import {createToolCatalog} from "./catalog.js";
@@ -36,8 +36,8 @@ interface CreateToolRuntimeOptions {
     getAdditionalTools?: () => readonly Tool[];
     /** Restricted runtimes may narrow existing tools' permissions/capabilities only. Overriding an existing name prevents an additional tool from accidentally widening child capabilities. */
     toolOverrides?: readonly Tool[];
-    /** Trusted Command Hooks owned by Root; restricted child runtimes do not receive them. */
-    hooks?: HookRuntime;
+    /** Approved tool-policy execution only; configuration remains owned by Root. */
+    hooks?: ToolHookRuntime;
 }
 
 export function createToolRuntime(
@@ -80,7 +80,6 @@ export function createToolRuntime(
             return isToolConcurrencySafe(runtimeMap, name, argsJson);
         },
         async executeTool(name, argsJson, ctx, toolCallId) {
-            await ctx.mcpManager?.waitForRefresh(ctx.signal);
             synchronize();
             const executionDiscovery = discovery;
             if (discovery.isDeferred(name) && !discovery.isExposed(name)) {

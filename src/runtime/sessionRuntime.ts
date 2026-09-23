@@ -218,6 +218,16 @@ export function createRootSessionRuntime({
                 await persistence.save(snapshot(getSnapshotState()));
                 await ctx.agentJoin?.acknowledgeReported();
             };
+            ctx.toolHooks = {
+                get enabled() {return resources.hooks.enabled;},
+                hasToolHooks: name => resources.hooks.hasToolHooks(name),
+                execute(input, signal, context) {
+                    if (!["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(input.hook_event_name)) {
+                        throw new Error("Delegated Hook capability accepts tool events only");
+                    }
+                    return resources.hooks.execute(input, signal, context);
+                },
+            };
             ctx.holdHookConfiguration = resources.holdHookConfiguration;
             ctx.onHookEvent = onEvent;
             ctx.runHook = async (input, hookSignal = signal) => {

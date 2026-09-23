@@ -1,7 +1,7 @@
 import {toolFileChanges} from "../fileChanges/index.js";
 import {requestApproval, type ApprovalResolution} from "../permissions/approval.js";
 import {appendContentText, contentText} from "../images/content.js";
-import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type HookRuntime,} from "../hooks/index.js";
+import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type ToolHookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason,} from "../runtime/abort.js";
 import {
@@ -55,7 +55,7 @@ export async function executeRegisteredTool(
     argsJson: string,
     ctx: ToolContext,
     toolCallId: string,
-    hooks?: HookRuntime
+    hooks?: ToolHookRuntime
 ): Promise<ToolExecutionResult> {
     if (ctx.signal.aborted) {
         return interruptedToolResult(ctx.signal);
@@ -341,7 +341,7 @@ async function executePostToolHooks({
     result,
     ctx,
 }: {
-    hooks?: HookRuntime;
+    hooks?: ToolHookRuntime;
     event: "PostToolUse" | "PostToolUseFailure";
     tool: Tool;
     name: string;

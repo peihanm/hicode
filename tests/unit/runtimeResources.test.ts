@@ -49,7 +49,7 @@ function createFakeMcpManager(
   return {
     state,
     manager: {
-      async waitForRefresh() {},
+
         async initialize() {
         state.initializeCount += 1;
         if (options.initializeError) throw options.initializeError;
