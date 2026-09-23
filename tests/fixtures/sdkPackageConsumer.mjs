@@ -146,7 +146,7 @@ try {
                     label: "SDK package fixture",
                     apiKeyEnv: "HICODE_SDK_SMOKE_KEY",
                     baseUrl: "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
-                    models: [{id: "qwen3.8-flash", label: "Fixture model"}],
+                    models: [{id: "qwen3.8-flash", label: "Fixture model", imageInput: true}],
                 },
             },
             models: {

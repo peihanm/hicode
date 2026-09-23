@@ -1,9 +1,9 @@
 import {analyzeReadCommand} from "../permissions/shellRead.js";
 import type {ToolOutcome} from "../toolResults/index.js";
 
-export type ToolPhaseKind = "inspect";
+type ToolPhaseKind = "inspect";
 
-export interface ToolPhasePresentation {
+interface ToolPhasePresentation {
     kind: ToolPhaseKind;
     label: string;
     activity: string;
@@ -11,7 +11,7 @@ export interface ToolPhasePresentation {
     hidden?: boolean;
 }
 
-export interface ToolCallPresentation {
+interface ToolCallPresentation {
     label: string;
     detail: string;
 }

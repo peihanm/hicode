@@ -9,10 +9,8 @@ import {
   runAgentForTest,
   type AgentTestOptions,
 } from "./agent.js";
-import {
-  BUILTIN_SUBAGENT_REGISTRY,
-  type SubagentRegistry,
-} from "../../src/subagents/index.js";
+import {type SubagentRegistry} from "../../src/subagents/index.js";
+import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
 import {
   createTestToolResultStore,
   type TestToolResultStoreOptions,

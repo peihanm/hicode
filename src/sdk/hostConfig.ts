@@ -72,13 +72,6 @@ export function loadHiCodeHostConfig(
             {cause: error}
         );
     }
-    const errors = loaded.issues.filter((issue) => issue.severity === "error");
-    if (errors.length > 0) {
-        throw new HiCodeSDKError(
-            "invalid_settings",
-            `Settings loading failed: ${errors.map(formatSettingsIssue).join("; ")}`
-        );
-    }
     let configuration: HiCodeRootConfiguration;
     try {
         configuration = createHiCodeRootConfiguration({
@@ -127,12 +120,4 @@ function requireAbsolutePath(
         );
     }
     return path;
-}
-
-function formatSettingsIssue(issue: SettingsIssue): string {
-    return [
-        issue.source === "host" ? issue.id : issue.path,
-        issue.field ? `(${issue.field})` : undefined,
-        issue.message,
-    ].filter(Boolean).join(" ");
 }

@@ -6,6 +6,7 @@ export const TERMINAL_CURSOR_ANCHOR_MARKER = "\u001B]8;;hicode-cursor://input\u0
 export const TERMINAL_CURSOR_ANCHOR_END = "\u001B]8;;\u0007";
 
 export interface TerminalCursorOutput extends NodeJS.WriteStream {
+    holdScrollbackReplay(): () => void;
     recordScrollback(mode: "append" | "replay", rendered: string): void;
     disposeCursorOutput(): void;
 }
@@ -52,6 +53,7 @@ export function formatTerminalCursorWrite(
 export function createTerminalCursorOutput(
     target: NodeJS.WriteStream
 ): TerminalCursorOutput {
+    let replayHolds = 0;
     let anchored = false;
     let scrollback = "";
     let scrollbackRows = 0;
@@ -84,7 +86,7 @@ export function createTerminalCursorOutput(
             // offscreen. Rebuild once from retained history before resuming deltas.
             frame = inkClear + scrollback + data.replace(eraseLive, "");
             recoverAfterOverflow = false;
-        } else if (target.isTTY && scrollbackRows > 0 && target.columns === scrollbackColumns) {
+        } else if (replayHolds === 0 && target.isTTY && scrollbackRows > 0 && target.columns === scrollbackColumns) {
             const erased = data.match(eraseLive)?.[0];
             if (erased) {
                 const next = data.slice(erased.length);
@@ -110,10 +112,15 @@ export function createTerminalCursorOutput(
 
     return new Proxy(target, {
         has(object, property) {
-            return property === "recordScrollback" || Reflect.has(object, property);
+            return (property === "recordScrollback" || property === "holdScrollbackReplay") || Reflect.has(object, property);
         },
         get(object, property) {
             if (property === "write") return write;
+            if (property === "holdScrollbackReplay") return () => {
+                replayHolds++;
+                let released = false;
+                return () => {if (!released) {released = true; replayHolds--;}};
+            };
             if (property === "recordScrollback") {
                 return (mode: "append" | "replay", rendered: string) => {
                     scrollback = mode === "replay" ? rendered : scrollback + rendered;

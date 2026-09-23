@@ -8,7 +8,7 @@
 // ---
 // <markdown body>
 
-export interface ParsedFrontmatter {
+interface ParsedFrontmatter {
     description: string;
     whenToUse?: string;
     body: string;

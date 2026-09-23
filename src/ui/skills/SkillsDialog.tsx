@@ -9,8 +9,9 @@ import {COLORS} from "../theme.js";
 const sourceLabels = {project: "Project", user: "User", bundled: "Built-in", host: "Host"};
 const clean = (text: string) => stripVTControlCharacters(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
 
-export function SkillsDialog({skills, projectDirectory, userDirectory, onClose}: {
+export function SkillsDialog({issues = [], skills, projectDirectory, userDirectory, onClose}: {
     skills: readonly LoadedSkill[];
+    issues?: readonly {path: string; message: string}[];
     projectDirectory: string;
     userDirectory: string;
     onClose(): void;
@@ -21,6 +22,7 @@ export function SkillsDialog({skills, projectDirectory, userDirectory, onClose}:
     const visibleLines = Math.max(2, Math.min(18, height - 10));
     const [index, setIndex] = useState(0);
     const [detail, setDetail] = useState(false);
+    const [issuesOpen, setIssuesOpen] = useState(false);
     const [offset, setOffset] = useState(0);
     const selected = skills[index];
     const detailText = selected ? [
@@ -32,11 +34,13 @@ export function SkillsDialog({skills, projectDirectory, userDirectory, onClose}:
         "Restart HiCode after changing Skill files.",
     ].join("\n\n") : ["No Skills loaded.", `Project\n${projectDirectory}`, `User\n${userDirectory}`,
         "Add <name>/SKILL.md, then restart HiCode."].join("\n\n");
-    const rows = useMemo(() => layoutTerminalMarkdown(clean(detailText), columns, false), [detailText, columns]);
+    const rows = useMemo(() => layoutTerminalMarkdown(clean(issuesOpen ? issues.map(issue => `${issue.path}\n${issue.message}`).join("\n\n") : detailText), columns, false), [detailText, columns, issuesOpen, issues]);
     const start = Math.min(offset, Math.max(0, rows.length - visibleLines));
-    const showingText = detail || !skills.length;
-    useInput((_input, key) => {
+    const showingText = issuesOpen || detail || !skills.length;
+    useInput((input, key) => {
+        if (input === "i" && issues.length) {setIssuesOpen(value => !value); setOffset(0); return;}
         if (key.escape) {
+            if (issuesOpen) {setIssuesOpen(false); setOffset(0); return;}
             if (detail) {setDetail(false); setOffset(0);}
             else onClose();
             return;
@@ -53,6 +57,7 @@ export function SkillsDialog({skills, projectDirectory, userDirectory, onClose}:
     return <Box flexDirection="column" paddingLeft={2} paddingRight={2}>
         <Box flexDirection="column" width={columns}>
             <Text bold color={COLORS.accent}>◆ Skills <Text color={COLORS.dim} bold={false}>· {skills.length} available</Text></Text>
+            {issues.length > 0 && <Text color={COLORS.dim}>{issues.length} loading issue(s) · i {issuesOpen ? "back" : "details"}</Text>}
             {detail && selected && <Box marginTop={1}>
                 <Text bold wrap="truncate-end">{clean(selected.name)} <Text bold={false} color={COLORS.dim}>· {sourceLabels[selected.source]}</Text></Text>
             </Box>}

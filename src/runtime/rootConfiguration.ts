@@ -41,7 +41,7 @@ export interface HiCodeRootConfiguration {
     readonly contributions: HiCodeRootContributions;
 }
 
-export interface CreateHiCodeRootConfigurationOptions {
+interface CreateHiCodeRootConfigurationOptions {
     allowFullAccess?: boolean;
     cwd: string;
     workspaceBoundary: string;

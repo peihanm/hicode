@@ -9,7 +9,7 @@ import {
     parseCustomAgentDocument,
 } from "./load.js";
 import {type AgentDefinitionScope, getAgentDefinitionDirectory,} from "./paths.js";
-import {serializeAgentDefinition} from "./serialize.js";
+import {stringify as stringifyYaml} from "yaml";
 import type {AgentDefinition} from "./types.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {
@@ -211,4 +211,16 @@ export function createAgentDefinitionStore(
             });
         },
     };
+}
+
+function serializeAgentDefinition(draft: AgentDefinitionDraft): string {
+    const frontmatter = stringifyYaml({
+        name: draft.name.trim(),
+        description: draft.description.trim(),
+        ...(draft.readOnly ? {read_only: true} : {}),
+        ...(draft.tools ? {tools: [...new Set(draft.tools.map((tool) => tool.trim()))]} : {}),
+    }, {
+        lineWidth: 0,
+    }).trimEnd();
+    return `---\n${frontmatter}\n---\n\n${draft.systemPrompt.trim()}\n`;
 }

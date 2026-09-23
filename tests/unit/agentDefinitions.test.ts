@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  BUILTIN_SUBAGENT_REGISTRY,
-} from "../../src/subagents/index.js";
+import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
 import {createAgentTool} from "../../src/tools/agent/agent.js";
 
 describe("agent definitions", () => {

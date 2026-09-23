@@ -28,7 +28,7 @@ import {runRootTurn} from "../../runtime/turnRuntime.js";
 import type {ModelTargetSettings} from "../../settings/types.js";
 import {formatModelTarget} from "../../llm/modelCatalog.js";
 
-export interface UseTurnControllerOptions {
+interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
     initialPermissionMode?: PermissionMode;
     initialCollaborationMode?: CollaborationMode;

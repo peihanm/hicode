@@ -1,7 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {listConfiguredPrimaryModels} from "../../src/llm/modelCatalog.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
-import {resolveHiCodeSettings} from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 
 describe("primary model catalog", () => {
     test("一个有凭证的 source 暴露其全部已配置模型与 label", () => {

@@ -1,4 +1,4 @@
-import {DEFAULT_LLM_PROVIDER, LLM_PROVIDER_NAMES, type LLMProviderName,} from "../llm/providerRegistry.js";
+import {DEFAULT_LLM_PROVIDER, LLM_PROVIDER_NAMES, PROVIDER_BASE_URLS, type LLMProviderName,} from "../llm/providerRegistry.js";
 import {parsePermissionRule} from "../permissions/rules.js";
 import type {PermissionMode, PermissionRule, PermissionRules,} from "../permissions/types.js";
 import type {HookEvent, ResolvedHookMatcher, ResolvedHookSettings,} from "../hooks/types.js";
@@ -36,7 +36,7 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
         label: "Alibaba Bailian",
         apiKeyEnv: "DASHSCOPE_API_KEY",
         models: [
-            {id: "qwen3.8-flash", label: "Qwen 3.8 Flash"},
+            {id: "qwen3.8-flash", label: "Qwen 3.8 Flash", imageInput: true},
             {id: "qwen3.8-max", label: "Qwen 3.8 Max"},
             {id: "qwen3.6-plus", label: "Qwen 3.6 Plus"},
             {id: "qwen3.6-flash", label: "Qwen 3.6 Flash"},
@@ -87,6 +87,7 @@ export function resolveModelSources(
                 models: (override.models ?? current.models).map((model) => ({
                     id: model.id,
                     label: model.label,
+                    ...(model.imageInput !== undefined ? {imageInput: override.models === undefined && override.baseUrl !== undefined && override.baseUrl.replace(/\/$/, "") !== (current.baseUrl ?? PROVIDER_BASE_URLS[name]).replace(/\/$/, "") ? false : model.imageInput} : {}),
                 })),
             };
         }

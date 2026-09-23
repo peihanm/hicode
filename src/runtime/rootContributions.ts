@@ -1,3 +1,4 @@
+import {agentNameSchema, agentDescriptionSchema, agentPromptSchema} from "../subagents/definitionSchema.js";
 import {z} from "zod";
 import {hostMcpServerContributionSchema} from "../mcp/config.js";
 import type {HostMcpServerContribution} from "../mcp/types.js";
@@ -9,10 +10,7 @@ const contributionIdSchema = z.string().trim().min(1).max(128).regex(
     /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
     "Use only letters, digits, dots, - and _, starting with a letter or digit"
 );
-const agentNameSchema = z.string().trim().min(1).max(64).regex(
-    /^[A-Za-z][A-Za-z0-9_-]*$/,
-    "Must start with a letter and contain only letters, digits, - and _"
-);
+
 
 export interface HostInstructionContribution {
     readonly id: string;
@@ -55,8 +53,8 @@ const skillSchema: z.ZodType<HostSkillContribution> = z.object({
 
 const agentSchema: z.ZodType<HostAgentContribution> = z.object({
     name: agentNameSchema,
-    description: z.string().trim().min(1).max(500),
-    systemPrompt: z.string().trim().min(1).max(MAX_INLINE_CONTENT_CHARS),
+    description: agentDescriptionSchema,
+    systemPrompt: agentPromptSchema,
     readOnly: z.boolean().optional(),
     tools: z.array(z.string().trim().min(1).max(128)).min(1).max(128).optional(),
 }).strict();

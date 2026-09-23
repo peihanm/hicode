@@ -14,7 +14,7 @@ export interface PhaseGroup {
 
 export type ConversationItem = UIThread | PhaseGroup;
 
-export function isToolCall(item: UIThread): item is ToolCallThread {
+function isToolCall(item: UIThread): item is ToolCallThread {
     return item.role === "tool_call";
 }
 

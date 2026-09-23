@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {beginPromptLog} from "../../src/llm/promptLog.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import {getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {getPromptLogDirectory} from "../../src/persistence/layout.js";
 
 describe("prompt log lifecycle", () => {
     test("请求开始写入 pending，结束后原位写入最终结果", async () => {
@@ -17,10 +17,7 @@ describe("prompt log lifecycle", () => {
                 {messages: [{role: "user", origin: "user" as const, content: "private prompt"}]},
                 []
             );
-            const directory = join(
-                getProjectDebugDirectory(storage, cwd),
-                "requests"
-            );
+            const directory = getPromptLogDirectory(storage, cwd);
             const [filename] = await listPromptLogs(directory);
             const pending = JSON.parse(
                 await readFile(join(directory, filename!), "utf8")
@@ -104,10 +101,7 @@ describe("prompt log lifecycle", () => {
                 rawResponse: {stream: true, provider: "fixture"},
             });
 
-            const directory = join(
-                getProjectDebugDirectory(storage, cwd),
-                "requests"
-            );
+            const directory = getPromptLogDirectory(storage, cwd);
             const [filename] = await listPromptLogs(directory);
             const content = await readFile(join(directory, filename!), "utf8");
             const logged = JSON.parse(content) as {
@@ -190,10 +184,7 @@ describe("prompt log lifecycle", () => {
             );
             handle.finish({error: "fixture complete"});
 
-            const directory = join(
-                getProjectDebugDirectory(storage, cwd),
-                "requests"
-            );
+            const directory = getPromptLogDirectory(storage, cwd);
             const [filename] = await listPromptLogs(directory);
             const content = await readFile(join(directory, filename!), "utf8");
             const logged = JSON.parse(content) as {
@@ -227,10 +218,7 @@ describe("prompt log lifecycle", () => {
             );
             handle.finish({error: `upstream echoed ${apiKey}`});
 
-            const directory = join(
-                getProjectDebugDirectory(storage, cwd),
-                "requests"
-            );
+            const directory = getPromptLogDirectory(storage, cwd);
             const [filename] = await listPromptLogs(directory);
             const content = await readFile(join(directory, filename!), "utf8");
             expect(content).not.toContain(apiKey);
@@ -252,10 +240,7 @@ describe("prompt log lifecycle", () => {
                 ).finish({error: "fixture complete"});
             }
 
-            const directory = join(
-                getProjectDebugDirectory(storage, cwd),
-                "requests"
-            );
+            const directory = getPromptLogDirectory(storage, cwd);
             expect(await listPromptLogs(directory)).toHaveLength(200);
         });
     });

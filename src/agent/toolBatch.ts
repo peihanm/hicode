@@ -23,7 +23,7 @@ export type ToolExecutor = (
     toolCallId: string
 ) => Promise<ToolExecutionResult | string>;
 
-export interface ExecuteToolCallBatchInput {
+interface ExecuteToolCallBatchInput {
     toolCalls: ToolCall[];
     history: Message[];
     ctx: ToolContext;
@@ -33,7 +33,7 @@ export interface ExecuteToolCallBatchInput {
     isToolConcurrencySafe: (name: string, argsJson: string) => boolean;
 }
 
-export type ToolCallBatchResult =
+type ToolCallBatchResult =
     | { status: "completed"; outcomes: ToolCallOutcome[] }
     | { status: "interrupted"; outcomes: ToolCallOutcome[] };
 

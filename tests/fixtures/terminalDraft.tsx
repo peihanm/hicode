@@ -1,3 +1,4 @@
+import {DraftLayoutProvider} from "../../src/ui/conversation/draftLayout.js";
 import assert from "node:assert/strict";
 import {Writable} from "node:stream";
 import {useSyncExternalStore} from "react";
@@ -14,8 +15,8 @@ const store = new UITurnEventStore();
 const tick = () => new Promise(resolve => setTimeout(resolve, 110));
 function Tree({expanded = false}: {expanded?: boolean}) {
     const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-    return <Box flexDirection="column"><ScrollbackTranscript threads={state.staticThreads} draftStore={store} expanded={expanded}/>
-        <AssistantDraftView store={store}/><Text>❯ input</Text></Box>;
+    return <Box flexDirection="column"><DraftLayoutProvider store={store}><ScrollbackTranscript threads={state.staticThreads}  expanded={expanded}/>
+        <AssistantDraftView/></DraftLayoutProvider><Text>❯ input</Text></Box>;
 }
 const app = render(<Tree/>, {stdout, stderr: stdout, patchConsole: false, exitOnCtrlC: false});
 const clears = (parts: string[]) => parts.filter(part => part.includes("\x1b[2J")).length;

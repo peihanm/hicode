@@ -4,7 +4,7 @@ import {randomUUID} from "node:crypto";
 import type {AgentInputChannel, QueuedAgentInput,} from "../agent/inputChannel.js";
 import type {TaskNotification} from "../tasks/index.js";
 
-export type MessagePriority = "next" | "later";
+type MessagePriority = "next" | "later";
 
 interface RuntimeQueuedMessageBase {
     id: string;
@@ -19,7 +19,7 @@ export type RuntimeQueuedMessage = RuntimeQueuedMessageBase & (
     | {type: "task_notification"; taskId: string}
 );
 
-export interface RuntimeMessageQueueSnapshot {
+interface RuntimeMessageQueueSnapshot {
     messages: readonly RuntimeQueuedMessage[];
 }
 

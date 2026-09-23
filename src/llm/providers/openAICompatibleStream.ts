@@ -39,7 +39,7 @@ export class OpenAICompatibleProtocolError extends Error {
     }
 }
 
-export interface OpenAICompatibleStreamResult {
+interface OpenAICompatibleStreamResult {
     content: string;
     reasoningContent: string;
     reasoningDetails: ReasoningDetail[];

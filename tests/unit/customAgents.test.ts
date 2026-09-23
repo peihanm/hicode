@@ -2,17 +2,12 @@ import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
-import {
-    createSubagentRegistry,
-    createSubagentCatalog,
-    loadCustomAgentDefinitions,
-    validateCustomAgentTools,
-    type AgentDefinition,
-} from "../../src/subagents/index.js";
+import {createSubagentCatalog, loadCustomAgentDefinitions, validateCustomAgentTools, type AgentDefinition} from "../../src/subagents/index.js";
+import {createSubagentRegistry} from "../../src/subagents/registry.js";
 import {parseCustomAgentDocument} from "../../src/subagents/load.js";
 import {
     CUSTOM_AGENT_FORBIDDEN_TOOLS,
-} from "../../src/subagents/custom.js";
+} from "../../src/subagents/registration.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 function definition(

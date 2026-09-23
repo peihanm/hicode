@@ -2,7 +2,7 @@ import {randomUUID} from "node:crypto";
 import {basename, dirname, join} from "node:path";
 import {type FileHandle, mkdir, open, rename, unlink,} from "node:fs/promises";
 
-export interface AtomicFileOperations {
+interface AtomicFileOperations {
     mkdir(path: string): Promise<void>;
 
     open(path: string, flags: string, mode?: number): Promise<FileHandle>;

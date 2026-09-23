@@ -27,3 +27,8 @@ export type LoadedSkill = LoadedSkillContent & (
         id: string;
     }
 );
+
+export interface SkillLoadIssue {
+    path: string;
+    message: string;
+}

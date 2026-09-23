@@ -5,7 +5,8 @@ import {getWorkerInstructions} from "../../src/prompt/sections.js";
 import {withExecutionContext} from "../../src/prompt/collaboration.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createAgentSystemPrompt} from "../../src/subagents/prompt.js";
-import {EXPLORE_AGENT} from "../../src/subagents/builtins/explore/definition.js";
+import {EXPLORE_SUBAGENT} from "../../src/subagents/builtins/explore/index.js";
+const EXPLORE_AGENT = EXPLORE_SUBAGENT.definition;
 
 const root = () => contentText(createInitialHistory("/project", "test-model")[0]!.content);
 const toolDescription = (name: string) => createToolCatalog({}).tools.find(tool => tool.name === name)!.description;

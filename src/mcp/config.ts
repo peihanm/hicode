@@ -1,5 +1,5 @@
-import {constants} from "node:fs";
-import {lstat, open, realpath} from "node:fs/promises";
+import {readBoundedTextFile} from "../persistence/readTextFile.js";
+import {lstat, realpath} from "node:fs/promises";
 import {dirname, join, resolve} from "node:path";
 import {z} from "zod";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
@@ -53,41 +53,9 @@ function isMissing(error: unknown): boolean {
     );
 }
 
-async function readBoundedRegularFile(path: string): Promise<string | undefined> {
-    let handle;
-    try {
-        handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    } catch (error) {
-        if (isMissing(error)) return undefined;
-        throw error;
-    }
-    try {
-        const metadata = await handle.stat();
-        if (!metadata.isFile()) throw new Error("Configuration must be a regular file");
-        if (metadata.size > MAX_CONFIG_BYTES) {
-            throw new Error(`Configuration exceeds ${MAX_CONFIG_BYTES} byte limit`);
-        }
-        const buffer = Buffer.alloc(metadata.size + 1);
-        let offset = 0;
-        while (offset < buffer.length) {
-            const {bytesRead} = await handle.read(
-                buffer,
-                offset,
-                buffer.length - offset,
-                offset
-            );
-            if (bytesRead === 0) break;
-            offset += bytesRead;
-        }
-        if (offset > MAX_CONFIG_BYTES) {
-            throw new Error(`Configuration exceeds ${MAX_CONFIG_BYTES} byte limit`);
-        }
-        return new TextDecoder("utf-8", {fatal: true}).decode(
-            buffer.subarray(0, offset)
-        );
-    } finally {
-        await handle.close();
-    }
+function readBoundedRegularFile(path: string): string | undefined {
+    try {return readBoundedTextFile(path, MAX_CONFIG_BYTES);}
+    catch (error) {if (isMissing(error)) return undefined; throw error;}
 }
 
 async function validateNativeProjectDirectory(

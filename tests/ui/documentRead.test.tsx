@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {afterEach, expect, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -15,9 +16,11 @@ afterEach(cleanup);
 
 function read(path: string, lines: string[], start = 1, total = lines.length): ToolCallThread {
     const end = start + lines.length - 1;
+    const header = `File: ${path}\nLine range: ${start}-${end} / ${total}\nNote: editing requires an exact read.\n\n`;
     return {id: "read", role: "tool_call", toolCallId: "read", name: "read_file", args: JSON.stringify({path}),
         status: "done", outcome: "ok",
-        result: `File: ${path}\nLine range: ${start}-${end} / ${total}\nNote: left-hand line numbers are not file content; exclude them from edit_file.edits[].old_string.\n\n` +
+        uiData: {type: "file_read", receipt: {path, start, end, total, contentStart: header.length, headerHash: createHash("sha256").update(header).digest("hex")}},
+        result: header +
             lines.map((line, i) => `${String(start + i).padStart(6)}\t${line}`).join("\n")};
 }
 
@@ -30,7 +33,7 @@ test("Markdown reads fold to basename/count, render documents on expansion and p
             function: {name: "read_file", arguments: JSON.stringify({path})}}]},
         {role: "tool" as const, tool_call_id: "read", content: result.modelContent}];
         const original = JSON.stringify(history);
-        const threads = threadsFromHistory(history, [{version: 1, type: "tool_call", turnId: "turn", toolCallId: "read", timestamp: "2026-09-22T00:00:00.000Z", outcome: "ok"}]);
+        const threads = threadsFromHistory(history, [{version: 1, type: "tool_call", turnId: "turn", toolCallId: "read", timestamp: "2026-09-22T00:00:00.000Z", outcome: "ok", ...(result.uiData?.type === "file_read" ? {fileRead: result.uiData.receipt} : {})}]);
         const view = render(<MessageList threads={threads} terminalWidth={70}/>);
         expect(view.lastFrame()).toContain("Read subagents.md · 5 lines");
         expect(view.lastFrame()).not.toContain(cwd);

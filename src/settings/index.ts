@@ -1,5 +1,4 @@
 export {loadHiCodeSettings} from "./load.js";
-export {DEFAULT_MODEL, resolveHiCodeSettings} from "./resolve.js";
 export {
     appendLocalPermissionAllowRule,
     appendLocalPermissionDirectory,

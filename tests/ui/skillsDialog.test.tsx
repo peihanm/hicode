@@ -92,3 +92,17 @@ test("/skills opens a local panel without invoking the Agent or printing the ver
         } finally {view.unmount(); await resources.close();}
     });
 });
+
+
+test("loading issues have a bounded, scrollable detail view", async () => {
+    const issues = Array.from({length: 8}, (_, i) => ({path: `/workspace/skill-${i}/SKILL.md`, message: `Invalid file ${i}`}));
+    const view = render(<SkillsDialog skills={[skill]} issues={issues} projectDirectory="/workspace/skills" userDirectory="/user/skills" onClose={() => {}}/>);
+    await tick();
+    expect(view.lastFrame()).toContain("8 loading issue(s)");
+    expect(view.lastFrame()).not.toContain("Invalid file 0");
+    view.stdin.write("i"); await tick();
+    expect(view.lastFrame()).toContain("Invalid file 0");
+    view.stdin.write("\u001b"); await tick();
+    expect(view.lastFrame()).not.toContain("Invalid file 0");
+    expect(view.lastFrame()).toContain("westock-data");
+});

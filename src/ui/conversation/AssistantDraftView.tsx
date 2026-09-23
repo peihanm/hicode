@@ -1,19 +1,18 @@
-import {memo, useSyncExternalStore} from "react";
+import {memo} from "react";
 import {Box, Text, useStdout} from "ink";
-import type {UIModelStreamInfo, UITurnEventStore} from "../turn/eventStore.js";
+import type {UIModelStreamInfo} from "../turn/eventStore.js";
 import {useTerminalSize} from "../terminalSize.js";
-import {layoutDraft} from "./draftLayout.js";
+import {useDraftLayout} from "./draftLayout.js";
 import {COLORS} from "../theme.js";
 
-export const AssistantDraftView = memo(function AssistantDraftView({store, phase}: {
-    store: Pick<UITurnEventStore, "getDraftSnapshot" | "subscribeDraft">;
+export const AssistantDraftView = memo(function AssistantDraftView({phase}: {
     phase?: UIModelStreamInfo["phase"];
 }) {
-    const draft = useSyncExternalStore(store.subscribeDraft, store.getDraftSnapshot, store.getDraftSnapshot);
+    const value = useDraftLayout();
     const terminal = useTerminalSize();
     const {stdout} = useStdout();
-    if (!draft) return null;
-    const layout = layoutDraft(draft.text, terminal.width);
+    if (!value) return null;
+    const {draft, layout} = value;
     if (!layout.text) return null;
     const inScrollback = stdout.isTTY === true && !!layout.completed;
     const label = phase === "tool_input" ? undefined : phase && phase !== "content" ? "Response draft" : "Generating";

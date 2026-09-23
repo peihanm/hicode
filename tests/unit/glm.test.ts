@@ -10,7 +10,7 @@ import { createOpenAICompatibleCaller } from "../../src/llm/providers/openAIComp
 import { createTurnAbortController } from "../../src/runtime/abort.js";
 import { createTestStorage, withTempProject } from "../helpers/tempProject.js";
 import type { LLMCallOptions, LLMProvider } from "../../src/llm/types.js";
-import {getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {getPromptLogDirectory} from "../../src/persistence/layout.js";
 
 const GLM_SOURCE = {
   id: "glm" as const,
@@ -29,7 +29,7 @@ function callGlm(
 }
 
 function promptLogDirectory(cwd: string): string {
-  return join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+  return getPromptLogDirectory(createTestStorage(cwd), cwd);
 }
 
 const originalFetch = globalThis.fetch;

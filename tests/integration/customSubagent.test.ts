@@ -1,8 +1,6 @@
 import {describe, expect, test} from "bun:test";
-import {
-    createSubagentRegistry,
-    type AgentDefinition,
-} from "../../src/subagents/index.js";
+import {type AgentDefinition} from "../../src/subagents/index.js";
+import {createSubagentRegistry} from "../../src/subagents/registry.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {createSubagentRunnerForTest} from "../helpers/subagent.js";
 import {createTestContext} from "../helpers/testContext.js";

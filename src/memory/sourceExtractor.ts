@@ -9,7 +9,7 @@ import { throwIfTurnAborted } from "../runtime/abort.js";
 const factSchema = z.object({ key: memoryKeySchema, type: z.enum(MEMORY_TYPES), content: z.string().trim().min(1).max(8000).refine(s => Buffer.byteLength(s) <= 8000),
     basis: z.enum(["user-stated", "assistant-claimed", "tool-observed"]), sources: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(16) }).strict();
 export type ExtractedMemoryFact = z.infer<typeof factSchema>;
-export type MemorySourceMessage = {
+type MemorySourceMessage = {
     id: string;
     content: string | null;
 } & ({role: "user"; origin: UserMessageOrigin} | {role: "assistant" | "tool"});

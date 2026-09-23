@@ -2,7 +2,7 @@ import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { createMcpManager } from "../../src/mcp/index.js";
+import {createMcpManager} from "../../src/mcp/manager.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import { runHeadlessForTest as runHeadless } from "../helpers/headless.js";
 import { createTestContext } from "../helpers/testContext.js";

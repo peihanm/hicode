@@ -7,7 +7,7 @@ export interface HiCodeStorageLayout {
     readonly projectsRoot: string;
 }
 
-export interface CreateHiCodeStorageLayoutOptions {
+interface CreateHiCodeStorageLayoutOptions {
     hicodeHome?: string;
 }
 
@@ -84,13 +84,6 @@ export function getSessionStorageDirectory(
         getProjectSessionsDirectory(storage, cwd),
         `session-${hashProjectValue(sessionId, 24)}`
     );
-}
-
-export function getProjectDebugDirectory(
-    storage: HiCodeStorageLayout,
-    cwd: string
-): string {
-    return join(getProjectStorageDirectory(storage, cwd), "debug");
 }
 
 export function getSessionContentDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {

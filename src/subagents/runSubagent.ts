@@ -1,7 +1,7 @@
 import {childTaskTool} from "../tools/task/task.js";
 import {createToolCatalog} from "../tools/catalog.js";
 import {createChildTaskAccess} from "../tasks/childAccess.js";
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./custom.js";
+import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
 import {ensureSessionIdentity} from "../persistence/projectState.js";
 import {finishPromptLogRun} from "../llm/promptLog.js";
 import type {LLMTrace} from "../llm/types.js";
@@ -72,11 +72,10 @@ export function createSubagentFactories(
             );
         }
         const {definition} = registration;
-        const runtimeConfig = registration.createRuntimeConfig(parentContext);
         const writable = request.workspaceWriteApproved === true && request.readOnly !== true && !definition.readOnly &&
             !parentContext.readOnlyTools && parentContext.collaborationMode !== "plan";
-        runtimeConfig.contextResources.readOnlyTools = !writable;
-        runtimeConfig.permissionRules = subagentPermissionRules(parentContext);
+        const permissionRules = subagentPermissionRules(parentContext);
+        const collaborationMode = parentContext.collaborationMode;
         const canMessageParent = options.agentMessaging !== undefined && parentContext.toolNames.includes("agent_message");
         const tools = parentContext.availableTools.filter(tool =>
             parentContext.toolNames.includes(tool.name) && !CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool.name) &&
@@ -178,7 +177,7 @@ export function createSubagentFactories(
                         signal: input.signal,
                         // Construct fields explicitly so future Root capabilities cannot leak into children automatically.
                         resources: {
-                            ...runtimeConfig.contextResources,
+                            storage: parentContext.storage, shellRunner: parentContext.shellRunner, readOnlyTools: !writable,
                             cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames, availableTools: runtime.getTools(),
                             skills: childSkills,
                             tasks: childTasks?.tasks,
@@ -204,11 +203,11 @@ export function createSubagentFactories(
                                 behavior: "deny",
                                 message: "Child Agents cannot request interactive permission approval",
                             }),
-                            getPermissionRules: () => runtimeConfig.permissionRules,
-                            getPermissionMode: () => runtimeConfig.permissionMode,
-                            getCollaborationMode: () => runtimeConfig.collaborationMode,
+                            getPermissionRules: () => permissionRules,
+                            getPermissionMode: () => "ask",
+                            getCollaborationMode: () => collaborationMode,
                             getPermissionPromptPolicy: () =>
-                                runtimeConfig.permissionPromptPolicy,
+                                "never",
                             async setTodos(todos) {
                                 todosUpdatedThisRun = true;
                                 childTodos = structuredClone(todos);

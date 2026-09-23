@@ -1,12 +1,8 @@
+import {readBoundedTextFile} from "./readTextFile.js";
 import {
     chmodSync,
-    closeSync,
-    constants,
-    fstatSync,
     lstatSync,
     mkdirSync,
-    openSync,
-    readFileSync,
 } from "node:fs";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
 import type {HiCodeStorageLayout} from "./layout.js";
@@ -58,11 +54,11 @@ export function ensurePrivateStorageDirectory(
 }
 
 /** Read a private regular file without following a leaf symlink. */
-function readPrivateStorageFile(
+export function readPrivateStorageTextFile(
     storage: HiCodeStorageLayout,
     path: string,
     maxBytes: number
-): Buffer | null {
+): string | null {
     const directory = dirname(path);
     const {home, relativePath} = storageRelativePath(storage, directory);
     let current = home;
@@ -78,29 +74,10 @@ function readPrivateStorageFile(
         throw error;
     }
 
-    let descriptor: number | undefined;
     try {
-        descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-        const metadata = fstatSync(descriptor);
-        if (!metadata.isFile()) {
-            throw new Error(`HiCode storage file is not a regular file: ${path}`);
-        }
-        if (metadata.size > maxBytes) {
-            throw new Error(`HiCode storage file exceeds the size limit: ${path}`);
-        }
-        return readFileSync(descriptor);
+        return readBoundedTextFile(path, maxBytes);
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
         throw error;
-    } finally {
-        if (descriptor !== undefined) closeSync(descriptor);
     }
-}
-
-export function readPrivateStorageTextFile(
-    storage: HiCodeStorageLayout,
-    path: string,
-    maxBytes: number
-): string | null {
-    return readPrivateStorageFile(storage, path, maxBytes)?.toString("utf8") ?? null;
 }

@@ -5,7 +5,7 @@ import { memoryKeySchema } from "./schema.js";
 import {parseMemoryTopic} from "./topic.js";
 import type { MemoryPublicationStore } from "./publicationStore.js";
 import type { MemoryChange } from "./types.js";
-export type PublicationPath = {
+type PublicationPath = {
     kind: "index";
     path: string;
 } | {

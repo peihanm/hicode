@@ -73,7 +73,7 @@ function getTokenWarningThreshold(model: string, reportedWindow: number | undefi
     );
 }
 
-export interface TokenWarningState {
+interface TokenWarningState {
     percentUsed: number; // 0-1
     warning: boolean; // Approaching the auto-compaction threshold.
     critical: boolean; // Above the auto-compaction threshold.

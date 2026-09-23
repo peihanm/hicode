@@ -5,7 +5,7 @@ import {createSessionPersistence, loadSession} from "../../src/session/storage.j
 import {decodeSessionContentBlock} from "../../src/session/codec.js";
 import {estimateMessageTokens} from "../../src/context/tokens.js";
 import {getModelInputBudget} from "../../src/context/window.js";
-import {resolveHiCodeSettings} from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {listConfiguredPrimaryModels} from "../../src/llm/modelCatalog.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

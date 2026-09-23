@@ -26,7 +26,7 @@ import {estimateMessageTokens, tokenCountWithEstimation} from "../../src/context
 import {prepareAgentInvoke} from "../../src/agent/invokePreparation.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
-import {getProjectStorageDirectory} from "../../src/persistence/index.js";
+import {getProjectStorageDirectory} from "../../src/persistence/layout.js";
 import {createOpenAICompatibleCaller} from "../../src/llm/providers/openAICompatible.js";
 import {createHookRuntimeFactory, type HookEnvelope} from "../../src/hooks/index.js";
 import {resolvedHooks} from "../helpers/hooks.js";
@@ -291,7 +291,8 @@ test("production Agent → Qwen Provider sends native tool pixels; logs and even
         settings.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};
         settings.sources.qwen = {...settings.sources.qwen, apiKeyEnv: "HICODE_IMAGE_TEST_KEY"};
         expect(supportsToolImages(settings.sources.qwen, "qwen3.8-flash")).toBe(true);
-        expect(supportsToolImages({...settings.sources.qwen, baseUrl: "https://example.com"}, "qwen3.8-flash")).toBe(false);
+        expect(supportsToolImages({...settings.sources.qwen, models: []}, "qwen3.8-flash")).toBe(false);
+        expect(supportsToolImages({...settings.sources.qwen, baseUrl: "https://custom.invalid/v1"}, "qwen3.8-flash")).toBe(true);
         expect(supportsToolImages(settings.sources.qwen, "qwen3.8-max")).toBe(false);
         const resources = createTestRuntimeResources(cwd, {settings, storage});
         const ctx = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", workspaceBoundary: cwd, toolResultStore: createToolResultStore(storage, cwd, "test-session")});

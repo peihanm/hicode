@@ -1,5 +1,6 @@
 import {expect, test} from "bun:test";
-import {BUILTIN_SUBAGENT_REGISTRY, formatSubagentModel} from "../../src/subagents/index.js";
+import {formatSubagentModel} from "../../src/subagents/index.js";
+import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
 import {usesFastSubagentModel} from "../../src/subagents/model.js";
 
 test("Only the built-in Explore uses fast; all ordinary roles inherit the parent", () => {

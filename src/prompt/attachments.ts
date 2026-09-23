@@ -15,7 +15,6 @@
 // - Repeating it preserves the userContext message structure after system.
 
 import type {LoadedSkill} from "../skills/types.js";
-import {getLocalISODate} from "./date.js";
 import {EMPTY_PROJECT_INSTRUCTIONS, formatProjectInstructions, type ProjectInstructions,} from "./instructions.js";
 
 // Format the Skill list.
@@ -68,4 +67,13 @@ export function getUserContextBlocks(
     }
 
     return blocks;
+}
+
+// Local date in YYYY-MM-DD format for the currentDate attachment.
+function getLocalISODate(): string {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
 }

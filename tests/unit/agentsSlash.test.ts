@@ -1,9 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {createSlashCommandProcessor} from "../../src/slash/process.js";
-import {
-    createSubagentRegistry,
-    type AgentDefinition,
-} from "../../src/subagents/index.js";
+import {type AgentDefinition} from "../../src/subagents/index.js";
+import {createSubagentRegistry} from "../../src/subagents/registry.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

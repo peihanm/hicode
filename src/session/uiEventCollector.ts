@@ -65,6 +65,7 @@ export class SessionUIEventCollector {
                 toolCallId: event.toolCallId,
                 timestamp: new Date().toISOString(),
                 outcome: event.outcome ?? "ok",
+                ...(event.outcome === "ok" && event.uiData?.type === "file_read" ? {fileRead: event.uiData.receipt} : {}),
                 ...(event.outcome === "ok" && event.uiData?.type === "agent_receipt" ? {agentReceipt: event.uiData.receipt} : {}),
             },
         ]);

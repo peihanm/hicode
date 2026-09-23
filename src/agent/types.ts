@@ -27,7 +27,7 @@ export interface AgentResult {
     usage?: AgentUsage;
 }
 
-export interface AgentUsage {
+interface AgentUsage {
     inputTokens: number;
     outputTokens?: number;
     totalTokens?: number;

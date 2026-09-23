@@ -4,7 +4,8 @@ import {join} from "node:path";
 import {parse as parseEnv} from "dotenv";
 import {loadEnv} from "../../src/cli/env.js";
 import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
-import {loadHiCodeSettings, resolveHiCodeSettings} from "../../src/settings/index.js";
+import {loadHiCodeSettings} from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
@@ -52,7 +53,7 @@ test("concurrent model additions preserve each other; optional label defaults to
         const first = setup(storage, cwd), second = setup(storage, cwd);
         await Promise.all([first.config.addModel("deepseek", "extra-one", ""), second.config.addModel("deepseek", "extra-two", "Second")]);
         const loaded = loadHiCodeSettings({cwd, storage});
-        expect(loaded.values.sources.deepseek.models).toEqual(expect.arrayContaining([{id: "extra-one", label: "extra-one"}, {id: "extra-two", label: "Second"}]));
+        expect(loaded.values.sources.deepseek.models).toEqual(expect.arrayContaining([{id: "extra-one", label: "extra-one", imageInput: false}, {id: "extra-two", label: "Second", imageInput: false}]));
     });
 });
 
@@ -139,7 +140,7 @@ test("removing custom and preset models persists an explicit catalog, retaining 
         expect(loaded.values.sources.deepseek.baseUrl).toBe("https://keep.example/v1");
         expect(parseEnv(await readFile(join(storage.hicodeHome, ".env"), "utf8"))).toMatchObject({DEEPSEEK_API_KEY: "keep-key-fixture"});
         await config.addModel("deepseek", "added-again", "");
-        expect(runtime.sources.deepseek.models).toEqual([{id: "added-again", label: "added-again"}]);
+        expect(runtime.sources.deepseek.models).toEqual([{id: "added-again", label: "added-again", imageInput: false}]);
     });
 });
 

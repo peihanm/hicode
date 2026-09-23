@@ -543,74 +543,8 @@ export class ToolResultStore {
         return result;
     }
 
-    private async resolveBinaryReference(path: string): Promise<PersistedBinaryArtifact> {
-        const resolved = resolve(path);
-        if (dirname(resolved) !== resolve(this.sessionDir) || !/^[a-f0-9]{32}\.bin$/.test(basename(resolved))) {
-            throw new ToolResultStoreError("Cannot copy binary results from another Session");
-        }
-        const metadataPath = resolved.slice(0, -4) + ".binary.json";
-        const handle = await open(metadataPath, constants.O_RDONLY | constants.O_NOFOLLOW);
-        try {
-            const info = await handle.stat();
-            if (!info.isFile() || info.size > MAX_TOOL_RESULT_METADATA_BYTES) throw new ToolResultStoreError("Invalid binary result metadata");
-            const content = Buffer.alloc(info.size);
-            const {bytesRead} = await handle.read(content, 0, content.length, 0);
-            if (bytesRead !== content.length) throw new ToolResultStoreError("Incomplete binary result metadata");
-            const value: unknown = JSON.parse(content.toString("utf8"));
-            if (!value || typeof value !== "object" || !("artifactId" in value) || typeof value.artifactId !== "string" ||
-                value.artifactId.length > 4096 || basename(resolved) !== `${getArtifactKey(this.sessionId, value.artifactId)}.bin`) {
-                throw new ToolResultStoreError("Binary result path does not match metadata");
-            }
-            const result = parseBinaryArtifactMetadata(content.toString("utf8"), value.artifactId);
-            if (!result || result.byteLength > this.maxArtifactBytes) throw new ToolResultStoreError("Invalid binary result metadata");
-            return {...result, path: resolved};
-        } finally {await handle.close();}
-    }
 
-    async copyReferenceTo(path: string, target: ToolResultStore): Promise<PersistedToolResult | PersistedBinaryArtifact> {
-        await this.ensureDir();
-        const result = path.endsWith(".bin") ? await this.resolveBinaryReference(path) : await this.resolveFile(path);
-        if (!result) throw new ToolResultStoreError("Conversation reference is not a result of this Session");
-        const handle = await open(result.path, constants.O_RDONLY | constants.O_NOFOLLOW);
-        try {
-            const before = await handle.stat();
-            if (!before.isFile() || before.size !== result.byteLength || before.size > this.maxArtifactBytes) throw new ToolResultStoreError("Result changed before copying");
-            const bytes = Buffer.alloc(before.size);
-            let offset = 0;
-            while (offset < bytes.length) {
-                const read = await handle.read(bytes, offset, bytes.length - offset, offset);
-                if (!read.bytesRead) throw new ToolResultStoreError("Incomplete result copy");
-                offset += read.bytesRead;
-            }
-            const after = await handle.stat();
-            if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new ToolResultStoreError("Result changed while copying");
-            if (result.encoding === "binary" && result.image && createHash("sha256").update(bytes).digest("hex") !== result.image.sha256) throw new ToolResultStoreError("Image integrity check failed");
-            return await target.withMutation(async () => {
-                if (bytes.length > target.maxArtifactBytes || await target.currentUsage() + bytes.length > target.maxSessionBytes) {
-                    throw new ToolResultStoreError("Branch storage quota exceeded; saved results cannot be copied in full");
-                }
-                const key = getArtifactKey(target.sessionId, result.encoding === "binary" ? result.artifactId : result.resultId);
-                const contentPath = join(target.sessionDir, `${key}.${result.encoding === "binary" ? "bin" : "txt"}`);
-                const metadataPath = join(target.sessionDir, `${key}.${result.encoding === "binary" ? "binary" : "meta"}.json`);
-                for (const path of [contentPath, metadataPath]) {
-                    try {await lstat(path);} catch (error) {if (isCode(error, "ENOENT")) continue; throw error;}
-                    throw new ToolResultStoreError("Branch result destination already exists");
-                }
-                const copied = {...result, path: contentPath};
-                const tempContent = join(target.sessionDir, `.tmp-${randomUUID()}`);
-                const tempMetadata = join(target.sessionDir, `.tmp-${randomUUID()}`);
-                try {
-                    await writeFile(tempContent, bytes, {flag: "wx", mode: 0o600});
-                    await writeFile(tempMetadata, JSON.stringify(copied), {flag: "wx", mode: 0o600});
-                    await target.publishPair(tempContent, tempMetadata, contentPath, metadataPath);
-                    return copied;
-                } finally {
-                    await rm(tempContent, {force: true});
-                    await rm(tempMetadata, {force: true});
-                }
-            });
-        } finally {await handle.close();}
-    }
+
 
     async removeTemporaryFile(path: string): Promise<void> {
         const resolvedPath = resolve(path);

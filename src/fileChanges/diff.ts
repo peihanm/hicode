@@ -5,7 +5,7 @@ const DIFF_CONTEXT_LINES = 3;
 const DIFF_TIMEOUT_MS = 5_000;
 const MAX_FILE_CHANGE_UI_BYTES = 2 * 1024 * 1024;
 
-export interface CreateFileChangeInput {
+interface CreateFileChangeInput {
     path: string;
     kind: "create" | "update" | "delete";
     oldContent: string;
@@ -13,7 +13,7 @@ export interface CreateFileChangeInput {
     replacements?: number;
 }
 
-export interface FileChangeContents {
+interface FileChangeContents {
     oldContent: string;
     newContent: string;
 }

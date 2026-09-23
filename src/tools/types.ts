@@ -37,7 +37,7 @@ export type PermissionMatcher = (
 ) => boolean;
 
 export type ToolExposure = "direct" | "deferred";
-export type DefaultApprovalScope =
+type DefaultApprovalScope =
     | {kind: "workspace"; path: string}
     | {kind: "sandboxed"};
 

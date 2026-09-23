@@ -18,7 +18,7 @@ describe("/skills", () => {
                 await mkdir(directory, {recursive: true});
                 await writeFile(join(directory, "SKILL.md"), `---\ndescription: ${description}\nwhen_to_use: Before a release\n---\nPRIVATE_SKILL_BODY`);
             }
-            const skills = loadSkills({cwd, storage, sources: ["user", "project"]});
+            const skills = loadSkills({cwd, storage, sources: ["user", "project"]}).skills;
             const path = join(cwd, ".hicode", "skills", "review", "SKILL.md");
             await writeFile(path, "Changed on disk after startup");
             const messages: string[] = [];

@@ -12,7 +12,7 @@ import {useStdout} from "ink";
 const DEFAULT_TERMINAL_WIDTH = 80;
 const DEFAULT_TERMINAL_HEIGHT = 24;
 
-export interface TerminalSize {
+interface TerminalSize {
     width: number;
     height: number;
 }

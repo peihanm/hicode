@@ -72,7 +72,9 @@ class MemoryRuntime implements MemoryRuntimeLike {
     async list(): Promise<MemoryScanResult> {
         if (!this.enabled)
             return { entries: [], issues: [] };
-        const state = this.store.snapshot();
+        return this.scanSnapshot(this.store.snapshot());
+    }
+    private scanSnapshot(state: ReturnType<MemoryPublicationStore["snapshot"]>): MemoryScanResult {
         const entries: MemoryEntry[] = state.topics.map(topic => ({ version: 2, key: topic.key, name: topic.name,
             description: topic.description, type: topic.type, source: topic.sources.length === 0 ? "explicit" : "automatic",
             evidence: state.sources.filter(source => topic.sources.includes(source.id)).map(source => source.origin),
@@ -82,8 +84,8 @@ class MemoryRuntime implements MemoryRuntimeLike {
     async read(key: string): Promise<MemoryEntry | undefined> { return (await this.list()).entries.find(entry => entry.key === key); }
 
     async status(): Promise<MemoryRuntimeStatus> {
-        const scan = await this.list();
         const state = this.enabled ? this.store.snapshot() : undefined;
+        const scan = state ? this.scanSnapshot(state) : {entries: [], issues: []};
         const counts: MemoryRuntimeStatus["counts"] = { user: 0, feedback: 0, project: 0, reference: 0 };
         for (const entry of scan.entries)
             counts[entry.type]++;

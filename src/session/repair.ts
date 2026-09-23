@@ -11,7 +11,7 @@ import {readLatestSessionSnapshot} from "./snapshotStore.js";
 import {countSessionConversationMessages,summarizeSessionHistory} from "./codec.js";
 import {SESSION_INDEX_VERSION,type SessionIndexEntry} from "./types.js";
 
-export interface SessionRepairResult {sessions:SessionIndexEntry[];issues:string[];backup?:string}
+interface SessionRepairResult {sessions:SessionIndexEntry[];issues:string[];backup?:string}
 
 /** Explicit repair, never a silent fallback in the normal save path. */
 export async function repairSessionIndex(storage:HiCodeStorageLayout,cwd:string):Promise<SessionRepairResult> {

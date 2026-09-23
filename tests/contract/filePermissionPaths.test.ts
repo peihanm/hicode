@@ -125,6 +125,6 @@ test("无效文件权限规则不能被跳过后按默认权限启动", async ()
             models: {primary: {model: 42}},
             permissions: {deny: ['read_file({"path":"private.txt"})']},
         }));
-        expect(() => loadHiCodeSettings({cwd, storage, sources: ["project"]})).toThrow("Invalid permission configuration");
+        expect(() => loadHiCodeSettings({cwd, storage, sources: ["project"]})).toThrow("Invalid Settings");
     });
 });

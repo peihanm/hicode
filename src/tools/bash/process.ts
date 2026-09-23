@@ -33,7 +33,7 @@ export interface ShellCommandOptions {
     previewChars?: number;
 }
 
-export interface ShellArgvOptions extends Omit<ShellCommandOptions, "command"> {
+interface ShellArgvOptions extends Omit<ShellCommandOptions, "command"> {
     argv: string[];
 }
 

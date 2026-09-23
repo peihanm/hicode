@@ -26,7 +26,7 @@ import {
     type DirectoryAccessRuntimeLike,
 } from "../permissions/index.js";
 
-export interface ToolContextResources {
+interface ToolContextResources {
     toolNames: readonly string[];
     availableTools: readonly Tool[];
     contextSettings: ToolContext["contextSettings"];
@@ -53,7 +53,7 @@ export interface ToolContextResources {
     memoryFiles?: MemoryFileAccess;
 }
 
-export interface ToolContextSession {
+interface ToolContextSession {
     approvalEpoch?: ApprovalEpoch;
     fileState: FileStateTracker;
     networkAccess?: ToolContext["networkAccess"];

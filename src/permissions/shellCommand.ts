@@ -132,7 +132,7 @@ function unsafeOption(tokens: readonly string[], short: string, long: readonly s
     });
 }
 
-export function isShellArgvReadOnly(tokens: readonly string[]): boolean {
+function isShellArgvReadOnly(tokens: readonly string[]): boolean {
     const name = tokens[0];
     if (!name) return false;
     if (name === "git") {

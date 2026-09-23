@@ -1,3 +1,4 @@
+import {fileReadReceiptSchema} from "./receipt.js";
 import {z} from "zod";
 import {isUtf8} from "node:buffer";
 import {createHash} from "node:crypto";
@@ -109,6 +110,11 @@ export const readFileTool: Tool<typeof inputSchema> = {
         });
         ctx.fileState.stageRead({toolCallId: invocation.toolCallId, path: absPath, content,
             normalizedBytes: Buffer.byteLength(normalized), output, segments});
-        return output;
+        const receipt = fileReadReceiptSchema.safeParse({
+            path: absPath, start: startLine, end: endIndex, total: lines.length,
+            contentStart: header.length + 2,
+            headerHash: createHash("sha256").update(`${header}\n\n`).digest("hex"),
+        });
+        return {content: output, ...(receipt.success ? {uiData: {type: "file_read" as const, receipt: receipt.data}} : {})};
     },
 };

@@ -29,7 +29,7 @@ export function snapshotTurnInput(input: TurnInput): TurnInput {
 export async function importUserInput(input: TurnInput, store: ToolResultStore, supported: boolean, signal: AbortSignal): Promise<MessageContent> {
     throwIfTurnAborted(signal);
     if (typeof input === "string") return input;
-    if (input.some(part => part.type === "image") && !supported) throw new Error("This model/interface does not support images; select the supported Qwen 3.8 Flash trial interface");
+    if (input.some(part => part.type === "image") && !supported) throw new Error("This model/interface does not support images; select a model configured with imageInput: true");
     const inputId = randomUUID();
     const parts: ContentPart[] = [];
     let bytes = 0;

@@ -2,7 +2,7 @@ import {listPromptLogs} from "../helpers/promptLogs.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
-import {getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {getPromptLogDirectory} from "../../src/persistence/layout.js";
 import {createLLMCaller} from "../../src/llm/index.js";
 import {deepseekProvider} from "../../src/llm/providers/deepseek.js";
 import {createTestStorage, withTempProject} from "../helpers/tempProject.js";
@@ -201,7 +201,7 @@ describe("DeepSeek provider", () => {
                 content: "读取完成",
                 reasoning: {content: "已经获得文件内容", scope: expect.any(String)},
             });
-            const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+            const directory = getPromptLogDirectory(createTestStorage(cwd), cwd);
             const logs = await Promise.all((await listPromptLogs(directory)).map(async filename =>
                 JSON.parse(await readFile(join(directory, filename), "utf8")) as {
                     response: {

@@ -55,7 +55,3 @@ export function mergeFileChange(
         return index === firstIndex ? [merged] : [];
     });
 }
-
-export function mergeFileChanges(changes: FileChange[]): FileChange[] {
-    return changes.reduce(mergeFileChange, [] as FileChange[]);
-}

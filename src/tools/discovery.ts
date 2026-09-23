@@ -1,5 +1,5 @@
 import {MAX_LOADED_DEFERRED_TOOLS, type ToolDiscoverySnapshot} from "./discoveryState.js";
-export {MAX_LOADED_DEFERRED_TOOLS, type ToolDiscoverySnapshot} from "./discoveryState.js";
+export type {ToolDiscoverySnapshot} from "./discoveryState.js";
 import type {OpenAITool} from "../llm/types.js";
 import type {ToolRegistration} from "./catalog.js";
 import {schemaForTool} from "./catalog.js";
@@ -7,7 +7,7 @@ import {buildToolSearchDocument, createToolSearchIndex,} from "./toolSearch/sear
 import {createToolSearchTool, TOOL_SEARCH_NAME,} from "./toolSearch/toolSearch.js";
 import type {Tool} from "./types.js";
 
-export interface ToolDiscovery {
+interface ToolDiscovery {
     readonly searchTool?: Tool;
 
     isDeferred(name: string): boolean;

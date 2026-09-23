@@ -5,7 +5,7 @@ import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";
-import type {LoadedSkill} from "../skills/types.js";
+import type {LoadedSkill, SkillLoadIssue} from "../skills/types.js";
 import {createToolRuntime, type ToolRuntime,} from "../tools/registry.js";
 import {createToolCatalog} from "../tools/catalog.js";
 import {createTaskRuntime, type TaskRuntimeLike,} from "../tasks/index.js";
@@ -61,6 +61,7 @@ export interface RootRuntimeResources {
     readonly agentDefinitions: AgentDefinitionManager;
     readonly agentAuthoring: AgentAuthoringRuntime;
     readonly skills: LoadedSkill[];
+    readonly skillIssues: readonly SkillLoadIssue[];
     readonly instructions: ProjectInstructions;
     readonly toolRuntime: ToolRuntime;
     readonly hooks: HookRuntime;
@@ -181,7 +182,7 @@ export function createRootRuntimeResourcesFactory(
         const {cwd, settings, storage} = options.configuration;
         const releaseActivity = await acquireProjectActivity(storage,cwd);
         try {
-        const [skills, instructions, loadedCustomAgents] = await Promise.all([
+        const [loadedSkills, instructions, loadedCustomAgents] = await Promise.all([
             Promise.resolve(dependencies.loadSkills({
                 storage,
                 cwd,
@@ -202,6 +203,7 @@ export function createRootRuntimeResourcesFactory(
                 options.configuration.contributions.agents
             ),
         ]);
+        const {skills, issues: skillIssues} = loadedSkills;
         let mcpManager: McpManagerLike | undefined;
         let taskRuntime: TaskRuntimeLike | undefined;
         let memory: MemoryRuntimeLike | undefined;
@@ -377,6 +379,7 @@ export function createRootRuntimeResourcesFactory(
                 agentDefinitions,
                 agentAuthoring,
                 skills,
+                skillIssues,
                 instructions,
                 toolRuntime,
                 hooks,

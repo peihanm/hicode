@@ -16,14 +16,14 @@ export type GitProcessTermination =
     | {kind: "output-limit"; maxOutputBytes: number}
     | {kind: "spawn-error"; error: Error};
 
-export interface GitProcessResult {
+interface GitProcessResult {
     code: number;
     stdout: Buffer;
     stderr: Buffer;
     termination: GitProcessTermination;
 }
 
-export interface GitProcessOptions {
+interface GitProcessOptions {
     timeoutMs?: number;
     maxOutputBytes?: number;
     input?: Buffer;

@@ -1,10 +1,11 @@
+import {getPromptLogDirectory} from "../../src/persistence/layout.js";
 // Opt-in paid probe through the public SDK, real stdio MCP and production Provider.
 import {mkdtemp, readFile, readdir, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import {parse as parseEnv} from "dotenv";
 import {HiCode, loadHiCodeHostConfig} from "../../src/sdk/index.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
-import {createHiCodeStorageLayout, getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {loadHiCodeSettings} from "../../src/settings/index.js";
 import {supportsToolImages} from "../../src/images/capability.js";
 import {imageReferences} from "../../src/images/content.js";
@@ -76,8 +77,9 @@ async function main() {
         const saved = loadSession(configuration.storage, cwd, thread.id, model);
         report.savedImages = saved?.history.flatMap(message => imageReferences(message.content));
         let logsClean = true;
-        const logDir = join(getProjectDebugDirectory(configuration.storage, cwd), "prompt-logs");
-        for (const file of await readdir(logDir)) {
+        const logDir = getPromptLogDirectory(configuration.storage, cwd, thread.id);
+        for (const file of await readdir(logDir, {recursive: true})) {
+            if (!file.endsWith(".json")) continue;
             const text = await readFile(join(logDir, file), "utf8");
             if (text.includes("data:image/") || text.includes(key)) logsClean = false;
         }

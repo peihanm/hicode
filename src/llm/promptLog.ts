@@ -12,7 +12,7 @@ const MAX_PROMPT_LOG_FILES = 200;
 const MAX_PROMPT_LOG_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_TOOL_SEARCH_DESCRIPTION_CHARS = 20_000;
 const REQUEST_FILE = /^\d{4}-\d{2}-\d{2}T.+_[0-9a-f-]+\.json$/i;
-export interface PromptLogHandle {finish(response: PromptLogResponse): void}
+interface PromptLogHandle {finish(response: PromptLogResponse): void}
 const traceBase={ownerCwd:z.string().max(4096).refine(isAbsolute),runId:z.string().min(1).max(512)};
 const traceSchema=z.discriminatedUnion("scope",[
     z.object({...traceBase,scope:z.literal("session"),sessionId:z.string().min(1).max(512),agentId:z.string().min(1).max(512).optional()}).strict(),

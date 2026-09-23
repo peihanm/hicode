@@ -18,7 +18,6 @@ export {
 export {generateRuleForTool, addToAllowList} from "./addRule.js";
 export {
     createDirectoryAccessRuntime,
-    directoryOperationForTool,
 } from "./directoryAccess.js";
 export type {
     DirectoryAccessRequest,

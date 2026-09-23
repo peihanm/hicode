@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import stringWidth from "string-width";
@@ -393,6 +394,11 @@ describe("subagent UI", () => {
       type: "tool_call_end",
       turnId: "turn-1",
       toolCallId: "read-readme",
+      uiData: {type: "file_read", receipt: {
+        path: "/project/README.md", start: 1, end: 60, total: 60,
+        contentStart: "File: /project/README.md\nLine range: 1-60 / 60\nNote: left-hand line numbers are not file content; exclude them from edit_file.edits[].old_string.\n\n".length,
+        headerHash: createHash("sha256").update("File: /project/README.md\nLine range: 1-60 / 60\nNote: left-hand line numbers are not file content; exclude them from edit_file.edits[].old_string.\n\n").digest("hex"),
+      }},
       result: [
         "File: /project/README.md",
         "Line range: 1-60 / 60",

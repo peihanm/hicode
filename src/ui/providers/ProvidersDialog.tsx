@@ -21,6 +21,7 @@ export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
     const [page, setPage] = useState<Page>({kind: "list"});
     const [selected, setSelected] = useState(0);
     const [value, setValue] = useState("");
+    const [imageInput, setImageInput] = useState(false);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
     const [error, setError] = useState("");
@@ -38,6 +39,7 @@ export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
         if (!edit || busy || !("source" in page) || !page.source) return;
         if (page.kind === "model-id") {
             if (!input.trim() || input.trim().length > 200) {setError("Enter the API model ID (up to 200 characters)"); return;}
+            setImageInput(false);
             navigate({kind: "model-label", source: page.source, id: input.trim()});
             return;
         }
@@ -48,7 +50,7 @@ export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
             let message = "Saved. Available immediately.";
             if (page.kind === "key") message = `Key saved to ${await configuration.saveKey(page.source, input)}. Available immediately.`;
             else if (page.kind === "endpoint") await configuration.saveEndpoint(page.source, input);
-            else if (page.kind === "model-label") await configuration.addModel(page.source, page.id, input);
+            else if (page.kind === "model-label") await configuration.addModel(page.source, page.id, input, imageInput);
             if (mounted.current) {
                 const ready = runtime.available.some(model => model.source === page.source);
                 navigate({kind: "provider", source: page.source}, "", ready ? 4 : configured(page.source) ? 2 : 0);
@@ -78,6 +80,7 @@ export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
             else if ("source" in page && page.source) navigate({kind: "provider", source: page.source});
             return;
         }
+        if (page.kind === "model-label" && key.tab) {setImageInput(value => !value); return;}
         if (edit) return;
         const count = page.kind === "list" ? (LLM_PROVIDER_NAMES.length + (available.length ? 2 : 1)) : page.kind === "remove-model" ? (source?.models.length ?? 0) + 1 : page.kind === "confirm-remove" ? 2 : 6;
         if (key.upArrow) setSelected(index => (index + count - 1) % count);
@@ -158,7 +161,7 @@ export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
             {row("Remove model", 1)}
         </Box> : <Box marginTop={1} flexDirection="column">
             <Text>{page.kind === "key" ? "API key (hidden)" : page.kind === "endpoint" ? "API base URL (empty restores default)" : page.kind === "model-id" ? "Model ID (required, exactly as the API expects)" : "Display name (optional, defaults to model ID)"}</Text>
-            {page.kind === "model-label" && <Text color={COLORS.dim}>Model ID: {page.id}</Text>}
+            {page.kind === "model-label" && <><Text color={COLORS.dim}>Model ID: {page.id}</Text><Text>Image input: {imageInput ? "Enabled" : "Disabled"} · Tab toggle</Text><Text color={COLORS.dim}>Enable only when this model and endpoint support images.</Text></>}
             <Box><Text color={COLORS.accent}>› </Text><TextInput value={value} onChange={next => setValue(next.slice(0, page.kind === "key" ? 8192 : 2048))}
                 mask={page.kind === "key" ? "•" : undefined} focus={!busy} onSubmit={input => {void save(input);}}/></Box>
         </Box>}

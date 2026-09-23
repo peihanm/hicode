@@ -40,7 +40,7 @@ for (const [network, prefix] of [
     blockedIpv6Addresses.addSubnet(network, prefix, "ipv6");
 }
 
-export interface WebFetchResponse {
+interface WebFetchResponse {
     url: string;
     status: number;
     statusText: string;

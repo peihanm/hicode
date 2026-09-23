@@ -1,5 +1,5 @@
-import {constants} from "node:fs";
-import {lstat, mkdir, open, realpath, type FileHandle} from "node:fs/promises";
+import {readBoundedTextFile} from "../persistence/readTextFile.js";
+import {lstat, mkdir, realpath} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {parse as parseEnv} from "dotenv";
 import {ensurePrivateStorageDirectory, hasFileSystemErrorCode, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
@@ -16,7 +16,7 @@ const MAX_BYTES = 4 * 1024 * 1024;
 export interface ModelConfiguration {
     saveKey(source: LLMProviderName, key: string): Promise<string>;
     saveEndpoint(source: LLMProviderName, baseUrl: string): Promise<void>;
-    addModel(source: LLMProviderName, id: string, label: string): Promise<void>;
+    addModel(source: LLMProviderName, id: string, label: string, imageInput?: boolean): Promise<void>;
     removeModel(source: LLMProviderName, id: string): Promise<void>;
     saveSelection(target: ModelTargetSettings): Promise<void>;
 }
@@ -47,19 +47,13 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
     }
 
     async function read(path: string): Promise<string> {
-        let handle: FileHandle | undefined;
         try {
             await ensureParent(path, false);
-            handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-            const stat = await handle.stat();
-            if (!stat.isFile() || stat.size > MAX_BYTES) throw new Error("Configuration must be a regular file smaller than 4 MiB");
-            const bytes = await handle.readFile();
-            if (bytes.length > MAX_BYTES) throw new Error("Configuration exceeds 4 MiB");
-            return new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+            return readBoundedTextFile(path, MAX_BYTES);
         } catch (error) {
             if (hasFileSystemErrorCode(error, "ENOENT")) return "";
             throw new Error("Cannot safely read configuration; check its file type, encoding and permissions");
-        } finally {await handle?.close();}
+        }
     }
 
     function decode(text: string): HiCodeSettingsFile {
@@ -131,7 +125,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
             });
             refresh(settings);
         },
-        async addModel(source, rawId, rawLabel) {
+        async addModel(source, rawId, rawLabel, imageInput = false) {
             const id = rawId.trim(), label = rawLabel.trim() || id;
             if (!id || id.length > 200 || label.length > 200 || /[\x00-\x1f\x7f]/.test(id + label)) throw new Error("Model ID is required; ID and display name must be at most 200 characters");
             const settings = await update(userPath, settings => {
@@ -139,7 +133,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                 const connection = {...settings.sources[source]};
                 const models = connection.models ?? runtime.sources[source].models;
                 if (models.some(model => model.id === id)) throw new Error("This model ID already exists for this provider");
-                connection.models = [...models, {id, label}];
+                connection.models = [...models, {id, label, imageInput}];
                 settings.sources[source] = connection;
             });
             refresh(settings);

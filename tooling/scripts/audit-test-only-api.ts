@@ -3,6 +3,9 @@ import {dirname, isAbsolute, relative, resolve, sep} from "node:path";
 
 type CandidateKind = "export" | "member";
 type FindingKind =
+    | "UNUSED_EXPORT"
+    | "LOCAL_ONLY_EXPORT"
+    | "TOOLING_ONLY_EXPORT"
     | "UNUSED_MEMBER"
     | "TEST_ONLY_EXPORT"
     | "TEST_ONLY_MEMBER"
@@ -34,6 +37,7 @@ interface Finding {
     testReads: number;
     testWrites: number;
     testReferences: ReferenceLocation[];
+    toolingReferences: ReferenceLocation[];
 }
 
 const root = process.cwd();
@@ -60,10 +64,89 @@ function isTestFile(fileName: string): boolean {
     return relative(toolingRoot, resolve(fileName)).split(sep).includes("tests");
 }
 
+let productionFiles = new Set<string>();
 function isNonTestConsumer(fileName: string): boolean {
-    return !isTestFile(fileName) && (
-        isInside(fileName, sourceRoot) || isInside(fileName, toolingRoot)
-    );
+    return productionFiles.has(resolve(fileName));
+}
+
+function productionReachability(program: ts.Program): Set<string> {
+    const result = new Set<string>();
+    const visitFile = (fileName: string) => {
+        fileName = resolve(fileName);
+        if (result.has(fileName) || !isInside(fileName, sourceRoot)) return;
+        const file = program.getSourceFile(fileName);
+        if (!file) return;
+        result.add(fileName);
+        const visit = (node: ts.Node) => {
+            const specifier = (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) ? node.moduleSpecifier
+                : ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword ? node.arguments[0] : undefined;
+            if (specifier && ts.isStringLiteral(specifier)) {
+                const target = ts.resolveModuleName(specifier.text, fileName, program.getCompilerOptions(), ts.sys).resolvedModule;
+                if (target) visitFile(target.resolvedFileName);
+            }
+            ts.forEachChild(node, visit);
+        };
+        visit(file);
+    };
+    visitFile(resolve(sourceRoot, "index.tsx"));
+    visitFile(resolve(sourceRoot, "sdk/index.ts"));
+    return result;
+}
+
+function nodeAt(file: ts.SourceFile, position: number): ts.Node {
+    let result: ts.Node = file;
+    const visit = (node: ts.Node) => {
+        if (node.getStart(file) <= position && position < node.end) {result = node; ts.forEachChild(node, visit);}
+    };
+    visit(file);
+    return result;
+}
+
+function isImportReference(program: ts.Program, fileName: string, position: number): boolean {
+    const file = program.getSourceFile(fileName);
+    if (!file) return false;
+    for (let node: ts.Node | undefined = nodeAt(file, position); node; node = node.parent) {
+        if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return true;
+    }
+    return false;
+}
+
+/** Follow the SDK's exposed types, not the implementation bodies or every SDK file. */
+function sdkPublicSymbols(program: ts.Program): Set<ts.Symbol> {
+    const checker = program.getTypeChecker();
+    const symbols = new Set<ts.Symbol>(), seenTypes = new Set<ts.Type>();
+    const visitType = (type: ts.Type) => {
+        if (seenTypes.has(type)) return;
+        seenTypes.add(type);
+        if (type.isUnionOrIntersection()) type.types.forEach(visitType);
+        if (type.flags & ts.TypeFlags.Object && (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) {
+            checker.getTypeArguments(type as ts.TypeReference).forEach(visitType);
+        }
+        if (type.aliasSymbol) visitSymbol(type.aliasSymbol);
+        if (type.symbol) {
+            if (!type.symbol.declarations?.some(decl => isInside(decl.getSourceFile().fileName, sourceRoot))) return;
+            symbols.add(type.symbol);
+        }
+        for (const property of checker.getPropertiesOfType(type)) visitSymbol(property);
+        for (const signature of [...type.getCallSignatures(), ...type.getConstructSignatures()]) {
+            visitType(checker.getReturnTypeOfSignature(signature));
+            signature.parameters.forEach(visitSymbol);
+        }
+    };
+    const visitSymbol = (input: ts.Symbol) => {
+        const symbol = input.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(input) : input;
+        if (symbols.has(symbol)) return;
+        const declarations = symbol.declarations ?? [];
+        const declaration = declarations.find(decl => isInside(decl.getSourceFile().fileName, sourceRoot));
+        if (!declaration || declarations.some(decl => hasModifier(decl, ts.SyntaxKind.PrivateKeyword) || hasModifier(decl, ts.SyntaxKind.ProtectedKeyword))) return;
+        symbols.add(symbol);
+        if (symbol.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias)) visitType(checker.getDeclaredTypeOfSymbol(symbol));
+        else visitType(checker.getTypeOfSymbolAtLocation(symbol, declaration));
+    };
+    const entry = program.getSourceFile(resolve(sourceRoot, "sdk/index.ts"));
+    const module = entry && checker.getSymbolAtLocation(entry);
+    if (module) checker.getExportsOfModule(module).forEach(visitSymbol);
+    return symbols;
 }
 
 function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
@@ -251,7 +334,7 @@ function collectReferences(
 ): ReferenceLocation[] {
     const groups = service.findReferences(candidate.fileName, candidate.position) ?? [];
     return groups.flatMap((group) => group.references)
-        .filter((reference) => !reference.isDefinition)
+        .filter((reference) => !reference.isDefinition && !isImportReference(program, reference.fileName, reference.textSpan.start))
         .map((reference) => {
             const location = sourcePosition(
                 program,
@@ -323,10 +406,14 @@ function findCandidateIssues(
     service: ts.LanguageService,
     program: ts.Program,
     candidates: Candidate[],
-    productionPropertyUses: ReadonlyMap<string, number>
+    productionPropertyUses: ReadonlyMap<string, number>,
+    publicSymbols: ReadonlySet<ts.Symbol>
 ): Finding[] {
     const findings: Finding[] = [];
     for (const candidate of candidates) {
+        const file = program.getSourceFile(candidate.fileName);
+        const symbol = file && program.getTypeChecker().getSymbolAtLocation(nodeAt(file, candidate.position));
+        if (symbol && publicSymbols.has(symbol)) continue;
         const references = collectReferences(service, program, candidate);
         const productionReferences = references.filter((reference) =>
             isNonTestConsumer(reference.file)
@@ -337,15 +424,14 @@ function findCandidateIssues(
         const testReferences = references.filter((reference) =>
             isTestFile(reference.file)
         );
+        const toolingReferences = references.filter(reference => !isTestFile(reference.file) && isInside(reference.file, toolingRoot));
         const production = countReferences(productionReferences);
         const tests = countReferences(testReferences);
         let kind: FindingKind | undefined;
         if (candidate.kind === "export") {
-            if (
-                testReferences.length > 0 &&
-                externalProductionReferences.length === 0
-            ) {
-                kind = "TEST_ONLY_EXPORT";
+            if (externalProductionReferences.length === 0) {
+                kind = productionReferences.length ? "LOCAL_ONLY_EXPORT" : toolingReferences.length ? "TOOLING_ONLY_EXPORT"
+                    : testReferences.length ? "TEST_ONLY_EXPORT" : "UNUSED_EXPORT";
             }
         } else if (
             production.reads === 0 &&
@@ -378,6 +464,7 @@ function findCandidateIssues(
             externalProductionReferences: externalProductionReferences.length,
             testReads: tests.reads,
             testWrites: tests.writes,
+            toolingReferences: toolingReferences.map(reference => ({...reference, file: relative(root, reference.file)})),
             testReferences: testReferences.map((reference) => ({
                 ...reference,
                 file: relative(root, reference.file),
@@ -398,6 +485,8 @@ for (const configPath of configPaths) {
     if (!ts.sys.fileExists(configPath)) fail(`找不到 ${relative(root, configPath)}`);
 }
 const {service, program} = createLanguageService(configPaths);
+productionFiles = productionReachability(program);
+const publicSymbols = sdkPublicSymbols(program);
 const sourceFiles = program.getSourceFiles().filter((sourceFile) =>
     !sourceFile.isDeclarationFile && isInside(sourceFile.fileName, sourceRoot)
 );
@@ -411,16 +500,23 @@ const findings = findCandidateIssues(
     service,
     program,
     [...exportCandidates, ...memberCandidates],
-    productionPropertyUses
+    productionPropertyUses,
+    publicSymbols
 );
 
 if (jsonOutput) {
     console.log(JSON.stringify({
         analyzed: {
             files: sourceFiles.length,
+            productionFiles: productionFiles.size,
+            publicApiSymbols: publicSymbols.size,
             exports: exportCandidates.length,
             members: memberCandidates.length,
         },
+        publicApi: [...publicSymbols].flatMap(symbol => {
+            const declaration = symbol.declarations?.[0];
+            return declaration ? [{symbol: symbol.name, file: relative(root, declaration.getSourceFile().fileName)}] : [];
+        }),
         findings,
     }, null, 2));
 } else {
@@ -433,9 +529,9 @@ if (jsonOutput) {
     } else {
         console.log(`发现 ${findings.length} 个候选（仅报告，不自动删除）：`);
         console.log(
-            "TEST_ONLY_EXPORT 表示没有其他生产模块引用该导出；定义文件内部仍可能使用其实现。"
+            "TEST_ONLY_EXPORT 没有生产读取；LOCAL_ONLY_EXPORT 仍有同文件生产使用；PUBLIC API 单独列出，不作为删除候选。"
         );
-        console.log("普通 tooling 调用方计入非测试消费者；tooling/**/tests 仍按测试处理。");
+        console.log("生产消费者仅统计 CLI/SDK 可达 src；普通 tooling 单列，tests 不计入生产，re-export 不作为最终消费者。");
         if (includeAmbiguousMembers) {
             console.log(
                 "POSSIBLE_TEST_ONLY_MEMBER 表示存在同名生产属性，但 TypeScript 无法确认是否属于该成员。"

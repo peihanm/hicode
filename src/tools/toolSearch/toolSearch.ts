@@ -13,7 +13,7 @@ const toolSearchParameters = z.object({
     limit: z.number().int().min(1).max(TOOL_SEARCH_MAX_LIMIT).optional(),
 }).strict();
 
-export interface ToolSearchSelection {
+interface ToolSearchSelection {
     matches: readonly ToolSearchDocument[];
     missingNames: readonly string[];
 }

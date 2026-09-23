@@ -11,13 +11,10 @@ export {
 } from "./project.js";
 export {
     createHiCodeStorageLayout,
-    getProjectDebugDirectory,
     getProjectSessionsDirectory,
-    getProjectStorageDirectory,
     getSessionStorageDirectory,
     getSessionContentDirectory,
 } from "./layout.js";
 export type {
-    CreateHiCodeStorageLayoutOptions,
     HiCodeStorageLayout,
 } from "./layout.js";

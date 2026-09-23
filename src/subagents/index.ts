@@ -1,6 +1,4 @@
 export {
-    BUILTIN_SUBAGENT_REGISTRY,
-    createSubagentRegistry,
     type SubagentRegistry,
 } from "./registry.js";
 export {

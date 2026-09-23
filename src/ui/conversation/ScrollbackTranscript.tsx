@@ -1,15 +1,12 @@
-import {useEffect, useRef, useSyncExternalStore} from "react";
+import {useLayoutEffect, useRef} from "react";
 import {Box, render, useStdout} from "ink";
 import type {UIThread} from "./types.js";
 import {MessageList, StaticMessageList} from "./MessageList.js";
 import {Welcome} from "../bootstrap/Welcome.js";
 import {useTerminalSize} from "../terminalSize.js";
 import type {TerminalCursorOutput} from "../input/terminalCursor.js";
-import type {UITurnEventStore} from "../turn/eventStore.js";
-import {layoutDraft} from "./draftLayout.js";
+import {useDraftLayout} from "./draftLayout.js";
 
-const noDraft = () => null;
-const noSubscription = () => () => {};
 
 /** Clear terminal-owned scrollback and the visible screen before source-backed replay. */
 export const CLEAR_SCROLLBACK_AND_SCREEN = "\u001B[3J\u001B[2J\u001B[H";
@@ -24,11 +21,12 @@ interface TranscriptSnapshot {
 
 function supportsScrollbackRecording(
     stdout: NodeJS.WriteStream
-): stdout is NodeJS.WriteStream & Pick<TerminalCursorOutput, "recordScrollback"> {
-    return "recordScrollback" in stdout && typeof stdout.recordScrollback === "function";
+): stdout is NodeJS.WriteStream & Pick<TerminalCursorOutput, "recordScrollback" | "holdScrollbackReplay"> {
+    return "recordScrollback" in stdout && typeof stdout.recordScrollback === "function" &&
+        "holdScrollbackReplay" in stdout && typeof stdout.holdScrollbackReplay === "function";
 }
 
-export type TranscriptEmissionPlan =
+type TranscriptEmissionPlan =
     | {kind: "none"}
     | {kind: "append"; from: number; includeWelcome: boolean}
     | {kind: "draft"; text: string}
@@ -143,29 +141,31 @@ export function ScrollbackTranscript({
     showWelcome = false,
     expanded = false,
     transientPanelId,
-    draftStore,
 }: {
     threads: UIThread[];
     showWelcome?: boolean;
     expanded?: boolean;
     transientPanelId?: number;
-    draftStore?: Pick<UITurnEventStore, "getDraftSnapshot" | "subscribeDraft">;
 }) {
     const {stdout, write} = useStdout();
     const {width, height} = useTerminalSize();
-    const draft = useSyncExternalStore(draftStore?.subscribeDraft ?? noSubscription, draftStore?.getDraftSnapshot ?? noDraft, noDraft);
+    const draftState = useDraftLayout();
+    const draft = draftState?.draft;
     const previousRef = useRef<TranscriptSnapshot>();
     const panelLayout = useRef({id: transientPanelId, revision: 0});
     const isInteractive = stdout.isTTY === true;
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!isInteractive) return;
         if (panelLayout.current.id !== transientPanelId) panelLayout.current.revision += 1;
         panelLayout.current.id = transientPanelId;
         const current: TranscriptSnapshot = {width, threads, expanded, layoutRevision: panelLayout.current.revision,
-            ...(draft ? {draft: {responseId: draft.responseId, text: layoutDraft(draft.text, width).completed}} : {})};
+            ...(draft ? {draft: {responseId: draft.responseId, text: draftState!.layout.completed}} : {})};
         const plan = planTranscriptEmission(previousRef.current, current, showWelcome);
         if (plan.kind === "none") return;
+        // A draft being replaced must not be restored by the cursor adapter's shrink recovery.
+        const releaseReplay = plan.kind === "replay" && supportsScrollbackRecording(stdout)
+            ? stdout.holdScrollbackReplay() : undefined;
 
         // Render outside React's current commit. A newer snapshot cancels the pending
         // write, and replans from the last successful write so no append can be lost.
@@ -189,12 +189,13 @@ export function ScrollbackTranscript({
                 previousRef.current = current;
             }).catch(() => {
                 // Keep the last committed history if rendering fails.
-            });
+            }).finally(() => releaseReplay?.());
         }, 0);
         timer.unref?.();
         return () => {
             active = false;
             clearTimeout(timer);
+            releaseReplay?.();
         };
     }, [draft, expanded, height, isInteractive, showWelcome, threads, transientPanelId, width, write, stdout]);
 

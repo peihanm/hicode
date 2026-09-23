@@ -12,19 +12,19 @@ import {randomUUID} from "node:crypto";
 
 type Listener = () => void;
 
-export interface UITurnStatus {
+interface UITurnStatus {
     busy: boolean;
     stopping: boolean;
     startedAt?: number;
     elapsedMs?: number;
 }
 
-export interface RestoredQueuedDraft {
+interface RestoredQueuedDraft {
     value: string;
     cursorOffset: number;
 }
 
-export interface UITurnControllerDependencies {
+interface UITurnControllerDependencies {
     getHistory(): Message[];
 
     createContext(signal: AbortSignal): ToolContext;

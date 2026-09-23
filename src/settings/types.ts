@@ -36,9 +36,10 @@ interface SandboxSettingsFile {
     };
 }
 
-export interface ModelDefinitionSettings {
+interface ModelDefinitionSettings {
     id: string;
     label: string;
+    imageInput?: boolean;
 }
 
 export interface ModelSourceSettings {
@@ -60,16 +61,11 @@ interface ModelTargetSettingsFile {
     model?: string;
 }
 
-interface ModelDefinitionSettingsFile {
-    id: string;
-    label: string;
-}
-
 interface ModelSourceSettingsFile {
     label?: string;
     apiKeyEnv?: string;
     baseUrl?: string;
-    models?: ModelDefinitionSettingsFile[];
+    models?: ModelDefinitionSettings[];
 }
 
 export interface HiCodeSettingsFile {

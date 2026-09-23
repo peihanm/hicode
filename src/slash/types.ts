@@ -44,7 +44,7 @@ export interface SlashCommand {
     ): Promise<void>;
 }
 
-export type SlashCommandBusyBehavior = "defer" | "immediate";
+type SlashCommandBusyBehavior = "defer" | "immediate";
 
 export interface SlashCommandProcessor {
     process(

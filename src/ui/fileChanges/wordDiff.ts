@@ -1,7 +1,7 @@
 import {diffWordsWithSpace} from "diff";
 import type {DiffHunk} from "../../fileChanges/index.js";
 
-export interface WordPart {
+interface WordPart {
     value: string;
     changed: boolean;
 }

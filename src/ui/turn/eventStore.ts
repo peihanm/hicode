@@ -17,7 +17,7 @@ export interface UITokenInfo {
     status: "unavailable" | "estimated" | "actual";
 }
 
-export interface UITurnEventSnapshot {
+interface UITurnEventSnapshot {
     threads: UIThread[];
     staticThreads: UIThread[];
     tokenInfo: UITokenInfo;
@@ -44,7 +44,7 @@ export interface UIModelStreamProgressRef {
     current: UIModelStreamInfo | null;
 }
 
-export interface UITurnEventStoreOptions {
+interface UITurnEventStoreOptions {
     history?: Message[];
     uiEvents?: PersistedUIEvent[];
     initialTokenInfo?: UITokenInfo;

@@ -74,7 +74,7 @@ export type SubagentRunner = (
     request: SubagentRequest
 ) => Promise<SubagentResult>;
 
-export interface SubagentThreadRunInput {
+interface SubagentThreadRunInput {
     taskId?: string;
     prompt: string;
     signal: AbortSignal;
@@ -92,7 +92,7 @@ export interface CreateSubagentRunnerOptions {
     onEvent: (event: AgentEvent) => void | Promise<void>;
 }
 
-export interface CreateSubagentThreadOptions extends CreateSubagentRunnerOptions {
+interface CreateSubagentThreadOptions extends CreateSubagentRunnerOptions {
     /** Background Tasks use their stable task identity as the Agent identity. */
     agentId: string;
     /** Task Runtime aggregates child progress; synchronous UI does not expand internal tool events. */

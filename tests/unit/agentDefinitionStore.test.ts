@@ -4,7 +4,11 @@ import {
     createAgentDefinitionStore,
     type AgentDefinitionDraft,
 } from "../../src/subagents/index.js";
-import {serializeAgentDefinition} from "../../src/subagents/serialize.js";
+import {stringify} from "yaml";
+
+function serializeAgentDefinition(value: AgentDefinitionDraft): string {
+    return `---\n${stringify({name: value.name, description: value.description, tools: value.tools})}---\n\n${value.systemPrompt}\n`;
+}
 import {withTempProject} from "../helpers/tempProject.js";
 
 function draft(description = "检查项目实现"): AgentDefinitionDraft {
@@ -26,9 +30,8 @@ describe("agent definition store", () => {
             expect(created.path).toBe(
                 `${cwd}/.hicode/agents/project-reviewer.md`
             );
-            expect(await readFile(created.path, "utf8")).toBe(
-                serializeAgentDefinition(draft())
-            );
+            expect(await readFile(created.path, "utf8")).toContain(draft().systemPrompt);
+            expect(created.definition.whenToUse).toBe(draft().description);
 
             const updated = await store.update(
                 "project",

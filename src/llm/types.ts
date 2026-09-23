@@ -36,7 +36,7 @@ export interface TokenUsage {
 }
 
 /** Latest active model context, distinct from accumulated billable usage. */
-export interface LLMContextUsage {
+interface LLMContextUsage {
     /** Input of the last successful request, excluding retry billing and generated output. */
     inputTokens: number;
     tokenCount: number;
@@ -110,6 +110,7 @@ export interface LLMCallResult {
 }
 
 export interface LLMSourceConnection {
+    models?: readonly {id: string; imageInput?: boolean}[];
     id: LLMProviderName;
     label: string;
     apiKeyEnv: string;

@@ -3,13 +3,13 @@ import {stripVTControlCharacters} from "node:util";
 const PASTE_CAPSULE_CHARACTER_THRESHOLD = 800;
 const PASTE_CAPSULE_NEWLINE_THRESHOLD = 2;
 
-export interface PasteCapsule {
+interface PasteCapsule {
     id: number;
     content: string;
     placeholder: string;
 }
 
-export interface PasteCapsuleRange {
+interface PasteCapsuleRange {
     id: number;
     start: number;
     end: number;
@@ -20,7 +20,7 @@ export interface PasteCapsuleState {
     nextId: number;
 }
 
-export interface PasteCapsuleInsertion {
+interface PasteCapsuleInsertion {
     value: string;
     cursorOffset: number;
     state: PasteCapsuleState;

@@ -1,3 +1,4 @@
+import {supportsToolImages} from "../../images/capability.js";
 import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMCallOptions, LLMCallResult, LLMProvider} from "../types.js";
 import {callOpenAICompatible, type OpenAICompatibleEndpoint,} from "./openAICompatible.js";
@@ -31,6 +32,7 @@ export function createGlmProvider(
                 displayName: source.label,
                 baseUrl: source.baseUrl || PROVIDER_BASE_URLS.glm,
                 apiKey,
+            toolImages: supportsToolImages(source, options.model),
                 requestFields: createGlmRequestFields(),
                 disableThinkingOnFinalStallRetry: true,
             });

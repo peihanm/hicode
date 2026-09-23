@@ -19,7 +19,7 @@ import type {RootSessionRuntime} from "./sessionRuntime.js";
 import {normalizeTurnAbortReason} from "./abort.js";
 import {randomUUID} from "node:crypto";
 
-export interface RootTurnSnapshotState {
+interface RootTurnSnapshotState {
     todos: readonly Todo[];
     permissionMode: PermissionMode;
     collaborationMode: CollaborationMode;
@@ -32,7 +32,7 @@ export interface RootTurnLifecycleIssue {
     error: unknown;
 }
 
-export interface RunRootTurnOptions {
+interface RunRootTurnOptions {
     turnId?: string;
     resources: RootRuntimeResources;
     session: RootSessionRuntime;

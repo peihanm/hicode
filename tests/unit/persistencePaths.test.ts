@@ -1,13 +1,8 @@
 import {describe, expect, test} from "bun:test";
 import {homedir} from "node:os";
 import {join} from "node:path";
-import {
-    createHiCodeStorageLayout,
-    getProjectKey,
-    getProjectStorageDirectory,
-    getSessionStorageDirectory,
-    hashProjectValue,
-} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout, getProjectKey, getSessionStorageDirectory, hashProjectValue} from "../../src/persistence/index.js";
+import {getProjectStorageDirectory} from "../../src/persistence/layout.js";
 import {getProjectMemoryDirectory} from "../../src/persistence/layout.js";
 import {getToolResultSessionDir} from "../../src/toolResults/paths.js";
 import {withTempProject} from "../helpers/tempProject.js";

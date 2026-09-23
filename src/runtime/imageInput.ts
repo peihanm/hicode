@@ -16,7 +16,7 @@ import {throwIfTurnAborted} from "./abort.js";
 export async function importSelectedImages(paths: readonly string[], resources: RootRuntimeResources, ctx: ToolContext): Promise<ImageReference[]> {
     if (paths.length > IMAGE_MAX_COUNT) throw new Error("Up to 8 images may be attached");
     const supported = supportsToolImages(resources.primaryModel.sources[ctx.provider], ctx.model);
-    if (!supported) throw new Error("This model/interface does not support images; switch to the Qwen 3.8 Flash trial interface");
+    if (!supported) throw new Error("This model/interface does not support images; select a model configured with imageInput: true");
     const references: ImageReference[] = [];
     for (const path of paths) {
         throwIfTurnAborted(ctx.signal);

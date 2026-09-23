@@ -1,6 +1,5 @@
 import {WORKER_SUBAGENT} from "./builtins/worker/index.js";
 import {EXPLORE_SUBAGENT} from "./builtins/explore/index.js";
-import {createCustomSubagentRegistration} from "./custom.js";
 import {boundAgentLoadIssues, normalizeAgentName} from "./load.js";
 import type {SubagentRegistration} from "./registration.js";
 import type {AgentDefinition, AgentLoadIssue, LoadedCustomAgents,} from "./types.js";
@@ -79,7 +78,7 @@ export function createSubagentRegistry(
             allowedTools: definition.allowedTools ? Object.freeze([...definition.allowedTools]) : undefined,
         });
         const registration = immutableRegistration(
-            createCustomSubagentRegistration(runtimeDefinition)
+            {definition: runtimeDefinition, concurrencySafe: false}
         );
         validateRegistration(registration);
         registrationMap.set(key, registration);

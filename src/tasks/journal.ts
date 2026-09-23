@@ -21,7 +21,7 @@ const MAX_TASK_JOURNAL_ENTRIES = 4_096;
 const MAX_PERSISTED_TASKS = 32;
 const COMPACT_TASK_JOURNAL_ENTRIES = 1_024;
 
-export interface LoadedTaskJournal {
+interface LoadedTaskJournal {
     sequence: number;
     tasks: readonly TaskSnapshot[];
     pendingRuns: readonly TaskSnapshot[];

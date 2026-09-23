@@ -1,3 +1,4 @@
+import {DraftLayoutProvider} from "./conversation/draftLayout.js";
 import {isCoordinationWait} from "./conversation/projection.js";
 import {ProvidersDialog} from "./providers/ProvidersDialog.js";
 import type {MessageContent} from "../images/content.js";
@@ -97,85 +98,27 @@ export function App({
         const {exit} = useApp();
         const inputEscapeRef = useRef<(() => boolean) | undefined>(undefined);
         const setInputEscapeHandler = useCallback((handler: (() => boolean) | undefined) => {inputEscapeRef.current = handler;}, []);
-        const [showResume, setShowResume] = useState(false);
+        const [activePanel, setActivePanel] = useState<"resume" | "tasks" | "agents" | "skills" | "sandbox" | "diff" | "providers" | "model" | "permissions" | undefined>(() => {
+            if (resources.modelConfiguration && resources.primaryModel.available.length === 0) return "providers";
+            if (resources.primaryModel.available.length > 0 && !resources.primaryModel.isConfigured) return "model";
+            return undefined;
+        });
         const [resumeError, setResumeError] = useState<string>();
         const [resumeSessions, setResumeSessions] = useState<SessionIndexEntry[]>([]);
-        const [showTasks, setShowTasks] = useState(false);
-        const [showAgents, setShowAgents] = useState(false);
-        const [showSkills, setShowSkills] = useState(false);
-        const [showSandbox, setShowSandbox] = useState(false);
         const [configuredNetworkMode, setConfiguredNetworkMode] = useState(resources.settings.sandbox.network.mode);
-        const [showGitDiff, setShowGitDiff] = useState(false);
-        const [showProviders, setShowProviders] = useState(() => !!resources.modelConfiguration && resources.primaryModel.available.length === 0);
-        const [showModel, setShowModel] = useState(() => resources.primaryModel.available.length > 0 && !resources.primaryModel.isConfigured);
-        const [showPermissions, setShowPermissions] = useState(false);
         const openResume = useCallback(() => {
-            setShowTasks(false);
-            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
-            setShowGitDiff(false);
-            setShowProviders(false);
-            setShowModel(false);
-            setShowPermissions(false);
             try {setResumeSessions(listSessionIndex(resources.storage, resources.cwd)); setResumeError(undefined);}
             catch (error) {setResumeSessions([]); setResumeError(error instanceof Error ? error.message : "Cannot read session index");}
-            setShowResume(true);
+            setActivePanel("resume");
         }, [resources.cwd, resources.storage]);
-        const openAgents = useCallback(() => {
-            setShowSkills(false); setShowSandbox(false);
-            setShowResume(false);
-            setShowGitDiff(false);
-            setShowProviders(false);
-            setShowModel(false);
-            setShowPermissions(false);
-            setShowAgents(true);
-        }, []);
-        const openSkills = useCallback(() => {
-            setShowSandbox(false);
-            setShowResume(false); setShowTasks(false); setShowAgents(false);
-            setShowGitDiff(false); setShowProviders(false); setShowModel(false);
-            setShowPermissions(false); setShowSkills(true);
-        }, []);
-        const openSandbox = useCallback(() => {
-            setShowResume(false); setShowTasks(false); setShowAgents(false); setShowSkills(false);
-            setShowGitDiff(false); setShowProviders(false); setShowModel(false);
-            setShowPermissions(false); setShowSandbox(true);
-        }, []);
-        const openGitDiff = useCallback(() => {
-            setShowResume(false);
-            setShowTasks(false);
-            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
-            setShowProviders(false);
-            setShowModel(false);
-            setShowPermissions(false);
-            setShowGitDiff(true);
-        }, []);
-        const openProviders = useCallback(() => {
-            setShowResume(false); setShowTasks(false); setShowAgents(false); setShowSkills(false); setShowSandbox(false); setShowGitDiff(false);
-            setShowModel(false); setShowPermissions(false); setShowProviders(true);
-        }, []);
-        const openModel = useCallback(() => {
-            setShowResume(false);
-            setShowTasks(false);
-            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
-            setShowGitDiff(false);
-            setShowPermissions(false);
-            setShowProviders(false);
-            setShowModel(true);
-        }, []);
-        const openPermissions = useCallback(() => {
-            setShowResume(false);
-            setShowTasks(false);
-            setShowAgents(false); setShowSkills(false); setShowSandbox(false);
-            setShowGitDiff(false);
-            setShowProviders(false);
-            setShowModel(false);
-            setShowPermissions(true);
-        }, []);
-        const openTasks = useCallback(() => {
-            setShowResume(false); setShowAgents(false); setShowSkills(false); setShowSandbox(false); setShowGitDiff(false);
-            setShowProviders(false);
-            setShowModel(false); setShowPermissions(false); setShowTasks(true);
-        }, []);
+        const openAgents = useCallback(() => setActivePanel("agents"), []);
+        const openSkills = useCallback(() => setActivePanel("skills"), []);
+        const openSandbox = useCallback(() => setActivePanel("sandbox"), []);
+        const openGitDiff = useCallback(() => setActivePanel("diff"), []);
+        const openProviders = useCallback(() => setActivePanel("providers"), []);
+        const openModel = useCallback(() => setActivePanel("model"), []);
+        const openPermissions = useCallback(() => setActivePanel("permissions"), []);
+        const openTasks = useCallback(() => setActivePanel("tasks"), []);
         const turn = useTurnController({
             resources,
             initialPermissionMode,
@@ -216,8 +159,7 @@ export function App({
                 requestExit();
                 return;
             }
-            setShowProviders(false);
-            setShowModel(false);
+            setActivePanel(undefined);
         }, [requestExit, resources.primaryModel]);
 
         const handleSubmit = useCallback(
@@ -238,7 +180,7 @@ export function App({
         useInput((input, key) => {
             if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
-            if (showResume || showTasks || showAgents || showSkills || showSandbox || showGitDiff || showModel || showProviders || showPermissions) return;
+            if (activePanel !== undefined) return;
             if ((key.escape || input === "\u001B") && !turn.confirmRequest && inputEscapeRef.current?.()) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
             if (
@@ -293,27 +235,27 @@ export function App({
             turn.backgroundTasks.agent
         );
         return (
-            <Box flexDirection="column">
+            <DraftLayoutProvider store={turn.draftStore}><Box flexDirection="column">
                 <ScrollbackTranscript threads={display.settled} showWelcome expanded={showTranscript}
-                    transientPanelId={turn.confirmRequest?.id} draftStore={turn.draftStore}/>
+                    transientPanelId={turn.confirmRequest?.id}/>
 
                 <MessageList
                     threads={display.live}
                     paused={!!turn.confirmRequest}
                 />
 
-                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
-                    <AssistantDraftView store={turn.draftStore} phase={turn.modelStream?.phase}/>
+                {turn.busy && !turn.confirmRequest && activePanel === undefined && (
+                    <AssistantDraftView phase={turn.modelStream?.phase}/>
                 )}
 
-                {!showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
+                {activePanel === undefined && (
                     <TodoList
                         todos={turn.todos}
                         paused={!turn.busy || !!turn.confirmRequest}
                     />
                 )}
 
-                {turn.busy && !turn.confirmRequest && !showResume && !showTasks && !showAgents && !showSkills && !showSandbox && !showGitDiff && !showModel && !showProviders && !showPermissions && (
+                {turn.busy && !turn.confirmRequest && activePanel === undefined && (
                     <>
                         <ModelStreamStatus
                             modelStream={turn.modelStream}
@@ -324,61 +266,61 @@ export function App({
                     </>
                 )}
 
-                {runtimeApproval ? runtimeApproval : showResume && requestSessionSwitch ? (
+                {runtimeApproval ? runtimeApproval : (activePanel === "resume") && requestSessionSwitch ? (
                     <ResumeDialog indexError={resumeError}
                         sessions={resumeSessions}
                         currentSessionId={turn.sessionId}
                         onSelect={requestSessionSwitch}
-                        onClose={() => setShowResume(false)}
+                        onClose={() => setActivePanel(undefined)}
                     />
-                ) : showProviders && resources.modelConfiguration ? (
+                ) : (activePanel === "providers") && resources.modelConfiguration ? (
                     <ProvidersDialog runtime={resources.primaryModel} configuration={resources.modelConfiguration} onSelect={turn.setPrimaryModel} onClose={closeConfiguration}/>
-                ) : showModel ? (
+                ) : (activePanel === "model") ? (
                     <ModelDialog
                         models={turn.availableModels}
                         current={turn.primaryModel}
                         onSelect={async (target) => {
                             await turn.setPrimaryModel(target);
-                            setShowModel(false);
+                            setActivePanel(undefined);
                         }}
                         escapeAction={resources.primaryModel.isConfigured ? "back" : "exit"}
                         onClose={closeConfiguration}
                     />
-                ) : showPermissions ? (
+                ) : (activePanel === "permissions") ? (
                     <PermissionsDialog
                         allowFullAccess={resources.allowFullAccess}
                         current={turn.permissionMode}
                         onSelect={(mode) => {
                             turn.setPermissionMode(mode);
-                            setShowPermissions(false);
+                            setActivePanel(undefined);
                         }}
-                        onClose={() => setShowPermissions(false)}
+                        onClose={() => setActivePanel(undefined)}
                     />
-                ) : showTasks && !turn.confirmRequest ? (
-                    <TasksDialog tasks={rootSession.taskSession} stopTask={turn.stopTask} onClose={() => setShowTasks(false)}/>
-                ) : showSandbox && !turn.confirmRequest ? (
+                ) : (activePanel === "tasks") && !turn.confirmRequest ? (
+                    <TasksDialog tasks={rootSession.taskSession} stopTask={turn.stopTask} onClose={() => setActivePanel(undefined)}/>
+                ) : (activePanel === "sandbox") && !turn.confirmRequest ? (
                     <SandboxDialog status={resources.shellRunner.sandboxStatus}
                         configured={configuredNetworkMode}
                         fullAccess={turn.permissionMode === "full-access"}
                         onSave={async mode => {await saveLocalNetworkMode(resources.cwd, mode); setConfiguredNetworkMode(mode);}}
-                        onClose={() => setShowSandbox(false)}/>
-                ) : showSkills && !turn.confirmRequest ? (
-                    <SkillsDialog skills={resources.skills}
+                        onClose={() => setActivePanel(undefined)}/>
+                ) : (activePanel === "skills") && !turn.confirmRequest ? (
+                    <SkillsDialog skills={resources.skills} issues={resources.skillIssues}
                         projectDirectory={join(resources.cwd, ".hicode", "skills")}
                         userDirectory={join(resources.storage.hicodeHome, "skills")}
-                        onClose={() => setShowSkills(false)}/>
-                ) : showAgents ? (
+                        onClose={() => setActivePanel(undefined)}/>
+                ) : (activePanel === "agents") ? (
                     <AgentsDialog
                         manager={resources.agentDefinitions}
                         authoring={resources.agentAuthoring}
                         catalog={resources.subagents}
                         fastModel={resources.fastModel}
-                        onClose={() => setShowAgents(false)}
+                        onClose={() => setActivePanel(undefined)}
                     />
-                ) : showGitDiff ? (
+                ) : (activePanel === "diff") ? (
                     <GitDiffDialog
                         loadDiff={turn.loadGitDiff}
-                        onClose={() => setShowGitDiff(false)}
+                        onClose={() => setActivePanel(undefined)}
                     />
                 ) : turn.confirmRequest ? (
                     turn.confirmRequest.toolName === "ask_user" ? (
@@ -449,7 +391,7 @@ export function App({
                 )}
 
                 <StatusBar
-                    showShortcuts={!showGitDiff && !showSkills && !showSandbox}
+                    showShortcuts={(activePanel !== "diff") && (activePanel !== "skills") && (activePanel !== "sandbox")}
                     cwd={cwd}
                     model={turn.primaryModel.label}
                     permissionMode={turn.permissionMode}
@@ -467,6 +409,6 @@ export function App({
                     sandboxStatus={resources.sandbox.status}
                     backgroundTasks={turn.backgroundTasks}
                 />
-            </Box>
+            </Box></DraftLayoutProvider>
         );
 }

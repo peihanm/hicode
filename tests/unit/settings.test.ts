@@ -1,14 +1,8 @@
 import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {
-    DEFAULT_MODEL,
-    loadHiCodeSettings,
-    resolveHiCodeSettings,
-    type LoadedSettingsDocument,
-    type SettingsFileSource,
-    type HiCodeSettingsFile,
-} from "../../src/settings/index.js";
+import {loadHiCodeSettings, type LoadedSettingsDocument, type SettingsFileSource, type HiCodeSettingsFile} from "../../src/settings/index.js";
+import {DEFAULT_MODEL, resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {DEFAULT_LLM_PROVIDER} from "../../src/llm/providerRegistry.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
@@ -335,7 +329,7 @@ describe("Unified Settings", () => {
         expect(resolved.values.hooks.SessionEnd[0]?.source).toBe("local");
     });
 
-    test("损坏来源被跳过，未知字段被保留并报告", async () => {
+    test("未知字段被保留并报告", async () => {
         await withTempProject(async (cwd, storage) => {
             const directory = join(cwd, ".hicode");
             await mkdir(directory, {recursive: true});
@@ -360,10 +354,6 @@ describe("Unified Settings", () => {
                         network: {futureNetwork: true},
                     },
                 })
-            );
-            await writeFile(
-                join(directory, "settings.local.json"),
-                "{broken-json"
             );
 
             const loaded = loadHiCodeSettings({
@@ -435,12 +425,7 @@ describe("Unified Settings", () => {
                         issue.severity === "warning"
                 )
             ).toBe(true);
-            expect(
-                loaded.issues.some(
-                    (issue) =>
-                        issue.source === "local" && issue.severity === "error"
-                )
-            ).toBe(true);
+
         });
     });
 });
@@ -462,13 +447,13 @@ test("非法 context 不静默回退到默认，Host 同样校验", async () => 
         await mkdir(join(cwd, ".hicode"), {recursive: true});
         for (const context of [{windowTokens: -1}, {windowTokens: 1.5}, {autoCompactTokenLimit: 0}, {windowTokens: "500000"}, {typo: 10}]) {
             await writeFile(join(cwd, ".hicode/settings.json"), JSON.stringify({context}));
-            expect(() => loadHiCodeSettings({storage, cwd, sources: ["project"]})).toThrow("Invalid context configuration");
+            expect(() => loadHiCodeSettings({storage, cwd, sources: ["project"]})).toThrow("Invalid Settings");
         }
         await writeFile(join(cwd, ".hicode/settings.json"), JSON.stringify({context: {windowTokens: 1_000_000}}));
         const loaded = loadHiCodeSettings({storage, cwd, sources: ["project"], hostSettings: {context: {autoCompactTokenLimit: 800_000}}});
         expect(loaded.values.context).toEqual({windowTokens: 1_000_000, autoCompactTokenLimit: 800_000});
         expect(loaded.issues).toEqual([]);
-        expect(() => loadHiCodeSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("Invalid context configuration");
+        expect(() => loadHiCodeSettings({storage, cwd, sources: [], hostSettings: {context: {autoCompactTokenLimit: -1}}})).toThrow("Invalid Settings");
     });
 });
 
@@ -481,4 +466,30 @@ test("network mode follows explicit settings precedence without changing permiss
     ]);
     expect(resolved.values.sandbox.network).toMatchObject({mode: "restricted", allowedDomains: ["example.com"]});
     expect(resolveHiCodeSettings([document("local", {sandbox: {network: {mode: "open"}}})]).values.permissions.defaultMode).toBe("ask");
+});
+
+
+test("invalid documents cannot silently discard network or permission restrictions", async () => {
+    await withTempProject(async (cwd, storage) => {
+        await mkdir(join(cwd, ".hicode"), {recursive: true});
+        for (const raw of ["{broken-json", JSON.stringify({permissions: {deny: ["bash"]}, sandbox: {network: {mode: "restrictedd"}}})]) {
+            await writeFile(join(cwd, ".hicode/settings.json"), raw);
+            expect(() => loadHiCodeSettings({cwd, storage, sources: ["project"]})).toThrow("loading stopped");
+        }
+        await writeFile(join(cwd, ".hicode/settings.json"), JSON.stringify({permissions: {deny: ["bash"]}, sandbox: {network: {mode: "restricted"}}}));
+        const loaded = loadHiCodeSettings({cwd, storage, sources: ["project"]});
+        expect(loaded.values.permissions.rules.deny[0]?.toolName).toBe("bash");
+        expect(loaded.values.sandbox.network.mode).toBe("restricted");
+    });
+});
+
+
+test("image input requires a declared model capability at the effective source", () => {
+    const defaults = resolveHiCodeSettings([]).values.sources;
+    expect(defaults.qwen.models.find(model => model.id === "qwen3.8-flash")?.imageInput).toBe(true);
+    const changed = resolveHiCodeSettings([document("user", {sources: {qwen: {baseUrl: "https://new.invalid/v1"}}})]).values.sources;
+    expect(changed.qwen.models.find(model => model.id === "qwen3.8-flash")?.imageInput).toBe(false);
+    const declared = resolveHiCodeSettings([document("user", {sources: {openrouter: {baseUrl: "https://vision.invalid/v1", models: [{id: "vision", label: "Vision", imageInput: true}, {id: "text", label: "Text"}]}}})]).values.sources;
+    expect(declared.openrouter.models[0]?.imageInput).toBe(true);
+    expect(declared.openrouter.models[1]?.imageInput).toBeUndefined();
 });

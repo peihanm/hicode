@@ -28,7 +28,7 @@ export interface ToolRuntime {
     restoreToolDiscovery(snapshot?: ToolDiscoverySnapshot): void;
 }
 
-export interface CreateToolRuntimeOptions {
+interface CreateToolRuntimeOptions {
     skillsAvailable?: boolean;
     allowedToolNames?: readonly string[];
     additionalTools?: readonly Tool[];
@@ -124,4 +124,3 @@ export function createToolRuntime(
 }
 
 export type {ToolDiscoverySnapshot} from "./discovery.js";
-export {MAX_LOADED_DEFERRED_TOOLS} from "./discovery.js";

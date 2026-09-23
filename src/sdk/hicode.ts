@@ -195,6 +195,9 @@ export class HiCode {
                 message: this.resources.sandbox.status.reason,
             });
         }
+        for (const issue of this.resources.skillIssues) {
+            await this.reportDiagnostic({severity: "warning", scope: "runtime", message: `Skill ${issue.path}: ${issue.message}`});
+        }
         for (const issue of this.resources.subagents.issues) {
             await this.reportDiagnostic({
                 severity: issue.severity,

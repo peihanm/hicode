@@ -13,34 +13,6 @@ const permissionModeSchema = z.enum([
 ]);
 
 const configuredLLMProviderSchema = z.enum(LLM_PROVIDER_NAMES);
-const modelDefinitionShape = {
-        id: z.string().trim().min(1).max(200),
-        label: z.string().trim().min(1).max(200),
-    };
-const modelDefinitionSchema = z
-    .object(modelDefinitionShape)
-    .passthrough();
-const strictModelDefinitionSchema = z.object(modelDefinitionShape).strict();
-const modelSourceShape = {
-    label: z.string().trim().min(1).max(100).optional(),
-    apiKeyEnv: z
-        .string()
-        .trim()
-        .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
-        .optional(),
-    baseUrl: z.string().url().optional(),
-};
-const modelSourceSchema = z
-    .object({
-        ...modelSourceShape,
-        models: z.array(modelDefinitionSchema).max(100).optional(),
-    })
-    .passthrough();
-const strictModelSourceSchema = z.object({
-    ...modelSourceShape,
-    models: z.array(strictModelDefinitionSchema).max(100).optional(),
-}).strict();
-
 const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value =>
     !["list_files", "glob", "grep"].includes(parsePermissionRule(value).toolName),
     "list_files, glob and grep tools were removed. Configure Bash command rules and read_file/Sandbox file restrictions explicitly; old rules are not ignored or migrated."
@@ -51,130 +23,40 @@ const permissionRuleListSchema = z.array(z.string().trim().min(1).refine(value =
     return !isFilePermissionTool(rule.toolName) || rule.content === undefined || validateFilePattern(rule.content);
 }, "File permission content must be a path glob; JSON, ~ and Bash-prefix syntax are not accepted"));
 
-export const hicodeSettingsFileSchema: z.ZodType<HiCodeSettingsFile> = z
-    .object({
+function settingsSchema(strict: boolean): z.ZodType<HiCodeSettingsFile> {
+    const object = <T extends z.ZodRawShape>(shape: T) => strict ? z.object(shape).strict() : z.object(shape).passthrough();
+    const target = object({model: z.string().trim().min(1).optional(), source: configuredLLMProviderSchema.optional()});
+    const model = object({id: z.string().trim().min(1).max(200), label: z.string().trim().min(1).max(200), imageInput: z.boolean().optional()});
+    const source = object({
+        label: z.string().trim().min(1).max(100).optional(),
+        apiKeyEnv: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).optional(),
+        baseUrl: z.string().url().optional(),
+        models: z.array(model).max(100).optional(),
+    });
+    return object({
         context: contextSettingsFileSchema.optional(),
-        sources: z
-            .object(Object.fromEntries(
-                LLM_PROVIDER_NAMES.map((name) => [name, modelSourceSchema.optional()])
-            ))
-            .passthrough()
-            .optional(),
-        models: z
-            .object({
-                reviewer: z.object({model: z.string().trim().min(1), source: configuredLLMProviderSchema}).strict().optional(),
-                primary: z
-                    .object({
-                        model: z.string().trim().min(1).optional(),
-                        source: configuredLLMProviderSchema.optional(),
-                    })
-                    .passthrough()
-                    .optional(),
-                fast: z
-                    .object({
-                        model: z.string().trim().min(1).optional(),
-                        source: configuredLLMProviderSchema.optional(),
-                    })
-                    .passthrough()
-                    .optional(),
-            })
-            .passthrough()
-            .optional(),
-        permissions: z
-            .object({
-                defaultMode: permissionModeSchema.optional(),
-                additionalDirectories: z.array(z.string().trim().min(1)).optional(),
-                allow: permissionRuleListSchema.optional(),
-                ask: permissionRuleListSchema.optional(),
-                deny: permissionRuleListSchema.optional(),
-            })
-            .passthrough()
-            .optional(),
+        sources: object(Object.fromEntries(LLM_PROVIDER_NAMES.map(name => [name, source.optional()]))).optional(),
+        models: object({
+            reviewer: z.object({model: z.string().trim().min(1), source: configuredLLMProviderSchema}).strict().optional(),
+            primary: target.optional(), fast: target.optional(),
+        }).optional(),
+        permissions: object({
+            defaultMode: permissionModeSchema.optional(),
+            additionalDirectories: z.array(z.string().trim().min(1)).optional(),
+            allow: permissionRuleListSchema.optional(), ask: permissionRuleListSchema.optional(), deny: permissionRuleListSchema.optional(),
+        }).optional(),
         hooks: hooksSettingsFileSchema.optional(),
-        memory: z
-            .object({
-                enabled: z.boolean().optional(),
-                autoExtract: z.boolean().optional(),
-            })
-            .passthrough()
-            .optional(),
-        sandbox: z
-            .object({
-                enabled: z.never({invalid_type_error: "sandbox.enabled was removed; use permissions.defaultMode to select ask, auto-review or full-access"}).optional(),
-                filesystem: z
-                    .object({
-                        denyRead: z.array(z.string().trim().min(1)).optional(),
-                        denyWrite: z.array(z.string().trim().min(1)).optional(),
-                    })
-                    .passthrough()
-                    .optional(),
-                network: z
-                    .object({
-                        mode: z.enum(["restricted", "open"]).optional(),
-                        allowedDomains: z.array(z.string().trim().min(1)).optional(),
-                        allowLocalBinding: z.boolean().optional(),
-                    })
-                    .passthrough()
-                    .optional(),
-            })
-            .passthrough()
-            .optional(),
-    })
-    .passthrough();
+        memory: object({enabled: z.boolean().optional(), autoExtract: z.boolean().optional()}).optional(),
+        sandbox: object({
+            enabled: z.never({invalid_type_error: "sandbox.enabled was removed; use permissions.defaultMode to select ask, auto-review or full-access"}).optional(),
+            filesystem: object({denyRead: z.array(z.string().trim().min(1)).optional(), denyWrite: z.array(z.string().trim().min(1)).optional()}).optional(),
+            network: object({
+                mode: z.enum(["restricted", "open"]).optional(),
+                allowedDomains: z.array(z.string().trim().min(1)).optional(), allowLocalBinding: z.boolean().optional(),
+            }).optional(),
+        }).optional(),
+    });
+}
 
-/** Host values are an API boundary, so every object is strict. */
-export const hicodeHostSettingsSchema: z.ZodType<HiCodeSettingsFile> = z
-    .object({
-        context: contextSettingsFileSchema.optional(),
-        sources: z
-            .object(Object.fromEntries(
-                LLM_PROVIDER_NAMES.map((name) => [name, strictModelSourceSchema.optional()])
-            ))
-            .strict()
-            .optional(),
-        models: z
-            .object({
-                reviewer: z.object({model: z.string().trim().min(1), source: configuredLLMProviderSchema}).strict().optional(),
-                primary: z.object({
-                    model: z.string().trim().min(1).optional(),
-                    source: configuredLLMProviderSchema.optional(),
-                }).strict().optional(),
-                fast: z.object({
-                    model: z.string().trim().min(1).optional(),
-                    source: configuredLLMProviderSchema.optional(),
-                }).strict().optional(),
-            })
-            .strict()
-            .optional(),
-        permissions: z
-            .object({
-                defaultMode: permissionModeSchema.optional(),
-                additionalDirectories: z.array(z.string().trim().min(1)).optional(),
-                allow: permissionRuleListSchema.optional(),
-                ask: permissionRuleListSchema.optional(),
-                deny: permissionRuleListSchema.optional(),
-            })
-            .strict()
-            .optional(),
-        hooks: hooksSettingsFileSchema.optional(),
-        memory: z.object({
-            enabled: z.boolean().optional(),
-            autoExtract: z.boolean().optional(),
-        }).strict().optional(),
-        sandbox: z
-            .object({
-                enabled: z.never({invalid_type_error: "sandbox.enabled was removed; use permissions.defaultMode to select ask, auto-review or full-access"}).optional(),
-                filesystem: z.object({
-                    denyRead: z.array(z.string().trim().min(1)).optional(),
-                    denyWrite: z.array(z.string().trim().min(1)).optional(),
-                }).strict().optional(),
-                network: z.object({
-                    mode: z.enum(["restricted", "open"]).optional(),
-                    allowedDomains: z.array(z.string().trim().min(1)).optional(),
-                    allowLocalBinding: z.boolean().optional(),
-                }).strict().optional(),
-            })
-            .strict()
-            .optional(),
-    })
-    .strict();
+export const hicodeSettingsFileSchema = settingsSchema(false);
+export const hicodeHostSettingsSchema = settingsSchema(true);

@@ -1,3 +1,4 @@
+import {supportsToolImages} from "../../images/capability.js";
 import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProvider} from "../types.js";
 import {callOpenAICompatible} from "./openAICompatible.js";
@@ -11,6 +12,7 @@ export const openrouterProvider: LLMProvider = {
             displayName: source.label,
             baseUrl: source.baseUrl || PROVIDER_BASE_URLS.openrouter,
             apiKey,
+            toolImages: supportsToolImages(source, options.model),
             reasoningSource: source.id,
             requestFields: {
                 provider: {require_parameters: true},

@@ -15,7 +15,7 @@ import {projectImagesForRequest} from "../images/request.js";
 export type ToolSchemaProvider = () => OpenAITool[];
 export type {CompactHistoryRunner} from "../context/compact.js";
 
-export interface PrepareAgentInvokeInput {
+interface PrepareAgentInvokeInput {
     history: Message[];
     ctx: ToolContext;
     onEvent: (event: AgentEvent) => void | Promise<void>;
@@ -28,7 +28,7 @@ export interface PrepareAgentInvokeInput {
     getTodos?: () => readonly Todo[];
 }
 
-export interface PreparedAgentInvoke {
+interface PreparedAgentInvoke {
     invokeMessages: Message[];
     tools: OpenAITool[];
     estimatedTokens: number;

@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
-import {createMcpManager} from "../../src/mcp/index.js";
+import {createMcpManager} from "../../src/mcp/manager.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";

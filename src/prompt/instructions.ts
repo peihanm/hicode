@@ -11,7 +11,7 @@ const HICODE_LOCAL_INSTRUCTIONS_FILE = "HICODE.local.md";
 
 export type InstructionFileSource = "user" | "project" | "local";
 
-export type LoadedInstructionFile =
+type LoadedInstructionFile =
     | {
         path: string;
         scope: InstructionFileSource;

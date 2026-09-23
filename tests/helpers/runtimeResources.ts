@@ -19,7 +19,7 @@ import {
   type AgentRuntime,
 } from "../../src/runtime/agentRuntime.js";
 import type { ResolvedHiCodeSettings } from "../../src/settings/index.js";
-import { resolveHiCodeSettings } from "../../src/settings/index.js";
+import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {
   createAgentDefinitionManager,
   createAgentDefinitionStore,
@@ -209,6 +209,7 @@ export function createTestRuntimeResources(
     agentDefinitions,
     agentAuthoring,
     skills: [],
+    skillIssues: [],
     instructions: EMPTY_PROJECT_INSTRUCTIONS,
     toolRuntime,
     hooks,
@@ -303,7 +304,7 @@ export function createRootRuntimeResourcesForTest(
             test.mcpManager === false ? undefined : test.mcpManager,
         }),
     ...(test.loadSkills
-      ? {loadSkills: ({cwd}: {cwd: string}) => test.loadSkills!(cwd)}
+      ? {loadSkills: ({cwd}: {cwd: string}) => ({skills: test.loadSkills!(cwd), issues: []})}
       : {}),
     ...(test.loadProjectInstructions
       ? {

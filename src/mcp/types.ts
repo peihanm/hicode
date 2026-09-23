@@ -8,7 +8,7 @@ export type McpConfigSource = "user" | "project";
 export type McpSource = McpConfigSource | "host";
 export type McpApprovalDecision = "once" | "always" | "deny" | "skip";
 
-export interface McpStdioServerConfig {
+interface McpStdioServerConfig {
     type: "stdio";
     command: string;
     args: string[];

@@ -13,7 +13,7 @@ import {parseBinaryArtifactMetadata,parseTextArtifactMetadata} from "../toolResu
 import {readSubagentTranscriptReferences} from "../subagents/transcript.js";
 
 interface Candidate {path:string;bytes:number;reason:"package-cache"|"orphan"|"unreferenced"|"temporary"}
-export interface StorageReport {sessions:Array<{path:string;sessionId?:string;format:"current"|"legacy"|"draft"|"invalid";bytes:number;files:number}>;project:string;path:string;bytes:number;files:number;activeProcesses:number[];categories:Record<string,{bytes:number;files:number}>;candidates:Candidate[];issues:string[];removedBytes?:number}
+interface StorageReport {sessions:Array<{path:string;sessionId?:string;format:"current"|"legacy"|"draft"|"invalid";bytes:number;files:number}>;project:string;path:string;bytes:number;files:number;activeProcesses:number[];categories:Record<string,{bytes:number;files:number}>;candidates:Candidate[];issues:string[];removedBytes?:number}
 
 async function entries(path:string){
  try{return await readdir(path,{withFileTypes:true});}catch(error){if(error&&typeof error==="object"&&"code"in error&&error.code==="ENOENT")return [];throw error;}

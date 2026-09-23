@@ -11,7 +11,6 @@ import {
     summarizePhaseToolCall,
     summarizeToolResult,
 } from "../../tools/presentation.js";
-import {limitTerminalText} from "./presentationLimits.js";
 import {documentRead} from "./documentRead.js";
 import {
     type ConversationItem,
@@ -472,4 +471,13 @@ export function StaticMessageList({
             }
         </Static>
     );
+}
+
+function limitTerminalText(
+    value: string,
+    maxCharacters: number,
+    label: string
+): string {
+    if (value.length <= maxCharacters) return value;
+    return `${value.slice(0, maxCharacters)}\n\n[${label} truncated in terminal view]`;
 }

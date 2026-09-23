@@ -1,4 +1,4 @@
-import {readFileSync} from "node:fs";
+import {readBoundedTextFile} from "../persistence/readTextFile.js";
 import {resolve} from "node:path";
 import {hasFileSystemErrorCode} from "../persistence/index.js";
 import {hicodeHostSettingsSchema, hicodeSettingsFileSchema} from "./schema.js";
@@ -17,7 +17,7 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
 const KNOWN_MODEL_TARGET_KEYS = new Set(["model", "source"]);
 const KNOWN_MODELS_KEYS = new Set(["primary", "fast"]);
 const KNOWN_SOURCE_KEYS = new Set(["label", "apiKeyEnv", "baseUrl", "models"]);
-const KNOWN_SOURCE_MODEL_KEYS = new Set(["id", "label"]);
+const KNOWN_SOURCE_MODEL_KEYS = new Set(["id", "label", "imageInput"]);
 const KNOWN_SOURCE_NAMES = new Set<string>(LLM_PROVIDER_NAMES);
 const KNOWN_PERMISSION_KEYS = new Set([
     "defaultMode",
@@ -236,7 +236,7 @@ function loadSettingsDocument(
 ): {document?: LoadedSettingsDocument; issues: SettingsIssue[]} {
     let content: string;
     try {
-        content = readFileSync(location.path, "utf8");
+        content = readBoundedTextFile(location.path, 4 * 1024 * 1024);
     } catch (error) {
         if (hasFileSystemErrorCode(error, "ENOENT")) return {issues: []};
         return {

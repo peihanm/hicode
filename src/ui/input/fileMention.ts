@@ -1,6 +1,6 @@
 import type {InputBoundaryState, InputAtomicRange} from "./MultilineTextInput.js";
 
-export interface FileMention {start: number; end: number; query: string;}
+interface FileMention {start: number; end: number; query: string;}
 
 export function fileMentionAt(state: InputBoundaryState, ranges: readonly InputAtomicRange[] = []): FileMention | undefined {
     const {value, cursorOffset: cursor} = state;

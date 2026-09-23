@@ -6,7 +6,7 @@ import {expect, test} from "bun:test";
 import {readFile, readdir, unlink, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
 import sharp from "sharp";
-import {createMcpManager} from "../../src/mcp/index.js";
+import {createMcpManager} from "../../src/mcp/manager.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {normalizeMcpResultWithArtifacts} from "../../src/mcp/result.js";
 import {contentText, imageReferences} from "../../src/images/content.js";

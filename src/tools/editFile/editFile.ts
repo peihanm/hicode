@@ -3,7 +3,6 @@ import {readFile} from "node:fs/promises";
 import type {Tool, ToolContext} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {findMatches, type MatchSpan} from "./strMatch.js";
-import {formatDiff} from "./utils.js";
 import {normalizeFileText} from "../shared/fileState.js";
 import {createFileChange} from "../../fileChanges/index.js";
 import {commitFileWrite} from "../shared/fileWrite.js";
@@ -202,3 +201,17 @@ export const editFileTool: Tool<typeof inputSchema> = {
         };
     },
 };
+
+// Helpers for edit_file.
+
+// Small diff preview showing initial old/new lines.
+function formatDiff(oldStr: string, newStr: string): string {
+    const oldPreview = truncate(oldStr, 200);
+    const newPreview = truncate(newStr, 200);
+    return `- ${oldPreview}\n+ ${newPreview}`;
+}
+
+function truncate(s: string, max: number): string {
+    if (s.length <= max) return JSON.stringify(s);
+    return JSON.stringify(s.slice(0, max)) + "...";
+}

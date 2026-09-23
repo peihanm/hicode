@@ -34,7 +34,7 @@ const COMMANDS: readonly SlashCommand[] = [
     tasksCommand,
 ];
 
-export interface SlashCommandSuggestion {
+interface SlashCommandSuggestion {
     name: string;
     description: string;
     argumentHint?: string;

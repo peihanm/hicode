@@ -1,3 +1,4 @@
+import {fileReadReceiptSchema} from "../tools/readFile/receipt.js";
 import {agentReceiptSchema} from "../tools/agent/receipt.js";
 import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
@@ -34,7 +35,7 @@ const MAX_MODEL_CHARS = 512;
 const MAX_SUMMARY_CHARS = 120;
 const MAX_SESSION_INDEX_ENTRIES = 10_000;
 
-export interface SessionHistorySummary {
+interface SessionHistorySummary {
     summary?: string;
 }
 
@@ -168,6 +169,7 @@ const persistedUIEventSchema = z.discriminatedUnion("type", [
         timestamp: timestampSchema,
         outcome: z.enum(["ok", "failed", "denied", "interrupted"]),
         agentReceipt: agentReceiptSchema.optional(),
+        fileRead: fileReadReceiptSchema.optional(),
     }).strict(),
     z.object({
         version: z.literal(1),

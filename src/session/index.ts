@@ -19,7 +19,6 @@ export {SessionUIEventCollector} from "./uiEventCollector.js";
 
 export type {
     PersistedFileChangeUIEvent,
-    PersistedToolCallUIEvent,
     PersistedUIEvent,
 } from "./uiEvents.js";
 

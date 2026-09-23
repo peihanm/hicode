@@ -1,9 +1,10 @@
+import {agentNameSchema, agentDescriptionSchema} from "./definitionSchema.js";
 import {basename, join} from "node:path";
 import {readdir} from "node:fs/promises";
 import {parse as parseYaml} from "yaml";
 import {z} from "zod";
 import type {AgentDefinition, AgentFileSource, AgentLoadIssue, AgentSource, LoadedCustomAgents,} from "./types.js";
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./custom.js";
+import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
 import {
     ensureAgentDefinitionDirectory,
     readAgentDefinitionFile,
@@ -27,16 +28,8 @@ const KNOWN_FRONTMATTER_FIELDS = new Set([
 
 const customAgentFrontmatterSchema = z
     .object({
-        name: z
-            .string()
-            .trim()
-            .min(1)
-            .max(64)
-            .regex(
-                /^[A-Za-z][A-Za-z0-9_-]*$/,
-                "Must start with a letter and contain only letters, digits, - and _"
-            ),
-        description: z.string().trim().min(1).max(500),
+        name: agentNameSchema,
+        description: agentDescriptionSchema,
         read_only: z.boolean().optional(),
         tools: z.array(z.string().trim().min(1).max(128)).min(1).max(128).optional(),
     })

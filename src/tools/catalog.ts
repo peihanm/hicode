@@ -23,12 +23,12 @@ export interface ToolRegistration {
     schema: () => OpenAITool;
 }
 
-export interface ToolCatalog {
+interface ToolCatalog {
     tools: Tool[];
     registrations: ToolRegistration[];
 }
 
-export interface CreateToolCatalogOptions {
+interface CreateToolCatalogOptions {
     /** Root startup capability; omitted for the complete definition catalog. */
     skillsAvailable?: boolean;
     allowedToolNames?: readonly string[];

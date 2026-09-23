@@ -10,7 +10,7 @@ import type {Message} from "../../llm/types.js";
 import type {TaskNotification} from "../../tasks/index.js";
 import type {SubagentProgressItem, UIThread} from "./types.js";
 
-export type ThreadIdFactory = () => string;
+type ThreadIdFactory = () => string;
 
 function randomThreadId(): string {
     return `thread-${randomUUID()}`;
@@ -114,6 +114,7 @@ export function threadsFromHistory(
         if (!target || target.role !== "tool_call") continue;
         if (event.type === "tool_call") {
             target.outcome = event.outcome;
+            if (event.fileRead && event.outcome === "ok") target.uiData = {type: "file_read", receipt: event.fileRead};
             if (event.agentReceipt && event.outcome === "ok") target.uiData = {type: "agent_receipt", receipt: event.agentReceipt};
             continue;
         }

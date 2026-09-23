@@ -2,7 +2,7 @@ import {listPromptLogs} from "../helpers/promptLogs.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
-import {getProjectDebugDirectory} from "../../src/persistence/index.js";
+import {getPromptLogDirectory} from "../../src/persistence/layout.js";
 import {createLLMCaller} from "../../src/llm/index.js";
 import {
     createQwenRequestFields,
@@ -139,7 +139,7 @@ describe("Qwen provider", () => {
                 total_tokens: 100,
             });
             expect(result.message).toMatchObject({reasoning: {content: "准备调用工具", scope: expect.any(String)}});
-            const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+            const directory = getPromptLogDirectory(createTestStorage(cwd), cwd);
             const [filename] = await listPromptLogs(directory);
             const logged = JSON.parse(await readFile(join(directory, filename!), "utf8")) as {
                 response: {rawResponse: Record<string, unknown>; rawMessage: unknown};
@@ -181,7 +181,7 @@ describe("Qwen provider", () => {
             });
             expect(fetchCalls).toBe(1);
             expect(result.message).toEqual({role: "assistant", content: "ok", ...(reasoning?.trim() ? {reasoning: {content: reasoning, scope: expect.any(String)}} : {})});
-            const directory = join(getProjectDebugDirectory(createTestStorage(cwd), cwd), "requests");
+            const directory = getPromptLogDirectory(createTestStorage(cwd), cwd);
             const filenames = await listPromptLogs(directory);
             expect(filenames).toHaveLength(1);
             const serialized = await readFile(join(directory, filenames[0]!), "utf8");

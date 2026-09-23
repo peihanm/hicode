@@ -9,7 +9,7 @@ import type {
     SettingsFileSource,
 } from "./types.js";
 
-export interface LoadHiCodeSettingsOptions {
+interface LoadHiCodeSettingsOptions {
     storage: HiCodeStorageLayout;
     cwd: string;
     sources?: readonly SettingsFileSource[];
@@ -31,13 +31,13 @@ export function loadHiCodeSettings(
         ? [...loaded.documents, host.document]
         : loaded.documents;
     const issues = [...loaded.issues, ...host.issues];
-    // Invalid rules must not disappear with a skipped settings document.
-    const invalidPermissions = issues.find(issue => issue.severity === "error" &&
-        (issue.field === "permissions" || issue.field?.startsWith("permissions.")));
-    if (invalidPermissions) throw new Error("Invalid permission configuration; loading stopped: " + invalidPermissions.message);
-    const invalidContext = issues.find(issue => issue.severity === "error" &&
-        (issue.field === "context" || issue.field?.startsWith("context.")));
-    if (invalidContext) throw new Error("Invalid context configuration; loading stopped: " + invalidContext.message);
+    // Skipping an invalid document can silently remove unrelated restrictions.
+    const errors = issues.filter(issue => issue.severity === "error");
+    if (errors.length) throw new Error("Invalid Settings; loading stopped: " + errors.map(issue => [
+        issue.source === "host" ? issue.id : issue.path,
+        issue.field ? `(${issue.field})` : undefined,
+        issue.message,
+    ].filter(Boolean).join(" ")).join("; "));
     const resolved = resolveHiCodeSettings(
         documents,
         options.cliOverrides ?? {}

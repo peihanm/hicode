@@ -1,4 +1,4 @@
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./custom.js";
+import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
 import type {AgentCatalogUpdate, SubagentCatalog} from "./catalog.js";
 import type {AgentDefinitionDraft, AgentDefinitionStore, StoredAgentFile,} from "./store.js";
 import type {AgentDefinitionScope} from "./paths.js";

@@ -3,7 +3,7 @@ import { cleanup, render } from "ink-testing-library";
 import { AppForTest as App } from "../helpers/AppForTest.js";
 import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createSubagentRegistry } from "../../src/subagents/index.js";
+import {createSubagentRegistry} from "../../src/subagents/registry.js";
 
 afterEach(() => cleanup());
 

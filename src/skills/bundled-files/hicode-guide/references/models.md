@@ -57,3 +57,7 @@ Default key variable names: `DASHSCOPE_API_KEY`, `GLM_API_KEY`, `DEEPSEEK_API_KE
 - **Timeout or fetch failed:** separate the main provider request from a Bash command's network access; `/sandbox` configures the latter.
 
 Support for images, reasoning output and continuation depends on the selected provider/model. Do not promise features merely because the model can be added to the list.
+
+### Image input
+
+Each model entry can declare `imageInput: true`; undeclared models are text-only. In `/providers`, press Tab on the display-name step when adding a model to enable images. Enable it only for a model and endpoint that actually accept image input. The bundled Qwen Flash entry is enabled; changing only its endpoint clears inherited image support until explicitly configured.

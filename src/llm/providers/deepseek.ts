@@ -1,3 +1,4 @@
+import {supportsToolImages} from "../../images/capability.js";
 import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProvider} from "../types.js";
 import {callOpenAICompatible} from "./openAICompatible.js";
@@ -25,6 +26,7 @@ export const deepseekProvider: LLMProvider = {
             displayName: source.label,
             baseUrl: source.baseUrl || PROVIDER_BASE_URLS.deepseek,
             apiKey,
+            toolImages: supportsToolImages(source, options.model),
             requestFields: createDeepSeekRequestFields(),
             reasoningSource: source.id,
             disableThinkingOnFinalStallRetry: true,

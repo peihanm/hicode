@@ -2,7 +2,7 @@ import type {ToolCall} from "../llm/types.js";
 
 export const MAX_TOOL_CONCURRENCY = 10;
 
-export interface ToolCallBatch {
+interface ToolCallBatch {
     concurrencySafe: boolean;
     calls: ToolCall[];
 }

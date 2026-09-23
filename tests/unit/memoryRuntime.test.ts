@@ -1,6 +1,8 @@
-import {expect,test} from "bun:test";
+import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
+import {unlink} from "node:fs/promises";
+import {expect,test,spyOn} from "bun:test";
 import {withTempProject} from "../helpers/tempProject.js";
-import {createTestMemoryRuntime,queueMemory,memoryOwner} from "../helpers/memory.js";
+import {createTestMemoryRuntime,queueMemory,memoryOwner,remember} from "../helpers/memory.js";
 test("无增量与关闭不启动模型，显式维护一次发布并消费",async()=>withTempProject(async cwd=>{
  let calls=0;
  const memory=createTestMemoryRuntime(cwd,{autoExtract:true,consolidator:{async consolidate({lease,baseline}){calls++;return {summary:"简洁",topics:baseline.sources.filter(s=>lease.sourceIds.includes(s.id)).map(s=>({key:s.key,name:s.key,description:"回答风格",type:s.type,content:s.content,sources:[s.id]}))};}}});
@@ -62,3 +64,21 @@ test("持续追加最多处理四批，剩余来源保持 pending", async () => 
         expect((await memory.status()).pending).toBe(1);
     } finally {await memory.close();}
 }));
+
+
+test("status uses one snapshot and observes external topic edits and deletion", async () => {
+    await withTempProject(async cwd => {
+        const memory = createTestMemoryRuntime(cwd);
+        const read = spyOn(MemoryPublicationStore.prototype, "snapshot");
+        try {
+            expect((await memory.status()).published).toBe(0);
+            expect(read).toHaveBeenCalledTimes(1);
+            const path = await remember(memory, "brief", "Keep responses concise");
+            expect((await memory.status()).counts.feedback).toBe(1);
+            expect(read).toHaveBeenCalledTimes(2);
+            await unlink(path);
+            expect((await memory.status()).published).toBe(0);
+            expect(read).toHaveBeenCalledTimes(3);
+        } finally {read.mockRestore(); await memory.close();}
+    });
+});
