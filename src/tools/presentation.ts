@@ -1,4 +1,5 @@
 import {analyzeReadCommand} from "../permissions/shellRead.js";
+import {stripVTControlCharacters} from "node:util";
 import type {ToolOutcome} from "../toolResults/index.js";
 
 type ToolPhaseKind = "inspect";
@@ -69,6 +70,38 @@ function genericDetail(args: ParsedArgs, raw: string): string {
         });
     if (entries.length > 0) return entries.join(", ");
     return raw.trim() && raw.trim() !== "{}" ? truncate(raw.trim(), 120) : "";
+}
+
+function mcpDetail(args: ParsedArgs): string {
+    return Object.entries(args).filter(([key]) => key !== "user_prompt").slice(0, 3).map(([key, value]) => {
+        if (typeof value === "string" && (key === "code" || /[\r\n]/.test(value))) {
+            const lines = value.trim() ? value.trim().split(/\r\n?|\n/).length : 0;
+            return `${key}: ${lines} line${lines === 1 ? "" : "s"}`;
+        }
+        return genericDetail({[key]: value}, "");
+    }).map(value => stripVTControlCharacters(value).replace(/[\x00-\x1f\x7f]/g, " ")).join(" · ");
+}
+
+function mcpResultLines(result: string): string[] {
+    const lines = normalizeDisplayLines(result);
+    // Some servers repeat their text result in a single structured `result` field.
+    // Collapse only exact duplicates in the preview; the transcript keeps both.
+    const last = lines.at(-1);
+    if (lines.length > 1 && last && last.length <= 16_384) {
+        try {
+            const structured: unknown = JSON.parse(last);
+            if (structured && typeof structured === "object" && !Array.isArray(structured) &&
+                Object.keys(structured).length === 1 && "result" in structured && typeof structured.result === "string" &&
+                structured.result.trim() === lines.slice(0, -1).join("\n").trim()) lines.pop();
+        } catch { /* Keep non-JSON and distinct structured output. */ }
+    }
+    while (lines.at(-1)?.trim() === "") lines.pop();
+    const preview = lines.slice(0, 3).map(line => {
+        const image = line.match(/^\[Image image-[a-f0-9]+; (image\/[a-z0-9.+-]+); (\d+)×(\d+); [^\]\r\n]+\]$/);
+        return image ? `Image · ${image[2]}×${image[3]} · ${image[1]!.slice(6).toUpperCase()}` : truncate(line, 220);
+    });
+    if (lines.length > 3 || preview.some((line, i) => line !== lines[i])) preview.push("ctrl+o to expand");
+    return preview.length ? preview : ["Done"];
 }
 
 function taskDetail(args: ParsedArgs): string {
@@ -214,7 +247,7 @@ export function describeToolCall(
                 label: name.startsWith("mcp__")
                     ? name.replace(/^mcp__/, "MCP ").replaceAll("__", " · ")
                     : name,
-                detail: genericDetail(args, argsJson),
+                detail: name.startsWith("mcp__") ? mcpDetail(args) : genericDetail(args, argsJson),
             };
     }
 }
@@ -246,6 +279,7 @@ export function summarizeToolResult(
     name: string,
     result: string
 ): string[] {
+    if (name.startsWith("mcp__")) return mcpResultLines(result);
     if (name === "read_file") {
         const match = result.match(
             /^File:\s*[^\n]+\nLine range:\s*(\d+)-(\d+)\s*\/\s*(\d+)/

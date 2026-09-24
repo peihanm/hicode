@@ -36,10 +36,10 @@ describe("MCP approval UI", () => {
     expect(view.lastFrame()).not.toContain("private-key");
     expect(view.lastFrame()).toContain("[REDACTED]");
     expect(view.lastFrame()).toContain("◆ MCP CONNECTION");
-    expect(view.lastFrame()).toContain("COMMAND");
-    expect(view.lastFrame()).toContain("PROJECT");
-    expect(view.lastFrame()).toContain("❯ 1. Allow once");
-    expect(view.lastFrame()).toContain("Start now. Tool calls follow existing permission rules.");
+    expect(view.lastFrame()).toContain("Command");
+    expect(view.lastFrame()).toContain("Project");
+    expect(view.lastFrame()).toContain("❯ 1. Connect for this session");
+    expect(view.lastFrame()).toContain("Use existing tool approvals; ask to connect again next launch.");
     expect(view.lastFrame()).not.toContain("│");
   });
 
@@ -62,11 +62,11 @@ describe("MCP approval UI", () => {
     await flush();
     view.stdin.write("\u001b[A");
     await flush();
-    expect(view.lastFrame()).toContain("❯ 4. Deny");
+    expect(view.lastFrame()).toContain("❯ 4. Block this server");
     view.stdin.write("\u001b[A");
     await flush();
-    expect(view.lastFrame()).toContain("❯ 3. Always allow connection only");
-    expect(view.lastFrame()?.replace(/\s+/g, " ")).toContain("Tool calls still follow existing permission rules.");
+    expect(view.lastFrame()).toContain("❯ 3. Always connect; keep tool approvals");
+    expect(view.lastFrame()?.replace(/\s+/g, " ")).toContain("Connect automatically; ask before tools that are not already allowed.");
     expect(decisions).toEqual([]);
     view.stdin.write("\u001b[B");
     await flush();
@@ -93,7 +93,7 @@ describe("MCP approval UI", () => {
       expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
       expect(frame.replace(/\s/g, "")).toContain(projectPath);
       expect(frame.replace(/\s/g, "")).toContain("npx-y@playwright/mcp@latest--browserchrome");
-      expect(frame.replace(/\s/g, "")).toContain("❯2.Trustthisserverandallowitstools");
+      expect(frame.replace(/\s/g, "")).toContain("❯2.Alwaysconnectandallowtools");
     }
     const frameCount = view.frames.length;
     await new Promise(resolve => setTimeout(resolve, 150));

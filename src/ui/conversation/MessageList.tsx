@@ -224,6 +224,13 @@ function ToolCallView({
     if (thread.hiddenByFileChange && !includeHidden) return null;
     const agent = agentIdentity(thread);
     const presentation = describeToolCall(thread.name, thread.args);
+    const mcp = thread.name.startsWith("mcp__");
+    let expandedArgs: string[] = [];
+    if (mcp && transcript) {
+        let text = thread.args;
+        try {text = JSON.stringify(JSON.parse(thread.args), null, 2);} catch { /* Preserve incomplete input. */ }
+        expandedArgs = transcriptResultLines(text);
+    }
     const document = documentRead(thread);
     if (document) presentation.detail = document.detail;
     return (
@@ -232,6 +239,10 @@ function ToolCallView({
                 <Text color={paused ? COLORS.assistant : COLORS.accent}>{SYMBOLS.assistantMark} </Text>
                 <Text color={COLORS.toolName} bold>{`Agent${agent.name ? ` ${agent.name}` : ""}`}</Text>
                 {agent.description && <Text color={COLORS.toolArgs}> · {agent.description}</Text>}
+            </Text> : mcp ? <Text>
+                <Text color={paused ? COLORS.assistant : COLORS.accent}>{SYMBOLS.assistantMark} </Text>
+                <Text color={COLORS.toolName} bold>{presentation.label}</Text>
+                {presentation.detail && <Text color={COLORS.toolArgs}> · {presentation.detail}</Text>}
             </Text> : <Box>
                 <Text color={paused ? COLORS.assistant : COLORS.accent}>{SYMBOLS.assistantMark}</Text>
                 <Text color={COLORS.toolName} bold> {presentation.label}</Text>
@@ -239,6 +250,10 @@ function ToolCallView({
                     <Text color={COLORS.dim}> </Text>
                     <Text color={COLORS.toolArgs}>{presentation.detail}</Text>
                 </>}
+            </Box>}
+            {expandedArgs.length > 0 && <Box marginLeft={2} flexDirection="column">
+                <Text color={COLORS.dim}>Arguments</Text>
+                {expandedArgs.map((line, index) => <Text key={index} color={COLORS.toolArgs}>{line}</Text>)}
             </Box>}
             {agent && <AgentProgress thread={thread} transcript={transcript}/>}
             <ToolResultLines thread={thread} transcript={transcript} terminalWidth={terminalWidth}/>

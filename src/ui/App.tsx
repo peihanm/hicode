@@ -1,4 +1,5 @@
 import {McpDialog} from "./mcp/McpDialog.js";
+import {McpStatus} from "./mcp/McpStatus.js";
 import {DraftLayoutProvider} from "./conversation/draftLayout.js";
 import {isCoordinationWait} from "./conversation/projection.js";
 import {ProvidersDialog} from "./providers/ProvidersDialog.js";
@@ -231,7 +232,13 @@ export function App({
         }, [showTranscript, turn.threads, turn.staticThreads]);
 
         const {cwd, mcpManager} = resources;
-        const mcpSnapshots = mcpManager?.getSnapshots() ?? [];
+        const [mcpSnapshots, setMcpSnapshots] = useState(() => mcpManager?.getSnapshots() ?? []);
+        useEffect(() => {
+            const update = () => setMcpSnapshots(mcpManager?.getSnapshots() ?? []);
+            const unsubscribe = mcpManager?.subscribe(update);
+            update();
+            return unsubscribe;
+        }, [mcpManager]);
         const activityLabel = runningActivityLabel(
             turn.liveThreads,
             resources.subagents,
@@ -269,6 +276,7 @@ export function App({
                     </>
                 )}
 
+                {!runtimeApproval && !turn.confirmRequest && activePanel === undefined && <McpStatus servers={mcpSnapshots}/>}
                 {runtimeApproval ? runtimeApproval : (activePanel === "resume") && requestSessionSwitch ? (
                     <ResumeDialog indexError={resumeError}
                         sessions={resumeSessions}
@@ -397,7 +405,7 @@ export function App({
                 )}
 
                 <StatusBar
-                    showShortcuts={(activePanel !== "diff") && (activePanel !== "skills") && (activePanel !== "sandbox")}
+                    showShortcuts={(activePanel !== "diff") && (activePanel !== "skills") && (activePanel !== "sandbox") && (activePanel !== "mcp")}
                     cwd={cwd}
                     model={turn.primaryModel.label}
                     permissionMode={turn.permissionMode}

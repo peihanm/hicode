@@ -11,12 +11,14 @@ import {
 import {
     type McpApprovalDecision,
     type McpApprovalRequest,
+    type McpServerSnapshot,
 } from "../../mcp/index.js";
 import type {HookTrustDecision, HookTrustRequest} from "../../hooks/index.js";
 import {App} from "../App.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {HookApprovalDialog} from "./HookApprovalDialog.js";
 import {McpApprovalDialog} from "./McpApprovalDialog.js";
+import {McpStatus} from "../mcp/McpStatus.js";
 import {Welcome} from "./Welcome.js";
 import {formatInputDivider} from "../input/InputBox.js";
 import {StatusBar} from "../status/StatusBar.js";
@@ -78,6 +80,7 @@ export function createRuntimeBootstrap(
             initialSession?: LoadedSession;
         } | null>(null);
         const [error, setError] = useState<string | null>(null);
+        const [mcpStartup, setMcpStartup] = useState<readonly McpServerSnapshot[]>();
         const sessionShutdownRef = useRef<(() => Promise<void>) | null>(null);
         const closedResourcesRef = useRef(new WeakMap<RootRuntimeResources, Promise<void>>());
         const closeResources = async (resources?: RootRuntimeResources) => {
@@ -104,10 +107,14 @@ export function createRuntimeBootstrap(
             sessionShutdownRef.current = null;
             setReady(null);
             setError(null);
+            setMcpStartup(undefined);
             const initialization = (async () => {
                 const resources = await createResources({
                     configuration,
                     signal: controller.signal,
+                    onMcpStartup: servers => {
+                        if (!disposed && !controller.signal.aborted) setMcpStartup(servers);
+                    },
                     requestMcpApproval: (request) => {
                         if (disposed || controller.signal.aborted) return Promise.resolve("skip");
                         return new Promise<McpApprovalDecision>((resolve) => {
@@ -207,8 +214,10 @@ export function createRuntimeBootstrap(
             return (
                 <Box flexDirection="column">
                     <Welcome/>
+                    {mcpStartup?.length ? <McpStatus servers={mcpStartup} initializing/> :
+                        <Box marginTop={1}><Text color={COLORS.dim}>Starting HiCode…</Text></Box>}
                     <Box marginTop={1} flexDirection="column">
-                        <Text color={COLORS.dim}>{SYMBOLS.prompt} Starting HiCode… Input will be ready shortly.</Text>
+                        <Text color={COLORS.dim}>{SYMBOLS.prompt} Ask HiCode to build, inspect, or fix something</Text>
                         <Text color={COLORS.dim}>{formatInputDivider(terminalWidth)}</Text>
                     </Box>
                     <StatusBar cwd={cwd} model={settings.models.primary.label}

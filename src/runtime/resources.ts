@@ -3,7 +3,7 @@ import {acquireProjectActivity} from "../persistence/projectState.js";
 import {loadHiCodeSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
-import type {McpManagerLike, McpManagerOptions,} from "../mcp/types.js";
+import type {McpManagerLike, McpManagerOptions, McpServerSnapshot} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";
 import type {LoadedSkill, SkillLoadIssue} from "../skills/types.js";
 import {createToolRuntime, type ToolRuntime,} from "../tools/registry.js";
@@ -84,6 +84,8 @@ export interface CreateRootRuntimeResourcesOptions {
     signal?: AbortSignal;
     headless?: boolean;
     requestMcpApproval?: McpManagerOptions["requestApproval"];
+    /** Startup-only observation; the Root retains ownership of the Manager. */
+    onMcpStartup?: (servers: readonly McpServerSnapshot[]) => void;
     requestHookTrust?: (
         request: HookTrustRequest
     ) => Promise<"once" | "always" | "deny">;
@@ -252,7 +254,18 @@ export function createRootRuntimeResourcesFactory(
                 hostServers: options.configuration.contributions.mcpServers,
                 requestApproval: options.requestMcpApproval,
             });
-            await mcpManager?.initialize();
+            const publishMcpStartup = () => {
+                try {options.onMcpStartup?.(mcpManager?.getSnapshots() ?? []);}
+                catch { /* A display observer cannot interrupt resource initialization. */ }
+            };
+            const unsubscribeMcpStartup = options.onMcpStartup ? mcpManager?.subscribe(publishMcpStartup) : undefined;
+            try {
+                publishMcpStartup();
+                await mcpManager?.initialize();
+            } finally {
+                publishMcpStartup();
+                unsubscribeMcpStartup?.();
+            }
             const hooks = await dependencies.createHookRuntime({
                 storage,
                 cwd,

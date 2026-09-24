@@ -105,3 +105,33 @@ test("MCP confirmation explains persistent approval scope", async () => {
     expect(view.lastFrame()).toContain("all arguments");
     view.stdin.write("2"); await tick(); expect(allowed).toBe(true); expect(saved).toEqual([name("execute")]);
 });
+
+test("Ctrl+C closes /mcp from details without saving or exiting the conversation", async () => withTempProject(async cwd => {
+    const f = fixture(["execute"]);
+    const resources = createTestRuntimeResources(cwd, {mcpManager: f.manager}); let calls = 0;
+    const view = render(<AppForTest resources={resources} runAgentImpl={async () => {
+        calls++; return {reply: "still running", reason: "completed", iterations: 1};
+    }}/>);
+    const key = async (value: string) => {view.stdin.write(value); await tick();};
+    try {
+        await tick(); await key("/mcp"); await key("\r"); await key("\r"); await key(" ");
+        expect(view.lastFrame()).toContain("Default: Allow tools");
+        expect(view.lastFrame()).toContain("Ctrl+C close");
+        expect(view.lastFrame()?.split("◆ MCP").at(-1)).not.toContain("shift+tab");
+        expect(view.lastFrame()).not.toContain("mcp__fixture__execute");
+        await key("\x03");
+        expect(view.lastFrame()).toContain("Ask HiCode"); expect(view.lastFrame()).not.toContain("◆ MCP");
+        expect(f.saved).toEqual([]);
+        await key("hello"); await key("\r"); expect(calls).toBe(1);
+    } finally {view.unmount(); await resources.close();}
+}));
+
+test("Ctrl+C also closes while a save is pending; it does not claim to undo the save", async () => {
+    const f = fixture(["execute"]); let finish!: () => void; let closed = 0;
+    const pending = new Promise<void>(resolve => {finish = resolve;});
+    const view = render(<McpDialog manager={f.manager} getRules={empty} onSave={() => pending} onClose={() => closed++}/>);
+    await tick(); view.stdin.write("\r"); await tick(); view.stdin.write("\r"); await tick();
+    expect(view.lastFrame()).toContain("Saving or reconnecting");
+    view.stdin.write("\x03"); await tick(); expect(closed).toBe(1);
+    view.unmount(); finish(); await tick();
+});

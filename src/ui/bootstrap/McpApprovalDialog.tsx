@@ -5,10 +5,10 @@ import {COLORS} from "../theme.js";
 import {useTerminalWidth} from "../terminalSize.js";
 
 const OPTIONS: Array<{label: string; value: McpApprovalDecision; description: string}> = [
-    {label: "Allow once", value: "once", description: "Start now. Tool calls follow existing permission rules."},
-    {label: "Trust this server and allow its tools", value: "trust-tools", description: "Remember for this project. Current and future tools are allowed by default; manage exceptions with /mcp."},
-    {label: "Always allow connection only", value: "always", description: "Remember the connection. Tool calls still follow existing permission rules."},
-    {label: "Deny for this project", value: "deny", description: "Remember this denial. Use /mcp reconnect to review it later."},
+    {label: "Connect for this session", value: "once", description: "Use existing tool approvals; ask to connect again next launch."},
+    {label: "Always connect and allow tools", value: "trust-tools", description: "Current and future tools run automatically, except your permission rules."},
+    {label: "Always connect; keep tool approvals", value: "always", description: "Connect automatically; ask before tools that are not already allowed."},
+    {label: "Block this server", value: "deny", description: "Do not connect in this project. Change later with /mcp."},
 ];
 
 function formatArgs(args: string[]): string {
@@ -40,7 +40,7 @@ export function McpApprovalDialog({
 }) {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const completed = useRef(false);
-    const width = Math.max(1, Math.min(76, useTerminalWidth() - 4));
+    const width = Math.max(1, Math.min(96, useTerminalWidth() - 4));
     const finish = (decision: McpApprovalDecision) => {
         if (completed.current) return;
         completed.current = true;
@@ -60,33 +60,21 @@ export function McpApprovalDialog({
     return (
         <Box flexDirection="column" paddingLeft={2} paddingRight={2}>
             <Box flexDirection="column" width={width}>
-                <Text color={COLORS.accent} bold>◆ MCP CONNECTION</Text>
+                <Text color={COLORS.accent} bold>◆ MCP CONNECTION · {request.serverName}</Text>
+                <Text color={COLORS.dim}>Choose connection and tool permissions for this project.</Text>
                 <Box marginTop={1} flexDirection="column">
-                    <Text bold>{request.serverName}</Text>
-                    <Text>Allow this project to start this server?</Text>
-                </Box>
-                <Box marginTop={1} flexDirection="column">
-                    <Text color={COLORS.dim}>COMMAND</Text>
-                    <Text>{[request.command.slice(0, 512), formatArgs(request.args)].filter(Boolean).join(" ")}</Text>
-                    <Text color={COLORS.dim}>PROJECT</Text>
-                    <Text>{request.projectPath.slice(0, 1000)}</Text>
+                    <Text color={COLORS.dim}>Project  {request.projectPath.slice(0, 1000)}</Text>
+                    <Text color={COLORS.dim}>Command  {[request.command.slice(0, 512), formatArgs(request.args)].filter(Boolean).join(" ")}</Text>
                 </Box>
                 <Box marginTop={1} flexDirection="column">
                     {OPTIONS.map((option, index) => (
-                        <Box key={option.value}>
-                            <Box width={2} flexShrink={0}>
-                                <Text color={COLORS.accent}>{index === selectedIndex ? "❯" : " "}</Text>
-                            </Box>
-                            <Box flexShrink={1}>
-                                <Text color={index === selectedIndex ? COLORS.accent : undefined} bold={index === selectedIndex}>
-                                    {index + 1}. {option.label}
-                                </Text>
-                            </Box>
+                        <Box key={option.value} flexDirection="column" marginBottom={index < OPTIONS.length - 1 ? 1 : 0}>
+                            <Text color={index === selectedIndex ? COLORS.accent : undefined} bold={index === selectedIndex}>
+                                {index === selectedIndex ? "❯" : " "} {index + 1}. {option.label}
+                            </Text>
+                            <Box paddingLeft={5}><Text color={COLORS.dim}>{option.description}</Text></Box>
                         </Box>
                     ))}
-                    <Box paddingLeft={2}>
-                        <Text color={COLORS.dim}>{OPTIONS[selectedIndex]?.description}</Text>
-                    </Box>
                 </Box>
                 <Box marginTop={1}>
                     <Text color={COLORS.dim}>↑↓ select · 1–4 choose · Enter confirm · Esc skip once</Text>

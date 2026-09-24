@@ -25,7 +25,7 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
 }) {
     const {width, height} = useTerminalSize();
     const columns = Math.max(1, Math.min(88, width - 4));
-    const visible = Math.max(1, Math.min(6, Math.floor((height - 16) / 2)));
+    const visible = Math.max(1, Math.min(6, Math.floor((height - 18) / 2)));
     const [, setRevision] = useState(0);
     useEffect(() => manager?.subscribe(() => setRevision(value => value + 1)), [manager]);
     const [index, setIndex] = useState(0);
@@ -55,6 +55,7 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
         finally {busyRef.current = false; setBusy(false);}
     };
     useInput((input, key) => {
+        if ((key.ctrl && input === "c") || input === "\x03") {onClose(); return;}
         if (busyRef.current) return;
         if (key.escape) {
             if (review) {setReview(undefined); setRow(0); setError(""); setNotice("");}
@@ -98,18 +99,24 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
                 <Box marginTop={1}><Text color={row === 0 ? COLORS.accent : undefined}>{row === 0 ? "❯ " : "  "}Default: {review.policy.default === "allow" ? "Allow tools" : "Ask when needed"}</Text></Box>
                 <Text color={COLORS.dim}>{review.policy.default === "allow" ? "Applies to current and future tools, including code execution." : "Read-only tools stay allowed; other tools require approval."}</Text>
                 <Box marginTop={1} flexDirection="column">
-                    <Text bold>Tool exceptions</Text>
+                    <Box marginBottom={1}><Text bold>Tool exceptions <Text bold={false} color={COLORS.dim}>· Default follows the policy above</Text></Text></Box>
                     {review.tools.length === 0 && <Text>No tools available. Go back and reconnect this server.</Text>}
                     {review.tools.slice(start, start + visible).map((tool, offset) => {
                         const value = review.policy.exceptions[tool.name] ?? "inherit";
                         const status = restriction(tool, rules);
                         const settingsAllow = value === "inherit" && rules.allow.some(rule => rule.toolName === tool.name && rule.content === undefined);
-                        return <Box key={tool.name} flexDirection="column">
-                            <Text color={start + offset + 1 === row ? COLORS.accent : undefined} wrap="truncate-end">
-                                {start + offset + 1 === row ? "❯ " : "  "}{clean(tool.name)}
-                            </Text>
-                            <Text color={COLORS.dim} wrap="truncate-end">  {status ?? (settingsAllow ? "Allowed by settings" : labels[value])}</Text>
+                        const shortName = tool.name.split("__").slice(2).join("__") || tool.name;
+                        const policyLabel = status ?? (settingsAllow ? "Allowed by settings" : labels[value]);
+                        const selected = start + offset + 1 === row;
+                        return columns >= 64 ? <Box key={tool.name}>
+                            <Box width={2} flexShrink={0}><Text color={COLORS.accent}>{selected ? "❯" : " "}</Text></Box>
+                            <Box flexGrow={1} flexShrink={1}><Text color={selected ? COLORS.accent : undefined} wrap="truncate-end">{clean(shortName)}</Text></Box>
+                            <Box width={24} marginLeft={3} flexShrink={0}><Text color={COLORS.dim} wrap="truncate-end">{policyLabel}</Text></Box>
+                        </Box> : <Box key={tool.name} flexDirection="column">
+                            <Text color={selected ? COLORS.accent : undefined} wrap="truncate-end">{selected ? "❯ " : "  "}{clean(shortName)}</Text>
+                            <Text color={COLORS.dim} wrap="truncate-end">  {policyLabel}</Text>
                         </Box>;
+
                     })}
                 </Box>
                 {review.tools.length > visible && <Text color={COLORS.dim}>{Math.max(1, row)} / {review.tools.length}</Text>}
@@ -124,9 +131,12 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
             </Box>}
             {notice && <Box marginTop={1}><Text color={COLORS.accent}>{notice}</Text></Box>}
             {error && <Box marginTop={1}><Text color={COLORS.error}>{error}</Text></Box>}
-            <Box marginTop={1}><Text color={COLORS.dim}>{busy ? "Saving or reconnecting…" : review
-                ? "↑↓ select · Space change · Enter save · Esc back"
-                : "↑↓ select · Enter permissions · r reconnect · Esc close"}</Text></Box>
+            <Box marginTop={1} flexDirection="column">
+                <Text color={COLORS.dim}>{busy ? "Saving or reconnecting…" : review
+                    ? "↑↓ select · Space change · Enter save"
+                    : "↑↓ select · Enter permissions · r reconnect"}</Text>
+                <Text color={COLORS.dim}>{review ? "Esc back · Ctrl+C close" : "Esc / Ctrl+C close"}</Text>
+            </Box>
         </Box>
     </Box>;
 }

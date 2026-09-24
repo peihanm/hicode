@@ -389,3 +389,47 @@ describe("phase-based tool presentation", () => {
         expect(frame).not.toContain("完整输出可通过");
     });
 });
+
+test("MCP preview hides code payloads, repeated prompt and image internals; transcript preserves originals", () => {
+    const code = "import bpy, math\nfrom mathutils import Vector\nprint('CAM_DIST: 8.86')";
+    const raw = 'Code executed successfully: CAM_DIST: 8.86\n\n{"result":"Code executed successfully: CAM_DIST: 8.86\\n"}';
+    const image = `[Image image-${"a".repeat(64)}; image/png; 1000×654; 461857 bytes; original 1000×654; region x=0,y=0,w=1000,h=654; this text projection has no pixels; use view_image(image_id) to view it again]`;
+    let threads = completeTool([], {id: "mcp-code", name: "mcp__blender__execute_blender_code", args: {code, user_prompt: "USER_PROMPT_BODY"}, result: raw});
+    threads = completeTool(threads, {id: "mcp-image", name: "mcp__blender__get_viewport_screenshot", args: {max_size: 1000}, result: image});
+    const before = JSON.stringify(threads);
+    const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
+    expect(frame).toContain("code: 3 lines"); expect(frame).toContain("Image · 1000×654 · PNG");
+    expect(frame).not.toContain("from mathutils"); expect(frame).not.toContain("USER_PROMPT_BODY");
+    expect(frame).not.toContain('"result"'); expect(frame).not.toContain("image-aaaa");
+    expect(frame).not.toContain("no pixels");
+    expect(frame.split("CAM_DIST")).toHaveLength(2);
+    const expanded = render(<MessageList threads={threads} transcript/>).lastFrame() ?? "";
+    expect(expanded).toContain("from mathutils"); expect(expanded).toContain("USER_PROMPT_BODY");
+    expect(expanded).toContain('"result"'); expect(expanded).toContain("no pixels");
+    expect(JSON.stringify(threads)).toBe(before);
+});
+
+test("MCP failure and distinct structured fields remain visible", () => {
+    const raw = 'partial output\n{"result":"different","warning":"inspect scene"}';
+    const threads = completeTool([], {id: "error", name: "mcp__blender__execute_blender_code", args: {code: "raise Error()"}, result: raw, outcome: "failed"});
+    const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
+    expect(frame).toContain("partial output"); expect(frame).toContain("inspect scene");
+    const cancelled = completeTool([], {id: "cancel", name: "mcp__blender__get_viewport_screenshot", args: {}, result: "Tool call cancelled (user-cancel)", outcome: "interrupted"});
+    expect(render(<MessageList threads={cancelled}/>).lastFrame()).toContain("Tool call cancelled (user-cancel)");
+});
+
+test("MCP headers reflow across terminal widths without code-driven hanging indentation", async () => {
+    const {default: stringWidth} = await import("string-width");
+    const threads = completeTool([], {id: "layout", name: "mcp__blender__execute_blender_code",
+        args: {code: "import bpy\nfrom mathutils import Vector\nprint('ok')", user_prompt: "long repeated prompt"}, result: "ok"});
+    const view = render(<MessageList threads={threads}/>);
+    let columns = 80;
+    Object.defineProperty(view.stdout, "columns", {configurable: true, get: () => columns});
+    for (const width of [36, 80, 120]) {
+        columns = width; view.stdout.emit("resize"); await new Promise(resolve => setTimeout(resolve, 110));
+        const frame = view.lastFrame() ?? "";
+        expect(frame.replace(/\s+/g, " ")).toContain("code: 3 lines");
+        expect(frame).not.toContain("mathutils"); expect(frame).not.toMatch(/^ {10,}\S/m);
+        expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
+    }
+});

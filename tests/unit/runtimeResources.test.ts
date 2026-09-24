@@ -356,3 +356,28 @@ test("Root exposes the bundled guide even with user/project Skill sources disabl
   finally {await resources.close();}
  });
 });
+
+test.each([false, true])("startup MCP observers release subscriptions on initialization failure=%s", async fail => {
+    await withTempProject(async cwd => {
+        let status: "connecting" | "connected" = "connecting";
+        const listeners = new Set<() => void>();
+        const seen: string[] = [];
+        const manager: McpManagerLike = {
+            async initialize() {
+                listeners.forEach(listener => listener());
+                if (fail) throw Error("fixture initialization failed");
+                status = "connected"; listeners.forEach(listener => listener());
+            },
+            getSnapshots: () => [{name: "fixture", source: "project", status, toolCount: 0}], getTools: () => [],
+            subscribe(listener) {listeners.add(listener); return () => {listeners.delete(listener);};},
+            async reconnect() {}, async setToolPolicy() {}, async closeAll() {},
+        };
+        const creating = createRootRuntimeResources({cwd, settings: createTestSettings(), onMcpStartup: servers => {
+            seen.push(servers[0]!.status);
+            throw Error("display observer failed");
+        }}, {mcpManager: manager});
+        if (fail) await expect(creating).rejects.toThrow("fixture initialization failed");
+        else {const resources = await creating; expect(seen).toContain("connected"); await resources.close();}
+        expect(seen).toContain("connecting"); expect(listeners.size).toBe(0);
+    });
+});

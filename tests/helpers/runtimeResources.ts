@@ -341,6 +341,7 @@ export function createRootRuntimeResourcesForTest(
     }),
     ...(options.signal ? {signal: options.signal} : {}),
     ...(options.headless !== undefined ? {headless: options.headless} : {}),
+    ...(options.onMcpStartup ? {onMcpStartup: options.onMcpStartup} : {}),
     ...(options.requestMcpApproval
       ? {requestMcpApproval: options.requestMcpApproval}
       : {}),
