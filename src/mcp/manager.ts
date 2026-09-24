@@ -86,8 +86,13 @@ class McpManager implements McpManagerLike {
         const decision = await this.options.requestApproval({
             projectPath: identity.projectPath,
             serverName: server.name,
-            command: server.config.command,
-            args: server.config.args,
+            ...(server.config.type === "stdio"
+                ? {type: "stdio" as const, command: server.config.command, args: server.config.args}
+                : {type: "http" as const, url: (() => {
+                    const endpoint = new URL(server.config.url);
+                    if (endpoint.search) endpoint.search = "?[redacted]";
+                    return endpoint.href;
+                })()}),
             configHash: identity.configHash,
         });
         if (this.closed || this.options.signal?.aborted) return "pending";

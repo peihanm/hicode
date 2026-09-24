@@ -64,7 +64,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       const decision = new Promise<{decision: McpApprovalDecision | undefined; aborted: boolean}>(resolve => {resolveDecision = resolve;});
       const RuntimeBootstrap = createRuntimeBootstrap({createResources: async options => {
         const value = await options.requestMcpApproval?.({
-          projectPath: cwd, serverName: "fixture", command: "bun", args: ["server.ts"], configHash: "cancel",
+          projectPath: cwd, serverName: "fixture", type: "stdio", command: "bun", args: ["server.ts"], configHash: "cancel",
         });
         resolveDecision({decision: value, aborted: options.signal?.aborted === true});
         return resources;
@@ -96,7 +96,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       const instance = render(<RuntimeBootstrap shutdown={new InteractiveShutdown()}
         configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
       await new Promise(resolve => setTimeout(resolve, 40));
-      const approval = requestApproval({projectPath: cwd, serverName: "fixture", command: "bun", args: [], configHash: "review"});
+      const approval = requestApproval({projectPath: cwd, serverName: "fixture", type: "stdio", command: "bun", args: [], configHash: "review"});
       await new Promise(resolve => setTimeout(resolve, 40));
       expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
       expect(sessionEnds).toBe(0);
@@ -147,7 +147,7 @@ describe("RuntimeBootstrap lifecycle", () => {
           decision = await options.requestMcpApproval?.({
             projectPath: cwd,
             serverName: "fixture",
-            command: "bun",
+            type: "stdio", command: "bun",
             args: ["server.ts"],
             configHash: "hidden",
           });
@@ -181,7 +181,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       const RuntimeBootstrap = createRuntimeBootstrap({createResources: async options => {
         for (const serverName of ["first-server", "second-server"]) {
           decisions.push(await options.requestMcpApproval?.({
-            projectPath: cwd, serverName, command: "bun", args: ["server.ts"], configHash: serverName,
+            projectPath: cwd, serverName, type: "stdio", command: "bun", args: ["server.ts"], configHash: serverName,
           }));
         }
         return resources;

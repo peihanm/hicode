@@ -13,30 +13,28 @@ export interface McpToolPolicy {
     exceptions: Partial<Record<string, "allow" | "ask" | "deny">>;
 }
 
-interface McpStdioServerConfig {
-    type: "stdio";
-    command: string;
-    args: string[];
-    env?: Record<string, string>;
+interface McpServerOptions {
     disabled: boolean;
     timeoutMs: number;
     toolTimeoutMs: number;
 }
 
-export interface HostMcpServerContribution {
+export type HostMcpServerContribution = {
     name: string;
-    type?: "stdio";
-    command: string;
-    args?: string[];
-    env?: Record<string, string>;
     disabled?: boolean;
     timeoutMs?: number;
     toolTimeoutMs?: number;
-}
+} & (
+    | {type?: "stdio"; command: string; args?: string[]; env?: Record<string, string>}
+    | {type?: "http"; url: string}
+);
 
 interface LoadedMcpServerContent {
     name: string;
-    config: McpStdioServerConfig;
+    config: McpServerOptions & (
+        | {type: "stdio"; command: string; args: string[]; env?: Record<string, string>}
+        | {type: "http"; url: string}
+    );
 }
 
 export type LoadedMcpServerConfig = LoadedMcpServerContent & (
@@ -87,13 +85,14 @@ export interface McpServerSnapshot {
     };
 }
 
-export interface McpApprovalRequest {
+export type McpApprovalRequest = {
     projectPath: string;
     serverName: string;
-    command: string;
-    args: string[];
     configHash: string;
-}
+} & (
+    | {type: "stdio"; command: string; args: string[]}
+    | {type: "http"; url: string}
+);
 
 export interface McpConnectedServer {
     config: LoadedMcpServerConfig;

@@ -153,19 +153,18 @@ export async function createMcpApprovalIdentity(
     server: LoadedMcpServerConfig
 ): Promise<{projectPath: string; configHash: string}> {
     const projectPath = await canonicalProjectPath(cwd);
-    const env = Object.fromEntries(
-        Object.entries(server.config.env ?? {}).map(([key, value]) => [
+    const config = server.config;
+    const env = config.type === "stdio" ? Object.fromEntries(
+        Object.entries(config.env ?? {}).map(([key, value]) => [
             key,
             createHash("sha256").update(value).digest("hex"),
         ])
-    );
+    ) : undefined;
     const canonical = stableJson({
         projectPath,
         serverName: server.name,
         type: server.config.type,
-        command: server.config.command,
-        args: server.config.args,
-        env,
+        ...(config.type === "stdio" ? {command: config.command, args: config.args, env} : {url: config.url}),
         timeoutMs: server.config.timeoutMs,
         toolTimeoutMs: server.config.toolTimeoutMs,
     });

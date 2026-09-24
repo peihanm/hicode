@@ -142,8 +142,8 @@ describe("Root Configuration", () => {
                 .toBe("host policy");
             expect(Object.isFrozen(configuration.contributions.agents?.[0]))
                 .toBe(true);
-            expect(configuration.contributions.mcpServers?.[0]?.env?.TOKEN)
-                .toBe("initial");
+            expect(configuration.contributions.mcpServers?.[0])
+                .toMatchObject({env: {TOKEN: "initial"}});
 
             expect(() => createHiCodeRootConfiguration({
                 cwd,

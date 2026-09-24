@@ -9,18 +9,28 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 25));
 const request: McpApprovalRequest = {
   projectPath: "/tmp/project",
   serverName: "playwright",
+  type: "stdio",
   command: "npx",
   args: ["-y", "@playwright/mcp@latest", "--browser", "chrome"],
   configHash: "hidden-hash",
 };
 
 describe("MCP approval UI", () => {
+  test("HTTP approval shows the endpoint instead of a launch command", () => {
+    const view = render(<McpApprovalDialog request={{type: "http", url: "https://example.com/mcp",
+      projectPath: "/tmp/project", serverName: "remote", configHash: "hidden-hash"}} onDecision={() => {}}/>);
+    expect(view.lastFrame()).toContain("Endpoint  https://example.com/mcp");
+    expect(view.lastFrame()).not.toContain("Command");
+    expect(view.lastFrame()).not.toContain("hidden-hash");
+    view.unmount();
+  });
   test("无竖线布局突出服务与启动命令，保留敏感参数脱敏", () => {
     const view = render(
       <McpApprovalDialog
         request={{
           projectPath: "/tmp/project",
           serverName: "filesystem",
+          type: "stdio",
           command: "node",
           args: ["server.js", "--stdio", "--token", "sensitive-value", "--api-key=private-key"],
           configHash: "hidden-hash",

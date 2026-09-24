@@ -19,14 +19,7 @@ const MAX_SERVERS_PER_SOURCE = 64;
 const MAX_ARGS = 128;
 const MAX_ENV_ENTRIES = 128;
 
-const serverShape = {
-    type: z.literal("stdio").optional().default("stdio"),
-    command: z.string().trim().min(1).max(4096),
-    args: z.array(z.string().max(16_384)).max(MAX_ARGS).optional().default([]),
-    env: z.record(
-        z.string().min(1).max(256).regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
-        z.string().max(64 * 1024)
-    ).optional(),
+const serverOptions = {
     disabled: z.boolean().optional().default(false),
     timeoutMs: z.number().int().min(1_000).max(60_000).optional()
         .default(DEFAULT_CONNECTION_TIMEOUT_MS),
@@ -34,16 +27,37 @@ const serverShape = {
         .default(DEFAULT_TOOL_TIMEOUT_MS),
 };
 
-const serverSchema = z.object(serverShape).strict();
+const stdioShape = {
+    ...serverOptions,
+    type: z.literal("stdio").optional().default("stdio"),
+    command: z.string().trim().min(1).max(4096),
+    args: z.array(z.string().max(16_384)).max(MAX_ARGS).optional().default([]),
+    env: z.record(
+        z.string().min(1).max(256).regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+        z.string().max(64 * 1024)
+    ).refine(value => Object.keys(value).length <= MAX_ENV_ENTRIES, "Too many Server env entries").optional(),
+};
+const httpShape = {
+    ...serverOptions,
+    type: z.literal("http").optional().default("http"),
+    url: z.string().min(1).max(4096).refine(value => {
+        try {
+            const url = new URL(value);
+            return !/[\s\x00-\x1f\x7f]/.test(value) && ["http:", "https:"].includes(url.protocol) &&
+                !url.username && !url.password && !url.hash;
+        } catch {return false;}
+    }, "MCP URL must be HTTP(S), without credentials, whitespace or a fragment")
+        .transform(value => new URL(value).href),
+};
+const serverSchema = z.union([z.object(stdioShape).strict(), z.object(httpShape).strict()]);
 
-export const hostMcpServerContributionSchema = z
-    .object({
-        name: z.string().trim().refine(validateMcpServerName, {
-            message: "Use only letters, digits, _, - and ., with length 1–64",
-        }),
-        ...serverShape,
-    })
-    .strict();
+const name = z.string().trim().refine(validateMcpServerName, {
+    message: "Use only letters, digits, _, - and ., with length 1–64",
+});
+export const hostMcpServerContributionSchema = z.union([
+    z.object({name, ...stdioShape}).strict(),
+    z.object({name, ...httpShape}).strict(),
+]);
 
 function isMissing(error: unknown): boolean {
     return Boolean(
@@ -154,15 +168,6 @@ async function readConfigSource(
                     message: `Invalid Server configuration: ${parsed.error.issues
                         .map((item) => item.message)
                         .join("; ")}`.slice(0, 2000),
-                });
-                continue;
-            }
-            if (Object.keys(parsed.data.env ?? {}).length > MAX_ENV_ENTRIES) {
-                issues.push({
-                    source,
-                    path,
-                    serverName: name,
-                    message: `Server env exceeds ${MAX_ENV_ENTRIES} entries`,
                 });
                 continue;
             }

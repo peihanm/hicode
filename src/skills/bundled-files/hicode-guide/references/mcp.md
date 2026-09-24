@@ -4,35 +4,34 @@
 
 Servers come from `~/.hicode/mcp.json`, then current-project `.mcp.json`, then `.hicode/mcp.json`, then SDK Host inline contributions. Later sources replace a server with the same name. Project files are read only at cwd, not from ancestor directories. Prefer `.hicode/mcp.json` for HiCode projects.
 
-Files are JSON objects with one top-level `mcpServers` object. Current support is **stdio only**: no direct HTTP/SSE transport, OAuth flow, MCP Resources/Prompts or Elicitation. Do not copy a URL-only configuration from another client.
+Files are JSON objects with one top-level `mcpServers` object. HiCode supports local **stdio** and **Streamable HTTP** servers. A `command` selects stdio; a `url` selects HTTP. Explicit `type` is optional and must match. Legacy SSE transport, custom authentication headers, OAuth, MCP Resources/Prompts and Elicitation are not supported.
 
-## Full server example
+## Minimal server examples
 
 ```json
 {
   "mcpServers": {
     "local-tools": {
-      "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/to/server.mjs"],
-      "env": {"LOG_LEVEL": "warn"},
-      "disabled": false,
-      "timeoutMs": 10000,
-      "toolTimeoutMs": 120000
+      "args": ["/absolute/path/to/server.mjs"]
+    },
+    "remote-tools": {
+      "url": "https://example.com/mcp"
     }
   }
 }
 ```
 
-This is a template; the referenced server must exist and speak MCP over stdin/stdout. HiCode does not create it from this declaration. For a third-party server, use its documented launch command and dependency setup. Validate the package/version separately before recommending installation.
+These are templates: the local program or HTTP MCP endpoint must exist. HiCode does not create it from the declaration. For third-party servers, use their documented command or endpoint. Validate the package/version separately before recommending installation. Do not write optional defaults into examples or user configuration; preserve intentional timeout overrides for slow starts or long renders.
 
 | Field | Meaning |
 | --- | --- |
 | Server name | 1–64 characters: letters, digits, `_`, `-`, `.`; avoid names that collide after normalization. |
-| `type` | Optional, defaults to `stdio`; no other value supported. |
-| `command` | Required executable name/path, directly launched without shell evaluation. |
+| `type` | Optional: `stdio` with command, `http` with URL. Do not mix transport fields. |
+| `command` | Required for stdio: executable name/path, directly launched without shell evaluation. |
+| `url` | Required for HTTP: HTTP(S) MCP endpoint, without embedded username/password or fragment. Redirects are rejected. |
 | `args` | Optional array of literal strings, default `[]`; shell quoting/operators do not become executable shell syntax. |
-| `env` | Optional string-to-string map overlaying the restricted child environment. It is not a documented `${VAR}` substitution template. |
+| `env` | Stdio-only string-to-string map overlaying the restricted child environment. No `${VAR}` substitution. |
 | `disabled` | Optional boolean, default false. |
 | `timeoutMs` | Connection timeout, default 10000; allowed 1000–60000 milliseconds. |
 | `toolTimeoutMs` | Per-call timeout, default 120000; allowed 1000–1800000 milliseconds. |
@@ -43,7 +42,7 @@ Provider keys and sensitive environment names are filtered from child processes;
 
 ## Approval and connection
 
-Project and Host server declarations need authorization before process startup. Selected user-level declarations are treated as explicit user configuration. Do not move a project server into user configuration merely to evade review.
+Project and Host server declarations need authorization before spawning a process or contacting an HTTP endpoint. HTTP approval displays the endpoint with query values hidden. Selected user-level declarations are treated as explicit user configuration. Do not move a project server into user configuration merely to evade review.
 
 Startup offers Connect for this session, Always connect and allow tools, Always connect; keep tool approvals, and Block this server. Allow tools explicitly permits current and future tools by default, including code execution. Keep tool approvals remembers the connection while retaining tool checks. Esc skips without changing stored decisions.
 
@@ -51,9 +50,9 @@ Connection progress appears above the prompt, not inside its placeholder. Succes
 
 Use `/mcp` → Enter on a server to manage permissions. Space changes the Default row between Allow tools and Ask when needed. On a tool row, Space cycles Default / Ask every time / Blocked / Allowed. Enter saves the policy and exceptions together. Esc goes back one level; Ctrl+C closes the panel and returns to the prompt without exiting HiCode. Unsaved changes are discarded; closing does not undo a save or reconnect already in progress. Settings deny/ask rules cannot be overridden here. An existing exact tool allow in Settings is shown; select an Ask exception to require approval instead. Ask when needed preserves read-only defaults and existing precise grants.
 
-Policies and connection approvals live in `~/.hicode/mcp-approvals.json`, bound to canonical project, server name and configuration fingerprint. Old connection-only records do not imply server trust. Changing command, arguments or environment invalidates the old service policy. Saving updates the connected runtime without a restart. Existing child tool-name scopes do not expand; within that scope they use refreshed definitions and policy. Definitions changing during review require reopening the page.
+Policies and connection approvals live in `~/.hicode/mcp-approvals.json`, bound to canonical project, server name and configuration fingerprint. Old connection-only records do not imply server trust. Changing command, arguments, environment, HTTP URL or effective timeouts invalidates the old service policy. Omitting an explicit default does not change the fingerprint. Saving updates the connected runtime without a restart. Existing child tool-name scopes do not expand; within that scope they use refreshed definitions and policy. Definitions changing during review require reopening the page.
 
-Press r in the server list, or use `/mcp reconnect <name>`, to re-read configuration and review/reconnect a known server. Restart after adding/removing servers. Connections do not automatically replay failed calls. HiCode closes its stdio children at shutdown.
+Press r in the server list, or use `/mcp reconnect <name>`, to re-read configuration and review/reconnect a known server. Restart after adding/removing servers. Connections do not automatically replay failed calls. HiCode closes stdio children and HTTP streams at shutdown, and attempts bounded HTTP session termination. It does not stop the independent HTTP server.
 
 ## Tool discovery and permissions
 
@@ -75,6 +74,7 @@ An allow for a tool name covers its ordinary calls, not just one current argumen
 
 - **Pending/denied:** resolve the startup approval, not the model prompt.
 - **Executable missing:** check the command on the PATH used to launch HiCode and required server files.
+- **HTTP endpoint/authentication:** use a Streamable HTTP MCP endpoint, not an ordinary web page or legacy SSE URL. HTTP 401/403 indicates a server-side access requirement; this version has no custom-header or OAuth configuration. Do not put passwords in URLs as a workaround.
 - **Connection timeout:** check startup/dependency failure and protocol output before increasing timeout.
 - **Tool absent:** check `/mcp` tool count, schema diagnostics and tool discovery; do not guess a name repeatedly.
 - **Tool failed:** distinguish local validation, permission denial, remote tool error and connection loss using the saved output.

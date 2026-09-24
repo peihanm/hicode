@@ -6,11 +6,40 @@ import {
   getMcpApproval,
   saveMcpApproval,
 } from "../../src/mcp/approval.js";
-import {loadMcpConfig} from "../../src/mcp/config.js";
+import {loadMcpConfig, hostMcpServerContributionSchema} from "../../src/mcp/config.js";
 import {buildMcpToolName, normalizeMcpName} from "../../src/mcp/names.js";
 import { withTempProject } from "../helpers/tempProject.js";
 
 describe("MCP config and normalization", () => {
+  test("minimal stdio and HTTP configs infer transport and preserve defaults", async () => {
+    await withTempProject(async (cwd, storage) => {
+      await writeFile(join(cwd, ".mcp.json"), JSON.stringify({mcpServers: {
+        local: {command: "node"}, remote: {url: "https://example.com/mcp"},
+      }}));
+      const loaded = await loadMcpConfig(storage, cwd);
+      expect(loaded.issues).toEqual([]);
+      expect(loaded.servers.map(server => server.config)).toEqual([
+        {type: "stdio", command: "node", args: [], disabled: false, timeoutMs: 10000, toolTimeoutMs: 120000},
+        {type: "http", url: "https://example.com/mcp", disabled: false, timeoutMs: 10000, toolTimeoutMs: 120000},
+      ]);
+      const remote = loaded.servers[1]!;
+      const explicit = hostMcpServerContributionSchema.parse({name: "remote", type: "http", url: "https://example.com/mcp", disabled: false, timeoutMs: 10000, toolTimeoutMs: 120000});
+      expect(await createMcpApprovalIdentity(cwd, remote)).toEqual(await createMcpApprovalIdentity(cwd, {...remote, config: explicit}));
+      expect((await createMcpApprovalIdentity(cwd, {...remote, config: {...remote.config, type: "http", url: "https://example.com/other"}})).configHash)
+        .not.toBe((await createMcpApprovalIdentity(cwd, remote)).configHash);
+    });
+  });
+
+  test.each([
+    {url: "file:///tmp/server"}, {url: "https://user:secret@example.com/mcp"},
+    {url: "https://example.com/mcp#fragment"}, {url: "https://example.com/\nsecret"},
+    {url: "https://example.com", command: "node"}, {type: "stdio", url: "https://example.com"},
+    {type: "http", command: "node"}, {url: "https://example.com", args: []},
+    {url: "https://example.com", env: {}}, {type: "sse", url: "https://example.com"},
+  ])("rejects ambiguous or unsupported transport configuration %j", config => {
+    expect(hostMcpServerContributionSchema.safeParse({name: "fixture", ...config}).success).toBe(false);
+  });
+
   test("项目配置覆盖用户配置，单个无效 Server 不影响其他项", async () => {
     await withTempProject(async (cwd, storage) => {
       const userPath = join(storage.hicodeHome, "mcp.json");
@@ -57,10 +86,10 @@ describe("MCP config and normalization", () => {
         mcpServers: { shared: { command: "hicode-native" } },
       }));
       const loaded = await loadMcpConfig(storage, cwd);
-      expect(loaded.servers.find((item) => item.name === "shared")?.config.command)
-        .toBe("hicode-native");
-      expect(loaded.servers.find((item) => item.name === "compat")?.config.command)
-        .toBe("compat");
+      expect(loaded.servers.find((item) => item.name === "shared")?.config)
+        .toMatchObject({type: "stdio", command: "hicode-native"});
+      expect(loaded.servers.find((item) => item.name === "compat")?.config)
+        .toMatchObject({type: "stdio", command: "compat"});
     });
   });
 

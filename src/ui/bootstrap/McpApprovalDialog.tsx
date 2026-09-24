@@ -64,7 +64,9 @@ export function McpApprovalDialog({
                 <Text color={COLORS.dim}>Choose connection and tool permissions for this project.</Text>
                 <Box marginTop={1} flexDirection="column">
                     <Text color={COLORS.dim}>Project  {request.projectPath.slice(0, 1000)}</Text>
-                    <Text color={COLORS.dim}>Command  {[request.command.slice(0, 512), formatArgs(request.args)].filter(Boolean).join(" ")}</Text>
+                    <Text color={COLORS.dim}>{request.type === "http"
+                        ? `Endpoint  ${request.url}`
+                        : `Command  ${[request.command.slice(0, 512), formatArgs(request.args)].filter(Boolean).join(" ")}`}</Text>
                 </Box>
                 <Box marginTop={1} flexDirection="column">
                     {OPTIONS.map((option, index) => (
