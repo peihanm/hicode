@@ -5,8 +5,9 @@ import {COLORS} from "../theme.js";
 import {useTerminalWidth} from "../terminalSize.js";
 
 const OPTIONS: Array<{label: string; value: McpApprovalDecision; description: string}> = [
-    {label: "Allow once", value: "once", description: "Start now. Ask again next time."},
-    {label: "Always allow for this project", value: "always", description: "Remember for this project. Ask again if configuration changes."},
+    {label: "Allow once", value: "once", description: "Start now. Tool calls follow existing permission rules."},
+    {label: "Trust this server and allow its tools", value: "trust-tools", description: "Remember for this project. Current and future tools are allowed by default; manage exceptions with /mcp."},
+    {label: "Always allow connection only", value: "always", description: "Remember the connection. Tool calls still follow existing permission rules."},
     {label: "Deny for this project", value: "deny", description: "Remember this denial. Use /mcp reconnect to review it later."},
 ];
 
@@ -50,7 +51,7 @@ export function McpApprovalDialog({
         if (key.escape) finish("skip");
         else if (key.upArrow || key.downArrow) {
             setSelectedIndex(index => (index + (key.upArrow ? -1 : 1) + OPTIONS.length) % OPTIONS.length);
-        } else if (key.return || /^[1-3]$/.test(input)) {
+        } else if (key.return || /^[1-4]$/.test(input)) {
             const option = OPTIONS[key.return ? selectedIndex : Number(input) - 1];
             if (option) finish(option.value);
         }
@@ -88,7 +89,7 @@ export function McpApprovalDialog({
                     </Box>
                 </Box>
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>↑↓ select · 1–3 choose · Enter confirm · Esc skip once</Text>
+                    <Text color={COLORS.dim}>↑↓ select · 1–4 choose · Enter confirm · Esc skip once</Text>
                 </Box>
             </Box>
         </Box>

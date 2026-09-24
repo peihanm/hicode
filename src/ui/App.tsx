@@ -1,3 +1,4 @@
+import {McpDialog} from "./mcp/McpDialog.js";
 import {DraftLayoutProvider} from "./conversation/draftLayout.js";
 import {isCoordinationWait} from "./conversation/projection.js";
 import {ProvidersDialog} from "./providers/ProvidersDialog.js";
@@ -98,7 +99,7 @@ export function App({
         const {exit} = useApp();
         const inputEscapeRef = useRef<(() => boolean) | undefined>(undefined);
         const setInputEscapeHandler = useCallback((handler: (() => boolean) | undefined) => {inputEscapeRef.current = handler;}, []);
-        const [activePanel, setActivePanel] = useState<"resume" | "tasks" | "agents" | "skills" | "sandbox" | "diff" | "providers" | "model" | "permissions" | undefined>(() => {
+        const [activePanel, setActivePanel] = useState<"resume" | "tasks" | "agents" | "mcp" | "skills" | "sandbox" | "diff" | "providers" | "model" | "permissions" | undefined>(() => {
             if (resources.modelConfiguration && resources.primaryModel.available.length === 0) return "providers";
             if (resources.primaryModel.available.length > 0 && !resources.primaryModel.isConfigured) return "model";
             return undefined;
@@ -112,6 +113,7 @@ export function App({
             setActivePanel("resume");
         }, [resources.cwd, resources.storage]);
         const openAgents = useCallback(() => setActivePanel("agents"), []);
+        const openMcp = useCallback(() => setActivePanel("mcp"), []);
         const openSkills = useCallback(() => setActivePanel("skills"), []);
         const openSandbox = useCallback(() => setActivePanel("sandbox"), []);
         const openGitDiff = useCallback(() => setActivePanel("diff"), []);
@@ -129,6 +131,7 @@ export function App({
             openResume: requestSessionSwitch ? openResume : undefined,
             openAgents,
             openSkills,
+            openMcp,
             openSandbox,
             openTasks,
             openGitDiff,
@@ -304,6 +307,9 @@ export function App({
                         fullAccess={turn.permissionMode === "full-access"}
                         onSave={async mode => {await saveLocalNetworkMode(resources.cwd, mode); setConfiguredNetworkMode(mode);}}
                         onClose={() => setActivePanel(undefined)}/>
+                ) : (activePanel === "mcp") && !turn.confirmRequest ? (
+                    <McpDialog manager={resources.mcpManager} getRules={turn.getPermissionRules}
+                        onSave={turn.saveMcpToolPolicy} onClose={() => setActivePanel(undefined)}/>
                 ) : (activePanel === "skills") && !turn.confirmRequest ? (
                     <SkillsDialog skills={resources.skills} issues={resources.skillIssues}
                         projectDirectory={join(resources.cwd, ".hicode", "skills")}

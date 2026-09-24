@@ -1,3 +1,4 @@
+import type {McpToolPolicy} from "../../mcp/types.js";
 import {FileSuggestions} from "../../runtime/fileSuggestions.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/capability.js";
@@ -38,6 +39,7 @@ interface UseTurnControllerOptions {
     openResume?: () => void;
     openAgents?: () => void;
     openSkills?: () => void;
+    openMcp?: () => void;
     openSandbox?: () => void;
     openTasks?: () => void;
     openGitDiff?: () => void;
@@ -68,6 +70,7 @@ export function useTurnController({
                                           openResume,
                                           openAgents,
                                           openSkills,
+                                          openMcp,
                                           openSandbox,
                                           openTasks,
                                           openGitDiff,
@@ -342,6 +345,7 @@ export function useTurnController({
                 openResume,
                 openAgents,
                 openSkills,
+                openMcp,
                 openSandbox,
                 openTasks,
                 toolRuntime,
@@ -503,6 +507,13 @@ export function useTurnController({
             [cwd]
         );
 
+        const getPermissionRules = useCallback(() => permissionRulesRef.current!, []);
+        const saveMcpToolPolicy = useCallback(async (name: string, configHash: string, policy: McpToolPolicy) => {
+            if (!resources.mcpManager) throw new Error("No MCP Manager available");
+            await resources.mcpManager.setToolPolicy(name, configHash, policy);
+            rootSession.invalidateApprovals();
+        }, [resources.mcpManager, rootSession]);
+
         const setPrimaryModel = useCallback(
             async (target: ModelTargetSettings) => {
                 if (!resources.modelConfiguration) throw new Error("This Host does not allow saving model configuration");
@@ -573,6 +584,8 @@ export function useTurnController({
             clearConfirmRequest: (request: ConfirmReq | null) =>
                 permissionRequests.clear(request),
             handleAddToAllowList,
+            getPermissionRules,
+            saveMcpToolPolicy,
             inputReplacement,
             queuedMessages: messageQueueSnapshot.messages,
             backgroundTasks: taskSession.getRunningSummary(),

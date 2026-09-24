@@ -15,6 +15,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     if (mode === "storm") await server.notification({method: "notifications/tools/list_changed"});
     const tools = [tool("control"), tool(["initial", "same", "slow", "paused", "changed"].includes(mode) ? "old" : "new")];
     if (mode === "changed") tools[1] = {...tool("old"), annotations: {readOnlyHint: false}};
+    if (mode === "new-write") tools[1] = {...tool("new"), annotations: {readOnlyHint: false}};
     if (mode === "invalid") tools.push({name: "bad", inputSchema: {type: "object", properties: {action: {type: "not-a-type"}}}, annotations: {readOnlyHint: true}});
     return {tools};
 });
@@ -22,7 +23,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     const action = request.params.arguments?.action;
     if (request.params.name === "control" && typeof action === "string") {
         if (action === "disconnect") setTimeout(() => {void server.close();}, 10);
-        else if (["refresh", "invalid", "storm", "same", "slow", "paused", "changed"].includes(action)) {
+        else if (["refresh", "invalid", "storm", "same", "slow", "paused", "changed", "new-write"].includes(action)) {
             mode = action;
             setTimeout(() => {void server.notification({method: "notifications/tools/list_changed"});}, 10);
         }

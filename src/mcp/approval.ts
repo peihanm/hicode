@@ -1,16 +1,24 @@
+import {z} from "zod";
 import {createHash} from "node:crypto";
 import {constants} from "node:fs";
 import {lstat, mkdir, open, realpath} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
 import {withFileLock, writeFileAtomically} from "../persistence/index.js";
-import type {LoadedMcpServerConfig, McpApprovalDecision} from "./types.js";
+import type {LoadedMcpServerConfig, McpApprovalDecision, McpToolPolicy} from "./types.js";
 import {stableJson} from "./json.js";
 
 const MAX_APPROVAL_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_APPROVAL_RECORDS = 10_000;
 const MAX_TEXT_CHARS = 16_384;
 
+export const mcpToolPolicySchema = z.object({
+    default: z.enum(["ask", "allow"]),
+    exceptions: z.record(z.string().regex(/^mcp__[A-Za-z0-9_]{1,59}$/), z.enum(["allow", "ask", "deny"]))
+        .refine(value => Object.keys(value).length <= 100, "Too many MCP tool exceptions"),
+}).strict();
+
 interface ApprovalRecord {
+    toolPolicy?: McpToolPolicy;
     projectPath: string;
     serverName: string;
     configHash: string;
@@ -61,6 +69,7 @@ function parseApprovalDocument(value: unknown): ApprovalDocument {
                 "configHash",
                 "decision",
                 "decidedAt",
+                "toolPolicy",
             ].includes(key)) ||
             typeof item.projectPath !== "string" ||
             item.projectPath.length === 0 ||
@@ -73,7 +82,8 @@ function parseApprovalDocument(value: unknown): ApprovalDocument {
             (item.decision !== "allow" && item.decision !== "deny") ||
             typeof item.decidedAt !== "string" ||
             !Number.isFinite(Date.parse(item.decidedAt)) ||
-            seen.has(identity)
+            seen.has(identity) ||
+            (item.toolPolicy !== undefined && (item.decision !== "allow" || !mcpToolPolicySchema.safeParse(item.toolPolicy).success))
         ) {
             throw new Error("MCP approval document contains invalid or duplicate records");
         }
@@ -169,20 +179,21 @@ export async function getMcpApproval(
     path: string,
     identity: {projectPath: string; configHash: string},
     serverName: string
-): Promise<"allow" | "deny" | "pending"> {
+): Promise<{decision: "allow" | "deny" | "pending"; toolPolicy?: McpToolPolicy}> {
     const match = (await readDocument(path)).approvals.find(
         (item) => item.projectPath === identity.projectPath &&
             item.serverName === serverName &&
             item.configHash === identity.configHash
     );
-    return match?.decision ?? "pending";
+    return {decision: match?.decision ?? "pending", ...(match?.toolPolicy ? {toolPolicy: match.toolPolicy} : {})};
 }
 
 export async function saveMcpApproval(
     path: string,
     identity: {projectPath: string; configHash: string},
     serverName: string,
-    decision: Extract<McpApprovalDecision, "always" | "deny">
+    decision: Extract<McpApprovalDecision, "always" | "deny">,
+    toolPolicy?: McpToolPolicy
 ): Promise<void> {
     await ensureSafeParent(path);
     await withFileLock(`${path}.lock`, async () => {
@@ -197,6 +208,7 @@ export async function saveMcpApproval(
             configHash: identity.configHash,
             decision: decision === "always" ? "allow" : "deny",
             decidedAt: new Date().toISOString(),
+            ...(toolPolicy ? {toolPolicy: mcpToolPolicySchema.parse(toolPolicy)} : {}),
         });
         const updated = parseApprovalDocument({version: 1, approvals});
         const content = `${JSON.stringify(updated, null, 2)}\n`;

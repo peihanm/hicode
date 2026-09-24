@@ -2,7 +2,7 @@ import {compileMcpInputSchema} from "./inputSchema.js";
 import type {Tool} from "../tools/types.js";
 import {buildMcpToolName} from "./names.js";
 import {normalizeMcpResultWithArtifacts} from "./result.js";
-import type {McpConnectedServer} from "./types.js";
+import type {McpConnectedServer, McpToolPolicy} from "./types.js";
 
 const MAX_DESCRIPTION_CHARS = 2048;
 const MAX_TOOLS_PER_SERVER = 100;
@@ -10,7 +10,7 @@ const MAX_SCHEMA_CHARS = 64 * 1024;
 const MAX_TOTAL_SCHEMA_CHARS = 512 * 1024;
 const MAX_REMOTE_TOOL_NAME_CHARS = 512;
 
-export function adaptMcpTools(server: McpConnectedServer): {
+export function adaptMcpTools(server: McpConnectedServer, policy?: McpToolPolicy): {
     tools: Tool[];
     issues: string[];
 } {
@@ -74,6 +74,7 @@ export function adaptMcpTools(server: McpConnectedServer): {
         const annotationReadOnly =
             remote.annotations?.readOnlyHint === true &&
             remote.annotations?.destructiveHint !== true;
+        const exception = policy?.exceptions[qualifiedName];
         const tool: Tool = {
             name: qualifiedName,
             description: `[MCP: ${server.config.name}] ${description || originalName}`,
@@ -82,7 +83,11 @@ export function adaptMcpTools(server: McpConnectedServer): {
             searchSource: {name: server.config.name},
             parameters: compiled.parameters,
             inputJsonSchema: compiled.schema,
+            requiresExplicitApproval: () => exception === "ask",
             async checkPermissions() {
+                if (exception === "deny") return {behavior: "deny", message: `MCP tool ${qualifiedName} is blocked by the server policy`};
+                if (exception === "ask") return {behavior: "ask", allowPersistent: false, message: `MCP tool ${qualifiedName} requires approval by the server policy; change this exception with /mcp`};
+                if (exception === "allow" || policy?.default === "allow") return {behavior: "allow"};
                 return annotationReadOnly
                     ? {behavior: "passthrough"}
                     : {behavior: "ask", message: `MCP tool ${qualifiedName} requires approval`};

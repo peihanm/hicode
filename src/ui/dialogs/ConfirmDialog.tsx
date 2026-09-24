@@ -52,7 +52,11 @@ export function ConfirmDialog({
     onDone: () => void;
     onAddToAllowList?: (rule: string) => Promise<void>;
 }) {
-    const options = req.allowAddToAllowList === false ? BASIC_OPTIONS : TOOL_OPTIONS;
+    const mcpTool = req.toolName.startsWith("mcp__");
+    const options = req.allowAddToAllowList === false ? BASIC_OPTIONS : mcpTool
+        ? TOOL_OPTIONS.map(option => option.value === "yes_no_ask"
+            ? {...option, label: "2. Always allow this tool in this project"} : option)
+        : TOOL_OPTIONS;
     const savingRef = useRef(false);
     const completedRef = useRef(false);
     const [saving, setSaving] = useState(false);
@@ -100,6 +104,9 @@ export function ConfirmDialog({
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>REQUEST</Text>
                 <Text>{req.question}</Text>
+                {mcpTool && req.allowAddToAllowList !== false && <Text color={COLORS.dim}>
+                    Project approval covers all arguments to this tool, not every tool on this server. Manage tools with /mcp.
+                </Text>}
             </Box>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>ACTION</Text>

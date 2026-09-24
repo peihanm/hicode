@@ -23,3 +23,45 @@ test("忽略 Memory 后即使模型试图读索引也被真实工具链拒绝",a
  await createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory)("忽略记忆",createInitialHistory(cwd,"glm-test"),()=>{},(()=>{const ctx=createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);return ctx;})(),EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
  expect(JSON.stringify(fake.calls[1]?.messages)).toContain("no Memory");await memory.close();
 }));
+
+test("Memory overlay sees a project tool grant on the very next call in the same turn", async () => withTempProject(async cwd => {
+ const {z} = await import("zod");
+ const {addToAllowList} = await import("../../src/permissions/addRule.js");
+ const memory = createTestMemoryRuntime(cwd);
+ let rules: import("../../src/permissions/types.js").PermissionRules = {allow: [], ask: [], deny: []};
+ let approvals = 0, executions = 0;
+ const name = "mcp__fixture__execute";
+ const ctx = createTestContext(cwd, {canUseTool: async () => {
+  approvals++; rules = await addToAllowList(name, rules, cwd); return {behavior: "allow"};
+ }});
+ Object.defineProperty(ctx, "permissionRules", {get: () => rules});
+ const tools = createToolRuntime({additionalTools: [{name, description: "Fixture", parameters: z.object({}),
+  isReadOnly: () => false, checkPermissions: async () => ({behavior: "ask", message: "Approve fixture"}),
+  async execute() {executions++; return "done";}}]});
+ const fake = createFakeLLM([assistantToolCall(name, {}, "first"), assistantToolCall(name, {}, "second"), assistantText("done")]);
+ try {
+  await createMemoryAwareAgentRunner(createAgentRunner({callLLM: fake.callLLM, compactHistory: noCompact}), memory)(
+   "run twice", createInitialHistory(cwd, "glm-test"), () => {}, ctx, EMPTY_AGENT_INPUT_CHANNEL,
+   {getToolSchemas: tools.getToolSchemas, executeTool: tools.executeTool, isToolConcurrencySafe: tools.isConcurrencySafe});
+  expect(executions).toBe(2); expect(approvals).toBe(1);
+  expect(JSON.parse(await Bun.file(join(cwd, ".hicode/settings.local.json")).text()).permissions.allow).toContain(name);
+ } finally {await memory.close();}
+}));
+
+test("Memory overlay keeps live modes and revocations without granting Memory access", async () => withTempProject(async cwd => {
+ const memory = createTestMemoryRuntime(cwd);
+ const ctx = createTestContext(cwd);const original = memory.fileAccess(ctx);ctx.memoryFiles = original;
+ let rules: import("../../src/permissions/types.js").PermissionRules = {allow: [], ask: [], deny: []};
+ Object.defineProperty(ctx, "permissionRules", {get: () => rules});
+ let promptPolicy: "onRequest" | "never" = "onRequest";
+ Object.defineProperty(ctx, "permissionPromptPolicy", {get: () => promptPolicy});
+ try {await createMemoryAwareAgentRunner(async (_input, _history, _event, scoped) => {
+  expect(scoped.memoryFiles).toBeUndefined();expect(ctx.memoryFiles).toBe(original);
+  ctx.setPermissionMode("full-access");ctx.setCollaborationMode("plan");promptPolicy="never";
+  rules={...rules,deny:[{source:"local",toolName:"mcp__fixture__execute"}]};
+  expect(scoped.permissionMode).toBe("full-access");expect(scoped.collaborationMode).toBe("plan");
+  expect(scoped.permissionPromptPolicy).toBe("never");expect(scoped.permissionRules).toBe(rules);
+  return {reply:"done",reason:"completed",iterations:1};
+ },memory)("忽略记忆",[],()=>{},ctx,EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:()=>[],executeTool:async()=>"",isToolConcurrencySafe:()=>false});}
+ finally {await memory.close();}
+}));

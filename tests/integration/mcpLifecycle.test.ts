@@ -35,7 +35,7 @@ test.each(["skip", "abort"])("授权 %s 不持久拒绝，下一次启动仍询�
             await initial.initialize();
             expect(initial.getTools()).toHaveLength(0);
             expect(initial.getSnapshots()[0]?.status).toBe("pending-approval");
-            expect(await getMcpApproval(join(storage.hicodeHome, "mcp-approvals.json"), identity, "fixture")).toBe("pending");
+            expect(await getMcpApproval(join(storage.hicodeHome, "mcp-approvals.json"), identity, "fixture")).toMatchObject({decision: "pending"});
         } finally {await initial.closeAll();}
         let requests = 0;
         const restarted = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
@@ -61,7 +61,7 @@ test("永久拒绝明确显示，显式重连重新审查；跳过不清除拒�
         try {
             await denied.initialize();
             expect(denied.getSnapshots()[0]).toMatchObject({status: "denied", toolCount: 0});
-            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toMatchObject({decision: "deny"});
         } finally {await denied.closeAll();}
         const headless = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
             headless: true, requestApproval: async () => {throw new Error("Headless must not request approval");}});
@@ -69,7 +69,7 @@ test("永久拒绝明确显示，显式重连重新审查；跳过不清除拒�
             await headless.initialize();
             await headless.reconnect("fixture");
             expect(headless.getSnapshots()[0]).toMatchObject({status: "denied", toolCount: 0});
-            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toMatchObject({decision: "deny"});
         } finally {await headless.closeAll();}
         let requests = 0;
         let decision: McpApprovalDecision = "skip";
@@ -83,17 +83,17 @@ test("永久拒绝明确显示，显式重连重新审查；跳过不清除拒�
             expect(requests).toBe(1);
             expect(review.getSnapshots()[0]?.status).toBe("denied");
             expect(review.getTools()).toHaveLength(0);
-            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toMatchObject({decision: "deny"});
             decision = "once";
             await review.reconnect("fixture");
             expect(requests).toBe(2);
             expect(review.getSnapshots()[0]).toMatchObject({status: "connected", toolCount: 2});
-            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("deny");
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toMatchObject({decision: "deny"});
             decision = "always";
             await review.reconnect("fixture");
             expect(requests).toBe(3);
             expect(review.getSnapshots()[0]).toMatchObject({status: "connected", toolCount: 2});
-            expect(await getMcpApproval(approvalPath, identity, "fixture")).toBe("allow");
+            expect(await getMcpApproval(approvalPath, identity, "fixture")).toMatchObject({decision: "allow"});
         } finally {await review.closeAll();}
     });
 });

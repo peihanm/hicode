@@ -45,15 +45,19 @@ Provider keys and sensitive environment names are filtered from child processes;
 
 Project and Host server declarations need authorization before process startup. Selected user-level declarations are treated as explicit user configuration. Do not move a project server into user configuration merely to evade review.
 
-Project approval choices include allowing once, persistently allowing, or denying for the project. Esc skips the current request without creating a new persisted decision. Stored decisions live in `~/.hicode/mcp-approvals.json`; they bind canonical project, server name and configuration fingerprint. Changing command, arguments, environment or related connection settings can require approval again.
+Startup offers Allow once, Trust this server and allow its tools, Always allow connection only, and Deny for this project. Trust explicitly allows current and future tools by default, including code execution. Connection-only approval does not grant tool access. Esc skips without changing stored decisions.
 
-Use `/mcp` to distinguish pending approval, denied, connecting, connected, failed and disabled. For a known server use `/mcp reconnect <name>` to re-read its configuration and review/reconnect it. Restart after adding/removing servers. Connections do not automatically retry/replay failed tool calls. HiCode owns and closes its stdio children at shutdown.
+Use `/mcp` → Enter on a server to manage permissions. Space changes the Default row between Allow tools and Ask when needed. On a tool row, Space cycles Default / Ask every time / Blocked / Allowed. Enter saves the policy and exceptions together; Esc discards unsaved changes. Settings deny/ask rules cannot be overridden here. An existing exact tool allow in Settings is shown; select an Ask exception to require approval instead. Ask when needed preserves read-only defaults and existing precise grants.
+
+Policies and connection approvals live in `~/.hicode/mcp-approvals.json`, bound to canonical project, server name and configuration fingerprint. Old connection-only records do not imply server trust. Changing command, arguments or environment invalidates the old service policy. Saving updates the connected runtime without a restart. Existing child tool-name scopes do not expand; within that scope they use refreshed definitions and policy. Definitions changing during review require reopening the page.
+
+Press r in the server list, or use `/mcp reconnect <name>`, to re-read configuration and review/reconnect a known server. Restart after adding/removing servers. Connections do not automatically replay failed calls. HiCode closes its stdio children at shutdown.
 
 ## Tool discovery and permissions
 
 The model sees tool names such as `mcp__local_tools__lookup`. It uses `tool_search` to discover a relevant tool and load its full schema for Function Calling. This does not start an unconfigured server or grant access. The loaded tool set has a bounded working set; an unused schema can later be unloaded and rediscovered.
 
-A connected server's read-only tool is automatically allowed by default only when `readOnlyHint=true` and `destructiveHint` is not true. Missing/conflicting annotations or write/destructive tools use ordinary approval policy. Explicit deny/ask rules still apply. Approve for me can review these requests; Full Access does not bypass server-start approval. Plan and read-only children do not gain write tools.
+Without service trust, a connected server's read-only tool is allowed by default only when `readOnlyHint=true` and `destructiveHint` is not true. Missing/conflicting annotations or write/destructive tools use ordinary approval policy. Settings deny/ask rules still apply. Approve for me can review requests; Full Access preauthorizes ordinary asks but does not bypass denies or server-start approval. Plan and read-only children do not gain write tools.
 
 For a deliberately trusted operation, use the offered persistent approval or an exact actual tool name in project-local rules. For example, replace the placeholder in this fragment with the name exposed by the connected server:
 
@@ -63,7 +67,7 @@ For a deliberately trusted operation, use the offered persistent approval or an 
 }
 ```
 
-An allow for a tool name covers its ordinary calls, not just one current argument value. Discuss that scope before changing policy; do not broadly whitelist a server or manufacture annotations.
+An allow for a tool name covers its ordinary calls, not just one current argument value. Only change service trust or exceptions when the user requests that scope. Do not manufacture read-only annotations.
 
 ## Troubleshooting
 

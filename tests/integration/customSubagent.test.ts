@@ -345,7 +345,7 @@ describe("custom subagent runtime", () => {
                 getSnapshots: () => [],
                 getTools: () => [readTool, writeTool],
                 subscribe: () => () => {},
-                async reconnect() {},
+                async setToolPolicy() {}, async reconnect() {},
                 async closeAll() {},
             };
             const registry = createSubagentRegistry({

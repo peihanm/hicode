@@ -6,7 +6,12 @@ import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 export type McpConfigSource = "user" | "project";
 export type McpSource = McpConfigSource | "host";
-export type McpApprovalDecision = "once" | "always" | "deny" | "skip";
+export type McpApprovalDecision = "once" | "always" | "trust-tools" | "deny" | "skip";
+
+export interface McpToolPolicy {
+    default: "ask" | "allow";
+    exceptions: Partial<Record<string, "allow" | "ask" | "deny">>;
+}
 
 interface McpStdioServerConfig {
     type: "stdio";
@@ -65,6 +70,8 @@ type McpServerStatus =
     | "closed";
 
 export interface McpServerSnapshot {
+    configHash?: string;
+    toolPolicy?: McpToolPolicy;
     name: string;
     source: McpSource;
     status: McpServerStatus;
@@ -126,6 +133,8 @@ export interface McpManagerLike {
     subscribe(listener: () => void): () => void;
 
     reconnect(name: string): Promise<void>;
+
+    setToolPolicy(name: string, configHash: string, policy: McpToolPolicy): Promise<void>;
 
     closeAll(): Promise<void>;
 }

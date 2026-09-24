@@ -14,7 +14,7 @@ describe("/mcp slash command", () => {
         async initialize() {},
         getSnapshots: () => [{name: "fixture", source: "project", status, toolCount: 0}],
         getTools: () => [], subscribe: () => () => {}, async closeAll() {},
-        async reconnect(name) {reconnected.push(name);},
+        async setToolPolicy() {}, async reconnect(name) {reconnected.push(name);},
       };
       const messages: string[] = [];
       const context: SlashCommandHostContext = {history: [], ctx, onEvent: event => {
@@ -44,7 +44,7 @@ describe("/mcp slash command", () => {
         getTools: () => [],
         subscribe: () => () => {},
         async closeAll() {},
-        async reconnect() {},
+        async setToolPolicy() {}, async reconnect() {},
       };
       const messages: string[] = [];
       const handled = await processSlashCommand("/mcp", {

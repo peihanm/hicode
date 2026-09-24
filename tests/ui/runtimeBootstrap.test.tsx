@@ -194,7 +194,7 @@ describe("RuntimeBootstrap lifecycle", () => {
       expect(instance.lastFrame()).toContain("❯ 1. Allow once");
       instance.stdin.write("\r");
       await new Promise(resolve => setTimeout(resolve, 30));
-      expect(decisions).toEqual(["always", "once"]);
+      expect(decisions).toEqual(["trust-tools", "once"]);
       expect(instance.lastFrame()).not.toContain("◆ MCP CONNECTION");
     });
   });

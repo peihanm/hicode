@@ -1,7 +1,7 @@
 import {buildMcpToolName} from "./names.js";
 import {stableJson} from "./json.js";
 import {join} from "node:path";
-import {createMcpApprovalIdentity, getMcpApproval, saveMcpApproval} from "./approval.js";
+import {createMcpApprovalIdentity, getMcpApproval, saveMcpApproval, mcpToolPolicySchema} from "./approval.js";
 import {connectMcpServer} from "./client.js";
 import {loadMcpConfig} from "./config.js";
 import {adaptMcpTools} from "./toolAdapter.js";
@@ -12,6 +12,7 @@ import type {
     McpManagerLike,
     McpManagerOptions,
     McpServerSnapshot,
+    McpToolPolicy,
 } from "./types.js";
 
 interface MutableConnection {
@@ -64,18 +65,24 @@ class McpManager implements McpManagerLike {
         return this.connections.flatMap((item) => item.tools);
     }
 
-    private async getApproval(server: LoadedMcpServerConfig, reviewDenied: boolean): Promise<"allow" | "deny" | "pending"> {
+    private async getApproval(connection: MutableConnection, reviewDenied: boolean): Promise<"allow" | "deny" | "pending"> {
         if (this.closed || this.options.signal?.aborted) return "pending";
-        if (server.source === "user") return "allow";
+        const server = connection.server;
+        delete connection.snapshot.toolPolicy;
         const identity = await createMcpApprovalIdentity(this.options.cwd, server);
         const approvalPath = join(
             this.options.storage.hicodeHome,
             "mcp-approvals.json"
         );
+        connection.snapshot.configHash = identity.configHash;
         const stored = await getMcpApproval(approvalPath, identity, server.name);
         if (this.closed || this.options.signal?.aborted) return "pending";
-        if (stored === "allow") return "allow";
-        if ((stored === "deny" && !reviewDenied) || this.options.headless || !this.options.requestApproval) return stored;
+        if (stored.decision === "allow") {
+            connection.snapshot.toolPolicy = stored.toolPolicy;
+            return "allow";
+        }
+        if (server.source === "user" && stored.decision === "pending") return "allow";
+        if ((stored.decision === "deny" && !reviewDenied) || this.options.headless || !this.options.requestApproval) return stored.decision;
         const decision = await this.options.requestApproval({
             projectPath: identity.projectPath,
             serverName: server.name,
@@ -84,11 +91,13 @@ class McpManager implements McpManagerLike {
             configHash: identity.configHash,
         });
         if (this.closed || this.options.signal?.aborted) return "pending";
-        if (decision === "always" || decision === "deny") {
-            await saveMcpApproval(approvalPath, identity, server.name, decision);
+        if (decision === "always" || decision === "deny" || decision === "trust-tools") {
+            const policy: McpToolPolicy | undefined = decision === "trust-tools" ? {default: "allow", exceptions: {}} : undefined;
+            await saveMcpApproval(approvalPath, identity, server.name, decision === "trust-tools" ? "always" : decision, policy);
+            connection.snapshot.toolPolicy = policy;
         }
-        if (decision === "once" || decision === "always") return "allow";
-        return decision === "deny" ? "deny" : stored;
+        if (decision === "once" || decision === "always" || decision === "trust-tools") return "allow";
+        return decision === "deny" ? "deny" : stored.decision;
     }
 
     async initialize(): Promise<void> {
@@ -150,7 +159,7 @@ class McpManager implements McpManagerLike {
         const active: MutableConnection[] = [];
         for (const connection of this.connections) {
             if (connection.snapshot.status === "disabled" || connection.snapshot.status === "failed") continue;
-            const approval = await this.getApproval(connection.server, false);
+            const approval = await this.getApproval(connection, false);
             if (approval !== "allow") {
                 if (this.closed || this.options.signal?.aborted) break;
                 connection.snapshot.status = approval === "deny" ? "denied" : "pending-approval";
@@ -218,11 +227,11 @@ class McpManager implements McpManagerLike {
                 throw new Error("MCP tool definition changed or the server disconnected; use tool_search to rediscover it before retrying");
             }
             return connected.callTool(name, args, signal);
-        }});
+        }}, connection.snapshot.toolPolicy);
         if (strict && adapted.issues.length) throw new Error(adapted.issues.join("; ").slice(0, 2000));
         for (const tool of adapted.tools) {
             const remote = connected.tools.find(item => buildMcpToolName(connection.server.name, item.name) === tool.name)!;
-            const fingerprint = stableJson(remote);
+            const fingerprint = stableJson({remote, policy: connection.snapshot.toolPolicy ?? null});
             const prior = connection.definitions.get(tool.name);
             const existing = previous.get(tool.name);
             const same = existing && prior?.fingerprint === fingerprint;
@@ -288,6 +297,35 @@ class McpManager implements McpManagerLike {
         try { await pending; } finally { if (connection.connecting === pending) delete connection.connecting; }
     }
 
+    async setToolPolicy(name: string, configHash: string, input: McpToolPolicy): Promise<void> {
+        const connection = this.connections.find(item => item.server.name === name);
+        if (!connection || this.closed || this.options.signal?.aborted || connection.pending || connection.connecting ||
+            connection.snapshot.status !== "connected" || connection.snapshot.configHash !== configHash) {
+            throw new Error("MCP connection changed; reopen the server before saving permissions");
+        }
+        const policy = mcpToolPolicySchema.parse(input);
+        const known = new Set(connection.tools.map(tool => tool.name));
+        if (Object.keys(policy.exceptions).some(tool => !known.has(tool) && !(tool in (connection.snapshot.toolPolicy?.exceptions ?? {})))) {
+            throw new Error("Unknown MCP tool exception; reopen the server before saving permissions");
+        }
+        const generation = connection.generation;
+        const pending = Promise.resolve().then(async () => {
+            const identity = await createMcpApprovalIdentity(this.options.cwd, connection.server);
+            if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
+            await saveMcpApproval(join(this.options.storage.hicodeHome, "mcp-approvals.json"), identity, name, "always", policy);
+        });
+        connection.pending = pending;
+        try {
+            await pending;
+            if (this.closed || this.options.signal?.aborted || generation !== connection.generation || !["connected", "refreshing"].includes(connection.snapshot.status)) {
+                throw new Error("MCP connection closed while saving permissions");
+            }
+            connection.snapshot.toolPolicy = policy;
+            if (connection.snapshot.status === "connected") this.publishTools(connection, connection.connected!, generation);
+            else this.emit();
+        } finally {if (connection.pending === pending) delete connection.pending;}
+    }
+
     async reconnect(name: string): Promise<void> {
         if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
         const connection = this.connections.find(item => item.snapshot.name === name);
@@ -317,7 +355,7 @@ class McpManager implements McpManagerLike {
             connection.snapshot.source = server.source;
             if (server.config.disabled) { connection.snapshot.status = "disabled"; this.emit(); return; }
             if (this.closed || this.options.signal?.aborted) throw new Error("MCP Manager is closed");
-            const approval = await this.getApproval(server, true);
+            const approval = await this.getApproval(connection, true);
             if (approval !== "allow") {
                 if (!this.closed && !this.options.signal?.aborted) {
                     connection.snapshot.status = approval === "deny" ? "denied" : "pending-approval";

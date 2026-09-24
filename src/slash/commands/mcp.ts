@@ -3,7 +3,7 @@ import type {SlashCommand} from "../types.js";
 export const mcpCommand: SlashCommand = {
     busyBehavior: "defer",
     name: "mcp",
-    description: "Show MCP Server connection status",
+    description: "Manage MCP connections and tool permissions",
     async execute(args, context) {
         if (args.startsWith("reconnect ")) {
             try {
@@ -21,6 +21,7 @@ export const mcpCommand: SlashCommand = {
             });
             return;
         }
+        if (context.openMcp) {context.openMcp(); return;}
         const snapshots = context.ctx.mcpManager?.getSnapshots() ?? [];
         const content = snapshots.length === 0
             ? "No MCP Servers configured."

@@ -57,7 +57,7 @@ function createFakeMcpManager(
       getSnapshots: () => [],
       getTools: () => tools,
       subscribe: () => () => {},
-      async reconnect() {},
+      async setToolPolicy() {}, async reconnect() {},
       async closeAll() {
         state.closeCount += 1;
         if (options.closeError) throw options.closeError;

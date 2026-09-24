@@ -255,7 +255,15 @@ export function createMemoryAwareAgentRunner(baseRunAgent: AgentRunner, memory: 
             return baseRunAgent(userInput, history, onEvent, ctx, channel, options);
         const revision = memory.getRevision();
         const recalled = await memory.contextForTurn(contentText(userInput));
-        const scoped = { ...ctx, memoryFiles: recalled.ignoredForTurn ? undefined : ctx.memoryFiles };
+        const scoped: typeof ctx = {
+            ...ctx,
+            // The Memory overlay must not freeze the Host's live permission state.
+            get permissionRules() {return ctx.permissionRules;},
+            get permissionMode() {return ctx.permissionMode;},
+            get collaborationMode() {return ctx.collaborationMode;},
+            get permissionPromptPolicy() {return ctx.permissionPromptPolicy;},
+            memoryFiles: recalled.ignoredForTurn ? undefined : ctx.memoryFiles,
+        };
         const result = await baseRunAgent(userInput, history, onEvent, scoped, channel, { ...options,
             getAdditionalUserContextBlocks: async () => {
                 const current = recalled.ignoredForTurn ? recalled : await memory.contextForTurn(contentText(userInput));

@@ -328,7 +328,7 @@ test("MCP refresh diagnostics are bounded request context, not duplicated Histor
     const messages = history();
     const before = structuredClone(messages);
     const ctx = createTestContext(cwd, {mcpManager: {
-      initialize: async () => {},  closeAll: async () => {}, reconnect: async () => {},
+      initialize: async () => {},  closeAll: async () => {}, reconnect: async () => {}, setToolPolicy: async () => {},
       subscribe: () => () => {}, getTools: () => [],
       getSnapshots: () => [{name: "fixture", source: "project", status: "connected", toolCount: 25,
         catalog: {notifications: 1, revision: 1, added: [], changed: [], removed: [], unchanged: 25}}],

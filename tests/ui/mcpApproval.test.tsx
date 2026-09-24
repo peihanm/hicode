@@ -39,12 +39,12 @@ describe("MCP approval UI", () => {
     expect(view.lastFrame()).toContain("COMMAND");
     expect(view.lastFrame()).toContain("PROJECT");
     expect(view.lastFrame()).toContain("❯ 1. Allow once");
-    expect(view.lastFrame()).toContain("Start now. Ask again next time.");
+    expect(view.lastFrame()).toContain("Start now. Tool calls follow existing permission rules.");
     expect(view.lastFrame()).not.toContain("│");
   });
 
   test.each([
-    ["1", "once"], ["2", "always"], ["3", "deny"], ["\u001b", "skip"],
+    ["1", "once"], ["2", "trust-tools"], ["3", "always"], ["4", "deny"], ["\u001b", "skip"],
   ] as const)("快捷键 %j 返回 %s，重复输入不重复提交", async (key, expected) => {
     const decisions: McpApprovalDecision[] = [];
     const view = render(<McpApprovalDialog request={request} onDecision={value => decisions.push(value)}/>);
@@ -62,11 +62,11 @@ describe("MCP approval UI", () => {
     await flush();
     view.stdin.write("\u001b[A");
     await flush();
-    expect(view.lastFrame()).toContain("❯ 3. Deny");
+    expect(view.lastFrame()).toContain("❯ 4. Deny");
     view.stdin.write("\u001b[A");
     await flush();
-    expect(view.lastFrame()).toContain("❯ 2. Always allow for this project");
-    expect(view.lastFrame()).toContain("Ask again if configuration changes.");
+    expect(view.lastFrame()).toContain("❯ 3. Always allow connection only");
+    expect(view.lastFrame()?.replace(/\s+/g, " ")).toContain("Tool calls still follow existing permission rules.");
     expect(decisions).toEqual([]);
     view.stdin.write("\u001b[B");
     await flush();
@@ -93,7 +93,7 @@ describe("MCP approval UI", () => {
       expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
       expect(frame.replace(/\s/g, "")).toContain(projectPath);
       expect(frame.replace(/\s/g, "")).toContain("npx-y@playwright/mcp@latest--browserchrome");
-      expect(frame.replace(/\s/g, "")).toContain("❯2.Alwaysallowforthisproject");
+      expect(frame.replace(/\s/g, "")).toContain("❯2.Trustthisserverandallowitstools");
     }
     const frameCount = view.frames.length;
     await new Promise(resolve => setTimeout(resolve, 150));
