@@ -5,33 +5,12 @@ fail() { printf 'HiCode install: %s\n' "$*" >&2; exit 1; }
 trap 'printf "HiCode installation failed. Fix the error above and rerun the installer.\n" >&2' ERR
 [[ $EUID -ne 0 ]] || fail "Run this script as your normal user, without sudo."
 
-linux_dependency_ready() {
-    command -v "$1" >/dev/null || return 1
-    case "$1" in
-        bwrap) bwrap --version >/dev/null 2>&1 ;;
-        socat) socat -V >/dev/null 2>&1 ;;
-    esac
-}
-
 target_os=$(uname -s)
 case "$target_os" in
     Darwin) ;;
     Linux)
         getconf GNU_LIBC_VERSION >/dev/null 2>&1 || fail "Linux installation currently requires glibc (for example Debian or Ubuntu)."
-        missing_packages=()
-        linux_dependency_ready bwrap || missing_packages+=(bubblewrap)
-        linux_dependency_ready socat || missing_packages+=(socat)
-        if (( ${#missing_packages[@]} )); then
-            command -v apt-get >/dev/null || fail "Install ${missing_packages[*]} with your distribution's package manager, then rerun this command. Automatic system dependency setup currently supports Debian/Ubuntu."
-            command -v sudo >/dev/null || fail "An administrator must install ${missing_packages[*]} (sudo is unavailable), then rerun this command as your regular user."
-            printf 'Installing missing Linux dependencies: %s. sudo may ask for your password.\n' "${missing_packages[*]}"
-            sudo apt-get update || fail "System dependency update failed; no HiCode installation was changed."
-            sudo apt-get install -y "${missing_packages[@]}" || fail "System dependency installation failed; no HiCode installation was changed."
-            hash -r
-            for dependency in bwrap socat; do
-                linux_dependency_ready "$dependency" || fail "$dependency is still unavailable after system dependency installation."
-            done
-        fi ;;
+        ;;
     *) fail "Only macOS and glibc Linux are supported." ;;
 esac
 login_shell=${SHELL:-/bin/bash}
@@ -111,11 +90,19 @@ case "$target_os:$(uname -m)" in
         rg_package=ripgrep-darwin-x64
         rg_checksum=db96f88166cbd77f1d1ae414db8e1e6c228a734ab4e542c1328152cfda001141cd7aa2bf94e2558834bb0d1bdb0dacf303348475a9f7f7566792cfd1e6691a4d ;;
     Linux:aarch64|Linux:arm64)
+        runtime_arch=arm64
+        runtime_checksum=293dc6fbde37341f97c3774345e599362225ff859cde6a4c7fc059cfdb02d889
+        bwrap_checksum=50e4602fa6c5b45769e5f2db1b11b63ceadf83963cbdc166c50ab1f490f43e28
+        socat_checksum=aa59fca1cb87fd05dfc240b8823ea42bbd6d95a2bf7b98012c2157df1d953f4d
         bun_package=bun-linux-aarch64
         bun_checksum=5f94ac3d91ecfa260ef11fde7c8711b5cee04f64360e03df9620b1124c7871706e9b0930d1cfc4b0730dc07dc4806a420da67b21854f869086ff104e40713067
         rg_package=ripgrep-linux-arm64
         rg_checksum=950ff9cd31bef94d04dc8855812e043d34e7fd4e2892771a44c33918e15f398672c12e27b83df51a19076cd6250e4e42b830baf3e858274fde41ec822890c0fa ;;
     Linux:x86_64)
+        runtime_arch=x64
+        runtime_checksum=b0ff3ca80d900f0ec0d84df3a51b49cd27b1aa60de79d775ab10ce3156448b85
+        bwrap_checksum=daa199a99e5bf7930b2cc2f9fd051bcd57ef262b6ca8b55cf40f0b5d4673ee2f
+        socat_checksum=c5e9f7bb0a092a17869a8db21e5c030b07ecdbe9626801fde7ac5f4f2756ec21
         bun_package=bun-linux-x64-baseline
         bun_checksum=abff0474e0b4c9413c14f7a8395abcfcfc3923dfed25a62651f3bfb83500444c7c2149ce247d5127903706316aadef29bc9a22640f40a2f3c9ab916734d8d2c4
         rg_package=ripgrep-linux-x64
@@ -132,6 +119,36 @@ if ! command -v rg >/dev/null || ! rg --version >/dev/null 2>&1; then
 fi
 bun_supported || fail "Bun 1.3 or newer is required."
 rg --version >/dev/null
+
+runtime_dir=""
+if [[ "$target_os" == Linux ]]; then
+    runtime_version=linux-runtime-v1
+    runtime_dir="$install_root/runtime/$runtime_version-$runtime_arch"
+    [[ ! -L "$install_root/runtime" && ! -L "$runtime_dir" ]] || fail "Runtime installation directories must not be symlinks."
+    if [[ ! -e "$runtime_dir" ]]; then
+        printf 'Downloading Linux sandbox helpers...\n'
+        download "https://github.com/peihanm/hicode/releases/download/$runtime_version/hicode-linux-runtime-$runtime_arch.tar.gz" "$staging/runtime.tgz"
+        [[ "$(digest 256 "$staging/runtime.tgz")" == "$runtime_checksum" ]] || fail "Invalid Linux runtime archive checksum."
+        mkdir "$staging/runtime"
+        tar -xzf "$staging/runtime.tgz" -C "$staging/runtime"
+        for helper in bwrap socat; do
+            [[ -f "$staging/runtime/bin/$helper" && ! -L "$staging/runtime/bin/$helper" ]] || fail "Invalid runtime helper: $helper"
+        done
+        [[ "$(digest 256 "$staging/runtime/bin/bwrap")" == "$bwrap_checksum" &&
+           "$(digest 256 "$staging/runtime/bin/socat")" == "$socat_checksum" ]] || fail "Invalid runtime helper checksum."
+        mkdir -p "$install_root/runtime"
+        mv "$staging/runtime" "$runtime_dir"
+    fi
+    [[ -d "$runtime_dir" && ! -L "$runtime_dir/bin" &&
+       -f "$runtime_dir/bin/bwrap" && ! -L "$runtime_dir/bin/bwrap" &&
+       -f "$runtime_dir/bin/socat" && ! -L "$runtime_dir/bin/socat" ]] || fail "Invalid installed Linux runtime: $runtime_dir"
+    [[ "$(digest 256 "$runtime_dir/bin/bwrap")" == "$bwrap_checksum" &&
+       "$(digest 256 "$runtime_dir/bin/socat")" == "$socat_checksum" ]] || fail "Installed Linux runtime is damaged; remove $runtime_dir and rerun the installer."
+    "$runtime_dir/bin/bwrap" --version >/dev/null
+    "$runtime_dir/bin/socat" -V >/dev/null
+    "$runtime_dir/bin/bwrap" --unshare-user --unshare-pid --unshare-net --ro-bind / / --proc /proc --dev /dev -- /bin/true ||
+        fail "Linux sandbox helpers are installed, but the host blocks sandbox setup. Ask your administrator to enable user namespaces for bubblewrap; container users must configure nested sandbox permissions. HiCode was not switched and no system security policy was changed."
+fi
 
 # A source checkout stays developer-owned. Managed installs use immutable version
 # directories so downloading or installing dependencies cannot break the old entry.
@@ -194,10 +211,12 @@ fi
 # and references the final release path; no live source directory is overwritten.
 launcher_temp=$(mktemp "$global_bin/.hicode.XXXXXX")
 if [[ "$managed" == true ]]; then
-    printf '#!/bin/bash\n# HiCode managed install: peihanm/hicode\nexec %q %q "$@"\n' "$bun_executable" "$source_dir/src/index.tsx" > "$launcher_temp"
+    printf '#!/bin/bash\n# HiCode managed install: peihanm/hicode\n' > "$launcher_temp"
 else
-    printf '#!/bin/bash\n# HiCode source checkout\nexec %q %q "$@"\n' "$bun_executable" "$source_dir/src/index.tsx" > "$launcher_temp"
+    printf '#!/bin/bash\n# HiCode source checkout\n' > "$launcher_temp"
 fi
+if [[ -n "$runtime_dir" ]]; then printf 'export HICODE_LINUX_RUNTIME_DIR=%q\n' "$runtime_dir" >> "$launcher_temp"; fi
+printf 'exec %q %q "$@"\n' "$bun_executable" "$source_dir/src/index.tsx" >> "$launcher_temp"
 chmod 755 "$launcher_temp"
 "$launcher_temp" --help >/dev/null
 

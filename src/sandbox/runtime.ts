@@ -7,7 +7,8 @@ import {
     type SandboxAskCallback,
 } from "@anthropic-ai/sandbox-runtime";
 import {wrapCommandWithSandboxMacOS} from "@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js";
-import {wrapCommandWithSandboxLinux, getLinuxDependencyStatus} from "@anthropic-ai/sandbox-runtime/dist/sandbox/linux-sandbox-utils.js";
+import {wrapCommandWithSandboxLinux, getLinuxDependencyStatus, checkLinuxDependencies} from "@anthropic-ai/sandbox-runtime/dist/sandbox/linux-sandbox-utils.js";
+import {whichSync} from "@anthropic-ai/sandbox-runtime/dist/utils/which.js";
 import {runShellArgv} from "../tools/bash/process.js";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
@@ -15,7 +16,7 @@ import {tmpdir} from "node:os";
 import {isPathInside} from "../permissions/pathGuard.js";
 import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
 import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
-import {createSandboxRuntimeConfig, resolveSandboxPaths} from "./config.js";
+import {createSandboxRuntimeConfig, resolveSandboxPaths, linuxSandboxTools} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
 import {linuxFilesystemPolicy, linuxDotEnvMask} from "./linuxPolicy.js";
 import type {
@@ -30,7 +31,7 @@ import type {
 interface SandboxBackend {
     isSupportedPlatform(): boolean;
     isSandboxingEnabled(): boolean;
-    checkDependencies(): {errors: string[]; warnings: string[]};
+    checkDependencies(tools: Pick<SandboxRuntimeConfig, "bwrapPath" | "socatPath">): {errors: string[]; warnings: string[]};
     initialize(config: SandboxRuntimeConfig, ask?: SandboxAskCallback): Promise<void>;
     wrapWithSandboxArgv(
         command: string,
@@ -99,7 +100,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         if (this.closePromise) throw new Error("Sandbox Runtime is closed");
         if (options?.readOnlyAccess) {
             signal.throwIfAborted();
-            return {argv: await scopedFileSandboxArgv(bashCommand(command), options.readOnlyAccess, this.baseConfig.filesystem.denyRead, cwd), env: {}};
+            return {argv: await scopedFileSandboxArgv(bashCommand(command), options.readOnlyAccess, this.baseConfig.filesystem.denyRead, cwd, undefined, this.baseConfig.bwrapPath), env: {}};
         }
         if (options?.fileWorkspace) {
             const root = await realpath(options.fileWorkspace.root);
@@ -107,7 +108,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             const executables = ["/bin/rm", "/bin/mv", "/bin/cp", "/bin/mkdir", "/bin/ls", "/bin/cat", "/usr/bin/touch", "/usr/bin/sed", "/usr/bin/awk", "/usr/bin/find", "/usr/bin/head", "/usr/bin/tail", "/usr/bin/wc"];
             return {argv: await scopedFileSandboxArgv(bashCommand(command), {
                 paths: [], artifacts: [], artifactDirectories: [], deniedPaths: [], privateRoot: this.hicodeHome, executables,
-            }, this.baseConfig.filesystem.denyRead, cwd, {root, writable: options.fileWorkspace.writable, deniedWrites: this.configuredDenyWrite}), env: {}};
+            }, this.baseConfig.filesystem.denyRead, cwd, {root, writable: options.fileWorkspace.writable, deniedWrites: this.configuredDenyWrite}, this.baseConfig.bwrapPath), env: {}};
         }
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
@@ -224,8 +225,10 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             return new InactiveSandboxRuntime({kind: "unavailable", reason: "Open network with filesystem isolation requires macOS or Linux", warnings: []});
         }
         let dependencies;
+        let tools: Pick<SandboxRuntimeConfig, "bwrapPath" | "socatPath"> = {};
         try {
-            dependencies = backend.checkDependencies();
+            tools = platform === "linux" ? linuxSandboxTools(process.env.HICODE_LINUX_RUNTIME_DIR) : {};
+            dependencies = backend.checkDependencies(tools);
         } catch (error) {
             return new InactiveSandboxRuntime({
                 kind: "unavailable",
@@ -279,7 +282,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             const npmCachePath = getProjectNpmCacheDirectory(storage, cwd);
             ensurePrivateStorageDirectory(storage, npmCachePath);
             const npmCacheDirectory = await realpath(npmCachePath);
-            const config = createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory, npmCacheDirectory]);
+            const config = {...createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory, npmCacheDirectory]), ...tools};
             if (platform === "linux" && settings.network.allowLocalBinding) {
                 config.network.allowedDomains.push("localhost", "127.0.0.1", "[::1]");
             }
@@ -311,6 +314,12 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
 
 export const createSandboxRuntime = createSandboxRuntimeFactory({
     ...SandboxManager,
+    checkDependencies(tools) {
+        if (process.platform !== "linux") return SandboxManager.checkDependencies();
+        const result = checkLinuxDependencies(tools);
+        if (!whichSync("rg")) result.errors.push("ripgrep (rg) not found");
+        return result;
+    },
     async wrapWithSandboxArgv(command, shell, customConfig, signal, cwd, networkMode) {
         const base = SandboxManager.getConfig();
         if (process.platform !== "linux") {
@@ -331,6 +340,7 @@ export const createSandboxRuntime = createSandboxRuntimeFactory({
           done; printf '%s\\n' 'Linux Sandbox network bridge did not become ready' >&2; exit 125) || exit 125\n${command}`;
         const masks = await linuxDotEnvMask(config, SandboxManager.getMaskedFileStore());
         const wrapped = await wrapCommandWithSandboxLinux({
+            bwrapPath: config.bwrapPath, socatPath: config.socatPath,
             command: restricted ? prepared : command, binShell: shell, abortSignal: signal,
             needsNetworkRestriction: restricted,
             httpSocketPath: restricted ? SandboxManager.getLinuxHttpSocketPath() : undefined,

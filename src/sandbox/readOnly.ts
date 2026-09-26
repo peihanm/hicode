@@ -17,8 +17,11 @@ function quote(path: string): string {
 }
 
 /** Exact path grants and final denials avoid broad read exceptions overriding private-file restrictions. */
-export async function scopedFileSandboxArgv(command: string, access: ReadOnlyAccess, configuredDenials: readonly string[], cwd: string, workspace?: {root: string; writable: boolean; deniedWrites: readonly string[]}): Promise<string[]> {
-    if (process.platform === "linux") return linuxFileScopeArgv(command, access, configuredDenials, cwd, workspace);
+export async function scopedFileSandboxArgv(command: string, access: ReadOnlyAccess, configuredDenials: readonly string[], cwd: string, workspace?: {root: string; writable: boolean; deniedWrites: readonly string[]}, bwrapPath?: string): Promise<string[]> {
+    if (process.platform === "linux") {
+        if (!bwrapPath) throw new Error("Linux scoped commands require a resolved bubblewrap executable");
+        return linuxFileScopeArgv(command, access, configuredDenials, cwd, bwrapPath, workspace);
+    }
     if (process.platform !== "darwin") throw new Error("Restricted command search requires macOS or Linux Sandbox");
     const pattern = (path: string) => {
         if (!isAbsolute(path) || /[\0\r\n{}()!\\]/.test(path)) throw new Error("Cannot safely enforce this read-deny pattern in the read-only Sandbox");

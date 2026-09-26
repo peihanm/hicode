@@ -51,7 +51,7 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-脚本自动识别系统，准备依赖并配置 `hicode` 命令，支持 zsh 和 bash。Ubuntu / Debian 缺少系统依赖时，会通过 `sudo` 安装，可能需要输入密码；已安装则直接跳过。无需 Docker 或 VSCode。
+脚本自动识别系统，下载所需依赖并配置 `hicode` 命令，支持 zsh 和 bash。Linux 沙箱依赖随安装提供，无需 `sudo` 安装系统包，也不需要 Docker 或 VSCode。
 
 **更新**：退出 HiCode 后重新执行上述命令。新版本检查通过后才切换，并清理旧版本；已有模型配置和历史会保留。
 
@@ -89,7 +89,7 @@ bash install.sh
 
 ```bash
 bun install --frozen-lockfile
-bun run start
+hicode
 ```
 
 修改代码后重新启动即可。在其他项目目录运行 `hicode`，同样使用这份本地源码。

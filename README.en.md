@@ -51,7 +51,7 @@ Install or update from your macOS or Linux terminal as your regular user (withou
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-The installer detects your system, prepares dependencies, and configures `hicode` for zsh/bash. On Ubuntu / Debian, missing system dependencies are installed through `sudo`, which may ask for your password; existing dependencies are reused. Docker and VSCode are not required.
+The installer detects your system, downloads the required dependencies, and configures `hicode` for zsh/bash. Linux sandbox helpers are included without installing system packages through `sudo`. Docker and VSCode are not required.
 
 **Updating:** exit HiCode and rerun the command above. The installer switches only after the new version passes its startup check, then removes old installed versions. Your model configuration and history are preserved.
 
@@ -89,7 +89,7 @@ Open a new terminal, return to the checkout, and install development dependencie
 
 ```bash
 bun install --frozen-lockfile
-bun run start
+hicode
 ```
 
 Restart after editing source. Running `hicode` from another project directory also uses this checkout.

@@ -2,6 +2,16 @@ import {homedir} from "node:os";
 import {isAbsolute, resolve} from "node:path";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 import type {ResolvedSandboxSettings} from "./types.js";
+import {whichSync} from "@anthropic-ai/sandbox-runtime/dist/utils/which.js";
+
+/** The installer supplies a versioned directory; SDK/source users may use system tools. */
+export function linuxSandboxTools(directory: string | undefined): Pick<SandboxRuntimeConfig, "bwrapPath" | "socatPath"> {
+    if (directory !== undefined) {
+        if (!isAbsolute(directory) || /[\0\r\n]/.test(directory)) throw new Error("HICODE_LINUX_RUNTIME_DIR must be an absolute directory");
+        return {bwrapPath: resolve(directory, "bin/bwrap"), socatPath: resolve(directory, "bin/socat")};
+    }
+    return {bwrapPath: whichSync("bwrap") ?? undefined, socatPath: whichSync("socat") ?? undefined};
+}
 
 // Keep a final filename wildcard: ASRT strips a trailing /** before invoking
 // Seatbelt, which otherwise turns nested-directory protection into an exact match.

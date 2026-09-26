@@ -26,14 +26,10 @@ async function fixture(run: (context: {
         await writeFile(join(source, "bun.lock"), "");
         const mocks: Record<string, string> = {
             getconf: '[[ "${TEST_MUSL:-0}" != 1 ]] && echo "glibc 2.36"',
-            bwrap: '[[ "${TEST_MISSING_SYSTEM:-0}" != 1 || -f "$HOME/system-installed" ]]',
-            socat: '[[ "${TEST_MISSING_SYSTEM:-0}" != 1 || -f "$HOME/system-installed" ]]',
-            sudo: `printf '%s\\n' "$*" >> "$HOME/sudo.log"
-[[ "\${TEST_SUDO_FAIL:-0}" != 1 ]] || exit 1
-exec "$@"`,
-            "apt-get": `printf '%s\\n' "$*" >> "$HOME/apt.log"
-[[ "\${TEST_APT_FAIL:-0}" != 1 ]] || exit 100
-if [[ "$1" == install ]]; then touch "$HOME/system-installed"; fi`,
+            bwrap: 'echo "Unexpected system bwrap execution" >&2; exit 98',
+            socat: 'echo "Unexpected system socat execution" >&2; exit 98',
+            sudo: 'echo "Unexpected sudo execution" >&2; exit 98',
+            "apt-get": 'echo "Unexpected apt-get execution" >&2; exit 98',
             uname: 'if [[ "$1" == -m ]]; then echo "${TEST_ARCH:-arm64}"; else echo "${TEST_OS:-Darwin}"; fi',
             curl: `[[ "\${TEST_ALLOW_DOWNLOAD:-0}" == 1 ]] || exit 98
 [[ "\${TEST_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
@@ -42,6 +38,7 @@ for arg in "$@"; do
     https://registry.npmjs.org/@oven/*) package=bun ;;
     https://registry.npmjs.org/@vscode/*) package=rg ;;
     https://codeload.github.com/*) package=source ;;
+    https://github.com/peihanm/hicode/releases/download/*) package=runtime ;;
   esac
 done
 printf '%s\\n' "$package" >> "$HOME/download.log"
@@ -83,6 +80,20 @@ esac`,
             const hash = createHash("sha512").update(await readFile(archive)).digest("hex");
             fixtureInstaller = fixtureInstaller.replace(new RegExp(`${name}_checksum=[a-f0-9]+`, "g"), `${name}_checksum=${hash}`);
         }
+        const helpers = join(root, "helpers");
+        await mkdir(join(helpers, "bin"), {recursive: true});
+        for (const name of ["bwrap", "socat"]) {
+            const path = join(helpers, "bin", name);
+            await writeFile(path, `#!/bin/bash\n[[ "$1" == --version || "$1" == -V || "\${TEST_NAMESPACE_FAIL:-0}" != 1 ]]\n`);
+            await chmod(path, 0o755);
+            const hash = createHash("sha256").update(await readFile(path)).digest("hex");
+            fixtureInstaller = fixtureInstaller.replace(new RegExp(`${name}_checksum=[A-Za-z0-9_]+`, "g"), `${name}_checksum=${hash}`);
+        }
+        const helperArchive = join(archives, "runtime.tgz");
+        const pack = Bun.spawn(["/usr/bin/tar", "-czf", helperArchive, "-C", helpers, "bin"]);
+        expect(await pack.exited).toBe(0);
+        const helperHash = createHash("sha256").update(await readFile(helperArchive)).digest("hex");
+        fixtureInstaller = fixtureInstaller.replace(/runtime_checksum=[A-Za-z0-9_]+/g, `runtime_checksum=${helperHash}`);
         await writeFile(join(source, "install.sh"), fixtureInstaller);
         await writeFile(join(root, "downloaded.sh"), fixtureInstaller);
         const remote = join(root, "hicode-main");
@@ -334,7 +345,7 @@ describe("macOS/Linux installer (offline command fixtures)", () => {
             const result = await execute({TEST_OS: "Linux", TEST_ARCH: arch, SHELL: "/bin/bash",
                 TEST_OLD_BUN: "1", TEST_MISSING_RG: "1", TEST_ALLOW_DOWNLOAD: "1"});
             expect(result).toMatchObject({code: 0});
-            expect(await readFile(join(home, "download.log"), "utf8")).toBe("bun\nrg\n");
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("bun\nrg\nruntime\n");
             expect(await readFile(join(home, ".bashrc"), "utf8")).toContain("# HiCode installer");
             expect(await runInstalled()).toMatchObject({code: 0});
         });
@@ -345,30 +356,35 @@ describe("macOS/Linux installer (offline command fixtures)", () => {
             expect(await Bun.file(join(home, ".bashrc")).exists()).toBe(false);
         });
     }, 20_000);
-    test("Linux installs missing system dependencies once, then reuses them", async () => {
-        await fixture(async ({home, execute}) => {
-            const env = {TEST_OS: "Linux", TEST_ARCH: "aarch64", TEST_MISSING_SYSTEM: "1", SHELL: "/bin/bash"};
+    test("Linux installs and reuses private runtime helpers without sudo or system tools", async () => {
+        await fixture(async ({home, execute, runInstalled}) => {
+            const env = {TEST_OS: "Linux", TEST_ARCH: "aarch64", TEST_ALLOW_DOWNLOAD: "1", SHELL: "/bin/bash"};
             expect(await execute(env)).toMatchObject({code: 0});
-            const expected = "apt-get update\napt-get install -y bubblewrap socat\n";
-            expect(await readFile(join(home, "sudo.log"), "utf8")).toBe(expected);
             expect(await execute(env)).toMatchObject({code: 0});
-            expect(await readFile(join(home, "sudo.log"), "utf8")).toBe(expected);
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("runtime\n");
+            expect(await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8")).toContain("export HICODE_LINUX_RUNTIME_DIR=");
+            expect(await runInstalled()).toMatchObject({code: 0});
         });
     }, 20_000);
-    test.each(["TEST_SUDO_FAIL", "TEST_APT_FAIL"])("Linux system setup failure %s stops before installing HiCode", async failure => {
+    test("Linux refuses corrupt downloaded or cached helpers", async () => {
         await fixture(async ({home, execute}) => {
-            const result = await execute({TEST_OS: "Linux", TEST_MISSING_SYSTEM: "1", [failure]: "1"});
+            const env = {TEST_OS: "Linux", TEST_ARCH: "aarch64", TEST_ALLOW_DOWNLOAD: "1"};
+            expect(await execute({...env, TEST_BAD_CHECKSUM: "1"})).toMatchObject({code: 1});
+            expect(await Bun.file(join(home, ".local/share/hicode/bin/hicode")).exists()).toBe(false);
+            expect(await execute(env)).toMatchObject({code: 0});
+            await writeFile(join(home, ".local/share/hicode/runtime/linux-runtime-v1-arm64/bin/bwrap"), "corrupt");
+            const result = await execute(env);
             expect(result.code).toBe(1);
-            expect(result.output).toContain("System dependency update failed");
+            expect(result.output).toContain("Installed Linux runtime is damaged");
+        });
+    }, 20_000);
+    test("blocked namespaces fail before publishing a launcher without changing security policy", async () => {
+        await fixture(async ({home, execute}) => {
+            const result = await execute({TEST_OS: "Linux", TEST_ARCH: "aarch64", TEST_ALLOW_DOWNLOAD: "1", TEST_NAMESPACE_FAIL: "1"});
+            expect(result.code).toBe(1);
+            expect(result.output).toContain("host blocks sandbox setup");
             expect(await Bun.file(join(home, ".local/share/hicode/bin/hicode")).exists()).toBe(false);
             expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
-        });
-    }, 20_000);
-    test("macOS and Linux with ready dependencies never request sudo", async () => {
-        await fixture(async ({home, execute}) => {
-            expect(await execute()).toMatchObject({code: 0});
-            expect(await execute({TEST_OS: "Linux", TEST_ARCH: "aarch64"})).toMatchObject({code: 0});
-            expect(await Bun.file(join(home, "sudo.log")).exists()).toBe(false);
         });
     }, 20_000);
 });

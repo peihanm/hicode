@@ -6,7 +6,7 @@ import {isPathInside} from "../permissions/pathGuard.js";
 import type {ReadOnlyAccess} from "./readOnly.js";
 
 /** Build an empty filesystem and mount only granted inputs, never a read-only copy of the host root. */
-export async function linuxFileScopeArgv(command: string, access: ReadOnlyAccess, denials: readonly string[], cwd: string,
+export async function linuxFileScopeArgv(command: string, access: ReadOnlyAccess, denials: readonly string[], cwd: string, bwrapPath: string,
     workspace?: {root: string; writable: boolean; deniedWrites: readonly string[]}): Promise<string[]> {
     const applySeccomp = getApplySeccompBinaryPath();
     if (!applySeccomp) throw new Error("Restricted Linux commands require the bundled apply-seccomp executable");
@@ -17,7 +17,7 @@ export async function linuxFileScopeArgv(command: string, access: ReadOnlyAccess
         if (!isAbsolute(path) || /[\0\r\n]/.test(path)) throw new Error("Linux Sandbox paths must be absolute");
         return path;
     };
-    const args = ["bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--cap-drop", "ALL",
+    const args = [bwrapPath, "--die-with-parent", "--new-session", "--unshare-all", "--cap-drop", "ALL",
         "--dir", checked(cwd)];
     const maskedDirectories = new Set<string>();
     const mountedPaths: string[] = [];

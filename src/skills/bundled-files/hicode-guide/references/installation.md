@@ -2,7 +2,7 @@
 
 ## Supported environment
 
-The interactive CLI supports macOS and experimental glibc Linux on ARM64/x64. Linux requires bubblewrap, socat and permission to create unprivileged user/PID/mount/network namespaces. The installer installs missing bubblewrap/socat packages on Debian/Ubuntu through sudo; other distributions require their package manager. It does not change system namespace or security policy. Musl Linux, Windows and WSL are not validated. It runs on the user's machine and requires a model provider API key. Model usage is billed by the provider.
+The interactive CLI supports macOS and experimental glibc Linux on ARM64/x64. Linux requires bubblewrap, socat and permission to create unprivileged user/PID/mount/network namespaces. The installer provides versioned, checksum-verified bubblewrap/socat binaries in its own user installation directory; no apt/sudo is required. It does not change system namespace or security policy. Musl Linux, Windows and WSL are not validated. It runs on the user's machine and requires a model provider API key. Model usage is billed by the provider.
 
 ## Quick installation
 
@@ -12,7 +12,7 @@ Run in the user's terminal:
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-Run the installer as a regular user, without sudo. It detects the platform, reuses working Linux dependencies, and installs missing Debian/Ubuntu packages through sudo (which may prompt for a password). Bun, ripgrep and HiCode are installed in the user directory; macOS and Linux with ready dependencies do not request sudo. Failure to obtain permission or install system packages stops installation. Open a new terminal, enter the project to work on and start HiCode:
+Run the installer as a regular user, without sudo. It detects the platform and installs Bun, ripgrep, Linux sandbox helpers and HiCode in the user directory. Linux helpers live under ~/.local/share/hicode/runtime/linux-runtime-v1-<arch>; the launcher sets HICODE_LINUX_RUNTIME_DIR to that directory, without changing the global PATH for bwrap/socat. Cached helpers are checked against pinned file hashes on installation/update. A real namespace probe must succeed before switching the HiCode launcher; if blocked, ask the administrator to review host policy rather than disabling isolation. Open a new terminal, enter the project to work on and start HiCode:
 
 ```sh
 cd /path/to/project
@@ -43,10 +43,10 @@ Keep this checkout: the launcher will reference it. Open a new terminal, return 
 
 ```sh
 bun install --frozen-lockfile
-bun run start
+hicode
 ```
 
-Restart HiCode after editing source. Running `hicode` from other project directories uses this same checkout. To update it, inspect local changes and the current branch before fetching/integrating upstream; never discard local changes as part of an update.
+Use the installed `hicode` launcher for source development too: it points to the checkout and selects its Linux helpers. Direct `bun run start` or SDK hosts need HICODE_LINUX_RUNTIME_DIR or system bwrap/socat. Restart HiCode after editing source. Running `hicode` from other project directories uses this same checkout. To update it, inspect local changes and the current branch before fetching/integrating upstream; never discard local changes as part of an update.
 
 Development checks: `bun test`, `bun run check`, and `bun run verify`. The full verify command also checks SDK packaging and requires Node.js 22.12 or newer.
 
