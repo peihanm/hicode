@@ -39,6 +39,9 @@ for arg in "$@"; do
     https://registry.npmjs.org/@vscode/*) package=rg ;;
     https://codeload.github.com/*) package=source ;;
     https://github.com/peihanm/hicode/releases/download/*) package=runtime ;;
+    https://api.github.com/repos/peihanm/hicode/releases/assets/*)
+      [[ "\${TEST_RUNTIME_API_FAIL:-0}" != 1 ]] || exit 22
+      package=runtime ;;
   esac
 done
 printf '%s\\n' "$package" >> "$HOME/download.log"
@@ -364,6 +367,14 @@ describe("macOS/Linux installer (offline command fixtures)", () => {
             expect(await readFile(join(home, "download.log"), "utf8")).toBe("runtime\n");
             expect(await readFile(join(home, ".local/share/hicode/bin/hicode"), "utf8")).toContain("export HICODE_LINUX_RUNTIME_DIR=");
             expect(await runInstalled()).toMatchObject({code: 0});
+        });
+    }, 20_000);
+    test("Linux runtime download falls back to the public release URL when the API is unavailable", async () => {
+        await fixture(async ({home, execute}) => {
+            const result = await execute({TEST_OS: "Linux", TEST_ARCH: "aarch64", TEST_ALLOW_DOWNLOAD: "1", TEST_RUNTIME_API_FAIL: "1"});
+            expect(result.code).toBe(0);
+            expect(result.output).toContain("Trying the GitHub release download URL");
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("runtime\n");
         });
     }, 20_000);
     test("Linux refuses corrupt downloaded or cached helpers", async () => {

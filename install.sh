@@ -91,6 +91,7 @@ case "$target_os:$(uname -m)" in
         rg_checksum=db96f88166cbd77f1d1ae414db8e1e6c228a734ab4e542c1328152cfda001141cd7aa2bf94e2558834bb0d1bdb0dacf303348475a9f7f7566792cfd1e6691a4d ;;
     Linux:aarch64|Linux:arm64)
         runtime_arch=arm64
+        runtime_asset_id=589592093
         runtime_checksum=293dc6fbde37341f97c3774345e599362225ff859cde6a4c7fc059cfdb02d889
         bwrap_checksum=50e4602fa6c5b45769e5f2db1b11b63ceadf83963cbdc166c50ab1f490f43e28
         socat_checksum=aa59fca1cb87fd05dfc240b8823ea42bbd6d95a2bf7b98012c2157df1d953f4d
@@ -100,6 +101,7 @@ case "$target_os:$(uname -m)" in
         rg_checksum=950ff9cd31bef94d04dc8855812e043d34e7fd4e2892771a44c33918e15f398672c12e27b83df51a19076cd6250e4e42b830baf3e858274fde41ec822890c0fa ;;
     Linux:x86_64)
         runtime_arch=x64
+        runtime_asset_id=589592096
         runtime_checksum=b0ff3ca80d900f0ec0d84df3a51b49cd27b1aa60de79d775ab10ce3156448b85
         bwrap_checksum=daa199a99e5bf7930b2cc2f9fd051bcd57ef262b6ca8b55cf40f0b5d4673ee2f
         socat_checksum=c5e9f7bb0a092a17869a8db21e5c030b07ecdbe9626801fde7ac5f4f2756ec21
@@ -127,7 +129,14 @@ if [[ "$target_os" == Linux ]]; then
     [[ ! -L "$install_root/runtime" && ! -L "$runtime_dir" ]] || fail "Runtime installation directories must not be symlinks."
     if [[ ! -e "$runtime_dir" ]]; then
         printf 'Downloading Linux sandbox helpers...\n'
-        download "https://github.com/peihanm/hicode/releases/download/$runtime_version/hicode-linux-runtime-$runtime_arch.tar.gz" "$staging/runtime.tgz"
+        # The public asset API redirects directly to GitHub's asset CDN. It needs
+        # no token and also works on networks where github.com itself is blocked.
+        if ! curl --fail --location --show-error --connect-timeout 5 --max-time 60 \
+            --speed-limit 1024 --speed-time 15 --header 'Accept: application/octet-stream' \
+            "https://api.github.com/repos/peihanm/hicode/releases/assets/$runtime_asset_id" -o "$staging/runtime.tgz"; then
+            printf 'Trying the GitHub release download URL...\n'
+            download "https://github.com/peihanm/hicode/releases/download/$runtime_version/hicode-linux-runtime-$runtime_arch.tar.gz" "$staging/runtime.tgz"
+        fi
         [[ "$(digest 256 "$staging/runtime.tgz")" == "$runtime_checksum" ]] || fail "Invalid Linux runtime archive checksum."
         mkdir "$staging/runtime"
         tar -xzf "$staging/runtime.tgz" -C "$staging/runtime"
