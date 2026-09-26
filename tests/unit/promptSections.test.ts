@@ -12,6 +12,17 @@ const root = () => contentText(createInitialHistory("/project", "test-model")[0]
 const toolDescription = (name: string) => createToolCatalog({}).tools.find(tool => tool.name === name)!.description;
 
 describe("English prompt contracts", () => {
+    test("environment reports the execution shell rather than the user's login shell", () => {
+        const previous = process.env.SHELL;
+        try {
+            process.env.SHELL = "/bin/zsh";
+            expect(root()).toContain("Shell: /bin/bash");
+            expect(root()).not.toContain("Shell: /bin/zsh");
+        } finally {
+            if (previous === undefined) delete process.env.SHELL;
+            else process.env.SHELL = previous;
+        }
+    });
     test("Root and actual worker prompts share evidence-driven implementation guidance without overriding Plan", () => {
         const history = createInitialHistory("/project", "test-model");
         const plan = withExecutionContext(history, {

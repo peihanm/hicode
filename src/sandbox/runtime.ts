@@ -32,14 +32,15 @@ interface SandboxBackend {
     isSupportedPlatform(): boolean;
     isSandboxingEnabled(): boolean;
     checkDependencies(tools: Pick<SandboxRuntimeConfig, "bwrapPath" | "socatPath">): {errors: string[]; warnings: string[]};
-    initialize(config: SandboxRuntimeConfig, ask?: SandboxAskCallback): Promise<void>;
+    initialize(config: SandboxRuntimeConfig, ask: SandboxAskCallback, protectedRoots: readonly string[]): Promise<void>;
     wrapWithSandboxArgv(
         command: string,
         shell: string | undefined,
         customConfig: Partial<SandboxRuntimeConfig> | undefined,
         signal: AbortSignal,
         cwd: string,
-        networkMode: "open" | "restricted"
+        networkMode: "open" | "restricted",
+        protectedRoots: readonly string[]
     ): Promise<SandboxedCommand>;
     annotateStderrWithSandboxFailures(command: string, stderr: string): string;
     cleanupAfterCommand(): void;
@@ -88,7 +89,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         private readonly bunCacheDirectory: string,
         private readonly npmCacheDirectory: string,
         private readonly hicodeHome: string,
-        private readonly configuredDenyWrite: readonly string[]
+        private readonly configuredDenyWrite: readonly string[],
+        private readonly protectedRoots: readonly string[]
     ) {}
 
     async wrapCommand(
@@ -165,7 +167,8 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             const wrapped = this.status.networkMode === "open" && this.status.platform === "macos"
                 ? {argv: [shell, "-c", wrapCommandWithSandboxMacOS(openOptions)], env: {}}
                 : await this.backend.wrapWithSandboxArgv(
-                    bashCommand(preparedCommand), shell, customConfig, signal, cwd, this.status.networkMode
+                    bashCommand(preparedCommand), shell, customConfig, signal, cwd, this.status.networkMode,
+                    [...new Set([...this.protectedRoots, ...(options?.writableRoots ?? [])])]
                 );
             return {
                 ...wrapped,
@@ -286,7 +289,8 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             if (platform === "linux" && settings.network.allowLocalBinding) {
                 config.network.allowedDomains.push("localhost", "127.0.0.1", "[::1]");
             }
-            await backend.initialize(config, networkApproval.ask);
+            const protectedRoots = resolveSandboxPaths(cwd, [".", ...writableRoots]);
+            await backend.initialize(config, networkApproval.ask, protectedRoots);
             if (!backend.isSandboxingEnabled()) {
                 await release();
                 return new InactiveSandboxRuntime({
@@ -300,7 +304,7 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
                 platform,
                 networkMode: settings.network.mode,
                 warnings: dependencies.warnings,
-            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.hicodeHome), resolveSandboxPaths(cwd, [...settings.filesystem.denyWrite, ...settings.filesystem.denyRead]));
+            }, backend, release, config, networkApproval, bunCacheDirectory, npmCacheDirectory, await realpath(storage.hicodeHome), resolveSandboxPaths(cwd, [...settings.filesystem.denyWrite, ...settings.filesystem.denyRead]), protectedRoots);
         } catch (error) {
             await release().catch(() => undefined);
             return new InactiveSandboxRuntime({
@@ -320,13 +324,13 @@ export const createSandboxRuntime = createSandboxRuntimeFactory({
         if (!whichSync("rg")) result.errors.push("ripgrep (rg) not found");
         return result;
     },
-    async wrapWithSandboxArgv(command, shell, customConfig, signal, cwd, networkMode) {
+    async wrapWithSandboxArgv(command, shell, customConfig, signal, cwd, networkMode, protectedRoots) {
         const base = SandboxManager.getConfig();
         if (process.platform !== "linux") {
             return SandboxManager.wrapWithSandboxArgv(command, shell, customConfig, signal, cwd);
         }
         if (!base) throw new Error("Linux Sandbox configuration is unavailable");
-        const config = await linuxFilesystemPolicy({...base, ...customConfig}, signal);
+        const config = await linuxFilesystemPolicy({...base, ...customConfig}, signal, protectedRoots);
         const restricted = networkMode === "restricted";
         if (restricted && (!await SandboxManager.waitForNetworkInitialization() ||
             !SandboxManager.getLinuxHttpSocketPath() || !SandboxManager.getLinuxSocksSocketPath())) {
@@ -338,7 +342,7 @@ export const createSandboxRuntime = createSandboxRuntimeFactory({
             if ( : > /dev/tcp/127.0.0.1/3128 ) 2>/dev/null && ( : > /dev/tcp/127.0.0.1/1080 ) 2>/dev/null; then exit 0; fi
             /bin/sleep 0.02
           done; printf '%s\\n' 'Linux Sandbox network bridge did not become ready' >&2; exit 125) || exit 125\n${command}`;
-        const masks = await linuxDotEnvMask(config, SandboxManager.getMaskedFileStore());
+        const masks = await linuxDotEnvMask(protectedRoots, SandboxManager.getMaskedFileStore());
         const wrapped = await wrapCommandWithSandboxLinux({
             bwrapPath: config.bwrapPath, socatPath: config.socatPath,
             command: restricted ? prepared : command, binShell: shell, abortSignal: signal,
@@ -354,12 +358,12 @@ export const createSandboxRuntime = createSandboxRuntimeFactory({
         });
         return {argv: [shell ?? bashExecutable(), "-c", wrapped], env: {}};
     },
-    async initialize(config, ask) {
+    async initialize(config, ask, protectedRoots) {
         if (process.platform === "linux" && !getLinuxDependencyStatus().hasSeccompApply) {
             throw new Error("Linux Sandbox requires the bundled apply-seccomp executable (x64 or arm64)");
         }
         const initialConfig = process.platform === "linux"
-            ? await linuxFilesystemPolicy(config, AbortSignal.timeout(5000)) : config;
+            ? await linuxFilesystemPolicy(config, AbortSignal.timeout(5000), protectedRoots) : config;
         await SandboxManager.initialize(initialConfig, ask);
         if (process.platform !== "linux") return;
         // Installed binaries do not prove the kernel/container permits nested namespaces.

@@ -1,37 +1,53 @@
 import {lstat, opendir, realpath, stat} from "node:fs/promises";
 import {join} from "node:path";
+import {tmpdir} from "node:os";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 import {isPathInside} from "../permissions/pathGuard.js";
 import type {MaskedFileStore} from "@anthropic-ai/sandbox-runtime/dist/sandbox/credential-mask-files.js";
 import type {LinuxSandboxParams} from "@anthropic-ai/sandbox-runtime/dist/sandbox/linux-sandbox-utils.js";
 
 /** Preserve absent .env write protection without exposing a character device to dotenv readers. */
-export async function linuxDotEnvMask(config: SandboxRuntimeConfig, store: MaskedFileStore): Promise<Pick<LinuxSandboxParams, "maskedFileBinds" | "maskedFileStoreDir">> {
-    const root = config.filesystem.allowWrite[0];
-    if (!root) throw new Error("Linux Sandbox requires a workspace root");
-    const path = join(await realpath(root), ".env");
-    const info = await lstat(path).catch((error: unknown) => {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-        throw error;
-    });
-    // Existing files (including symlinks) retain their real content and configured
-    // read denials. The manager owns the source file and disposes it on reset.
-    const maskedFileBinds = info ? [] : [{realPath: path, fakePath: store.write("hicode:absent-dotenv", "")}];
+async function protectedRoots(roots: readonly string[]): Promise<string[]> {
+    if (!roots.length) throw new Error("Linux Sandbox requires a workspace root");
+    const temporaryRoots = new Set(await Promise.all(["/tmp", tmpdir()].map(path => realpath(path))));
+    const canonical = await Promise.all(roots.map(path => realpath(path)));
+    // Shared temporary grants are scratch space, not projects. Never scan other
+    // users' temp trees; an explicit primary workspace there still gets protection.
+    const projects = [...new Set(canonical.filter((path, index) => index === 0 || !temporaryRoots.has(path)))];
+    if (projects.some(path => /[*?\[\]{}()!\\]/.test(path))) {
+        throw new Error("Linux Sandbox cannot safely protect a path containing pattern characters");
+    }
+    return projects;
+}
+
+export async function linuxDotEnvMask(roots: readonly string[], store: MaskedFileStore): Promise<Pick<LinuxSandboxParams, "maskedFileBinds" | "maskedFileStoreDir">> {
+    const maskedFileBinds: NonNullable<LinuxSandboxParams["maskedFileBinds"]> = [];
+    for (const root of await protectedRoots(roots)) {
+        const path = join(root, ".env");
+        const info = await lstat(path).catch((error: unknown) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+            throw error;
+        });
+        // Existing files (including symlinks) retain their real content and configured
+        // read denials. The manager owns the source file and disposes it on reset.
+        if (!info) maskedFileBinds.push({realPath: path, fakePath: store.write("hicode:absent-dotenv", "")});
+    }
     return {maskedFileBinds, maskedFileStoreDir: store.dirPath};
 }
 
 /** Mount masks protect concrete paths. Never approximate a user-supplied glob denial. */
-export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal: AbortSignal): Promise<SandboxRuntimeConfig> {
+export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal: AbortSignal, roots: readonly string[]): Promise<SandboxRuntimeConfig> {
     for (const path of [...config.filesystem.denyRead, ...config.filesystem.denyWrite]) {
         if (/[*?\[\]{}()!\\]/.test(path)) {
             throw new Error("Linux Sandbox requires literal denyRead/denyWrite paths; glob denials cannot be enforced by mount masks");
         }
     }
-    const root = config.filesystem.allowWrite[0];
-    if (!root) throw new Error("Linux Sandbox requires a workspace root");
-    const canonicalRoot = await realpath(root);
+    const canonicalRoots = await protectedRoots(roots);
     const denied = new Set(config.filesystem.denyWrite);
-    const pending = [canonicalRoot];
+    for (const root of canonicalRoots) {
+        for (const name of [".git", ".hicode", ".env"]) denied.add(join(root, name));
+    }
+    const pending = [...canonicalRoots];
     const seen = new Set<string>();
     const deadline = Date.now() + 5000;
     let entries = 0;
@@ -62,13 +78,12 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
             }
             if (entry.isDirectory()) pending.push(path);
             else if (entry.isSymbolicLink()) {
-                // Traverse aliases back into the workspace once. Separate writable
-                // grants retain their configured policy rather than extending this scan.
+                // Follow aliases only within granted project trees, once per target.
                 const target = await realpath(path).catch((error: unknown) => {
                     if (error instanceof Error && "code" in error && ["ENOENT", "ELOOP"].includes(String(error.code))) return undefined;
                     throw error;
                 });
-                if (target && isPathInside(canonicalRoot, target)) {
+                if (target && canonicalRoots.some(root => isPathInside(root, target))) {
                     if ((await stat(target)).isDirectory()) pending.push(target);
                 }
             }

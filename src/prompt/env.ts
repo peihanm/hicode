@@ -1,4 +1,5 @@
 import {release, type} from "node:os";
+import {bashExecutable} from "../tools/bash/command.js";
 
 export interface EnvInfo {
     cwd: string;
@@ -12,7 +13,7 @@ export function detectEnv(cwd: string, model: string): EnvInfo {
     return {
         cwd,
         platform: `${type()} ${release()}`,
-        shell: process.env.SHELL ?? "unknown",
+        shell: bashExecutable(),
         model,
     };
 }

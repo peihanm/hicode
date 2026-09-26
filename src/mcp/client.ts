@@ -1,5 +1,5 @@
 import {Client} from "@modelcontextprotocol/sdk/client/index.js";
-import {StdioClientTransport} from "@modelcontextprotocol/sdk/client/stdio.js";
+import {McpStdioTransport} from "./stdioTransport.js";
 import {StreamableHTTPClientTransport, StreamableHTTPError} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {AsyncLocalStorage} from "node:async_hooks";
 import {ToolListChangedNotificationSchema, type Tool as McpSdkTool} from "@modelcontextprotocol/sdk/types.js";
@@ -25,11 +25,11 @@ export async function connectMcpServer(
     const lifetime = new AbortController();
     const requestScope = new AsyncLocalStorage<AbortSignal | undefined>();
     const transport = server.config.type === "stdio"
-        ? new StdioClientTransport({
+        ? new McpStdioTransport({
             command: server.config.command,
             args: server.config.args,
             env: mergeChildProcessEnvironment(childEnvironment, server.config.env) as Record<string, string>,
-            cwd, stderr: "pipe",
+            cwd,
         })
         : new StreamableHTTPClientTransport(new URL(server.config.url), {
             reconnectionOptions: {maxRetries: 0, initialReconnectionDelay: 1000, maxReconnectionDelay: 1000, reconnectionDelayGrowFactor: 1},
@@ -79,7 +79,7 @@ export async function connectMcpServer(
             : "HTTP MCP request failed or was cancelled; check the endpoint, timeout and server availability");
     };
     let stderr = "";
-    if (transport instanceof StdioClientTransport) transport.stderr?.on("data", (chunk) => {
+    if (transport instanceof McpStdioTransport) transport.stderr.on("data", (chunk) => {
         if (stderr.length >= MAX_STDERR_CHARS) return;
         stderr += String(chunk).slice(0, MAX_STDERR_CHARS - stderr.length);
     });
@@ -199,14 +199,6 @@ export async function connectMcpServer(
                     ]);
                     if (timeout) clearTimeout(timeout);
                     if (!completed) {
-                        const pid = transport instanceof StdioClientTransport ? transport.pid : undefined;
-                        if (pid) {
-                            try {
-                                process.kill(pid, "SIGTERM");
-                            } catch {
-                                // The process may have already exited.
-                            }
-                        }
                         await transport.close().catch(() => {
                         });
                     }

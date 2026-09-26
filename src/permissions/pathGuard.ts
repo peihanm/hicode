@@ -1,9 +1,9 @@
 import {lstat, realpath} from "node:fs/promises";
-import {dirname, isAbsolute, relative, resolve} from "node:path";
+import {dirname, isAbsolute, relative, resolve, sep} from "node:path";
 
 export function isPathInside(root: string, path: string): boolean {
     const rel = relative(root, path);
-    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+    return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 async function nearestExisting(path: string): Promise<string> {

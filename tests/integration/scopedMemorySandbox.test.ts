@@ -9,6 +9,33 @@ import {loadHiCodeSettings} from "../../src/settings/index.js";
 
 const enabled = ["darwin", "linux"].includes(process.platform) && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
 
+test.skipIf(!enabled || process.platform !== "linux")("Linux protects configured and per-command project grants in both network modes", async () => {
+    await withTempProject(async (directory, storage) => {
+        const cwd = join(directory, "project"), configured = join(directory, "configured"), dynamic = join(directory, "dynamic");
+        for (const root of [cwd, configured, dynamic]) {
+            await mkdir(root);
+            await writeFile(join(root, ".env.production"), "protected");
+        }
+        for (const mode of ["open", "restricted"] as const) {
+            const sandbox = await createSandboxRuntime({cwd, storage, writableRoots: [configured], settings: {
+                filesystem: {denyRead: [], denyWrite: []}, network: {mode, allowedDomains: [], allowLocalBinding: false},
+            }});
+            try {
+                expect(sandbox.status).toMatchObject({kind: "ready"});
+                const runner = createShellRunner(sandbox, testChildEnvironment);
+                for (const root of [configured, dynamic]) {
+                    const run = (command: string) => runner.run({command, cwd: root, writableRoots: [dynamic], signal: AbortSignal.timeout(5000)});
+                    expect((await run("printf allowed > ordinary.txt")).termination).toMatchObject({kind: "exit", code: 0});
+                    for (const path of [".env.production", ".env", ".git", ".hicode"]) {
+                        expect((await run(`printf forbidden > ${path}`)).termination).toMatchObject({kind: "exit", code: 1});
+                    }
+                    expect(await readFile(join(root, ".env.production"), "utf8")).toBe("protected");
+                }
+            } finally {await sandbox.close();}
+        }
+    });
+}, 30000);
+
 test.skipIf(!enabled)("Memory file scope permits owned writes but hides other private data and denies escapes", async () => {
     await withTempProject(async (cwd, storage) => {
         const root = join(storage.hicodeHome, "topics");
