@@ -31,6 +31,8 @@ Runs locally on **macOS and Linux**. Connect your own model API key to get start
 
 ### Recent improvements
 
+- 🐧 **09-26 · Linux support**: added Linux support with a unified installer for both platforms, improved sandbox isolation, and terminal display fixes.
+
 - 🔌 **09-25 · MCP improvements**: simplified configuration and approvals, and improved tool loading, updates, and connection management for smoother integration into HiCode execution.
 
 - 🌐 **09-21 · Network policy**: switch between open and restricted network modes via `/sandbox`, reducing network approval prompts while preserving filesystem isolation.
@@ -45,13 +47,13 @@ Runs locally on **macOS and Linux**. Connect your own model API key to get start
 
 ## Quick start
 
-Install or update from your macOS or Linux terminal as your regular user (without `sudo`):
+Install or update from your macOS or Linux terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-The installer detects your system, downloads the required dependencies, and configures `hicode` for zsh/bash. Linux sandbox helpers are included without installing system packages through `sudo`. Docker and VSCode are not required.
+The installer detects your system, downloads the required dependencies, and configures `hicode` for zsh/bash.
 
 **Updating:** exit HiCode and rerun the command above. The installer switches only after the new version passes its startup check, then removes old installed versions. Your model configuration and history are preserved.
 

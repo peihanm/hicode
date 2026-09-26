@@ -31,6 +31,8 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 
 ### 近期重点优化
 
+- 🐧 **09-26 · Linux 适配**：支持 Linux 环境运行，统一双端安装流程，完善沙箱隔离与终端展示。
+
 - 🔌 **09-25 · MCP 机制优化**：简化配置与授权，完善工具加载、更新和连接管理，让外部工具顺畅参与 HiCode 执行。
 
 - 🌐 **09-21 · 网络策略**：支持通过 `/sandbox` 切换开放或受限网络，在保留文件隔离的同时减少联网审批。
@@ -45,13 +47,13 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 
 ## 快速开始
 
-在 macOS 或 Linux 终端，以普通用户安装或更新（不要加 `sudo`）：
+在 macOS 或 Linux 终端安装或更新：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-脚本自动识别系统，下载所需依赖并配置 `hicode` 命令，支持 zsh 和 bash。Linux 沙箱依赖随安装提供，无需 `sudo` 安装系统包，也不需要 Docker 或 VSCode。
+脚本自动识别系统，下载所需依赖并配置 `hicode` 命令，支持 zsh 和 bash。
 
 **更新**：退出 HiCode 后重新执行上述命令。新版本检查通过后才切换，并清理旧版本；已有模型配置和历史会保留。
 
