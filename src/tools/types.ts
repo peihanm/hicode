@@ -31,6 +31,9 @@ import type {ContextSettings} from "../context/config.js";
 import type {ModelTargetSettings} from "../settings/types.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";
+
+// Expected input failures discovered during tool checks are not access denials.
+export class ToolInputError extends Error {}
 export type PermissionMatcher = (
     pattern: string,
     behavior: PermissionRuleBehavior

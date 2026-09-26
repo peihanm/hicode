@@ -48,7 +48,12 @@ export async function connectMcpServer(
                     ...(init?.method === "POST" && !scopedSignal ? [AbortSignal.timeout(server.config.timeoutMs)] : []),
                 ]);
                 // Redirects would contact an endpoint the project did not approve.
-                const response = await fetch(url, {...init, signal: requestSignal, redirect: "error"});
+                // Quiet SSE streams are healthy. Bound operations with the signals
+                // above, not Bun's socket idle timer (also applies to POST SSE).
+                const requestOptions: RequestInit & {timeout: false} = {
+                    ...init, signal: requestSignal, redirect: "error", timeout: false,
+                };
+                const response = await fetch(url, requestOptions);
                 if (response.ok) return response;
                 await response.body?.cancel();
                 if (response.status === 401 || response.status === 403) throw new StreamableHTTPError(response.status, "Authentication required");

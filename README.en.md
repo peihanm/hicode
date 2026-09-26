@@ -12,7 +12,7 @@
 
 HiCode is a lightweight terminal coding agent built in TypeScript with its own execution framework and under 40,000 lines of core source code. Describe what you need in natural language, and it writes code, fixes issues, and runs tests.
 
-**macOS only.** Runs locally with your own model API key.
+Runs locally on **macOS and Linux**. Connect your own model API key to get started.
 
 <table width="100%">
   <tr>
@@ -45,13 +45,13 @@ HiCode is a lightweight terminal coding agent built in TypeScript with its own e
 
 ## Quick start
 
-Install or update from your macOS terminal:
+Install or update from your macOS or Linux terminal as your regular user (without `sudo`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-The installer sets up dependencies and the `hicode` command automatically. It supports zsh and bash without administrator privileges.
+The installer detects your system, prepares dependencies, and configures `hicode` for zsh/bash. On Ubuntu / Debian, missing system dependencies are installed through `sudo`, which may ask for your password; existing dependencies are reused. Docker and VSCode are not required.
 
 **Updating:** exit HiCode and rerun the command above. The installer switches only after the new version passes its startup check, then removes old installed versions. Your model configuration and history are preserved.
 
@@ -75,7 +75,7 @@ Configuration is saved automatically and reusable across projects. Model usage i
 
 ## Develop from source
 
-To develop HiCode itself, install Git first:
+To develop HiCode itself, install Git first. To test Linux on a Mac, you can use the optional [Ubuntu development container](.devcontainer/README.md).
 
 ```bash
 git clone https://github.com/peihanm/hicode.git

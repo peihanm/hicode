@@ -10,9 +10,9 @@ import {executeToolResult} from "../helpers/executeTool.js";
 import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.js";
 import {runShellArgv} from "../../src/tools/bash/process.js";
 
-const enabled = process.platform === "darwin" && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
+const enabled = ["darwin", "linux"].includes(process.platform) && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
 
-test.skipIf(!enabled)("real macOS command searches preserve read-only, private results and permissions", async () => {
+test.skipIf(!enabled)("real OS command searches preserve read-only, private results and permissions", async () => {
     await withTempProject(async (cwd, storage) => {
         await mkdir(join(cwd, "src"));
         await mkdir(join(cwd, ".git"));
@@ -70,7 +70,7 @@ test.skipIf(!enabled)("real macOS command searches preserve read-only, private r
             expect(approvals).toBe(0);
             expect(await stat(join(cwd, "changed")).then(() => true, () => false)).toBe(false);
             expect(await readFile(join(cwd, "private", "secret.txt"), "utf8")).toBe("PRIVATE_NEEDLE\n");
-            const scope = {paths: [await realpath(cwd)], executables: ["/usr/bin/nc"],
+            const scope = {paths: [await realpath(cwd)], executables: ["/usr/bin/curl"],
                 deniedPaths: [], artifacts: [], artifactDirectories: [], privateRoot: await realpath(storage.hicodeHome)};
             // Exercise the OS boundary even when the tool's grammar would reject the command.
             const raw = async (command: string, signal = new AbortController().signal) => {
@@ -78,10 +78,24 @@ test.skipIf(!enabled)("real macOS command searches preserve read-only, private r
                 return runShellArgv({argv: wrapped.argv, cwd, signal, env: {PATH: "/bin:/usr/bin"}, timeoutMs: 3000});
             };
             const write = await raw("echo bad > forbidden-write");
-            expect(write.stderr).toContain("Operation not permitted");
+            expect(write.termination).toMatchObject({kind: "exit"});
+            expect(write.termination).not.toMatchObject({code: 0});
             expect(await stat(join(cwd, "forbidden-write")).then(() => true, () => false)).toBe(false);
-            const network = await raw("/usr/bin/nc -zv -w 1 127.0.0.1 9");
-            expect(network.stderr).toContain("Operation not permitted");
+            let hits = 0;
+            const server = Bun.serve({hostname: "127.0.0.1", port: 0, fetch: () => {hits++; return new Response("unexpected");}});
+            try {
+                const network = await raw(`/usr/bin/curl --noproxy '*' --max-time 1 http://127.0.0.1:${server.port}`);
+                expect(network.termination).toMatchObject({kind: "exit"});
+                expect(network.termination).not.toMatchObject({code: 0});
+                expect(hits).toBe(0);
+            } finally {server.stop(true);}
+            if (process.platform === "linux") {
+                const previousPaths = scope.paths;
+                scope.paths = ["/"];
+                try {
+                    expect((await raw(`test ! -e /proc/${process.pid}/cmdline && printf PRIVATE_PROC`)).stdout).toBe("PRIVATE_PROC");
+                } finally {scope.paths = previousPaths;}
+            }
             const controller = new AbortController();
             const pending = raw("while :; do :; done", controller.signal);
             const timer = setTimeout(() => controller.abort("user-cancel"), 100);

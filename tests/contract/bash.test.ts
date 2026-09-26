@@ -1,6 +1,6 @@
 import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
-import { appendFile, mkdir, readFile, readdir, realpath } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { executeTool, executeToolResult } from "../helpers/executeTool.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -373,6 +373,41 @@ describe("bash tool contract", () => {
       );
       expect(result.outcome).toBe("denied");
       expect(result.modelContent).toContain("Bash cwd must be inside the current project");
+    });
+  });
+
+  test.each(["missing", "file", "file/child"])("invalid Bash cwd %s fails without approval or command execution", async requestedCwd => {
+    await withTempProject(async cwd => {
+      await writeFile(join(cwd, "file"), "not a directory");
+      const {runner, calls} = networkCaptureRunner();
+      let approvals = 0;
+      const result = await executeToolResult("bash", JSON.stringify({
+        command: "mkdir -p missing && printf MUST_NOT_RUN", cwd: requestedCwd,
+      }), createTestContext(cwd, {
+        permissionMode: "ask", shellRunner: runner,
+        canUseTool: async () => {approvals++; return {behavior: "allow"};},
+      }), "invalid-cwd");
+      expect(result.outcome).toBe("failed");
+      expect(result.modelContent).toContain(requestedCwd === "missing" ? "working directory does not exist" : "not a directory");
+      expect(result.modelContent).not.toContain("Permission denied");
+      expect(result.modelContent).not.toContain("permission check failed");
+      expect(approvals).toBe(0);
+      expect(calls).toEqual([]);
+      expect(await readdir(cwd)).not.toContain("missing");
+    });
+  });
+
+  test("Bash symlink escape remains denied and explicit deny rules still win", async () => {
+    await withTempProject(async cwd => {
+      await symlink("..", join(cwd, "escape"));
+      const ctx = createTestContext(cwd, {permissionMode: "ask"});
+      const escaped = await executeToolResult("bash", JSON.stringify({command: "pwd", cwd: "escape"}), ctx, "escape");
+      expect(escaped.outcome).toBe("denied");
+      expect(escaped.modelContent).toContain("Permission denied");
+      ctx.permissionRules.deny.push({toolName: "bash", source: "project"});
+      const blocked = await executeToolResult("bash", JSON.stringify({command: "pwd", cwd: "missing"}), ctx, "rule-deny");
+      expect(blocked.outcome).toBe("denied");
+      expect(blocked.modelContent).toContain("Denied by rule");
     });
   });
 

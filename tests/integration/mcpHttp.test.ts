@@ -1,6 +1,6 @@
 import {expect, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
-import {join} from "node:path";
+import {join, resolve} from "node:path";
 import {Server} from "@modelcontextprotocol/sdk/server/index.js";
 import {WebStandardStreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {CallToolRequestSchema, ListToolsRequestSchema} from "@modelcontextprotocol/sdk/types.js";
@@ -50,6 +50,29 @@ async function httpFixture(json: boolean) {
         async close() {await protocol.close(); await server.stop(true);},
     };
 }
+
+test("HTTP SSE survives Bun's socket idle deadline in an isolated client", async () => {
+    const fixture = await httpFixture(true);
+    try {
+        await withTempProject(async cwd => {
+            const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "../fixtures/mcp/httpIdleClient.ts"), cwd, fixture.url], {
+                env: {PATH: process.env.PATH, BUN_CONFIG_HTTP_IDLE_TIMEOUT: "1", NO_PROXY: "127.0.0.1"},
+                stdout: "pipe", stderr: "pipe",
+            });
+            const deadline = setTimeout(() => child.kill(), 10000);
+            try {
+                const [code, stdout, stderr] = await Promise.all([
+                    child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+                ]);
+                expect(stderr).toBe("");
+                expect(code).toBe(0);
+                expect(stdout).toContain("IDLE_CONNECTION_OK");
+                expect(fixture.requests.some(request => request.method === "GET")).toBe(true);
+                expect(fixture.requests.some(request => request.method === "DELETE")).toBe(true);
+            } finally {clearTimeout(deadline); child.kill(); await child.exited;}
+        });
+    } finally {await fixture.close();}
+}, 15000);
 
 test.each([true, false])("HTTP MCP JSON=%s approval, session, discovery, calls and notifications", async json => {
     const fixture = await httpFixture(json);

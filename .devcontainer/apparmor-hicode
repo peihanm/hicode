@@ -1,0 +1,6 @@
+# Only selected development containers receive this profile. Do not disable
+# Ubuntu's global unprivileged-user-namespace protection.
+abi <abi/4.0>,
+profile hicode-development flags=(unconfined) {
+    userns,
+}

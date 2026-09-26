@@ -1,0 +1,19 @@
+{
+  "name": "HiCode Ubuntu 24.04",
+  "dockerComposeFile": "compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/workspaces/lab",
+  "remoteUser": "node",
+  "updateRemoteUserUID": false,
+  "overrideCommand": false,
+  "shutdownAction": "none",
+  "postCreateCommand": "cd /workspaces/hicode && bun install --frozen-lockfile",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.cwd": "/workspaces/lab"
+      }
+    }
+  }
+}

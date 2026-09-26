@@ -1,0 +1,2 @@
+#!/bin/sh
+exec bun /workspaces/hicode/src/index.tsx "$@"

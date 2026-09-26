@@ -2,6 +2,7 @@ import {expect, test} from "bun:test";
 import {mkdir, readFile, writeFile, realpath} from "node:fs/promises";
 import {join} from "node:path";
 import {wrapCommandWithSandboxMacOS} from "../../node_modules/@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js";
+import {wrapCommandWithSandboxLinux, cleanupBwrapMountPoints} from "@anthropic-ai/sandbox-runtime/dist/sandbox/linux-sandbox-utils.js";
 import {getDefaultWritePaths} from "@anthropic-ai/sandbox-runtime";
 import {createSandboxRuntimeFactory} from "../../src/sandbox/runtime.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
@@ -14,10 +15,10 @@ import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
-const enabled = process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1" && process.platform === "darwin";
+const enabled = process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1" && ["darwin", "linux"].includes(process.platform);
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
-test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权，敏感路径仍禁写", async () => {
+test.skipIf(!enabled)("真实 OS 沙箱：冷缓存/重复安装无需提权，敏感路径仍禁写", async () => {
     await withTempProject(async (root, storage) => {
         const cwd = join(root, "workspace");
         const pkg = join(root, "package");
@@ -31,19 +32,20 @@ test.skipIf(!enabled)("真实 macOS 沙箱：冷缓存/重复安装无需提权�
         await writeFile(join(cwd, "package.json"), JSON.stringify({name: "install-test", dependencies: {"hicode-install-fixture": `file:${archive}`}}));
         await writeFile(join(cwd, "source.ts"), "before");
         await writeFile(join(cwd, ".env"), "fixture=protected");
-        // Real Seatbelt enforcement without starting network proxies; this fixture denies all networking.
+        // Real platform wrapper without proxies; this fixture denies all networking.
         let active = false;
         const factory = createSandboxRuntimeFactory({isSupportedPlatform: () => true, isSandboxingEnabled: () => active,
             checkDependencies: () => ({errors: [], warnings: []}), async initialize() {active = true;},
             async wrapWithSandboxArgv(command, shell, config) {
-                const wrapped = wrapCommandWithSandboxMacOS({command, binShell: shell, needsNetworkRestriction: true,
+                const options = {command, binShell: shell, needsNetworkRestriction: true,
                     readConfig: {denyOnly: config?.filesystem?.denyRead ?? []},
                     writeConfig: {allowOnly: [...getDefaultWritePaths(), ...(config?.filesystem?.allowWrite ?? [])],
-                        denyWithinAllow: config?.filesystem?.denyWrite ?? []}});
+                        denyWithinAllow: config?.filesystem?.denyWrite ?? []}};
+                const wrapped = process.platform === "linux" ? await wrapCommandWithSandboxLinux(options) : wrapCommandWithSandboxMacOS(options);
                 return {argv: ["/bin/bash", "-c", wrapped], env: {}};
             },
             annotateStderrWithSandboxFailures: (_command, stderr) => stderr,
-            cleanupAfterCommand() {}, async reset() {active = false;}});
+            cleanupAfterCommand() {if (process.platform === "linux") cleanupBwrapMountPoints();}, async reset() {active = false;}});
         const sandbox = await factory({cwd, storage, settings: {filesystem: {denyRead: [], denyWrite: []},
             network: {mode: "restricted", allowedDomains: [], allowLocalBinding: false}}});
         expect(sandbox.status.kind).toBe("ready");

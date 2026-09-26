@@ -80,8 +80,8 @@ test("file suggestion access rules fail locally without opening approval", async
     });
 });
 
-const sandboxEnabled = process.platform === "darwin" && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
-test.skipIf(!sandboxEnabled)("real macOS suggestions use restricted rg and exclude private storage without approvals", async () => {
+const sandboxEnabled = ["darwin", "linux"].includes(process.platform) && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
+test.skipIf(!sandboxEnabled)("real OS suggestions use restricted rg and exclude private storage without approvals", async () => {
     await withTempProject(async (cwd, storage) => {
         await mkdir(join(cwd, "src"));
         await writeFile(join(cwd, "src/visible.ts"), "CONTENT_NOT_LOADED");

@@ -43,5 +43,12 @@ export function mergeChildProcessEnvironment(
             copySafeValues(result, override, environment.excludedNames);
         }
     }
+    // Recent Node releases require an opt-in to honor standard proxy variables.
+    // Apply after all overrides; an explicit opt-out and NO_PROXY remain intact.
+    if (result.NODE_USE_ENV_PROXY === undefined &&
+        !environment.excludedNames.has("NODE_USE_ENV_PROXY") &&
+        ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].some(name => result[name]?.trim())) {
+        result.NODE_USE_ENV_PROXY = "1";
+    }
     return result;
 }

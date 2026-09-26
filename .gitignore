@@ -2,6 +2,7 @@ node_modules/
 .hicode/
 .env
 .env.*
+!.devcontainer/.env.example
 .mcp.json
 HICODE.local.md
 docs/

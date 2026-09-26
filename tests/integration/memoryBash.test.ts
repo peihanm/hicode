@@ -10,7 +10,7 @@ import {createSandboxRuntime} from "../../src/sandbox/runtime.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
-const enabled=process.platform==="darwin" && process.env.HICODE_RUN_SANDBOX_INTEGRATION==="1";
+const enabled=["darwin","linux"].includes(process.platform) && process.env.HICODE_RUN_SANDBOX_INTEGRATION==="1";
 test.skipIf(!enabled)("Memory Bash deletes real files while protecting private state, siblings and network",async()=>withTempProject(async(cwd,storage)=>{
  const memory=createTestMemoryRuntime(cwd);const path=await remember(memory,"brief","可删除");const topics=join(memory.directory,"topics");
  const protectedFile=join(topics,"protected.txt");await writeFile(protectedFile,"protected");

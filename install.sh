@@ -3,10 +3,38 @@ set -euo pipefail
 
 fail() { printf 'HiCode install: %s\n' "$*" >&2; exit 1; }
 trap 'printf "HiCode installation failed. Fix the error above and rerun the installer.\n" >&2' ERR
-
-[[ "$(uname -s)" == Darwin ]] || fail "Only macOS is supported."
 [[ $EUID -ne 0 ]] || fail "Run this script as your normal user, without sudo."
-login_shell=${SHELL:-/bin/zsh}
+
+linux_dependency_ready() {
+    command -v "$1" >/dev/null || return 1
+    case "$1" in
+        bwrap) bwrap --version >/dev/null 2>&1 ;;
+        socat) socat -V >/dev/null 2>&1 ;;
+    esac
+}
+
+target_os=$(uname -s)
+case "$target_os" in
+    Darwin) ;;
+    Linux)
+        getconf GNU_LIBC_VERSION >/dev/null 2>&1 || fail "Linux installation currently requires glibc (for example Debian or Ubuntu)."
+        missing_packages=()
+        linux_dependency_ready bwrap || missing_packages+=(bubblewrap)
+        linux_dependency_ready socat || missing_packages+=(socat)
+        if (( ${#missing_packages[@]} )); then
+            command -v apt-get >/dev/null || fail "Install ${missing_packages[*]} with your distribution's package manager, then rerun this command. Automatic system dependency setup currently supports Debian/Ubuntu."
+            command -v sudo >/dev/null || fail "An administrator must install ${missing_packages[*]} (sudo is unavailable), then rerun this command as your regular user."
+            printf 'Installing missing Linux dependencies: %s. sudo may ask for your password.\n' "${missing_packages[*]}"
+            sudo apt-get update || fail "System dependency update failed; no HiCode installation was changed."
+            sudo apt-get install -y "${missing_packages[@]}" || fail "System dependency installation failed; no HiCode installation was changed."
+            hash -r
+            for dependency in bwrap socat; do
+                linux_dependency_ready "$dependency" || fail "$dependency is still unavailable after system dependency installation."
+            done
+        fi ;;
+    *) fail "Only macOS and glibc Linux are supported." ;;
+esac
+login_shell=${SHELL:-/bin/bash}
 case "${login_shell##*/}" in
     zsh) startup_files=("${ZDOTDIR:-$HOME}/.zshrc") ;;
     bash)
@@ -49,12 +77,18 @@ install_binary() {
     local archive="$staging/$name.tgz" unpack="$staging/$name"
     printf 'Downloading %s directly from the npm registry...\n' "$name"
     download "$url" "$archive"
-    printf '%s  %s\n' "$checksum" "$archive" | shasum -a 512 -c - >/dev/null
+    [[ "$(digest 512 "$archive")" == "$checksum" ]] || fail "Invalid $name archive checksum."
     mkdir -p "$unpack" "$install_root/bin"
     tar -xzf "$archive" -C "$unpack" "$entry"
     [[ -f "$unpack/$entry" && ! -L "$unpack/$entry" ]] || fail "Invalid $name archive."
     chmod 755 "$unpack/$entry"
     mv -f "$unpack/$entry" "$install_root/bin/$name"
+}
+digest() {
+    local bits=$1 path=$2 output
+    if command -v "sha${bits}sum" >/dev/null; then output=$("sha${bits}sum" "$path")
+    else output=$(shasum -a "$bits" "$path"); fi
+    printf '%s' "${output%% *}"
 }
 bun_supported() {
     local version major minor
@@ -65,18 +99,28 @@ bun_supported() {
     (( major > 1 || (major == 1 && minor >= 3) ))
 }
 # Versions and SHA-512 values come from the publishers' npm package metadata.
-case "$(uname -m)" in
-    arm64)
+case "$target_os:$(uname -m)" in
+    Darwin:arm64)
         bun_package=bun-darwin-aarch64
         bun_checksum=3a68f6d12ba21c13948d4048caab643634942233ad10e27099b8b1fd9c851f805a43a3994da6915884784e31d5cf4c9a7478258ba94b4e2021d6e6ab9ef0f8f4
         rg_package=ripgrep-darwin-arm64
         rg_checksum=af792d1d2bdb172710345eac97bb0d0cfa1ca6c23b27e984ce1d48699164634b299b793667db7c84f01e38aefea7497aa7afecc24402d785d65f4d65a30fbde1 ;;
-    x86_64)
+    Darwin:x86_64)
         bun_package=bun-darwin-x64-baseline
         bun_checksum=3927ec4d9b2d73cf7c1c7125854e0d71c68118e4920e7e557da8625539e2759f41ffec1bed64f27d925a05e25c7e3c09f47d96f6e4e1d931ad97751f717815f6
         rg_package=ripgrep-darwin-x64
         rg_checksum=db96f88166cbd77f1d1ae414db8e1e6c228a734ab4e542c1328152cfda001141cd7aa2bf94e2558834bb0d1bdb0dacf303348475a9f7f7566792cfd1e6691a4d ;;
-    *) fail "Unsupported CPU architecture." ;;
+    Linux:aarch64|Linux:arm64)
+        bun_package=bun-linux-aarch64
+        bun_checksum=5f94ac3d91ecfa260ef11fde7c8711b5cee04f64360e03df9620b1124c7871706e9b0930d1cfc4b0730dc07dc4806a420da67b21854f869086ff104e40713067
+        rg_package=ripgrep-linux-arm64
+        rg_checksum=950ff9cd31bef94d04dc8855812e043d34e7fd4e2892771a44c33918e15f398672c12e27b83df51a19076cd6250e4e42b830baf3e858274fde41ec822890c0fa ;;
+    Linux:x86_64)
+        bun_package=bun-linux-x64-baseline
+        bun_checksum=abff0474e0b4c9413c14f7a8395abcfcfc3923dfed25a62651f3bfb83500444c7c2149ce247d5127903706316aadef29bc9a22640f40a2f3c9ab916734d8d2c4
+        rg_package=ripgrep-linux-x64
+        rg_checksum=990ddb56b5299c3dafb3b413d2f5fdd0bb7472752ae3aeee16d124b4876c249996dbde91a1250b446a968331b500ac720693430fa97864ee2a29fe928320b6dd ;;
+    *) fail "Unsupported CPU architecture; use ARM64 or x86_64." ;;
 esac
 if ! bun_supported; then
     install_binary bun "https://registry.npmjs.org/@oven/$bun_package/-/$bun_package-1.3.14.tgz" "$bun_checksum" package/bin/bun
@@ -124,8 +168,7 @@ if [[ "$managed" == true ]]; then
     fi
     printf 'Downloading latest HiCode main...\n'
     download https://codeload.github.com/peihanm/hicode/tar.gz/refs/heads/main "$staging/source.tgz"
-    archive_id=$(shasum -a 256 "$staging/source.tgz")
-    archive_id=${archive_id%% *}
+    archive_id=$(digest 256 "$staging/source.tgz")
     [[ "$archive_id" =~ ^[a-f0-9]{64}$ ]] || fail "Cannot identify source archive."
     mkdir -p "$install_root/releases"
     source_dir="$install_root/releases/$archive_id"

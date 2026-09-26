@@ -11,7 +11,7 @@ import {
     type ToolExecutionResult,
     type ToolOutcome,
 } from "../toolResults/index.js";
-import type {Tool, ToolContext} from "./types.js";
+import {ToolInputError, type Tool, type ToolContext} from "./types.js";
 import {resolveFilePermissionPath} from "../permissions/filePattern.js";
 import {toolPathInput} from "../permissions/pathGuard.js";
 
@@ -145,7 +145,8 @@ export async function executeRegisteredTool(
         }
         return hookDecoratedResult(
             inlineToolResult(
-                `Tool execution error: permission check failed: ${error instanceof Error ? error.message : String(error)}`,
+                error instanceof ToolInputError ? error.message :
+                    `Tool execution error: permission check failed: ${error instanceof Error ? error.message : String(error)}`,
                 "failed"
             ),
             "PreToolUse",

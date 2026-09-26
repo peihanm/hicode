@@ -381,7 +381,10 @@ describe("permission confirmation UI", () => {
       instance.stdin.write("修改文件");
       await flush(10);
       instance.stdin.write(ENTER);
-      await flush();
+      const approvalDeadline = Date.now() + 1000;
+      while (!instance.lastFrame()?.includes("synthetic_write requires approval") && Date.now() < approvalDeadline) {
+        await flush(5);
+      }
       expect(instance.lastFrame()).toContain("synthetic_write requires approval");
 
       instance.stdin.write("2");

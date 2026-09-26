@@ -2,7 +2,7 @@
 
 ## Supported environment
 
-The interactive CLI currently supports macOS. It runs on the user's machine and requires a model provider API key. Model usage is billed by the provider.
+The interactive CLI supports macOS and experimental glibc Linux on ARM64/x64. Linux requires bubblewrap, socat and permission to create unprivileged user/PID/mount/network namespaces. The installer installs missing bubblewrap/socat packages on Debian/Ubuntu through sudo; other distributions require their package manager. It does not change system namespace or security policy. Musl Linux, Windows and WSL are not validated. It runs on the user's machine and requires a model provider API key. Model usage is billed by the provider.
 
 ## Quick installation
 
@@ -12,7 +12,7 @@ Run in the user's terminal:
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-The installer prepares required runtime dependencies and configures the `hicode` command for zsh/bash without administrator privileges. Open a new terminal, enter the project to work on and start HiCode:
+Run the installer as a regular user, without sudo. It detects the platform, reuses working Linux dependencies, and installs missing Debian/Ubuntu packages through sudo (which may prompt for a password). Bun, ripgrep and HiCode are installed in the user directory; macOS and Linux with ready dependencies do not request sudo. Failure to obtain permission or install system packages stops installation. Open a new terminal, enter the project to work on and start HiCode:
 
 ```sh
 cd /path/to/project

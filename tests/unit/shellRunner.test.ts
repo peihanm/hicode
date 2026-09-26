@@ -35,6 +35,17 @@ function sandboxRuntime(
 }
 
 describe("ShellRunner", () => {
+    test("scoped file commands do not release an ordinary command's backend mount lease", async () => {
+        await withTempProject(async cwd => {
+            const events: string[] = [];
+            const runner = createShellRunner(sandboxRuntime({kind: "ready", networkMode: "open", platform: "linux", warnings: []}, events), testChildEnvironment);
+            const request = {command: "printf scoped", cwd, signal: new AbortController().signal};
+            expect((await runner.run({...request, fileWorkspace: {root: cwd, writable: true}})).stdout).toBe("scoped");
+            expect(events.filter(event => event === "cleanup")).toHaveLength(0);
+            await runner.run(request);
+            expect(events.filter(event => event === "cleanup")).toHaveLength(1);
+        });
+    });
     test("已确认的沙箱违规附恢复建议，但不自动重跑或提权", async () => {
         await withTempProject(async cwd => {
             const events: string[] = [];

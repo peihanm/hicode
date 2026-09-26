@@ -12,7 +12,7 @@
 
 HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心源码不到 4 万行。用自然语言描述需求，即可让它编写代码、修复问题并运行测试。
 
-**目前仅支持 macOS**，在本机运行，需自备模型 API Key。
+支持 **macOS 和 Linux**，在本机运行，接入你自己的模型 API Key 即可使用。
 
 <table width="100%">
   <tr>
@@ -45,13 +45,13 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 
 ## 快速开始
 
-在 macOS 终端安装或更新：
+在 macOS 或 Linux 终端，以普通用户安装或更新（不要加 `sudo`）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
 ```
 
-脚本自动安装依赖并配置 `hicode` 命令，支持 zsh 和 bash，无需管理员权限。
+脚本自动识别系统，准备依赖并配置 `hicode` 命令，支持 zsh 和 bash。Ubuntu / Debian 缺少系统依赖时，会通过 `sudo` 安装，可能需要输入密码；已安装则直接跳过。无需 Docker 或 VSCode。
 
 **更新**：退出 HiCode 后重新执行上述命令。新版本检查通过后才切换，并清理旧版本；已有模型配置和历史会保留。
 
@@ -75,7 +75,7 @@ hicode
 
 ## 从源码开发
 
-开发 HiCode 本身，需要先安装 Git：
+开发 HiCode 本身，需要先安装 Git。需要在 Mac 上测试 Linux 时，可选用 [Ubuntu 开发容器](.devcontainer/README.md)。
 
 ```bash
 git clone https://github.com/peihanm/hicode.git

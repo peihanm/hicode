@@ -214,7 +214,8 @@ describe("OS Sandbox integration", () => {
                     cwd,
                     signal,
                 });
-                expect(blocked.termination).toMatchObject({kind: "exit", code: 1});
+                expect(blocked.termination).toMatchObject({kind: "exit"});
+                expect(blocked.termination).not.toMatchObject({code: 0});
                 expect(await exists(blockedPath)).toBe(false);
 
                 const deniedRead = await runner.run({
@@ -222,7 +223,8 @@ describe("OS Sandbox integration", () => {
                     cwd,
                     signal,
                 });
-                expect(deniedRead.termination).toMatchObject({kind: "exit", code: 1});
+                // Linux masks denied files; Seatbelt rejects the read instead.
+                expect(deniedRead.termination).toMatchObject({kind: "exit"});
                 expect(deniedRead.stdout).not.toContain("secret");
 
                 const protectedHiCode = await runner.run({

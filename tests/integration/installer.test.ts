@@ -25,6 +25,15 @@ async function fixture(run: (context: {
         await writeFile(join(source, "src/index.tsx"), "");
         await writeFile(join(source, "bun.lock"), "");
         const mocks: Record<string, string> = {
+            getconf: '[[ "${TEST_MUSL:-0}" != 1 ]] && echo "glibc 2.36"',
+            bwrap: '[[ "${TEST_MISSING_SYSTEM:-0}" != 1 || -f "$HOME/system-installed" ]]',
+            socat: '[[ "${TEST_MISSING_SYSTEM:-0}" != 1 || -f "$HOME/system-installed" ]]',
+            sudo: `printf '%s\\n' "$*" >> "$HOME/sudo.log"
+[[ "\${TEST_SUDO_FAIL:-0}" != 1 ]] || exit 1
+exec "$@"`,
+            "apt-get": `printf '%s\\n' "$*" >> "$HOME/apt.log"
+[[ "\${TEST_APT_FAIL:-0}" != 1 ]] || exit 100
+if [[ "$1" == install ]]; then touch "$HOME/system-installed"; fi`,
             uname: 'if [[ "$1" == -m ]]; then echo "${TEST_ARCH:-arm64}"; else echo "${TEST_OS:-Darwin}"; fi',
             curl: `[[ "\${TEST_ALLOW_DOWNLOAD:-0}" == 1 ]] || exit 98
 [[ "\${TEST_DOWNLOAD_FAIL:-0}" != 1 ]] || exit 22
@@ -107,7 +116,7 @@ esac`,
     }
 }
 
-describe("macOS installer (offline command fixtures)", () => {
+describe("macOS/Linux installer (offline command fixtures)", () => {
     test("preserves shell config, handles spaces and quotes, and installs only once in PATH", async () => {
         await fixture(async ({home, execute}) => {
             await writeFile(join(home, ".zshrc"), "# existing user config\n");
@@ -117,7 +126,7 @@ describe("macOS installer (offline command fixtures)", () => {
             expect(config.startsWith("# existing user config\n")).toBe(true);
             expect(config.match(/# HiCode installer/g)).toHaveLength(1);
             // Evaluate the generated PATH as a fresh interactive shell would.
-            const child = Bun.spawn(["/bin/zsh", "-c", 'source "$HOME/.zshrc"; command -v hicode; hicode --help'], {
+            const child = Bun.spawn(["/bin/bash", "-c", 'source "$HOME/.zshrc"; command -v hicode; hicode --help'], {
                 env: {HOME: home, PATH: "/usr/bin:/bin"}, stdout: "pipe", stderr: "pipe",
             });
             const output = await new Response(child.stdout).text();
@@ -314,10 +323,52 @@ describe("macOS installer (offline command fixtures)", () => {
 
     test("rejects unsupported platforms before changing files", async () => {
         await fixture(async ({home, execute}) => {
-            const result = await execute({TEST_OS: "Linux"});
+            const result = await execute({TEST_OS: "FreeBSD"});
             expect(result.code).toBe(1);
             expect(result.output).toContain("Only macOS");
             expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
+        });
+    }, 20_000);
+    for (const arch of ["aarch64", "x86_64"]) test(`Linux ${arch} bootstraps verified binaries and a Bash launcher`, async () => {
+        await fixture(async ({home, execute, runInstalled}) => {
+            const result = await execute({TEST_OS: "Linux", TEST_ARCH: arch, SHELL: "/bin/bash",
+                TEST_OLD_BUN: "1", TEST_MISSING_RG: "1", TEST_ALLOW_DOWNLOAD: "1"});
+            expect(result).toMatchObject({code: 0});
+            expect(await readFile(join(home, "download.log"), "utf8")).toBe("bun\nrg\n");
+            expect(await readFile(join(home, ".bashrc"), "utf8")).toContain("# HiCode installer");
+            expect(await runInstalled()).toMatchObject({code: 0});
+        });
+    }, 20_000);
+    test("unsupported Linux libc fails before creating installation files", async () => {
+        await fixture(async ({home, execute}) => {
+            expect(await execute({TEST_OS: "Linux", TEST_MUSL: "1"})).toMatchObject({code: 1});
+            expect(await Bun.file(join(home, ".bashrc")).exists()).toBe(false);
+        });
+    }, 20_000);
+    test("Linux installs missing system dependencies once, then reuses them", async () => {
+        await fixture(async ({home, execute}) => {
+            const env = {TEST_OS: "Linux", TEST_ARCH: "aarch64", TEST_MISSING_SYSTEM: "1", SHELL: "/bin/bash"};
+            expect(await execute(env)).toMatchObject({code: 0});
+            const expected = "apt-get update\napt-get install -y bubblewrap socat\n";
+            expect(await readFile(join(home, "sudo.log"), "utf8")).toBe(expected);
+            expect(await execute(env)).toMatchObject({code: 0});
+            expect(await readFile(join(home, "sudo.log"), "utf8")).toBe(expected);
+        });
+    }, 20_000);
+    test.each(["TEST_SUDO_FAIL", "TEST_APT_FAIL"])("Linux system setup failure %s stops before installing HiCode", async failure => {
+        await fixture(async ({home, execute}) => {
+            const result = await execute({TEST_OS: "Linux", TEST_MISSING_SYSTEM: "1", [failure]: "1"});
+            expect(result.code).toBe(1);
+            expect(result.output).toContain("System dependency update failed");
+            expect(await Bun.file(join(home, ".local/share/hicode/bin/hicode")).exists()).toBe(false);
+            expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
+        });
+    }, 20_000);
+    test("macOS and Linux with ready dependencies never request sudo", async () => {
+        await fixture(async ({home, execute}) => {
+            expect(await execute()).toMatchObject({code: 0});
+            expect(await execute({TEST_OS: "Linux", TEST_ARCH: "aarch64"})).toMatchObject({code: 0});
+            expect(await Bun.file(join(home, "sudo.log")).exists()).toBe(false);
         });
     }, 20_000);
 });

@@ -62,13 +62,16 @@ function DiffRow({
                     <Text
                         key={`${index}-${content}`}
                         backgroundColor={backgroundColor}
-                        color={backgroundColor ? COLORS.diffText : undefined}
+                        color={backgroundColor ? COLORS.diffText
+                            : line.type === "add" ? COLORS.diffAdded
+                                : line.type === "remove" ? COLORS.diffRemoved : undefined}
                         dimColor={line.type === "context"}
                     >
                         {gutter} {marker} {wordParts && index === 0
                         ? wordParts.map((part, partIndex) => (
                             <Text
                                 key={`${partIndex}-${part.value}`}
+                                bold={part.changed}
                                 backgroundColor={part.changed
                                     ? line.type === "add"
                                         ? COLORS.diffAddedWordBackground

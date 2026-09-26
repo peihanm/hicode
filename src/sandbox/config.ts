@@ -3,7 +3,9 @@ import {isAbsolute, resolve} from "node:path";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 import type {ResolvedSandboxSettings} from "./types.js";
 
-const MANDATORY_DENY_WRITE = [".git", ".hicode", ".env", ".env*", "**/.git", "**/.git/**", "**/.hicode", "**/.hicode/**", "**/.env*"];
+// Keep a final filename wildcard: ASRT strips a trailing /** before invoking
+// Seatbelt, which otherwise turns nested-directory protection into an exact match.
+const MANDATORY_DENY_WRITE = [".git", ".hicode", ".env", ".env*", "**/.git", "**/.git/**/*", "**/.hicode", "**/.hicode/**/*", "**/.env*"];
 
 function resolveSandboxPath(cwd: string, configuredPath: string): string {
     if (configuredPath === "~") return homedir();
@@ -31,7 +33,9 @@ export function createSandboxRuntimeConfig(
             denyWrite: resolveSandboxPaths(cwd, [
                 ...settings.filesystem.denyWrite,
                 ...settings.filesystem.denyRead,
-                ...MANDATORY_DENY_WRITE,
+                // Linux mount masks accept literal paths, not Seatbelt-style globs.
+                // Existing nested protected paths are discovered before each command.
+                ...(process.platform === "linux" ? [".git", ".hicode", ".env"] : MANDATORY_DENY_WRITE),
             ]),
         },
         network: {

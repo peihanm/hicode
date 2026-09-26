@@ -1,0 +1,48 @@
+name: hicode-linux
+services:
+  dev:
+    image: hicode-ubuntu:dev
+    build:
+      context: .
+      args:
+        USER_UID: "${HICODE_DEV_UID:-1000}"
+        HTTP_PROXY: "${HICODE_CONTAINER_PROXY:-}"
+        HTTPS_PROXY: "${HICODE_CONTAINER_PROXY:-}"
+    init: true
+    command: ["sleep", "infinity"]
+    working_dir: /workspaces/lab
+    # Share the Linux VM's network, so Colima forwards localhost on the same port.
+    # This is the trusted development lab, not an isolated benchmark worker.
+    network_mode: host
+    # Development-only: permit HiCode to build nested user/PID/mount namespaces.
+    # No privileged mode, extra capabilities or Docker socket is granted.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=hicode-development
+      - systempaths=unconfined
+    environment:
+      HTTP_PROXY: "${HICODE_CONTAINER_PROXY:-}"
+      HTTPS_PROXY: "${HICODE_CONTAINER_PROXY:-}"
+      http_proxy: "${HICODE_CONTAINER_PROXY:-}"
+      https_proxy: "${HICODE_CONTAINER_PROXY:-}"
+      NO_PROXY: "localhost,127.0.0.1,::1"
+      no_proxy: "localhost,127.0.0.1,::1"
+    volumes:
+      - ..:/workspaces/hicode
+      - ubuntu_modules:/workspaces/hicode/node_modules
+      - home:/home/node
+      - lab:/workspaces/lab
+  mcp-http-demo:
+    profiles: [mcp-test]
+    image: hicode-ubuntu:dev
+    init: true
+    network_mode: host
+    working_dir: /workspaces/hicode
+    command: ["bun", "tooling/examples/mcp/http-demo.ts"]
+    volumes:
+      - ..:/workspaces/hicode:ro
+      - ubuntu_modules:/workspaces/hicode/node_modules:ro
+volumes:
+  ubuntu_modules:
+  home:
+  lab:

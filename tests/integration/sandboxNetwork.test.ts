@@ -7,7 +7,7 @@ import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.
 import {NetworkAccessSession} from "../../src/permissions/networkAccess.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
-const enabled = process.platform === "darwin" && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
+const enabled = ["darwin", "linux"].includes(process.platform) && process.env.HICODE_RUN_SANDBOX_INTEGRATION === "1";
 
 test.skipIf(!enabled)("Node proxy approval reuse and open network preserve filesystem restrictions", async () => {
     await withTempProject(async (root, storage) => {
@@ -20,7 +20,7 @@ test.skipIf(!enabled)("Node proxy approval reuse and open network preserve files
         const server = Bun.serve({hostname: "127.0.0.1", port: 0, fetch: () => new Response("LOCAL_NETWORK_OK")});
         await writeFile(join(cwd, "fetch.mjs"), `try {console.log(await (await fetch('http://127.0.0.1:${server.port}', {signal: AbortSignal.timeout(3000)})).text());} catch(e) { console.error(e.message, e.cause?.code); process.exitCode=1; }`);
         await writeFile(join(cwd, "writes.mjs"), `import {writeFileSync,readFileSync} from 'node:fs';
-try {readFileSync('secret.txt');console.log('UNEXPECTED_READ');process.exitCode=1;} catch {console.log('READ_DENIED');}
+try {if(readFileSync('secret.txt').length){console.log('UNEXPECTED_READ');process.exitCode=1;} else console.log('READ_DENIED');} catch {console.log('READ_DENIED');}
 writeFileSync('ordinary.txt','ok');
 for (const path of ['.env','.git/config','../outside']) {
  try {writeFileSync(path,'BAD'); console.log('UNEXPECTED_WRITE',path);process.exitCode=1;} catch {console.log('DENIED',path);}

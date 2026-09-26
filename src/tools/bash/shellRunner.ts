@@ -133,7 +133,10 @@ export function createShellRunner(
             } finally {
                 wrapped.release?.();
                 try {
-                    sandbox.cleanupAfterCommand();
+                    // Scoped file commands build their own argv, not an ASRT command lease.
+                    // Decrementing ASRT's Linux mount counter here can release a concurrent
+                    // ordinary command's deny mounts before that command has finished.
+                    if (!readAccess && !fileWorkspace) sandbox.cleanupAfterCommand();
                 } catch {
                 }
             }

@@ -1,5 +1,6 @@
 import {resolveFilePermissionPath} from "../permissions/filePattern.js";
 import {isAbsolute, resolve} from "node:path";
+import {linuxFileScopeArgv} from "./linuxFileScope.js";
 
 export interface ReadOnlyAccess {
     paths: readonly string[];
@@ -17,7 +18,8 @@ function quote(path: string): string {
 
 /** Exact path grants and final denials avoid broad read exceptions overriding private-file restrictions. */
 export async function scopedFileSandboxArgv(command: string, access: ReadOnlyAccess, configuredDenials: readonly string[], cwd: string, workspace?: {root: string; writable: boolean; deniedWrites: readonly string[]}): Promise<string[]> {
-    if (process.platform !== "darwin") throw new Error("Restricted command search currently requires the macOS Sandbox");
+    if (process.platform === "linux") return linuxFileScopeArgv(command, access, configuredDenials, cwd, workspace);
+    if (process.platform !== "darwin") throw new Error("Restricted command search requires macOS or Linux Sandbox");
     const pattern = (path: string) => {
         if (!isAbsolute(path) || /[\0\r\n{}()!\\]/.test(path)) throw new Error("Cannot safely enforce this read-deny pattern in the read-only Sandbox");
         if (!/[*?\[\]]/.test(path)) return `(subpath ${quote(path)})`;

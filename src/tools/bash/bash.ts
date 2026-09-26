@@ -2,7 +2,7 @@ import {z} from "zod";
 import {ApprovalBudget, ApprovalEpoch, requestApproval} from "../../permissions/approval.js";
 import {realpath, stat} from "node:fs/promises";
 import {isAbsolute, relative, resolve} from "node:path";
-import type {Tool, ToolContext} from "../types.js";
+import {ToolInputError, type Tool, type ToolContext} from "../types.js";
 import {matchPattern} from "../../permissions/index.js";
 import {
     hasShellBackgroundOperator,
@@ -21,13 +21,13 @@ import {analyzeReadCommand} from "../../permissions/shellRead.js";
 
 const inputSchema = z.object({
     command: z.string().describe(
-        "Shell command. pipefail is enabled (not set -e); failed pipeline stages retain a nonzero status. Handle expected failures explicitly without masking them. Do not pipe tests to head, assume SIGPIPE is success, byte-truncate non-ASCII output, or append &."
+        "Shell command. pipefail is enabled (not set -e); failed pipeline stages retain a nonzero status. A trailing echo/printf still overwrites the command-list status. Run checks directly or chain with &&; if printing a status, capture it immediately and exit with it. Handle expected failures explicitly. Do not pipe tests to head, assume SIGPIPE is success, byte-truncate non-ASCII output, or append &."
     ),
     cwd: z
         .string()
         .min(1)
         .optional()
-        .describe("Working directory, relative to the current project or an absolute path permitted by runtime policy. Each call is independent; previous cd state is not retained."),
+        .describe("Existing working directory, relative to the current project or an absolute path permitted by runtime policy. To create a directory, run mkdir from an existing parent first. Each call is independent; previous cd state is not retained."),
     timeout_ms: z
         .number()
         .int()
@@ -49,7 +49,7 @@ const inputSchema = z.object({
 
 type CommandCwdResult =
     | {ok: true; path: string}
-    | {ok: false; message: string};
+    | {ok: false; outcome: "failed" | "denied"; message: string};
 
 async function resolveCommandCwd(
     projectCwd: string,
@@ -68,16 +68,26 @@ async function resolveCommandCwd(
         if (!fullAccess && (rel.startsWith("..") || isAbsolute(rel))) {
             return {
                 ok: false,
+                outcome: "denied",
                 message: `Bash cwd must be inside the current project: ${requestedCwd}`,
             };
         }
         if (!candidateStat.isDirectory()) {
-            return {ok: false, message: `Bash cwd is not a directory: ${requestedCwd}`};
+            return {ok: false, outcome: "failed", message: `Bash cwd is not a directory: ${candidate}`};
         }
         return {ok: true, path: candidateRealPath};
     } catch (error) {
+        const code = error instanceof Error && "code" in error ? error.code : undefined;
+        if (code === "ENOENT") return {
+            ok: false, outcome: "failed",
+            message: `Bash working directory does not exist: ${candidate}. Run mkdir from an existing parent directory first. The command was not executed.`,
+        };
+        if (code === "ENOTDIR") return {
+            ok: false, outcome: "failed", message: `Bash cwd is not a directory: ${candidate}. The command was not executed.`,
+        };
         return {
             ok: false,
+            outcome: code === "EACCES" || code === "EPERM" ? "denied" : "failed",
             message: `Cannot use Bash cwd ${requestedCwd ?? "."}: ${
                 error instanceof Error ? error.message : String(error)
             }`,
@@ -228,11 +238,17 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {behavior: "deny", message: backgroundSyntaxMessage()};
         }
         let workspace;
-        try {workspace = await commandWorkspace(ctx, cwd);} catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
+        try {workspace = await commandWorkspace(ctx, cwd);} catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOTDIR") {
+                throw new ToolInputError(`Bash cwd is not a directory: ${resolve(ctx.cwd, cwd ?? ".")}. The command was not executed.`);
+            }
+            return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};
+        }
         if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {behavior: "deny", message: "Read-only Memory commands cannot modify files or execute arbitrary programs"};
         if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {behavior: "deny", message: "Memory file commands must run in the foreground inside their Sandbox"};
         const commandCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, !workspace && ctx.permissionMode === "full-access" && ctx.allowFullAccess);
         if (!commandCwd.ok) {
+            if (commandCwd.outcome === "failed") throw new ToolInputError(commandCwd.message);
             return {behavior: "deny", message: commandCwd.message};
         }
         if ((ctx.readOnlyTools || ctx.collaborationMode === "plan") && sandbox_permissions === "require_escalated") {
@@ -321,7 +337,7 @@ export const bashTool: Tool<typeof inputSchema> = {
         if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {content: "Memory file commands must run in the foreground inside their Sandbox", outcome: "failed" as const};
         const resolvedCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, !workspace && ctx.permissionMode === "full-access" && ctx.allowFullAccess);
         if (!resolvedCwd.ok) {
-            return {content: resolvedCwd.message, outcome: "failed" as const};
+            return {content: resolvedCwd.message, outcome: resolvedCwd.outcome};
         }
         const commandCwd = workspace ? resolve(workspace.root, cwd ?? ".") : resolvedCwd.path;
         const readAccess = sandbox_permissions !== "require_escalated"

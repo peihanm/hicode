@@ -52,7 +52,7 @@ export function StatusBar({
         ? COLORS.error
         : percentUsed > 0.6
             ? COLORS.warning
-            : COLORS.dim;
+            : COLORS.surfaceText;
     const pct = Math.round(percentUsed * 100);
     const modeColor =
         permissionMode === "full-access"
@@ -96,7 +96,7 @@ export function StatusBar({
                 color={COLORS.surfaceText}
                 wrap="truncate-end"
             >
-                {" "}<Text color={COLORS.status}>{model}</Text>
+                {" "}<Text color={COLORS.surfaceAccent}>{model}</Text>
                 {showPermissionMode && (
                     <>
                         <Text> | </Text>
@@ -110,7 +110,7 @@ export function StatusBar({
                     </>
                 )}
                 <Text> | </Text>
-                <Text color={COLORS.status}>{cwd}</Text>
+                <Text color={COLORS.surfaceAccent}>{cwd}</Text>
                 <Text> | </Text>
                 <Text color={tokenColor}>{tokenLabel}</Text>
                 {mcpTotal > 0 && (

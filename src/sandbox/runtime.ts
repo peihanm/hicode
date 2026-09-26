@@ -7,6 +7,8 @@ import {
     type SandboxAskCallback,
 } from "@anthropic-ai/sandbox-runtime";
 import {wrapCommandWithSandboxMacOS} from "@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js";
+import {wrapCommandWithSandboxLinux, getLinuxDependencyStatus} from "@anthropic-ai/sandbox-runtime/dist/sandbox/linux-sandbox-utils.js";
+import {runShellArgv} from "../tools/bash/process.js";
 import {isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
 import {tmpdir} from "node:os";
@@ -15,6 +17,7 @@ import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type HiCodeSto
 import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
 import {createSandboxRuntimeConfig, resolveSandboxPaths} from "./config.js";
 import {SandboxNetworkApproval} from "./networkApproval.js";
+import {linuxFilesystemPolicy, linuxDotEnvMask} from "./linuxPolicy.js";
 import type {
     ResolvedSandboxSettings,
     SandboxedCommand,
@@ -34,7 +37,8 @@ interface SandboxBackend {
         shell: string | undefined,
         customConfig: Partial<SandboxRuntimeConfig> | undefined,
         signal: AbortSignal,
-        cwd: string
+        cwd: string,
+        networkMode: "open" | "restricted"
     ): Promise<SandboxedCommand>;
     annotateStderrWithSandboxFailures(command: string, stderr: string): string;
     cleanupAfterCommand(): void;
@@ -141,23 +145,26 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             const useStandardTemp = writableRoots.some(root => isPathInside(root, temporaryDirectory));
             // The backend sets TMPDIR inside its shell wrapper, after spawn env.
             // Override it inside the protected command, only with an existing grant.
-            const preparedCommand = useStandardTemp
+            const tempCommand = useStandardTemp
                 ? `export TMPDIR='${temporaryDirectory.replaceAll("'", "'\\''")}'\n${command}`
                 : command;
-            // The high-level ASRT config always enables its proxy. Its macOS wrapper
-            // lets us retain the same filesystem policy with unrestricted networking.
-            const wrapped = this.status.networkMode === "open"
-                ? {argv: [shell, "-c", wrapCommandWithSandboxMacOS({
-                    command: bashCommand(preparedCommand), binShell: shell,
-                    needsNetworkRestriction: false,
-                    readConfig: {denyOnly: this.baseConfig.filesystem.denyRead},
-                    writeConfig: {
-                        allowOnly: [...getDefaultWritePaths(), ...writableRoots],
-                        denyWithinAllow: customConfig?.filesystem.denyWrite ?? this.baseConfig.filesystem.denyWrite,
-                    },
-                })], env: {}}
+            const preparedCommand = this.status.platform === "linux" && this.status.networkMode === "restricted"
+                ? `export NO_PROXY= no_proxy=\n${tempCommand}` : tempCommand;
+            // Keep filesystem policy in the platform wrapper without enabling ASRT's proxy.
+            const openConfig = customConfig ?? this.baseConfig;
+            const openOptions = {
+                command: bashCommand(preparedCommand), binShell: shell,
+                needsNetworkRestriction: false,
+                readConfig: {denyOnly: this.baseConfig.filesystem.denyRead},
+                writeConfig: {
+                    allowOnly: [...getDefaultWritePaths(), ...writableRoots],
+                    denyWithinAllow: openConfig.filesystem.denyWrite,
+                },
+            };
+            const wrapped = this.status.networkMode === "open" && this.status.platform === "macos"
+                ? {argv: [shell, "-c", wrapCommandWithSandboxMacOS(openOptions)], env: {}}
                 : await this.backend.wrapWithSandboxArgv(
-                    bashCommand(preparedCommand), shell, customConfig, signal, cwd
+                    bashCommand(preparedCommand), shell, customConfig, signal, cwd, this.status.networkMode
                 );
             return {
                 ...wrapped,
@@ -213,8 +220,8 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             });
         }
 
-        if (settings.network.mode === "open" && platform !== "macos") {
-            return new InactiveSandboxRuntime({kind: "unavailable", reason: "Open network with filesystem isolation currently requires macOS", warnings: []});
+        if (settings.network.mode === "open" && platform !== "macos" && platform !== "linux") {
+            return new InactiveSandboxRuntime({kind: "unavailable", reason: "Open network with filesystem isolation requires macOS or Linux", warnings: []});
         }
         let dependencies;
         try {
@@ -273,6 +280,9 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             ensurePrivateStorageDirectory(storage, npmCachePath);
             const npmCacheDirectory = await realpath(npmCachePath);
             const config = createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory, npmCacheDirectory]);
+            if (platform === "linux" && settings.network.allowLocalBinding) {
+                config.network.allowedDomains.push("localhost", "127.0.0.1", "[::1]");
+            }
             await backend.initialize(config, networkApproval.ask);
             if (!backend.isSandboxingEnabled()) {
                 await release();
@@ -299,4 +309,60 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
     };
 }
 
-export const createSandboxRuntime = createSandboxRuntimeFactory(SandboxManager);
+export const createSandboxRuntime = createSandboxRuntimeFactory({
+    ...SandboxManager,
+    async wrapWithSandboxArgv(command, shell, customConfig, signal, cwd, networkMode) {
+        const base = SandboxManager.getConfig();
+        if (process.platform !== "linux") {
+            return SandboxManager.wrapWithSandboxArgv(command, shell, customConfig, signal, cwd);
+        }
+        if (!base) throw new Error("Linux Sandbox configuration is unavailable");
+        const config = await linuxFilesystemPolicy({...base, ...customConfig}, signal);
+        const restricted = networkMode === "restricted";
+        if (restricted && (!await SandboxManager.waitForNetworkInitialization() ||
+            !SandboxManager.getLinuxHttpSocketPath() || !SandboxManager.getLinuxSocksSocketPath())) {
+            throw new Error("Linux Sandbox network bridge is unavailable");
+        }
+        // ASRT launches namespace listeners asynchronously; a fast client can race
+        // their bind. This readiness gate belongs to the real proxy backend only.
+        const prepared = `(for hicode_bridge_attempt in {1..100}; do
+            if ( : > /dev/tcp/127.0.0.1/3128 ) 2>/dev/null && ( : > /dev/tcp/127.0.0.1/1080 ) 2>/dev/null; then exit 0; fi
+            /bin/sleep 0.02
+          done; printf '%s\\n' 'Linux Sandbox network bridge did not become ready' >&2; exit 125) || exit 125\n${command}`;
+        const masks = await linuxDotEnvMask(config, SandboxManager.getMaskedFileStore());
+        const wrapped = await wrapCommandWithSandboxLinux({
+            command: restricted ? prepared : command, binShell: shell, abortSignal: signal,
+            needsNetworkRestriction: restricted,
+            httpSocketPath: restricted ? SandboxManager.getLinuxHttpSocketPath() : undefined,
+            socksSocketPath: restricted ? SandboxManager.getLinuxSocksSocketPath() : undefined,
+            httpProxyPort: restricted ? SandboxManager.getProxyPort() : undefined,
+            socksProxyPort: restricted ? SandboxManager.getSocksProxyPort() : undefined,
+            proxyAuthToken: restricted ? SandboxManager.getProxyAuthToken() : undefined,
+            readConfig: {denyOnly: config.filesystem.denyRead},
+            writeConfig: {allowOnly: [...getDefaultWritePaths(), ...config.filesystem.allowWrite], denyWithinAllow: config.filesystem.denyWrite},
+            ...masks,
+        });
+        return {argv: [shell ?? bashExecutable(), "-c", wrapped], env: {}};
+    },
+    async initialize(config, ask) {
+        if (process.platform === "linux" && !getLinuxDependencyStatus().hasSeccompApply) {
+            throw new Error("Linux Sandbox requires the bundled apply-seccomp executable (x64 or arm64)");
+        }
+        const initialConfig = process.platform === "linux"
+            ? await linuxFilesystemPolicy(config, AbortSignal.timeout(5000)) : config;
+        await SandboxManager.initialize(initialConfig, ask);
+        if (process.platform !== "linux") return;
+        // Installed binaries do not prove the kernel/container permits nested namespaces.
+        // Probe the real wrapper once; never advertise ready and silently run unprotected.
+        try {
+            const signal = AbortSignal.timeout(5000);
+            const cwd = config.filesystem.allowWrite[0] ?? "/";
+            const wrapped = await SandboxManager.wrapWithSandboxArgv("/bin/true", bashExecutable(), undefined, signal, cwd);
+            const result = await runShellArgv({...wrapped, cwd, signal, timeoutMs: 5000,
+                env: {PATH: process.env.PATH, ...wrapped.env}});
+            if (result.termination.kind !== "exit" || result.termination.code !== 0) {
+                throw new Error(`Linux Sandbox probe failed: ${result.stderr.trim().slice(0, 800) || result.termination.kind}. Check bubblewrap, user namespaces and the container security policy.`);
+            }
+        } finally {SandboxManager.cleanupAfterCommand();}
+    },
+});

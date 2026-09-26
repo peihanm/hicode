@@ -36,6 +36,9 @@ describe("Bash pipeline status", () => {
                         ["false | cat || printf expected", 0],
                         ["true && printf ok", 0],
                         ["false; printf no-errexit", 0],
+                        ['false; echo "EXIT=$?"', 0],
+                        ['false && echo CHECK_OK', 1],
+                        ['(exit 7); check_status=$?; echo "EXIT=$check_status"; exit "$check_status"', 7],
                         ["yes | head -n 1", 141],
                         ['yes | head -n 1; status=("${PIPESTATUS[@]}"); test "${status[0]}" -eq 141 && test "${status[1]}" -eq 0', 0],
                     ] as const) {
@@ -43,7 +46,7 @@ describe("Bash pipeline status", () => {
                             sandboxPermissions: mode === "elevated" ? "require_escalated" : "use_default"});
                         expect(result.termination).toMatchObject({kind: "exit", code});
                     }
-                    expect(wrappedShells.length).toBe(mode === "sandbox" ? 8 : 0);
+                    expect(wrappedShells.length).toBe(mode === "sandbox" ? 11 : 0);
                     if (mode === "sandbox") expect(wrappedShells.every(shell => shell === "/bin/bash")).toBe(true);
                 } finally { await sandbox.close(); }
             });
