@@ -16,6 +16,7 @@ class RecoveryTest(unittest.TestCase):
         outcome = {'execution':'completed','grading':'passed','uid':20001}
         (root/'identity.json').write_text(json.dumps(identity))
         (root/'outcome.json').write_text(json.dumps(outcome))
+        (root/'job.json').write_text(json.dumps({'dataset':'terminal-bench'}))
         records = [
             {'type':'ready'},
             {'type':'agent_event','event':{'type':'turn_end','input':{'persistence_status':'saved'}}},

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPOSITORY_ROOT } from '../src/paths.js';
 import {seedCatalog} from './helpers/catalog.js';
+import {environmentFixture} from './helpers/catalog.js';
+import {EnvironmentStore} from '../src/host/environments.js';
 import {TaskCatalog} from '../src/host/catalog.js';
 import { classify, Lab } from '../src/host/manager.js';
 import { run, save, tree } from '../src/host/store.js';
@@ -14,9 +16,12 @@ import {taskAdapters as datasetHandlers} from '../src/host/datasets.js';
 import { serve } from '../src/host/server.js';
 import { EvidenceCollectionError, LinuxMachine } from '../src/host/linux.js';
 
-let dispose:ReturnType<typeof spyOn>;
-beforeEach(()=>{dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);});
-afterEach(()=>dispose.mockRestore());
+let dispose:ReturnType<typeof spyOn>,resolveEnvironment:ReturnType<typeof spyOn>;
+beforeEach(()=>{
+  dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
+  resolveEnvironment=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(environmentFixture('terminal-bench:fixture'));
+});
+afterEach(()=>{dispose.mockRestore();resolveEnvironment.mockRestore();});
 
 async function fixture() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'hicode-eval-')));
@@ -26,11 +31,11 @@ async function fixture() {
   return { dir, config, tasks:join(dir,'tasks'), cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 function finished(id = '0123456789abcdef') {
-  return runSchema.parse({ version: 2, id, batchId: 'fedcba9876543210', task: 'alpha', state: 'passed', createdAt: 1, updatedAt: 1, model: 'fixture', budget: {}, execution: 'completed', grading: 'passed', collection: 'complete' });
+  return runSchema.parse({ version: 2, id, batchId: 'fedcba9876543210', task: 'alpha', dataset:'terminal-bench', state: 'passed', createdAt: 1, updatedAt: 1, model: 'fixture', budget: {}, execution: 'completed', grading: 'passed', collection: 'complete' });
 }
 
 async function persist(f: Awaited<ReturnType<typeof fixture>>, s: ReturnType<typeof finished>) {
-  await save(join(f.dir, 'batches', s.batchId + '.json'), batchSchema.parse({ version: 1, id: s.batchId, name: 'fixture', budget: f.config.budget, tasks: [s.task], runIds: [s.id], concurrency: 1, createdAt: 1, model: f.config.model, payload: {} }));
+  await save(join(f.dir, 'batches', s.batchId + '.json'), batchSchema.parse({ version: 2, id: s.batchId, name: 'fixture', budget: f.config.budget, taskRefs: [{dataset:s.dataset,id:s.task}], runIds: [s.id], concurrency: 1, createdAt: 1, model: f.config.model, payload: {} }));
   await save(join(f.dir, 'runs', s.id, 'state.json'), s);
 }
 
@@ -64,7 +69,7 @@ test('Token Plan model survives evaluation config and batch persistence', async 
     await save(join(f.dir,'config.json'),config);
     expect(configSchema.parse(JSON.parse(await readFile(join(f.dir,'config.json'),'utf8'))).model).toEqual(model);
     const state=finished();
-    expect(batchSchema.parse({version:1,id:state.batchId,name:'Token Plan',budget:config.budget,tasks:[state.task],runIds:[state.id],concurrency:1,createdAt:1,model,payload:{}}).model).toEqual(model);
+    expect(batchSchema.parse({version:2,id:state.batchId,name:'Token Plan',budget:config.budget,taskRefs:[{dataset:state.dataset,id:state.task}],runIds:[state.id],concurrency:1,createdAt:1,model,payload:{}}).model).toEqual(model);
     expect(()=>configSchema.parse({...config,model:{...model,source:'unknown-provider'}})).toThrow();
   } finally {await f.cleanup();}
 });
@@ -175,6 +180,18 @@ test('a reused task ID requires an explicit dataset at submission',async()=>{
   }finally{await f.cleanup();}
 });
 
+test('stale environment is rejected before a batch or run is published',async()=>{
+  const f=await fixture();
+  try {
+    resolveEnvironment.mockRejectedValue(new Error('Task environment is stale'));
+    const lab=new Lab(f.config,'fixture');await lab.init();
+    await expect(lab.submit({name:'stale',tasks:[{id:'regex-log'}],concurrency:1})).rejects.toThrow('Task environment is stale');
+    expect(lab.batches.size).toBe(0);
+    expect(lab.runs.size).toBe(0);
+    await lab.close();
+  }finally{await f.cleanup();}
+});
+
 test('one batch keeps equal task IDs from two releases separate',async()=>{
   const f=await fixture(),source=join(f.tasks,'regex-log');
   await mkdir(source);await writeFile(join(source,'instruction.md'),'offline fixture');
@@ -271,7 +288,7 @@ test('restart preserves unstarted queue; explicit resume does not replay complet
   let lab: Lab | undefined;
   try {
     await persist(f, previous);
-    await save(join(f.dir, 'batches', previous.batchId+'.json'), {version:1,id:previous.batchId,name:'fixture',budget:f.config.budget,tasks:['alpha','beta'],runIds:[previous.id,queued.id],concurrency:1,createdAt:1,model:f.config.model,payload:{}});
+    await save(join(f.dir, 'batches', previous.batchId+'.json'), {version:2,id:previous.batchId,name:'fixture',budget:f.config.budget,taskRefs:[{dataset:'terminal-bench',id:'alpha'},{dataset:'terminal-bench',id:'beta'}],runIds:[previous.id,queued.id],concurrency:1,createdAt:1,model:f.config.model,payload:{}});
     await save(join(f.dir, 'runs', queued.id, 'state.json'), queued);
     await mkdir(join(f.dir, 'runs', queued.id, 'task/beta'), {recursive:true});
     await save(join(f.dir, 'runs', queued.id, 'task-files.json'), {});
@@ -392,6 +409,16 @@ test('network mode defaults to isolated and invalid values fail before submissio
     expect(()=>configSchema.parse({...f.config,network:'disabled-ish'})).toThrow();
     expect(()=>submissionSchema.parse({name:'bad',tasks:[{id:'x'}],network:'proxy'})).toThrow();
   } finally {await f.cleanup();}
+});
+
+test('persisted task identity requires one complete dataset reference',()=>{
+  const state=finished();
+  expect(()=>runSchema.parse({...state,dataset:undefined})).toThrow();
+  const batch={version:2,id:state.batchId,name:'fixture',taskRefs:[{dataset:state.dataset,id:state.task}],
+    runIds:[state.id],concurrency:1,budget:{},createdAt:1,model:{source:'qwen',model:'fixture',apiKeyEnv:'UNUSED',baseUrl:'https://offline.invalid/v1'},payload:{}};
+  expect(batchSchema.parse(batch).taskRefs).toHaveLength(1);
+  expect(()=>batchSchema.parse({...batch,tasks:[state.task]})).toThrow();
+  expect(()=>batchSchema.parse({...batch,version:1})).toThrow();
 });
 
 test('restart refuses a run whose network mode differs from its batch', async () => {

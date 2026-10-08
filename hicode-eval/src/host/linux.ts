@@ -2,10 +2,9 @@ import { mkdir, appendFile, rename, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { validateSweTask } from './sweTasks.js';
 import type {SweTask} from './sweTasks.js';
 import type {RegradeInput} from './regrade.js';
-import { validatePublicTask, prepareTaskInputs, preparePublicTestInputs, taskSchema } from './publicTasks.js';
+import {taskAdapters} from './datasets.js';
 import { run, readJson, save, evidenceTree, exists } from './store.js';
 import type { Config, Run } from './types.js';
 import {regradeResultSchema} from './types.js';
@@ -13,6 +12,10 @@ import { EVAL_ROOT } from '../paths.js';
 import {RunContainers} from './containers.js';
 import {EnvironmentStore} from './environments.js';
 import {TaskCatalog} from './catalog.js';
+
+const workerFiles=['runner.py','dataset_runtime.py','model_proxy.py','network_entry.py','cleanup.py','recovery.py',
+  'terminal.py','verifier.py','protocol.py','scm.py','record.py','preflight.ts','bootstrap.py','swe.py',
+  'venv_paths.py','xarray_report.py','django_report.py'] as const;
 
 const packetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('phase'), phase: z.string() }),
@@ -83,7 +86,7 @@ export class LinuxMachine {
     const hash = createHash('sha256').update(archive).digest('hex');
     if (manifest.files['source.tar.gz'] !== hash) throw Error('Source payload changed');
     await run(this.docker('exec', this.config.machine, 'mkdir', '-p', '/opt/hicode-eval/eval_datasets', '/opt/hicode/releases', '/eval/runs'));
-    for (const name of ['runner.py', 'dataset_runtime.py', 'model_proxy.py', 'network_entry.py', 'cleanup.py', 'recovery.py', 'terminal.py', 'verifier.py', 'protocol.py', 'scm.py', 'record.py', 'preflight.ts', 'bootstrap.py', 'swe.py', 'venv_paths.py', 'xarray_report.py','django_report.py']) await run(this.docker('cp', join(EVAL_ROOT, 'src/worker', name), this.config.machine + ':/opt/hicode-eval/' + name));
+    for (const name of workerFiles) await run(this.docker('cp', join(EVAL_ROOT, 'src/worker', name), this.config.machine + ':/opt/hicode-eval/' + name));
     await run(this.docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',this.config.machine+':/opt/hicode-eval/eval_datasets/'));
     await run(this.docker('cp', join(EVAL_ROOT, 'src/datasets/reviewed_test_deps.py'), this.config.machine + ':/opt/hicode-eval/reviewed_test_deps.py'));
     const target = '/opt/hicode-eval/source-' + hash + '.tar.gz';
@@ -151,10 +154,7 @@ export class LinuxMachine {
     if (!this.release) throw Error('Evaluation machine not initialized');
     const remote = '/eval/runs/' + state.id;
     const task = join(path, 'task', state.task);
-    const inputs = join(path, 'inputs');
-    const swe = state.dataset === 'swe-bench-verified' ? await validateSweTask(state.task, task) : undefined;
-    const profile = state.dataset === 'swe-bench-verified' ? undefined : await validatePublicTask(state.task, task,state.dataset);
-    const spec = swe ? { agent:{timeout_sec:1800}, verifier:{timeout_sec:swe.verifierSeconds} } : taskSchema.parse(Bun.TOML.parse(await Bun.file(join(task, 'task.toml')).text()));
+    const execution=await taskAdapters[state.dataset].execution(state,task);
     const catalog=await TaskCatalog.open(this.config.catalog);
     const environment=await this.environments.resolve({...catalog.get(state.dataset,state.task),source:task});
     const container=this.containers.name(state.id);
@@ -164,7 +164,7 @@ export class LinuxMachine {
     await save(join(path,'container.json'),{session:state.id,id:container,attach:'docker --context '+this.config.context+' exec -it '+container+' bash'});
     await this.containers.create(state.id,(environment.preparation??environment.dependencies).imageId);
     await run(this.docker('exec',container,'mkdir','-p','/opt/hicode-eval','/opt/hicode-eval/eval_datasets'));
-    for(const name of ['runner.py','dataset_runtime.py','model_proxy.py','network_entry.py','cleanup.py','recovery.py','terminal.py','verifier.py','protocol.py','scm.py','record.py','preflight.ts','bootstrap.py','swe.py','venv_paths.py','xarray_report.py','django_report.py'])
+    for(const name of workerFiles)
       await run(this.docker('cp',join(EVAL_ROOT,'src/worker',name),container+':/opt/hicode-eval/'+name));
     await run(this.docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',container+':/opt/hicode-eval/eval_datasets/'));
     await run(this.docker('cp',join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),container+':/opt/hicode-eval/reviewed_test_deps.py'));
@@ -173,32 +173,18 @@ export class LinuxMachine {
     const release=await run(this.docker('exec',container,'python3','/opt/hicode-eval/bootstrap.py',archive,this.release.split('/').at(-1)!),{timeout:660000});
     if(release!==this.release)throw Error('Run source release identity changed');
     await run(this.docker('exec',container,'mkdir','-p',remote+'/project'));
-    if (swe) {
-      await run(this.docker('exec', container, '/opt/hicode-swe/grader/bin/python', '-c', "import swebench; assert swebench.__version__ == '4.1.0'"));
-      await run(this.docker('cp', join(task, 'repository') + '/.', container + ':' + remote + '/project/'));
-      await run(this.docker('cp', join(task, 'repository'), container + ':' + remote + '/baseline'));
-      await run(this.docker('exec', container, 'chmod', '700', remote + '/baseline'));
-    } else {
-      await prepareTaskInputs(task, inputs, profile!);
-      await run(this.docker('cp', inputs + '/.', container + ':' + remote + '/project/'));
-      if (profile!.publicTestInputs.length) {
-        const helpers = join(path, 'public-test-inputs');
-        await preparePublicTestInputs(task, helpers, profile!);
-        await run(this.docker('cp', helpers, container + ':' + remote + '/public-tests'));
-      }
-      if (profile!.initializer) await run(this.docker('cp', join(task, 'environment', profile!.initializer.file), container + ':' + remote + '/project/' + profile!.initializer.file));
-    }
+    await execution.stage({container,remote,runPath:path,docker:(...args)=>this.docker(...args)});
     await run(this.docker('cp', join(task, 'instruction.md'), container + ':' + remote + '/instruction.md'));
-    await save(join(path, 'job.json'), { model: this.config.model, network: state.network, release: this.release, agentSeconds: state.budget.agentSeconds, originalAgentSeconds: spec.agent.timeout_sec, verifierSeconds: spec.verifier.timeout_sec,
-      ...(swe ? {dataset:'swe-bench-verified',swe,initializer:null,packages:[],verifierPackages:[],verifierPrelude:'none'} :
-        {dataset:state.dataset,commands:profile!.commands,publicTestInputs:profile!.publicTestInputs,environment:profile!.environment,verifierEnvironment:profile!.verifierEnvironment,initializer:profile!.initializer,packages:profile!.packages,verifierPackages:profile!.verifierPackages,verifierPrelude:profile!.verifierPrelude,verifierRootOverlay:profile!.verifierRootOverlay,verifierChroot:profile!.verifierChroot}) });
+    await save(join(path, 'job.json'), { model: this.config.model, network: state.network, release: this.release,
+      agentSeconds: state.budget.agentSeconds, originalAgentSeconds:execution.originalAgentSeconds,
+      verifierSeconds:execution.verifierSeconds,...execution.job });
     await run(this.docker('cp', join(path, 'job.json'), container + ':' + remote + '/job.json'));
     if (await exists(join(path, 'cancel'))) await this.cancel(state.id);
     await mkdir(join(path, 'live'), { recursive: true });
     const env: Record<string, string> = {};
     for (const name of ['PATH', 'HOME', 'DOCKER_CONFIG', 'TMPDIR']) if (process.env[name]) env[name] = process.env[name];
     env[this.config.model.apiKeyEnv] = credential;
-    proc = Bun.spawn(this.docker('exec', '--env', this.config.model.apiKeyEnv, container, swe ? '/opt/hicode-swe/grader/bin/python' : 'python3', '/opt/hicode-eval/runner.py', state.id), { env, stdout: 'pipe', stderr: 'pipe' });
+    proc = Bun.spawn(this.docker('exec', '--env', this.config.model.apiKeyEnv, container, execution.runnerPython, '/opt/hicode-eval/runner.py', state.id), { env, stdout: 'pipe', stderr: 'pipe' });
     } catch(error){
       try {await save(join(path,'setup-failed.json'),{version:1,runId:state.id,runnerSpawned:false,error:String(error).replaceAll(credential,'[redacted]').slice(-2000)});}
       finally {await this.containers.remove(state.id);}
@@ -207,8 +193,7 @@ export class LinuxMachine {
     }
     let result: LinuxResult | undefined, note = '', verificationSent = false;
     const stderr = new Response(proc.stderr).text();
-    const setupAllowance = swe ? 360 : profile!.verifierPackages.length ? 660 : profile!.packages.length ? 360 : 240;
-    const timer = setTimeout(() => { void this.cancel(state.id).catch(() => {}); }, (state.budget.agentSeconds + spec.verifier.timeout_sec + setupAllowance) * 1000);
+    const timer = setTimeout(() => { void this.cancel(state.id).catch(() => {}); }, (state.budget.agentSeconds + execution.verifierSeconds + execution.setupAllowance) * 1000);
     let buffer = '';
     try {
       const reader = proc.stdout.getReader();
@@ -226,7 +211,7 @@ export class LinuxMachine {
           } else if (packet.type === 'verification_request') {
             if (packet.runId !== state.id || verificationSent) throw Error('Invalid or duplicate verification handoff');
             verificationSent = true;
-            await this.handoffVerification(state.id, join(task, swe ? 'hidden' : 'tests'), credential);
+            await this.handoffVerification(state.id, execution.verifierSource, credential);
           } else if (packet.type === 'screen') {
             await Bun.write(join(path, 'live/screen.tmp'), packet.screen);
             await rename(join(path, 'live/screen.tmp'), join(path, 'live/screen.txt'));

@@ -9,13 +9,15 @@ import {serve} from '../src/host/server.js';
 import {configSchema,runSchema,batchSchema} from '../src/host/types.js';
 import {save,tree} from '../src/host/store.js';
 import {seedCatalog} from './helpers/catalog.js';
+import {environmentFixture} from './helpers/catalog.js';
+import {EnvironmentStore} from '../src/host/environments.js';
 import * as adapters from '../src/host/publicTasks.js';
 
 async function fixture(){
  const root=await realpath(await mkdtemp(join(tmpdir(),'hicode-retry-')));
  const config=configSchema.parse({version:4,data:root,catalog:join(root,'catalog.json'),environments:join(root,'environments'),payload:join(root,'payload'),context:'offline',machine:'fixture',concurrency:2,budget:{},model:{source:'qwen',model:'fixture',apiKeyEnv:'UNUSED',baseUrl:'https://offline.invalid/v1'}});
- const original=runSchema.parse({version:2,id:'a'.repeat(16),batchId:'b'.repeat(16),task:'fixture',state:'error',network:'isolated',model:'fixture',budget:{agentSeconds:900},createdAt:1,updatedAt:2,finishedAt:2,execution:'failed',grading:'unavailable',collection:'complete',note:'original failure'});
- const batch=batchSchema.parse({version:1,id:original.batchId,name:'original',network:'isolated',tasks:[original.task],runIds:[original.id],concurrency:2,budget:{},createdAt:1,model:config.model,payload:{commit:'fixed'}});
+ const original=runSchema.parse({version:2,id:'a'.repeat(16),batchId:'b'.repeat(16),task:'fixture',dataset:'terminal-bench',state:'error',network:'isolated',model:'fixture',budget:{agentSeconds:900},createdAt:1,updatedAt:2,finishedAt:2,execution:'failed',grading:'unavailable',collection:'complete',note:'original failure'});
+ const batch=batchSchema.parse({version:2,id:original.batchId,name:'original',network:'isolated',taskRefs:[{dataset:original.dataset,id:original.task}],runIds:[original.id],concurrency:2,budget:{},createdAt:1,model:config.model,payload:{commit:'fixed'}});
  const frozen=join(root,'runs',original.id,'task','fixture'),source=join(root,'source');
  await mkdir(frozen,{recursive:true});await mkdir(source);
  await writeFile(join(frozen,'task.toml'),'[agent]\ntimeout_sec=900\n[verifier]\ntimeout_sec=30\n');
@@ -25,12 +27,13 @@ async function fixture(){
  await save(join(root,'runs',original.id,'state.json'),original);
  await save(join(root,'batches',batch.id+'.json'),batch);await save(join(config.payload,'manifest.json'),batch.payload);
  const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,commands:[],environment:{},verifierEnvironment:{}});
+ const environment=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(environmentFixture('terminal-bench:fixture'));
  const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
  const execute=spyOn(LinuxMachine.prototype,'execute').mockResolvedValue({type:'result',execution:'completed',grading:'passed',uid:20000});
  const cancel=spyOn(LinuxMachine.prototype,'cancel').mockResolvedValue(undefined);
  const dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
  const lab=new Lab(config,'fake');await lab.init();await lab.prepareMachine();
- return {root,config,original,batch,frozen,lab,execute,cleanup:async()=>{try{await lab.close();}finally{validate.mockRestore();prepare.mockRestore();execute.mockRestore();dispose.mockRestore();cancel.mockRestore();await rm(root,{recursive:true,force:true});}}};
+ return {root,config,original,batch,frozen,lab,execute,cleanup:async()=>{try{await lab.close();}finally{validate.mockRestore();environment.mockRestore();prepare.mockRestore();execute.mockRestore();dispose.mockRestore();cancel.mockRestore();await rm(root,{recursive:true,force:true});}}};
 }
 
 test('retry preserves frozen input and prior score; concurrent clicks and restart reuse one durable attempt',async()=>{

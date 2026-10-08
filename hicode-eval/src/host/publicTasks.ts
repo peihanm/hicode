@@ -45,11 +45,11 @@ const profileSchema = z.object({
     publicTargets.add(entry.target);
   }
 });
-export async function profiles(dataset:Extract<Dataset,`terminal-bench${string}`>='terminal-bench') {
+export async function profiles(dataset:Extract<Dataset,`terminal-bench${string}`>) {
   const name=dataset==='terminal-bench'?'terminal-bench.json':'terminal-bench-2.1.json';
   return readJson(join(EVAL_ROOT, 'config',name), z.record(profileSchema));
 }
-export async function validatePublicTask(id: string, path: string, dataset:Extract<Dataset,`terminal-bench${string}`>='terminal-bench') {
+export async function validatePublicTask(id: string, path: string, dataset:Extract<Dataset,`terminal-bench${string}`>) {
   const profile = (await profiles(dataset))[id]; if (!profile) throw Error('Public task has not been adapted to the shared Linux machine');
   const files = await tree(path);
   if (JSON.stringify(Object.keys(files).sort()) !== JSON.stringify(Object.keys(profile.hashes).sort()) || Object.entries(profile.hashes).some(([name, hash]) => files[name]?.sha256 !== hash)) throw Error('Public task differs from the reviewed dataset revision');

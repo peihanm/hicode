@@ -1,9 +1,11 @@
 """Terminal-Bench runtime setup and original pytest grading."""
 import shutil
 import subprocess
+import hashlib
+import json
 from pathlib import Path
 from protocol import prepare_verifier_root
-from verifier import verify, verifier_environment
+from verifier import verify, verifier_environment, validate_report_data
 
 class TerminalBenchRuntime:
     workdir = '/app'
@@ -75,3 +77,8 @@ class TerminalBenchRuntime:
             timeout=config['verifierSeconds'], output_path=verifier_log / 'output.txt', report_path=verifier_log / 'ctrf.json', cwd=project,
             env={**verifier_environment(config, home), **config.get('verifierEnvironment', {})},
             preexec_fn=demote, cancelled=cancelled)
+
+    def recovery_evidence(self, root, job, grading, read_bytes):
+        report=read_bytes(root/'logs/verifier/ctrf.json',16*1024*1024)
+        validate_report_data(json.loads(report),0 if grading=='passed' else 1)
+        return {'logs/verifier/ctrf.json':hashlib.sha256(report).hexdigest()}

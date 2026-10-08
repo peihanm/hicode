@@ -57,7 +57,7 @@ printf '%s\n' '{"type":"result","execution":"completed","grading":"${uploadFailu
   let attemptCreated=false,workerDirectoryReady=false;
   const create=spyOn(RunContainers.prototype,'create').mockImplementation(async()=>{attemptCreated=true;return 'fixture-machine';});
   const name=spyOn(RunContainers.prototype,'name').mockReturnValue('fixture-machine');
-  const state=runSchema.parse({version:2,id:'0123456789abcdef',batchId:'fedcba9876543210',task:'fixture',state:'preparing',createdAt:1,updatedAt:1,model:'fixture',budget:{}});
+  const state=runSchema.parse({version:2,id:'0123456789abcdef',batchId:'fedcba9876543210',task:'fixture',dataset:'terminal-bench',state:'preparing',createdAt:1,updatedAt:1,model:'fixture',budget:{}});
   const calls:string[][]=[];let copies=0;const acknowledgements:string[]=[];
   const run=spyOn(transport,'run').mockImplementation(async command => {
     calls.push(command);

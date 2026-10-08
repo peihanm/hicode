@@ -1,4 +1,6 @@
 import tempfile
+import hashlib
+import json
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
@@ -28,3 +30,21 @@ class DatasetRuntimeTests(TestCase):
             self.assertEqual(result, ('failed', 'original test failed'))
             self.assertEqual(grader.call_args.kwargs['timeout'], 90)
             self.assertIn('/tests/test_outputs.py', grader.call_args.args[0])
+
+    def test_swe_recovery_validates_collected_patch_before_accepting_score(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'logs/verifier').mkdir(parents=True)
+            (root/'logs/verifier/report.json').write_text('{}')
+            patch_text='diff --git a/x b/x\n'
+            (root/'prediction.json').write_text(json.dumps({'instance_id':'case-1','model_patch':patch_text}))
+            (root/'patch-manifest.json').write_text(json.dumps({'sha256':hashlib.sha256(patch_text.encode()).hexdigest()}))
+            job={'dataset':'swe-bench-verified','swe':{'instanceId':'case-1'}}
+            handler=dataset_runtime(job)
+            with patch('swe.validate_swe_report') as validate:
+                evidence=handler.recovery_evidence(root,job,'failed',lambda path,limit:path.read_bytes())
+            validate.assert_called_once_with({},'case-1','failed')
+            self.assertEqual(set(evidence),{'logs/verifier/report.json','prediction.json','patch-manifest.json'})
+            (root/'prediction.json').write_text(json.dumps({'instance_id':'case-1','model_patch':'changed'}))
+            with patch('swe.validate_swe_report'),self.assertRaisesRegex(ValueError,'patch changed'):
+                handler.recovery_evidence(root,job,'failed',lambda path,limit:path.read_bytes())

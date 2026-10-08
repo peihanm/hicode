@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { join } from 'node:path';
 import { readdir, realpath, lstat, readFile } from 'node:fs/promises';
-import { readJson, tree, evidenceTree, contained } from './store.js';
+import { readJson, evidenceTree, contained } from './store.js';
 const sha = z.string().regex(/^[a-f0-9]{64}$/);
 export const sweTaskSchema = z.object({
   kind: z.literal('swe-bench-verified'), instanceId: z.string().regex(/^[a-zA-Z0-9_-]+__[a-zA-Z0-9_.-]+-\d+$/),
@@ -43,8 +43,7 @@ function checkPythonVersion(task: SweTask): void {
       !task.instanceId.startsWith(task.repo.replace('/', '__') + '-'))
     throw Error('SWE task identity differs from the supported repository environment');
 }
-export async function datasetTree(path: string, dataset: string) {
-  if(dataset !== 'swe-bench-verified') return tree(path);
+export async function sweTree(path: string) {
   const files = await evidenceTree(path);
   for(const [name,file] of Object.entries(files)) {
     if(file.symlink !== undefined && (!name.startsWith('repository/') || !contained(join(path,'repository'),await realpath(join(path,name))))) throw Error('SWE source link escapes its repository');
@@ -59,7 +58,7 @@ export async function validateFrozenSweTask(id: string, path: string): Promise<S
   const task = await readJson(join(path, 'swe-task.json'), sweTaskSchema);
   if (task.instanceId !== id) throw Error('SWE task identity mismatch');
   checkPythonVersion(task);
-  const actual = await datasetTree(path,'swe-bench-verified');
+  const actual = await sweTree(path);
   delete actual['swe-task.json'];
   if (JSON.stringify(Object.keys(actual).sort()) !== JSON.stringify(Object.keys(task.files).sort()) ||
     Object.entries(actual).some(([name, file]) => task.files[name] !== file.sha256)) throw Error('SWE task differs from its prepared snapshot');

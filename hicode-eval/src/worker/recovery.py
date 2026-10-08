@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 import cleanup
 from protocol import Events, atomic_json
-from verifier import validate_report_data
+from dataset_runtime import dataset_runtime
 
 
 def read_bytes(path, limit):
@@ -89,23 +89,11 @@ def recover(root):
         if outcome['grading'] != 'unavailable':
             if outcome['execution'] not in {'completed', 'timeout', 'failed'}:
                 raise ValueError('Cancelled execution cannot claim a grade')
-            job=record(root/'job.json') if (root/'job.json').exists() else {}
-            swe=job.get('dataset')=='swe-bench-verified'
-            report = root / ('logs/verifier/report.json' if swe else 'logs/verifier/ctrf.json')
-            report_data = read_bytes(report, 16 * 1024 * 1024)
-            if swe:
-                from swe import validate_swe_report
-                validate_swe_report(json.loads(report_data),job['swe']['instanceId'],outcome['grading'])
-                prediction=json.loads(read_bytes(root/'prediction.json',16*1024*1024));patch_manifest=record(root/'patch-manifest.json')
-                if prediction['instance_id']!=job['swe']['instanceId'] or hashlib.sha256(prediction['model_patch'].encode()).hexdigest()!=patch_manifest['sha256']:
-                    raise ValueError('SWE exported patch changed')
-                proof['prediction.json']=hashlib.sha256(read_bytes(root/'prediction.json',16*1024*1024)).hexdigest()
-                proof['patch-manifest.json']=hashlib.sha256(read_bytes(root/'patch-manifest.json',65536)).hexdigest()
-            else:validate_report_data(json.loads(report_data), 0 if outcome['grading'] == 'passed' else 1)
+            job=record(root/'job.json')
+            proof.update(dataset_runtime(job).recovery_evidence(root,job,outcome['grading'],read_bytes))
             reward = read_bytes(root / 'logs/verifier/reward.txt', 32).strip()
             if reward != (b'1' if outcome['grading'] == 'passed' else b'0'):
                 raise ValueError('Reward and outcome disagree')
-            proof['logs/verifier/report.json' if swe else 'logs/verifier/ctrf.json'] = hashlib.sha256(report_data).hexdigest()
             proof['logs/verifier/reward.txt'] = hashlib.sha256(reward).hexdigest()
         receipt = root / 'recovery.json'
         if receipt.exists():

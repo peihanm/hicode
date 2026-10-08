@@ -59,7 +59,7 @@ test('manifest refuses path escapes, undeclared files, hidden test sources, and 
 });
 
 test('catalog includes reviewed tasks with the exact newly required inputs', async () => {
-  const available = await profiles();
+  const available = await profiles('terminal-bench');
   expect(Object.keys(available)).toHaveLength(55);
   expect(available['torch-tensor-parallelism']!.packages).toEqual(['torch==2.7.0']);
   expect(available['torch-pipeline-parallelism']!.verifierPackages).toEqual(['torch==2.7.0','transformers==4.55.0']);

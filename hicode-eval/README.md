@@ -71,7 +71,7 @@ bash hicode-eval/eval.sh prepare-environments \
   --environments ../hicode-eval-data/environments
 ```
 
-环境分为公共底座、依赖组合、可选题目特殊准备；每次运行只新建容器的可写层。默认准备未通过与待测试，有题包但缺依赖的任务报告 blocked；没有审定题包的任务仍待适配。已通过的任务可之后用 `--ids DATASET:ID` 准备。同名题跨数据集时必须写完整身份；依赖镜像按配方复用，环境绑定按数据集版本和题目 ID 区分。公共底座由 `config/clean-base.Dockerfile`、`clean-base-images.json` 的官方镜像摘要及 HiCode 锁文件构建，不再导出缓存机的系统目录。SWE 依赖声明位于 `config/environment-recipes/<环境 ID>.json`，记录完整包版本和 Python 补丁版本；没有配方的组合保持未准备，逐组添加。配方变化产生新的镜像身份，不改旧镜像。系统包与通用判题依赖的实际版本清单位于镜像 `/opt/hicode-environment/`；当前 apt 仓库和通用判题传递依赖仍按构建时解析，尚不承诺跨日期逐字节重建一致。
+环境分为公共底座、依赖组合、可选题目特殊准备；每次运行只新建容器的可写层。默认准备未通过与待测试，有题包但缺依赖的任务报告 blocked；没有审定题包的任务仍待适配。已通过的任务可之后用 `--ids DATASET:ID` 准备。同名题跨数据集时必须写完整身份；依赖镜像按配方复用，环境绑定按数据集版本和题目 ID 区分。提交批次前会重新核验所选题目的题包、当前配方和镜像；绑定过期时直接拒绝提交，不先产生失败的 Run。公共底座由 `config/clean-base.Dockerfile`、`clean-base-images.json` 的官方镜像摘要及 HiCode 锁文件构建，不再导出缓存机的系统目录。SWE 依赖声明位于 `config/environment-recipes/<环境 ID>.json`，记录完整包版本和 Python 补丁版本；没有配方的组合保持未准备，逐组添加。配方变化产生新的镜像身份，不改旧镜像。系统包与通用判题依赖的实际版本清单位于镜像 `/opt/hicode-environment/`；当前 apt 仓库和通用判题传递依赖仍按构建时解析，尚不承诺跨日期逐字节重建一致。
 
 服务默认每题 1 CPU、4096 MiB，支持 `--cpus`、`--memory-mb`；最多并发 5，默认网络 isolated。
 

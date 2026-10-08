@@ -52,7 +52,7 @@ test('the same upstream task ID has independent results in two dataset releases'
 async function persist(f:Awaited<ReturnType<typeof fixture>>){
   await f.catalog.record(f.run);
   await save(join(f.data,'runs',f.run.id,'state.json'),f.run);
-  await save(join(f.data,'batches',f.run.batchId+'.json'),batchSchema.parse({version:1,id:f.run.batchId,name:'fixture',network:'isolated',tasks:['task'],runIds:[f.run.id],budget:{},concurrency:1,createdAt:1,model:{source:'qwen',model:'fake',apiKeyEnv:'UNUSED_KEY',baseUrl:'https://offline.invalid/v1'},payload:{}}));
+  await save(join(f.data,'batches',f.run.batchId+'.json'),batchSchema.parse({version:2,id:f.run.batchId,name:'fixture',network:'isolated',taskRefs:[{dataset:'terminal-bench',id:'task'}],runIds:[f.run.id],budget:{},concurrency:1,createdAt:1,model:{source:'qwen',model:'fake',apiKeyEnv:'UNUSED_KEY',baseUrl:'https://offline.invalid/v1'},payload:{}}));
 }
 
 test('archive keeps final patch and grading evidence before deleting the finished batch',async()=>{

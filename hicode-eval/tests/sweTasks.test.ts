@@ -1,5 +1,5 @@
 import {seedCatalog} from './helpers/catalog.js';
-import {expect,test} from 'bun:test';
+import {expect,test,beforeEach,afterEach,spyOn} from 'bun:test';
 import {mkdtemp,mkdir,realpath,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -7,6 +7,12 @@ import {tree,save} from '../src/host/store.js';
 import {validateSweTask,sweCatalog,sweTaskSchema} from '../src/host/sweTasks.js';
 import {Lab} from '../src/host/manager.js';
 import {configSchema} from '../src/host/types.js';
+import {EnvironmentStore} from '../src/host/environments.js';
+import {environmentFixture} from './helpers/catalog.js';
+
+let environment:ReturnType<typeof spyOn>;
+beforeEach(()=>{environment=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(environmentFixture('swe-bench-verified:fixture'));});
+afterEach(()=>environment.mockRestore());
 
 test('SWE bundles freeze original identity and split public code from private grading data',async()=>{
  const root=await realpath(await mkdtemp(join(tmpdir(),'hicode-swe-task-'))),id='django__django-15731',task=join(root,id);
@@ -50,7 +56,7 @@ test('mixed submission under CLI umask preserves links and executable bits and r
  const {symlink,chmod}=await import('node:fs/promises');
  const {LinuxMachine}=await import('../src/host/linux.js');
  const adapters=await import('../src/host/publicTasks.js');
- const {datasetTree}=await import('../src/host/sweTasks.js');
+ const {sweTree}=await import('../src/host/sweTasks.js');
  const root=await realpath(await mkdtemp(join(tmpdir(),'hicode-mixed-submit-')));
  const prior=process.umask(0o077);
  const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
@@ -70,7 +76,7 @@ test('mixed submission under CLI umask preserves links and executable bits and r
    await writeFile(join(task,'repository/script'),'#!/bin/sh\nexit 0\n');await chmod(join(task,'repository/script'),0o755);
    await writeFile(join(task,'instruction.md'),'Public problem');await writeFile(join(task,'hidden/evaluation.json'),'Private fixture');
    await symlink('script',join(task,'repository/link'));
-   const files=Object.fromEntries(Object.entries(await datasetTree(task,'swe-bench-verified')).map(([path,file])=>[path,file.sha256]));
+   const files=Object.fromEntries(Object.entries(await sweTree(task)).map(([path,file])=>[path,file.sha256]));
    await save(join(task,'swe-task.json'),{kind:'swe-bench-verified',instanceId:id,revision:'c'.repeat(40),repo:'django/django',version:id.startsWith('django__django-147')?'4.1':'4.2',baseCommit:'a'.repeat(40),harnessVersion:'4.1.0',environment:'/opt/hicode-swe/cache/'+'a'.repeat(64),python:'3.9',verifierSeconds:1800,baselineCommit:'b'.repeat(40),files,evaluationMode:'shared-linux-development'});
   }
   for(const id of ['regex-log','cancel-async-tasks']){
@@ -82,8 +88,8 @@ test('mixed submission under CLI umask preserves links and executable bits and r
   const batch=await lab.submit({name:'mixed freeze',concurrency:5,tasks:['regex-log',...ids,'cancel-async-tasks'].map(id=>({id,agentSeconds:3600}))});
   for(let i=0;i<100&&execute.mock.calls.length<5;i++)await Bun.sleep(5);
   expect(execute).toHaveBeenCalledTimes(5);expect(peak).toBe(5);expect(batch.runIds).toHaveLength(6);
-  const frozen=await datasetTree(join(lab.path(batch.runIds[1]!),'task',ids[0]),'swe-bench-verified');
-  expect(frozen).toEqual(await datasetTree(join(registry,ids[0]),'swe-bench-verified'));
+  const frozen=await sweTree(join(lab.path(batch.runIds[1]!),'task',ids[0]));
+  expect(frozen).toEqual(await sweTree(join(registry,ids[0])));
   release();
   for(let i=0;i<100&&batch.runIds.some(id=>lab!.runs.get(id)?.state!=='passed');i++)await Bun.sleep(5);
   expect(execute).toHaveBeenCalledTimes(6);expect(peak).toBe(5);

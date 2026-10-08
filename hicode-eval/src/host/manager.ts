@@ -40,8 +40,8 @@ export class Lab {
     for (const name of await readdir(join(this.config.data, 'batches'))) {
       if (!/^[a-f0-9]{16}\.json$/.test(name)) continue;
       const batch = await readJson(join(this.config.data, 'batches', name), batchSchema);
-      if (name !== batch.id + '.json' || batch.tasks.length !== batch.runIds.length ||
-        (batch.taskRefs&&batch.taskRefs.length!==batch.tasks.length)||new Set(batch.runIds).size !== batch.runIds.length) throw Error('Invalid batch identity');
+      if (name !== batch.id + '.json' || batch.taskRefs.length !== batch.runIds.length ||
+        new Set(batch.taskRefs.map(taskKey)).size!==batch.taskRefs.length||new Set(batch.runIds).size !== batch.runIds.length) throw Error('Invalid batch identity');
       this.batches.set(batch.id, batch);
     }
     for (const name of await readdir(join(this.config.data, 'runs'))) {
@@ -50,8 +50,7 @@ export class Lab {
       if (state.id !== name) throw Error('Run identity mismatch');
       const batch = this.batches.get(state.batchId);
       const index=batch?.runIds.indexOf(name)??-1;
-      if (!batch || index<0 || batch.tasks[index]!==state.task ||
-        (batch.taskRefs&&taskKey(batch.taskRefs[index]!)!==taskKey({dataset:state.dataset,id:state.task}))) throw Error('Orphan or mismatched run');
+      if (!batch || index<0 || taskKey(batch.taskRefs[index]!)!==taskKey({dataset:state.dataset,id:state.task})) throw Error('Orphan or mismatched run');
       if (state.network !== batch.network) throw Error('Run network mode differs from its frozen batch');
       this.runs.set(name, state);
       if(done(state.state)&&state.state!=='needs_recovery'){
@@ -72,8 +71,7 @@ export class Lab {
     for(const batch of this.batches.values())if(batch.retryOf){
       const origin=batch.retryOf,parent=this.runs.get(origin.runId);
       if(retried.has(origin.runId)||batch.runIds.length!==1||batch.runIds[0]===origin.runId||batch.id===origin.batchId||
-        (parent&&(parent.batchId!==origin.batchId||parent.task!==batch.tasks[0]||
-          (batch.taskRefs&&batch.taskRefs[0]?.dataset!==parent.dataset)||
+        (parent&&(parent.batchId!==origin.batchId||taskKey(batch.taskRefs[0]!)!==taskKey({dataset:parent.dataset,id:parent.task})||
           origin.attempt!==(this.batches.get(parent.batchId)!.retryOf?.attempt??1)+1)))
         throw Error('Invalid retry lineage');
       retried.add(origin.runId);
@@ -122,21 +120,25 @@ export class Lab {
     if (input.concurrency > this.config.concurrency) throw Error('Batch exceeds service concurrency');
     if(new Set(input.tasks.map(ref=>ref.dataset?taskKey({dataset:ref.dataset,id:ref.id}):ref.id)).size!==input.tasks.length)
       throw Error('Choose distinct tasks');
-    const catalog=await this.catalog();
     const selected:CatalogTask[]=input.tasks.map(ref=>{
       const matches=this.taskCatalog!.list().filter(task=>task.id===ref.id&&(!ref.dataset||task.dataset===ref.dataset));
       if(matches.length!==1)throw Error(matches.length?'Ambiguous task ID; specify dataset':'Unknown task');
       return matches[0]!;
     });
     if(new Set(selected.map(taskKey)).size!==selected.length)throw Error('Choose distinct tasks');
-    if(selected.some(task=>!catalog.find(item=>item.id===task.id&&item.dataset===task.dataset)?.environmentPrepared))
-      throw Error('Prepare the selected task environments before submission');
-    const tasks=selected.map(task=>task.id);
+    const environments=new EnvironmentStore(this.config.environments,this.config.context);
+    for(const task of selected){
+      if(!task.source)throw Error('Prepare the selected task source before submission: '+taskKey(task));
+      try{await environments.resolve(task);}
+      catch(error){throw Error('Prepare the selected task environment before submission: '+taskKey(task)+' · '+String(error));}
+    }
+    const taskRefs=selected.map(task=>({id:task.id,dataset:task.dataset}));
     const payload = await readJson(join(this.config.payload, 'manifest.json'), z.record(z.unknown()));
     if(original&&!isDeepStrictEqual(this.batches.get(original.batchId)!.payload,payload))throw Error('Current payload differs from the original; restore the original payload before rerunning');
     if (this.closed || this.halted) throw Error('Service closing or scheduling blocked');
     const id = randomBytes(8).toString('hex'), now = Date.now() / 1000;
-    const batch = batchSchema.parse({ ...input, network: input.network ?? this.config.network, tasks, taskRefs:selected.map(task=>({id:task.id,dataset:task.dataset})), budget: this.config.budget, version: 1, id, createdAt: now, runIds: tasks.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
+    const batch = batchSchema.parse({name:input.name, network: input.network ?? this.config.network, concurrency:input.concurrency,
+      taskRefs,budget: this.config.budget, version: 2, id, createdAt: now, runIds: taskRefs.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
       ...(original?{retryOf:{batchId:original.batchId,runId:original.id,attempt:(this.batches.get(original.batchId)!.retryOf?.attempt??1)+1}}:{}) });
     const states = input.tasks.map((task, i) => runSchema.parse({ version: 2, network: batch.network, id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
     // Publish the batch only after all children are durable; no worker sees a partial submission.

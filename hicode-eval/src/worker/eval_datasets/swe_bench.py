@@ -1,5 +1,7 @@
 """SWE-bench Verified runtime setup and grading."""
 import os
+import hashlib
+import json
 from pathlib import Path
 
 class SweBenchRuntime:
@@ -46,3 +48,17 @@ class SweBenchRuntime:
     def grade(self, *, root, config, uid, gid, project, home, logs, command, namespace, demote, cancelled):
         from swe import verify_swe
         return verify_swe(root, config, uid, gid, cancelled)
+
+    def recovery_evidence(self, root, job, grading, read_bytes):
+        from swe import validate_swe_report
+        report=read_bytes(root/'logs/verifier/report.json',16*1024*1024)
+        validate_swe_report(json.loads(report),job['swe']['instanceId'],grading)
+        prediction_data=read_bytes(root/'prediction.json',16*1024*1024)
+        manifest_data=read_bytes(root/'patch-manifest.json',65536)
+        prediction=json.loads(prediction_data)
+        manifest=json.loads(manifest_data)
+        if prediction['instance_id']!=job['swe']['instanceId'] or hashlib.sha256(prediction['model_patch'].encode()).hexdigest()!=manifest['sha256']:
+            raise ValueError('SWE exported patch changed')
+        return {'logs/verifier/report.json':hashlib.sha256(report).hexdigest(),
+                'prediction.json':hashlib.sha256(prediction_data).hexdigest(),
+                'patch-manifest.json':hashlib.sha256(manifest_data).hexdigest()}
