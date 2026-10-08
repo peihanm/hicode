@@ -20,11 +20,11 @@ test('task results survive run cleanup; queue-only cancellation is still unteste
   const f=await fixture();
   try {
     await f.catalog.record({...f.run,state:'cancelled',execution:'cancelled',grading:'pending',startedAt:undefined});
-    expect(f.catalog.get('task').status).toBe('untested');
+    expect(f.catalog.get('terminal-bench','task').status).toBe('untested');
     await f.catalog.record(f.run);
     await f.catalog.record({...f.run,id:'c'.repeat(16),state:'failed',grading:'failed'});
-    expect(f.catalog.get('task').status).toBe('passed');
-    expect((await TaskCatalog.open(f.catalogPath)).get('task').results).toHaveLength(2);
+    expect(f.catalog.get('terminal-bench','task').status).toBe('passed');
+    expect((await TaskCatalog.open(f.catalogPath)).get('terminal-bench','task').results).toHaveLength(2);
   }finally{await f.cleanup();}
 });
 
@@ -33,8 +33,19 @@ test('accepted recheck is preserved when the original failed run is recorded aga
   try {
     await f.catalog.record(f.run);
     await f.catalog.record({...f.run,state:'failed',grading:'failed'});
-    expect(f.catalog.get('task').results[0]).toMatchObject({grading:'failed',accepted:true});
-    expect(f.catalog.get('task').status).toBe('passed');
+    expect(f.catalog.get('terminal-bench','task').results[0]).toMatchObject({grading:'failed',accepted:true});
+    expect(f.catalog.get('terminal-bench','task').status).toBe('passed');
+  }finally{await f.cleanup();}
+});
+
+test('the same upstream task ID has independent results in two dataset releases',async()=>{
+  const f=await fixture();
+  try {
+    await f.catalog.register([{id:'task',dataset:'terminal-bench-2.1',source:join(f.root,'new-task')}]);
+    await f.catalog.record({...f.run,dataset:'terminal-bench-2.1'});
+    expect(f.catalog.get('terminal-bench','task').status).toBe('untested');
+    expect(f.catalog.get('terminal-bench-2.1','task').status).toBe('passed');
+    expect((await TaskCatalog.open(f.catalogPath)).counts()).toMatchObject({total:2,passed:1,untested:1});
   }finally{await f.cleanup();}
 });
 

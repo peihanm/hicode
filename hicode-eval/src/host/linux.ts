@@ -44,7 +44,7 @@ export class LinuxMachine {
   async regrade(runId:string, reviewId:string, taskRoot:string, patchPath:string, task:SweTask, input:RegradeInput, output:string):Promise<void> {
     if(!/^[a-f0-9]{16}$/.test(runId)||!/^[a-f0-9]{16}$/.test(reviewId))throw Error('Invalid recheck identity');
     const catalog=await TaskCatalog.open(this.config.catalog);
-    const environment=await this.environments.resolve({...catalog.get(task.instanceId),source:taskRoot});
+    const environment=await this.environments.resolve({...catalog.get('swe-bench-verified',task.instanceId),source:taskRoot});
     const container=await this.containers.create(reviewId,(environment.preparation??environment.dependencies).imageId);
     await save(join(output,'container.json'),{session:reviewId,id:container,attach:'docker --context '+this.config.context+' exec -it '+container+' bash'});
     await save(join(output,'environment.json'),environment);
@@ -82,8 +82,9 @@ export class LinuxMachine {
     const archive = await readFile(join(this.config.payload, 'source.tar.gz'));
     const hash = createHash('sha256').update(archive).digest('hex');
     if (manifest.files['source.tar.gz'] !== hash) throw Error('Source payload changed');
-    await run(this.docker('exec', this.config.machine, 'mkdir', '-p', '/opt/hicode-eval', '/opt/hicode/releases', '/eval/runs'));
-    for (const name of ['runner.py', 'model_proxy.py', 'network_entry.py', 'cleanup.py', 'recovery.py', 'terminal.py', 'verifier.py', 'protocol.py', 'scm.py', 'record.py', 'preflight.ts', 'bootstrap.py', 'swe.py', 'venv_paths.py', 'xarray_report.py','django_report.py']) await run(this.docker('cp', join(EVAL_ROOT, 'src/worker', name), this.config.machine + ':/opt/hicode-eval/' + name));
+    await run(this.docker('exec', this.config.machine, 'mkdir', '-p', '/opt/hicode-eval/eval_datasets', '/opt/hicode/releases', '/eval/runs'));
+    for (const name of ['runner.py', 'dataset_runtime.py', 'model_proxy.py', 'network_entry.py', 'cleanup.py', 'recovery.py', 'terminal.py', 'verifier.py', 'protocol.py', 'scm.py', 'record.py', 'preflight.ts', 'bootstrap.py', 'swe.py', 'venv_paths.py', 'xarray_report.py','django_report.py']) await run(this.docker('cp', join(EVAL_ROOT, 'src/worker', name), this.config.machine + ':/opt/hicode-eval/' + name));
+    await run(this.docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',this.config.machine+':/opt/hicode-eval/eval_datasets/'));
     await run(this.docker('cp', join(EVAL_ROOT, 'src/datasets/reviewed_test_deps.py'), this.config.machine + ':/opt/hicode-eval/reviewed_test_deps.py'));
     const target = '/opt/hicode-eval/source-' + hash + '.tar.gz';
     await run(this.docker('cp', join(this.config.payload, 'source.tar.gz'), this.config.machine + ':' + target));
@@ -152,19 +153,20 @@ export class LinuxMachine {
     const task = join(path, 'task', state.task);
     const inputs = join(path, 'inputs');
     const swe = state.dataset === 'swe-bench-verified' ? await validateSweTask(state.task, task) : undefined;
-    const profile = swe ? undefined : await validatePublicTask(state.task, task);
+    const profile = state.dataset === 'swe-bench-verified' ? undefined : await validatePublicTask(state.task, task,state.dataset);
     const spec = swe ? { agent:{timeout_sec:1800}, verifier:{timeout_sec:swe.verifierSeconds} } : taskSchema.parse(Bun.TOML.parse(await Bun.file(join(task, 'task.toml')).text()));
     const catalog=await TaskCatalog.open(this.config.catalog);
-    const environment=await this.environments.resolve({...catalog.get(state.task),source:task});
+    const environment=await this.environments.resolve({...catalog.get(state.dataset,state.task),source:task});
     const container=this.containers.name(state.id);
     let proc:Bun.Subprocess<'ignore','pipe','pipe'>;
     try {
     await save(join(path,'environment.json'),environment);
     await save(join(path,'container.json'),{session:state.id,id:container,attach:'docker --context '+this.config.context+' exec -it '+container+' bash'});
     await this.containers.create(state.id,(environment.preparation??environment.dependencies).imageId);
-    await run(this.docker('exec',container,'mkdir','-p','/opt/hicode-eval'));
-    for(const name of ['runner.py','model_proxy.py','network_entry.py','cleanup.py','recovery.py','terminal.py','verifier.py','protocol.py','scm.py','record.py','preflight.ts','bootstrap.py','swe.py','venv_paths.py','xarray_report.py','django_report.py'])
+    await run(this.docker('exec',container,'mkdir','-p','/opt/hicode-eval','/opt/hicode-eval/eval_datasets'));
+    for(const name of ['runner.py','dataset_runtime.py','model_proxy.py','network_entry.py','cleanup.py','recovery.py','terminal.py','verifier.py','protocol.py','scm.py','record.py','preflight.ts','bootstrap.py','swe.py','venv_paths.py','xarray_report.py','django_report.py'])
       await run(this.docker('cp',join(EVAL_ROOT,'src/worker',name),container+':/opt/hicode-eval/'+name));
+    await run(this.docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',container+':/opt/hicode-eval/eval_datasets/'));
     await run(this.docker('cp',join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),container+':/opt/hicode-eval/reviewed_test_deps.py'));
     const archive='/opt/hicode-eval/source-'+this.release.split('/').at(-1)+'.tar.gz';
     await run(this.docker('cp',join(this.config.payload,'source.tar.gz'),container+':'+archive));
@@ -189,7 +191,7 @@ export class LinuxMachine {
     await run(this.docker('cp', join(task, 'instruction.md'), container + ':' + remote + '/instruction.md'));
     await save(join(path, 'job.json'), { model: this.config.model, network: state.network, release: this.release, agentSeconds: state.budget.agentSeconds, originalAgentSeconds: spec.agent.timeout_sec, verifierSeconds: spec.verifier.timeout_sec,
       ...(swe ? {dataset:'swe-bench-verified',swe,initializer:null,packages:[],verifierPackages:[],verifierPrelude:'none'} :
-        {dataset:'terminal-bench',commands:profile!.commands,publicTestInputs:profile!.publicTestInputs,environment:profile!.environment,verifierEnvironment:profile!.verifierEnvironment,initializer:profile!.initializer,packages:profile!.packages,verifierPackages:profile!.verifierPackages,verifierPrelude:profile!.verifierPrelude,verifierRootOverlay:profile!.verifierRootOverlay,verifierChroot:profile!.verifierChroot}) });
+        {dataset:state.dataset,commands:profile!.commands,publicTestInputs:profile!.publicTestInputs,environment:profile!.environment,verifierEnvironment:profile!.verifierEnvironment,initializer:profile!.initializer,packages:profile!.packages,verifierPackages:profile!.verifierPackages,verifierPrelude:profile!.verifierPrelude,verifierRootOverlay:profile!.verifierRootOverlay,verifierChroot:profile!.verifierChroot}) });
     await run(this.docker('cp', join(path, 'job.json'), container + ':' + remote + '/job.json'));
     if (await exists(join(path, 'cancel'))) await this.cancel(state.id);
     await mkdir(join(path, 'live'), { recursive: true });

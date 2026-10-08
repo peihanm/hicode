@@ -27,7 +27,7 @@ class RunnerFailureTest(unittest.TestCase):
             logs.mkdir(parents=True)
             if claimed_dependencies:
                 (root / 'project/.eval-verifier-python').mkdir(parents=True)
-            config = {'model': {'source': 'qwen', 'baseUrl': 'https://example.invalid',
+            config = {'dataset': 'terminal-bench', 'model': {'source': 'qwen', 'baseUrl': 'https://example.invalid',
                                 'apiKeyEnv': 'EVAL_FIXTURE_KEY', 'model': 'fixture'},
                       'release': '/release', 'packages': [], 'verifierPackages': ['toml==0.10.2'],
                       'initializer': None, 'agentSeconds': 3600, 'verifierSeconds': 10,
@@ -125,7 +125,8 @@ class RunnerFailureTest(unittest.TestCase):
                 stack.enter_context(patch('terminal.capture'))
                 stack.enter_context(patch('terminal.settle', return_value=True))
                 stack.enter_context(patch('terminal.submit_prompt'))
-                stack.enter_context(patch('verifier.verify', side_effect=grade))
+                stack.enter_context(patch('eval_datasets.terminal_bench.Path', FixturePath))
+                stack.enter_context(patch('eval_datasets.terminal_bench.verify', side_effect=grade))
                 gateway = stack.enter_context(patch('model_proxy.Gateway'))
                 gateway.return_value.close.side_effect = lambda: calls.append('gateway-close')
                 if timed_out:

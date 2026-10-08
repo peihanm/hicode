@@ -14,7 +14,7 @@
 
 1. 核对现有服务和 Docker 引擎。已有题包无需重新登记；新增登记要求服务释放 catalog 写锁，不能绕过锁改正在使用的台账。
 2. `register-tasks --catalog FILE --tasks DIR` 或 `--swe-tasks DIR` 校验并登记外部题包。缺失 SWE bundle 先提供审定输入；没有旧共享机安装入口。
-3. `prepare-environments --catalog FILE --environments DIR --ids ID1,ID2` 只准备选定题目（显式 IDs 包含历史通过题）。默认不传 IDs 会处理其他未通过/待测任务，因此小批准备必须传 IDs。
+3. `prepare-environments --catalog FILE --environments DIR --ids DATASET:ID1,DATASET:ID2` 只准备选定题目（显式 IDs 包含历史通过题）。同名题跨数据集时必须带数据集版本；默认不传 IDs 会处理其他未通过/待测任务，因此小批准备必须传 IDs。
 4. 公共底座由 clean-base.Dockerfile、clean-base-images.json 和锁文件生成。SWE 配方在 `config/environment-recipes/<environment-key>.json`；Terminal profile 声明工具和 actor/verifier 包。复用相同不可变镜像，缺配方时逐组补齐。不要从旧容器导出系统目录或虚拟环境。
 5. 查看本次 `preparation-report.json` 的 prepared/failed/unprepared，保存选题专属副本，避免下次准备覆盖唯一证据。构建失败查看对应 layers/*/build.log；不在运行容器里临时安装补救。
 

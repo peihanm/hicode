@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "python": "3.6.15",
+  "requirements": [
+    "apipkg==1.5",
+    "attrs==17.3.0",
+    "coverage==4.5.4",
+    "cython==0.29.36",
+    "execnet==1.5.0",
+    "hypothesis==3.44.2",
+    "jinja2==2.11.3",
+    "markupsafe==2.0.1",
+    "numpy==1.19.2",
+    "packaging==16.8",
+    "pip==21.3.1",
+    "pluggy==0.6.0",
+    "psutil==5.4.2",
+    "py==1.11.0",
+    "pyparsing==2.4.7",
+    "pytest-arraydiff==0.1",
+    "pytest-astropy-header==0.1",
+    "pytest-astropy==0.2.1",
+    "pytest-cov==2.5.1",
+    "pytest-doctestplus==0.1.2",
+    "pytest-filter-subpackage==0.1",
+    "pytest-forked==0.2",
+    "pytest-mock==1.6.3",
+    "pytest-openfiles==0.2.0",
+    "pytest-remotedata==0.2.0",
+    "pytest-xdist==1.20.1",
+    "pytest==3.3.1",
+    "pyyaml==3.12",
+    "setuptools==38.2.4",
+    "six==1.16.0",
+    "sortedcontainers==1.5.9",
+    "wheel==0.37.1"
+  ],
+  "buildRequirements": [],
+  "buildEnvironment": {},
+  "buildGroups": [
+    {
+      "packages": [
+        "cython==0.29.36"
+      ],
+      "requirements": []
+    },
+    {
+      "packages": [
+        "numpy==1.19.2"
+      ],
+      "requirements": []
+    },
+    {
+      "packages": [
+        "markupsafe==2.0.1"
+      ],
+      "requirements": []
+    },
+    {
+      "packages": [
+        "jinja2==2.11.3"
+      ],
+      "requirements": []
+    }
+  ],
+  "systemPackages": [
+    "build-essential",
+    "gfortran",
+    "libbz2-dev",
+    "libffi-dev",
+    "liblapack-dev",
+    "liblzma-dev",
+    "libncurses-dev",
+    "libopenblas-dev",
+    "libreadline-dev",
+    "libsqlite3-dev",
+    "locales",
+    "pkg-config",
+    "uuid-dev",
+    "zlib1g-dev"
+  ],
+  "provenance": "Candidate ARM64 adaptation of official SWE-bench 4.1.0 Astropy 1.3 Python 3.6 environment: original legacy pytest plugin versions and compatible pinned build tools; the frozen Astropy 3.1.dev source contains its own astropy._erfa and does not require the official external pyerfa test pin for import; each Astropy source and astropy-helpers submodule is frozen separately. No target Astropy package or hidden grading material is in this dependency image. Count only after offline source installation, Actor preflight, and original verifier checks."
+}

@@ -28,7 +28,7 @@ export async function archiveRuns(data:string,catalogPath:string,apply:boolean){
       if(pending.catalog!==catalogPath)throw Error('Cleanup catalog changed');
       for(const id of pending.runs){
         const receipt=await readJson(join(archive,id,'archive.json'),archiveSchema);
-        if(receipt.runId!==id||receipt.originalPath!==join(data,'runs',id)||!catalog.get(receipt.task).results.some(r=>r.runId===id))throw Error('Invalid cleanup receipt');
+        if(receipt.runId!==id||receipt.originalPath!==join(data,'runs',id))throw Error('Invalid cleanup receipt');
         for(const [name,metadata] of Object.entries(receipt.files)){
           if(!/^[a-zA-Z0-9_.\/-]+$/.test(name)||name.startsWith('/')||name.split('/').includes('..'))throw Error('Unsafe archive entry');
           const path=join(archive,id,name);
@@ -37,6 +37,9 @@ export async function archiveRuns(data:string,catalogPath:string,apply:boolean){
           try {if((await fd.stat()).size!==metadata.bytes||createHash('sha256').update(await fd.readFile()).digest('hex')!==metadata.sha256)throw Error('Archived evidence changed');}
           finally {await fd.close();}
         }
+        const state=await readJson(join(archive,id,'state.json'),runSchema);
+        if(state.task!==receipt.task||state.id!==id||!catalog.get(state.dataset,receipt.task).results.some(r=>r.runId===id))
+          throw Error('Invalid cleanup receipt');
       }
       for(const id of pending.runs){const path=join(data,'runs',id);if(await exists(path)&&await realpath(path)!==resolve(path))throw Error('Redirected cleanup directory');await rm(path,{recursive:true,force:true});}
       for(const id of pending.batches)await rm(join(data,'batches',id+'.json'),{force:true});
@@ -62,7 +65,7 @@ export async function archiveRuns(data:string,catalogPath:string,apply:boolean){
       }
       if(rows.some(row=>!['passed','failed','error','cancelled'].includes(row.state.state)))continue;
       for(const row of rows){
-        const stored=catalog.get(row.state.task).results.find(result=>result.runId===row.id);
+        const stored=catalog.get(row.state.dataset,row.state.task).results.find(result=>result.runId===row.id);
         if(!stored||stored.execution!==row.state.execution||stored.grading!==row.state.grading)
           throw Error('Archive the task result before deleting its run: '+row.id);
       }

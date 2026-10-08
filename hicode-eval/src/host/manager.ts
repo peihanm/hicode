@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
-import { validatePublicTask } from './publicTasks.js';
-import { validateSweTask, datasetTree } from './sweTasks.js';
 import {TaskCatalog} from './catalog.js';
+import type {CatalogTask} from './catalog.js';
+import {taskAdapters,taskKey} from './datasets.js';
 import {EnvironmentStore} from './environments.js';
 import { EvidenceCollectionError, LinuxMachine } from './linux.js';
 import { readJson, save, exists, contained } from './store.js';
@@ -40,7 +40,8 @@ export class Lab {
     for (const name of await readdir(join(this.config.data, 'batches'))) {
       if (!/^[a-f0-9]{16}\.json$/.test(name)) continue;
       const batch = await readJson(join(this.config.data, 'batches', name), batchSchema);
-      if (name !== batch.id + '.json' || batch.tasks.length !== batch.runIds.length || new Set(batch.runIds).size !== batch.runIds.length) throw Error('Invalid batch identity');
+      if (name !== batch.id + '.json' || batch.tasks.length !== batch.runIds.length ||
+        (batch.taskRefs&&batch.taskRefs.length!==batch.tasks.length)||new Set(batch.runIds).size !== batch.runIds.length) throw Error('Invalid batch identity');
       this.batches.set(batch.id, batch);
     }
     for (const name of await readdir(join(this.config.data, 'runs'))) {
@@ -48,7 +49,9 @@ export class Lab {
       const state = await readJson(join(this.config.data, 'runs', name, 'state.json'), runSchema);
       if (state.id !== name) throw Error('Run identity mismatch');
       const batch = this.batches.get(state.batchId);
-      if (!batch || batch.runIds.indexOf(name) < 0 || batch.tasks[batch.runIds.indexOf(name)] !== state.task) throw Error('Orphan or mismatched run');
+      const index=batch?.runIds.indexOf(name)??-1;
+      if (!batch || index<0 || batch.tasks[index]!==state.task ||
+        (batch.taskRefs&&taskKey(batch.taskRefs[index]!)!==taskKey({dataset:state.dataset,id:state.task}))) throw Error('Orphan or mismatched run');
       if (state.network !== batch.network) throw Error('Run network mode differs from its frozen batch');
       this.runs.set(name, state);
       if(done(state.state)&&state.state!=='needs_recovery'){
@@ -69,7 +72,9 @@ export class Lab {
     for(const batch of this.batches.values())if(batch.retryOf){
       const origin=batch.retryOf,parent=this.runs.get(origin.runId);
       if(retried.has(origin.runId)||batch.runIds.length!==1||batch.runIds[0]===origin.runId||batch.id===origin.batchId||
-        (parent&&(parent.batchId!==origin.batchId||parent.task!==batch.tasks[0]||origin.attempt!==(this.batches.get(parent.batchId)!.retryOf?.attempt??1)+1)))
+        (parent&&(parent.batchId!==origin.batchId||parent.task!==batch.tasks[0]||
+          (batch.taskRefs&&batch.taskRefs[0]?.dataset!==parent.dataset)||
+          origin.attempt!==(this.batches.get(parent.batchId)!.retryOf?.attempt??1)+1)))
         throw Error('Invalid retry lineage');
       retried.add(origin.runId);
     }
@@ -102,45 +107,51 @@ export class Lab {
       const existing=[...this.batches.values()].find(batch=>batch.retryOf?.runId===id);
       if(existing)return existing;
       if(!done(original.state)||original.state==='needs_recovery'||this.jobs.has(id))throw Error('Wait for completion or recover retained evidence before rerunning');
-      if([...this.runs.values()].some(run=>run.task===original.task&&(!done(run.state)||this.jobs.has(run.id))))throw Error('This task already has an active attempt');
+      if([...this.runs.values()].some(run=>taskKey({dataset:run.dataset,id:run.task})===taskKey({dataset:original.dataset,id:original.task})&&(!done(run.state)||this.jobs.has(run.id))))throw Error('This task already has an active attempt');
       if(!this.machine)throw Error('Initialize the machine before rerunning');
       const parent=this.batches.get(original.batchId)!;
       if(!isDeepStrictEqual(parent.model,this.config.model))throw Error('Current service model differs from the original; restore the original model configuration before rerunning');
       return this.createBatch({name:original.task.slice(0,90)+' · 第 '+((parent.retryOf?.attempt??1)+1)+' 次尝试',
-        network:original.network,concurrency:1,tasks:[{id:original.task,agentSeconds:original.budget.agentSeconds}]},original);
+        network:original.network,concurrency:1,tasks:[{id:original.task,dataset:original.dataset,agentSeconds:original.budget.agentSeconds}]},original);
     });
     this.submissions=operation.catch(()=>{});return operation;
   }
   private async createBatch(input: Submission,original:Run|null): Promise<Batch> {
     if (this.closed || this.halted) throw Error('Service closing or scheduling blocked');
     if ([...this.runs.values()].some(r => r.state === 'needs_recovery')) throw Error('Recover retained runs before submitting more');
-    const tasks = input.tasks.map(task => task.id);
-    if (new Set(tasks).size !== tasks.length) throw Error('Choose distinct tasks');
     if (input.concurrency > this.config.concurrency) throw Error('Batch exceeds service concurrency');
-    const catalog = await this.catalog();
-    if (tasks.some(id => !catalog.some(t => t.id === id))) throw Error('Unknown task');
-    if(tasks.some(id=>!catalog.find(t=>t.id===id)?.environmentPrepared))throw Error('Prepare the selected task environments before submission');
+    if(new Set(input.tasks.map(ref=>ref.dataset?taskKey({dataset:ref.dataset,id:ref.id}):ref.id)).size!==input.tasks.length)
+      throw Error('Choose distinct tasks');
+    const catalog=await this.catalog();
+    const selected:CatalogTask[]=input.tasks.map(ref=>{
+      const matches=this.taskCatalog!.list().filter(task=>task.id===ref.id&&(!ref.dataset||task.dataset===ref.dataset));
+      if(matches.length!==1)throw Error(matches.length?'Ambiguous task ID; specify dataset':'Unknown task');
+      return matches[0]!;
+    });
+    if(new Set(selected.map(taskKey)).size!==selected.length)throw Error('Choose distinct tasks');
+    if(selected.some(task=>!catalog.find(item=>item.id===task.id&&item.dataset===task.dataset)?.environmentPrepared))
+      throw Error('Prepare the selected task environments before submission');
+    const tasks=selected.map(task=>task.id);
     const payload = await readJson(join(this.config.payload, 'manifest.json'), z.record(z.unknown()));
     if(original&&!isDeepStrictEqual(this.batches.get(original.batchId)!.payload,payload))throw Error('Current payload differs from the original; restore the original payload before rerunning');
     if (this.closed || this.halted) throw Error('Service closing or scheduling blocked');
     const id = randomBytes(8).toString('hex'), now = Date.now() / 1000;
-    const batch = batchSchema.parse({ ...input, network: input.network ?? this.config.network, tasks, budget: this.config.budget, version: 1, id, createdAt: now, runIds: tasks.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
+    const batch = batchSchema.parse({ ...input, network: input.network ?? this.config.network, tasks, taskRefs:selected.map(task=>({id:task.id,dataset:task.dataset})), budget: this.config.budget, version: 1, id, createdAt: now, runIds: tasks.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
       ...(original?{retryOf:{batchId:original.batchId,runId:original.id,attempt:(this.batches.get(original.batchId)!.retryOf?.attempt??1)+1}}:{}) });
-    const states = input.tasks.map((task, i) => runSchema.parse({ version: 2, network: batch.network, id: batch.runIds[i], batchId: id, task: task.id, dataset: catalog.find(t => t.id === task.id)?.dataset ?? 'terminal-bench', state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
+    const states = input.tasks.map((task, i) => runSchema.parse({ version: 2, network: batch.network, id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
     // Publish the batch only after all children are durable; no worker sees a partial submission.
     try {
       for (const state of states) {
-        const root = join(this.config.data, 'runs', state.id), source = original?join(this.path(original.id),'task',original.task):this.taskCatalog!.get(state.task).source!, target = join(root, 'task', state.task);
-        if (state.dataset === 'swe-bench-verified') await validateSweTask(state.task, source);
-        else await validatePublicTask(state.task, source);
-        const hashes = await datasetTree(source,state.dataset);
+        const root = join(this.config.data, 'runs', state.id), source = original?join(this.path(original.id),'task',original.task):this.taskCatalog!.get(state.dataset,state.task).source!, target = join(root, 'task', state.task);
+        await taskAdapters[state.dataset].validate(state.task,source);
+        const hashes = await taskAdapters[state.dataset].snapshot(source);
         if(original){
           const frozen=await readJson(join(this.path(original.id),'task-files.json'),z.record(z.object({bytes:z.number(),sha256:z.string(),symlink:z.string().optional(),mode:z.number().optional()})));
           if(!isDeepStrictEqual(hashes,frozen))throw Error('Original frozen task changed; refusing to rerun');
         }
         // Native build outputs depend on source timestamps as well as bytes.
         await cp(source, target, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true, preserveTimestamps: true });
-        const copied = await datasetTree(target,state.dataset);
+        const copied = await taskAdapters[state.dataset].snapshot(target);
         if (!isDeepStrictEqual(copied, hashes)) {
           const changed = [...new Set([...Object.keys(hashes), ...Object.keys(copied)])].find(name => !isDeepStrictEqual(hashes[name],copied[name]));
           throw Error(`Task changed during submission: ${state.task} (${changed ?? 'snapshot metadata'})`);
@@ -254,7 +265,7 @@ export class Lab {
       await this.update(id, { state: 'preparing', startedAt: Date.now() / 1000 });
       const current = this.runs.get(id)!;
       const frozen = await readJson(join(path, 'task-files.json'), z.record(z.object({ bytes: z.number(), sha256: z.string(), symlink: z.string().optional(), mode:z.number().optional() })));
-      if (!isDeepStrictEqual(await datasetTree(join(path, 'task', current.task),current.dataset),frozen)) throw Error('Frozen task changed');
+      if (!isDeepStrictEqual(await taskAdapters[current.dataset].snapshot(join(path, 'task', current.task)),frozen)) throw Error('Frozen task changed');
       const payload = await readJson(join(this.config.payload, 'manifest.json'), z.record(z.unknown()));
       if (JSON.stringify(payload) !== JSON.stringify(this.batches.get(current.batchId)!.payload)) throw Error('Payload changed after submission');
       await save(join(path, 'manifest.json'), { model: this.config.model, payload, task: current.task, dataset: current.dataset, task_files: frozen, machine: this.config.machine, entry: 'tui', network: current.network, budget: current.budget });

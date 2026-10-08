@@ -133,17 +133,19 @@ class AssignmentPromptTest(unittest.TestCase):
         with self.assertRaises(ValueError):assignment_prompt('q',900,'unknown','/app',[])
 
     def test_swe_and_terminal_public_tests_use_their_real_entries(self):
-        from protocol import public_test_entries
-        self.assertEqual(public_test_entries({'dataset':'swe-bench-verified','swe':{'repo':'pytest-dev/pytest'}}),['/testbed/testing/'])
-        self.assertEqual(public_test_entries({'publicTestInputs':[{'source':'environment/file.py','target':'file.py'}]}),['/tests/file.py'])
-        self.assertEqual(public_test_entries({}),[])
+        from dataset_runtime import dataset_runtime
+        self.assertEqual(dataset_runtime({'dataset':'swe-bench-verified'}).public_test_entries({'swe':{'repo':'pytest-dev/pytest'}}),['/testbed/testing/'])
+        terminal=dataset_runtime({'dataset':'terminal-bench-2.1'})
+        self.assertEqual(terminal.public_test_entries({'publicTestInputs':[{'source':'environment/file.py','target':'file.py'}]}),['/tests/file.py'])
+        self.assertEqual(terminal.public_test_entries({}),[])
 
 
 class PublicProjectEntries(unittest.TestCase):
     def test_all_new_project_entries_can_build_an_assignment(self):
-        from protocol import public_test_entries, assignment_prompt
+        from protocol import assignment_prompt
+        from dataset_runtime import dataset_runtime
         for repo in ['astropy/astropy','scikit-learn/scikit-learn','pylint-dev/pylint','psf/requests','pallets/flask','mwaskom/seaborn','matplotlib/matplotlib']:
-            entries=public_test_entries({'dataset':'swe-bench-verified','swe':{'repo':repo}})
+            entries=dataset_runtime({'dataset':'swe-bench-verified'}).public_test_entries({'swe':{'repo':repo}})
             self.assertTrue(entries)
             self.assertTrue(all(x.startswith('/testbed/') for x in entries))
             prompt=assignment_prompt('Original instruction',1800,'isolated','/testbed',entries)

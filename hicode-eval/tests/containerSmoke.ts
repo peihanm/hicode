@@ -8,11 +8,13 @@ import {TaskCatalog} from '../src/host/catalog.js';
 import {configSchema} from '../src/host/types.js';
 import {save,run} from '../src/host/store.js';
 import {RunContainers} from '../src/host/containers.js';
-const {values}=parseArgs({options:{catalog:{type:'string'},environments:{type:'string'},payload:{type:'string'},task:{type:'string'},machine:{type:'string',default:'hicode-eval-clean'},cancel:{type:'boolean'},retry:{type:'boolean'}}});
+const {values}=parseArgs({options:{catalog:{type:'string'},environments:{type:'string'},payload:{type:'string'},task:{type:'string'},dataset:{type:'string'},machine:{type:'string',default:'hicode-eval-clean'},cancel:{type:'boolean'},retry:{type:'boolean'}}});
 const required=(name:'catalog'|'environments'|'payload'|'task')=>{const value=values[name];if(!value)throw Error('Missing --'+name);return value;};
 const root=await realpath(await mkdtemp(join(tmpdir(),'hicode-container-smoke-')));await mkdir(root,{recursive:true});
 const original=await TaskCatalog.open(required('catalog'));
-const task=original.get(required('task'));
+const matches=original.list().filter(task=>task.id===required('task')&&(!values.dataset||task.dataset===values.dataset));
+if(matches.length!==1)throw Error('Smoke task ID must be unique across datasets');
+const task=matches[0]!;
 await save(join(root,'catalog.json'),{version:1,updatedAt:new Date().toISOString(),tasks:[{...task,status:'untested',results:[]}]});
 const config=configSchema.parse({version:4,data:root,catalog:join(root,'catalog.json'),environments:required('environments'),payload:required('payload'),context:'colima-hicode',machine:values.machine,concurrency:5,cpus:1,memoryMb:4096,budget:{agentSeconds:90},network:'isolated',model:{source:'qwen',model:'fixture',apiKeyEnv:'HICODE_SMOKE_KEY',baseUrl:'http://127.0.0.1:18991/v1'}});
 const fake=`import http.server,json,time
@@ -34,7 +36,7 @@ try{
  let previous:string|undefined;
  for(let attempt=0;attempt<(values.retry?2:1);attempt++){
  const before=previous?JSON.stringify(lab.runs.get(previous)):undefined;
- const batch=previous?await lab.retry(previous):await lab.submit({name:'Offline complete-chain smoke',tasks:[{id:task.id}],concurrency:1});
+ const batch=previous?await lab.retry(previous):await lab.submit({name:'Offline complete-chain smoke',tasks:[{id:task.id,dataset:task.dataset}],concurrency:1});
  const id=batch.runIds[0]!;console.log(JSON.stringify({id}));
  const deadline=Date.now()+600000;let started=false,cancelled=false,last='';
  while(Date.now()<deadline){
@@ -47,7 +49,7 @@ try{
   if(['passed','failed','error','needs_recovery','cancelled'].includes(state.state)){
    await Bun.sleep(2000);
    const catalog=await TaskCatalog.open(config.catalog);
-   const result={root,state:lab.runs.get(id),containerRemaining:await containers.exists(id),catalog:catalog.get(task.id)};
+   const result={root,state:lab.runs.get(id),containerRemaining:await containers.exists(id),catalog:catalog.get(task.dataset,task.id)};
    await save(join(root,'smoke-result.json'),result);console.log(JSON.stringify({state:result.state,containerRemaining:result.containerRemaining}));
    if((values.cancel?state.execution!=='cancelled':state.execution!=='completed'||state.grading!=='failed')||state.collection!=='complete'||result.containerRemaining)throw Error('Complete-chain smoke did not reach expected archived failed grade');
    break;

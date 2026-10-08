@@ -46,12 +46,30 @@ class SweExportTests(unittest.TestCase):
         self.assertNotIn('new.cpython-39.pyc',patch);self.assertNotIn('.pytest_cache',patch)
         self.assertTrue((cache/'nodeids').exists())  # Complete evidence is untouched.
 
+    def test_frozen_ignore_rules_exclude_new_build_outputs_with_non_utf8_bytes(self):
+        (self.base/'.gitignore').write_text('build/\nresult_images/\n')
+        (self.final/'.gitignore').write_text('*\n')
+        (self.final/'solution.py').write_text('fixed = True\n')
+        for name in ('build','result_images'):
+            directory=self.final/name;directory.mkdir()
+            (directory/'generated.txt').write_bytes(b'generated \xfc\n')
+        patch=export_patch(self.base,self.final)
+        self.assertIn('solution.py',patch)
+        self.assertIn('.gitignore',patch)
+        self.assertNotIn('generated.txt',patch)
+        self.assertTrue((self.final/'build/generated.txt').exists())
+
     def test_preexisting_cache_named_fixtures_and_new_unrecognized_directories_are_preserved(self):
+        for root in [self.base,self.final]:
+            (root/'.gitignore').write_text('build/\n')
+            (root/'build').mkdir();(root/'build/fixture.txt').write_text('original\n')
+        (self.final/'build/fixture.txt').write_text('changed\n')
         for root in [self.base,self.final]:
             (root/'__pycache__').mkdir();(root/'__pycache__/fixture.pyc').write_bytes(b'original')
         (self.final/'__pycache__/fixture.pyc').write_bytes(b'changed fixture')
         (self.final/'.pytest_cache').mkdir();(self.final/'.pytest_cache/source.py').write_text('source\n')
         patch=export_patch(self.base,self.final)
+        self.assertIn('build/fixture.txt',patch)
         self.assertIn('__pycache__/fixture.pyc',patch);self.assertIn('.pytest_cache/source.py',patch)
     def test_special_files_and_symlink_repository_roots_rejected(self):
         os.mkfifo(self.final/'fifo')

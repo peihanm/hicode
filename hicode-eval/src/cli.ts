@@ -17,13 +17,14 @@ import {EnvironmentStore} from './host/environments.js';
 import {archiveRuns} from './host/archive.js';
 import {sweCatalog,validateSweTask} from './host/sweTasks.js';
 import {validatePublicTask,profiles} from './host/publicTasks.js';
+import {datasetSchema,taskKey} from './host/datasets.js';
 async function main() {
   process.umask(0o077);
   const { positionals, values: v } = parseArgs({ allowPositionals: true, options: {
-    'verifier-proxy':{type:'string'},apply:{type:'boolean'},catalog:{type:'string'},environments:{type:'string'},'include-passed':{type:'boolean'},cpus:{type:'string',default:'1'},'memory-mb':{type:'string',default:'4096'},network: {type:'string', default:'isolated'}, ids: {type:'string'}, 'data-dir': { type: 'string' }, tasks: { type: 'string' }, 'swe-tasks': { type: 'string' }, payload: { type: 'string' }, 'docker-context': { type: 'string', default: 'colima-hicode' }, machine: { type: 'string', default: 'hicode-eval-clean' }, concurrency: { type: 'string', default: '2' }, port: { type: 'string', default: '8878' }, file: { type: 'string' }, run: { type: 'string' }, batch: { type: 'string' }, 'wait-seconds': { type: 'string', default: '30' }, source: { type: 'string' }, model: { type: 'string' }, 'model-config': { type: 'string' }, 'snapshot-worktree': { type: 'boolean' }, help: { type: 'boolean' }
+    'verifier-proxy':{type:'string'},apply:{type:'boolean'},catalog:{type:'string'},environments:{type:'string'},'include-passed':{type:'boolean'},cpus:{type:'string',default:'1'},'memory-mb':{type:'string',default:'4096'},network: {type:'string', default:'isolated'}, ids: {type:'string'}, dataset:{type:'string'}, 'data-dir': { type: 'string' }, tasks: { type: 'string' }, 'swe-tasks': { type: 'string' }, payload: { type: 'string' }, 'docker-context': { type: 'string', default: 'colima-hicode' }, machine: { type: 'string', default: 'hicode-eval-clean' }, concurrency: { type: 'string', default: '2' }, port: { type: 'string', default: '8878' }, file: { type: 'string' }, run: { type: 'string' }, batch: { type: 'string' }, 'wait-seconds': { type: 'string', default: '30' }, source: { type: 'string' }, model: { type: 'string' }, 'model-config': { type: 'string' }, 'snapshot-worktree': { type: 'boolean' }, help: { type: 'boolean' }
   } });
   const command = positionals[0];
-  if (v.help || !command) { console.log('HiCode Eval · isolated containers\n  serve --data-dir DIR --payload DIR --catalog FILE --environments DIR [--machine hicode-eval-clean] [--network open|isolated]\n  prepare --payload DIR [--snapshot-worktree]\n  register-tasks --catalog FILE [--tasks DIR] [--swe-tasks DIR]\n  archive-runs --catalog FILE --data-dir DIR [--apply]\n  prepare-environments --catalog FILE --environments DIR [--ids ID1,ID2] [--include-passed]\n  catalog | submit --file batch.json | status [--batch ID]\n  wait --batch ID [--wait-seconds 30] | cancel --batch ID | resume --batch ID | recover --run ID | retry --run ID | report --batch ID --file report.md\n  regrade --data-dir DIR --run ID [--verifier-proxy URL]  # frozen SWE patch only; no Agent/model'); return; }
+  if (v.help || !command) { console.log('HiCode Eval · isolated containers\n  serve --data-dir DIR --payload DIR --catalog FILE --environments DIR [--machine hicode-eval-clean] [--network open|isolated]\n  prepare --payload DIR [--snapshot-worktree]\n  register-tasks --catalog FILE [--tasks DIR --dataset terminal-bench|terminal-bench-2.1] [--swe-tasks DIR]\n  archive-runs --catalog FILE --data-dir DIR [--apply]\n  prepare-environments --catalog FILE --environments DIR [--ids DATASET:ID1,DATASET:ID2] [--include-passed]\n  catalog | submit --file batch.json | status [--batch ID]\n  wait --batch ID [--wait-seconds 30] | cancel --batch ID | resume --batch ID | recover --run ID | retry --run ID | report --batch ID --file report.md\n  regrade --data-dir DIR --run ID [--verifier-proxy URL]  # frozen SWE patch only; no Agent/model'); return; }
   if (positionals.length !== 1 || !['serve','prepare','catalog','submit','status','wait','cancel','resume','recover','retry','report','regrade','prepare-environments','register-tasks','archive-runs'].includes(command)) throw Error('Unknown command');
   if (v['verifier-proxy'] && command !== 'regrade') throw Error('--verifier-proxy is only supported by regrade');
   const required = (key: keyof typeof v) => { const value = v[key]; if (typeof value !== 'string' || !value) throw Error('Missing --' + key); return value; };
@@ -36,13 +37,16 @@ async function main() {
     try {
       if(!await exists(path))await save(path,{version:1,updatedAt:new Date().toISOString(),tasks:[]});
       const catalog=await TaskCatalog.open(path);
-      const entries: {id:string;dataset:'swe-bench-verified'|'terminal-bench';source:string}[]=[];
+      const entries: {id:string;dataset:'swe-bench-verified'|'terminal-bench'|'terminal-bench-2.1';source:string}[]=[];
       if(v['swe-tasks'])for(const task of await sweCatalog(await realpath(resolve(v['swe-tasks'])))){
         const source=join(await realpath(resolve(v['swe-tasks'])),task.id);await validateSweTask(task.id,source);entries.push({id:task.id,dataset:'swe-bench-verified',source});
       }
-      if(v.tasks){const root=await realpath(resolve(v.tasks)),supported=await profiles();
+      if(v.tasks){
+        const dataset=datasetSchema.parse(v.dataset??'terminal-bench');
+        if(dataset==='swe-bench-verified')throw Error('Use --swe-tasks for SWE-bench Verified');
+        const root=await realpath(resolve(v.tasks)),supported=await profiles(dataset);
         for(const entry of await readdir(root,{withFileTypes:true}))if(entry.isDirectory()&&!entry.isSymbolicLink()&&supported[entry.name]){
-          const source=join(root,entry.name);await validatePublicTask(entry.name,source);entries.push({id:entry.name,dataset:'terminal-bench',source});
+          const source=join(root,entry.name);await validatePublicTask(entry.name,source,dataset);entries.push({id:entry.name,dataset,source});
         }
       }
       if(!entries.length)throw Error('No reviewed task sources selected');
@@ -53,15 +57,18 @@ async function main() {
     const catalog=await TaskCatalog.open(resolve(required('catalog')));
     const root=await directory(required('environments'));
     const store=new EnvironmentStore(root,v['docker-context']!);
-    const selected=v.ids?new Set(v.ids.split(',')):undefined;
-    if(selected&&[...selected].some(id=>!catalog.list().some(task=>task.id===id)))throw Error('Unknown task ID');
+    const selected=v.ids?new Set(v.ids.split(',').map(value=>{
+      const matches=catalog.list().filter(task=>taskKey(task)===value||task.id===value);
+      if(matches.length!==1)throw Error(matches.length?'Ambiguous task ID; use DATASET:ID':'Unknown task ID');
+      return taskKey(matches[0]!);
+    })):undefined;
     console.log('Checking public base runtime…');await store.prepareBase();
     const prepared:string[]=[],failed:{id:string;error:string}[]=[],unprepared:string[]=[];
     for(const task of catalog.list()){
-      if(selected?!selected.has(task.id):task.status==='passed'&&!v['include-passed'])continue;
-      if(!task.source){unprepared.push(task.id);continue;}
-      try{await store.prepareTask(task);prepared.push(task.id);console.log('Ready: '+task.id);}
-      catch(error){failed.push({id:task.id,error:error instanceof Error?error.message:String(error)});console.error('Blocked: '+task.id+': '+(error instanceof Error?error.message:String(error)).slice(0,240));}
+      if(selected?!selected.has(taskKey(task)):task.status==='passed'&&!v['include-passed'])continue;
+      if(!task.source){unprepared.push(taskKey(task));continue;}
+      try{await store.prepareTask(task);prepared.push(taskKey(task));console.log('Ready: '+taskKey(task));}
+      catch(error){failed.push({id:taskKey(task),error:error instanceof Error?error.message:String(error)});console.error('Blocked: '+taskKey(task)+': '+(error instanceof Error?error.message:String(error)).slice(0,240));}
     }
     const report={at:new Date().toISOString(),prepared,failed,unprepared};await save(join(root,'preparation-report.json'),report);
     console.log(JSON.stringify({prepared:prepared.length,failed,unprepared:unprepared.length}));

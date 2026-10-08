@@ -4,7 +4,7 @@
 
 Run public programming tasks through HiCode in a fresh disposable Linux container for each attempt. Submit batches from the CLI, watch the full TUI in a browser, and automatically collect test results and logs. Each task gets one independent attempt, with no corrective follow-up prompts or automatic retries.
 
-Reviewed tasks are listed in the [catalog](config/terminal-bench.json). This is a development regression tool: the reviewed dependency recipes, ARM64 environment, and configurable time limits differ from official benchmark conditions. Results are not official leaderboard scores.
+Reviewed tasks are listed in the [Terminal-Bench 2.0 manifest](config/terminal-bench.json) and the [Terminal-Bench 2.1 pilot manifest](config/terminal-bench-2.1.json); SWE-bench Verified uses frozen task bundles. This is a development regression tool: the reviewed dependency recipes, ARM64 environment, and configurable time limits differ from official benchmark conditions. Results are not official leaderboard scores.
 
 Query batch execution and scores with the CLI `status` command. Keep personal task reviews and environment preparation records outside the checkout.
 
@@ -59,7 +59,7 @@ A clean worktree is required by default. Add `--snapshot-worktree` to include un
 
 ## 3. Register, prepare, and submit
 
-First register reviewed bundles with `register-tasks --catalog FILE --tasks DIR` (or `--swe-tasks DIR`), then run `prepare-environments --catalog FILE --environments DIR`. Preparation defaults to unpassed and untested tasks; use `--ids` or `--include-passed` for passed tasks. Missing reviewed sources remain unprepared.
+First register reviewed bundles with `register-tasks --catalog FILE --tasks DIR` (or `--swe-tasks DIR`), then run `prepare-environments --catalog FILE --environments DIR`. Preparation defaults to unpassed and untested tasks; use `--ids DATASET:ID` or `--include-passed` for passed tasks. A dataset release and task ID jointly identify a task; dependency images can still be shared when their recipes match. Missing reviewed sources remain unprepared.
 
 Images share a public base, dependency combinations and optional task preparation. Only attempts get disposable writable layers. The base is built from `config/clean-base.Dockerfile`, digest-pinned upstream images and the HiCode lockfile. No live cache-machine filesystem is imported. Reviewed SWE package and interpreter locks live in `config/environment-recipes/`; missing recipes remain unprepared. Version 2 receipts record recipe hashes and immutable images, with each build context retained. OS packages and common grading transitive dependencies are recorded after resolution, so cross-date byte-for-byte rebuilds are not yet guaranteed. Service defaults are isolated actor networking, 1 CPU and 4096 MiB per attempt; `--cpus` and `--memory-mb` override limits.
 
@@ -197,16 +197,17 @@ At the evaluation deadline, the runner sends SIGTERM to the identified HiCode CL
 
 ## Additional public datasets
 
-Terminal-Bench and SWE-bench Verified share scheduling, task budgets, the TUI, cancellation and evidence collection. Dataset-specific adapters prepare inputs and grade outputs. `Run.dataset` identifies the adapter. Both datasets can appear in one batch.
+Terminal-Bench 2.0, the three reviewed Terminal-Bench 2.1 pilot tasks, and SWE-bench Verified share scheduling, task budgets, the TUI, cancellation and evidence collection. Dataset-specific handlers prepare inputs and grade outputs. `Run.dataset` and the task ID jointly identify a task; a submission with a reused ID must specify its dataset.
 
 Register Terminal tasks from the pinned upstream checkout. SWE input is an externally reviewed frozen bundle, validated by `src/host/sweTasks.ts`. This evaluator does not download raw SWE datasets or generate bundles. Supply the original baseline, public problem, host-only grading material, source-version receipts and file hashes before registration.
 
 ```bash
 bash hicode-eval/eval.sh register-tasks --catalog CATALOG --swe-tasks PREPARED_SWE_DIR
-bash hicode-eval/eval.sh prepare-environments --catalog CATALOG --environments ENVIRONMENTS --ids TASK_ID
+bash hicode-eval/eval.sh register-tasks --catalog CATALOG --tasks ../hicode-benchmarks/terminal-bench-2.1/tasks --dataset terminal-bench-2.1
+bash hicode-eval/eval.sh prepare-environments --catalog CATALOG --environments ENVIRONMENTS --ids terminal-bench-2.1:regex-log
 ```
 
-Dependencies come only from reviewed recipes and optional task preparation layers. Four SWE combinations currently have recipes; add and validate other combinations incrementally. A registered bundle or historical passing score does not imply a prepared image.
+Dependencies come only from reviewed recipes and optional task preparation layers. SWE combinations require reviewed recipes; add and validate new combinations incrementally. A registered bundle or historical passing score does not imply a prepared image.
 
 The Actor receives only the public problem, original base code and public repository tests, with an independent writable Python environment at `/testbed`. Gold patches, hints, hidden test patches and scoring test lists are withheld. After completion/timeout, stop every Actor process, then export the actual tree against a protected prepared baseline using host-owned Git. This includes additions, deletions, binaries and executable modes without trusting Actor-controlled Git state or self-reported patches.
 

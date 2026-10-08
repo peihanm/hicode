@@ -19,6 +19,12 @@ from venv_paths import ENV_MOUNT
 
 # Native editable installs can validate existing build outputs for over a minute.
 SOURCE_INSTALL_TIMEOUT_SECONDS = 300
+SOURCE_ARCHIVE_CACHE = Path('/opt/hicode-swe/source-cache')
+
+
+def requires_source_version(repo, version):
+    return repo in {'pydata/xarray', 'pytest-dev/pytest', 'matplotlib/matplotlib'} or (
+        repo == 'astropy/astropy' and version not in {'1.3', '3.1'})
 
 
 def materialize_versioneer_source(project, repo, version):
@@ -61,7 +67,7 @@ def project_environment(repo, project=None, version=None):
         return {'PYTEST_ADDOPTS': '-rA', 'PYTHONPATH':'/testbed:'+ENV_MOUNT+'/lib/python3.9/site-packages'}
     if repo == 'astropy/astropy' and version in {'1.3', '3.1'}:
         return {}
-    if repo in ('pydata/xarray', 'pytest-dev/pytest', 'astropy/astropy', 'matplotlib/matplotlib'):
+    if requires_source_version(repo, version):
         if project is None: raise ValueError('SCM project requires verified upstream version metadata')
         from scm import read_source_version
         receipt = read_source_version(project)
@@ -70,6 +76,10 @@ def project_environment(repo, project=None, version=None):
             # setuptools 68's editable-wheel build uses temporary extension
             # paths. Preserve its reviewed develop cache across startup/replay.
             environment.update(SETUPTOOLS_ENABLE_FEATURES='legacy-editable',MPLBACKEND='Agg')
+            if SOURCE_ARCHIVE_CACHE.exists():
+                if SOURCE_ARCHIVE_CACHE.is_symlink() or not SOURCE_ARCHIVE_CACHE.is_dir():
+                    raise ValueError('Invalid reviewed source archive cache')
+                environment['XDG_CACHE_HOME'] = str(SOURCE_ARCHIVE_CACHE)
         return environment
 
     return {}
@@ -130,10 +140,6 @@ def export_patch(baseline, final):
         git(['init', '--template='], trusted)
         git(['add', '-f', '-A'], trusted)
         git(['commit', '-qm', 'Prepared baseline', '--allow-empty'], trusted)
-        for child in trusted.iterdir():
-            if child.name == '.git': continue
-            if child.is_dir() and not child.is_symlink(): shutil.rmtree(child)
-            else: child.unlink()
         other = Path(tmp) / 'final'; snapshot(final, other)
         # Only new, recognizable runtime artifacts are omitted. Existing
         # fixtures and arbitrary new source files ignore Actor .gitignore rules.
@@ -141,6 +147,26 @@ def export_patch(baseline, final):
         for directory, names, files in os.walk(baseline, followlinks=False):
             baseline_paths.update((Path(directory) / name).relative_to(baseline)
                                   for name in [*names, *files])
+        # Use only the frozen repository's ignore rules. Build and test outputs
+        # absent from that baseline are not a model patch; Actor-edited ignore
+        # rules cannot hide new source files from export.
+        candidates = {os.fsencode(str(path.relative_to(other))): path
+                      for path in other.rglob('*')
+                      if (path.is_symlink() or not path.is_dir()) and
+                      path.relative_to(other) not in baseline_paths}
+        if candidates:
+            try:
+                ignored = git(['check-ignore', '--no-index', '--stdin', '-z'], trusted,
+                              b'\0'.join(candidates) + b'\0').split(b'\0')
+            except subprocess.CalledProcessError as error:
+                if error.returncode != 1: raise
+                ignored = []
+            for name in ignored:
+                if name: candidates[name].unlink()
+        for child in trusted.iterdir():
+            if child.name == '.git': continue
+            if child.is_dir() and not child.is_symlink(): shutil.rmtree(child)
+            else: child.unlink()
         for name, marker, prefix in [
                 ('.pytest_cache', 'CACHEDIR.TAG', b'Signature: 8a477f597d28d172789f06886806bc55'),
                 ('.hypothesis', '.gitignore', b'# Automatically created by Hypothesis')]:
@@ -520,7 +546,7 @@ def grade_swe_patch(root, config, uid, gid, cancelled, patch):
            'VIRTUAL_ENV': ENV_MOUNT, 'PYTHONDONTWRITEBYTECODE':'1', 'PIP_DISABLE_PIP_VERSION_CHECK':'1'}
     env.update(project_environment(config['swe']['repo'],root/'baseline',config['swe']['version']))
     env.update(verifier_proxy_environment(config.get('verifierProxy')))
-    if config['swe']['repo'] in {'pydata/xarray', 'pytest-dev/pytest', 'astropy/astropy', 'matplotlib/matplotlib'}:
+    if requires_source_version(config['swe']['repo'], config['swe']['version']):
         from scm import read_source_version
         read_source_version(root/'baseline', config['swe']['baseCommit'])
     args = namespace_argv(['git','apply','--whitespace=nowarn','/tests/model.patch'], work, grade_home,

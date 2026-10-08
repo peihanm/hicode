@@ -1,0 +1,69 @@
+{
+  "cancel-async-tasks": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "9adf86b1279cc44f83fe16e6d340595aa992240f1d87243d204cae32e453693b",
+      "environment/Dockerfile": "1ee7bdb4a7536f5f114c11a3ac6ff42790abfea901fcba6b2a8ea8685f19140e",
+      "instruction.md": "23d22f7039b50682941652c716f96dac314b8585c32c133614cac77dc067f47e",
+      "solution/solve.sh": "4938ca4ad5b7dcd36b414b42a1abb10c058ecefce7462b678f9bd05c9fae1844",
+      "task.toml": "14db0675e04408f2133b0067e8dbddf66a1d6e7baf6b8d38bef8ecccfc4e58a8",
+      "tests/test.py": "f533c0a64db068f582b4733c5b81f2e66b8fa52fcd3efa65752e6bd6d24780aa",
+      "tests/test.sh": "79600a6b863def31b4daa008297423010cd2d6243e689d67503e118e4dc53397",
+      "tests/test_outputs.py": "d6f510b51fafc81b4e9b5cc95535aa13491c8753e0e4171db42c45f4de460ee7"
+    },
+    "initializer": null,
+    "verifierPrelude": "copy-test-helper",
+    "inputs": [],
+    "directories": [],
+    "packages": []
+  },
+  "headless-terminal": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "16098e30130fb0c02a3db124460386aca105ea5f409b297dabf537265d350769",
+      "environment/Dockerfile": "c17679907b17671ab6e363aebaa26464dac2d3d0cfd5680cb0bbe6160af17481",
+      "environment/base_terminal.py": "697fd6435a5df3ee8c6f6f2546340c0609a424e53cb8fe80fdb131fe1e9f050f",
+      "instruction.md": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+      "solution/headless_terminal.py": "4e9006fca4a70acefd214644aa66607bdc632e7f9cbc63e9d878fa36c6c097a2",
+      "solution/solve.sh": "fbfc2d1f9fb861422055d4b968a5089874ade0f65da04e44eb4d13bc71a93fd7",
+      "task.toml": "abe0de1ac3adff1fbf0e22e1765efbc061a412891fd255926ed92a5ccacf69e6",
+      "tests/test.sh": "bfaa32131cbbef985f9b0bbc3cb231ac51eb90579e6e3db55a2f09b5fa0f46b7",
+      "tests/test_outputs.py": "c6998195e29efb64f41f903b6a727059c4f0ee267f730cd7ffca5c1f7d99ab78"
+    },
+    "inputs": [
+      {
+        "source": "environment/base_terminal.py",
+        "target": "base_terminal.py"
+      }
+    ],
+    "initializer": null,
+    "directories": [],
+    "packages": [],
+    "verifierPackages": [
+      "requests==2.32.5"
+    ],
+    "verifierPrelude": "none",
+    "verifierRootOverlay": true,
+    "commands": [
+      "screen",
+      "expect"
+    ]
+  },
+  "regex-log": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "29ffd98c55dbb6f4844f1b9d8c1769b2155c117ee475e0df6bbc5ef330d239b3",
+      "environment/Dockerfile": "5f264ff0bf62a49aee3c6398447de5108df141e7a2ad35c6de8ef39fa62049c6",
+      "instruction.md": "4f7ac05e70cf9220ea0f1e5a052c5f908cd0fa884e847d80b0bd51bae2e96f9c",
+      "solution/solve.sh": "7e670d4f2b4bccb1e4db38f2a173e085ceda028c38167912b466b0a84fcc0999",
+      "task.toml": "6bc98525852755caf1fe34c174c2f10f4328adb4ce6c1968dcafe1c877e4e160",
+      "tests/test.sh": "4770437ea96c3cc84684b4f99d55fb148fcac09f9ea1e8ef49de487716e6c334",
+      "tests/test_outputs.py": "345c3bd09ab6f6fe8c8361a58c0a47bf0a13b3fcb38a5ac7824e44ff855e8f72"
+    },
+    "initializer": null,
+    "verifierPrelude": "none",
+    "inputs": [],
+    "directories": [],
+    "packages": []
+  }
+}

@@ -218,25 +218,6 @@ def assignment_prompt(instruction, agent_seconds, network, workdir, public_entri
     return '\n'.join(lines)+'\n\n'+instruction
 
 
-def public_test_entries(config):
-    if config.get('dataset')=='swe-bench-verified':
-        return {
-            'django/django':['/testbed/tests/（原仓库公开测试）'],
-            'sympy/sympy':['/testbed/sympy/**/tests/','/testbed/bin/test'],
-            'pytest-dev/pytest':['/testbed/testing/'],
-            'pydata/xarray':['/testbed/xarray/tests/'],
-            'sphinx-doc/sphinx':['/testbed/tests/'],
-            'astropy/astropy':['/testbed/astropy/**/tests/'],
-            'scikit-learn/scikit-learn':['/testbed/sklearn/**/tests/'],
-            'pylint-dev/pylint':['/testbed/tests/'],
-            'psf/requests':['/testbed/test_requests.py','/testbed/tests/'],
-            'pallets/flask':['/testbed/tests/'],
-            'mwaskom/seaborn':['/testbed/tests/'],
-            'matplotlib/matplotlib':['/testbed/lib/matplotlib/tests/'],
-        }[config['swe']['repo']]
-    return ['/tests/'+entry['target'] for entry in config.get('publicTestInputs',[])]
-
-
 def namespace_argv(args, project, home, logs, control, tests=None, *, writable_tests=False, root_overlay=False, workdir="/app", environment=None, readonly_logs=False, public_tests=None, private_root=None, isolated_network=False, actor_release=None, actor_events=None):
     if (actor_release is None)!=(actor_events is None):raise ValueError('Actor release and event storage must be paired')
     if actor_release is not None and (tests is not None or root_overlay or readonly_logs):raise ValueError('Actor and verifier views cannot be combined')

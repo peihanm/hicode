@@ -38,6 +38,8 @@ const label={pending:'待处理',completed:'正常完成',timeout:'超时',cance
 const limit=seconds=>seconds%60===0?seconds/60+' 分钟':seconds+' 秒';
 const names={queued:'排队',preparing:'准备环境',running:'执行中',waiting_for_approval:'等待审批',verifying:'自动判题',passed:'通过',failed:'未通过',error:'运行异常',cancelled:'已取消',cancelling:'正在停止',needs_recovery:'收尾异常 · 待恢复',finished:'已结束',blocked:'调度暂停'};
 const runLabel=run=>run.state==='error'&&run.execution==='completed'&&run.grading==='unavailable'?'判题异常 · 无法判定':names[run.displayState]||run.displayState;
+const datasetNames={'terminal-bench':'Terminal-Bench 2.0','terminal-bench-2.1':'Terminal-Bench 2.1','swe-bench-verified':'SWE-bench Verified'};
+const runTitle=run=>(datasetNames[run.dataset]||run.dataset)+' · '+run.task;
 async function api(path,body,signal){
   const requestSignal=body===undefined?AbortSignal.any([AbortSignal.timeout(10000),...(signal?[signal]:[])]):undefined;
   const send=()=>fetch('/api/'+path,body===undefined?{signal:requestSignal}:{method:'POST',headers:{'X-Eval-Request':'1','Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -72,7 +74,7 @@ async function actOnRun(id,action){
 function button(title,meta,active,onclick){const b=document.createElement('button');b.className='run'+(active?' active':'');const t=document.createElement('b');t.textContent=title;const m=document.createElement('small');m.textContent=meta;b.append(t,m);b.onclick=onclick;return b;}
 function cards(values){return values.map(([name,value])=>{const card=document.createElement('div');const number=document.createElement('strong');number.textContent=value;const text=document.createElement('span');text.textContent=name;card.append(number,text);return card;});}
 async function tick(){if(ticking)return;ticking=true;try{
-  const requestedGeneration=generation,data=await api('status',undefined,selectionController.signal);if(requestedGeneration!==generation){refreshPending=true;return;}$('connection').textContent=data.schedulingBlocked?'调度暂停 · 请检查异常记录':'已连接 · 并发上限 '+data.concurrency;const blocked=data.runs.filter(r=>r.state==='needs_recovery');$('error').textContent=data.schedulingBlocked?(blocked.length?'调度暂停：'+blocked.map(r=>r.task).join('、')+' 的执行或收尾尚未确认。运行中的任务继续，新任务暂不启动。'+(blocked[0].note?' 原因：'+blocked[0].note.slice(-700):''):'调度暂停：状态保存或回收失败，请检查服务日志。'):'';
+  const requestedGeneration=generation,data=await api('status',undefined,selectionController.signal);if(requestedGeneration!==generation){refreshPending=true;return;}$('connection').textContent=data.schedulingBlocked?'调度暂停 · 请检查异常记录':'已连接 · 并发上限 '+data.concurrency;const blocked=data.runs.filter(r=>r.state==='needs_recovery');$('error').textContent=data.schedulingBlocked?(blocked.length?'调度暂停：'+blocked.map(runTitle).join('、')+' 的执行或收尾尚未确认。运行中的任务继续，新任务暂不启动。'+(blocked[0].note?' 原因：'+blocked[0].note.slice(-700):''):'调度暂停：状态保存或回收失败，请检查服务日志。'):'';
   if(!data.batches.some(b=>b.id===selectedBatch)){selectedBatch=data.batches[0]?.id||null;expandedBatch=selectedBatch;choose(null);}
   if(expandedBatch&&!data.batches.some(b=>b.id===expandedBatch))expandedBatch=null;
   const batch=data.batches.find(b=>b.id===selectedBatch);
@@ -99,7 +101,7 @@ async function tick(){if(ticking)return;ticking=true;try{
     group.append(heading);
     if(expanded){
       const tasks=document.createElement('div');tasks.className='task-tree';
-      tasks.append(...data.runs.filter(r=>r.batchId===b.id).map(r=>button(r.task,runLabel(r)+' · '+limit(r.budget.agentSeconds)+' 上限',r.id===selected,()=>{choose(r.id);refresh();})));
+      tasks.append(...data.runs.filter(r=>r.batchId===b.id).map(r=>button(runTitle(r),runLabel(r)+' · '+limit(r.budget.agentSeconds)+' 上限',r.id===selected,()=>{choose(r.id);refresh();})));
       group.append(tasks);
     }
     return group;
@@ -117,7 +119,7 @@ async function tick(){if(ticking)return;ticking=true;try{
     $('action-message').hidden=actionNoticeRun!==run.id||!actionNotice;$('action-message').textContent=actionNoticeRun===run.id?actionNotice:'';
     $('terminal-status').textContent=run.state==='needs_recovery'?'收尾异常，等待核验已有结果与现场':finished?'任务已结束 · 判题'+(label[run.grading]||run.grading)+' · 下方为保存的终端画面':run.state==='verifying'?'Agent 已停止作答，正在自动判题。':'终端实时更新';
     $('attach').textContent='证据目录：'+run.evidencePath+'\n'+(finished?'任务已结束；当前显示保存的终端内容。':run.container?.attach||'容器尚未启动');
-    $('title').textContent=run.task;$('detail').textContent=run.id+' · '+(batch.retryOf?'第 '+batch.retryOf.attempt+' 次尝试 · ':'')+limit(run.budget.agentSeconds)+' 上限 · '+(runLabel(run)||'正在准备');
+    $('title').textContent=runTitle(run);$('detail').textContent=run.id+' · '+(batch.retryOf?'第 '+batch.retryOf.attempt+' 次尝试 · ':'')+limit(run.budget.agentSeconds)+' 上限 · '+(runLabel(run)||'正在准备');
     $('statuses').replaceChildren(...[['执行',run.execution],['判题',run.grading],['数据',run.collection]].map(([name,value])=>{const e=document.createElement('span');e.textContent=name+' · '+(label[value]||value);e.dataset.state=value;return e;}));
     $('preparation-title').textContent='执行与判题记录 · '+(run.preparation?.phase||'等待开始');
     if($('terminal-shell').hidden){$('terminal-empty').textContent=run.state==='queued'?(data.schedulingBlocked?'调度暂停，需先处理异常任务；当前排队与并发名额无关。':'正在排队，前面的任务结束后自动开始。'):run.state==='preparing'?'正在准备工作目录和运行环境。':finished?(run.note?'没有保存的终端画面。\n\n'+run.note:'没有保存的终端画面，可展开证据目录检查日志。'):'等待终端输出…';}

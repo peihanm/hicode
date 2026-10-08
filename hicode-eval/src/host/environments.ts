@@ -5,11 +5,11 @@ import {z} from 'zod';
 import {EVAL_ROOT,REPOSITORY_ROOT} from '../paths.js';
 import {readJson,save,run,exists,tree} from './store.js';
 import {lease} from './lease.js';
-import {validateSweTask} from './sweTasks.js';
-import {validatePublicTask} from './publicTasks.js';
 import {baseImagesSchema,dependencyRecipeSchema} from './environmentRecipes.js';
 import type {DependencyRecipe} from './environmentRecipes.js';
 import type {CatalogTask} from './catalog.js';
+import {taskAdapters,taskKey} from './datasets.js';
+import type {TaskMetadata} from './datasets.js';
 
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const imageId=z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -22,7 +22,6 @@ const bindingSchema=z.object({version:z.literal(2),task:z.string(),sourceHash:ha
     'Invalid environment layer graph');
 export type EnvironmentBinding=z.infer<typeof bindingSchema>;
 type Layer=z.infer<typeof layerSchema>;
-type TaskMetadata=Awaited<ReturnType<typeof validateSweTask>>|Awaited<ReturnType<typeof validatePublicTask>>;
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 
 function aptInstall(packages:readonly string[]):string {
@@ -41,7 +40,7 @@ export class EnvironmentStore {
   private readonly dependencyBuilds=new Map<string,Promise<Layer>>();
   constructor(readonly root:string,private readonly context:string){}
   private docker(...args:string[]){return ['docker','--context',this.context,...args];}
-  private bindingPath(task:string){return join(this.root,'tasks',digest(task)+'.json');}
+  private bindingPath(task:CatalogTask){return join(this.root,'tasks',digest(taskKey(task))+'.json');}
   private async inspect(name:string){
     return z.array(z.object({Id:imageId,Config:z.object({Labels:z.record(z.string()).nullable().optional()})})).length(1)
       .parse(JSON.parse(await run(this.docker('image','inspect',name))))[0]!;
@@ -117,7 +116,7 @@ export class EnvironmentStore {
   }
   private async identity(task:CatalogTask){
     if(!task.source)throw Error('Task source has not been prepared');
-    const metadata=task.dataset==='swe-bench-verified'?await validateSweTask(task.id,task.source):await validatePublicTask(task.id,task.source);
+    const metadata=await taskAdapters[task.dataset].validate(task.id,task.source);
     let dependencies:DependencyRecipe|undefined;
     if(typeof metadata.environment==='string'){
       const path=join(EVAL_ROOT,'config/environment-recipes',metadata.environment.split('/').at(-1)!+'.json');
@@ -128,13 +127,16 @@ export class EnvironmentStore {
         throw Error('The target project must come from the frozen task source, not a package in the dependency image');
       }
     }
-    const recipe=digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+JSON.stringify(dependencies??null)+await readFile(join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),'utf8'));
+    const recipe=digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+
+      JSON.stringify(dependencies??null)+await readFile(join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),'utf8'));
     if(task.preparation){
       if(await realpath(task.preparation.directory)!==resolve(task.preparation.directory))throw Error('Symlinked preparation directory');
       const files=await tree(task.preparation.directory);
       if(digest(JSON.stringify(files))!==task.preparation.sha256||!files[task.preparation.script])throw Error('Task preparation differs from its frozen recipe');
     }
-    return {metadata,dependencies,recipe,hash:digest(JSON.stringify({version:2,recipe,dataset:task.dataset,metadata,preparation:task.preparation??null}))};
+    return {metadata,dependencies,recipe,hash:digest(JSON.stringify({version:2,recipe,dataset:task.dataset,metadata,
+      ...(dependencies?.sourceArchives?.length?{sourceArchiveAccess:'non-root-readable-v1'}:{}),
+      preparation:task.preparation??null}))};
   }
   private dependencies(metadata:TaskMetadata,recipe:string,base:Layer,definition?:DependencyRecipe):Promise<Layer>{
     const inputs=definition??('packages' in metadata?{actor:metadata.packages,verifier:metadata.verifierPackages,commands:metadata.commands}:null);
@@ -200,9 +202,9 @@ export class EnvironmentStore {
   async prepareTask(task:CatalogTask):Promise<EnvironmentBinding>{
     const base=await readJson(join(this.root,'base.json'),layerSchema);await this.verifyImage(base);
     const identity=await this.identity(task);
-    if(await exists(this.bindingPath(task.id))){
-      const previous=await readJson(this.bindingPath(task.id),bindingSchema);
-      if(previous.task===task.id&&previous.sourceHash===identity.hash&&previous.base.imageId===base.imageId&&await this.available(previous.dependencies)&&(!previous.preparation||await this.available(previous.preparation))){
+    if(await exists(this.bindingPath(task))){
+      const previous=await readJson(this.bindingPath(task),bindingSchema);
+      if(previous.task===taskKey(task)&&previous.sourceHash===identity.hash&&previous.base.imageId===base.imageId&&await this.available(previous.dependencies)&&(!previous.preparation||await this.available(previous.preparation))){
         await this.verifyImage(previous.dependencies);if(previous.preparation)await this.verifyImage(previous.preparation);return previous;
       }
     }
@@ -210,6 +212,8 @@ export class EnvironmentStore {
     try {
       const dependencies=await this.dependencies(identity.metadata,identity.recipe,base,identity.dependencies);
       let preparation:Layer|null=null,body='';
+      if(identity.dependencies?.sourceArchives?.length)
+        body+='RUN chmod -R a+rX /opt/hicode-swe/source-cache\n';
       if('repo' in identity.metadata){
         const metadata=identity.metadata;
         const pins=z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]*==[0-9][A-Za-z0-9.+-]*$/)).parse(JSON.parse(await run(['python3','-c',
@@ -226,18 +230,18 @@ export class EnvironmentStore {
         body+='COPY preparation /opt/hicode-task/source\nRUN '+JSON.stringify(['/bin/bash','/opt/hicode-task/source/'+task.preparation.script])+'\n';
       }
       if(body)preparation=await this.build('task',dependencies.imageId,digest(JSON.stringify(await tree(stage))+body),stage,await this.childDockerfile(dependencies,body));
-      const binding:EnvironmentBinding={version:2,task:task.id,sourceHash:identity.hash,base,dependencies,preparation};
-      await save(this.bindingPath(task.id),binding);return binding;
+      const binding:EnvironmentBinding={version:2,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation};
+      await save(this.bindingPath(task),binding);return binding;
     }finally{await rm(stage,{recursive:true,force:true});}
   }
   async resolve(task:CatalogTask):Promise<EnvironmentBinding>{
-    const binding=await readJson(this.bindingPath(task.id),bindingSchema);
-    if(binding.task!==task.id||binding.sourceHash!==(await this.identity(task)).hash)throw Error('Task environment is stale; prepare it before submission');
+    const binding=await readJson(this.bindingPath(task),bindingSchema);
+    if(binding.task!==taskKey(task)||binding.sourceHash!==(await this.identity(task)).hash)throw Error('Task environment is stale; prepare it before submission');
     await this.verifyImage(binding.preparation??binding.dependencies);return binding;
   }
   async ready(task:CatalogTask):Promise<boolean>{
-    if(!await exists(this.bindingPath(task.id)))return false;
-    try{return (await readJson(this.bindingPath(task.id),bindingSchema)).task===task.id;}
+    if(!await exists(this.bindingPath(task)))return false;
+    try{return (await readJson(this.bindingPath(task),bindingSchema)).task===taskKey(task);}
     catch{return false;}
   }
 }

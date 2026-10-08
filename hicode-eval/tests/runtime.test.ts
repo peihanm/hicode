@@ -10,6 +10,7 @@ import { classify, Lab } from '../src/host/manager.js';
 import { run, save, tree } from '../src/host/store.js';
 import { runSchema, configSchema, batchSchema, submissionSchema } from '../src/host/types.js';
 import * as taskAdapters from '../src/host/publicTasks.js';
+import {taskAdapters as datasetHandlers} from '../src/host/datasets.js';
 import { serve } from '../src/host/server.js';
 import { EvidenceCollectionError, LinuxMachine } from '../src/host/linux.js';
 
@@ -45,7 +46,7 @@ test('restart repairs the durable ledger and requires cleanup confirmation witho
     await save(join(f.dir,'runs',state.id,'container.json'),{session:state.id,id:'owned-container',attach:'fixture'});
     const lab=new Lab(f.config,'fixture');await lab.init();
     expect(lab.runs.get(state.id)?.state).toBe('needs_recovery');
-    expect((await TaskCatalog.open(f.config.catalog)).get('alpha').status).toBe('passed');
+    expect((await TaskCatalog.open(f.config.catalog)).get('terminal-bench','alpha').status).toBe('passed');
     await save(join(f.dir,'runs',state.id,'state.json'),state);
     await save(join(f.dir,'runs',state.id,'container-disposed.json'),{version:1,runId:state.id,at:new Date().toISOString()});
     const restored=new Lab(f.config,'fixture');await restored.init();
@@ -161,6 +162,41 @@ test('submission validates all tasks and concurrency before publishing a batch',
     expect(() => submissionSchema.parse({ name:'invalid',tasks:[{id:'a',agentSeconds:7201}] })).toThrow();
     expect(lab.batches.size).toBe(0); expect(lab.runs.size).toBe(0);
   } finally { await lab.close(); await f.cleanup(); }
+});
+
+test('a reused task ID requires an explicit dataset at submission',async()=>{
+  const f=await fixture();
+  try {
+    const catalog=await TaskCatalog.open(f.config.catalog);
+    await catalog.register([{dataset:'terminal-bench-2.1',id:'regex-log',source:join(f.tasks,'regex-log')}]);
+    const lab=new Lab(f.config,'fixture');await lab.init();
+    await expect(lab.submit({name:'ambiguous',tasks:[{id:'regex-log'}],concurrency:1})).rejects.toThrow('Ambiguous task ID');
+    await lab.close();
+  }finally{await f.cleanup();}
+});
+
+test('one batch keeps equal task IDs from two releases separate',async()=>{
+  const f=await fixture(),source=join(f.tasks,'regex-log');
+  await mkdir(source);await writeFile(join(source,'instruction.md'),'offline fixture');
+  await seedCatalog(f.config,[
+    {dataset:'terminal-bench',id:'regex-log',source},
+    {dataset:'terminal-bench-2.1',id:'regex-log',source},
+  ]);
+  const profile={hashes:{},inputs:[],publicTestInputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],
+    verifierPrelude:'none' as const,commands:[],environment:{},verifierEnvironment:{},verifierRootOverlay:false,verifierChroot:false};
+  const first=spyOn(datasetHandlers['terminal-bench'],'validate').mockResolvedValue(profile);
+  const second=spyOn(datasetHandlers['terminal-bench-2.1'],'validate').mockResolvedValue(profile);
+  const lab=new Lab(f.config,'fixture');
+  try {
+    await save(join(f.config.payload,'manifest.json'),{});
+    await lab.init();
+    const batch=await lab.submit({name:'two releases',concurrency:1,tasks:[
+      {dataset:'terminal-bench',id:'regex-log'},
+      {dataset:'terminal-bench-2.1',id:'regex-log'},
+    ]});
+    expect(batch.taskRefs).toEqual([{dataset:'terminal-bench',id:'regex-log'},{dataset:'terminal-bench-2.1',id:'regex-log'}]);
+    expect(batch.runIds.map(id=>lab.runs.get(id)?.dataset)).toEqual(['terminal-bench','terminal-bench-2.1']);
+  }finally{await lab.close();first.mockRestore();second.mockRestore();await f.cleanup();}
 });
 
 test('CLI client reads a batch and publishes a bounded report over the authenticated protocol', async () => {

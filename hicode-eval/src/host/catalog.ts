@@ -2,6 +2,8 @@ import {z} from 'zod';
 import {isAbsolute} from 'node:path';
 import {readJson, save} from './store.js';
 import type {Run} from './types.js';
+import {datasetSchema,taskKey} from './datasets.js';
+import type {Dataset} from './datasets.js';
 
 const taskId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,180}$/);
 const resultSchema = z.object({
@@ -12,7 +14,7 @@ const resultSchema = z.object({
   record:z.string().max(4096).optional(),
 }).strict();
 export const catalogTaskSchema = z.object({
-  id:taskId, dataset:z.enum(['terminal-bench','swe-bench-verified']),
+  id:taskId, dataset:datasetSchema,
   source:z.string().max(4096).refine(isAbsolute).optional(),
   preparation:z.object({directory:z.string().max(4096).refine(isAbsolute),
     script:z.string().regex(/^[A-Za-z0-9_.-]+\.sh$/),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict().optional(),
@@ -27,7 +29,7 @@ export const catalogTaskSchema = z.object({
 });
 export const catalogSchema=z.object({version:z.literal(1),updatedAt:z.string().datetime(),tasks:z.array(catalogTaskSchema).max(10000)})
   .strict().superRefine((catalog,ctx)=>{
-    if(new Set(catalog.tasks.map(task=>task.id)).size!==catalog.tasks.length)
+    if(new Set(catalog.tasks.map(taskKey)).size!==catalog.tasks.length)
       ctx.addIssue({code:z.ZodIssueCode.custom,message:'Duplicate task identity'});
   });
 export type CatalogTask=z.infer<typeof catalogTaskSchema>;
@@ -38,25 +40,24 @@ export class TaskCatalog {
   private constructor(readonly path:string, private document:z.infer<typeof catalogSchema>){}
   static async open(path:string):Promise<TaskCatalog>{return new TaskCatalog(path,await readJson(path,catalogSchema,16*1024*1024));}
   list():readonly CatalogTask[]{return this.document.tasks;}
-  get(id:string):CatalogTask {
-    const task=this.document.tasks.find(task=>task.id===id);
+  get(dataset:Dataset,id:string):CatalogTask {
+    const task=this.document.tasks.find(task=>task.dataset===dataset&&task.id===id);
     if(!task)throw Error('Unknown catalog task');
     return task;
   }
   async register(entries:readonly Pick<CatalogTask,'id'|'dataset'|'source'>[]):Promise<void>{
-    const tasks=new Map(this.document.tasks.map(task=>[task.id,task]));
+    const tasks=new Map(this.document.tasks.map(task=>[taskKey(task),task]));
     for(const entry of entries){
-      const previous=tasks.get(entry.id);
-      if(previous&&previous.dataset!==entry.dataset)throw Error('Task dataset identity changed');
-      tasks.set(entry.id,catalogTaskSchema.parse({...previous,...entry,status:previous?.status??'untested',results:previous?.results??[]}));
+      const key=taskKey(entry),previous=tasks.get(key);
+      tasks.set(key,catalogTaskSchema.parse({...previous,...entry,status:previous?.status??'untested',results:previous?.results??[]}));
     }
-    const next=catalogSchema.parse({version:1,updatedAt:new Date().toISOString(),tasks:[...tasks.values()].sort((a,b)=>a.id.localeCompare(b.id))});
+    const next=catalogSchema.parse({version:1,updatedAt:new Date().toISOString(),tasks:[...tasks.values()].sort((a,b)=>taskKey(a).localeCompare(taskKey(b)))});
     await save(this.path,next);this.document=next;
   }
   async record(run:Run):Promise<void>{
     if(!['passed','failed','error','cancelled'].includes(run.state))return;
     const operation=this.writes.then(async()=>{
-      const task=this.get(run.task);
+      const task=this.get(run.dataset,run.task);
       const previous=task.results.find(item=>item.runId===run.id);
       const result={...previous,runId:run.id,model:run.model,execution:run.execution,grading:run.grading,
         accepted:previous?.accepted===true||(run.execution==='completed'&&run.grading==='passed'&&run.collection==='complete'),
@@ -65,7 +66,7 @@ export class TaskCatalog {
       const attempted=task.status==='unpassed'||run.startedAt!==undefined||['completed','failed','timeout'].includes(run.execution);
       const status=results.some(item=>item.accepted)?'passed':attempted?'unpassed':'untested';
       const next=catalogSchema.parse({...this.document,updatedAt:new Date().toISOString(),
-        tasks:this.document.tasks.map(item=>item.id===task.id?{...item,status,results}:item)});
+        tasks:this.document.tasks.map(item=>taskKey(item)===taskKey(task)?{...item,status,results}:item)});
       await save(this.path,next);this.document=next;
     });
     this.writes=operation.catch(()=>{});await operation;

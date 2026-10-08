@@ -14,7 +14,7 @@ test.each(['passed','failed','needs_recovery','error','setup_error'])('batch vie
   const elements = new Map<string, Element>();
   const el = (id: string) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id)!; };
   const requests: string[] = []; const writes: string[] = [];
-  const status = { inventory:{total:589,passed:231,unpassed:52,untested:306,running:0},concurrency: 2, schedulingBlocked: blocked, batches: [{ id: 'batch', name: '<img onerror=attack()>', createdAt: 1, model: { model: 'fixture' }, concurrency: 2, budget: { agentSeconds: 900 }, payload: { commit: 'abc12345' }, counts: { total: 1, completed: 1, active: 0, queued: 0, passed: 1, failed: 0, errors: 0, cancelled: 0 }, state: 'finished', report: { text: '<script>bad()</script>' } }], runs: [{ batchId: 'batch', id: 'one', task: 'fixture', budget: {agentSeconds: 900}, state: 'passed', displayState: 'passed', evidencePath: '/tmp/fixture', execution: 'completed', grading: 'passed', collection: 'complete' }] };
+  const status = { inventory:{total:589,passed:231,unpassed:52,untested:306,running:0},concurrency: 2, schedulingBlocked: blocked, batches: [{ id: 'batch', name: '<img onerror=attack()>', createdAt: 1, model: { model: 'fixture' }, concurrency: 2, budget: { agentSeconds: 900 }, payload: { commit: 'abc12345' }, counts: { total: 1, completed: 1, active: 0, queued: 0, passed: 1, failed: 0, errors: 0, cancelled: 0 }, state: 'finished', report: { text: '<script>bad()</script>' } }], runs: [{ batchId: 'batch', id: 'one', task: 'fixture', dataset:'terminal-bench', budget: {agentSeconds: 900}, state: 'passed', displayState: 'passed', evidencePath: '/tmp/fixture', execution: 'completed', grading: 'passed', collection: 'complete' }] };
   status.batches.push({ ...status.batches[0]!, id: 'batch-two', name: 'Older batch', createdAt: 0 });
   status.runs.push({ ...status.runs[0], id: 'two', task: 'queued-task', budget: {agentSeconds: 1800}, state: 'queued', displayState: 'queued', execution: 'pending', grading: 'pending', collection: 'pending' });
   status.runs.push({ ...status.runs[0]!, batchId: 'batch-two', id: 'three', task: 'other-task' });
@@ -74,7 +74,7 @@ test.each(['passed','failed','needs_recovery','error','setup_error'])('batch vie
   const switched = new Promise<void>(resolve => { finish = resolve; });
   el('batches').children[0].children[1].children[1].onclick!();
   await switched;
-  expect(el('title').textContent).toBe('queued-task');
+  expect(el('title').textContent).toBe('Terminal-Bench 2.0 · queued-task');
   expect(el('detail').textContent).toContain('30 分钟');
   expect(el('terminal-shell').hidden).toBe(true);
   expect(el('terminal-empty').textContent).toContain(blocked ? '调度暂停' : '正在排队');
@@ -98,7 +98,7 @@ test.each(['passed','failed','needs_recovery','error','setup_error'])('batch vie
 test('rerun button sends one authenticated request, opens attempt 2 and links back without duplicate submission',async()=>{
  const elements=new Map<string,Element>();const el=(id:string)=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)!;};
  const batch={id:'batch',name:'original',createdAt:1,model:{model:'fixture'},concurrency:1,payload:{commit:'fixed'},runIds:['one'],counts:{total:1,completed:1,active:0,queued:0,passed:0,failed:0,errors:1,cancelled:0},state:'finished'};
- const original={id:'one',batchId:'batch',task:'fixture',budget:{agentSeconds:900},state:'error',displayState:'error',execution:'failed',grading:'unavailable',collection:'complete',evidencePath:'/fixture'};
+ const original={id:'one',batchId:'batch',task:'fixture',dataset:'terminal-bench',budget:{agentSeconds:900},state:'error',displayState:'error',execution:'failed',grading:'unavailable',collection:'complete',evidencePath:'/fixture'};
  let child:(typeof batch & {retryOf:{runId:string;batchId:string;attempt:number}})|undefined;
  let posts=0,release:(()=>void)|undefined,rendered:(()=>void)|undefined;
  const tick=()=>new Promise<void>(resolve=>{rendered=resolve;});
@@ -146,7 +146,7 @@ async function viewerFixture(intercept:(url:string,signal:AbortSignal)=>Promise<
   const elements=new Map<string,Element>();
   const el=(id:string)=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id)!;};
   const batch={id:'batch',name:'fixture',createdAt:1,model:{model:'fixture'},concurrency:2,payload:{commit:'fixture'},state:'running',counts:{total:2,completed:0,active:2,queued:0,passed:0,failed:0,errors:0,cancelled:0}};
-  const runs=['one','two'].map(id=>({id,batchId:'batch',task:id,budget:{agentSeconds:1800},state:'running',displayState:'running',execution:'pending',grading:'pending',collection:'pending',evidencePath:'/fixture'}));
+  const runs=['one','two'].map(id=>({id,batchId:'batch',task:id,dataset:'terminal-bench',budget:{agentSeconds:1800},state:'running',displayState:'running',execution:'pending',grading:'pending',collection:'pending',evidencePath:'/fixture'}));
   const requests:{url:string;signal:AbortSignal;deadline:AbortController}[]=[];
   const deadlines:AbortController[]=[];const polls:(()=>void)[]=[];const writes:string[]=[];let paints=0;
   class Terminal{
@@ -199,7 +199,7 @@ test('switching tasks aborts pending terminal reads and ignores late previous lo
   await view.select(1);
   expect(view.requests.find(r=>r.url.includes('terminal?run=one'))!.signal.aborted).toBe(true);
   expect(view.requests.find(r=>r.url.includes('preparation?run=one'))!.signal.aborted).toBe(true);
-  expect(view.el('title').textContent).toBe('two');expect(view.writes).toEqual(['two screen']);
+  expect(view.el('title').textContent).toBe('Terminal-Bench 2.0 · two');expect(view.writes).toEqual(['two screen']);
   expect(view.requests.find(r=>r.url.includes('terminal?run=two'))!.url).toEndWith('revision=');
   oldLog.resolve({text:'stale one log'});await view.drain();
   expect(view.el('preparation').textContent).toBe('two log');expect(view.el('error').textContent).toBe('');

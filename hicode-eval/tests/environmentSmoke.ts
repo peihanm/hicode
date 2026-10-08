@@ -16,7 +16,7 @@ const source=join(root,'recipe'),environments=join(root,'environments');await mk
 await cp(join(values.environments,'base.json'),join(environments,'base.json'));
 await writeFile(join(source,'probe.c'),'#include <stdio.h>\nint main(void){puts("native-ready");return 0;}\n');
 await writeFile(join(source,'prepare.sh'),'set -eu\nmkdir -p /opt/hicode-task/bin\ncc /opt/hicode-task/source/probe.c -o /opt/hicode-task/bin/probe\n');
-const original=(await TaskCatalog.open(values.catalog)).get(values.task);
+const original=(await TaskCatalog.open(values.catalog)).get('swe-bench-verified',values.task);
 const task={...original,preparation:{directory:source,script:'prepare.sh',sha256:createHash('sha256').update(JSON.stringify(await tree(source))).digest('hex')}};
 const store=new EnvironmentStore(environments,'colima-hicode');
 const binding=await store.prepareTask(task);

@@ -6,7 +6,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from swe import git,restore_official_test_paths,controlled_eval_script,verification_validity,project_environment,materialize_versioneer_source,namespace_eval_commands,verifier_log_directory,read_verifier_log
+from swe import git,restore_official_test_paths,controlled_eval_script,verification_validity,project_environment,materialize_versioneer_source,namespace_eval_commands,verifier_log_directory,read_verifier_log,requires_source_version
 from reviewed_test_deps import reviewed_test_dependencies
 
 class OfficialTestReplay(unittest.TestCase):
@@ -135,6 +135,9 @@ class OfficialTestReplay(unittest.TestCase):
         with self.assertRaises(ValueError):project_environment('astropy/astropy')
         self.assertEqual(project_environment('astropy/astropy',self.repo,'3.1'),{})
         self.assertEqual(project_environment('astropy/astropy',self.repo,'1.3'),{})
+        self.assertFalse(requires_source_version('astropy/astropy','3.1'))
+        self.assertFalse(requires_source_version('astropy/astropy','1.3'))
+        self.assertTrue(requires_source_version('astropy/astropy','4.3'))
 
     def test_original_matplotlib_versioneer_uses_verified_commit_version(self):
         import runpy
@@ -190,3 +193,9 @@ class MatplotlibBuildMode(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'.git').mkdir();(root/'.git/hicode-source-version.json').write_text(json.dumps({'baseCommit':'a'*40,'describe':'v3.7.0-2-gaaaaaaa','version':'3.8.0.dev2+gaaaaaaa'}))
             self.assertEqual(project_environment('matplotlib/matplotlib',root),{'SETUPTOOLS_SCM_PRETEND_VERSION':'3.8.0.dev2+gaaaaaaa','SETUPTOOLS_ENABLE_FEATURES':'legacy-editable','MPLBACKEND':'Agg'})
+            cache=root/'reviewed-cache';cache.mkdir()
+            with patch('swe.SOURCE_ARCHIVE_CACHE',cache):
+                self.assertEqual(project_environment('matplotlib/matplotlib',root)['XDG_CACHE_HOME'],str(cache))
+                cache.rmdir();cache.symlink_to(root,target_is_directory=True)
+                with self.assertRaisesRegex(ValueError,'source archive cache'):
+                    project_environment('matplotlib/matplotlib',root)

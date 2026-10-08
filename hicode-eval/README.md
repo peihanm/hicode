@@ -4,7 +4,7 @@
 
 使用可复用环境镜像，每次尝试启动独立 Linux 容器，批量测试 HiCode 完成公开编程任务的能力。CLI 提交任务，网页查看完整 TUI 和进度，结束后自动运行原题测试并保存日志。每题独立尝试一次，不追加纠错提示、不自动重跑。
 
-已适配题目见 [题目清单](config/terminal-bench.json)。此工具用于研发回归；审定依赖配方、ARM64 环境和可调时限与官方环境存在差异，结果不等同于官方榜单成绩。
+已适配题目见 [Terminal-Bench 2.0 清单](config/terminal-bench.json)与 [Terminal-Bench 2.1 样题清单](config/terminal-bench-2.1.json)；SWE-bench Verified 使用冻结题包。此工具用于研发回归；审定依赖配方、ARM64 环境和可调时限与官方环境存在差异，结果不等同于官方榜单成绩。
 
 批次执行状态与累计成绩由 CLI `status` 查询。持久 `catalog.json` 保留已通过、未通过、待测试；正在运行从当前任务派生。删除历史工作区不会删除台账。
 
@@ -71,7 +71,7 @@ bash hicode-eval/eval.sh prepare-environments \
   --environments ../hicode-eval-data/environments
 ```
 
-环境分为公共底座、依赖组合、可选题目特殊准备；每次运行只新建容器的可写层。默认准备未通过与待测试，有题包但缺依赖的任务报告 blocked；没有审定题包的任务仍待适配。已通过的任务可之后用 `--ids ID` 准备。公共底座由 `config/clean-base.Dockerfile`、`clean-base-images.json` 的官方镜像摘要及 HiCode 锁文件构建，不再导出缓存机的系统目录。SWE 依赖声明位于 `config/environment-recipes/<环境 ID>.json`，记录完整包版本和 Python 补丁版本；没有配方的组合保持未准备，逐组添加。配方变化产生新的镜像身份，不改旧镜像。系统包与通用判题依赖的实际版本清单位于镜像 `/opt/hicode-environment/`；当前 apt 仓库和通用判题传递依赖仍按构建时解析，尚不承诺跨日期逐字节重建一致。
+环境分为公共底座、依赖组合、可选题目特殊准备；每次运行只新建容器的可写层。默认准备未通过与待测试，有题包但缺依赖的任务报告 blocked；没有审定题包的任务仍待适配。已通过的任务可之后用 `--ids DATASET:ID` 准备。同名题跨数据集时必须写完整身份；依赖镜像按配方复用，环境绑定按数据集版本和题目 ID 区分。公共底座由 `config/clean-base.Dockerfile`、`clean-base-images.json` 的官方镜像摘要及 HiCode 锁文件构建，不再导出缓存机的系统目录。SWE 依赖声明位于 `config/environment-recipes/<环境 ID>.json`，记录完整包版本和 Python 补丁版本；没有配方的组合保持未准备，逐组添加。配方变化产生新的镜像身份，不改旧镜像。系统包与通用判题依赖的实际版本清单位于镜像 `/opt/hicode-environment/`；当前 apt 仓库和通用判题传递依赖仍按构建时解析，尚不承诺跨日期逐字节重建一致。
 
 服务默认每题 1 CPU、4096 MiB，支持 `--cpus`、`--memory-mb`；最多并发 5，默认网络 isolated。
 
@@ -209,13 +209,14 @@ Terminal 的固定包在依赖镜像中分别安装到 `/opt/hicode-terminal/act
 
 ## 接入新的公开数据集
 
-Terminal-Bench 和 SWE-bench Verified 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题按数据集分别执行。`Run.dataset` 区分两种题目。一个批次可以包含两种题目。
+Terminal-Bench 2.0、2.1 和 SWE-bench Verified 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。当前 2.1 仅有三道审定样题，并未整体接入 89 道。
 
 Terminal 题目从固定上游目录登记；SWE 题目从外部审定的冻结 bundle 登记。当前评测器不下载原始 SWE 数据集或生成题包，接入者需提供题面、原始源码基线、仅供宿主判题的材料、版本回执及文件哈希，格式由 `src/host/sweTasks.ts` 校验。缺少材料先准备题包，不能回退到旧共享环境安装器。
 
 ```bash
 bash hicode-eval/eval.sh register-tasks --catalog CATALOG --swe-tasks PREPARED_SWE_DIR
-bash hicode-eval/eval.sh prepare-environments --catalog CATALOG --environments ENVIRONMENTS --ids TASK_ID
+bash hicode-eval/eval.sh register-tasks --catalog CATALOG --tasks ../hicode-benchmarks/terminal-bench-2.1/tasks --dataset terminal-bench-2.1
+bash hicode-eval/eval.sh prepare-environments --catalog CATALOG --environments ENVIRONMENTS --ids terminal-bench-2.1:regex-log
 ```
 
 依赖只通过 `config/environment-recipes/` 和可选特殊准备层构建；题包校验通过不代表已有可用依赖镜像。现有 SWE 配方及其可用性以生产校验为准，其他组合逐组审定、补齐并验证，不因历史通过就视为就绪。
