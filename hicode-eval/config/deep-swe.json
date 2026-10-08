@@ -1,0 +1,212 @@
+{
+  "aiomonitor-task-snapshots-diff": {
+    "repository": "https://github.com/aio-libs/aiomonitor",
+    "baseCommit": "b73fea2e0682803bda7531c93cd1dfb360839175",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh75rc2q0zhmsqwk7wewfwwtrx830v2n-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:e0c8b4e4044d5831693b4f6a6da483b255a889b71376574fba9e3c93d36ceb7c",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "4b0486135417a99cd60a6f7ef408eb844e37ec6fd84c1e031a9db706101e1c02",
+      "instruction.md": "40f3eeea527d09aba7e54b35aadc1bb5f70743d41a9f09094e5968ebdf8b79d7",
+      "solution/solution.patch": "d36d125646e79908df8328c9c6ce8d36192d20f1b0c8159e6bc87a07d446742f",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "4920836b0039b6c022f3200714a6d8107a7126a3a1354a19c66374e3aab445de",
+      "tests/Dockerfile": "9c095a7da92b46cc6cbdca1edfb399793d81a69137e0a599f222cff70e4519a8",
+      "tests/config.json": "69d3cbeb7cea0c75fb42351eec658f2721fe30de419436bec0ef02bec5e80ce7",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "bfc1b309c7ce5b2557b9ba8c0b3f11888a08571c8baabdf8ff6a145db5e09a63",
+      "tests/test.sh": "c55a19ff001be08d5ddb5bbe7b34cea03b6019cee1a680a79338f12a18811d21"
+    }
+  },
+  "cattrs-partial-structuring-recovery": {
+    "repository": "https://github.com/python-attrs/cattrs",
+    "baseCommit": "6bc4708fb9b2ac52d9a18997e923da6a58916102",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7f7cahc5ddm1qzpxz13kpmrh8235pc-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:443a3534dab64283e5a9dedf3b7ac8867ed7d5dabcde39bc39c77ab5a909176a",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "2bd6e8a1ded869b85334eebbad3c29588b71a2ee1486c06713648485c2b3560e",
+      "instruction.md": "13eab1ccb6c77dafa95e7e815a35fc76033aaf271076012067c3502c0c11272c",
+      "solution/solution.patch": "6050a6735eee8de72939d81ead6274658915dc4512d5d2995280a9a9fdafb1b5",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "6c4f2907ee8a96f9a054e54cfae86fa248a37c06337cf990e3a124000a32bb0b",
+      "tests/Dockerfile": "bdca07e5a8e64ab175c28a2fa0d53d2225ae439abe6f0723213cd99ffdfb5228",
+      "tests/config.json": "d32fbbb9320863afda4000a3b87efbe1a1eb36565c474fbc37eb400d6301d62c",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "50154d90fca5e57254affc3a5378082a6782cb4d7e27182a7860a5827b8afef9",
+      "tests/test.sh": "f17974eb262c2263c538fd31d62ff40597674ce4bc70084abad190885862e481"
+    }
+  },
+  "dateutil-rfc5545-timezone-interop": {
+    "repository": "https://github.com/dateutil/dateutil",
+    "baseCommit": "c981f9c7aa91b83cc9bd33a09ecee9e751b06e8d",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7czqrrmrm1vnwfx1nhtjh9as833esn-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:ac1167c4badd5db3e8058572e4ae9f09c391a7a6c6801b46ce7f7b12d8c6b77f",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "e174d448fa55fab6cf934ea8a1aa778ef92dd3d5e251a8da3db231a0265cdbbf",
+      "instruction.md": "029feb3185f43a1ed77c0fa9e250c50e82758c78b7544f8905782c2dda9eb9b6",
+      "solution/solution.patch": "dc6c13f7e3e211513af50613e61baf1d24a2115d91b932af89e0781335940a2b",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "0908cc9e22d4b0bcd9605598eea9d4fe4733307da8efe86a055c1816251578c6",
+      "tests/Dockerfile": "895d2c7cabbbf436ab65d7d1ae00024d6bd9b9bd986a0d8687c9a917164e4c5f",
+      "tests/config.json": "956f267962825dcb4c79567c7295264d67b35795371d86b6a5cccdff14535465",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "927af366a90b1e4eee529cf8d64b6c755a9abb0b6342196a8b307a2b5c74fade",
+      "tests/test.sh": "98d7b3311bd48f58be70827f3fcd5b4a45426a3ef1cebf45af41c5457fd6a004"
+    }
+  },
+  "httpx-multipart-response-parsing": {
+    "repository": "https://github.com/encode/httpx",
+    "baseCommit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7fr6f1yw1289ye5ttsfvaqen8319dq-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:47d0af14d988caa7d22b14312be2c3ee4e9ac799a5679bd83d19f298d346749d",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "aa71466fa6f71fab7fc6df1278377549c57a1d6b74bfd270a70005ce0fede297",
+      "instruction.md": "6a9c3400a23ad61f43c6e6f5b2dfbe8f5a5af81061cc063fd9440f327c5a0fb5",
+      "solution/solution.patch": "fbe0ab61b8e523a794fcbdf30a71a6d008ffd85285a7334b82278fe9ea3e2f74",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "7ee0209ec928035b9c0ac28997c886cbef8197567429e1c0493631856fdad5e5",
+      "tests/Dockerfile": "925c9b16416aa5b8f83e243e790da6bb90df7e6f12236b1792e7ed33c85d870c",
+      "tests/config.json": "33734c0f6a77183d0c59aa5fc68f92c07fa9382846f968e284e82bba2f465b89",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "a6b6512793b4102041ea3cb835efbc8ba61cba800e07453dffd66703e123262e",
+      "tests/test.sh": "e39706afa8974f3a9949f2aa77012b37399578a647136bd065000f3273cbe719"
+    }
+  },
+  "httpx-streaming-json-iteration": {
+    "repository": "https://github.com/encode/httpx",
+    "baseCommit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh73snc7v9x3psk69rg4eqvjgs836v5a-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:47d0af14d988caa7d22b14312be2c3ee4e9ac799a5679bd83d19f298d346749d",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "aa71466fa6f71fab7fc6df1278377549c57a1d6b74bfd270a70005ce0fede297",
+      "instruction.md": "8b9cf46588b87c532be947e1ab102f1bf3241ad01133f5ca6c461dc7f7ecd9e6",
+      "solution/solution.patch": "e5c0c8b05b58adee89e56860a44324f9e8d325171927e56fc7ef0029f64f2438",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "4539d7eb6bc6e38c202b7b7afdf808c3f7aaa06283b58cc91f1d3aa437334e63",
+      "tests/Dockerfile": "f7c81ed884c26eadc54f108ca7950a8a1a1f60683f5db3e86c41dae7ec11195b",
+      "tests/config.json": "c3c1d983f347e37c7b131039dc97590f5160303acb26ee541b9499f906c751a1",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "bd31b5332a542e94b8ebb1fe9e749512a942db9c7649e74533030e669900e849",
+      "tests/test.sh": "fb21502b6357332d46af6c1e78e2999960e8953ccbb37bf699f62fb1dda47277"
+    }
+  },
+  "returns-validated-error-accumulation": {
+    "repository": "https://github.com/dry-python/returns",
+    "baseCommit": "41607fae1289de2787523c452d75212206b9c7c0",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh754n098chwgtm24jakheqsw5833ec6-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:f1a88a58920be20192034003a6711a2dfd952bad72207b98e16f5f47f2377287",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "472d7d07a6ccdcd19351cae32fb0eacfcca9d21b33d43734b0be9131ff7a577f",
+      "instruction.md": "77d27406cd485339c36030cde62de2a50233a0e3253536ac0468b4f1c46cc208",
+      "solution/solution.patch": "e3dc80a04199cce09395838bf40ec74494012d44bb196473776291f3f7fcc451",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "b61c04c7661b4011859a4889081daa0329958ad5dd73155f33ed07281c6e4a81",
+      "tests/Dockerfile": "26dd2766c4eb5c1f5b3ebcbd82ee073c8221b886e526c3bedaa8e7abb9fc9e5c",
+      "tests/config.json": "060f07ca8a5c74c88f3e253a4b72eb44fadd9f82f28884fc786f37eaa8b6d471",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "d4f92adfa57f16c3a05b6990022f4e9cd75979ef63e8f9ee10eb63fe313847d3",
+      "tests/test.sh": "f89501a3d1145d80c7d5bb79aea3638296f1c379f8e305801e90500bc33dceab"
+    }
+  },
+  "textual-kitty-key-phases": {
+    "repository": "https://github.com/Textualize/textual",
+    "baseCommit": "9737a5ab723f79e59f0a83eb036a3d15fad6b054",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7b36e22me6fzbav0na7kt14h82wk1m-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:3b7cbf5e05be13f403362e7eb6dd9c404d3b736a8e2b8b916abd6cfa7efde51e",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "b79d9ead0a67ad9fd94e4d8847cdbb4526159ef7a5ea0674712bc0ec897abb01",
+      "instruction.md": "88a48b1028f82a815f135e122e9b57cc0e942c677cf0dfe49cbc93318e1c5093",
+      "solution/solution.patch": "991514b68f5461ae59936c6d2b6f4df54bfe080755ce216566759b008d38649a",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "0470d205fd7feb2177ad8a2b1741c35c3ed179cdef9430c781f33aba141f98bd",
+      "tests/Dockerfile": "8d5c7ea1d70a5b66f813ab0c930e530a988f1f1123ae39cd3203d2585812c697",
+      "tests/config.json": "517ffbb446b43e3dbf215967d7020ee5202de87572e5fc9c3126e3e9d8880587",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "501bd72f9f02628b15fb011592b47b647f3c129f098cb946b43434863d386a5d",
+      "tests/test.sh": "7f743b0f8719ee9f305ba8ba09bab768fb4df03d6ec75fab6912e8c02f03dca1"
+    }
+  },
+  "textual-richlog-follow-state": {
+    "repository": "https://github.com/Textualize/textual",
+    "baseCommit": "0f0849fd37fbd0d4d6f81889476c22340129df67",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh70247kxfz01g03p1dpz9fqv183g47e-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:4320874bd134826ff13721acf5a30eb8f58431928dcac97022d56aefbc496c8c",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "bf624aeac7958ed0d3815d8cf79cee1aaff22e6a6b65c1b3a29d954971e7f27e",
+      "instruction.md": "bdfdf82ddd71a833695c99e1320b1ad564f8678711a9d5744c5f4666c80e5565",
+      "solution/solution.patch": "da6dc9c0c9ffbe5b874a2954c05cda06fb0ac2f6d538a1a475fe482e98a0415d",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "0a313201a28e646b10a066e0f109ec8ca08f01f676650366c41f336644c57139",
+      "tests/Dockerfile": "00fbb36ecc17dbb199a86f8d1a4fb73028098caf0214dd7f87f40032e2cf1958",
+      "tests/config.json": "9831d9684d4ccb0546f9d38ea5154b4a9515c925a25ede57717ccb59e4ce636b",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "9d04aa13fca9e60c306f5127e911da237d2e153b0afc88da12e6004c35d404e8",
+      "tests/test.sh": "5a331b0c2049e33bbf5b80709bfa693114421fff5a5dca3c909850dd6bbf0484"
+    }
+  },
+  "tomlkit-toml-table-converters": {
+    "repository": "https://github.com/python-poetry/tomlkit",
+    "baseCommit": "dd05eebc8ed9e30fc6c223088a5a450cb54c1cab",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7ezsk4ze1jyjta967ypwnxhh83etpm-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:0785d2c9caa62130352713828a2a98f85b991f87fa853bad7252546df9ff0eec",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "3e8ab16d93b9b822098c4c98f8eafda5ba3b870464e1d3e8030bf6473237806a",
+      "instruction.md": "f2cad77bd81747e1b66917791cb0dfb1ed349c9f19ebcf2b8c0724151c9c73e8",
+      "solution/solution.patch": "ceed00ee93606e6466f46237dbbeb1106ee47f3816ee4031f1054e52d2af66ad",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "32faea943936aa014220ae1c98144cc0a88b29c45a9a1b53c02345b10b783c41",
+      "tests/Dockerfile": "1a004252c203ce62f4e83350d946013d3238ab8201fc59db56c82237dbb45c05",
+      "tests/config.json": "4d87f2da8504baf7fcbbc5b2859560df0c56e4596026ff2767361732f6f8a7b5",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "a587bd8a6bc35b9ec149a8f097ca2f06cee1aac53d20ac1a3576e79993a3fef5",
+      "tests/test.sh": "eeab3b4d7463a2a3df9874a7dbd77af3b37d064c67b7bc313359655615e090b7"
+    }
+  },
+  "vulture-persistent-analysis-cache": {
+    "repository": "https://github.com/jendrikseipp/vulture",
+    "baseCommit": "1eb212f0a0707ad6f4c720bb2010c2b7517cf0f9",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7992s6336c7yhv34x198jqy182zpmt-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:8834e8bc72c3e99dc09f4ccf205083d02678442feca66b45aea2708c43a2394b",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "772800ad39c6111e5353a06cd104a84faf2a8b11c3946b820eac6ae390c62ebf",
+      "instruction.md": "2045f33db77e27456c3f64e3e5dc0e30b3822e1198ea4209fefe522485ae1b36",
+      "solution/solution.patch": "77c66982cfd975463308c104d07eef99543c5868337ca193ff556e2c15ecc940",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "490b3c93f86185a690e6fa5c4ec4b08e64f193971b76d2bbec0947955234a9e5",
+      "tests/Dockerfile": "ed73f3a43bc843117a9a4cd5523f4ae05ffb9dd7070349508cb87b02178ec678",
+      "tests/config.json": "a8de4104eceee2e7fed42f08556fe1e72cda7f2fc251f848cd3e17142a85e733",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "a81a7404ea92b40a82c6f4d79f153635db21cf7e385a258af5fc527927b82259",
+      "tests/test.sh": "c17975272116a783de29b4b1c87e5b55e2ff788337113459ad5fe1f345764db8"
+    }
+  }
+}
