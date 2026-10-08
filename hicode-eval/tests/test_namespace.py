@@ -5,6 +5,33 @@ from pathlib import Path
 from protocol import namespace_argv, prepare_verifier_root
 
 class NamespaceTest(unittest.TestCase):
+    def test_writable_runtime_bin_is_private_and_does_not_grant_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project=Path(tmp)/'project';(project/'runtime-bin').mkdir(parents=True)
+            for tests in (None,'/tests'):
+                argv=namespace_argv(['python'],project,'/h','/l','/c',tests,writable_runtime_bin=True)
+                index=argv.index(str(project/'runtime-bin'))
+                self.assertEqual(argv[index-1:index+2],['--bind',str(project/'runtime-bin'),'/usr/local/bin'])
+                self.assertNotIn('--uid',argv)
+                self.assertNotIn('--cap-add',argv)
+            (project/'runtime-bin').rmdir();(project/'runtime-bin').symlink_to('/usr/local/bin')
+            with self.assertRaisesRegex(ValueError,'Invalid runtime executable directory'):
+                namespace_argv(['python'],project,'/h','/l','/c',writable_runtime_bin=True)
+
+    def test_original_paths_alias_only_the_same_attempt_workspace(self):
+        for tests in (None, '/eval/a/tests'):
+            argv=namespace_argv(['python'],'/eval/a/project','/eval/a/home','/eval/a/logs','/run/a',tests,
+                                workspace_aliases=['/data','/workspace','/tmp/CompCert'])
+            links=[argv[i+1:i+3] for i,flag in enumerate(argv) if flag=='--symlink']
+            self.assertEqual(links,[['/app/data','/data'],['/app','/workspace'],['/app/CompCert','/tmp/CompCert']])
+            self.assertNotIn('/eval/other/project',argv)
+            self.assertNotIn('--uid',argv)
+        for aliases in (['/etc'],['/eval'],['/data/../etc'],['/data','/data'],[{}],'/data'):
+            with self.assertRaises(ValueError):
+                namespace_argv(['python'],'/p','/h','/l','/c',workspace_aliases=aliases)
+        with self.assertRaises(ValueError):
+            namespace_argv(['python'],'/p','/h','/l','/c',workdir='/testbed',workspace_aliases=['/data'])
+
     def test_task_keeps_app_path_and_does_not_mount_tests(self):
         a=namespace_argv(['bun','entry.ts'],'/eval/runs/a/project','/eval/runs/a/home','/eval/runs/a/logs','/run/a')
         self.assertIn('--unshare-user',a)
@@ -100,6 +127,7 @@ class ActorFilesystemTest(unittest.TestCase):
             args = actor_readonly_mounts(release, None)
         mounts = [args[i:i+3] for i in range(0, len(args), 3)]
         self.assertIn(['--ro-bind', '/etc/texmf', '/etc/texmf'], mounts)
+        self.assertIn(['--ro-bind', '/etc/chromium.d', '/etc/chromium.d'], mounts)
         self.assertIn(['--ro-bind', '/var/lib/texmf', '/var/lib/texmf'], mounts)
         for parent in ['/etc', '/var', '/var/lib', '/eval', '/root']:
             self.assertNotIn(parent, args)

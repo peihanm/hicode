@@ -4,7 +4,7 @@
 
 ## 路径与复用
 
-在当前工具调用中显式填写 `HE_ROOT`（checkout）、`HE_DATA`（仓库外数据根）、`HE_CATALOG`（成绩台账）、`HE_ENVIRONMENTS`（镜像回执）、`HE_PAYLOAD`（固定源码包）、`HE_PORT` 和 `HE_BATCH_FILE`。变量不会自动跨工具调用保存。通用配置在 `hicode-eval/config/`；临时提交文件放在外部数据目录的 `batch-configs/`，不要存回源码目录。固定回归题组可以复用 `config/regression15.json`，不要误将示例题目当作用户选题。
+在当前工具调用中显式填写 `HE_ROOT`（checkout）、`HE_DATA`（仓库外数据根）、`HE_CATALOG`（成绩台账）、`HE_ENVIRONMENTS`（镜像回执）、`HE_PAYLOAD`（固定源码包）、`HE_PORT` 和 `HE_BATCH_FILE`。变量不会自动跨工具调用保存。通用配置在 `hicode-eval/config/`；临时提交文件放在外部数据目录的 `operator/batch-configs/`，不要存回源码目录。固定回归题组可以复用 `config/regression15.json`，不要误将示例题目当作用户选题。
 
 现有数据根的 `config.json` 记录真实 catalog/environments/payload/model/concurrency；`.service.lock/owner.json` 记录 PID/启动身份。结合监听进程和 status 核对，不能只凭旧 owner 文件杀进程。模型凭据不打印、不复制到任务文件。
 

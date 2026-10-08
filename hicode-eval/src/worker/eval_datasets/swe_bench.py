@@ -28,6 +28,12 @@ class SweBenchRuntime:
     def writable_tests(self, config):
         return False
 
+    def workspace_aliases(self, config):
+        return []
+
+    def writable_runtime_bin(self, config):
+        return False
+
     def command_environment(self, config, home, root):
         from swe import project_environment
         environment = project_environment(config['swe']['repo'], root / 'baseline', config['swe']['version'])

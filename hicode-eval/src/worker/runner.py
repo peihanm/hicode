@@ -54,6 +54,8 @@ def namespace(args,verifier=False,setup=False,actor=False):
                           writable_tests=verifier and dataset.writable_tests(config),
                           root_overlay=verifier and not setup and config.get('verifierRootOverlay',False),
                           workdir=dataset.workdir,environment=dataset.actor_environment,
+                          workspace_aliases=dataset.workspace_aliases(config),
+                          writable_runtime_bin=dataset.writable_runtime_bin(config),
                           public_tests=root/'public-tests' if not verifier and config.get('publicTestInputs') else None,
                           private_root=dataset.verifier_root if verifier else None,
                           isolated_network=actor and network=='isolated',

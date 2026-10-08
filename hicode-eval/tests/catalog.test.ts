@@ -77,12 +77,12 @@ test('archive keeps final patch and grading evidence before deleting the finishe
   }finally{await f.cleanup();}
 });
 
-test('archive retains prediction metadata larger than the old 16 MiB limit',async()=>{
+test('archive retains large prediction metadata without truncating the patch',async()=>{
   const f=await fixture();
   try {
     await persist(f);
     const prediction=join(f.data,'runs',f.run.id,'evidence/prediction.json');
-    const original='{"model_patch":"'+'x'.repeat(16*1024*1024)+'"}';
+    const original='{"model_patch":"'+'x'.repeat(53*1024*1024)+'"}';
     await mkdir(join(f.data,'runs',f.run.id,'evidence'),{recursive:true});
     await writeFile(prediction,original);
     const result=await archiveRuns(f.data,f.catalogPath,true);

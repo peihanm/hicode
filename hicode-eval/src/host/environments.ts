@@ -25,7 +25,7 @@ type Layer=z.infer<typeof layerSchema>;
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 
 function aptInstall(packages:readonly string[]):string {
-  return packages.length?'RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends '+packages.join(' ')+' && rm -rf /var/lib/apt/lists/*\n':'';
+  return packages.length?'RUN --mount=type=cache,id=hicode-clean-apt-lists-v1,target=/var/lib/apt/lists,sharing=locked --mount=type=cache,id=hicode-clean-apt-archives-v1,target=/var/cache/apt,sharing=locked sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|g" /etc/apt/sources.list.d/ubuntu.sources && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends '+packages.join(' ')+'\n':'';
 }
 const commandPackages:Record<string,string>={gcc:'build-essential','g++':'build-essential',rustc:'rustc',bc:'bc',openssl:'openssl',vim:'vim',sqlite3:'sqlite3',ffmpeg:'ffmpeg',chromium:'chromium',chromedriver:'chromium-driver',oligotm:'primer3',Rscript:'r-base',cobc:'gnucobol3',screen:'screen',expect:'expect',gfortran:'gfortran',h5cc:'libhdf5-dev','pkg-config':'pkg-config',gcov:'gcc',tclsh:'tcl',pdflatex:'texlive-latex-base=2023.20240207-1',coqc:'coq',zip:'zip',unzip:'unzip',strings:'binutils',extundelete:'extundelete',foremost:'foremost',fls:'sleuthkit',e2fsck:'e2fsprogs',pmars:'pmars'};
 function environmentBuilder(definition?:DependencyRecipe){
@@ -139,7 +139,8 @@ export class EnvironmentStore {
       preparation:task.preparation??null}))};
   }
   private dependencies(metadata:TaskMetadata,recipe:string,base:Layer,definition?:DependencyRecipe):Promise<Layer>{
-    const inputs=definition??('packages' in metadata?{actor:metadata.packages,verifier:metadata.verifierPackages,commands:metadata.commands}:null);
+    const inputs=definition??('packages' in metadata?{actor:metadata.packages,verifier:metadata.verifierPackages,commands:metadata.commands,
+      ...(metadata.systemPackages?.length?{systemPackages:metadata.systemPackages}:{})}:null);
     const key=digest(JSON.stringify({base:base.imageId,recipe,inputs}));
     let build=this.dependencyBuilds.get(key);
     if(!build){
@@ -180,13 +181,14 @@ export class EnvironmentStore {
               (definition.sourceArchives?.length?'COPY source-cache /opt/hicode-swe/source-cache\nENV XDG_CACHE_HOME=/opt/hicode-swe/source-cache\n':'')+
               'RUN --mount=type=cache,id=hicode-clean-uv-v1,target=/root/.cache/uv,sharing=locked python3 /opt/hicode-eval/'+builder+' /opt/hicode-environment/dependencies.json\n';
           }else if('packages' in metadata){
-            const packages=[...new Set(metadata.commands.map(command=>{
+            const packages=[...new Set([...(metadata.systemPackages??[]),...metadata.commands.map(command=>{
               const value=commandPackages[command];if(!value)throw Error('No system package recipe for command '+command);return value;
-            }))];
+            })])];
             body=aptInstall(packages);
             if(metadata.commands.includes('pmars'))body+='ENV PATH="/usr/games:${PATH}"\n';
             for(const [name,pins] of [['actor',metadata.packages],['verifier',metadata.verifierPackages]] as const){
-              if(pins.length)body+='RUN '+JSON.stringify(['/opt/python313/bin/python3.13','-m','pip','install','--no-cache-dir','--no-compile','--target','/opt/hicode-terminal/'+name,...pins])+'\n';
+              if(pins.length)body+='RUN --mount=type=cache,id=hicode-clean-terminal-uv-v1,target=/root/.cache/uv,sharing=locked '+
+                JSON.stringify(['uv','pip','install','--python','/opt/python313/bin/python3.13','--target','/opt/hicode-terminal/'+name,...pins])+'\n';
             }
             if(metadata.commands.length)body+='RUN '+JSON.stringify(['python3','-c','import shutil,sys;assert all(shutil.which(x) for x in sys.argv[1:])',...metadata.commands])+'\n';
           }

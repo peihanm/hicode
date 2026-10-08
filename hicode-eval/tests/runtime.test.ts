@@ -200,7 +200,7 @@ test('one batch keeps equal task IDs from two releases separate',async()=>{
     {dataset:'terminal-bench-2.1',id:'regex-log',source},
   ]);
   const profile={hashes:{},inputs:[],publicTestInputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],
-    verifierPrelude:'none' as const,commands:[],environment:{},verifierEnvironment:{},verifierRootOverlay:false,verifierChroot:false};
+    verifierPrelude:'none' as const,workspaceAliases:[],systemPackages:[],commands:[],environment:{},verifierEnvironment:{},verifierRootOverlay:false,verifierChroot:false};
   const first=spyOn(datasetHandlers['terminal-bench'],'validate').mockResolvedValue(profile);
   const second=spyOn(datasetHandlers['terminal-bench-2.1'],'validate').mockResolvedValue(profile);
   const lab=new Lab(f.config,'fixture');
@@ -249,7 +249,7 @@ test('queued batch cancellation prevents execution and premature reporting is re
 
 test('one batch executes and restores independently resolved task limits', async () => {
   const f = await fixture(), lab = new Lab(f.config, 'fixture');
-  const validate = spyOn(taskAdapters, 'validatePublicTask').mockResolvedValue({hashes:{}, inputs:[], initializer:null, directories:[], packages:[], verifierPackages:[], verifierPrelude:'none', publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false, commands:[], environment:{}, verifierEnvironment:{}});
+  const validate = spyOn(taskAdapters, 'validatePublicTask').mockResolvedValue({hashes:{}, inputs:[], initializer:null, directories:[], packages:[], verifierPackages:[], verifierPrelude:'none', publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false, workspaceAliases:[],systemPackages:[], commands:[], environment:{}, verifierEnvironment:{}});
   const prepare = spyOn(LinuxMachine.prototype, 'prepare').mockResolvedValue(undefined);
   const execute = spyOn(LinuxMachine.prototype, 'execute').mockResolvedValue({type:'result',execution:'completed',grading:'passed',uid:20001});
   try {
@@ -349,7 +349,7 @@ test('failed recovery retains its blocked state and does not fabricate a score',
 
 test('verified cancellation after Docker handoff failure releases queued work without replaying the attempt', async () => {
   const f=await fixture(), lab=new Lab(f.config,'fixture');
-  const validate=spyOn(taskAdapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,commands:[],environment:{},verifierEnvironment:{}});
+  const validate=spyOn(taskAdapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,workspaceAliases:[],systemPackages:[],commands:[],environment:{},verifierEnvironment:{}});
   const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
   const execute=spyOn(LinuxMachine.prototype,'execute').mockImplementation(async (state,path) => {
     if (state.task==='cancel-async-tasks') {
@@ -379,7 +379,7 @@ test('verified cancellation after Docker handoff failure releases queued work wi
 
 test('final export failure preserves sealed execution and grading without publishing a reward', async () => {
   const f=await fixture(), lab=new Lab(f.config,'fixture');
-  const validate=spyOn(taskAdapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,commands:[],environment:{},verifierEnvironment:{}});
+  const validate=spyOn(taskAdapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,workspaceAliases:[],systemPackages:[],commands:[],environment:{},verifierEnvironment:{}});
   const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
   const execute=spyOn(LinuxMachine.prototype,'execute').mockImplementation(async (_state,path) => {
     await save(join(path,'container.json'),{session:_state.id,id:'test-machine',attach:'fixture'});

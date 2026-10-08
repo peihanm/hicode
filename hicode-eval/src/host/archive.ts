@@ -9,7 +9,7 @@ import type {Run} from './types.js';
 import {readJson,save,exists} from './store.js';
 import {lease} from './lease.js';
 
-const MAX_ARCHIVE_METADATA_BYTES=32*1024*1024;
+const MAX_ARCHIVE_METADATA_BYTES=64*1024*1024;
 const journalSchema=z.object({version:z.literal(1),catalog:z.string(),runs:z.array(idSchema).max(10000),batches:z.array(idSchema).max(10000)}).strict();
 const archiveSchema=z.object({version:z.literal(1),runId:idSchema,task:z.string(),originalPath:z.string(),
   files:z.record(z.object({sha256:z.string().regex(/^[a-f0-9]{64}$/),bytes:z.number().int().nonnegative().max(MAX_ARCHIVE_METADATA_BYTES),originalBytes:z.number().nonnegative()}))}).strict();

@@ -17,20 +17,33 @@ const profileSchema = z.object({
   verifierPackages: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]*==[0-9][A-Za-z0-9.+-]*$/)).max(16).default([]),
   verifierPrelude: z.enum(['copy-test-helper','compile-feal-extension','reset-large-csv','none']),
   commands: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9_.+-]*$/)).default([]),
+  systemPackages: z.array(z.string().regex(/^[a-z0-9][a-z0-9+.-]*(?:=[A-Za-z0-9.+:~_-]+)?$/)).max(128).optional(),
+  workspaceAliases: z.array(z.enum(['/data','/workspace','/tmp/CompCert'])).max(3).optional(),
+  writableRuntimeBin: z.boolean().optional(),
+  verifierInputs: z.array(z.object({source:inputPath.refine(path=>path.startsWith('tests/')),target:inputPath}).strict()).max(32).optional(),
+  verifierSetup: inputPath.optional(),
+  verifierWritableTests: z.boolean().optional(),
+  verifierTestPaths: z.array(z.string().regex(/^\/(?:app|tests)(?:\/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$/)).min(1).max(32).optional(),
+  verifierPython: z.literal('/opt/hicode-task/verifier/bin/python').optional(),
   environment: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.string().max(1024)).default({}),
   verifierEnvironment: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/),z.string().max(1024)).default({}),
   verifierRootOverlay: z.boolean().default(false),
   verifierChroot: z.boolean().default(false)
 }).strict().superRefine((profile, ctx) => {
   const targets = new Set<string>();
+  if (profile.workspaceAliases && new Set(profile.workspaceAliases).size !== profile.workspaceAliases.length)
+    ctx.addIssue({code:z.ZodIssueCode.custom,message:'Workspace aliases must be unique'});
   for (const input of profile.inputs) {
+    if (profile.writableRuntimeBin && (input.target==='runtime-bin' || input.target.startsWith('runtime-bin/')))
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:'Runtime executable directory is reserved'});
     if (!profile.hashes[input.source] || targets.has(input.target) || input.target === profile.initializer?.file)
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Inputs must have reviewed hashes and unique destinations' });
     targets.add(input.target);
   }
   if (profile.initializer && !profile.hashes['environment/' + profile.initializer.file])
     ctx.addIssue({code:z.ZodIssueCode.custom,message:'Initializer must be a reviewed environment file'});
-  if (profile.directories.some(path => targets.has(path) || profile.initializer?.file === path))
+  if (profile.directories.some(path => targets.has(path) || profile.initializer?.file === path ||
+      (profile.writableRuntimeBin && (path==='runtime-bin' || path.startsWith('runtime-bin/')))))
     ctx.addIssue({code:z.ZodIssueCode.custom,message:'Output directories must not collide with input files'});
   if (profile.packages.some((value, index) => profile.packages.indexOf(value) !== index))
     ctx.addIssue({code:z.ZodIssueCode.custom,message:'Task-local package pins must be unique'});
@@ -39,6 +52,14 @@ const profileSchema = z.object({
   if (profile.verifierChroot && !profile.verifierRootOverlay)
     ctx.addIssue({code:z.ZodIssueCode.custom,message:'Chroot verification requires a private root'});
   const publicTargets = new Set<string>();
+  const verifierTargets=new Set<string>();
+  for (const entry of profile.verifierInputs??[]) {
+    if (!profile.hashes[entry.source] || verifierTargets.has(entry.target) || entry.target==='runtime-bin' || entry.target.startsWith('runtime-bin/'))
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:'Verifier inputs require reviewed hashes and unique non-runtime destinations'});
+    verifierTargets.add(entry.target);
+  }
+  if (profile.verifierSetup && !profile.hashes['tests/'+profile.verifierSetup])
+    ctx.addIssue({code:z.ZodIssueCode.custom,message:'Verifier setup must be a reviewed test file'});
   for (const entry of profile.publicTestInputs) {
     if (!profile.inputs.some(input => input.source === entry.source) || publicTargets.has(entry.target))
       ctx.addIssue({code:z.ZodIssueCode.custom,message:'Public test helpers must already be public inputs with unique destinations'});

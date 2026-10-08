@@ -26,7 +26,7 @@ async function fixture(){
  await save(join(root,'runs',original.id,'task-files.json'),await tree(frozen));
  await save(join(root,'runs',original.id,'state.json'),original);
  await save(join(root,'batches',batch.id+'.json'),batch);await save(join(config.payload,'manifest.json'),batch.payload);
- const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,commands:[],environment:{},verifierEnvironment:{}});
+ const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,workspaceAliases:[],systemPackages:[],commands:[],environment:{},verifierEnvironment:{}});
  const environment=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(environmentFixture('terminal-bench:fixture'));
  const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
  const execute=spyOn(LinuxMachine.prototype,'execute').mockResolvedValue({type:'result',execution:'completed',grading:'passed',uid:20000});

@@ -7,7 +7,7 @@ import {LinuxMachine} from './linux.js';
 import {configSchema, runSchema, done,idSchema,regradeResultSchema} from './types.js';
 import type {Run} from './types.js';
 import {validateFrozenSweTask} from './sweTasks.js';
-import {readJson, save, exists, evidenceTree, run} from './store.js';
+import {readJson, save, exists, runEvidenceTree, run} from './store.js';
 import {isDeepStrictEqual} from 'node:util';
 import {EVAL_ROOT} from '../paths.js';
 import {lease} from './lease.js';
@@ -96,11 +96,11 @@ async function recoverCollectedPatch(original:string,taskRoot:string,output:stri
   const file=z.object({bytes:z.number().int().nonnegative(),sha256:z.string().regex(/^[a-f0-9]{64}$/),symlink:z.string().max(4096).optional()}).strict();
   const receipt=await readJson(join(original,'collection.json'),z.object({complete:z.literal(true),files:z.record(file)}).strict(),32*1024*1024);
   const expected=Object.fromEntries(Object.entries(receipt.files).filter(([name])=>name.startsWith('project/')).map(([name,value])=>[name.slice(8),value]));
-  if(!Object.keys(expected).length || !isDeepStrictEqual(await evidenceTree(project),expected))throw Error('Collected project differs from its sealed receipt');
+  if(!Object.keys(expected).length || !isDeepStrictEqual(await runEvidenceTree(project),expected))throw Error('Collected project differs from its sealed receipt');
   const copy=join(output,'recovered-project'),patch=join(output,'model.patch');
   try{
     await cp(project,copy,{recursive:true,dereference:false,verbatimSymlinks:true,errorOnExist:true,force:false});
-    if(!isDeepStrictEqual(await evidenceTree(copy),expected))throw Error('Collected project changed during recovery');
+    if(!isDeepStrictEqual(await runEvidenceTree(copy),expected))throw Error('Collected project changed during recovery');
     await run(['python3','-B','-c','import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);from swe import export_patch;Path(sys.argv[4]).write_text(export_patch(Path(sys.argv[2]),Path(sys.argv[3])))',join(EVAL_ROOT,'src/worker'),join(taskRoot,'repository'),copy,patch],{timeout:180000});
     await save(join(output,'recovered-from-collection.json'),{method:'verified-collected-project',files:expected});
     return patch;

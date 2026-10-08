@@ -28,7 +28,7 @@ description: 为 HiCode 公开题评测选题、准备干净依赖镜像、提�
 
 公共底座来自审定 Dockerfile、官方镜像摘要和 HiCode 锁文件；共享依赖来自声明配方，特殊准备层按需增加。每次尝试独立容器、网络、Home 和可写层，证据及成绩落盘后销毁。准备容器只缓存固定 HiCode payload，不安装题目依赖，不导入旧评测卷或旧机文件。
 
-题包、模型配置、临时选题和运行记录都放仓库外。SWE 输入为外部审定冻结 bundle，评测器不生成原始 SWE 题包。Terminal 适配按 `config/terminal-bench.json` 校验。不能仅凭题目 ID、历史通过或 `environmentPrepared=true` 判断新镜像就绪；以源哈希、当前配方、镜像可用性和必要运行条件为准。
+题包、模型配置、临时选题和运行记录都放仓库外。SWE 输入为外部审定冻结 bundle，评测器不生成原始 SWE 题包。Terminal 2.0、2.1 分别按 `config/terminal-bench.json`、`config/terminal-bench-2.1.json` 校验；同名题不能混用版本或成绩。不能仅凭题目 ID、历史通过或 `environmentPrepared=true` 判断新镜像就绪；以源哈希、当前配方、镜像可用性和必要运行条件为准。
 
 默认 isolated：做题进程只能经每题模型网关访问固定接口；普通外网不可用。依赖在镜像构建阶段准备，不能在作答或判题时临时修环境，也不能因准备失败偷偷改 open。需要外网的题显式记录网络条件。私有判题材料、参考解和真实 Key 不进入 Actor 或依赖配方。
 

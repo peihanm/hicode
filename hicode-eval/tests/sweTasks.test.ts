@@ -61,7 +61,7 @@ test('mixed submission under CLI umask preserves links and executable bits and r
  const prior=process.umask(0o077);
  const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
  const dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
- const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,commands:[],environment:{},verifierEnvironment:{}});
+ const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,workspaceAliases:[],systemPackages:[],commands:[],environment:{},verifierEnvironment:{}});
  let release=()=>{};const gate=new Promise<void>(resolve=>{release=resolve;});let active=0,peak=0;
  const execute=spyOn(LinuxMachine.prototype,'execute').mockImplementation(async()=>{
   peak=Math.max(peak,++active);await gate;active--;return {type:'result',execution:'completed',grading:'passed',uid:20001};

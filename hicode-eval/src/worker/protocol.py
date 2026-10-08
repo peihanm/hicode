@@ -175,8 +175,8 @@ def actor_readonly_mounts(release, environment):
     for name in ['/etc/passwd','/etc/group','/etc/nsswitch.conf','/etc/hosts','/etc/hostname',
                  '/etc/resolv.conf','/etc/localtime','/etc/locale.alias','/etc/ld.so.cache',
                  '/etc/alternatives','/etc/ssl/certs','/etc/ssl/openssl.cnf',
-                 '/etc/fonts','/etc/ImageMagick-6','/etc/R','/etc/texmf','/var/lib/texmf',
-                 '/etc/python3.11', '/opt/python313','/opt/hicode-task']:
+                 '/etc/fonts','/etc/chromium.d','/etc/ImageMagick-6','/etc/R','/etc/texmf','/var/lib/texmf',
+                 '/etc/python3.11', '/etc/ocamlfind.conf','/etc/ocamlfind.conf.d', '/opt/python313','/opt/hicode-task','/build']:
         path=Path(name)
         if path.exists():paths.append(path)
     dependencies=(release/'node_modules').resolve(strict=True)
@@ -218,7 +218,14 @@ def assignment_prompt(instruction, agent_seconds, network, workdir, public_entri
     return '\n'.join(lines)+'\n\n'+instruction
 
 
-def namespace_argv(args, project, home, logs, control, tests=None, *, writable_tests=False, root_overlay=False, workdir="/app", environment=None, readonly_logs=False, public_tests=None, private_root=None, isolated_network=False, actor_release=None, actor_events=None):
+def namespace_argv(args, project, home, logs, control, tests=None, *, writable_tests=False, root_overlay=False, workdir="/app", environment=None, readonly_logs=False, public_tests=None, private_root=None, isolated_network=False, actor_release=None, actor_events=None, workspace_aliases=(), writable_runtime_bin=False):
+    if type(writable_runtime_bin) is not bool or (writable_runtime_bin and workdir!='/app'):
+        raise ValueError('Invalid runtime executable view')
+    aliases={'/data':'/app/data','/workspace':'/app','/tmp/CompCert':'/app/CompCert'}
+    if not isinstance(workspace_aliases, (list, tuple)) or any(not isinstance(path,str) or path not in aliases for path in workspace_aliases):
+        raise ValueError('Unsupported workspace alias')
+    if len(set(workspace_aliases))!=len(workspace_aliases) or (workspace_aliases and workdir!='/app'):
+        raise ValueError('Invalid workspace aliases')
     if (actor_release is None)!=(actor_events is None):raise ValueError('Actor release and event storage must be paired')
     if actor_release is not None and (tests is not None or root_overlay or readonly_logs):raise ValueError('Actor and verifier views cannot be combined')
     if tests is None and (writable_tests or root_overlay):raise ValueError('Verifier-only filesystem options')
@@ -229,17 +236,25 @@ def namespace_argv(args, project, home, logs, control, tests=None, *, writable_t
     if isolated_network:result+=['--unshare-net']
     if actor_release is not None:
         result+=['--tmpfs','/',*actor_readonly_mounts(actor_release,environment),'--dir','/run','--dir','/var','--dir','/var/tmp']
-    elif root_overlay:
+    elif root_overlay or workspace_aliases:
         # A verifier may create new top-level directories in a private tmpfs;
         # every existing system entry remains read-only. The host root is never writable.
         result+=['--bind',str(private_root),'/','--uid','0','--gid','0','--cap-add','CAP_SYS_CHROOT'] if private_root is not None else ['--tmpfs','/']
+        alias_roots={path[1:] for path in workspace_aliases if path.count('/')==1}
         for name in sorted(os.listdir('/')):
-            if name not in {'proc','dev','tmp','app','tests','logs','testbed','server'}:result+=['--ro-bind','/'+name,'/'+name]
+            if name not in {'proc','dev','tmp','app','tests','logs','testbed','server'} | alias_roots:result+=['--ro-bind','/'+name,'/'+name]
     else:result+=['--ro-bind','/','/']
     if workdir not in {'/app','/testbed'}:raise ValueError('Unsupported dataset workspace')
     result+=['--proc','/proc','--dev','/dev']
     if isolated_network:result+=['--tmpfs','/run']
     if private_root is None:result+=['--tmpfs','/tmp','--bind',str(project),workdir]
+    # Original task paths refer only to this attempt's workspace, never extra host mounts.
+    for path in workspace_aliases:result+=['--symlink',aliases[path],path]
+    if writable_runtime_bin:
+        runtime_bin=Path(project)/'runtime-bin'
+        if runtime_bin.is_symlink() or not runtime_bin.is_dir():
+            raise ValueError('Invalid runtime executable directory')
+        result+=['--bind',str(runtime_bin),'/usr/local/bin']
     result+=['--bind',str(home),str(home)]
     if actor_release is not None:result+=['--bind',str(actor_events),str(actor_events)]
     else:result+=['--ro-bind' if readonly_logs else '--bind',str(logs),str(logs)]

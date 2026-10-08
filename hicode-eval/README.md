@@ -4,7 +4,7 @@
 
 使用可复用环境镜像，每次尝试启动独立 Linux 容器，批量测试 HiCode 完成公开编程任务的能力。CLI 提交任务，网页查看完整 TUI 和进度，结束后自动运行原题测试并保存日志。每题独立尝试一次，不追加纠错提示、不自动重跑。
 
-已适配题目见 [Terminal-Bench 2.0 清单](config/terminal-bench.json)与 [Terminal-Bench 2.1 样题清单](config/terminal-bench-2.1.json)；SWE-bench Verified 使用冻结题包。此工具用于研发回归；审定依赖配方、ARM64 环境和可调时限与官方环境存在差异，结果不等同于官方榜单成绩。
+已适配题目见 [Terminal-Bench 2.0 清单](config/terminal-bench.json)与 [Terminal-Bench 2.1 清单](config/terminal-bench-2.1.json)；SWE-bench Verified 使用冻结题包。此工具用于研发回归；审定依赖配方、ARM64 环境和可调时限与官方环境存在差异，结果不等同于官方榜单成绩。
 
 批次执行状态与累计成绩由 CLI `status` 查询。持久 `catalog.json` 保留已通过、未通过、待测试；正在运行从当前任务派生。删除历史工作区不会删除台账。
 
@@ -21,7 +21,7 @@ tests/       离线回归测试
 skills/      Codex 批量评测操作说明
 ```
 
-题目文件、源码 payload、凭据和运行记录保存在仓库外。`config/` 只保存通用声明、固定回归题组和示例；每次实际提交的模型、版本、预算和结果，以 `<data-dir>/batches/` 与 `runs/` 为准。临时选题配置放在仓库外，例如 `../hicode-eval-data/batch-configs/`，不存入源码目录。个人状态与本机准备记录可放在 `../hicode-eval-data/records/`。
+题目文件、源码 payload、凭据和运行记录保存在仓库外。`config/` 只保存通用声明、固定回归题组和示例；累计成绩以外部 `catalog/catalog.json` 为准，未归档的提交与运行证据在 `<data-dir>/batches/`、`runs/`，已归档的精简证据在 `catalog/run-archive/`（旧证据可打包）。近期待提交的选题配置放在仓库外的 `../hicode-eval-data/operator/batch-configs/`；`operator/records/` 只保留仍在使用或被台账引用的状态记录，人工操作日志只暂存于 `operator/logs/`，处理完即删除。
 
 ## 1. 准备环境与数据
 
@@ -209,15 +209,17 @@ Terminal 的固定包在依赖镜像中分别安装到 `/opt/hicode-terminal/act
 
 ## 接入新的公开数据集
 
-Terminal-Bench 2.0、2.1 和 SWE-bench Verified 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。当前 2.1 仅有三道审定样题，并未整体接入 89 道。
+Terminal-Bench 2.0、2.1 和 SWE-bench Verified 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。2.1 的审定范围以独立清单为准，新增题目需逐题核对原 Dockerfile、公开输入和判题依赖，不能因 2.0 有同名题便直接登记。
 
 Terminal 题目从固定上游目录登记；SWE 题目从外部审定的冻结 bundle 登记。当前评测器不下载原始 SWE 数据集或生成题包，接入者需提供题面、原始源码基线、仅供宿主判题的材料、版本回执及文件哈希，格式由 `src/host/sweTasks.ts` 校验。缺少材料先准备题包，不能回退到旧共享环境安装器。
 
 ```bash
 bash hicode-eval/eval.sh register-tasks --catalog CATALOG --swe-tasks PREPARED_SWE_DIR
-bash hicode-eval/eval.sh register-tasks --catalog CATALOG --tasks ../hicode-benchmarks/terminal-bench-2.1/tasks --dataset terminal-bench-2.1
+bash hicode-eval/eval.sh register-tasks --catalog CATALOG --tasks REVIEWED_TASKS --dataset terminal-bench-2.1
 bash hicode-eval/eval.sh prepare-environments --catalog CATALOG --environments ENVIRONMENTS --ids terminal-bench-2.1:regex-log
 ```
+
+`REVIEWED_TASKS` 指已审定的外部冻结题包目录，不直接使用下载的原始题库。
 
 依赖只通过 `config/environment-recipes/` 和可选特殊准备层构建；题包校验通过不代表已有可用依赖镜像。现有 SWE 配方及其可用性以生产校验为准，其他组合逐组审定、补齐并验证，不因历史通过就视为就绪。
 

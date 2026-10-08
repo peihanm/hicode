@@ -8,7 +8,7 @@
 
 核对公开题面、原环境声明和现有适配，不读取参考解来选题。旧机器自带的编译器、命令和 Python 包可能掩盖 profile 缺项：对照原 Dockerfile/依赖声明补入明确配方，不能只查看旧通过状态。选定后缺环境优先解决或报告，不静默换简单题凑数。
 
-提交 JSON 放外部 `batch-configs/`，只包含 CLI 支持的 name/network/concurrency/tasks 字段。准备记录另放 `records/`，记录题目来源、选择理由、历史状态、准备结果和待冻结源码状态，不把这些字段塞入提交 JSON。以待提交清单称呼它，不虚构 batch ID。
+提交 JSON 放外部 `operator/batch-configs/`，只包含 CLI 支持的 name/network/concurrency/tasks 字段。仍需处理的准备结论另放 `operator/records/`，记录题目来源、选择理由、历史状态、准备结果和待冻结源码状态，不把这些字段塞入提交 JSON。以待提交清单称呼它，不虚构 batch ID。
 
 ## 准备镜像
 
@@ -21,6 +21,8 @@
 `environmentPrepared` 只是存在准备回执。最终按生产 `EnvironmentStore.resolve(task)` 核对选定题目的源哈希、当前配方与最终镜像标签；还要确认依赖链所引用的镜像存在。底座、依赖或源码变化后不能沿用过期结论。
 
 按依赖组合批量快检必要命令、解释器和关键库。新组合使用 `tests/cleanEnvironmentSmoke.ts --catalog FILE --environments DIR --payload DIR --task ID` 离线安装公开源码、检查导入，并用实际 Git 工作树和冻结 HiCode payload 执行非 root、无外网 Actor namespace 内的沙箱预检。结果记录镜像身份、源码包 hash 和 `actorSandboxReady`；镜像、题包结构或 payload 变化后重新核验受影响组合。尚未冻结 payload 时只能记录依赖就绪，不声称完整启动已验证。SWE 的 `repository/.git`、`.git/hooks` 必须是真实目录；缺失空目录不影响文件哈希，登记/提交会独立检查并提前拒绝。仅发现具体兼容问题时扩大到相关题检查，不逐题跑参考解或完整基线。检查不应用隐藏补丁、不调用真实模型、不改变历史分数。
+
+依赖下载缓慢时先检查本机现有代理；可仅为构建或下载命令显式使用已验证的代理，保持原配方、公开来源和固定版本，完成后仍经 `EnvironmentStore.resolve` 校验。不得修改全局网络配置或把构建代理传入 Actor，也不因下载失败改成 open。操作日志只暂存 `operator/logs/`，问题解决后删除。
 
 声明了 initializer 的题目还需验证初始化本身：在一次性容器的非 root、无网络 namespace 中，使用实际题包输入执行并检查产物。包可导入不代表在线 clone、下载或初始 Git 历史已就绪。外部仓库失效时优先核对原题声明的固定镜像，只提取公开题目材料并校验固定提交/哈希；不要导入旧系统或编造替代仓库。保留初始化证据，未通过不得标记为可提交。
 

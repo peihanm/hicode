@@ -43,6 +43,12 @@ test('corrupt input and reused or symlinked staging directories are rejected', a
   });
 });
 
+test('workspace aliases reject duplicate declarations', async () => {
+  await fixture(async (root, task) => {
+    await expect(prepareTaskInputs(task, join(root, 'bad'), { ...profile, workspaceAliases: ['/data', '/data'] })).rejects.toThrow();
+  });
+});
+
 test('manifest refuses path escapes, undeclared files, hidden test sources, and duplicate targets', async () => {
   await fixture(async (root, task) => {
     for (const input of [

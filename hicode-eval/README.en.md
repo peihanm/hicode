@@ -4,7 +4,7 @@
 
 Run public programming tasks through HiCode in a fresh disposable Linux container for each attempt. Submit batches from the CLI, watch the full TUI in a browser, and automatically collect test results and logs. Each task gets one independent attempt, with no corrective follow-up prompts or automatic retries.
 
-Reviewed tasks are listed in the [Terminal-Bench 2.0 manifest](config/terminal-bench.json) and the [Terminal-Bench 2.1 pilot manifest](config/terminal-bench-2.1.json); SWE-bench Verified uses frozen task bundles. This is a development regression tool: the reviewed dependency recipes, ARM64 environment, and configurable time limits differ from official benchmark conditions. Results are not official leaderboard scores.
+Reviewed tasks are listed in the [Terminal-Bench 2.0 manifest](config/terminal-bench.json) and the [Terminal-Bench 2.1 manifest](config/terminal-bench-2.1.json); SWE-bench Verified uses frozen task bundles. This is a development regression tool: the reviewed dependency recipes, ARM64 environment, and configurable time limits differ from official benchmark conditions. Results are not official leaderboard scores.
 
 Query batch execution and scores with the CLI `status` command. Keep personal task reviews and environment preparation records outside the checkout.
 
@@ -21,7 +21,7 @@ tests/       Offline regression tests
 skills/      Codex batch evaluation instructions
 ```
 
-Task files, source payloads, credentials, and run records stay outside the checkout. `config/` contains shared declarations, fixed regression groups, and examples; the model, release, budget, and results for each actual submission are recorded under `<data-dir>/batches/` and `runs/`. Keep temporary task selections outside the checkout, for example in `../hicode-eval-data/batch-configs/`. Personal status and machine preparation notes can go under `../hicode-eval-data/records/`.
+Task files, source payloads, credentials, and run records stay outside the checkout. `config/` contains shared declarations, fixed regression groups, and examples. Cumulative scores live in the external `catalog/catalog.json`; active submissions and evidence live under `<data-dir>/batches/` and `runs/`, and compacted evidence lives in `catalog/run-archive/`. Keep pending task selections in `../hicode-eval-data/operator/batch-configs/`, current operator notes in `operator/records/`, and temporary operator logs in `operator/logs/`. Delete those logs after use.
 
 ## 1. Prepare the environment and dataset
 
@@ -197,15 +197,17 @@ At the evaluation deadline, the runner sends SIGTERM to the identified HiCode CL
 
 ## Additional public datasets
 
-Terminal-Bench 2.0, the three reviewed Terminal-Bench 2.1 pilot tasks, and SWE-bench Verified share scheduling, task budgets, the TUI, cancellation and evidence collection. Dataset-specific handlers prepare inputs and grade outputs. `Run.dataset` and the task ID jointly identify a task; a submission with a reused ID must specify its dataset.
+Terminal-Bench 2.0, the reviewed Terminal-Bench 2.1 tasks, and SWE-bench Verified share scheduling, task budgets, the TUI, cancellation and evidence collection. Dataset-specific handlers prepare inputs and grade outputs. `Run.dataset` and the task ID jointly identify a task; a submission with a reused ID must specify its dataset. The separate 2.1 manifest defines its supported tasks. Review each new task's original Dockerfile, public inputs and verifier dependencies even when 2.0 has a task with the same ID.
 
 Register Terminal tasks from the pinned upstream checkout. SWE input is an externally reviewed frozen bundle, validated by `src/host/sweTasks.ts`. This evaluator does not download raw SWE datasets or generate bundles. Supply the original baseline, public problem, host-only grading material, source-version receipts and file hashes before registration.
 
 ```bash
 bash hicode-eval/eval.sh register-tasks --catalog CATALOG --swe-tasks PREPARED_SWE_DIR
-bash hicode-eval/eval.sh register-tasks --catalog CATALOG --tasks ../hicode-benchmarks/terminal-bench-2.1/tasks --dataset terminal-bench-2.1
+bash hicode-eval/eval.sh register-tasks --catalog CATALOG --tasks REVIEWED_TASKS --dataset terminal-bench-2.1
 bash hicode-eval/eval.sh prepare-environments --catalog CATALOG --environments ENVIRONMENTS --ids terminal-bench-2.1:regex-log
 ```
+
+`REVIEWED_TASKS` is the reviewed external frozen bundle directory, not the downloaded raw dataset.
 
 Dependencies come only from reviewed recipes and optional task preparation layers. SWE combinations require reviewed recipes; add and validate new combinations incrementally. A registered bundle or historical passing score does not imply a prepared image.
 

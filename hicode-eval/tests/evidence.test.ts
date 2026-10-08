@@ -2,10 +2,10 @@ import {seedCatalog,environmentFixture} from './helpers/catalog.js';
 import {EnvironmentStore} from '../src/host/environments.js';
 import {RunContainers} from '../src/host/containers.js';
 import {test, expect, spyOn} from 'bun:test';
-import {mkdtemp, writeFile, symlink, rm, readFile, mkdir, chmod, realpath} from 'node:fs/promises';
+import {mkdtemp, writeFile, symlink, rm, readFile, mkdir, chmod, realpath, open} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {evidenceTree, tree} from '../src/host/store.js';
+import {evidenceTree, runEvidenceTree, tree} from '../src/host/store.js';
 
 test('evidence records dangling, external and cyclic links without reading their targets; sources reject links', async () => {
   const root = await mkdtemp(join(tmpdir(), 'hicode-evidence-'));
@@ -19,9 +19,22 @@ test('evidence records dangling, external and cyclic links without reading their
     expect(snapshot['external']!.bytes).toBe('/etc/passwd'.length);
     expect(snapshot['cycle']!.symlink).toBe('.');
     expect(Object.keys(snapshot)).toHaveLength(4);
+    expect(await runEvidenceTree(root)).toEqual(snapshot);
     expect(await readFile(join(root, 'actual'), 'utf8')).toBe('kept');
     await expect(tree(root)).rejects.toThrow('Symlink');
   } finally {await rm(root, {recursive:true, force:true});}
+});
+
+test('source and run evidence refuse oversized sparse artifacts before reading their contents', async () => {
+  const root=await mkdtemp(join(tmpdir(),'hicode-artifact-budget-'));
+  try {
+    const file=await open(join(root,'oversized'),'wx');
+    try {await file.truncate(1024**3+1);} finally {await file.close();}
+    await expect(tree(root)).rejects.toThrow('budget');
+    const growing=await open(join(root,'oversized'),'r+');
+    try {await growing.truncate(8*1024**3+1);} finally {await growing.close();}
+    await expect(runEvidenceTree(root)).rejects.toThrow('budget');
+  } finally {await rm(root,{recursive:true,force:true});}
 });
 
 
@@ -88,7 +101,7 @@ printf '%s\n' '{"type":"result","execution":"completed","grading":"${uploadFailu
     }
     return '';
   });
-  const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,commands:[],environment:{},verifierEnvironment:{}});
+  const validate=spyOn(adapters,'validatePublicTask').mockResolvedValue({hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPackages:[],verifierPrelude:'none',publicTestInputs:[],verifierChroot:false,verifierRootOverlay:false,workspaceAliases:[],systemPackages:[],commands:[],environment:{},verifierEnvironment:{}});
   const oldPath=process.env.PATH;
   // Make the old periodic-copy condition true without waiting 30 seconds.
   const now=Date.now();let clock=0;const time=spyOn(Date,'now').mockImplementation(()=>now+(clock++)*31000);

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type {SweTask} from './sweTasks.js';
 import type {RegradeInput} from './regrade.js';
 import {taskAdapters} from './datasets.js';
-import { run, readJson, save, evidenceTree, exists } from './store.js';
+import { run, readJson, save, runEvidenceTree, exists } from './store.js';
 import type { Config, Run } from './types.js';
 import {regradeResultSchema} from './types.js';
 import { EVAL_ROOT } from '../paths.js';
@@ -72,7 +72,7 @@ export class LinuxMachine {
     const result=await readJson(join(output,'result.json'),regradeResultSchema);
     if(result.runId!==runId||result.instanceId!==task.instanceId||result.patchSha256!==input.patchSha256||result.originalExecution!==input.originalExecution)
       throw Error('Regrade result identity mismatch; container retained');
-    await save(join(output,'collection.json'),{complete:true,files:await evidenceTree(join(output,'logs'))});
+    await save(join(output,'collection.json'),{complete:true,files:await runEvidenceTree(join(output,'logs'))});
     await this.containers.remove(reviewId);
   }
   async prepare(): Promise<void> {
@@ -102,7 +102,7 @@ export class LinuxMachine {
   private async collect(id: string, path: string): Promise<void> {
     const stage = join(path, 'collecting'); await rm(stage, { recursive: true, force: true }); await mkdir(stage);
     await run(this.docker('cp', this.containers.name(id) + ':/eval/runs/' + id + '/.', stage), { timeout: 60000 });
-    const files = await evidenceTree(stage);
+    const files = await runEvidenceTree(stage);
     const previous = join(path, 'evidence.previous');
     // A prior interrupted rotation may have left both generations. The new stage
     // has been fully validated before replacing either one.
@@ -138,7 +138,7 @@ export class LinuxMachine {
     }
     if(state.collection==='complete'){
       const receipt=await readJson(join(path,'collection.json'),z.object({complete:z.literal(true),files:z.record(z.unknown())}));
-      if(JSON.stringify(await evidenceTree(join(path,'evidence')))!==JSON.stringify(receipt.files))throw Error('Archived evidence changed');
+      if(JSON.stringify(await runEvidenceTree(join(path,'evidence')))!==JSON.stringify(receipt.files))throw Error('Archived evidence changed');
       const result=packetSchema.parse({type:'result',...await readJson(join(path,'evidence/result.json'),z.record(z.unknown()))});
       if(result.type!=='result')throw Error('Invalid archived outcome');
       return result;
