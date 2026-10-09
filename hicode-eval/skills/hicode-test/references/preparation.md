@@ -1,5 +1,7 @@
 # 选题与干净环境准备
 
+Terminal-Bench 2.0 已停止新选题和环境准备；当前版本使用 `terminal-bench-2.1`。旧 2.0 成绩只作历史读取。同名题的镜像层可按配方自然共享，但 2.1 仍须独立校验题包并生成本版本环境绑定。
+
 本流程用于“选 N 题”“先准备，等代码改完再跑”和新增依赖组合。实现及参数以 `hicode-eval/src/cli.ts`、`src/host/environments.ts` 与 README 为准。
 
 ## 选题

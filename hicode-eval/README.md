@@ -4,9 +4,11 @@
 
 使用可复用环境镜像，每次尝试启动独立 Linux 容器，批量测试 HiCode 完成公开编程任务的能力。CLI 提交任务，网页查看完整 TUI 和进度，结束后自动运行原题测试并保存日志。每题独立尝试一次，不追加纠错提示、不自动重跑。
 
-已适配题目见 [Terminal-Bench 2.0 清单](config/terminal-bench.json)与 [Terminal-Bench 2.1 清单](config/terminal-bench-2.1.json)；SWE-bench Verified 使用冻结题包。此工具用于研发回归；审定依赖配方、ARM64 环境和可调时限与官方环境存在差异，结果不等同于官方榜单成绩。
+当前维护 [Terminal-Bench 2.1 清单](config/terminal-bench-2.1.json)；[Terminal-Bench 2.0 清单](config/terminal-bench.json)只用于读取历史结果，不再登记、准备或提交新任务。SWE-bench Verified 使用冻结题包。此工具用于研发回归；审定依赖配方、ARM64 环境和可调时限与官方环境存在差异，结果不等同于官方榜单成绩。
 
 批次执行状态与累计成绩由 CLI `status` 查询。持久 `catalog.json` 保留已通过、未通过、待测试；正在运行从当前任务派生。删除历史工作区不会删除台账。
+
+镜像归属可按数据集查询：`bash hicode-eval/eval.sh image-inventory --data-dir ../hicode-eval-data/container-v1 --dataset terminal-bench-2.1`。省略 `--dataset` 查看全部；结果按 Docker context 和不可变 imageId 去重，列出共享引用、标签及镜像是否可用。`organize-environments --data-dir DIR [--dataset DATASET]` 预览分类别名，追加 `--apply` 才给现有镜像补 `hicode-eval/<dataset>:<kind>-<layer-key>` 标签。它不会重建镜像、移动回执或更改成绩；引擎不可达标为 `unavailable` 并留待后续处理。完整题包与配方校验仍由提交入口执行。
 
 ## 目录与记录
 
@@ -34,14 +36,7 @@ bash .devcontainer/linux.sh engine-start
 
 这一步只启动 Docker 引擎并加载嵌套沙箱策略，不创建开发或旧评测容器。先登记题包并构建干净镜像，再按文末“重建准备容器”创建 `hicode-eval-clean`，之后启动服务。准备容器不挂载宿主目录或旧评测卷，只缓存固定 HiCode payload；题目依赖仅在镜像构建阶段安装。
 
-将上游题目下载到仓库外，并固定为已审核版本：
-
-```bash
-git clone https://github.com/harbor-framework/terminal-bench-2.git ../terminal-bench-2
-git -C ../terminal-bench-2 checkout --detach 69671fbaac6d67a7ef0dfec016cc38a64ef7a77c
-```
-
-`config/terminal-bench.json` 校验已接入题目的完整文件哈希，题目变更后会拒绝执行。仓库不附带题目或参考解；使用数据集须遵守上游许可与使用条件。无需安装 Harbor。
+将 Terminal-Bench 2.1 原题包放在仓库外，按 `config/terminal-bench-2.1.json` 校验审定文件哈希；题目变更后会拒绝执行。仓库不附带题目或参考解；使用数据集须遵守上游许可与使用条件。无需安装 Harbor。
 
 ## 2. 配置模型并固定源码
 
@@ -65,7 +60,8 @@ bash hicode-eval/eval.sh prepare --payload ../hicode-eval-data/payload-v1
 
 ```bash
 bash hicode-eval/eval.sh register-tasks \
-  --catalog ../hicode-eval-data/catalog/catalog.json --tasks ../terminal-bench-2
+  --catalog ../hicode-eval-data/catalog/catalog.json --tasks ../terminal-bench-2.1 \
+  --dataset terminal-bench-2.1
 bash hicode-eval/eval.sh prepare-environments \
   --catalog ../hicode-eval-data/catalog/catalog.json \
   --environments ../hicode-eval-data/environments
@@ -223,7 +219,7 @@ DeepSWE 从 `config/deep-swe.json` 审定的冻结目录登记：`register-tasks
 
 ## 接入新的公开数据集
 
-Terminal-Bench 2.0、2.1、SWE-bench Verified 和 DeepSWE 1.1 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。2.1 的审定范围以独立清单为准，新增题目需逐题核对原 Dockerfile、公开输入和判题依赖，不能因 2.0 有同名题便直接登记。
+Terminal-Bench 2.1、SWE-bench Verified 和 DeepSWE 1.1 共用批次、并发、每题时限、TUI、取消和证据收集；2.0 仅保留历史读取。输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。2.1 的审定范围以独立清单为准，新增题目需逐题核对原 Dockerfile、公开输入和判题依赖，不能因 2.0 有同名题便直接登记。
 
 Terminal 题目从固定上游目录登记；SWE 题目从外部审定的冻结 bundle 登记。当前评测器不下载原始 SWE 数据集或生成题包，接入者需提供题面、原始源码基线、仅供宿主判题的材料、版本回执及文件哈希，格式由 `src/host/sweTasks.ts` 校验。缺少材料先准备题包，不能回退到旧共享环境安装器。
 

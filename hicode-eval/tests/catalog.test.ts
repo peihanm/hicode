@@ -49,6 +49,17 @@ test('the same upstream task ID has independent results in two dataset releases'
   }finally{await f.cleanup();}
 });
 
+test('historical Terminal-Bench 2.0 results remain readable but new registration is rejected',async()=>{
+  const f=await fixture();
+  try{
+    await f.catalog.record(f.run);
+    await expect(f.catalog.register([{id:'new',dataset:'terminal-bench',source:join(f.root,'new')}]))
+      .rejects.toThrow('Terminal-Bench 2.0 registration is retired');
+    expect((await TaskCatalog.open(f.catalogPath)).get('terminal-bench','task').status).toBe('passed');
+    expect((await TaskCatalog.open(f.catalogPath)).counts().total).toBe(1);
+  }finally{await f.cleanup();}
+});
+
 async function persist(f:Awaited<ReturnType<typeof fixture>>){
   await f.catalog.record(f.run);
   await save(join(f.data,'runs',f.run.id,'state.json'),f.run);

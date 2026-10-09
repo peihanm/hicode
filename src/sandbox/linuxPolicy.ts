@@ -49,7 +49,7 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
     }
     const pending = [...canonicalRoots];
     const seen = new Set<string>();
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 20000;
     let entries = 0;
     const checkBudget = () => {
         signal.throwIfAborted();

@@ -19,7 +19,7 @@ import { EvidenceCollectionError, LinuxMachine } from '../src/host/linux.js';
 let dispose:ReturnType<typeof spyOn>,resolveEnvironment:ReturnType<typeof spyOn>;
 beforeEach(()=>{
   dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
-  resolveEnvironment=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(environmentFixture('terminal-bench:fixture'));
+  resolveEnvironment=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(environmentFixture('terminal-bench-2.1:fixture'));
 });
 afterEach(()=>{dispose.mockRestore();resolveEnvironment.mockRestore();});
 
@@ -27,11 +27,11 @@ async function fixture() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'hicode-eval-')));
   await mkdir(join(dir, 'tasks')); await mkdir(join(dir, 'runs'));
   const config = configSchema.parse({ version: 4, data: dir, catalog:join(dir,'catalog.json'),environments:join(dir,'environments'), payload: join(dir, 'payload'), context: 'test', machine: 'test-machine', concurrency: 2, budget: {}, model: { source: 'qwen', model: 'fixture', apiKeyEnv: 'FIXTURE_KEY', baseUrl: 'http://127.0.0.1:1' } });
-  await seedCatalog(config,['alpha','cancel-async-tasks','regex-log','sqlite-db-truncate'].map(id=>({id,source:join(dir,'tasks',id)})));
+  await seedCatalog(config,['alpha','cancel-async-tasks','regex-log','sqlite-db-truncate'].map(id=>({dataset:'terminal-bench-2.1' as const,id,source:join(dir,'tasks',id)})));
   return { dir, config, tasks:join(dir,'tasks'), cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 function finished(id = '0123456789abcdef') {
-  return runSchema.parse({ version: 2, id, batchId: 'fedcba9876543210', task: 'alpha', dataset:'terminal-bench', state: 'passed', createdAt: 1, updatedAt: 1, model: 'fixture', budget: {}, execution: 'completed', grading: 'passed', collection: 'complete' });
+  return runSchema.parse({ version: 2, id, batchId: 'fedcba9876543210', task: 'alpha', dataset:'terminal-bench-2.1', state: 'passed', createdAt: 1, updatedAt: 1, model: 'fixture', budget: {}, execution: 'completed', grading: 'passed', collection: 'complete' });
 }
 
 async function persist(f: Awaited<ReturnType<typeof fixture>>, s: ReturnType<typeof finished>) {
@@ -51,7 +51,7 @@ test('restart repairs the durable ledger and requires cleanup confirmation witho
     await save(join(f.dir,'runs',state.id,'container.json'),{session:state.id,id:'owned-container',attach:'fixture'});
     const lab=new Lab(f.config,'fixture');await lab.init();
     expect(lab.runs.get(state.id)?.state).toBe('needs_recovery');
-    expect((await TaskCatalog.open(f.config.catalog)).get('terminal-bench','alpha').status).toBe('passed');
+    expect((await TaskCatalog.open(f.config.catalog)).get('terminal-bench-2.1','alpha').status).toBe('passed');
     await save(join(f.dir,'runs',state.id,'state.json'),state);
     await save(join(f.dir,'runs',state.id,'container-disposed.json'),{version:1,runId:state.id,at:new Date().toISOString()});
     const restored=new Lab(f.config,'fixture');await restored.init();
@@ -172,8 +172,10 @@ test('submission validates all tasks and concurrency before publishing a batch',
 test('a reused task ID requires an explicit dataset at submission',async()=>{
   const f=await fixture();
   try {
-    const catalog=await TaskCatalog.open(f.config.catalog);
-    await catalog.register([{dataset:'terminal-bench-2.1',id:'regex-log',source:join(f.tasks,'regex-log')}]);
+    await seedCatalog(f.config,[
+      {dataset:'terminal-bench',id:'regex-log',source:join(f.tasks,'regex-log')},
+      {dataset:'terminal-bench-2.1',id:'regex-log',source:join(f.tasks,'regex-log')},
+    ]);
     const lab=new Lab(f.config,'fixture');await lab.init();
     await expect(lab.submit({name:'ambiguous',tasks:[{id:'regex-log'}],concurrency:1})).rejects.toThrow('Ambiguous task ID');
     await lab.close();
@@ -192,7 +194,7 @@ test('stale environment is rejected before a batch or run is published',async()=
   }finally{await f.cleanup();}
 });
 
-test('one batch keeps equal task IDs from two releases separate',async()=>{
+test('retired Terminal-Bench 2.0 rejects new submission while 2.1 remains available',async()=>{
   const f=await fixture(),source=join(f.tasks,'regex-log');
   await mkdir(source);await writeFile(join(source,'instruction.md'),'offline fixture');
   await seedCatalog(f.config,[
@@ -207,13 +209,28 @@ test('one batch keeps equal task IDs from two releases separate',async()=>{
   try {
     await save(join(f.config.payload,'manifest.json'),{});
     await lab.init();
-    const batch=await lab.submit({name:'two releases',concurrency:1,tasks:[
+    await expect(lab.submit({name:'two releases',concurrency:1,tasks:[
       {dataset:'terminal-bench',id:'regex-log'},
       {dataset:'terminal-bench-2.1',id:'regex-log'},
-    ]});
-    expect(batch.taskRefs).toEqual([{dataset:'terminal-bench',id:'regex-log'},{dataset:'terminal-bench-2.1',id:'regex-log'}]);
-    expect(batch.runIds.map(id=>lab.runs.get(id)?.dataset)).toEqual(['terminal-bench','terminal-bench-2.1']);
+    ]})).rejects.toThrow('Terminal-Bench 2.0 is retired');
+    const batch=await lab.submit({name:'2.1',concurrency:1,tasks:[{dataset:'terminal-bench-2.1',id:'regex-log'}]});
+    expect(batch.taskRefs).toEqual([{dataset:'terminal-bench-2.1',id:'regex-log'}]);
   }finally{await lab.close();first.mockRestore();second.mockRestore();await f.cleanup();}
+});
+
+test('Terminal-Bench 2.0 history remains readable while retry and resume stay closed',async()=>{
+  const f=await fixture(),old=runSchema.parse({...finished(),dataset:'terminal-bench'});
+  const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
+  const lab=new Lab(f.config,'fixture');
+  try{
+    await seedCatalog(f.config,[{dataset:'terminal-bench',id:'alpha',source:join(f.tasks,'alpha')}]);
+    await persist(f,old);
+    await lab.init();await lab.prepareMachine();
+    expect(lab.runs.get(old.id)?.dataset).toBe('terminal-bench');
+    await expect(lab.retry(old.id)).rejects.toThrow('Terminal-Bench 2.0 retry is retired');
+    await expect(lab.resume(old.batchId)).rejects.toThrow('Terminal-Bench 2.0 batches cannot resume');
+    expect(lab.batches.size).toBe(1);
+  }finally{await lab.close();prepare.mockRestore();await f.cleanup();}
 });
 
 test('CLI client reads a batch and publishes a bounded report over the authenticated protocol', async () => {
@@ -288,7 +305,7 @@ test('restart preserves unstarted queue; explicit resume does not replay complet
   let lab: Lab | undefined;
   try {
     await persist(f, previous);
-    await save(join(f.dir, 'batches', previous.batchId+'.json'), {version:2,id:previous.batchId,name:'fixture',budget:f.config.budget,taskRefs:[{dataset:'terminal-bench',id:'alpha'},{dataset:'terminal-bench',id:'beta'}],runIds:[previous.id,queued.id],concurrency:1,createdAt:1,model:f.config.model,payload:{}});
+    await save(join(f.dir, 'batches', previous.batchId+'.json'), {version:2,id:previous.batchId,name:'fixture',budget:f.config.budget,taskRefs:[{dataset:'terminal-bench-2.1',id:'alpha'},{dataset:'terminal-bench-2.1',id:'beta'}],runIds:[previous.id,queued.id],concurrency:1,createdAt:1,model:f.config.model,payload:{}});
     await save(join(f.dir, 'runs', queued.id, 'state.json'), queued);
     await mkdir(join(f.dir, 'runs', queued.id, 'task/beta'), {recursive:true});
     await save(join(f.dir, 'runs', queued.id, 'task-files.json'), {});

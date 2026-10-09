@@ -1,6 +1,5 @@
 """Exercise the real runner control flow with offline process/namespace fixtures."""
 import contextlib
-import itertools
 import builtins
 import io
 import json
@@ -19,7 +18,7 @@ RUN_ID = '1234567890abcdef'
 
 
 class RunnerFailureTest(unittest.TestCase):
-    def run_attempt(self, *, saved=True, pending=False, exits=True, handoff=True, completed=False, claimed_dependencies=False, isolated=False, timed_out=False):
+    def run_attempt(self, *, saved=True, pending=False, exits=True, handoff=True, completed=False, claimed_dependencies=False, isolated=False, timed_out=False, service=False):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             root = base / 'eval/runs' / RUN_ID
@@ -33,6 +32,7 @@ class RunnerFailureTest(unittest.TestCase):
                       'initializer': None, 'agentSeconds': 3600, 'verifierSeconds': 10,
                       'verifierPrelude': 'none'}
             config['network'] = 'isolated' if isolated else 'open'
+            if service:config['service']={'writablePaths':[]}
             (root / 'job.json').write_text(json.dumps(config))
             (root / 'instruction.md').write_text('Offline fixture')
             events = [{'type': 'ready'}, {'type': 'agent_event', 'event': {'type': 'model_stream_start'}}]
@@ -73,7 +73,7 @@ class RunnerFailureTest(unittest.TestCase):
             def execute(argv, **kwargs):
                 if '--target' in argv:
                     self.assertNotIn('--unshare-net', argv)
-                    self.assertIn('stop', calls)
+                    self.assertIn('shutdown' if service else 'stop', calls)
                     self.assertIn('handoff', calls)
                     calls.append('install-verifier')
                 if 'new-session' in argv:
@@ -81,7 +81,7 @@ class RunnerFailureTest(unittest.TestCase):
                 return subprocess.CompletedProcess(argv, 0, stdout='', stderr='')
 
             def upload(*args):
-                self.assertIn('stop', calls)
+                self.assertIn('shutdown' if service else 'stop', calls)
                 calls.append('handoff')
                 return handoff
 
@@ -122,6 +122,13 @@ class RunnerFailureTest(unittest.TestCase):
                 stack.enter_context(patch('recovery.process_start', return_value='fixture'))
                 stack.enter_context(patch('protocol.actor_readonly_mounts',return_value=['--ro-bind','/usr','/usr']))
                 stack.enter_context(patch('protocol.wait_verifier_handoff', side_effect=upload))
+                if service:
+                    owner=stack.enter_context(patch('service_namespace.ServiceNamespace')).return_value
+                    owner.actor_argv.side_effect=lambda args:['service-actor',*args]
+                    owner.verifier_argv.side_effect=lambda args,view:['service-verifier',*args]
+                    owner.start.side_effect=lambda *_:calls.append('service-start')
+                    owner.snapshot.side_effect=lambda:calls.append('service-snapshot')
+                    owner.close.side_effect=lambda:calls.append('service-close')
                 stack.enter_context(patch('terminal.capture'))
                 stack.enter_context(patch('terminal.settle', return_value=True))
                 stack.enter_context(patch('terminal.submit_prompt'))
@@ -130,8 +137,11 @@ class RunnerFailureTest(unittest.TestCase):
                 gateway = stack.enter_context(patch('model_proxy.Gateway'))
                 gateway.return_value.close.side_effect = lambda: calls.append('gateway-close')
                 if timed_out:
-                    clock=itertools.count(step=10000)
-                    stack.enter_context(patch('time.monotonic',side_effect=lambda:next(clock)))
+                    clock=[0.0]
+                    def elapsed():
+                        clock[0]+=0.01 if 'shutdown' in calls else 10000
+                        return clock[0]
+                    stack.enter_context(patch('time.monotonic',side_effect=elapsed))
                     stack.enter_context(patch('time.sleep'))
                 else:stack.enter_context(patch('time.sleep', side_effect=AssertionError('Failed turn must not wait for budget')))
                 stack.enter_context(contextlib.redirect_stdout(output))
@@ -139,7 +149,7 @@ class RunnerFailureTest(unittest.TestCase):
                 if isolated:
                     self.assertEqual(gateway.call_args.args[1:], ('https://example.invalid', 'fixture', 'offline-fixture'))
                     launch=(base/'run/hicode-eval'/RUN_ID/'launch.sh').read_text()
-                    self.assertIn('--unshare-net',launch)
+                    self.assertIn('service-actor' if service else '--unshare-net',launch)
                     self.assertIn('network_entry.py',launch)
                     self.assertNotIn('offline-fixture',launch)
                     settings=json.loads((root/'home/.hicode/settings.json').read_text())
@@ -153,8 +163,8 @@ class RunnerFailureTest(unittest.TestCase):
             self.assertIn(str(root/'actor-events'),settings['sandbox']['filesystem']['denyWrite'])
             packets = [json.loads(line) for line in output.getvalue().splitlines()]
             self.assertIn('finalize', calls)
-            self.assertEqual(calls.count('shutdown'), 0 if completed else 1)
-            return packets[-1], calls, None if completed else json.loads((root / 'shutdown.json').read_text())
+            self.assertEqual(calls.count('shutdown'), 1 if service or not completed else 0)
+            return packets[-1], calls, None if completed and not service else json.loads((root / 'shutdown.json').read_text())
 
     def test_completed_attempt_installs_verifier_only_after_sealing(self):
         result, calls, _ = self.run_attempt(completed=True)
@@ -205,3 +215,21 @@ class RunnerFailureTest(unittest.TestCase):
         self.assertEqual(result['execution'],'failed')
         self.assertEqual(calls.count('gateway-close'),1)
         self.assertLess(calls.index('gateway-close'),calls.index('handoff'))
+
+    def test_service_handoff_keeps_namespace_through_verification_then_closes(self):
+        result,calls,receipt=self.run_attempt(completed=True,isolated=True,service=True)
+        self.assertEqual(result['execution'],'completed')
+        self.assertEqual(result['grading'],'failed')
+        self.assertTrue(receipt['cliExited'])
+        self.assertLess(calls.index('shutdown'),calls.index('handoff'))
+        self.assertLess(calls.index('handoff'),calls.index('verify'))
+        self.assertLess(calls.index('verify'),calls.index('service-close'))
+        self.assertLess(calls.index('service-close'),calls.index('finalize'))
+
+    def test_incomplete_service_shutdown_never_exposes_hidden_tests(self):
+        result,calls,receipt=self.run_attempt(pending=True,isolated=True,service=True)
+        self.assertEqual(result['grading'],'unavailable')
+        self.assertEqual(receipt['pendingToolCallIds'],['pending'])
+        self.assertNotIn('handoff',calls)
+        self.assertNotIn('verify',calls)
+        self.assertLess(calls.index('service-close'),calls.index('finalize'))

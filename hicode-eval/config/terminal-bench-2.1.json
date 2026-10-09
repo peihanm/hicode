@@ -2649,5 +2649,115 @@
       "HF_DATASETS_OFFLINE": "1",
       "HF_HUB_OFFLINE": "1"
     }
+  },
+  "kv-store-grpc": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "51fdc2ad06f0adb1270164f247ea41799b2ee2ad15490e48ddbf5e79d3767aaa",
+      "environment/Dockerfile": "47c9982789092437f950736110b2bd18899c39b8fd20f3af3c95b848e564a197",
+      "instruction.md": "f4b3facc199d5b1c78db6e603ffa29ec1b93a77ff7d291e1a92b42e6bf582bed",
+      "solution/solve.sh": "6bee2938ac9731d1156b0ca02b28c3d5793bf2cbe5f995c863d397093af01cb7",
+      "task.toml": "6ff0f30a526bfff86a67b0b53439b9965229c0f368167dc1a5d05f34d82299a3",
+      "tests/test.sh": "c348467a076bf614d0a850e25b2263f85bbf7b4c7a8d344fbd5454a0611a0df8",
+      "tests/test_outputs.py": "115de2e964bbe689d07930527113422ef8a9e4be4eb958ad84594e3fcd2b1b0e"
+    },
+    "inputs": [],
+    "directories": [],
+    "initializer": null,
+    "packages": ["grpcio==1.73.0", "grpcio-tools==1.73.0"],
+    "verifierPackages": ["grpcio==1.73.0"],
+    "verifierPrelude": "none",
+    "service": {"writablePaths": []}
+  },
+  "nginx-request-logging": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "d79997586d1c14ed8dbfea050e3580b25500e04c8345acfd3f294152433c795a",
+      "environment/Dockerfile": "43003466d89ab83484a3fa618e35b58cdb74a002b1e8716ef30f12b3ac8302d8",
+      "instruction.md": "26a7ac98aced6107f147206790ada77bbf8ed3c25fb360cf323d5fc6889edf99",
+      "solution/solve.sh": "2454bbbf7c201a9a778165f286373ba2cb991a0eb1d026a8005d57ae71250dd9",
+      "task.toml": "b7a78d00be13656f75069197100b7b8c4fd268decf6f78929c853b3222a2729d",
+      "tests/test.sh": "27761195f53cbfe5941fe39b573631f6c926869e64b7c43220377e1e116528e7",
+      "tests/test_outputs.py": "045cc716c14efde3b0dcff5fc7c85ec5d18bfc6ce66f8b40a418fa2a3a4acda0"
+    },
+    "inputs": [],
+    "directories": [],
+    "initializer": null,
+    "packages": [],
+    "verifierPackages": ["requests==2.32.4"],
+    "verifierPrelude": "none",
+    "commands": ["nginx"],
+    "service": {"writablePaths": ["/etc", "/var", "/run"]}
+  },
+  "pypi-server": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "906a096a2cc7b9afc738ff5ad5fbd605be65c103f5069c6673915223b9b187e3",
+      "environment/Dockerfile": "17a4e67580e4f2c6a151d04b9d74eb020666e7eec8e5259c4a5411f9e93858d0",
+      "instruction.md": "1c537e4a311a8e71155e121f57bfc03f742fbfb99d05314cd03e433996a28a31",
+      "solution/solve.sh": "1143c0eade4932ec3aeaa5013fb5e23bbcccca15dead294aa03b6af88750775a",
+      "task.toml": "07c39d7a733c89adadf74bb63a3e906c3694feb6c490d5fc85ac187c003fd447",
+      "tests/test.sh": "d2b1220e42bcfdcce87907ac5bbd69ac210a3c94926545ca2439636786e7784e",
+      "tests/test_outputs.py": "82c6351722e9aa984ff1d701bf57df3150ce51466df2b70afa1aa62d2650be4c"
+    },
+    "inputs": [],
+    "directories": [],
+    "initializer": null,
+    "packages": ["pip==25.2", "setuptools==75.6.0", "wheel==0.45.1", "build==1.3.0"],
+    "verifierPackages": ["pip==25.2"],
+    "verifierPrelude": "none",
+    "verifierEnvironment": {"PIP_USER": "1", "PATH": "/opt/python313/bin:/usr/local/bin:/usr/bin:/bin"},
+    "service": {"writablePaths": []}
+  },
+  "hf-model-inference": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "7eaeb05f0c9351bcf354e1b8f038da15311438e2fa8d76cae54bb3175a4cfa96",
+      "environment/Dockerfile": "081cf9fc8ff58f7852721d9d076c54c1a9cfbdecc25ed63fdf5d495a109219f8",
+      "environment/offline-resources/model/README.md": "75f17282923fea5b541df92640e2d8646c4ff5e8e3e16ed0a7e4e50ee7588851",
+      "environment/offline-resources/model/config.json": "582122c8f414793d131e10022ce9ba04e3811a9da6389137ee2f18665b4f4d15",
+      "environment/offline-resources/model/model.safetensors": "7c3919835e442510166d267fe7cbe847e0c51cd26d9ba07b89a57b952b49b8aa",
+      "environment/offline-resources/model/tokenizer_config.json": "5ab9097b4149371c5fd52b2d6e26cb6f9c07c0d19fcfdda895b1adad6b57c3e0",
+      "environment/offline-resources/model/vocab.txt": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
+      "instruction.md": "29151c5b2306f522f38fa905de3d34566865829355e5ca0895f4fca04d51dcc1",
+      "solution/solve.sh": "9a7b198075371c088c04a60fe536791588812ac1aacc88df0703353401a89c8e",
+      "task.toml": "951ae476f4d078a25b7a487430148971e3a2222d93c4e0a932442440807eb3b7",
+      "tests/test.sh": "6528c4c44d46004738c57dc59709bc80fb4226d37aaf0e8d778cc08017642e8f",
+      "tests/test_outputs.py": "e6c8ee8ff1051e8de3c7094e98b41b8edc96ad3a6392cfb8d7d686bc6ada455b"
+    },
+    "inputs": [
+      {"source":"environment/offline-resources/model/README.md","target":"offline-resources/model/README.md"},
+      {"source":"environment/offline-resources/model/config.json","target":"offline-resources/model/config.json"},
+      {"source":"environment/offline-resources/model/model.safetensors","target":"offline-resources/model/model.safetensors"},
+      {"source":"environment/offline-resources/model/tokenizer_config.json","target":"offline-resources/model/tokenizer_config.json"},
+      {"source":"environment/offline-resources/model/vocab.txt","target":"offline-resources/model/vocab.txt"}
+    ],
+    "directories": [],
+    "initializer": null,
+    "packages": ["torch==2.7.1", "transformers==4.56.0", "flask==3.1.1"],
+    "verifierPackages": ["requests==2.32.4", "psutil==7.0.0"],
+    "verifierPrelude": "none",
+    "service": {"writablePaths": []}
+  },
+  "configure-git-webserver": {
+    "hashes": {
+      ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+      "README.md": "d1db8dfb8883e39adf902eced862bfd7bf8240f2fc7eb6364a74d77b09b899b5",
+      "environment/Dockerfile": "8c87039a43581841b7ef11d80c4ff1a5c5f43011877e167403063d55435aaa19",
+      "instruction.md": "62151b7371bc364277a3c118bba755334c640fb0cefc7a5af106e6e763cf1d97",
+      "solution/solve.sh": "921ff9c1dabdbd130e1a6616c24b236b7ba9a1517b3dff4c33fe8c8a129e2e7a",
+      "task.toml": "ebb40d72f689512cbd90d865d88ef966b6665ab215544f9247b898b7fa94751b",
+      "tests/test.sh": "afafc3ffdaf911f7a93003c0746f217188099c174e5d3eb7dada17133df15895",
+      "tests/test_outputs.py": "526aee3dfe952cc4c7574361012712e389d6fba7222c005fc3e939fc53346b37",
+      "tests/verify.sh": "49a02f5267a892824e023ce05eb1ac6132a44854cc47f20feba312c4a3d05568"
+    },
+    "inputs": [],
+    "directories": [],
+    "initializer": null,
+    "packages": [],
+    "verifierPrelude": "none",
+    "systemPackages": ["nginx", "openssh-server", "openssh-client", "git", "curl", "openssl"],
+    "commands": ["nginx"],
+    "service": {"writablePaths": ["/etc", "/var", "/run", "/home", "/git"]}
   }
 }

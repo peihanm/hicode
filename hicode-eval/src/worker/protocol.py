@@ -184,6 +184,8 @@ def actor_readonly_mounts(release, environment):
             re.fullmatch(r'/opt/hicode/dependencies/[a-f0-9]{64}/node_modules',str(dependencies))):
         raise ValueError('Actor dependencies escape prepared runtime')
     paths.extend([release,dependencies,Path('/opt/hicode-eval/preflight.ts'),Path('/opt/hicode-eval/network_entry.py')])
+    service_runtime=Path('/opt/hicode-eval/service_namespace.py')
+    if service_runtime.exists():paths.append(service_runtime)
     terminal_packages=Path('/opt/hicode-terminal/actor')
     if terminal_packages.exists():
         if terminal_packages.is_symlink() or not terminal_packages.is_dir():
@@ -194,6 +196,21 @@ def actor_readonly_mounts(release, environment):
         if virtualenv.is_symlink() or not virtualenv.is_dir() or virtualenv.resolve()!=virtualenv:
             raise ValueError('Invalid prepared virtual environment')
         paths.append(virtualenv)
+    go=Path('/opt/hicode-go')
+    if go.is_symlink() or go.exists():
+        if go.is_symlink() or not go.is_dir() or go.resolve()!=go:
+            raise ValueError('Invalid prepared Go modules')
+        paths.append(go)
+    rust=Path('/opt/hicode-rust')
+    if rust.is_symlink() or rust.exists():
+        if rust.is_symlink() or not rust.is_dir() or rust.resolve()!=rust:
+            raise ValueError('Invalid prepared Rust toolchain')
+        paths.append(rust)
+    nextest=Path('/opt/nextest')
+    if nextest.is_symlink() or nextest.exists():
+        if nextest.is_symlink() or not nextest.is_dir() or nextest.resolve()!=nextest:
+            raise ValueError('Invalid prepared Rust test configuration')
+        paths.append(nextest)
     if environment is not None:
         interpreter=(Path(environment)/'bin/python').resolve(strict=True)
         if not interpreter.is_relative_to(Path('/usr')):

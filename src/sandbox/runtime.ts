@@ -363,16 +363,16 @@ export const createSandboxRuntime = createSandboxRuntimeFactory({
             throw new Error("Linux Sandbox requires the bundled apply-seccomp executable (x64 or arm64)");
         }
         const initialConfig = process.platform === "linux"
-            ? await linuxFilesystemPolicy(config, AbortSignal.timeout(5000), protectedRoots) : config;
+            ? await linuxFilesystemPolicy(config, AbortSignal.timeout(20000), protectedRoots) : config;
         await SandboxManager.initialize(initialConfig, ask);
         if (process.platform !== "linux") return;
         // Installed binaries do not prove the kernel/container permits nested namespaces.
         // Probe the real wrapper once; never advertise ready and silently run unprotected.
         try {
-            const signal = AbortSignal.timeout(5000);
+            const signal = AbortSignal.timeout(20000);
             const cwd = config.filesystem.allowWrite[0] ?? "/";
             const wrapped = await SandboxManager.wrapWithSandboxArgv("/bin/true", bashExecutable(), undefined, signal, cwd);
-            const result = await runShellArgv({...wrapped, cwd, signal, timeoutMs: 5000,
+            const result = await runShellArgv({...wrapped, cwd, signal, timeoutMs: 20000,
                 env: {PATH: process.env.PATH, ...wrapped.env}});
             if (result.termination.kind !== "exit" || result.termination.code !== 0) {
                 throw new Error(`Linux Sandbox probe failed: ${result.stderr.trim().slice(0, 800) || result.termination.kind}. Check bubblewrap, user namespaces and the container security policy.`);

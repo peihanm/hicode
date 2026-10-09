@@ -3,8 +3,7 @@ import base64,fcntl,json,os,pwd,signal,subprocess,sys,time
 from pathlib import Path
 from protocol import assignment_prompt,Events,atomic_json,namespace_argv,wait_verifier_handoff
 from terminal import capture,settle,submit_prompt
-from cleanup import stop_task_processes,finalize_task,open_task_cli,terminate_task_cli
-from recovery import process_start
+from cleanup import stop_task_processes,finalize_task,open_task_cli,terminate_task_cli,process_start
 from model_proxy import Gateway
 from dataset_runtime import dataset_runtime
 
@@ -15,6 +14,11 @@ config=json.loads((root/'job.json').read_text())
 network=config.get('network','open')
 if network not in {'open','isolated'}:raise ValueError('Invalid evaluation network mode')
 dataset=dataset_runtime(config)
+service_declaration=None
+if config.get('service') is not None:
+    from service_namespace import ServiceNamespace,service_paths
+    service_declaration=service_paths(config)
+service=None
 project=root/'project';home=root/'home';logs=root/'logs';actor_events=root/'actor-events';event_path=actor_events/'events.jsonl';control=Path('/run/hicode-eval')/run_id
 name='eval-'+run_id
 cancelled=False
@@ -50,6 +54,16 @@ def demote():
     os.setgroups([]);os.setgid(account.pw_gid);os.setuid(uid)
 
 def namespace(args,verifier=False,setup=False,actor=False):
+    if service is not None and actor:return service.actor_argv(args)
+    if service is not None and verifier:
+        def view(arguments):
+            argv=namespace_argv(arguments,project,home,logs,control,root/'tests',workdir=dataset.workdir,
+                                writable_tests=dataset.writable_tests(config),verifier_release=config['release'])
+            runtime=[]
+            for path in ['/opt/hicode-verifier','/opt/hicode-terminal/verifier']:
+                if Path(path).exists():runtime+=['--ro-bind',path,path]
+            return argv[:-len(arguments)]+runtime+arguments
+        return service.verifier_argv(args,view)
     return namespace_argv(args,project,home,logs,control,root/'tests' if verifier else None,
                           writable_tests=verifier and dataset.writable_tests(config),
                           root_overlay=verifier and not setup and config.get('verifierRootOverlay',False),
@@ -67,7 +81,7 @@ def command(args,timeout=15,extra=None,cwd=None,output_path=None):
     env.update(dataset.command_environment(config,home,root))
     env.update(config.get('environment',{}))
     if extra:env.update(extra)
-    r=subprocess.run(args,cwd=cwd or project,env=env,preexec_fn=demote,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=timeout)
+    r=subprocess.run(args,cwd=cwd or project,env=env,preexec_fn=None if service is not None else demote,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=timeout)
     if output_path is not None:output_path.write_text(r.stdout+'\n'+r.stderr)
     if r.returncode:raise RuntimeError((r.stderr or r.stdout or 'Command failed')[-2000:])
     return r.stdout
@@ -119,12 +133,23 @@ try:
     subprocess.run(['chown','-R',f'{uid}:{account.pw_gid}',str(home)],check=True)
     extra={'HICODE_EVAL_SOURCE':release,'HICODE_EVAL_HOME':str(conf)}
     dataset.prepare_actor(config,project,logs,command,namespace)
-    command(namespace(['bun','/opt/hicode-eval/preflight.ts'],actor=True),timeout=30,extra=extra)
+    command(namespace(['bun','/opt/hicode-eval/preflight.ts'],actor=True),timeout=60,extra=extra)
     if network=='isolated':
         # Check the actual actor namespace before consuming model tokens. There is no open fallback.
         command(namespace(['python3','-c',"import socket; assert [n for _,n in socket.if_nameindex()] == ['lo']"],actor=True),timeout=15)
         gateway=Gateway(control/'model.sock',model['baseUrl'],model['model'],os.environ[model['apiKeyEnv']])
         os.chown(control/'model.sock',uid,account.pw_gid)
+    if service_declaration is not None:
+        owner=ServiceNamespace(root,uid,service_declaration)
+        owner.prepare()
+        try:
+            owner.start(lambda args:namespace(args,actor=True),
+                        {'PATH':'/opt/python313/bin:'+os.environ['PATH'],'HOME':str(home),'SHELL':'/bin/bash','LANG':'C.UTF-8'})
+        except BaseException:
+            owner.close();raise
+        service=owner
+        extra['HICODE_LINUX_RUNTIME_DIR']=str(owner.sandbox_runtime)
+        command(namespace(['bun','/opt/hicode-eval/preflight.ts'],actor=True),timeout=60,extra=extra)
     atomic_json(root/'network.json',{'version':1,'mode':network,'actorInternet':network=='open',
                                    'modelTransport':'unix-model-gateway' if gateway else 'direct'})
     emit('phase',phase='Starting HiCode')
@@ -135,6 +160,7 @@ try:
     launch.write_text('#!/bin/bash\nset -eu\nexec '+shlex.join(namespace(actor_command,actor=True))+'\n')
     launch.chmod(0o755)
     secret={model['apiKeyEnv']:'eval-isolated' if gateway else os.environ[model['apiKeyEnv']]}
+    if service is not None:secret['HICODE_LINUX_RUNTIME_DIR']=str(service.sandbox_runtime)
     tmux('new-session','-d','-s','hicode','-x','140','-y','40','bash --noprofile --norc',extra=secret)
     terminal_started=True
     tmux('set-option','-t','hicode','remain-on-exit','on')
@@ -188,7 +214,13 @@ try:
             emit('error',message='Final terminal capture failed: '+str(error)[-1000:])
     if status in ['completed','timeout'] or agent_failed:
         # Stop all assignment processes before exposing the original verifier.
-        stop_user();terminal_started=False
+        if service is not None:
+            receipt=shutdown_cli()
+            if receipt is None or not receipt['cliExited'] or receipt['error'] or receipt['pendingToolCallIds'] or not receipt['eventStreamComplete']:
+                raise RuntimeError('Service handoff requires confirmed Agent shutdown')
+            tmux('kill-server')
+        else:stop_user()
+        terminal_started=False
         if gateway:gateway.close();gateway=None
         emit('phase',phase='Awaiting local verification')
         # Host uploads checks only after the assignment is sealed.
@@ -202,7 +234,7 @@ try:
                 verifier_log.mkdir(exist_ok=True);os.chown(verifier_log,uid,account.pw_gid)
                 grade,output=dataset.grade(root=root,config=config,uid=uid,gid=account.pw_gid,project=project,
                                            home=home,logs=logs,command=command,namespace=namespace,
-                                           demote=demote,cancelled=lambda:cancelled or (root/'cancel').exists())
+                                           demote=None if service is not None else demote,cancelled=lambda:cancelled or (root/'cancel').exists())
             except (OSError,RuntimeError,ValueError,subprocess.SubprocessError) as e:
                 output='Verifier setup failed: '+str(e);grade='unavailable'
                 (verifier_log/'output.txt').write_text(output)
@@ -228,7 +260,14 @@ finally:
     finally:
         # Even a broken output pipe or failed shutdown receipt must clean the UID.
         result={'execution':status,'grading':grade,'uid':uid}
-        try:finalize_task(root,result)
+        try:
+            if service is not None:
+                try:service.snapshot()
+                finally:
+                    service.close()
+                    try:tmux('kill-server')
+                    except (OSError,RuntimeError,subprocess.SubprocessError):pass
+            finalize_task(root,result)
         finally:
             if gateway:gateway.close()
             if cli_fd is not None:os.close(cli_fd)

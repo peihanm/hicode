@@ -7,6 +7,11 @@ from pathlib import Path
 from protocol import atomic_json
 
 
+def process_start(pid):
+    try:return Path('/proc', str(pid), 'stat').read_text().rsplit(')', 1)[1].split()[19]
+    except (FileNotFoundError, ProcessLookupError):return None
+
+
 def open_task_cli(uid, script, event_log):
     """Pin the CLI process before submitting the task; never signal a reused PID."""
     if type(uid) is not int or uid < 20000:

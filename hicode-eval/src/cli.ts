@@ -15,6 +15,8 @@ import {EvaluationView} from './host/view.js';
 import {regradeRun} from './host/regrade.js';
 import {TaskCatalog} from './host/catalog.js';
 import {EnvironmentStore} from './host/environments.js';
+import {imageInventory} from './host/imageInventory.js';
+import {organizeEnvironmentImages} from './host/imageTags.js';
 import {archiveRuns} from './host/archive.js';
 import {sweCatalog,validateSweTask} from './host/sweTasks.js';
 import {profiles} from './host/publicTasks.js';
@@ -28,11 +30,17 @@ async function main() {
     'worker-port':{type:'string',default:'8879'},'build-proxy':{type:'string'},'dataset-backends':{type:'string'},'verifier-proxy':{type:'string'},apply:{type:'boolean'},catalog:{type:'string'},environments:{type:'string'},'include-passed':{type:'boolean'},cpus:{type:'string',default:'1'},'memory-mb':{type:'string',default:'4096'},network: {type:'string', default:'isolated'}, ids: {type:'string'}, dataset:{type:'string'}, 'data-dir': { type: 'string' }, tasks: { type: 'string' }, 'swe-tasks': { type: 'string' }, payload: { type: 'string' }, 'docker-context': { type: 'string', default: 'colima-hicode' }, machine: { type: 'string', default: 'hicode-eval-clean' }, concurrency: { type: 'string', default: '2' }, port: { type: 'string', default: '8878' }, file: { type: 'string' }, run: { type: 'string' }, batch: { type: 'string' }, 'wait-seconds': { type: 'string', default: '30' }, source: { type: 'string' }, model: { type: 'string' }, 'model-config': { type: 'string' }, 'snapshot-worktree': { type: 'boolean' }, help: { type: 'boolean' }
   } });
   const command = positionals[0];
-  if (v.help || !command) { console.log('HiCode Eval · isolated containers\n  worker --data-dir DIR --payload DIR --catalog FILE --environments DIR [--worker-port 8879] [--machine hicode-eval-clean] [--network open|isolated] [--dataset-backends FILE]\n  serve --data-dir DIR [--port 8878] [--worker-port 8879]\n  prepare --payload DIR [--snapshot-worktree]\n  register-tasks --catalog FILE [--tasks DIR --dataset terminal-bench|terminal-bench-2.1|deep-swe] [--swe-tasks DIR] [--ids DATASET:ID1,DATASET:ID2]\n  archive-runs --catalog FILE --data-dir DIR [--apply]\n  prepare-environments --catalog FILE --environments DIR [--ids DATASET:ID1,DATASET:ID2] [--include-passed] [--dataset-backends FILE] [--build-proxy URL]\n  catalog | submit --file batch.json | status [--batch ID]\n  wait --batch ID [--wait-seconds 30] | cancel --batch ID | resume --batch ID | recover --run ID | retry --run ID | report --batch ID --file report.md\n  regrade --data-dir DIR --run ID [--verifier-proxy URL]  # frozen SWE patch only; no Agent/model'); return; }
-  if (positionals.length !== 1 || !['worker','serve','prepare','catalog','submit','status','wait','cancel','resume','recover','retry','report','regrade','prepare-environments','register-tasks','archive-runs'].includes(command)) throw Error('Unknown command');
+  if (v.help || !command) { console.log('HiCode Eval · isolated containers\n  worker --data-dir DIR --payload DIR --catalog FILE --environments DIR [--worker-port 8879] [--machine hicode-eval-clean] [--network open|isolated] [--dataset-backends FILE]\n  serve --data-dir DIR [--port 8878] [--worker-port 8879]\n  prepare --payload DIR [--snapshot-worktree]\n  register-tasks --catalog FILE [--tasks DIR --dataset terminal-bench-2.1|deep-swe] [--swe-tasks DIR] [--ids DATASET:ID1,DATASET:ID2]\n  archive-runs --catalog FILE --data-dir DIR [--apply]\n  prepare-environments --catalog FILE --environments DIR [--ids DATASET:ID1,DATASET:ID2] [--include-passed] [--dataset-backends FILE] [--build-proxy URL]\n  image-inventory --data-dir DIR [--dataset DATASET]\n  organize-environments --data-dir DIR [--dataset DATASET] [--apply]  # Docker aliases only\n  catalog | submit --file batch.json | status [--batch ID]\n  wait --batch ID [--wait-seconds 30] | cancel --batch ID | resume --batch ID | recover --run ID | retry --run ID | report --batch ID --file report.md\n  regrade --data-dir DIR --run ID [--verifier-proxy URL]  # frozen SWE patch only; no Agent/model'); return; }
+  if (positionals.length !== 1 || !['worker','serve','prepare','catalog','submit','status','wait','cancel','resume','recover','retry','report','regrade','prepare-environments','register-tasks','archive-runs','image-inventory','organize-environments'].includes(command)) throw Error('Unknown command');
   if (v['verifier-proxy'] && command !== 'regrade') throw Error('--verifier-proxy is only supported by regrade');
   const required = (key: keyof typeof v) => { const value = v[key]; if (typeof value !== 'string' || !value) throw Error('Missing --' + key); return value; };
   const port = z.number().int().min(1024).max(65535).parse(Number(v.port));
+  if(command==='image-inventory'){
+    console.log(JSON.stringify(await imageInventory(required('data-dir'),v.dataset?datasetSchema.parse(v.dataset):undefined),null,2));return;
+  }
+  if(command==='organize-environments'){
+    console.log(JSON.stringify(await organizeEnvironmentImages(required('data-dir'),v.dataset?datasetSchema.parse(v.dataset):undefined,v.apply??false),null,2));return;
+  }
   if(command==='archive-runs'){
     console.log(JSON.stringify(await archiveRuns(await directory(required('data-dir')),resolve(required('catalog')),v.apply??false),null,2));return;
   }
@@ -46,7 +54,8 @@ async function main() {
         const source=join(await realpath(resolve(v['swe-tasks'])),task.id);await validateSweTask(task.id,source);entries.push({id:task.id,dataset:'swe-bench-verified',source});
       }
       if(v.tasks){
-        const dataset=datasetSchema.parse(v.dataset??'terminal-bench');
+        const dataset=datasetSchema.parse(v.dataset??'terminal-bench-2.1');
+        if(dataset==='terminal-bench')throw Error('Terminal-Bench 2.0 is retired; register Terminal-Bench 2.1 tasks');
         if(dataset==='swe-bench-verified')throw Error('Use --swe-tasks for SWE-bench Verified');
         const root=await realpath(resolve(v.tasks)),supported=dataset==='deep-swe'?await deepProfiles():await profiles(dataset);
         for(const entry of await readdir(root,{withFileTypes:true}))if(entry.isDirectory()&&!entry.isSymbolicLink()&&supported[entry.name]){
@@ -71,9 +80,11 @@ async function main() {
       if(matches.length!==1)throw Error(matches.length?'Ambiguous task ID; use DATASET:ID':'Unknown task ID');
       return taskKey(matches[0]!);
     })):undefined;
-    if(catalog.list().some(task=>task.dataset!=='deep-swe'&&(selected?selected.has(taskKey(task)):task.status!=='passed'||v['include-passed']))) {console.log('Checking public base runtime…');await store.prepareBase();}
+    if(selected&&[...selected].some(key=>key.startsWith('terminal-bench:')))throw Error('Terminal-Bench 2.0 environment preparation is retired');
+    if(catalog.list().some(task=>task.dataset!=='deep-swe'&&task.dataset!=='terminal-bench'&&(selected?selected.has(taskKey(task)):task.status!=='passed'||v['include-passed']))) {console.log('Checking public base runtime…');await store.prepareBase();}
     const prepared:string[]=[],failed:{id:string;error:string}[]=[],unprepared:string[]=[];
     for(const task of catalog.list()){
+      if(task.dataset==='terminal-bench')continue;
       if(selected?!selected.has(taskKey(task)):task.status==='passed'&&!v['include-passed'])continue;
       if(!task.source){unprepared.push(taskKey(task));continue;}
       try{console.log('Preparing: '+taskKey(task));await store.prepareTask(task);prepared.push(taskKey(task));console.log('Ready: '+taskKey(task));}

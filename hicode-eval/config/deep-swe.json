@@ -1,4 +1,60 @@
 {
+  "abs-stepped-slices": {
+    "repository": "https://github.com/abs-lang/abs",
+    "baseCommit": "cb1b3b671d0ee9fa9da9f7b02f86967953ffd10a",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7d5m4ed35zfp7gyhx7wdahed82yw72-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:3a4d47f5281269305343c83729836ac2f3172811aee72681e472a4196178eda1",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "dacb211959cc973ccece0461b252076a1d01c744699e2621a6db42bd6654d0ab",
+      "instruction.md": "0381637972fc77c6c27bbc9f999af79ce57e9fc78d9ac43cf1ced51c9f8ea3dd",
+      "solution/solution.patch": "3006ff58e945289a5defb1fb314ba3bcbb8a2c7df278f4678b760e53073fb82c",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "695397d9964aac7e49f263199375a5c829549909eacb5790dc3a5d2e5ca877c5",
+      "tests/Dockerfile": "4e7ed635af4e4d6f724df880b305e66b39bf9f34505a4f20df366a4a65dea6a5",
+      "tests/config.json": "15ca12416a45068f4b0f235130bb3375d6e2251e8bd8a67bf40edd3a0c0fe80f",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "bf9eab2e681531d83c458e7ad45e4a2fecf622c0ccaee6a9581d32875c45ecc9",
+      "tests/test.sh": "35a161fde459979916c034055c4559cbf38ff742591175be97111a60bb617a19"
+    },
+    "runtimeEnvironment": {
+      "GOMODCACHE": "/opt/hicode-go/pkg/mod",
+      "GOPROXY": "off"
+    },
+    "runtimeTools": [
+      "go-ctrf-json-reporter"
+    ]
+  },
+  "actionlint-action-pinning-lint": {
+    "repository": "https://github.com/rhysd/actionlint",
+    "baseCommit": "0bdc95715fa58f64e3fd6e63b0f89be8733cbbab",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh79dnvkvq8j9bs22ededmsc79823akj-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:522a6e93a31656d03cc79474dafc5542bb27109051914d5566d7d29789c2a1a6",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "f0e0544d7c7cea38a8592bd91364110e223d0266481a65bcd564300734a228c9",
+      "instruction.md": "02472c08b7de7ca4d7d709a3b53db835fe8bcc76a887a13c18dc5aba86bd37f9",
+      "solution/solution.patch": "e5be4578ca56f7a2e63c8fae53120ca15ed30b7718d097138e2eb30d81206ad4",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "a171ddc6849f81f146c05b5fa230341fbc691e26b90edb4d3d80efd274141f66",
+      "tests/Dockerfile": "0b9bdabc3f18bafa78d129d076c3464c5a8d9d52d4b1f07ff58603c85ca3e89e",
+      "tests/config.json": "003e2833f422b8c74af29572915c0c020466255dd5125ed33e8587e7ef60cf17",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "608be125ea90894b68b06e664229b6de7911403695132fc0ff794ceefa39a856",
+      "tests/test.sh": "ad32349418c97fe12a090d09ddb5c3880b1b992500c2f69275ef702b52c6e0e3"
+    },
+    "runtimeEnvironment": {
+      "GOMODCACHE": "/opt/hicode-go/pkg/mod",
+      "GOPROXY": "off"
+    },
+    "runtimeTools": [
+      "go-ctrf-json-reporter"
+    ]
+  },
   "adaptix-name-mapping-aliases": {
     "repository": "https://github.com/reagento/adaptix",
     "baseCommit": "a691069fcadf9131e5f7a5a130a022dc678f3e1d",
@@ -43,6 +99,34 @@
     },
     "runtimeEnvironment": {}
   },
+  "anko-default-function-arguments": {
+    "repository": "https://github.com/mattn/anko",
+    "baseCommit": "9d2d84bb1564e9513287998c56ccf16c01c19008",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7fj3hc92zehtc8azrm32xzb182w9dr-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:31c8dce39317314800d1200610475ba27b98c71350d524d25e7df71d80c5752a",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "2aefca1d5b234426d2aac51c599ba10a897f20ace48edb218966362b3252f0ef",
+      "instruction.md": "72caeb802c4dc7b8cbd4d9ec61b467230383a923de4dd4cc300b9f1d99285f8f",
+      "solution/solution.patch": "a506c03793aaf066be36af0ff2a4a949450e52deee8db3496f333036e80e9316",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "aabbd5deb2aad2e820ba7592883cc9ccbe7a7f73c87e03eac903164fe3d03bd0",
+      "tests/Dockerfile": "1c1927f7e36b2fb20066fec160e8956584ac331a6daf9740b1671a6a910eaede",
+      "tests/config.json": "d3c466ba8c75740c49bd3abe360f0b93d1810e529c1d76565339f17bb56252d4",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "5666585ad86381c2d1439f0628abdb20532dd380d614c8b957b1ca37e36b01ec",
+      "tests/test.sh": "6950b56a00ba6a197ab6b0a613af12ad39187ef201abc0aeb86045712ad2b0e9"
+    },
+    "runtimeEnvironment": {
+      "GOMODCACHE": "/opt/hicode-go/pkg/mod",
+      "GOPROXY": "off"
+    },
+    "runtimeTools": [
+      "go-ctrf-json-reporter"
+    ]
+  },
   "bandit-incremental-cache-control": {
     "repository": "https://github.com/PyCQA/bandit.git",
     "baseCommit": "765f00d3f202f83f61d03f882f80a2d5142d81f8",
@@ -62,6 +146,28 @@
       "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
       "tests/test.patch": "7944f3ebe21a8c506e754da2037b70bbf22fea3372e7da86fda9158f33a55c5c",
       "tests/test.sh": "7d0e64a42deb1a10af17eee4c7a13546f8f04c9e2fdabcde623ffc41854c8145"
+    },
+    "runtimeEnvironment": {}
+  },
+  "bandit-interprocedural-taint-checks": {
+    "repository": "https://github.com/PyCQA/bandit.git",
+    "baseCommit": "b46fa3a2723635aa29cc012538df4867ac2ac006",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh77yap0nc4zwm5bysc954xbr182tptg-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:7207179b09db76a8a3864b9e69c5fdf10e0d41a5bba242854216f18aa90ac7b1",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "1af159eefc1421c0ca49a5e0846583b6efd0588d591715efada37d033ed6a4da",
+      "instruction.md": "d780c0ef58de282522a94650d7fd54eed4e24aec73affc55c90898e2f11ba3b2",
+      "solution/solution.patch": "0c50bbada00aff7e6bbc8db420d3d922eed4c83eba27f023f3cea6113ed38056",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "eb38b1482426d94b804589a67b1632027c0ed9767b41524aabbf2472a2aca067",
+      "tests/Dockerfile": "15aa87fd13060626c803ed4b1cdfe70e7b0fc824ae779902d8a0db896f756e99",
+      "tests/config.json": "d7bf57cde123079ba241f2a605aa3d4cd61a80e6ef5a3d779fd0e687b3e4fd17",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "192f96e4106bb272e8b72924da5e286b536717514b830237faa09ba9fa8f2837",
+      "tests/test.sh": "3759d1d7adcb93ca69a61708a8315d0d193d87ad853980e4160edce8e72544ff"
     },
     "runtimeEnvironment": {}
   },
@@ -106,6 +212,28 @@
       "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
       "tests/test.patch": "50154d90fca5e57254affc3a5378082a6782cb4d7e27182a7860a5827b8afef9",
       "tests/test.sh": "f17974eb262c2263c538fd31d62ff40597674ce4bc70084abad190885862e481"
+    },
+    "runtimeEnvironment": {}
+  },
+  "clack-async-autocomplete-options": {
+    "repository": "https://github.com/bombshell-dev/clack",
+    "baseCommit": "8a96e2dcd7f821d1250b58cf71c327679f94de25",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh78c5dwwna57y757p2y5ktw79836dnv-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:32a72ef7d4a9d3ae8937aef9c42e18166284c817c8edf137d66772e4f34abf74",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "ee1171af0650ea7024cb26dcdf6d693721479094e425ad9ca35e5a4bb0b56e24",
+      "instruction.md": "5792630a916783910328e8d7778dc9483ed949bf713a09d00d4b8f6d4bdb6bf3",
+      "solution/solution.patch": "b9072085c48eb62b3ec18073361dd40ccc30064fbadfb5779ca409dec8c405b8",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "977c453c2c4701b1d58df42f7d11a9f9b16ae9b57c7e2522fa45c2bd14f44603",
+      "tests/Dockerfile": "f9f060804da06d2ed40954ec21c5f41a6eb3e2541f0a0e270638a4c548edbd32",
+      "tests/config.json": "68f5bdaa5ed70850c3e4f3e8f97328a86bac535f6cd325b9111207d1b0f86bed",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "bf6aaeaac58a1093d509332cd3f36562c6c8c61f41fa84178d87afcf50de9ab8",
+      "tests/test.sh": "121e16f34db26fc1799f8c28db93eb33228d3d54fcd997d13b4b85277d06e18f"
     },
     "runtimeEnvironment": {}
   },
@@ -175,6 +303,35 @@
     },
     "runtimeEnvironment": {}
   },
+  "fd-deterministic-multi-key-sorting": {
+    "repository": "https://github.com/sharkdp/fd",
+    "baseCommit": "227883606023d62275fb48701aeac90f2b604143",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh79s1ny2ab454f8caet44rv5n82za06-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:31c4201bbe4b79457ab34494b84767d417926e1cf9e8e24ac7d44d9a8e4bc538",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "661fd1617da2b0dfb2d9ae0655ac73a58660b9a2a2c5a2f622b4a74ee9cd417f",
+      "instruction.md": "c0f8b4310a2317da0f3222da839dc56a1580ed3d4fc493c2783ae418e6e2a657",
+      "solution/solution.patch": "3f178867b817d3a1ea8929578c8b8e9624fc62e5561049026df22d2a85d5ecea",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "85ed92e88c27e6b9d789cd35d05a17ba92c1cefbd93cea6800e256889fdf0714",
+      "tests/Dockerfile": "445062ca923bc0c1b83c2271c42a5ab5eb682e5c4c571adbd9a5f99402e7c580",
+      "tests/config.json": "b230517bac266c9f135daf0f2c1edfe2f03625210711efdabb59c1a6e09bb51f",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "a2cad74364a51fc25fc4dfa9aac7edfaf18ba88aa8b0f51ea04e7152959cf2b6",
+      "tests/test.sh": "21d2943bf6cf9ec67600daa5bb9ecb7483bb69a8850e72e78b05451cf93a2cde"
+    },
+    "runtimeEnvironment": {
+      "CARGO_HOME": "/opt/hicode-rust/cargo",
+      "RUSTUP_HOME": "/opt/hicode-rust/rustup",
+      "CARGO_NET_OFFLINE": "true"
+    },
+    "runtimeTools": [
+      "rust-toolchain"
+    ]
+  },
   "gql-incremental-graphql-delivery": {
     "repository": "https://github.com/graphql-python/gql",
     "baseCommit": "f07c89f8f065010a36b4263eded209b2b1d37063",
@@ -194,6 +351,28 @@
       "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
       "tests/test.patch": "031de3d902d74cdc8ef142886d5aca3342ff63611a3a903797f3e8d6fb413670",
       "tests/test.sh": "44092634c1bde1fe11ff7c5cefbd29bc2aaca23d505169188f00bd4494df9820"
+    },
+    "runtimeEnvironment": {}
+  },
+  "httpx-deterministic-cookie-store": {
+    "repository": "https://github.com/encode/httpx",
+    "baseCommit": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7ccr1w93zymhy42k5hs2m9w1831xpx-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:47d0af14d988caa7d22b14312be2c3ee4e9ac799a5679bd83d19f298d346749d",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "aa71466fa6f71fab7fc6df1278377549c57a1d6b74bfd270a70005ce0fede297",
+      "instruction.md": "97bd72180711c083997403fd5e88d7ebcca405360b06b93d5080cd2a6e625f22",
+      "solution/solution.patch": "36d91dabc2cee58323b104e0ce49eaf63202f3a8b840dd86595c6bd87265daed",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "625136dd58235803eb622abda1855fdc4dc790b4016ce51c9ab987a8067f0b5a",
+      "tests/Dockerfile": "860e97dc73215d6681683fcbde86d7c9725c56615683c480636a7494138aad3c",
+      "tests/config.json": "7878b7c49f92222e1114759f85809023939e104fdeb7743708e72055dbae7549",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "aeb6ad57532b08b38229ea05fda43a81ae3bb8a7ae702bddfb031ef51afc0443",
+      "tests/test.sh": "937aed0e11cecfc1c91964a79f7278dfd6b2cc7d70e93f1ea3b4f1a7d0c4cddb"
     },
     "runtimeEnvironment": {}
   },
@@ -466,6 +645,28 @@
       "PYTHONPATH": "/app/src"
     }
   },
+  "pwntools-tube-multiplexing": {
+    "repository": "https://github.com/Gallopsled/pwntools",
+    "baseCommit": "76894a5404a65d2800b6d0adaf3485ecba275caa",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh74mb9dzz76a6zgdqmmf5mvk1833cnk-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:8d726c8e36df1fbee86df7607a3c3b4b441841455b83d806cc2f40533f7976de",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "30a0cf06a05c6bf1d4fb4bab810563646fd3332e54d60e4d79da6b9a5bb91e7d",
+      "instruction.md": "d57d68f683be7ddebfb65a2a25dd139143ebc4409c46f09425ea4e38ef3b336a",
+      "solution/solution.patch": "dd10d7329d7feb460c07faa2c32616cf29196d1ef0fcc98e72e4a676a3e38586",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "745d238dd73edca759016a833da57c236901f1461416a2d46844c2bfa933a048",
+      "tests/Dockerfile": "fd0c94a658a65dfe8fa4210eab3a89ace6e6fd16f3b2b8390fd58904dcda1d9b",
+      "tests/config.json": "643e81014a15f61805ea85b2d4b36fdf780f76cdbda8b0bbc7791096b498633d",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "7ca6180f5d0c2d0b6109b3f649b30db29447dcf42803d8a615ba11f500db8e88",
+      "tests/test.sh": "b7ca71e97618709eb379d99056d085e25a4eefc8c32e4f9e589b47d98d4edda5"
+    },
+    "runtimeEnvironment": {}
+  },
   "python-statemachine-state-data-scoping": {
     "repository": "https://github.com/fgmacedo/python-statemachine",
     "baseCommit": "8d17ba9f6ba8420cf05fddb94013bc221ed9a222",
@@ -576,6 +777,28 @@
     },
     "runtimeEnvironment": {}
   },
+  "superjson-error-stack-serialization": {
+    "repository": "https://github.com/flightcontrolhq/superjson.git",
+    "baseCommit": "010c4bdb4b8758844fd44eacf38e42b22eba8aea",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh701jywhzgddknqwzsq6npjv98226tq-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:ada56382a90fbe2dd01bde0f685a1bbd0ceac556f7b802199e60dbbca6e76387",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "08ae763c0ca5b337d0286b88b84e24c34ad329d3a53e9eb22ff9206e1f2ea480",
+      "instruction.md": "cb5e04f0f6c01180a47f1205b6d86126a8a7f9e7d5662e4f9477daa862826e30",
+      "solution/solution.patch": "f2b1c96b99b5de005c1607d19676bc7288a28cb8929cab8433aaf01a654cfc2a",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "c808502b1f72060e23e3ac7885b6edd8fa49ad68f2e175f017d560222145cd33",
+      "tests/Dockerfile": "7790db88edd471c9581c2c2625a687eae80aa97b61bf859c6197156090dd10b0",
+      "tests/config.json": "a41f9692b871c6e515e4215f8a2531df9fb0c0e65a482796230acb209040a52d",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "1107931e0442dc35b9bf9d2c647b35ac93d44c52607eb5733511faae99f78398",
+      "tests/test.sh": "a49e97fe46c86e5137ac6bbad00bcbfea2fde0bdbfe9023c35745ff2c7f95f42"
+    },
+    "runtimeEnvironment": {}
+  },
   "textual-kitty-key-phases": {
     "repository": "https://github.com/Textualize/textual",
     "baseCommit": "9737a5ab723f79e59f0a83eb036a3d15fad6b054",
@@ -661,6 +884,28 @@
       "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
       "tests/test.patch": "a81a7404ea92b40a82c6f4d79f153635db21cf7e385a258af5fc527927b82259",
       "tests/test.sh": "c17975272116a783de29b4b1c87e5b55e2ff788337113459ad5fe1f345764db8"
+    },
+    "runtimeEnvironment": {}
+  },
+  "yjs-map-conflict-detection": {
+    "repository": "https://github.com/yjs/yjs",
+    "baseCommit": "7795050a749bd1111cbbdd9d0219b27226a8e710",
+    "declaredImage": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7fwz4nedevfex8ssk2p8xbt9836scp-v1.1",
+    "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605@sha256:91b1986f864befaef716579fa641d57051257ea5484515f9befd30a4f5d800ef",
+    "architecture": "amd64",
+    "agentSeconds": 10800,
+    "verifierSeconds": 1800,
+    "hashes": {
+      "environment/Dockerfile": "d360c4e38fb5dd548029cd15511ab97a3c180c8ae1c3f420c5ab091711d42b2c",
+      "instruction.md": "ec6f54e53154aca614ead29fe45f2a85f876c4fe38aec5f3a0f20425e2611935",
+      "solution/solution.patch": "1ecf3aa95d7034b2c4962cb5e48a4e6928d62726906734622ea643c8a15a16bd",
+      "solution/solve.sh": "2f111d19625d9685d00029c2c3efb7719ee2311c6ab4f0ab0ebcc37f09c35198",
+      "task.toml": "efc0167671f665a71cbc94a9951fc1e85402e3a1efd20c285449606766a65428",
+      "tests/Dockerfile": "9d41f12270bf5b53d2bfe5aa13909a1a82abb6c9e6fdfd1c978dea32dc4840d7",
+      "tests/config.json": "13dc8b9683de0a41ca6ba76239f69a4aeff09b50bea9899ffb65ef2df677a4a4",
+      "tests/grader.py": "47cc9eaadf21e636323c360ec4fa786f0733ec9fd1d21ea5a5717ff9f8c4077c",
+      "tests/test.patch": "fc133287f93c4073bd26d6d8648ccad14561c5a57812f4ab452a4225dc7774a7",
+      "tests/test.sh": "1c23ca5323c12c4cde313203f771700ff19c994778db7cf0d43ead43ce69e5a3"
     },
     "runtimeEnvironment": {}
   }

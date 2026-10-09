@@ -3,12 +3,20 @@ import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { prepareTaskInputs, preparePublicTestInputs, profiles } from '../src/host/publicTasks.js';
+import { prepareTaskInputs, preparePublicTestInputs, profiles, publicTaskProfile } from '../src/host/publicTasks.js';
 import { tree } from '../src/host/store.js';
 
 const content = Buffer.from([0, 255, 10, 128, 42]);
 const hash = createHash('sha256').update(content).digest('hex');
 const profile = { hashes: { 'environment/input.bin': hash }, inputs: [{ source: 'environment/input.bin', target: 'input.bin' }], initializer: null, directories: [], packages: [], verifierPackages: [], verifierPrelude: 'none' as const };
+
+test('a malformed unrelated task profile cannot invalidate an active task',async()=>{
+  const manifest={fixture:profile,unrelated:{...profile,hashes:{'instruction.md':'short'}}};
+  expect(publicTaskProfile(manifest,'fixture').inputs).toEqual(profile.inputs);
+  expect(()=>publicTaskProfile(manifest,'unrelated')).toThrow();
+  expect(()=>publicTaskProfile(manifest,'missing')).toThrow('not been adapted');
+  expect(Object.keys(await profiles('terminal-bench-2.1')).length).toBeGreaterThan(60);
+});
 async function fixture(run: (root: string, task: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'hicode-eval-inputs-'))), task = join(root, 'task');
   try {

@@ -20,6 +20,7 @@ const profileSchema = z.object({
   systemPackages: z.array(z.string().regex(/^[a-z0-9][a-z0-9+.-]*(?:=[A-Za-z0-9.+:~_-]+)?$/)).max(128).optional(),
   workspaceAliases: z.array(z.enum(['/data','/workspace','/tmp/CompCert'])).max(3).optional(),
   writableRuntimeBin: z.boolean().optional(),
+  service: z.object({writablePaths:z.array(z.enum(['/etc','/var','/run','/home','/git','/srv'])).max(6)}).strict().optional(),
   verifierInputs: z.array(z.object({source:inputPath.refine(path=>path.startsWith('tests/')),target:inputPath}).strict()).max(32).optional(),
   verifierSetup: inputPath.optional(),
   verifierWritableTests: z.boolean().optional(),
@@ -31,6 +32,12 @@ const profileSchema = z.object({
   verifierChroot: z.boolean().default(false)
 }).strict().superRefine((profile, ctx) => {
   const targets = new Set<string>();
+  if(profile.service){
+    if(new Set(profile.service.writablePaths).size!==profile.service.writablePaths.length)
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:'Service system paths must be unique'});
+    if(profile.verifierChroot||profile.verifierRootOverlay)
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:'Services require the separate live verifier view'});
+  }
   if (profile.workspaceAliases && new Set(profile.workspaceAliases).size !== profile.workspaceAliases.length)
     ctx.addIssue({code:z.ZodIssueCode.custom,message:'Workspace aliases must be unique'});
   for (const input of profile.inputs) {
@@ -66,12 +73,18 @@ const profileSchema = z.object({
     publicTargets.add(entry.target);
   }
 });
+const manifestPath=(dataset:Extract<Dataset,`terminal-bench${string}`>)=>
+  join(EVAL_ROOT,'config',dataset==='terminal-bench'?'terminal-bench.json':'terminal-bench-2.1.json');
 export async function profiles(dataset:Extract<Dataset,`terminal-bench${string}`>) {
-  const name=dataset==='terminal-bench'?'terminal-bench.json':'terminal-bench-2.1.json';
-  return readJson(join(EVAL_ROOT, 'config',name), z.record(profileSchema));
+  return readJson(manifestPath(dataset), z.record(profileSchema));
+}
+export function publicTaskProfile(manifest:Record<string,unknown>,id:string){
+  if(!Object.hasOwn(manifest,id))throw Error('Public task has not been adapted to the shared Linux machine');
+  return profileSchema.parse(manifest[id]);
 }
 export async function validatePublicTask(id: string, path: string, dataset:Extract<Dataset,`terminal-bench${string}`>) {
-  const profile = (await profiles(dataset))[id]; if (!profile) throw Error('Public task has not been adapted to the shared Linux machine');
+  const manifest=await readJson(manifestPath(dataset),z.record(z.unknown()));
+  const profile=publicTaskProfile(manifest,id);
   const files = await tree(path);
   if (JSON.stringify(Object.keys(files).sort()) !== JSON.stringify(Object.keys(profile.hashes).sort()) || Object.entries(profile.hashes).some(([name, hash]) => files[name]?.sha256 !== hash)) throw Error('Public task differs from the reviewed dataset revision');
   return profile;

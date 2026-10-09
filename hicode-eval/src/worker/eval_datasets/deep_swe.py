@@ -92,13 +92,21 @@ class DeepSweRuntime:
     def writable_runtime_bin(self, config):return False
     def command_environment(self, config, home, root):
         runtime = config['deep']['runtimeEnvironment']
-        if (not isinstance(runtime, dict) or set(runtime) - {'PYTHONPATH', 'VIRTUAL_ENV'}
+        if (not isinstance(runtime, dict) or set(runtime) - {'PYTHONPATH', 'VIRTUAL_ENV', 'GOMODCACHE', 'GOPROXY', 'CARGO_HOME', 'RUSTUP_HOME', 'CARGO_NET_OFFLINE'}
                 or any(not isinstance(value, str) for value in runtime.values())):
             raise ValueError('Invalid reviewed DeepSWE runtime environment')
         if ('PYTHONPATH' in runtime and runtime['PYTHONPATH'] not in {'/app', '/app/src'}
-                or 'VIRTUAL_ENV' in runtime and runtime['VIRTUAL_ENV'] != '/opt/venv'):
+                or 'VIRTUAL_ENV' in runtime and runtime['VIRTUAL_ENV'] != '/opt/venv'
+                or 'GOMODCACHE' in runtime and runtime['GOMODCACHE'] != '/opt/hicode-go/pkg/mod'
+                or 'GOPROXY' in runtime and runtime['GOPROXY'] != 'off'
+                or ('GOMODCACHE' in runtime) != ('GOPROXY' in runtime)
+                or 'CARGO_HOME' in runtime and runtime['CARGO_HOME'] != '/opt/hicode-rust/cargo'
+                or 'RUSTUP_HOME' in runtime and runtime['RUSTUP_HOME'] != '/opt/hicode-rust/rustup'
+                or 'CARGO_NET_OFFLINE' in runtime and runtime['CARGO_NET_OFFLINE'] != 'true'
+                or ('CARGO_HOME' in runtime) != ('RUSTUP_HOME' in runtime)):
             raise ValueError('DeepSWE runtime environment escapes prepared dependencies')
         result = {'PYTHONDONTWRITEBYTECODE': '1', **runtime}
+        if 'GOMODCACHE' in runtime and home is not None:result['GOPATH'] = str(Path(home)/'go')
         if 'VIRTUAL_ENV' in runtime:result['PATH'] = runtime['VIRTUAL_ENV'] + '/bin:' + os.environ['PATH']
         return result
 
@@ -107,6 +115,8 @@ class DeepSweRuntime:
         runtime = self.command_environment(config, None, None)
         if 'VIRTUAL_ENV' in runtime:
             command(namespace(['python3','-c','import sys; assert sys.prefix == "/opt/venv", "Prepared virtual environment is unavailable"']))
+        if 'GOMODCACHE' in runtime:
+            command(namespace(['python3','-c','import os; from pathlib import Path; Path(os.environ["GOPATH"],"bin").mkdir(parents=True,exist_ok=True)']))
         commit = config['deep']['baseCommit']
         if not isinstance(commit, str) or not re.fullmatch('[a-f0-9]{40}', commit):raise ValueError('Invalid DeepSWE baseline')
         if command(namespace(['git', '-C', '/app', 'rev-parse', 'HEAD'])).strip() != commit:
@@ -149,11 +159,13 @@ class DeepSweRuntime:
         baseline = root / 'baseline'
         if baseline.is_symlink() or not baseline.is_dir():raise ValueError('Missing protected DeepSWE baseline')
         shutil.copytree(baseline, fresh, symlinks=True);fresh_home.mkdir()
+        if 'GOMODCACHE' in config['deep']['runtimeEnvironment']:(fresh_home/'go/bin').mkdir(parents=True)
         subprocess.run(['chown', '-hR', f'{uid}:{gid}', str(fresh), str(fresh_home)], check=True)
         args = namespace_argv(['--ro-bind', str(artifacts), '/logs/artifacts', 'bash', '/tests/test.sh'],
                               fresh, fresh_home, logs, Path('/run/hicode-eval') / root.name,
                               tests=root / 'tests', isolated_network=True, verifier_release=config['release'])
         env.update(HOME=str(fresh_home))
+        if 'GOMODCACHE' in config['deep']['runtimeEnvironment']:env['GOPATH']=str(fresh_home/'go')
         code = supervise(args, timeout=config['verifierSeconds'],
                          output=verifier / 'test-stdout.txt', env=env, demote=demote, cancelled=cancelled)
         if code != 0:raise RuntimeError(f'Original DeepSWE verifier exited {code}; no score accepted\n'+display_output(verifier / 'test-stdout.txt')[-6000:])

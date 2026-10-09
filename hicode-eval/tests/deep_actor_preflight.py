@@ -9,7 +9,12 @@ sys.path.insert(0, '/opt/hicode-eval')
 from protocol import namespace_argv
 from dataset_runtime import dataset_runtime
 
-root=Path(sys.argv[1]);release=sys.argv[2];module=sys.argv[3]
+root=Path(sys.argv[1]);release=sys.argv[2];probe=sys.argv[3]
+required=json.loads(sys.argv[4]) if len(sys.argv)>4 else []
+allowed={'go','go-ctrf-json-reporter','node','npx','pnpm','junit-to-ctrf','cargo',
+         'cargo-nextest','pytest','python3','git'}
+if not isinstance(required,list) or len(required)>16 or not all(isinstance(x,str) and x in allowed for x in required):
+    raise ValueError('Unreviewed verifier command probe')
 config=json.loads((root/'job.json').read_text())
 subprocess.run(['useradd','--uid','20000','--user-group','--no-create-home','eval-smoke'],check=True)
 account=pwd.getpwnam('eval-smoke')
@@ -32,6 +37,19 @@ handler.prepare_actor(config,project,logs,command,namespace)
 if 'VIRTUAL_ENV' in config['deep']['runtimeEnvironment']:
     command(namespace(['python3','-c','import os; assert not os.access("/opt/venv", os.W_OK), "Prepared dependencies are writable"']))
 command(namespace(['python3','-c',"import socket; assert [n for _,n in socket.if_nameindex()]==['lo']"]))
-module_file=command(namespace(['python3','-c',"import importlib,sys; print(importlib.import_module(sys.argv[1]).__file__)",module])).strip()
+command(namespace(['python3','-c',
+    'import shutil,sys;missing=[name for name in sys.argv[1:] if not shutil.which(name)];assert not missing,missing',*required]))
+if probe.startswith('binary:'):
+    binary=probe.removeprefix('binary:')
+    if binary not in {'go', 'node', 'cargo'}:raise ValueError('Unreviewed toolchain probe')
+    binary_version=command(namespace([binary,'--version' if binary != 'go' else 'version'])).strip()
+    inspected={'binary':binary,'binaryVersion':binary_version}
+else:
+    module=probe
+    module_file=command(namespace(['python3','-c',"import importlib,sys; print(importlib.import_module(sys.argv[1]).__file__)",module])).strip()
+    inspected={'module':module,'moduleFile':module_file}
 output=command(namespace(['bun','/opt/hicode-eval/preflight.ts']))
-print(json.dumps({'actorSandboxReady':'Sandbox ready' in output,'network':'isolated','uid':account.pw_uid,'baseCommit':config['deep']['baseCommit'],'module':module,'moduleFile':module_file}))
+result={'actorSandboxReady':'Sandbox ready' in output,'network':'isolated','uid':account.pw_uid,
+        'baseCommit':config['deep']['baseCommit'],**inspected}
+if len(sys.argv)>4:result['requiredCommands']=required
+print(json.dumps(result))

@@ -101,6 +101,7 @@ export class Lab {
   async retry(id:string):Promise<Batch>{
     const operation=this.submissions.then(async()=>{
       const original=this.runs.get(id);if(!original)throw Error('Unknown run');
+      if(original.dataset==='terminal-bench')throw Error('Terminal-Bench 2.0 retry is retired');
       const existing=[...this.batches.values()].find(batch=>batch.retryOf?.runId===id);
       if(existing)return existing;
       if(!done(original.state)||original.state==='needs_recovery'||this.jobs.has(id))throw Error('Wait for completion or recover retained evidence before rerunning');
@@ -125,8 +126,13 @@ export class Lab {
       return matches[0]!;
     });
     if(new Set(selected.map(taskKey)).size!==selected.length)throw Error('Choose distinct tasks');
+    if(selected.some(task=>task.dataset==='terminal-bench'))throw Error('Terminal-Bench 2.0 is retired; use Terminal-Bench 2.1');
     const environments=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends);
     for(const task of selected){
+      if((input.network??this.config.network)!=='isolated'){
+        const metadata=await taskAdapters[task.dataset].validate(task.id,task.source??'');
+        if('service' in metadata&&metadata.service)throw Error('Service assignments require isolated execution');
+      }
       const network=taskAdapters[task.dataset].requiredNetwork;
       if(network&&(input.network??this.config.network)!==network)throw Error(task.dataset+' requires '+network+' execution');
       if(!task.source)throw Error('Prepare the selected task source before submission: '+taskKey(task));
@@ -196,6 +202,7 @@ export class Lab {
       if (this.closed || this.halted || !this.machine || [...this.runs.values()].some(r => r.state === 'needs_recovery'))
         throw Error('Recover retained runs and initialize the machine before resuming');
       if (batch.cancelledAt) throw Error('Cancelled batches cannot resume');
+      if(batch.taskRefs.some(task=>task.dataset==='terminal-bench'))throw Error('Terminal-Bench 2.0 batches cannot resume');
       if (!batch.runIds.some(run => this.runs.get(run)?.state === 'queued')) throw Error('No queued tasks to resume');
       // Pump only existing queued records. Completed and attempted tasks are never replayed.
       await this.pump();
@@ -240,7 +247,7 @@ export class Lab {
       if ([...this.runs.values()].some(r => r.state === 'needs_recovery')) return;
       for (const r of this.runs.values()) {
         if (this.jobs.size >= this.config.concurrency) break;
-        if (r.state !== 'queued' || this.jobs.has(r.id) || this.attempted.has(r.id)) continue;
+        if (r.state !== 'queued' || r.dataset==='terminal-bench' || this.jobs.has(r.id) || this.attempted.has(r.id)) continue;
         const batch = this.batches.get(r.batchId)!;
         if (batch.cancelledAt || [...this.jobs.keys()].filter(id => this.runs.get(id)?.batchId === r.batchId).length >= batch.concurrency) continue;
         this.attempted.add(r.id);

@@ -20,7 +20,14 @@ class DeepSweTest(unittest.TestCase):
         self.assertTrue(result['PATH'].startswith('/opt/venv/bin:'))
         self.assertEqual(handler.command_environment({'deep':{'runtimeEnvironment':{}}},'/home','/run'),
                          {'PYTHONDONTWRITEBYTECODE':'1'})
-        for bad in [None,[],{'PATH':'/other/bin'},{'PYTHONPATH':'/tests'},{'VIRTUAL_ENV':'/other/home'}, {'PYTHONPATH':{}}]:
+        rust={'CARGO_HOME':'/opt/hicode-rust/cargo','RUSTUP_HOME':'/opt/hicode-rust/rustup','CARGO_NET_OFFLINE':'true'}
+        self.assertEqual(handler.command_environment({'deep':{'runtimeEnvironment':rust}},'/home','/run')['CARGO_HOME'],rust['CARGO_HOME'])
+        go={'GOMODCACHE':'/opt/hicode-go/pkg/mod','GOPROXY':'off'}
+        self.assertEqual(handler.command_environment({'deep':{'runtimeEnvironment':go}},'/home','/run')['GOPATH'],'/home/go')
+        for bad in [None,[],{'PATH':'/other/bin'},{'PYTHONPATH':'/tests'},{'VIRTUAL_ENV':'/other/home'},
+                    {'PYTHONPATH':{}},{'GOPATH':'/root/go'},{'GOMODCACHE':'/opt/hicode-go/pkg/mod'},
+                    {'CARGO_HOME':'/root/.cargo'},{'CARGO_HOME':'/opt/hicode-rust/cargo'},
+                    {'CARGO_HOME':'/opt/hicode-rust/cargo','RUSTUP_HOME':'/other'}]:
             with self.assertRaises(ValueError):handler.command_environment({'deep':{'runtimeEnvironment':bad}},'/home','/run')
 
     def setUp(self):

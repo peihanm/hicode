@@ -8,6 +8,26 @@ from recovery import recover, process_start
 
 
 class RecoveryTest(unittest.TestCase):
+    def test_failed_import_recovers_without_actor_identity_or_model_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/('a'*16);root.mkdir()
+            (root/'job.json').write_text(json.dumps({'dataset':'terminal-bench','release':'/opt/hicode/releases/'+'a'*64}))
+            with patch('recovery.pwd.getpwall',return_value=[]),patch.object(Path,'iterdir',return_value=iter([])),patch('cleanup.stop_task_processes') as stop:
+                result=recover(root)
+            self.assertEqual(result,{'execution':'failed','grading':'unavailable','uid':20000})
+            self.assertFalse((root/'identity.json').exists())
+            self.assertEqual(json.loads((root/'startup-recovery.json').read_text())['actorStarted'],False)
+            stop.assert_called_once_with(20000)
+
+    def test_missing_identity_with_actor_evidence_or_account_stays_blocked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/('a'*16);root.mkdir();(root/'home').mkdir()
+            with self.assertRaisesRegex(ValueError,'initialization evidence'):recover(root)
+            (root/'home').rmdir()
+            with patch('recovery.pwd.getpwall',return_value=[SimpleNamespace(pw_name='eval-'+root.name,pw_uid=20000)]):
+                with self.assertRaisesRegex(ValueError,'Actor account exists'):recover(root)
+            self.assertFalse((root/'result.json').exists())
+
     def fixture(self, parent):
         root = Path(parent).resolve() / ('a' * 16)
         (root/'logs/verifier').mkdir(parents=True)

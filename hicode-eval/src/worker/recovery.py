@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 import cleanup
+from cleanup import process_start
 from protocol import Events, atomic_json
 from dataset_runtime import dataset_runtime
 
@@ -31,13 +32,6 @@ def record(path):
     return json.loads(read_bytes(path, 65536))
 
 
-def process_start(pid):
-    try:
-        return Path('/proc', str(pid), 'stat').read_text().rsplit(')', 1)[1].split()[19]
-    except (FileNotFoundError, ProcessLookupError):
-        return None
-
-
 def recover(root):
     if not re.fullmatch('[a-f0-9]{16}', root.name) or root.resolve() != root.absolute():
         raise ValueError('Invalid recovery directory')
@@ -46,6 +40,7 @@ def recover(root):
         if not stat.S_ISREG(os.fstat(lock.fileno()).st_mode):
             raise ValueError('Invalid recovery lock')
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if not (root/'identity.json').exists():return recover_unstarted(root)
         identity = record(root / 'identity.json')
         if (identity.get('version') != 2 or identity.get('run') != root.name
                 or identity.get('user') != 'eval-' + root.name
@@ -106,6 +101,36 @@ def recover(root):
         if not receipt.exists():
             atomic_json(receipt, {'version': 1, 'run': root.name, 'at': time.time(), 'result': outcome, 'evidence': proof})
         return outcome
+
+
+def recover_unstarted(root):
+    """An import/bootstrap failure has no Actor identity; never start it during recovery."""
+    forbidden=['home','logs','actor-events','submitted-instruction.md','service.json']
+    if any((root/name).exists() for name in forbidden):
+        raise ValueError('Actor initialization evidence exists without a valid identity')
+    if any(account.pw_name=='eval-'+root.name or account.pw_uid==20000 for account in pwd.getpwall()):
+        raise ValueError('Actor account exists; startup failure cannot be inferred')
+    for path in Path('/proc').iterdir():
+        if not path.name.isdigit():continue
+        try:
+            if path.stat().st_uid==20000:raise RuntimeError('Actor process is still alive')
+            args=(path/'cmdline').read_bytes().split(b'\0')
+            if any(arg==b'/opt/hicode-eval/runner.py' and index+1<len(args) and args[index+1]==root.name.encode()
+                   for index,arg in enumerate(args)):
+                raise RuntimeError('Original task runner is still alive')
+        except (FileNotFoundError,ProcessLookupError):continue
+    job=record(root/'job.json')
+    dataset_runtime(job)
+    if not isinstance(job.get('release'),str) or not re.fullmatch(r'/opt/hicode/releases/[a-f0-9]{64}',job['release']):
+        raise ValueError('Invalid prepared release in startup evidence')
+    result={'execution':'failed','grading':'unavailable','uid':20000}
+    proof={'version':1,'run':root.name,'actorStarted':False,
+           'jobSha256':hashlib.sha256(read_bytes(root/'job.json',65536)).hexdigest(),'result':result}
+    receipt=root/'startup-recovery.json'
+    if receipt.exists() and record(receipt)!=proof:raise ValueError('Startup recovery evidence changed')
+    atomic_json(receipt,proof)
+    cleanup.finalize_task(root,result)
+    return result
 
 
 if __name__ == '__main__':

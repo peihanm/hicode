@@ -4,9 +4,11 @@
 
 Run public programming tasks through HiCode in a fresh disposable Linux container for each attempt. Submit batches from the CLI, watch the full TUI in a browser, and automatically collect test results and logs. Each task gets one independent attempt, with no corrective follow-up prompts or automatic retries.
 
-Reviewed tasks are listed in the [Terminal-Bench 2.0 manifest](config/terminal-bench.json) and the [Terminal-Bench 2.1 manifest](config/terminal-bench-2.1.json); SWE-bench Verified uses frozen task bundles. This is a development regression tool: the reviewed dependency recipes, ARM64 environment, and configurable time limits differ from official benchmark conditions. Results are not official leaderboard scores.
+The maintained Terminal tasks are listed in the [Terminal-Bench 2.1 manifest](config/terminal-bench-2.1.json). The [Terminal-Bench 2.0 manifest](config/terminal-bench.json) remains for historical results; new registration, preparation, submission, retry, and queue resumption are retired. SWE-bench Verified uses frozen task bundles. This is a development regression tool: the reviewed dependency recipes, ARM64 environment, and configurable time limits differ from official benchmark conditions. Results are not official leaderboard scores.
 
 Query batch execution and scores with the CLI `status` command. Keep personal task reviews and environment preparation records outside the checkout.
+
+Use `bash hicode-eval/eval.sh image-inventory --data-dir ../hicode-eval-data/container-v1 --dataset terminal-bench-2.1` for a read-only image inventory; omit `--dataset` for all datasets. Images are distinguished by Docker context and immutable image ID. `organize-environments --data-dir DIR [--dataset DATASET]` previews classification aliases; add `--apply` to tag existing images. It never rebuilds images, moves receipts, or changes scores. An unreachable engine is reported as `unavailable` and remains pending. These views do not replace source and recipe validation at submission.
 
 ## Directory and records
 
@@ -34,14 +36,7 @@ bash .devcontainer/linux.sh engine-start
 
 This starts only the Docker engine and loads the nested sandbox policy. Register bundles and build clean images, then create the preparation container using the steps below before starting the service. It mounts no host directories or old evaluation volumes. Task dependencies are installed only while building images.
 
-Download the dataset outside this repository and pin the reviewed revision:
-
-```bash
-git clone https://github.com/harbor-framework/terminal-bench-2.git ../terminal-bench-2
-git -C ../terminal-bench-2 checkout --detach 69671fbaac6d67a7ef0dfec016cc38a64ef7a77c
-```
-
-`config/terminal-bench.json` verifies the full file hashes of supported tasks and rejects modified versions. Tasks and reference solutions are not distributed in this repository; follow the upstream dataset's license and usage conditions. Harbor is not required.
+Keep the reviewed Terminal-Bench 2.1 bundles outside this repository. `config/terminal-bench-2.1.json` verifies their file hashes and rejects modified versions. Tasks and reference solutions are not distributed here; follow the upstream dataset's license and usage conditions. Harbor is not required.
 
 ## 2. Configure a model and freeze the source
 
@@ -203,7 +198,7 @@ At the evaluation deadline, the runner sends SIGTERM to the identified HiCode CL
 
 ## Additional public datasets
 
-Terminal-Bench 2.0, the reviewed Terminal-Bench 2.1 tasks, and SWE-bench Verified share scheduling, task budgets, the TUI, cancellation and evidence collection. Dataset-specific handlers prepare inputs and grade outputs. `Run.dataset` and the task ID jointly identify a task; a submission with a reused ID must specify its dataset. The separate 2.1 manifest defines its supported tasks. Review each new task's original Dockerfile, public inputs and verifier dependencies even when 2.0 has a task with the same ID.
+Terminal-Bench 2.1 and SWE-bench Verified share scheduling, task budgets, the TUI, cancellation and evidence collection; Terminal-Bench 2.0 remains readable as history only. Dataset-specific handlers prepare inputs and grade outputs. `Run.dataset` and the task ID jointly identify a task; a submission with a reused ID must specify its dataset. The separate 2.1 manifest defines its supported tasks. Review each new task's original Dockerfile, public inputs and verifier dependencies even when 2.0 has a task with the same ID.
 
 Register Terminal tasks from the pinned upstream checkout. SWE input is an externally reviewed frozen bundle, validated by `src/host/sweTasks.ts`. This evaluator does not download raw SWE datasets or generate bundles. Supply the original baseline, public problem, host-only grading material, source-version receipts and file hashes before registration.
 

@@ -12,7 +12,7 @@ export async function terminalExecution(state:Run,task:string,dataset:'terminal-
     verifierSeconds:spec.verifier.timeout_sec,
     setupAllowance:profile.verifierPackages.length?660:profile.packages.length?360:240,
     runnerPython:'python3',verifierSource:join(task,'tests'),
-    job:{dataset,commands:profile.commands,workspaceAliases:profile.workspaceAliases??[],publicTestInputs:profile.publicTestInputs,
+    job:{dataset,service:profile.service,commands:profile.commands,workspaceAliases:profile.workspaceAliases??[],publicTestInputs:profile.publicTestInputs,
       writableRuntimeBin:profile.writableRuntimeBin??false,
       verifierInputs:profile.verifierInputs??[],verifierSetup:profile.verifierSetup,
       verifierWritableTests:profile.verifierWritableTests??false,

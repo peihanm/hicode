@@ -16,7 +16,7 @@ const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const imageId=z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const layerSchema=z.object({version:z.literal(2),kind:z.enum(['base','dependencies','task']),key:hash,
   imageId,parentImage:imageId,recipeSha256:hash,createdAt:z.string().datetime()}).strict();
-const bindingSchema=z.object({version:z.literal(2),task:z.string(),sourceHash:hash,
+export const bindingSchema=z.object({version:z.literal(2),task:z.string(),sourceHash:hash,
   base:layerSchema,dependencies:layerSchema,preparation:layerSchema.nullable()}).strict().refine(value=>
     value.base.kind==='base'&&value.dependencies.kind==='dependencies'&&value.dependencies.parentImage===value.base.imageId&&
     (!value.preparation||(value.preparation.kind==='task'&&value.preparation.parentImage===value.dependencies.imageId)),
@@ -24,11 +24,14 @@ const bindingSchema=z.object({version:z.literal(2),task:z.string(),sourceHash:ha
 export type EnvironmentBinding=z.infer<typeof bindingSchema>;
 type Layer=z.infer<typeof layerSchema>;
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+export function environmentBindingPath(root:string,task:Pick<CatalogTask,'dataset'|'id'>):string{
+  return join(root,'tasks',digest(taskKey(task))+'.json');
+}
 
 function aptInstall(packages:readonly string[]):string {
   return packages.length?'RUN --mount=type=cache,id=hicode-clean-apt-lists-v1,target=/var/lib/apt/lists,sharing=locked --mount=type=cache,id=hicode-clean-apt-archives-v1,target=/var/cache/apt,sharing=locked sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|g" /etc/apt/sources.list.d/ubuntu.sources && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends '+packages.join(' ')+'\n':'';
 }
-const commandPackages:Record<string,string>={gcc:'build-essential','g++':'build-essential',rustc:'rustc',bc:'bc',openssl:'openssl',vim:'vim',sqlite3:'sqlite3',ffmpeg:'ffmpeg',chromium:'chromium',chromedriver:'chromium-driver',oligotm:'primer3',Rscript:'r-base',cobc:'gnucobol3',screen:'screen',expect:'expect',gfortran:'gfortran',h5cc:'libhdf5-dev','pkg-config':'pkg-config',gcov:'gcc',tclsh:'tcl',pdflatex:'texlive-latex-base=2023.20240207-1',coqc:'coq',zip:'zip',unzip:'unzip',strings:'binutils',extundelete:'extundelete',foremost:'foremost',fls:'sleuthkit',e2fsck:'e2fsprogs',pmars:'pmars'};
+const commandPackages:Record<string,string>={gcc:'build-essential','g++':'build-essential',rustc:'rustc',bc:'bc',openssl:'openssl',vim:'vim',sqlite3:'sqlite3',ffmpeg:'ffmpeg',chromium:'chromium',chromedriver:'chromium-driver',oligotm:'primer3',Rscript:'r-base',cobc:'gnucobol3',screen:'screen',expect:'expect',gfortran:'gfortran',h5cc:'libhdf5-dev','pkg-config':'pkg-config',gcov:'gcc',tclsh:'tcl',pdflatex:'texlive-latex-base=2023.20240207-1',coqc:'coq',zip:'zip',unzip:'unzip',strings:'binutils',extundelete:'extundelete',foremost:'foremost',fls:'sleuthkit',e2fsck:'e2fsprogs',pmars:'pmars',nginx:'nginx'};
 function environmentBuilder(definition?:DependencyRecipe){
   if(definition?.python==='3.6.15')return 'prepare_source_environment.py';
   if(definition?.python==='3.7.17')return 'prepare_source_environment37.py';
@@ -45,7 +48,7 @@ export class EnvironmentStore {
     return backend&&backend.context!==this.context?new EnvironmentStore(this.root,backend.context,{},this.buildProxy):null;
   }
   private docker(...args:string[]){return ['docker','--context',this.context,...args];}
-  private bindingPath(task:CatalogTask){return join(this.root,'tasks',digest(taskKey(task))+'.json');}
+  private bindingPath(task:CatalogTask){return environmentBindingPath(this.root,task);}
   private async inspect(name:string){
     return z.array(z.object({Id:imageId,Config:z.object({Labels:z.record(z.string()).nullable().optional()})})).length(1)
       .parse(JSON.parse(await run(this.docker('image','inspect',name))))[0]!;
@@ -133,7 +136,8 @@ export class EnvironmentStore {
       }
     }
     const recipe='image' in metadata?digest(await readFile(join(EVAL_ROOT,'config/deep-runtime.Dockerfile'),'utf8')+
-      await readFile(join(REPOSITORY_ROOT,'package.json'),'utf8')+await readFile(join(REPOSITORY_ROOT,'bun.lock'),'utf8')):digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+
+      await readFile(join(REPOSITORY_ROOT,'package.json'),'utf8')+await readFile(join(REPOSITORY_ROOT,'bun.lock'),'utf8')+
+      (metadata.runtimeTools?.length?'\n'+JSON.stringify(metadata.runtimeTools):'')):digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+
       JSON.stringify(dependencies??null)+await readFile(join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),'utf8'));
     if(task.preparation){
       if(await realpath(task.preparation.directory)!==resolve(task.preparation.directory))throw Error('Symlinked preparation directory');
@@ -221,12 +225,20 @@ export class EnvironmentStore {
       for(const name of ['package.json','bun.lock'])await cp(join(REPOSITORY_ROOT,name),join(stage,name));
       const template=await readFile(join(EVAL_ROOT,'config/deep-runtime.Dockerfile'),'utf8');
       const parentTag='hicode-env-parent:'+base.imageId.slice(7);await run(this.docker('tag',base.imageId,parentTag));
-      const dependencies=await this.build('dependencies',base.imageId,identity.recipe,stage,template.replace('{{source}}',parentTag));
+      let dockerfile=template.replace('{{source}}',parentTag);
+      if(metadata.runtimeTools?.includes('go-ctrf-json-reporter'))
+        dockerfile+='\nRUN install -m 755 /root/go/bin/go-ctrf-json-reporter /usr/local/bin/go-ctrf-json-reporter && mkdir -p /opt/hicode-go && cp -a /root/go/pkg /opt/hicode-go/pkg && chmod -R a+rX /opt/hicode-go\n'+
+          'ENV GOMODCACHE=/opt/hicode-go/pkg/mod GOPROXY=off\n';
+      if(metadata.runtimeTools?.includes('rust-toolchain'))
+        dockerfile+='\nRUN mkdir -p /opt/hicode-rust && cp -a /root/.cargo /opt/hicode-rust/cargo && cp -a /root/.rustup /opt/hicode-rust/rustup && chmod -R a+rX /opt/hicode-rust\n'+
+          'ENV CARGO_HOME=/opt/hicode-rust/cargo RUSTUP_HOME=/opt/hicode-rust/rustup CARGO_NET_OFFLINE=true PATH=/opt/hicode-rust/cargo/bin:${PATH}\n';
+      const dependencies=await this.build('dependencies',base.imageId,identity.recipe,stage,dockerfile);
       const binding:EnvironmentBinding={version:2,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation:null};
       await save(this.bindingPath(task),binding);return binding;
     }finally{await rm(stage,{recursive:true,force:true});}
   }
   async prepareTask(task:CatalogTask):Promise<EnvironmentBinding>{
+    if(task.dataset==='terminal-bench')throw Error('Terminal-Bench 2.0 environment preparation is retired');
     const routed=this.routed(task);if(routed)return routed.prepareTask(task);
     const identity=await this.identity(task);
     if('image' in identity.metadata)return this.prepareImageTask(task,identity);

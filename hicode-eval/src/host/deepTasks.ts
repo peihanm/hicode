@@ -11,7 +11,11 @@ const profileSchema=z.object({repository:z.string().regex(/^https:\/\/github\.co
   declaredImage:z.string().regex(/^public\.ecr\.aws\/d3j8x8q7\/swe-bench-202605:[a-z0-9.-]+$/),
   image:z.string().regex(/^public\.ecr\.aws\/d3j8x8q7\/swe-bench-202605@sha256:[a-f0-9]{64}$/),
   architecture:z.literal('amd64'),agentSeconds:z.literal(10800),verifierSeconds:z.literal(1800),hashes:z.record(sha),
-  runtimeEnvironment:z.object({PYTHONPATH:z.enum(['/app','/app/src']).optional(),VIRTUAL_ENV:z.literal('/opt/venv').optional()}).strict()}).strict();
+  runtimeEnvironment:z.object({PYTHONPATH:z.enum(['/app','/app/src']).optional(),VIRTUAL_ENV:z.literal('/opt/venv').optional(),
+    GOMODCACHE:z.literal('/opt/hicode-go/pkg/mod').optional(),GOPROXY:z.literal('off').optional(),
+    CARGO_HOME:z.literal('/opt/hicode-rust/cargo').optional(),RUSTUP_HOME:z.literal('/opt/hicode-rust/rustup').optional(),
+    CARGO_NET_OFFLINE:z.literal('true').optional()}).strict(),
+  runtimeTools:z.array(z.enum(['go-ctrf-json-reporter','rust-toolchain'])).max(2).optional()}).strict();
 export async function deepProfiles(){return readJson(join(EVAL_ROOT,'config/deep-swe.json'),z.record(profileSchema));}
 export async function validateDeepTask(id:string,source:string){
   const profile=(await deepProfiles())[id];if(!profile)throw Error('No reviewed DeepSWE task: '+id);

@@ -1,4 +1,4 @@
-import { mkdir, appendFile, rename, rm, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, appendFile, rename, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -13,10 +13,7 @@ import { EVAL_ROOT } from '../paths.js';
 import {RunContainers} from './containers.js';
 import {EnvironmentStore} from './environments.js';
 import {TaskCatalog} from './catalog.js';
-
-const workerFiles=['runner.py','dataset_runtime.py','model_proxy.py','network_entry.py','cleanup.py','recovery.py',
-  'terminal.py','verifier.py','protocol.py','scm.py','record.py','preflight.ts','bootstrap.py','swe.py',
-  'venv_paths.py','xarray_report.py','django_report.py'] as const;
+import {WorkerBundle} from './workerBundle.js';
 
 const packetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('phase'), phase: z.string() }),
@@ -34,12 +31,13 @@ export class EvidenceCollectionError extends Error {
 }
 export class LinuxMachine {
   private release = '';
+  private workerBundle:WorkerBundle|undefined;
   private readonly backends=new Map<Dataset,LinuxMachine>();
   private backend(dataset:Dataset):LinuxMachine{
     const settings=this.config.datasetBackends[dataset];if(!settings)return this;
     let machine=this.backends.get(dataset);
     if(!machine){machine=new LinuxMachine({...this.config,...settings,datasetBackends:{}});this.backends.set(dataset,machine);}
-    machine.release=this.release;return machine;
+    machine.release=this.release;machine.workerBundle=this.workerBundle;return machine;
   }
   private async runBackend(id:string){
     const state=await readJson(join(this.config.data,'runs',id,'state.json'),runSchema);
@@ -97,6 +95,7 @@ export class LinuxMachine {
     await this.containers.remove(reviewId);
   }
   async prepare(): Promise<void> {
+    this.workerBundle??=await WorkerBundle.capture(EVAL_ROOT);
     const info = JSON.parse(await run(this.docker('inspect', this.config.machine), { timeout: 15000 }));
     const machine = z.array(z.object({ State: z.object({ Running: z.literal(true) }), Config: z.object({ Labels: z.record(z.string()) }) })).length(1).parse(info)[0];
     if (machine.Config.Labels['dev.hicode.role'] !== 'eval') throw Error('Use the dedicated evaluation machine, not the development container');
@@ -107,9 +106,11 @@ export class LinuxMachine {
     const hash = createHash('sha256').update(archive).digest('hex');
     if (manifest.files['source.tar.gz'] !== hash) throw Error('Source payload changed');
     await run(this.docker('exec', this.config.machine, 'mkdir', '-p', '/opt/hicode-eval/eval_datasets', '/opt/hicode/releases', '/eval/runs'));
-    for (const name of workerFiles) await run(this.docker('cp', join(EVAL_ROOT, 'src/worker', name), this.config.machine + ':/opt/hicode-eval/' + name));
-    await run(this.docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',this.config.machine+':/opt/hicode-eval/eval_datasets/'));
-    await run(this.docker('cp', join(EVAL_ROOT, 'src/datasets/reviewed_test_deps.py'), this.config.machine + ':/opt/hicode-eval/reviewed_test_deps.py'));
+    const stage=await mkdtemp(join(this.config.data,'.worker-'));
+    try {
+      const files=join(stage,'files');await this.workerBundle.writeTo(files);
+      await run(this.docker('cp',files+'/.',this.config.machine+':/opt/hicode-eval/'));
+    }finally{await rm(stage,{recursive:true,force:true});}
     const target = '/opt/hicode-eval/source-' + hash + '.tar.gz';
     await run(this.docker('cp', join(this.config.payload, 'source.tar.gz'), this.config.machine + ':' + target));
     this.release = await run(this.docker('exec', this.config.machine, 'python3', '/opt/hicode-eval/bootstrap.py', target, hash), { timeout: 660000 });
@@ -175,7 +176,7 @@ export class LinuxMachine {
   }
   async execute(state: Run, path: string, credential: string, onPhase: (phase: string) => Promise<void>): Promise<LinuxResult> {
     const backend=this.backend(state.dataset);if(backend!==this)return backend.execute(state,path,credential,onPhase);
-    if (!this.release) throw Error('Evaluation machine not initialized');
+    if (!this.release||!this.workerBundle) throw Error('Evaluation machine not initialized');
     const remote = '/eval/runs/' + state.id;
     const task = join(path, 'task', state.task);
     const execution=await taskAdapters[state.dataset].execution(state,task);
@@ -188,10 +189,9 @@ export class LinuxMachine {
     await save(join(path,'container.json'),{session:state.id,id:container,attach:'docker --context '+this.config.context+' exec -it '+container+' bash'});
     await this.containers.create(state.id,(environment.preparation??environment.dependencies).imageId);
     await run(this.docker('exec',container,'mkdir','-p','/opt/hicode-eval','/opt/hicode-eval/eval_datasets'));
-    for(const name of workerFiles)
-      await run(this.docker('cp',join(EVAL_ROOT,'src/worker',name),container+':/opt/hicode-eval/'+name));
-    await run(this.docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',container+':/opt/hicode-eval/eval_datasets/'));
-    await run(this.docker('cp',join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),container+':/opt/hicode-eval/reviewed_test_deps.py'));
+    const worker=join(path,'worker');await this.workerBundle.writeTo(worker);
+    await save(join(path,'worker.json'),{version:1,sha256:this.workerBundle.sha256});
+    await run(this.docker('cp',worker+'/.',container+':/opt/hicode-eval/'));
     const archive='/opt/hicode-eval/source-'+this.release.split('/').at(-1)+'.tar.gz';
     await run(this.docker('cp',join(this.config.payload,'source.tar.gz'),container+':'+archive));
     const release=await run(this.docker('exec',container,'python3','/opt/hicode-eval/bootstrap.py',archive,this.release.split('/').at(-1)!),{timeout:660000});

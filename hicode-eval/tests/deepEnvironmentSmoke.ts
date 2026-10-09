@@ -13,8 +13,9 @@ import {datasetBackendsSchema,configSchema,runSchema} from '../src/host/types.js
 import {readJson,run,save} from '../src/host/store.js';
 import {deepExecution,deepProfiles} from '../src/host/deepTasks.js';
 
-const {values:v}=parseArgs({options:{catalog:{type:'string'},environments:{type:'string'},backends:{type:'string'},payload:{type:'string'},ids:{type:'string'},report:{type:'string'},runner:{type:'boolean'},module:{type:'string'},'task-source':{type:'string'}}});
-if((v.module||v['task-source'])&&v.ids?.includes(','))throw Error('An explicit import module or frozen source requires one task');
+const {values:v}=parseArgs({options:{catalog:{type:'string'},environments:{type:'string'},backends:{type:'string'},payload:{type:'string'},ids:{type:'string'},report:{type:'string'},runner:{type:'boolean'},module:{type:'string'},binary:{type:'string'},'task-source':{type:'string'}}});
+if(v.module&&v.binary)throw Error('Choose one package or toolchain probe');
+if((v.module||v.binary||v['task-source'])&&v.ids?.includes(','))throw Error('An explicit probe or frozen source requires one task');
 const required=(name:keyof typeof v)=>{const value=v[name];if(typeof value!=='string'||!value)throw Error('Missing '+name);return value;};
 const catalog=await TaskCatalog.open(resolve(required('catalog')));
 const backends=await readJson(resolve(required('backends')),datasetBackendsSchema),backend=backends['deep-swe'];
@@ -39,7 +40,7 @@ try {
   try {
    await containers.create(id,binding.dependencies.imageId);
    await run(docker('exec',container,'mkdir','-p','/opt/hicode-eval/eval_datasets',remote+'/project'));
-   for(const name of ['bootstrap.py','protocol.py','preflight.ts','network_entry.py','scm.py','swe.py','venv_paths.py','verifier.py'])
+   for(const name of ['bootstrap.py','protocol.py','service_namespace.py','preflight.ts','network_entry.py','scm.py','swe.py','venv_paths.py','verifier.py'])
     await run(docker('cp',join(EVAL_ROOT,'src/worker',name),container+':/opt/hicode-eval/'+name));
    await run(docker('cp',join(EVAL_ROOT,'src/worker/eval_datasets')+'/.',container+':/opt/hicode-eval/eval_datasets/'));
    await run(docker('cp',join(EVAL_ROOT,'src/worker/dataset_runtime.py'),container+':/opt/hicode-eval/dataset_runtime.py'));
@@ -54,8 +55,17 @@ try {
    if(!v.runner){
     await run(docker('cp',join(EVAL_ROOT,'tests/deep_actor_preflight.py'),container+':/opt/hicode-eval/deep_actor_preflight.py'));
     const module=v.module??new URL(profiles[taskId]!.repository).pathname.split('/').at(-1)!.replace(/\.git$/,'').replaceAll('-','_').toLowerCase();
-    if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(module))throw Error('Smoke requires a reviewed Python import name');
-    proof=z.object({actorSandboxReady:z.literal(true),network:z.literal('isolated'),uid:z.literal(20000),baseCommit:z.literal(profiles[taskId]!.baseCommit),module:z.literal(module),moduleFile:z.string().startsWith('/app/')}).strict().parse(JSON.parse(await run(docker('exec',container,'python3','/opt/hicode-eval/deep_actor_preflight.py',remote,release,module),{timeout:120000})));
+    const probe=v.binary?'binary:'+v.binary:module;
+    if(v.binary?!['go','node','cargo'].includes(v.binary):!/^[A-Za-z][A-Za-z0-9_]*$/.test(module))throw Error('Smoke requires a reviewed package or toolchain probe');
+    const script=await readFile(join(task.source,'tests/test.sh'),'utf8');
+    const required=[...new Set(script.split('\n').filter(line=>!line.trimStart().startsWith('#'))
+      .flatMap(line=>[...line.matchAll(/\brequire_cmd ([A-Za-z0-9-]+)/g)].map(match=>match[1]!.toLowerCase())))];
+    if(required.length>16||!required.every(name=>['go','go-ctrf-json-reporter','node','npx','pnpm','junit-to-ctrf','cargo','cargo-nextest','pytest','python3','git'].includes(name)))
+     throw Error('Original verifier declares an unreviewed command');
+    const parsed=JSON.parse(await run(docker('exec',container,'python3','/opt/hicode-eval/deep_actor_preflight.py',remote,release,probe,JSON.stringify(required)),{timeout:120000}));
+    const common={actorSandboxReady:z.literal(true),network:z.literal('isolated'),uid:z.literal(20000),baseCommit:z.literal(profiles[taskId]!.baseCommit),
+      requiredCommands:z.array(z.string()).refine(value=>JSON.stringify(value)===JSON.stringify(required))};
+    proof=(v.binary?z.object({...common,binary:z.literal(v.binary),binaryVersion:z.string().min(1)}):z.object({...common,module:z.literal(module),moduleFile:z.string().startsWith('/app/')})).strict().parse(parsed);
    }else{
     for(const name of ['runner.py','model_proxy.py','cleanup.py','recovery.py','terminal.py','record.py'])
      await run(docker('cp',join(EVAL_ROOT,'src/worker',name),container+':/opt/hicode-eval/'+name));
@@ -83,10 +93,24 @@ try {
      }
      if(await proc.exited||!result||result.execution!=='completed'||result.grading!=='failed')throw Error('Empty-answer baseline runner did not complete: '+JSON.stringify(result)+' '+await stderr+'\n'+screen.slice(-4000));
      await run(docker('cp',container+':'+remote+'/logs/verifier/reward.json',join(stage,'reward.json')));
+     await run(docker('cp',container+':'+remote+'/logs/verifier/ctrf.json',join(stage,'ctrf.json')));
+     const ctrf=z.object({results:z.object({tests:z.array(z.object({name:z.string(),status:z.string(),message:z.string().optional()}))})})
+       .parse(JSON.parse(await readFile(join(stage,'ctrf.json'),'utf8')));
+     const failedP2P=ctrf.results.tests.filter(test=>test.name.startsWith('[p2p] ')&&test.status!=='passed')
+       .map(test=>({name:test.name,message:test.message?.slice(0,500)}));
+     const traces:string[]=[];
+     for(const name of ['test-stdout.txt','reports/base_run.log','run.log']){
+      try{
+       const local=join(stage,'verifier-'+name.replaceAll('/','-'));
+       await run(docker('cp',container+':'+remote+'/logs/verifier/'+name,local));
+       traces.push(name+': '+(await readFile(local,'utf8')).slice(-4000));
+      }catch{} // Some original verifiers omit optional logs; the reward and CTRF remain required.
+     }
      await run(docker('cp',join(EVAL_ROOT,'tests/deep_verifier_boundary.py'),container+':/opt/hicode-eval/deep_verifier_boundary.py'));
      const boundary=await run(docker('exec',container,'python3','/opt/hicode-eval/deep_verifier_boundary.py',remote,release),{timeout:60000});
      if(!boundary.includes('PRISTINE_VERIFIER_BOUNDARY_OK'))throw Error('Pristine verifier boundary check missing');
-     proof={runner:result,reward:JSON.parse(await readFile(join(stage,'reward.json'),'utf8')),pristineVerifierBoundary:true};
+     proof={runner:result,reward:JSON.parse(await readFile(join(stage,'reward.json'),'utf8')),failedP2P,
+      verifierTail:traces.join('\n').slice(-9000),pristineVerifierBoundary:true};
     }finally{clearTimeout(timer);}
    }
    results.push({task:taskId,imageId:binding.dependencies.imageId,sourceHash,proof});

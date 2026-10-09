@@ -5,6 +5,8 @@ description: 为 HiCode 公开题评测选题、准备干净依赖镜像、提�
 
 # HiCode 公开题评测
 
+Terminal-Bench 2.0 只保留历史成绩与回执读取，不再新登记、准备、提交、重试或续跑旧队列；当前 Terminal 题使用 2.1。按数据集看镜像归属可用只读 `image-inventory --data-dir DIR [--dataset DATASET]`；补分类标签用 `organize-environments --data-dir DIR [--dataset DATASET]` 先预览、显式 `--apply` 执行。引擎不可达不能当作镜像缺失，不将 DeepSWE 的 AMD64 标签写入 ARM 引擎。
+
 使用仓库 `hicode-eval/eval.sh` 和现有看板（默认 8878）。先解析本 Skill 的真实目录，再向上定位包含 `hicode-eval/src/cli.ts` 的 checkout；顶层 `src/` 是被测 HiCode，不是评测器。
 
 ## 按用户意图工作

@@ -46,6 +46,7 @@ export class TaskCatalog {
     return task;
   }
   async register(entries:readonly Pick<CatalogTask,'id'|'dataset'|'source'>[]):Promise<void>{
+    if(entries.some(entry=>entry.dataset==='terminal-bench'))throw Error('Terminal-Bench 2.0 registration is retired');
     const tasks=new Map(this.document.tasks.map(task=>[taskKey(task),task]));
     for(const entry of entries){
       const key=taskKey(entry),previous=tasks.get(key);

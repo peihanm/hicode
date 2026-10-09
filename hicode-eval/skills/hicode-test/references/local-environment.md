@@ -28,6 +28,6 @@
 
 当前入口使用 version 2 配方式镜像和 hicode-eval-clean。已准备题数、镜像可用性和活动任务均在操作时查询，不在技能中维护静态计数。旧容器是否仍存在以 Docker inspect 为准，不作为新环境输入。人工准备日志只暂存于 operator/logs/，处理完删除；仍需处理的结论留在 operator/records/，不会因历史通过就视为新环境就绪。
 
-DeepSWE 1.1 使用独立的 x86-64 Linux 内核引擎：profile `hicode-amd64-test`、context `colima-hicode-amd64-test`，当前 2 CPU / 8 GiB / 30 GiB 数据盘，通过 QEMU 整机模拟运行；无宿主目录挂载。后端声明在数据根 `operator/batch-configs/deep-swe-backends.json`，由 `--dataset-backends` 接入同一服务和台账，其他数据集仍使用主引擎。准备证据在 `operator/records/deep-swe-preparation.json`；就绪题组在 `operator/batch-configs/deep-swe-ready10.json` 与 `operator/batch-configs/deep-swe-next10.json`。空闲时可能已停止，提交前显式启动对应 profile、确认 AppArmor 策略和环境绑定；不据 ARM Linux 中镜像能启动判断兼容。软件模拟较慢，当前待提交清单采用并发 1、每题 3600 秒；原题作答上限 10800 秒、判题 1800 秒。
+DeepSWE 1.1 使用独立的 x86-64 Linux 内核引擎：profile `hicode-amd64-test`、context `colima-hicode-amd64-test`，当前 2 CPU / 8 GiB / 50 GiB 数据盘，通过 QEMU 整机模拟运行；无宿主目录挂载。后端声明在数据根 `operator/batch-configs/deep-swe-backends.json`，由 `--dataset-backends` 接入同一服务和台账，其他数据集仍使用主引擎。准备证据在 `operator/records/deep-swe-preparation.json`；就绪题组在 `operator/batch-configs/deep-swe-ready10.json`、`operator/batch-configs/deep-swe-next10.json`、`operator/batch-configs/deep-swe-third10.json` 与 `operator/batch-configs/deep-swe-fourth10.json`。空闲时可能已停止，提交前显式启动对应 profile、确认 AppArmor 策略和环境绑定；不据 ARM Linux 中镜像能启动判断兼容。软件模拟较慢，当前待提交清单采用并发 1、每题 3600 秒；原题作答上限 10800 秒、判题 1800 秒。
 
 执行与看板分别用 `worker`、`serve` 启动：worker 默认控制端口 8879，独占服务和台账 lease；看板默认 8878，读取同一数据根，不持有执行资源或模型凭据。看板可独立停止/重启。接手仍要用监听进程和当前操作记录核对实际端口；过渡期间的旧执行进程可能还占用 8878，不可为了看板换端口而停止正在跑题的进程。
