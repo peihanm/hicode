@@ -9,8 +9,9 @@ import {taskAdapters,taskKey} from './datasets.js';
 import {EnvironmentStore} from './environments.js';
 import { EvidenceCollectionError, LinuxMachine } from './linux.js';
 import { readJson, save, exists, contained } from './store.js';
-import { runSchema, done, liveSchema, containerSchema, batchSchema, submissionSchema } from './types.js';
+import { runSchema, done, batchSchema, submissionSchema } from './types.js';
 import type { Config, Run, Batch, Submission } from './types.js';
+import {batchView,catalogView,runView} from './view.js';
 
 import { REPOSITORY_ROOT } from '../paths.js';
 export function classify(error: string | undefined, rewards: Record<string, number> | null | undefined): Pick<Run, 'state' | 'execution' | 'grading'> {
@@ -80,9 +81,7 @@ export class Lab {
   async prepareMachine(): Promise<void> { this.machine = new LinuxMachine(this.config); await this.machine.prepare(); }
   async catalog() {
     const catalog=this.taskCatalog??await TaskCatalog.open(this.config.catalog);
-    const environments=new EnvironmentStore(this.config.environments,this.config.context);
-    return Promise.all(catalog.list().map(async task=>({id:task.id,category:task.dataset,seconds:1800,
-      dataset:task.dataset,status:task.status,note:task.note,sourcePrepared:!!task.source,environmentPrepared:!!task.source&&await environments.ready(task)})));
+    return catalogView(this.config,catalog);
   }
   private async update(id: string, changes: Partial<Run>): Promise<void> {
     const write = (this.writes.get(id) ?? Promise.resolve()).then(async () => {
@@ -126,8 +125,10 @@ export class Lab {
       return matches[0]!;
     });
     if(new Set(selected.map(taskKey)).size!==selected.length)throw Error('Choose distinct tasks');
-    const environments=new EnvironmentStore(this.config.environments,this.config.context);
+    const environments=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends);
     for(const task of selected){
+      const network=taskAdapters[task.dataset].requiredNetwork;
+      if(network&&(input.network??this.config.network)!==network)throw Error(task.dataset+' requires '+network+' execution');
       if(!task.source)throw Error('Prepare the selected task source before submission: '+taskKey(task));
       try{await environments.resolve(task);}
       catch(error){throw Error('Prepare the selected task environment before submission: '+taskKey(task)+' · '+String(error));}
@@ -230,12 +231,9 @@ export class Lab {
     await this.machine!.disposeRun(id);
   }
   batchView(batch: Batch) {
-    const runs = batch.runIds.map(id => this.runs.get(id)!);
-    const completed = runs.filter(r => done(r.state)).length;
-    const counts = { total: runs.length, completed, queued: runs.filter(r => r.state === 'queued').length, active: runs.filter(r => !done(r.state) && r.state !== 'queued').length, passed: runs.filter(r => r.state === 'passed').length, failed: runs.filter(r => r.state === 'failed').length, errors: runs.filter(r => r.state === 'error' || r.state === 'needs_recovery').length, cancelled: runs.filter(r => r.state === 'cancelled').length };
-    const blocked = runs.some(r => r.state === 'needs_recovery') || this.halted;
-    return { ...batch, counts, state: blocked ? 'blocked' : completed === runs.length ? 'finished' : 'running', analysis: batch.report ? 'published' : completed === runs.length ? 'pending' : 'waiting', finishedAt: completed === runs.length ? Math.max(...runs.map(r => r.finishedAt ?? r.updatedAt)) : undefined };
+    return batchView(batch,this.runs,this.halted);
   }
+  health(){return {data:this.config.data,schedulingBlocked:this.halted||[...this.runs.values()].some(r=>r.state==='needs_recovery')};}
   private async pump(): Promise<void> {
     if (this.pumping || this.closed || this.halted) return; this.pumping = true;
     try {
@@ -301,10 +299,7 @@ export class Lab {
     const runs = [];
     for (const r of this.runs.values()) {
       const path = this.path(r.id);
-      const live = await exists(join(path, 'live.json')) ? await readJson(join(path, 'live.json'), liveSchema) : undefined;
-      const container = await exists(join(path, 'container.json')) ? await readJson(join(path, 'container.json'), containerSchema) : undefined;
-      const preparation = await exists(join(path, 'preparation.json')) ? await readJson(join(path, 'preparation.json'), z.object({ phase: z.string(), cached: z.boolean().optional(), image: z.string().optional(), updatedAt: z.number() })) : undefined;
-      runs.push({ ...r, preparation, evidencePath: path, displayState: done(r.state) ? r.state : live?.phase ?? r.state, live, container });
+      runs.push(await runView(path,r));
     }
     return { batches: [...this.batches.values()].sort((a,b) => b.createdAt - a.createdAt).map(b => this.batchView(b)), runs: runs.sort((a, b) => b.createdAt - a.createdAt), tasks: await this.catalog(),inventory:this.taskCatalog?.counts(new Set([...this.runs.values()].filter(r=>!done(r.state)&&r.state!=='queued').map(r=>r.task))), concurrency: this.config.concurrency, budget: this.config.budget, schedulingBlocked: this.halted || [...this.runs.values()].some(r => r.state === 'needs_recovery') };
   }

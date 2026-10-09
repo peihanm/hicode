@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,46 @@ from protocol import namespace_argv
 @unittest.skipUnless(sys.platform=='linux' and os.environ.get('HICODE_EVAL_ACTOR_SMOKE')=='1',
                      'Requires the dedicated Linux machine and a prepared release')
 class ActorBoundaryTest(unittest.TestCase):
+    def test_actor_tmux_cannot_stop_evaluation_terminal_but_can_use_model_socket(self):
+        release=os.environ['HICODE_EVAL_ACTOR_RELEASE']
+        with tempfile.TemporaryDirectory(prefix='actor-tmux-',dir='/eval') as tmp:
+            root=Path(tmp);root.chmod(0o755)
+            project=root/'project';home=root/'home';logs=root/'logs';control=root/'control';events=root/'events'
+            for path in [project,home,logs,control,events]:
+                path.mkdir();os.chown(path,65534,65534);path.chmod(0o700)
+            terminal=str(control/'tmux.sock');model=str(control/'model.sock')
+            def demote():os.setgroups([]);os.setgid(65534);os.setuid(65534)
+            env={'PATH':os.environ['PATH'],'HOME':str(home),'LANG':'C.UTF-8','SHELL':'/bin/bash'}
+            def tmux(*args):
+                return subprocess.run(['tmux','-S',terminal,*args],preexec_fn=demote,env=env,capture_output=True,text=True,timeout=5)
+            gateway=socket.socket(socket.AF_UNIX);gateway.settimeout(5);gateway.bind(model);gateway.listen(1);os.chown(model,65534,65534)
+            try:
+                created=tmux('-f','/dev/null','new-session','-d','-s','evaluation','sleep 30')
+                self.assertEqual(created.returncode,0,created.stderr)
+                pid=tmux('display-message','-p','#{pid}').stdout.strip()
+                script='''import os,socket,subprocess,sys
+assert 'TMUX' not in os.environ and 'TMUX_PANE' not in os.environ
+terminal,model=sys.argv[1:]
+assert not os.path.exists(terminal), 'Evaluation control socket is visible'
+def tmux(*args):return subprocess.run(['tmux',*args],capture_output=True,text=True,timeout=3)
+assert tmux('-S',terminal,'kill-server').returncode!=0
+assert tmux('kill-server').returncode!=0
+created=tmux('-f','/dev/null','new-session','-d','-s','probe','sleep 10')
+assert created.returncode==0, created.stderr
+stopped=tmux('kill-server');assert stopped.returncode==0, stopped.stderr
+client=socket.socket(socket.AF_UNIX);client.connect(model);client.sendall(b'MODEL_GATEWAY_OK');client.close()
+print('TERMINAL_ISOLATION_OK')
+'''
+                args=namespace_argv(['python3','-c',script,terminal,model],project,home,logs,control,
+                                    actor_release=release,actor_events=events,isolated_network=True,model_gateway=True)
+                result=subprocess.run(args,preexec_fn=demote,env={**env,'TMUX':terminal+','+pid+',0','TMUX_PANE':'%0'},
+                                      capture_output=True,text=True,timeout=15)
+                self.assertEqual(result.returncode,0,result.stderr);self.assertIn('TERMINAL_ISOLATION_OK',result.stdout)
+                self.assertEqual(tmux('has-session','-t','evaluation').returncode,0)
+                with gateway.accept()[0] as client:self.assertEqual(client.recv(100),b'MODEL_GATEWAY_OK')
+            finally:
+                tmux('kill-server');gateway.close()
+
     def test_terminal_and_swe_views_keep_own_storage_without_host_evidence(self):
         release=os.environ['HICODE_EVAL_ACTOR_RELEASE']
         env_cache=os.environ['HICODE_EVAL_ACTOR_SWE_CACHE']

@@ -76,16 +76,17 @@ export async function archiveRuns(data:string,catalogPath:string,apply:boolean){
     for(const row of eligible){
       const destination=join(archive,row.id);await mkdir(destination,{recursive:true,mode:0o700});
       const files:Record<string,{sha256:string;bytes:number;originalBytes:number}>={};
-      for(const relative of ['state.json','job.json','environment.json','grading-correction.json','evidence/result.json','evidence/outcome.json','evidence/shutdown.json',
-        'evidence/prediction.json','evidence/patch-manifest.json','evidence/logs/verifier/report.json','evidence/logs/verifier/ctrf.json',
+      for(const relative of ['state.json','job.json','environment.json','container.json','grading-correction.json','evidence/result.json','evidence/outcome.json','evidence/shutdown.json',
+        'evidence/prediction.json','evidence/artifacts/model.patch','evidence/patch-manifest.json','evidence/logs/verifier/reward.json','evidence/logs/verifier/test-stdout.txt','evidence/logs/verifier/report.json','evidence/logs/verifier/ctrf.json',
         'evidence/logs/verifier/validity.json','evidence/logs/verifier/output.txt','evidence/logs/verifier/parsed-output.txt']){
         const source=join(row.path,relative);if(!await exists(source))continue;
         if(await realpath(dirname(source))!==resolve(dirname(source)))throw Error('Symlinked result archive path');
         const fd=await open(source,constants.O_RDONLY|constants.O_NOFOLLOW);
         try {
           const stat=await fd.stat();if(!stat.isFile())throw Error('Result archive requires regular files');
-          const max=relative.endsWith('output.txt')?1024*1024:MAX_ARCHIVE_METADATA_BYTES;
-          if(stat.size>max&&!relative.endsWith('output.txt'))throw Error('Result metadata exceeds archive budget');
+          const outputLog=relative.endsWith('output.txt')||relative.endsWith('test-stdout.txt');
+          const max=outputLog?1024*1024:MAX_ARCHIVE_METADATA_BYTES;
+          if(stat.size>max&&!outputLog)throw Error('Result metadata exceeds archive budget');
           const buffer=Buffer.alloc(Math.min(stat.size,max));const {bytesRead}=await fd.read(buffer,0,buffer.length,Math.max(0,stat.size-max));
           if(bytesRead!==buffer.length)throw Error('Result changed while archiving');
           const target=join(destination,relative);await mkdir(dirname(target),{recursive:true,mode:0o700});

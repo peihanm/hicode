@@ -38,7 +38,7 @@ const label={pending:'待处理',completed:'正常完成',timeout:'超时',cance
 const limit=seconds=>seconds%60===0?seconds/60+' 分钟':seconds+' 秒';
 const names={queued:'排队',preparing:'准备环境',running:'执行中',waiting_for_approval:'等待审批',verifying:'自动判题',passed:'通过',failed:'未通过',error:'运行异常',cancelled:'已取消',cancelling:'正在停止',needs_recovery:'收尾异常 · 待恢复',finished:'已结束',blocked:'调度暂停'};
 const runLabel=run=>run.state==='error'&&run.execution==='completed'&&run.grading==='unavailable'?'判题异常 · 无法判定':names[run.displayState]||run.displayState;
-const datasetNames={'terminal-bench':'Terminal-Bench 2.0','terminal-bench-2.1':'Terminal-Bench 2.1','swe-bench-verified':'SWE-bench Verified'};
+const datasetNames={'deep-swe':'DeepSWE 1.1','terminal-bench':'Terminal-Bench 2.0','terminal-bench-2.1':'Terminal-Bench 2.1','swe-bench-verified':'SWE-bench Verified'};
 const runTitle=run=>(datasetNames[run.dataset]||run.dataset)+' · '+run.task;
 async function api(path,body,signal){
   const requestSignal=body===undefined?AbortSignal.any([AbortSignal.timeout(10000),...(signal?[signal]:[])]):undefined;
@@ -74,7 +74,7 @@ async function actOnRun(id,action){
 function button(title,meta,active,onclick){const b=document.createElement('button');b.className='run'+(active?' active':'');const t=document.createElement('b');t.textContent=title;const m=document.createElement('small');m.textContent=meta;b.append(t,m);b.onclick=onclick;return b;}
 function cards(values){return values.map(([name,value])=>{const card=document.createElement('div');const number=document.createElement('strong');number.textContent=value;const text=document.createElement('span');text.textContent=name;card.append(number,text);return card;});}
 async function tick(){if(ticking)return;ticking=true;try{
-  const requestedGeneration=generation,data=await api('status',undefined,selectionController.signal);if(requestedGeneration!==generation){refreshPending=true;return;}$('connection').textContent=data.schedulingBlocked?'调度暂停 · 请检查异常记录':'已连接 · 并发上限 '+data.concurrency;const blocked=data.runs.filter(r=>r.state==='needs_recovery');$('error').textContent=data.schedulingBlocked?(blocked.length?'调度暂停：'+blocked.map(runTitle).join('、')+' 的执行或收尾尚未确认。运行中的任务继续，新任务暂不启动。'+(blocked[0].note?' 原因：'+blocked[0].note.slice(-700):''):'调度暂停：状态保存或回收失败，请检查服务日志。'):'';
+  const requestedGeneration=generation,data=await api('status',undefined,selectionController.signal);if(requestedGeneration!==generation){refreshPending=true;return;}$('connection').textContent=data.workerConnected===false?'执行服务状态未确认 · 显示已保存进度':data.schedulingBlocked?'调度暂停 · 请检查异常记录':'已连接 · 并发上限 '+data.concurrency;const blocked=data.runs.filter(r=>r.state==='needs_recovery');$('error').textContent=data.schedulingBlocked?(blocked.length?'调度暂停：'+blocked.map(runTitle).join('、')+' 的执行或收尾尚未确认。运行中的任务继续，新任务暂不启动。'+(blocked[0].note?' 原因：'+blocked[0].note.slice(-700):''):'调度暂停：状态保存或回收失败，请检查服务日志。'):'';
   if(!data.batches.some(b=>b.id===selectedBatch)){selectedBatch=data.batches[0]?.id||null;expandedBatch=selectedBatch;choose(null);}
   if(expandedBatch&&!data.batches.some(b=>b.id===expandedBatch))expandedBatch=null;
   const batch=data.batches.find(b=>b.id===selectedBatch);

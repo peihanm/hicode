@@ -99,10 +99,27 @@ class NamespaceTest(unittest.TestCase):
         self.assertIn('--unshare-net',args)
         self.assertIn(['--tmpfs','/run'],[args[i:i+2] for i in range(len(args)-1)])
         self.assertNotIn('--unshare-net',namespace_argv(['pip'],'/p','/h','/l','/c'))
-        with self.assertRaises(ValueError):namespace_argv(['pytest'],'/p','/h','/l','/c','/tests',isolated_network=True)
+        self.assertIn('--unshare-net',namespace_argv(['pytest'],'/p','/h','/l','/c','/tests',isolated_network=True))
 
 
 class ActorFilesystemTest(unittest.TestCase):
+    def test_actor_hides_terminal_control_and_only_mounts_its_model_gateway(self):
+        for isolated in (False,True):
+            for gateway in (False,True) if isolated else (False,):
+                with patch('protocol.actor_readonly_mounts',return_value=['--ro-bind','/usr','/usr']):
+                    args=namespace_argv(['bun','cli'],'/p','/h','/l','/run/control',
+                                        actor_release='/release',actor_events='/events',
+                                        isolated_network=isolated,model_gateway=gateway)
+                mounts=[args[i:i+3] for i,flag in enumerate(args) if flag in ('--bind','--ro-bind')]
+                self.assertNotIn(['--ro-bind','/run/control','/run/control'],mounts)
+                self.assertNotIn('/run/control/tmux.sock',args)
+                self.assertEqual([args[i+1] for i,flag in enumerate(args) if flag=='--unsetenv'],['TMUX','TMUX_PANE'])
+                self.assertEqual(['--ro-bind','/run/control/model.sock','/run/control/model.sock'] in mounts,gateway)
+        for options in ({'model_gateway':True},{'model_gateway':1},
+                        {'model_gateway':True,'actor_release':'/release','actor_events':'/events'}):
+            with self.assertRaisesRegex(ValueError,'Model gateway requires an isolated actor'):
+                namespace_argv(['bun'],'/p','/h','/l','/c',**options)
+
     def test_actor_has_no_host_root_terminal_logs_or_hidden_tests(self):
         with patch('protocol.actor_readonly_mounts',return_value=['--ro-bind','/usr','/usr']):
             args=namespace_argv(['bun','cli'],'/run/a/project','/run/a/home','/run/a/logs','/run/a/control',
@@ -156,7 +173,7 @@ class AssignmentPromptTest(unittest.TestCase):
 
     def test_invalid_limits_and_network_fail_before_submission(self):
         from protocol import assignment_prompt
-        for seconds in [29,7201,1.5,True]:
+        for seconds in [29,10801,1.5,True]:
             with self.assertRaises(ValueError):assignment_prompt('q',seconds,'isolated','/app',[])
         with self.assertRaises(ValueError):assignment_prompt('q',900,'unknown','/app',[])
 

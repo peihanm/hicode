@@ -64,6 +64,10 @@ test('archive keeps final patch and grading evidence before deleting the finishe
     await save(join(path,'grading-correction.json'),{before:{grading:'unavailable'},grading:'failed',testsRerun:false});
     await mkdir(join(path,'evidence/logs/verifier'),{recursive:true});
     await writeFile(join(path,'evidence/logs/verifier/parsed-output.txt'),'canonical test outcome');
+    await mkdir(join(path,'evidence/artifacts'),{recursive:true});
+    await writeFile(join(path,'evidence/artifacts/model.patch'),'committed diff');
+    await save(join(path,'evidence/logs/verifier/reward.json'),{reward:0});
+    await writeFile(join(path,'evidence/logs/verifier/test-stdout.txt'),'x'.repeat(2*1024*1024)+'verifier tail');
     await writeFile(join(path,'large-disposable-log'),'transient output');
     expect(await archiveRuns(f.data,f.catalogPath,false)).toMatchObject({runs:1,batches:1,applied:false});
     expect(await exists(path)).toBe(true);
@@ -72,6 +76,10 @@ test('archive keeps final patch and grading evidence before deleting the finishe
     expect(JSON.parse(await readFile(join(result.archive,f.run.id,'evidence/prediction.json'),'utf8')).model_patch).toBe('preserved patch');
     expect(JSON.parse(await readFile(join(result.archive,f.run.id,'grading-correction.json'),'utf8')).testsRerun).toBe(false);
     expect(await readFile(join(result.archive,f.run.id,'evidence/logs/verifier/parsed-output.txt'),'utf8')).toBe('canonical test outcome');
+    expect(await readFile(join(result.archive,f.run.id,'evidence/artifacts/model.patch'),'utf8')).toBe('committed diff');
+    expect(JSON.parse(await readFile(join(result.archive,f.run.id,'evidence/logs/verifier/reward.json'),'utf8'))).toEqual({reward:0});
+    const tail=await readFile(join(result.archive,f.run.id,'evidence/logs/verifier/test-stdout.txt'),'utf8');
+    expect(tail.length).toBe(1024*1024);expect(tail.endsWith('verifier tail')).toBe(true);
     expect((await TaskCatalog.open(f.catalogPath)).counts()).toMatchObject({passed:1});
     expect(await exists(join(f.data,'batches',f.run.batchId+'.json'))).toBe(false);
   }finally{await f.cleanup();}

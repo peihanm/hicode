@@ -27,14 +27,22 @@ status/wait 输出含完整任务清单，接收后只打印批次 state/counts�
 
 批次 JSON 包含可选 `network`、`name`、`tasks`（`{id, agentSeconds}` 对象数组）与 `concurrency`（1–5）。`agentSeconds` 是每题时限，范围 30–7200 秒，省略使用服务默认 1800 秒；没有批次级 budget 参数。同一轮的不同预算放进同一个批次，不再按时间分组。配置示例：`{"name":"本轮","tasks":[{"id":"polyglot-c-py","agentSeconds":900},{"id":"modernize-scientific-stack","agentSeconds":600}],"concurrency":3}`。以已保存的用户约定为准，不直接运行示例文件中的题目。
 
-只有服务不存在或已空闲且配置确需更新时启动/重启；任务运行中不能使用这条命令另开同机服务：
+执行进程 `worker` 独占调度和台账 lease；仅在不存在或已空闲且配置确需更新时启动/重启，任务运行中不能另开同数据根的执行进程：
 
 ```bash
-bash hicode-eval/eval.sh serve \
+bash hicode-eval/eval.sh worker \
   --data-dir "$HE_DATA" --catalog "$HE_CATALOG" --environments "$HE_ENVIRONMENTS" --payload "$HE_PAYLOAD" \
   --docker-context "$HE_CONTEXT" --machine "$HE_MACHINE" \
-  --concurrency "$HE_CONCURRENCY" --port "$HE_PORT"
+  --concurrency "$HE_CONCURRENCY" --worker-port 8879
 ```
+
+看板是独立进程，可随时重启，不取消跑题、不加载 Key；默认看板 8878、执行控制 8879。启动看板：
+
+```bash
+bash hicode-eval/eval.sh serve --data-dir "$HE_DATA" --port "$HE_PORT" --worker-port 8879
+```
+
+状态、终端与日志读取原子记录，提交/取消/恢复等操作经认证后转给同一数据根的 worker。执行服务连接未确认时只读查看；不要将看板停止当成任务取消。
 
 默认由服务解析用户现有模型；显式覆盖才使用 `--source/--model` 或 `--model-config`。复用宿主可保留的工具会话运行服务。
 

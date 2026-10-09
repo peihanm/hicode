@@ -13,7 +13,7 @@ import { run, save, tree } from '../src/host/store.js';
 import { runSchema, configSchema, batchSchema, submissionSchema } from '../src/host/types.js';
 import * as taskAdapters from '../src/host/publicTasks.js';
 import {taskAdapters as datasetHandlers} from '../src/host/datasets.js';
-import { serve } from '../src/host/server.js';
+import { startDashboard as serve } from './helpers/server.js';
 import { EvidenceCollectionError, LinuxMachine } from '../src/host/linux.js';
 
 let dispose:ReturnType<typeof spyOn>,resolveEnvironment:ReturnType<typeof spyOn>;
@@ -164,7 +164,7 @@ test('submission validates all tasks and concurrency before publishing a batch',
     await expect(lab.submit({ name: 'invalid', tasks: [{id:'a'}], concurrency: 3 })).rejects.toThrow('concurrency');
     await expect(lab.submit({ name: 'invalid', tasks: [{id:'a',agentSeconds:900},{id:'a',agentSeconds:1800}], concurrency: 1 })).rejects.toThrow('distinct');
     expect(() => submissionSchema.parse({ name:'invalid',tasks:[{id:'a',agentSeconds:29}] })).toThrow();
-    expect(() => submissionSchema.parse({ name:'invalid',tasks:[{id:'a',agentSeconds:7201}] })).toThrow();
+    expect(() => submissionSchema.parse({ name:'invalid',tasks:[{id:'a',agentSeconds:10801}] })).toThrow();
     expect(lab.batches.size).toBe(0); expect(lab.runs.size).toBe(0);
   } finally { await lab.close(); await f.cleanup(); }
 });

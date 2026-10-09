@@ -76,7 +76,7 @@ bash hicode-eval/eval.sh prepare-environments \
 服务默认每题 1 CPU、4096 MiB，支持 `--cpus`、`--memory-mb`；最多并发 5，默认网络 isolated。
 
 ```bash
-bash hicode-eval/eval.sh serve \
+bash hicode-eval/eval.sh worker \
   --data-dir ../hicode-eval-data/runs \
   --catalog ../hicode-eval-data/catalog/catalog.json \
   --environments ../hicode-eval-data/environments \
@@ -86,7 +86,13 @@ bash hicode-eval/eval.sh serve \
   --concurrency 3
 ```
 
-服务先部署固定源码，依赖未变时复用生产依赖，否则只在此阶段安装一次。出现服务地址后打开 **http://127.0.0.1:8878**。网页只负责查看；保留服务终端，在另一个终端提交：
+执行进程默认监听 8879，独占调度、模型凭据、容器和成绩写入。它先部署固定源码，依赖未变时复用生产依赖。另开终端启动独立看板：
+
+```bash
+bash hicode-eval/eval.sh serve --data-dir ../hicode-eval-data/runs --port 8878 --worker-port 8879
+```
+
+打开 **http://127.0.0.1:8878**。看板读取原子保存的状态、终端和日志；提交、取消、恢复与重跑转交给执行进程，并校验双方数据目录一致。看板不读取模型 Key、不持有调度和台账锁，关闭或重启看板不影响任务。执行进程不可连接时仍可查看已有记录，但不能发起控制操作。CLI 默认通过看板接口操作：
 
 ```bash
 bash hicode-eval/eval.sh catalog
@@ -108,7 +114,7 @@ bash hicode-eval/eval.sh wait --batch BATCH_ID --wait-seconds 30
 }
 ```
 
-省略某题的 `agentSeconds` 时使用服务默认值（1800 秒）；每题可设置 30–7200 秒。并发最多 4，不能超过服务上限。页面逐题显示时限，运行结束后自动补位。实际预算和原题预算均会记录，加长时限属于研发评测条件。固定 15 道回归配置见 [regression15.json](config/regression15.json)。
+省略某题的 `agentSeconds` 时使用服务默认值（1800 秒）；每题可设置 30–10800 秒。并发最多 5，不能超过服务上限。页面逐题显示时限，运行结束后自动补位。实际预算和原题预算均会记录，加长时限属于研发评测条件。固定 15 道回归配置见 [regression15.json](config/regression15.json)。
 
 `--source` 和 `--model` 可成对覆盖已配置模型；自定义连接使用 `--model-config`。更换端口时，所有 CLI 命令都传同一个 `--port`。同一评测机只运行一个服务，不在任务期间部署另一个版本。
 
@@ -169,7 +175,7 @@ Linux 运行版本与依赖：/opt/hicode/
 
 证据快照记录符号链接目标，不跟随链接。最终导出仍须成功才能提交终态。 导出失败时保留已经确认的执行／判题事实，但不发布分数；页面的执行与判题记录面板可查看失败摘要和采集诊断。
 
-关闭网页不影响任务。Ctrl+C 关闭评测服务会取消当前任务；准备容器可在服务退出后用 `docker --context colima-hicode stop hicode-eval-clean` 停止；它不是运行任务的容器。服务重启不自动重跑或接续已执行的题；从未启动且无执行痕迹的题保留排队，发现其他未完成现场会停止新调度，需先核查现场。确认异常任务已收尾后，可用 `bash hicode-eval/eval.sh resume --batch BATCH_ID` 显式恢复现有排队调度；此命令不清除异常、不重跑已完成题。
+关闭网页或 Ctrl+C 停止 `serve` 看板进程不影响任务；Ctrl+C 停止 `worker` 执行进程会取消当前任务；准备容器可在服务退出后用 `docker --context colima-hicode stop hicode-eval-clean` 停止；它不是运行任务的容器。执行进程重启不自动重跑或接续已执行的题；从未启动且无执行痕迹的题保留排队，发现其他未完成现场会停止新调度，需先核查现场。确认异常任务已收尾后，可用 `bash hicode-eval/eval.sh resume --batch BATCH_ID` 显式恢复现有排队调度；此命令不清除异常、不重跑已完成题。
 
 取消指定批次：`bash hicode-eval/eval.sh cancel --batch BATCH_ID`。跑完后可让 Codex 读取日志做复盘；可选的 `report --batch BATCH_ID --file report.md` 仅保存人工或外部分析，不调用模型、不改判分。
 
@@ -207,9 +213,17 @@ Terminal 的固定包在依赖镜像中分别安装到 `/opt/hicode-terminal/act
 
 评测到时先向已确认身份的 HiCode 主进程发送 SIGTERM，最多等待 10 秒收尾，持续收集工具结果和日志，然后清理该题 UID 的残留进程。收尾窗口不用于继续答题，执行状态仍为 timeout；判题通过也不改为 completed。`evidence/shutdown.json` 记录进程是否退出、Turn 是否保存和未闭合的工具调用；强制清理时不伪造缺失事件。
 
+## DeepSWE 与 AMD64
+
+DeepSWE 从 `config/deep-swe.json` 审定的冻结目录登记：`register-tasks --tasks DIR --dataset deep-swe --catalog FILE --ids deep-swe:ID,...`。原题要求提交 commit，评测只导出已提交的 `BASE..HEAD` 改动；停止 Actor 后在干净基线和新 Home 中运行原判题器，作答与判题均无外网。原时限为作答 10800 秒、判题 1800 秒，原镜像为 Linux AMD64，资源声明为 2 CPU / 8192 MiB。
+
+在 ARM Mac 上需要经过真实 x86-64 Linux 内核验证的 Docker 引擎，不能仅凭镜像可启动就标记就绪。`worker`、`prepare-environments` 均可传 `--dataset-backends FILE`；该外部 JSON 如 `{ "deep-swe": { "context": "YOUR_AMD64_CONTEXT", "cpus": 2, "memoryMb": 8192 } }`，不含 Key。其他数据集继续使用主引擎，同一服务管理台账、并发、取消、证据及销毁。准备时可显式传 `--build-proxy URL`，仅用于 Docker 构建，不保存在镜像 ENV 或传给作答进程。启动前需加载 AppArmor 策略；按虚拟机内存选择并发，软件模拟会更慢。
+
+`tests/deepEnvironmentSmoke.ts --catalog FILE --environments DIR --backends FILE --payload DIR --ids ID,... --report TEMP_FILE` 验证实际工作区的非 root、无网络及 HiCode 嵌套沙箱。追加 `--runner` 用本地假模型验证完整 runner 和原判题链，不记真实成绩；预期空修复为未通过。结束销毁临时容器，报告只作为准备证据。
+
 ## 接入新的公开数据集
 
-Terminal-Bench 2.0、2.1 和 SWE-bench Verified 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。2.1 的审定范围以独立清单为准，新增题目需逐题核对原 Dockerfile、公开输入和判题依赖，不能因 2.0 有同名题便直接登记。
+Terminal-Bench 2.0、2.1、SWE-bench Verified 和 DeepSWE 1.1 共用批次、并发、每题时限、TUI、取消和证据收集；输入校验及判题由数据集模块负责。`Run.dataset` 与题目 ID 共同确定身份。同名题提交时使用 `{ "dataset": "terminal-bench-2.1", "id": "regex-log" }`；只有 ID 在 catalog 中唯一时才能省略 dataset。2.1 的审定范围以独立清单为准，新增题目需逐题核对原 Dockerfile、公开输入和判题依赖，不能因 2.0 有同名题便直接登记。
 
 Terminal 题目从固定上游目录登记；SWE 题目从外部审定的冻结 bundle 登记。当前评测器不下载原始 SWE 数据集或生成题包，接入者需提供题面、原始源码基线、仅供宿主判题的材料、版本回执及文件哈希，格式由 `src/host/sweTasks.ts` 校验。缺少材料先准备题包，不能回退到旧共享环境安装器。
 

@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {Lab} from '../src/host/manager.js';
 import {LinuxMachine} from '../src/host/linux.js';
 import {Client} from '../src/host/client.js';
-import {serve} from '../src/host/server.js';
+import {startDashboard as serve} from './helpers/server.js';
 import {configSchema,runSchema,batchSchema} from '../src/host/types.js';
 import {save,tree} from '../src/host/store.js';
 import {seedCatalog} from './helpers/catalog.js';

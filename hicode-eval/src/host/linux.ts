@@ -7,7 +7,8 @@ import type {RegradeInput} from './regrade.js';
 import {taskAdapters} from './datasets.js';
 import { run, readJson, save, runEvidenceTree, exists } from './store.js';
 import type { Config, Run } from './types.js';
-import {regradeResultSchema} from './types.js';
+import {regradeResultSchema,runSchema,containerSchema} from './types.js';
+import type {Dataset} from './datasets.js';
 import { EVAL_ROOT } from '../paths.js';
 import {RunContainers} from './containers.js';
 import {EnvironmentStore} from './environments.js';
@@ -33,6 +34,24 @@ export class EvidenceCollectionError extends Error {
 }
 export class LinuxMachine {
   private release = '';
+  private readonly backends=new Map<Dataset,LinuxMachine>();
+  private backend(dataset:Dataset):LinuxMachine{
+    const settings=this.config.datasetBackends[dataset];if(!settings)return this;
+    let machine=this.backends.get(dataset);
+    if(!machine){machine=new LinuxMachine({...this.config,...settings,datasetBackends:{}});this.backends.set(dataset,machine);}
+    machine.release=this.release;return machine;
+  }
+  private async runBackend(id:string){
+    const state=await readJson(join(this.config.data,'runs',id,'state.json'),runSchema);
+    const backend=this.backend(state.dataset);
+    const path=join(this.config.data,'runs',id,'container.json');
+    if(await exists(path)){
+      const receipt=await readJson(path,containerSchema);
+      if(receipt.session!==id||receipt.id!==backend.containers.name(id)||receipt.attach!=='docker --context '+backend.config.context+' exec -it '+receipt.id+' bash')
+        throw Error('Run backend differs from its sealed container receipt');
+    }
+    return backend;
+  }
   private readonly containers:RunContainers;
   private readonly environments:EnvironmentStore;
   constructor(private readonly config: Config) {
@@ -40,11 +59,13 @@ export class LinuxMachine {
     this.environments=new EnvironmentStore(config.environments,config.context);
   }
   async disposeRun(id:string):Promise<void>{
+    const backend=await this.runBackend(id);if(backend!==this)return backend.disposeRun(id);
     await this.containers.remove(id);
     await save(join(this.config.data,'runs',id,'container-disposed.json'),{version:1,runId:id,at:new Date().toISOString()});
   }
   private docker(...args: string[]) { return ['docker', '--context', this.config.context, ...args]; }
   async regrade(runId:string, reviewId:string, taskRoot:string, patchPath:string, task:SweTask, input:RegradeInput, output:string):Promise<void> {
+    const backend=this.backend('swe-bench-verified');if(backend!==this)return backend.regrade(runId,reviewId,taskRoot,patchPath,task,input,output);
     if(!/^[a-f0-9]{16}$/.test(runId)||!/^[a-f0-9]{16}$/.test(reviewId))throw Error('Invalid recheck identity');
     const catalog=await TaskCatalog.open(this.config.catalog);
     const environment=await this.environments.resolve({...catalog.get('swe-bench-verified',task.instanceId),source:taskRoot});
@@ -95,6 +116,7 @@ export class LinuxMachine {
     if (this.release !== '/opt/hicode/releases/' + hash) throw Error('Invalid prepared release');
   }
   async cancel(id: string): Promise<void> {
+    const backend=await this.runBackend(id);if(backend!==this)return backend.cancel(id);
     if(!await this.containers.exists(id))return;
     await this.containers.assert(id);
     await run(this.docker('exec', this.containers.name(id), 'sh', '-c', `test ! -d /eval/runs/${id} || touch /eval/runs/${id}/cancel`), { timeout: 10000 });
@@ -130,6 +152,7 @@ export class LinuxMachine {
     await acknowledge('ready');
   }
   async recover(state: Run, path: string): Promise<LinuxResult> {
+    const backend=await this.runBackend(state.id);if(backend!==this)return backend.recover(state,path);
     if (!this.release || state.state !== 'needs_recovery') throw Error('Task is not eligible for recovery');
     if(await exists(join(path,'setup-failed.json'))){
       await readJson(join(path,'setup-failed.json'),z.object({version:z.literal(1),runId:z.literal(state.id),runnerSpawned:z.literal(false),error:z.string()}).strict());
@@ -151,6 +174,7 @@ export class LinuxMachine {
     return { ...result, note: 'Recovered from verified durable evidence; no Agent or verifier rerun.' };
   }
   async execute(state: Run, path: string, credential: string, onPhase: (phase: string) => Promise<void>): Promise<LinuxResult> {
+    const backend=this.backend(state.dataset);if(backend!==this)return backend.execute(state,path,credential,onPhase);
     if (!this.release) throw Error('Evaluation machine not initialized');
     const remote = '/eval/runs/' + state.id;
     const task = join(path, 'task', state.task);
@@ -218,7 +242,7 @@ export class LinuxMachine {
           }
           else if (packet.type === 'events') await appendFile(join(path, 'live/events.jsonl'), Buffer.from(packet.data, 'base64'));
           else if (packet.type === 'verification') await Bun.write(join(path, 'verification.txt'), packet.text);
-          else if (packet.type === 'error') note = packet.message.replaceAll(credential, '[redacted]');
+          else if (packet.type === 'error') note = (note + (note ? '\n' : '') + packet.message.replaceAll(credential, '[redacted]')).slice(0,4000);
           else result = packet;
         }
       }

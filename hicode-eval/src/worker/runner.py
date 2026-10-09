@@ -59,7 +59,8 @@ def namespace(args,verifier=False,setup=False,actor=False):
                           public_tests=root/'public-tests' if not verifier and config.get('publicTestInputs') else None,
                           private_root=dataset.verifier_root if verifier else None,
                           isolated_network=actor and network=='isolated',
-                          actor_release=config['release'] if actor else None,actor_events=actor_events if actor else None)
+                          actor_release=config['release'] if actor else None,actor_events=actor_events if actor else None,
+                          model_gateway=actor and gateway is not None)
 
 def command(args,timeout=15,extra=None,cwd=None,output_path=None):
     env={'PATH':'/opt/python313/bin:'+str(home/'.local/bin')+':'+str(home/'bin')+':'+os.environ['PATH'],'HOME':str(home),'TERM':'xterm-256color','COLORTERM':'truecolor','LANG':'C.UTF-8'}

@@ -189,6 +189,11 @@ def actor_readonly_mounts(release, environment):
         if terminal_packages.is_symlink() or not terminal_packages.is_dir():
             raise ValueError('Invalid prepared terminal actor packages')
         paths.append(terminal_packages)
+    virtualenv=Path('/opt/venv')
+    if virtualenv.is_symlink() or virtualenv.exists():
+        if virtualenv.is_symlink() or not virtualenv.is_dir() or virtualenv.resolve()!=virtualenv:
+            raise ValueError('Invalid prepared virtual environment')
+        paths.append(virtualenv)
     if environment is not None:
         interpreter=(Path(environment)/'bin/python').resolve(strict=True)
         if not interpreter.is_relative_to(Path('/usr')):
@@ -205,7 +210,7 @@ def actor_readonly_mounts(release, environment):
 
 
 def assignment_prompt(instruction, agent_seconds, network, workdir, public_entries):
-    if type(agent_seconds) is not int or not 30<=agent_seconds<=7200:raise ValueError('Invalid assignment time limit')
+    if type(agent_seconds) is not int or not 30<=agent_seconds<=10800:raise ValueError('Invalid assignment time limit')
     if network not in {'open','isolated'} or workdir not in {'/app','/testbed'}:raise ValueError('Invalid assignment environment')
     minutes,seconds=divmod(agent_seconds,60)
     duration=(str(minutes)+' 分钟' if minutes else '')+(' '+str(seconds)+' 秒' if seconds else '')
@@ -218,7 +223,11 @@ def assignment_prompt(instruction, agent_seconds, network, workdir, public_entri
     return '\n'.join(lines)+'\n\n'+instruction
 
 
-def namespace_argv(args, project, home, logs, control, tests=None, *, writable_tests=False, root_overlay=False, workdir="/app", environment=None, readonly_logs=False, public_tests=None, private_root=None, isolated_network=False, actor_release=None, actor_events=None, workspace_aliases=(), writable_runtime_bin=False):
+def namespace_argv(args, project, home, logs, control, tests=None, *, writable_tests=False, root_overlay=False, workdir="/app", environment=None, readonly_logs=False, public_tests=None, private_root=None, isolated_network=False, actor_release=None, actor_events=None, workspace_aliases=(), writable_runtime_bin=False, verifier_release=None, model_gateway=False):
+    if type(model_gateway) is not bool or (model_gateway and (actor_release is None or not isolated_network)):
+        raise ValueError('Model gateway requires an isolated actor')
+    if verifier_release is not None and (tests is None or actor_release is not None or public_tests is not None or root_overlay or private_root is not None):
+        raise ValueError('Minimal verifier view requires a separate verifier workspace')
     if type(writable_runtime_bin) is not bool or (writable_runtime_bin and workdir!='/app'):
         raise ValueError('Invalid runtime executable view')
     aliases={'/data':'/app/data','/workspace':'/app','/tmp/CompCert':'/app/CompCert'}
@@ -231,11 +240,10 @@ def namespace_argv(args, project, home, logs, control, tests=None, *, writable_t
     if tests is None and (writable_tests or root_overlay):raise ValueError('Verifier-only filesystem options')
     if private_root is not None and (tests is None or not root_overlay or workdir!='/app'):raise ValueError('Private chroot is verifier-only')
     if public_tests is not None and tests is not None:raise ValueError('Public helpers and hidden verifier are separate views')
-    if isolated_network and tests is not None:raise ValueError('Network isolation is for the actor only')
     result=['bwrap','--unshare-user','--unshare-pid','--die-with-parent']
     if isolated_network:result+=['--unshare-net']
-    if actor_release is not None:
-        result+=['--tmpfs','/',*actor_readonly_mounts(actor_release,environment),'--dir','/run','--dir','/var','--dir','/var/tmp']
+    if actor_release is not None or verifier_release is not None:
+        result+=['--tmpfs','/',*actor_readonly_mounts(actor_release if actor_release is not None else verifier_release,environment),'--dir','/run','--dir','/var','--dir','/var/tmp']
     elif root_overlay or workspace_aliases:
         # A verifier may create new top-level directories in a private tmpfs;
         # every existing system entry remains read-only. The host root is never writable.
@@ -258,7 +266,15 @@ def namespace_argv(args, project, home, logs, control, tests=None, *, writable_t
     result+=['--bind',str(home),str(home)]
     if actor_release is not None:result+=['--bind',str(actor_events),str(actor_events)]
     else:result+=['--ro-bind' if readonly_logs else '--bind',str(logs),str(logs)]
-    result+=['--ro-bind',str(control),str(control),'--chdir',workdir]
+    if actor_release is not None:
+        # A read-only directory still exposes live Unix sockets. The actor must
+        # never connect to the tmux server that owns its evaluation terminal.
+        result+=['--unsetenv','TMUX','--unsetenv','TMUX_PANE','--dir',str(control)]
+        if model_gateway:
+            socket=str(Path(control)/'model.sock')
+            result+=['--ro-bind',socket,socket]
+    else:result+=['--ro-bind',str(control),str(control)]
+    result+=['--chdir',workdir]
     if environment is not None:result+=['--bind',str(environment),'/opt/hicode-swe/env']
     if tests is not None:result+=['--bind' if writable_tests else '--ro-bind',str(tests),'/tests','--ro-bind' if readonly_logs else '--bind',str(Path(logs)/'verifier'),'/logs/verifier']
     if public_tests is not None:result+=['--ro-bind',str(public_tests),'/tests']

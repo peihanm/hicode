@@ -47,7 +47,7 @@ git -C ../terminal-bench-2 checkout --detach 69671fbaac6d67a7ef0dfec016cc38a64ef
 
 Run `bun run start`, configure a connection, API key, and model with `/providers`, select the default with `/model`, then exit. The evaluation service reads settings from **this checkout and `~/.hicode`**, not from task directories or another project.
 
-Alternatively, copy [config/example.model.json](config/example.model.json) to `../hicode-eval-data/model.local.json`, fill in the model ID, endpoint, and API key environment variable name, and pass `--model-config ../hicode-eval-data/model.local.json` to `serve`. The JSON **does not contain the API key value**. Credentials are resolved from the process environment, this checkout's `.env`, then `~/.hicode/.env`; `/providers` can save them without putting a key in command-line arguments. Supported `source` values are `qwen`, `deepseek`, `glm`, and `openrouter`.
+Alternatively, copy [config/example.model.json](config/example.model.json) to `../hicode-eval-data/model.local.json`, fill in the model ID, endpoint, and API key environment variable name, and pass `--model-config ../hicode-eval-data/model.local.json` to `worker`. The JSON **does not contain the API key value**. Credentials are resolved from the process environment, this checkout's `.env`, then `~/.hicode/.env`; `/providers` can save them without putting a key in command-line arguments. Supported `source` values are `qwen`, `deepseek`, `glm`, and `openrouter`.
 
 Freeze the version to evaluate:
 
@@ -64,7 +64,7 @@ First register reviewed bundles with `register-tasks --catalog FILE --tasks DIR`
 Images share a public base, dependency combinations and optional task preparation. Only attempts get disposable writable layers. The base is built from `config/clean-base.Dockerfile`, digest-pinned upstream images and the HiCode lockfile. No live cache-machine filesystem is imported. Reviewed SWE package and interpreter locks live in `config/environment-recipes/`; missing recipes remain unprepared. Version 2 receipts record recipe hashes and immutable images, with each build context retained. OS packages and common grading transitive dependencies are recorded after resolution, so cross-date byte-for-byte rebuilds are not yet guaranteed. Service defaults are isolated actor networking, 1 CPU and 4096 MiB per attempt; `--cpus` and `--memory-mb` override limits.
 
 ```bash
-bash hicode-eval/eval.sh serve \
+bash hicode-eval/eval.sh worker \
   --data-dir ../hicode-eval-data/runs \
   --catalog ../hicode-eval-data/catalog/catalog.json \
   --environments ../hicode-eval-data/environments \
@@ -74,7 +74,13 @@ bash hicode-eval/eval.sh serve \
   --concurrency 3
 ```
 
-Startup deploys the fixed source release. Production dependencies are reused when unchanged, or installed once at this stage. Once the address appears, open **http://127.0.0.1:8878**. The web interface is read-only. Keep the server terminal open and submit from a second terminal:
+The execution worker listens on port 8879 by default and exclusively owns scheduling, model credentials, containers and score writes. It deploys the fixed release and reuses unchanged production dependencies. Start the dashboard in a separate terminal:
+
+```bash
+bash hicode-eval/eval.sh serve --data-dir ../hicode-eval-data/runs --port 8878 --worker-port 8879
+```
+
+Open **http://127.0.0.1:8878**. The dashboard reads atomic state, terminal and log records. Control requests are forwarded to the authenticated worker after verifying the same data directory. It never loads model keys or owns scheduler/catalog leases. Restarting or closing it leaves running tasks intact. Records remain readable when the worker is unavailable, while control requests fail closed. CLI commands use the dashboard by default:
 
 ```bash
 bash hicode-eval/eval.sh catalog
@@ -96,7 +102,7 @@ Replace `BATCH_ID` with the ID returned on submission. One batch can contain dif
 }
 ```
 
-Omitting `agentSeconds` uses the service default (1800 seconds); each task accepts 30–7200 seconds. Concurrency is capped at 4 and cannot exceed the service limit. The page displays each task's limit, and completed tasks automatically release their slots. Actual and original task budgets are recorded separately; extended budgets are development evaluation conditions. The fixed 15-task regression group is [regression15.json](config/regression15.json).
+Omitting `agentSeconds` uses the service default (1800 seconds); each task accepts 30–10800 seconds. Concurrency is capped at 4 and cannot exceed the service limit. The page displays each task's limit, and completed tasks automatically release their slots. Actual and original task budgets are recorded separately; extended budgets are development evaluation conditions. The fixed 15-task regression group is [regression15.json](config/regression15.json).
 
 Use `--source` and `--model` together to override a configured model, or `--model-config` for an explicit connection. If changing the port, pass the same `--port` to every CLI command. Run only one service per evaluation machine, and do not deploy another version while tasks are active.
 
@@ -157,7 +163,7 @@ Verifier handoff uses a dedicated request and atomic, run-scoped receipts: accep
 
 Evidence records symlink targets without following them. Final export remains required before completion. Confirmed execution and grading facts survive an export failure, but no reward is published. The execution and grading panel shows failure summaries and collection diagnostics.
 
-Closing the browser does not stop tasks. Ctrl+C in the service terminal cancels active tasks. After the service exits, use `docker --context colima-hicode stop hicode-eval-clean` to stop the preparation container; attempts use separate containers. Restarting the service does not resume or rerun attempted tasks. Unstarted tasks without execution evidence remain queued; other unfinished evidence blocks scheduling until inspected. After recovery, use `bash hicode-eval/eval.sh resume --batch BATCH_ID` to explicitly continue queued scheduling. This command does not clear errors or rerun completed tasks.
+Closing the browser or stopping the `serve` dashboard does not stop tasks. Ctrl+C in the `worker` terminal cancels active tasks. After the service exits, use `docker --context colima-hicode stop hicode-eval-clean` to stop the preparation container; attempts use separate containers. Restarting the worker does not resume or rerun attempted tasks. Unstarted tasks without execution evidence remain queued; other unfinished evidence blocks scheduling until inspected. After recovery, use `bash hicode-eval/eval.sh resume --batch BATCH_ID` to explicitly continue queued scheduling. This command does not clear errors or rerun completed tasks.
 
 Cancel a batch with `bash hicode-eval/eval.sh cancel --batch BATCH_ID`. After completion, optionally ask Codex to inspect the logs. `report --batch BATCH_ID --file report.md` stores an external analysis only; it does not call a model or change grading.
 
@@ -269,3 +275,11 @@ docker --context colima-hicode start hicode-eval-clean
 ```
 
 Check any existing container with the same name before creating one. Stop the service before switching the preparation container.
+
+## DeepSWE 1.1 / AMD64
+
+Register reviewed frozen tasks with `register-tasks --tasks DIR --dataset deep-swe --catalog FILE --ids deep-swe:ID,...`. The original contract collects committed `BASE..HEAD` changes only and runs the unchanged verifier in a pristine workspace with a new home. Both phases have no internet access; reference solutions and hidden checks are withheld from the Actor. Original limits are 10800 seconds for the agent, 1800 for verification, and 2 CPUs / 8192 MiB.
+
+Both `worker` and `prepare-environments` accept `--dataset-backends FILE`, for example `{ "deep-swe": { "context": "YOUR_AMD64_CONTEXT", "cpus": 2, "memoryMb": 8192 } }`. One catalog and scheduler remain in use; deployment, cancellation, recovery and cleanup route to the task's engine. ARM hosts need a validated x86-64 Linux kernel environment; starting an emulated image alone is insufficient. Enable the same AppArmor policy and size concurrency to VM memory. Preparation optionally accepts `--build-proxy URL`, using Docker build proxy arguments only; the proxy is not persisted in image ENV or exposed to the Actor.
+
+`tests/deepEnvironmentSmoke.ts` validates the prepared workspace and nested sandbox without model charges. `--runner` additionally uses a localhost fake provider and the original verifier; its baseline result is not a real task score.

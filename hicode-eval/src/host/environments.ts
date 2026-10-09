@@ -10,6 +10,7 @@ import type {DependencyRecipe} from './environmentRecipes.js';
 import type {CatalogTask} from './catalog.js';
 import {taskAdapters,taskKey} from './datasets.js';
 import type {TaskMetadata} from './datasets.js';
+import type {DatasetBackends} from './types.js';
 
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const imageId=z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -38,7 +39,11 @@ function environmentBuilder(definition?:DependencyRecipe){
 /** Only recipe inputs enter builds. The cache machine and run files are never imported. */
 export class EnvironmentStore {
   private readonly dependencyBuilds=new Map<string,Promise<Layer>>();
-  constructor(readonly root:string,private readonly context:string){}
+  constructor(readonly root:string,private readonly context:string,private readonly backends:DatasetBackends={},private readonly buildProxy?:string){}
+  private routed(task:CatalogTask){
+    const backend=this.backends[task.dataset];
+    return backend&&backend.context!==this.context?new EnvironmentStore(this.root,backend.context,{},this.buildProxy):null;
+  }
   private docker(...args:string[]){return ['docker','--context',this.context,...args];}
   private bindingPath(task:CatalogTask){return join(this.root,'tasks',digest(taskKey(task))+'.json');}
   private async inspect(name:string){
@@ -73,7 +78,7 @@ export class EnvironmentStore {
       // Keep only the explicit build context and immutable image receipt for reconstruction.
       await cp(stage,join(directory,'context'),{recursive:true});
       try {
-        const output=await run(this.docker('build','--network=default','--pull=false','--progress=plain','-t',tag,stage),{timeout:1800000,includeStderr:true});
+        const output=await run(this.docker('build',...(this.buildProxy?['--build-arg','HTTP_PROXY='+this.buildProxy,'--build-arg','HTTPS_PROXY='+this.buildProxy]:[]),'--network=default','--pull=false','--progress=plain','-t',tag,stage),{timeout:1800000,includeStderr:true});
         await writeFile(join(directory,'build.log'),output);
       }catch(error){
         const log=join(directory,'build.log');await writeFile(log,String(error));
@@ -118,7 +123,7 @@ export class EnvironmentStore {
     if(!task.source)throw Error('Task source has not been prepared');
     const metadata=await taskAdapters[task.dataset].validate(task.id,task.source);
     let dependencies:DependencyRecipe|undefined;
-    if(typeof metadata.environment==='string'){
+    if('environment' in metadata&&typeof metadata.environment==='string'){
       const path=join(EVAL_ROOT,'config/environment-recipes',metadata.environment.split('/').at(-1)!+'.json');
       if(!await exists(path))throw Error('No reviewed clean dependency recipe for '+task.id);
       dependencies=await readJson(path,dependencyRecipeSchema);
@@ -127,7 +132,8 @@ export class EnvironmentStore {
         throw Error('The target project must come from the frozen task source, not a package in the dependency image');
       }
     }
-    const recipe=digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+
+    const recipe='image' in metadata?digest(await readFile(join(EVAL_ROOT,'config/deep-runtime.Dockerfile'),'utf8')+
+      await readFile(join(REPOSITORY_ROOT,'package.json'),'utf8')+await readFile(join(REPOSITORY_ROOT,'bun.lock'),'utf8')):digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+
       JSON.stringify(dependencies??null)+await readFile(join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),'utf8'));
     if(task.preparation){
       if(await realpath(task.preparation.directory)!==resolve(task.preparation.directory))throw Error('Symlinked preparation directory');
@@ -201,9 +207,30 @@ export class EnvironmentStore {
     }
     return build;
   }
+  private async prepareImageTask(task:CatalogTask,identity:Awaited<ReturnType<EnvironmentStore['identity']>>):Promise<EnvironmentBinding>{
+    const metadata=identity.metadata;if(!('image' in metadata))throw Error('Missing reviewed source image');
+    await mkdir(this.root,{recursive:true,mode:0o700});
+    const stage=join(this.root,'stage-'+randomUUID());await mkdir(stage);
+    try {
+      let source;
+      try{source=await this.inspect(metadata.image);}catch{await run(this.docker('pull','--platform','linux/amd64',metadata.image),{timeout:600000});source=await this.inspect(metadata.image);}
+      const arch=await run(this.docker('image','inspect','--format','{{.Architecture}}',source.Id));
+      if(arch!==metadata.architecture)throw Error('Reviewed image architecture changed');
+      await run(this.docker('tag',source.Id,'hicode-env-source:'+source.Id.slice(7)));
+      const base=await this.build('base',source.Id,digest(metadata.image),stage,'FROM hicode-env-source:'+source.Id.slice(7)+'\nUSER root\n');
+      for(const name of ['package.json','bun.lock'])await cp(join(REPOSITORY_ROOT,name),join(stage,name));
+      const template=await readFile(join(EVAL_ROOT,'config/deep-runtime.Dockerfile'),'utf8');
+      const parentTag='hicode-env-parent:'+base.imageId.slice(7);await run(this.docker('tag',base.imageId,parentTag));
+      const dependencies=await this.build('dependencies',base.imageId,identity.recipe,stage,template.replace('{{source}}',parentTag));
+      const binding:EnvironmentBinding={version:2,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation:null};
+      await save(this.bindingPath(task),binding);return binding;
+    }finally{await rm(stage,{recursive:true,force:true});}
+  }
   async prepareTask(task:CatalogTask):Promise<EnvironmentBinding>{
-    const base=await readJson(join(this.root,'base.json'),layerSchema);await this.verifyImage(base);
+    const routed=this.routed(task);if(routed)return routed.prepareTask(task);
     const identity=await this.identity(task);
+    if('image' in identity.metadata)return this.prepareImageTask(task,identity);
+    const base=await readJson(join(this.root,'base.json'),layerSchema);await this.verifyImage(base);
     if(await exists(this.bindingPath(task))){
       const previous=await readJson(this.bindingPath(task),bindingSchema);
       if(previous.task===taskKey(task)&&previous.sourceHash===identity.hash&&previous.base.imageId===base.imageId&&await this.available(previous.dependencies)&&(!previous.preparation||await this.available(previous.preparation))){
@@ -237,12 +264,13 @@ export class EnvironmentStore {
     }finally{await rm(stage,{recursive:true,force:true});}
   }
   async resolve(task:CatalogTask):Promise<EnvironmentBinding>{
+    const routed=this.routed(task);if(routed)return routed.resolve(task);
     const binding=await readJson(this.bindingPath(task),bindingSchema);
     if(binding.task!==taskKey(task)||binding.sourceHash!==(await this.identity(task)).hash)throw Error('Task environment is stale; prepare it before submission');
     await this.verifyImage(binding.preparation??binding.dependencies);return binding;
   }
+  /** Inventory shows validated local receipts; submission resolves source and image identity. */
   async ready(task:CatalogTask):Promise<boolean>{
-    if(!await exists(this.bindingPath(task)))return false;
     try{return (await readJson(this.bindingPath(task),bindingSchema)).task===taskKey(task);}
     catch{return false;}
   }

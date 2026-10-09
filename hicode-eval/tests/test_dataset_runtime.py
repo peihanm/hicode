@@ -43,7 +43,7 @@ class DatasetRuntimeTests(TestCase):
         self.assertIsInstance(dataset_runtime({'dataset': 'terminal-bench-2.1'}), TerminalBenchRuntime)
         self.assertIsInstance(dataset_runtime({'dataset': 'swe-bench-verified'}), SweBenchRuntime)
         with self.assertRaisesRegex(ValueError, 'Unsupported frozen dataset'):
-            dataset_runtime({'dataset': 'deep-swe'})
+            dataset_runtime({'dataset': 'unsupported'})
 
     def test_terminal_grading_dispatches_original_pytest_contract(self):
         with tempfile.TemporaryDirectory() as directory:
