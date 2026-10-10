@@ -77,9 +77,9 @@ export function ModelDialog({
             .catch(reason => setError(reason instanceof Error ? reason.message : "Could not save model selection"))
             .finally(() => setSaving(false));
     };
-    useInput((_input, key) => {
+    useInput((input, key) => {
         if (saving) return;
-        if (key.escape) {
+        if (key.escape || (key.ctrl && input === "c") || input === "\x03") {
             if (choosingReasoning) setChoosingReasoning(false); else onClose();
             return;
         }
@@ -167,7 +167,7 @@ export function ModelDialog({
 
             {error && <Text color={COLORS.error}>{error}</Text>}
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>{saving ? "Saving…" : choosingReasoning ? "● saved · ↑↓ select · enter save · esc back" : `↑↓ select · enter configure · esc ${escapeAction}`}</Text>
+                <Text color={COLORS.dim}>{saving ? "Saving…" : choosingReasoning ? "● saved · ↑↓ select · enter save · esc/ctrl+c back" : `↑↓ select · enter configure · esc/ctrl+c ${escapeAction}`}</Text>
             </Box>
         </Box>
     );

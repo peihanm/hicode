@@ -24,7 +24,7 @@ register 校验原题和公开/私有输入边界后复制到 `datasets/<dataset
 ## 提交、状态与复核
 
 ```bash
-bash hicode-eval/eval.sh submit --root /path/eval-data --file /path/batch.json
+bash hicode-eval/eval.sh submit --root /path/eval-data --file /path/batch.json --reasoning max
 bash hicode-eval/eval.sh status --root /path/eval-data
 bash hicode-eval/eval.sh cancel --root /path/eval-data --batch BATCH_ID
 bash hicode-eval/eval.sh recover --root /path/eval-data --run RUN_ID
@@ -33,7 +33,7 @@ bash hicode-eval/eval.sh retry --root /path/eval-data --run RUN_ID
 
 批次项必须包含 dataset 和 id，单题可设 agentSeconds（30–10800 秒）。服务和批次并发均最多 5。示例应放在 Data 的 state/batch-example.json。每次尝试只执行一次，完成后用原判题评分。启动前取消保留未测；错误、超时和模型答错分别存储。恢复只校验原证据，不再次调用模型；retry 创建新尝试，不覆盖旧分数。已通过题不再提交，旧成绩保留在 `docs/eval` 离线记录中。
 
-submit 可加 `reasoning: {effort: "max"}`，省略沿用 state/settings.json 的 model.reasoning，显式 default 使用厂商默认。支持档位按模型校验，批次、执行与 retry 使用冻结值；看板显示英文 Reasoning，实际请求字段在原请求日志。不修改已运行任务，也不为参数变更重建依赖镜像。
+submit 可用 `--reasoning max`，或在提交文件顶层添加 `reasoning: {effort: "max"}`；CLI 选项优先于文件，两者都省略时沿用 state/settings.json 的 model.reasoning，显式 default 使用厂商默认。支持档位按模型校验，批次、执行与 retry 使用冻结值；看板显示英文 Reasoning，实际请求字段在原请求日志。`--reasoning` 仅用于新 submit，retry 不允许覆盖原强度。不修改已运行任务，也不为参数变更重建依赖镜像。
 
 网络默认允许，每题由数据集适配器按原题许可收窄。Terminal-Bench 2.1 读取冻结 task.toml 的 environment.allow_internet，只有 true 才开放，false／缺失则隔离；DeepSWE 始终隔离。同一批可混合联网与禁网题。settings／批次的 network=isolated 可进一步禁网，open 不能覆盖原题限制；实际模式保存在各 Run，retry 沿用原模式。普通题与服务题均使用本题模型网关，真实 Key 不进入作答环境。联网只改变外网访问，单题容器、文件、进程与隐藏判题边界保持不变。
 

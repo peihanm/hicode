@@ -1,13 +1,48 @@
 """Capture the terminal after completion, independently of the live sampling interval."""
 import time
+import re
 
 
-def submit_prompt(tmux, path):
+def _input_preview(screen):
+    plain = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', screen)
+    for line in reversed(plain.splitlines()):
+        if line.lstrip().startswith('❯'):
+            return line.strip()
+    return None
+
+
+def submit_prompt(tmux, path, cancelled):
+    # A ready event may precede Ink's paint. Observe the input before pasting;
+    # elapsed wall time alone does not prove the PTY paste has been consumed.
+    deadline = time.monotonic() + 15
+    while True:
+        if cancelled(): return False
+        before = _input_preview(read_screen(tmux))
+        if before is not None: break
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Prompt input did not become visible; no Enter sent')
+        time.sleep(.1)
     tmux('load-buffer', str(path))
     tmux('paste-buffer', '-p', '-t', 'hicode:0.0')
-    # Keep Enter out of the PTY paste burst. The runner still requires model_stream_start.
-    time.sleep(.5)
-    tmux('send-keys', '-t', 'hicode:0.0', 'Enter')
+    previous = None
+    unchanged_since = time.monotonic()
+    while True:
+        if cancelled(): return False
+        screen = read_screen(tmux)
+        now = time.monotonic()
+        preview = _input_preview(screen)
+        if now >= deadline:
+            raise RuntimeError('Prompt paste did not settle in the input; no Enter sent')
+        if preview is not None and preview != before:
+            if screen != previous:
+                previous, unchanged_since = screen, now
+            elif now - unchanged_since >= .5:
+                # Send once only. Model-stream acknowledgement remains authoritative.
+                tmux('send-keys', '-t', 'hicode:0.0', 'Enter')
+                return True
+        else:
+            previous, unchanged_since = None, now
+        time.sleep(.1)
 
 
 def read_screen(tmux):

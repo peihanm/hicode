@@ -5,12 +5,49 @@ from terminal import capture, settle, submit_prompt
 
 class TerminalTest(unittest.TestCase):
     def test_prompt_enter_is_separated_from_paste_and_sent_only_once(self):
-        calls=[]
-        with patch('terminal.time.sleep',side_effect=lambda seconds:calls.append(('delay',seconds))):
-            submit_prompt(lambda *args:calls.append(args),'/run/test/prompt.txt')
-        self.assertEqual([c[0] for c in calls],['load-buffer','paste-buffer','delay','send-keys'])
-        self.assertGreaterEqual(calls[2][1],.5)
-        self.assertEqual(calls[-1][-1],'Enter')
+        clock = [0.0]
+        calls = []
+        def tmux(*args, **kwargs):
+            calls.append((clock[0], args))
+            if args[0] == 'capture-pane':
+                if not any(call[1][0] == 'paste-buffer' for call in calls):
+                    return '❯ Ask HiCode to build, inspect, or fix something'
+                if clock[0] < 1.5:
+                    return 'Welcome finished painting\n❯ Ask HiCode to build, inspect, or fix something'
+                if clock[0] < 2.5:
+                    return '\x1b[1m❯ \x1b[0m[Pasted text #1 +2 lines]\n' + str(clock[0])
+                return '\x1b[1m❯ \x1b[0m[Pasted text #1 +25 lines]'
+        def sleep(seconds): clock[0] += seconds
+        with patch('terminal.time.monotonic', side_effect=lambda: clock[0]), patch('terminal.time.sleep', side_effect=sleep):
+            self.assertTrue(submit_prompt(tmux, '/run/test/prompt.txt', lambda: False))
+        controls = [(at,args) for at,args in calls if args[0] != 'capture-pane']
+        self.assertEqual([args[0] for _,args in controls], ['load-buffer','paste-buffer','send-keys'])
+        self.assertGreaterEqual(controls[-1][0], 3.0)
+        self.assertEqual(controls[-1][1][-1], 'Enter')
+
+    def test_unconsumed_paste_times_out_without_sending_enter(self):
+        clock = [0.0]
+        calls = []
+        def tmux(*args, **kwargs):
+            calls.append(args)
+            return 'Welcome ' + str(clock[0]) + '\n❯ Ask HiCode to build, inspect, or fix something'
+        def sleep(seconds): clock[0] += seconds
+        with patch('terminal.time.monotonic', side_effect=lambda: clock[0]), patch('terminal.time.sleep', side_effect=sleep):
+            with self.assertRaisesRegex(RuntimeError, 'Prompt paste did not settle'):
+                submit_prompt(tmux, '/run/test/prompt.txt', lambda: False)
+        self.assertFalse(any(args[0] == 'send-keys' for args in calls))
+        self.assertLess(clock[0], 15.2)
+
+    def test_prompt_waits_for_input_mount_and_can_be_cancelled(self):
+        clock = [0.0]
+        calls = []
+        def tmux(*args, **kwargs):
+            calls.append(args)
+            return 'Reading session…'
+        def sleep(seconds): clock[0] += seconds
+        with patch('terminal.time.monotonic', side_effect=lambda: clock[0]), patch('terminal.time.sleep', side_effect=sleep):
+            self.assertFalse(submit_prompt(tmux, '/run/test/prompt.txt', lambda: clock[0] >= .3))
+        self.assertTrue(all(args[0] == 'capture-pane' for args in calls))
 
     def test_completion_waits_for_delayed_paint_and_keeps_last_frame(self):
         clock = [0.0]

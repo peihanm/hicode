@@ -11,6 +11,47 @@ import {AppForTest as App} from "../helpers/AppForTest.js";
 
 afterEach(() => cleanup());
 
+test.each(["\u001b", "\u0003"])("/model back key %j discards reasoning draft and returns to a usable chat", async backKey => {
+    await withTempProject(async cwd => {
+        const current = {source: "qwen" as const, model: "qwen3.8-flash", label: "Qwen 3.8 Flash", reasoning: "medium" as const};
+        const settings = createTestSettings();
+        settings.models.reasoning = [{source: current.source, model: current.model, effort: current.reasoning}];
+        const primaryModel = createPrimaryModelRuntime(current, settings.sources, [current], settings.models.reasoning);
+        const resources = createTestRuntimeResources(cwd, {primaryModel, settings});
+        let runs = 0;
+        const instance = render(<App resources={resources} runAgentImpl={async () => {
+            runs++;
+            return {reply: "ok", reason: "completed", iterations: 1};
+        }}/>);
+        const press = async (key: string) => {
+            // Ink updates input subscriptions in a passive effect after drawing the frame.
+            await new Promise(resolve => setTimeout(resolve, 20));
+            instance.stdin.write(key);
+        };
+        await waitForState(() => (instance.lastFrame() ?? "").includes("❯"), "chat input");
+        await press("/model");
+        await waitForState(() => (instance.lastFrame() ?? "").includes("/model"), "model command draft");
+        await press("\r");
+        await waitForState(() => (instance.lastFrame() ?? "").includes("◆ MODEL"), "model list");
+        await press("\r");
+        await waitForState(() => (instance.lastFrame() ?? "").includes("2/2 Reasoning"), "reasoning picker");
+        await press("\u001b[B");
+        await waitForState(() => (instance.lastFrame() ?? "").includes("›   xhigh"), "unsaved reasoning draft");
+        await press(backKey);
+        await waitForState(() => !(instance.lastFrame() ?? "").includes("2/2 Reasoning"), "return to model list");
+        expect(instance.lastFrame()).toContain("◆ MODEL");
+        expect(primaryModel.target).toEqual(current);
+        await press(backKey);
+        await waitForState(() => !(instance.lastFrame() ?? "").includes("◆ MODEL"), "return to chat");
+        expect(primaryModel.target).toEqual(current);
+        expect(runs).toBe(0);
+        await press("continue");
+        await waitForState(() => (instance.lastFrame() ?? "").includes("continue"), "chat draft after closing model picker");
+        await press("\r");
+        await waitForState(() => runs === 1, "chat still accepts a task");
+    });
+});
+
 describe("Model dialog", () => {
     test.each([true, false])("/model saves selection; explicit fast=%s", async explicitFast => {
         await withTempProject(async (cwd) => {

@@ -9,7 +9,7 @@ import {createHash} from 'node:crypto';
 import {parse} from 'dotenv';
 import {z} from 'zod';
 import {EvalLayout} from './host/layout.js';
-import {loadConfig,settingsSchema,modelSchema,submissionSchema,runSchema,idSchema} from './host/types.js';
+import {loadConfig,settingsSchema,modelSchema,submissionSchema,reasoningSchema,runSchema,idSchema} from './host/types.js';
 import {TaskCatalog} from './host/catalog.js';
 import type {CatalogTask} from './host/catalog.js';
 import {taskAdapters,datasetSchema,taskKey} from './host/datasets.js';
@@ -28,11 +28,13 @@ import {EVAL_ROOT,REPOSITORY_ROOT} from './paths.js';
 async function main(){
   const {positionals,values:v}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
     preparation:{type:'string'},script:{type:'string'},root:{type:'string'},help:{type:'boolean'},file:{type:'string'},dataset:{type:'string'},tasks:{type:'string'},ids:{type:'string'},run:{type:'string'},batch:{type:'string'},apply:{type:'boolean'},
-    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},live:{type:'boolean'},'build-cache':{type:'boolean'},'verifier-proxy':{type:'string'}
+    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},reasoning:{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},live:{type:'boolean'},'build-cache':{type:'boolean'},'verifier-proxy':{type:'string'}
   }});
   const command=positionals[0];
-  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL]\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
+  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE [--reasoning EFFORT] | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL]\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
   if(positionals.length!==1||!v.root)throw Error('Supply one command and --root');
+  if(v.reasoning!==undefined&&command!=='submit')throw Error('--reasoning is only supported by submit; retry preserves the original batch reasoning');
+  const reasoning=v.reasoning===undefined?undefined:reasoningSchema.parse({effort:v.reasoning});
   const layout=new EvalLayout(v.root);
   if(contained(REPOSITORY_ROOT,layout.root))throw Error('Evaluation data must be outside the checkout');
   const required=(name:'tasks'|'file'|'dataset'|'run'|'batch')=>{const value=v[name];if(!value)throw Error('Missing --'+name);return value;};
@@ -79,7 +81,10 @@ async function main(){
     let result:unknown;
     if(command==='catalog')result=(await client.status()).tasks;
     else if(command==='status')result=await client.status(v.batch);
-    else if(command==='submit')result=await client.request('submit',await readJson(resolve(required('file')),submissionSchema));
+    else if(command==='submit'){
+      const input=await readJson(resolve(required('file')),submissionSchema);
+      result=await client.request('submit',reasoning?{...input,reasoning}:input);
+    }
     else if(command==='cancel')result=await client.request('cancel-batch',{batch:idSchema.parse(required('batch'))});
     else if(command==='recover')result=await client.request('recover-run',{run:idSchema.parse(required('run'))});
     else result=await client.request('retry-run',{run:idSchema.parse(required('run'))});

@@ -4,9 +4,11 @@ import {mkdtemp,realpath,mkdir,cp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {z} from 'zod';
 import {EvalLayout} from '../src/host/layout.js';
-import {loadConfig,settingsSchema,configSchema} from '../src/host/types.js';
+import {loadConfig,settingsSchema,configSchema,modelSchema,reasoningSchema} from '../src/host/types.js';
+import {reasoningRequestFields} from '../../src/llm/reasoningPolicy.js';
 import {TaskCatalog} from '../src/host/catalog.js';
 import {datasetSchema,taskAdapters} from '../src/host/datasets.js';
 import {lease} from '../src/host/lease.js';
@@ -15,17 +17,20 @@ import {RunContainers} from '../src/host/containers.js';
 import {bindingSchema,environmentBindingPath,EnvironmentStore} from '../src/host/environments.js';
 import {save,readJson,run,exists} from '../src/host/store.js';
 
-const {values:v}=parseArgs({options:{root:{type:'string'},dataset:{type:'string'},task:{type:'string'},cancel:{type:'boolean'},'probe-command':{type:'string'},'expect-pass':{type:'boolean'}}});
+const {values:v}=parseArgs({options:{root:{type:'string'},dataset:{type:'string'},task:{type:'string'},reasoning:{type:'string'},cancel:{type:'boolean'},'probe-command':{type:'string'},'expect-pass':{type:'boolean'}}});
 if(!v.root||!v.dataset||!v.task)throw Error('Use --root, --dataset and --task');
 if(v.cancel&&v['probe-command'])throw Error('Use cancellation or a functional command, not both');
 if(v['expect-pass']&&(v.cancel||v.dataset!=='deep-swe'||!v['probe-command']))throw Error('Passing reference control requires a functional DeepSWE probe');
 const probeCommand=v['probe-command']?await Bun.file(v['probe-command']).text():null,agentSeconds=probeCommand?180:45;
 const current=await loadConfig(v.root),original=await TaskCatalog.open(current.catalog),task=original.get(datasetSchema.parse(v.dataset),v.task);
+const reasoning=v.reasoning===undefined?undefined:reasoningSchema.parse({effort:v.reasoning});
+if(reasoning)reasoningRequestFields(current.model.source,current.model.model,reasoning.effort);
 if(!task.source||task.environment!=='ready')throw Error('Prepare the smoke task first');
 const release=await lease(current.data,'service');let temporary:string|undefined;
 try{
 const layout=new EvalLayout(await realpath(await mkdtemp(join(tmpdir(),'hicode-linux-smoke-'))));temporary=layout.root;await layout.initialize();
-const model={source:'qwen' as const,model:'fixture',apiKeyEnv:'HICODE_SMOKE_KEY',baseUrl:'http://127.0.0.1:18991/v1'};
+const fakeConnection={apiKeyEnv:'HICODE_SMOKE_KEY',baseUrl:'http://127.0.0.1:18991/v1'};
+const model=modelSchema.parse(reasoning?{...current.model,...fakeConnection}:{source:'qwen',model:'fixture',...fakeConnection});
 const backend=current.datasetBackends[task.dataset];
 const settings=settingsSchema.parse({...await readJson(new EvalLayout(current.data).settings,settingsSchema),model,machine:'hicode-smoke-'+createHash('sha256').update(layout.root).digest('hex').slice(0,12),concurrency:1,budget:{agentSeconds}});
 const config=configSchema.parse({...settings,data:layout.root});
@@ -59,7 +64,10 @@ command=json.loads(${JSON.stringify(JSON.stringify(probeCommand))})
 class H(http.server.BaseHTTPRequestHandler):
  def log_message(self,*a):pass
  def do_POST(self):
-  request=json.loads(self.rfile.read(int(self.headers['Content-Length'])));self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
+  request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+  root=next(Path('/eval/runs').glob('*/job.json')).parent
+  with (root/'reasoning-requests.jsonl').open('a') as record:record.write(json.dumps({k:request[k] for k in ['thinking','enable_thinking','reasoning_effort'] if k in request})+'\\n')
+  self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
   time.sleep(${v.cancel?60:0})
   results=[m.get('content','') for m in request['messages'] if m.get('role')=='tool'];text=json.dumps(results)
   call=None
@@ -77,7 +85,7 @@ class H(http.server.BaseHTTPRequestHandler):
 http.server.ThreadingHTTPServer(('127.0.0.1',18991),H).serve_forever()`;
 try{
 
- await lab.init();const batch=await lab.submit({name:'Offline Linux smoke',concurrency:1,tasks:[{dataset:task.dataset,id:task.id,agentSeconds}]});const id=batch.runIds[0]!;
+ await lab.init();const batch=await lab.submit({name:'Offline Linux smoke',concurrency:1,...(reasoning?{reasoning}:{}),tasks:[{dataset:task.dataset,id:task.id,agentSeconds}]});const id=batch.runIds[0]!;
  const plan=await taskAdapters(layout)[task.dataset].execution(lab.runs.get(id)!,layout.source(task));
  let provider=false,cancelled=false;const deadline=Date.now()+(agentSeconds+plan.verifierSeconds+plan.setupAllowance)*1000;
  while(Date.now()<deadline){
@@ -107,8 +115,16 @@ try{
    const deep=reward===null?null:z.object({p2p_total:z.number().int(),p2p_passed:z.number().int(),f2p_total:z.number().int(),f2p_passed:z.number().int()}).parse(JSON.parse(reward));
    const patch=deep?await collectedText('artifacts/model.patch'):null;
    const deepProof=!needsDeep||(!!deep&&deep.p2p_total>0&&deep.p2p_passed===deep.p2p_total&&deep.f2p_total>0&&(v['expect-pass']?deep.f2p_passed===deep.f2p_total:deep.f2p_passed<deep.f2p_total)&&(!probeCommand||!!patch));
-   const ok=deepProof&&(v.cancel?state.execution==='cancelled':state.execution==='completed'&&state.grading===(v['expect-pass']?'passed':'failed'))&&state.collection==='complete'&&!remaining&&functionalProof;
-   const report={at:new Date().toISOString(),kind:'local-fake-provider',task:{dataset:task.dataset,id:task.id},context:executionConfig.context,paidModelCalls:0,mode:v.cancel?'cancel':'complete',control:v['expect-pass']?'reference-solution':'baseline',ok,execution:state.execution,grading:state.grading,collection:state.collection,containerRemaining:remaining,...(deep?{tests:deep,committedPatchBytes:patch===null?0:Buffer.byteLength(patch)}:{}),note:state.note};
+   const reasoningTrace=reasoning?await collectedText('reasoning-requests.jsonl'):null;
+   const firstRequest=reasoningTrace?z.record(z.unknown()).parse(JSON.parse(reasoningTrace.trim().split('\n')[0]!)):null;
+   const jobText=reasoning?await collectedText('job.json'):null;
+   const job=jobText?z.object({model:modelSchema}).passthrough().parse(JSON.parse(jobText)):null;
+   const expected=reasoning?reasoningRequestFields(model.source,model.model,reasoning.effort):{};
+   const reasoningProof=!reasoning||(!!firstRequest&&batch.model.reasoning?.effort===reasoning.effort&&job?.model.reasoning?.effort===reasoning.effort&&
+      Object.entries(expected).every(([key,value])=>isDeepStrictEqual(firstRequest[key],value))&&
+      (['default','off'].includes(reasoning.effort)?firstRequest.reasoning_effort===undefined:firstRequest.reasoning_effort===reasoning.effort));
+   const ok=reasoningProof&&deepProof&&(v.cancel?state.execution==='cancelled':state.execution==='completed'&&state.grading===(v['expect-pass']?'passed':'failed'))&&state.collection==='complete'&&!remaining&&functionalProof;
+   const report={at:new Date().toISOString(),kind:'local-fake-provider',task:{dataset:task.dataset,id:task.id},context:executionConfig.context,paidModelCalls:0,mode:v.cancel?'cancel':'complete',control:v['expect-pass']?'reference-solution':'baseline',ok,execution:state.execution,grading:state.grading,collection:state.collection,containerRemaining:remaining,...(reasoning?{reasoning:{effort:reasoning.effort,request:firstRequest}}:{}),...(deep?{tests:deep,committedPatchBytes:patch===null?0:Buffer.byteLength(patch)}:{}),note:state.note};
    await save(join(new EvalLayout(current.data).state,'validation.json'),report);console.log(JSON.stringify(report));
    if(!ok){
     const probeError=join(layout.run(id),'evidence/project/.probe-error');

@@ -191,7 +191,9 @@ try:
             instruction=assignment_prompt(instruction,config['agentSeconds'],network,dataset.workdir,dataset.public_test_entries(config))
             (root/'submitted-instruction.md').write_text(instruction)
             prompt=control/'prompt.txt';prompt.write_text(instruction);prompt.chmod(0o644)
-            submit_prompt(tmux,prompt);submitted=time.monotonic()
+            if not submit_prompt(tmux,prompt,lambda:cancelled or (root/'cancel').exists()):
+                status='cancelled';break
+            submitted=time.monotonic()
         if events.failed_turn():
             status='failed';agent_failed=True
             emit('error',message='HiCode turn failed; stopping this attempt without waiting for its time budget.')
