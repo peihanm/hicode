@@ -7,7 +7,7 @@ import type {Tool} from "../types.js";
 import {checkTaskStopPermission} from "./stopPermission.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../agent/inputChannel.js";
 import {agentRunTiming} from "../../tasks/timing.js";
-import {waitForTaskActivity} from "../../tasks/wait.js";
+import {DEFAULT_SHELL_WAIT_MS, MAX_SHELL_WAIT_MS, waitForTaskActivity} from "../../tasks/wait.js";
 import {isParentTaskSession} from "../../tasks/childAccess.js";
 import {taskNotificationId} from "../../tasks/notifications.js";
 
@@ -20,6 +20,8 @@ const inputSchema = z.object({
         .string()
         .optional()
         .describe("Required except for list and Root Agent wait. An explicit Shell ID waits only for that process; an Agent ID is included alongside pending delegates."),
+    wait_ms: z.number().int().min(1).max(MAX_SHELL_WAIT_MS).optional()
+        .describe("Only for wait with an explicit Shell task_id. Single wait window in milliseconds, default 30000, maximum 300000; expiry returns running status without stopping the process. Start with 10-30s for searches/checks; use longer windows for progressing builds/training. This is not a total execution timeout."),
 }).strict();
 
 function formatTermination(snapshot: ShellTaskSnapshot): string | undefined {
@@ -93,7 +95,7 @@ ${task.resultPreview ?? task.outputIssue ?? "Reviewing frozen evidence"}`;
 export const taskTool: Tool<typeof inputSchema> = {
     name: "task",
     description:
-        "Manage this session's background Shell/Agent tasks with list/status/wait/interrupt/stop. Use wait when a background result blocks further work. Specify task_id to wait for a Shell process to finish and retrieve its real termination/output; cancellation ends the wait without stopping the process. Omit task_id to wait for pending Agent delegates, never all Shell tasks or persistent services. Completion, coordination messages or user input wake the wait; no periodic timeout. Complete integration before your final answer. Avoid repeated status polling. Use agent_followup to assign additional work to an existing Agent. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; agent_followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
+        "Manage this session's background Shell/Agent tasks with list/status/wait/interrupt/stop. Use wait when a background result blocks further work. Shell wait returns at completion, incoming input, or wait_ms expiry (default 30000, maximum 300000), with status, runtime and new output during this wait. Expiry/cancellation does not stop the process and is not a command failure; keep the same task_id to wait again, do independent work, or explicitly stop. Adjust the next window to observed progress: search within relevant directories and reconsider a broad search that stays silent; no output alone does not prove a stall. Completed Shell results retain actual termination/output. Omit task_id to wait for pending Agent delegates, never all Shell tasks or persistent services; Agent waits wake on completion or incoming input without periodic timeout. Complete integration before your final answer. Avoid repeated status polling. Use agent_followup to assign additional work to an existing Agent. Use agent_message for ordinary coordination without waking an idle thread. interrupt cancels only the current Agent run and retains its thread; agent_followup can continue it. stop closes the Agent permanently for this session. A status result is current evidence; historical notifications are not proof of a live process. Stop only managed tasks within the authorized scope.",
     parameters: inputSchema,
     isReadOnly: ({action}) => action === "list" || action === "status" || action === "wait",
     isConcurrencySafe: ({action}) => action === "list" || action === "status",
@@ -101,10 +103,11 @@ export const taskTool: Tool<typeof inputSchema> = {
         if (action === "stop" || action === "interrupt") return checkTaskStopPermission(ctx, task_id);
         return {behavior: "passthrough"};
     },
-    async execute({action, task_id}, ctx) {
+    async execute({action, task_id, wait_ms}, ctx) {
         if (!ctx.tasks) {
             return {content: "This Runtime does not support background tasks", outcome: "failed"};
         }
+        if (wait_ms !== undefined && (action !== "wait" || !task_id)) return {content: "wait_ms requires wait with an explicit Shell task_id", outcome: "failed"};
         if (action === "list") {
             const tasks = await ctx.tasks.list();
             return tasks.length === 0
@@ -117,16 +120,31 @@ export const taskTool: Tool<typeof inputSchema> = {
                 const target = await ctx.tasks.get(task_id);
                 if (!target) return {content: await taskLookupFailure(ctx, task_id, action), outcome: "failed"};
                 if (target.kind === "shell") {
-                    await waitForTaskActivity(ctx.tasks, [task_id], ctx.signal, "shell",
-                        signal => ctx.agentMessaging ? ctx.agentMessaging.wait(signal) : EMPTY_AGENT_INPUT_CHANNEL.waitForInput(signal));
+                    const baseline = target.status === "running" ? await ctx.tasks.readShellOutput(task_id, 0) : undefined;
+                    const started = performance.now();
+                    const wake = await waitForTaskActivity(ctx.tasks, [task_id], ctx.signal, "shell",
+                        signal => ctx.agentMessaging ? ctx.agentMessaging.wait(signal) : EMPTY_AGENT_INPUT_CHANNEL.waitForInput(signal),
+                        wait_ms ?? DEFAULT_SHELL_WAIT_MS);
                     const completed = await ctx.tasks.get(task_id);
                     if (!completed || completed.kind !== "shell") return {content: "Shell task became unavailable", outcome: "failed"};
-                    return {content: formatTask(completed) + (completed.status === "running" ? "\nNew input is available and will be delivered after this tool batch." : ""),
+                    let content = formatTask(completed);
+                    if (completed.status === "running") {
+                        const chunk = await ctx.tasks.readShellOutput(task_id, baseline?.nextOffset ?? 0);
+                        content = formatTask({...completed, output: chunk
+                            ? `New output during this wait:\n${chunk.content || "(no new output)"}`
+                            : "Live capture is no longer available; inspect task status for completion."});
+                        content += `\nWaited: ${Math.round(performance.now() - started)} ms (window: ${wait_ms ?? DEFAULT_SHELL_WAIT_MS} ms).`;
+                        content += wake === "input"
+                            ? "\nNew input is available and will be delivered after this tool batch."
+                            : "\nWait window elapsed; the task is still running, not failed or stopped. Continue waiting with the same task_id, do independent work, or use stop if appropriate.";
+                    }
+                    return {content,
                         ...(completed.status !== "running" ? {completedTask: {taskId: completed.id, notificationId: taskNotificationId(completed.id, 1)}} : {}),
                         outcome: completed.outputIssue && completed.termination?.kind === "exit" && completed.termination.code === 0
                             ? "output_failed" : completed.status === "failed" || completed.outputIssue ? "failed" : "ok"};
                 }
             }
+            if (wait_ms !== undefined) return {content: "wait_ms applies only to Shell tasks; Agent waits use completion or incoming input", outcome: "failed"};
             if (task_id) {
                 const kind = (await ctx.tasks.get(task_id))?.kind;
                 if (kind === "memory") return {content: "Memory tasks do not support wait; use status.", outcome: "failed"};
@@ -183,6 +201,6 @@ export function childTaskTool(parent: Tool): Tool {
         parameters: parent.parameters.and(parameters),
         inputJsonSchema: zodToJsonSchema(parameters, {target: "jsonSchema7"}),
         getDescription: undefined,
-        description: "List, inspect, wait for or stop only background Shell tasks started by this child. wait requires their task_id and returns terminal status and output; it does not restart or stop the process. Other agents' tasks are inaccessible. For new assignments or blockers, message the parent instead. Permission checks still apply.",
+        description: "List, inspect, wait for or stop only background Shell tasks started by this child. wait requires their task_id; wait_ms defaults to 30000 and is capped at 300000. Completion returns termination/output; window expiry returns running status and new output during this wait, without restarting or stopping the process. Adjust the next window to progress; reconsider silent broad searches without assuming every quiet job has stalled. Other agents' tasks are inaccessible. For new assignments or blockers, message the parent instead. Permission checks still apply.",
     };
 }

@@ -120,6 +120,28 @@ export async function readOutputPreview(path: string): Promise<string> {
     }
 }
 
+export async function readShellOutputChunk(path: string, afterBytes: number): Promise<{nextOffset: number; content: string} | undefined> {
+    let handle: FileHandle | undefined;
+    try {
+        handle = await open(path, "r");
+        const {size} = await handle.stat();
+        if (afterBytes > size) throw new Error("Shell output capture shrank during wait");
+        const start = Math.max(afterBytes, size - OUTPUT_PREVIEW_BYTES);
+        const buffer = Buffer.alloc(size - start);
+        const {bytesRead} = await handle.read(buffer, 0, buffer.length, start);
+        const selected = selectUtf8Range(buffer.subarray(0, bytesRead), bytesRead);
+        const omitted = start + selected.startAdjustment - afterBytes;
+        return {
+            nextOffset: start + selected.startAdjustment + selected.content.length,
+            content: (omitted > 0 ? `[First ${omitted} new bytes omitted]\n` : "") + selected.content.toString("utf8"),
+        };
+    } catch (error) {
+        // Completion promotes and removes the live capture before publishing its final snapshot.
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+        throw error;
+    } finally {await handle?.close().catch(() => {});}
+}
+
 export async function snapshotShell(
     task: ManagedShellTask
 ): Promise<ShellTaskSnapshot> {

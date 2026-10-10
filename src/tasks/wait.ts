@@ -1,5 +1,9 @@
 import type {TaskSessionLike} from "./types.js";
 
+export type TaskWaitWake = "task" | "input" | "timeout";
+export const DEFAULT_SHELL_WAIT_MS = 30_000;
+export const MAX_SHELL_WAIT_MS = 300_000;
+
 /** Subscribe before reading so completion between registration and inspection cannot be lost. */
 export function waitForTaskCompletion(tasks: Pick<TaskSessionLike, "get" | "subscribe">, ids: readonly string[], signal: AbortSignal, kind: "agent" | "shell" | "result"): Promise<void> {
     signal.throwIfAborted();
@@ -36,15 +40,25 @@ export async function waitForTaskActivity(
     signal: AbortSignal,
     kind: "agent" | "shell" | "result",
     waitForInput: (signal: AbortSignal) => Promise<void>,
-): Promise<void> {
+    waitMs?: number,
+): Promise<TaskWaitWake> {
     signal.throwIfAborted();
     const wake = new AbortController();
     const waitSignal = AbortSignal.any([signal, wake.signal]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-        await Promise.race([
-            waitForTaskCompletion(tasks, ids, waitSignal, kind),
-            waitForInput(waitSignal),
-        ]);
+        const waits: Promise<TaskWaitWake>[] = [
+            waitForTaskCompletion(tasks, ids, waitSignal, kind).then(() => "task"),
+            waitForInput(waitSignal).then(() => "input"),
+        ];
+        if (waitMs !== undefined) waits.push(new Promise(resolve => {
+            timer = setTimeout(() => resolve("timeout"), waitMs);
+        }));
+        const reason = await Promise.race(waits);
         signal.throwIfAborted();
-    } finally {wake.abort();}
+        return reason;
+    } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        wake.abort();
+    }
 }

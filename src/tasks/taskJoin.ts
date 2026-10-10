@@ -1,4 +1,4 @@
-import {waitForTaskActivity} from "./wait.js";
+import {DEFAULT_SHELL_WAIT_MS, type TaskWaitWake, waitForTaskActivity} from "./wait.js";
 import type {QueuedAgentInput} from "../agent/inputChannel.js";
 import {notificationFor, taskNotificationId} from "./notifications.js";
 import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskResultReceipt, TaskSessionLike} from "./types.js";
@@ -48,7 +48,9 @@ export class TaskJoin {
     }
     get ids(): readonly string[] {return [...this.pending.keys()];}
     get agentIds(): readonly string[] {return [...this.pending].filter(([, kind]) => kind === "agent").map(([id]) => id);}
-    wait(signal: AbortSignal, waitForInput: (signal: AbortSignal) => Promise<void>): Promise<void> {
-        return waitForTaskActivity(this.tasks, this.ids, signal, "result", waitForInput);
+    wait(signal: AbortSignal, waitForInput: (signal: AbortSignal) => Promise<void>): Promise<TaskWaitWake> {
+        const shellPending = [...this.pending.values()].includes("shell");
+        return waitForTaskActivity(this.tasks, this.ids, signal, "result", waitForInput,
+            shellPending ? DEFAULT_SHELL_WAIT_MS : undefined);
     }
 }

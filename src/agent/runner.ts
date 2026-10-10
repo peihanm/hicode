@@ -355,10 +355,11 @@ async function runAgentCore(
                     let queued = inputChannel.drainSafeBoundary().filter(input => !ctx.taskJoin || ctx.taskJoin.accepts(input));
                     await appendQueuedInputs(queued);
                     let ready = await ctx.taskJoin.collect();
+                    let shellWaitElapsed = false;
                     while (!queued.length && !ready.length && ctx.taskJoin.ids.length) {
                         await onEvent({type: "task_wait", taskIds: ctx.taskJoin.ids});
                         try {
-                            await ctx.taskJoin.wait(ctx.signal, signal => inputChannel.waitForInput(signal));
+                            shellWaitElapsed = await ctx.taskJoin.wait(ctx.signal, signal => inputChannel.waitForInput(signal)) === "timeout";
                         } finally {
                             await onEvent({type: "task_wait", taskIds: []});
                         }
@@ -366,10 +367,13 @@ async function runAgentCore(
                         queued = inputChannel.drainSafeBoundary().filter(input => !ctx.taskJoin || ctx.taskJoin.accepts(input));
                         await appendQueuedInputs(queued);
                         ready = await ctx.taskJoin.collect();
+                        if (shellWaitElapsed) break;
                     }
                     await appendQueuedInputs(ready);
                     await ctx.commitToolBatch?.();
-                    completionNudge = "Continue the current task. Inspect task results, integrate changes, and run the remaining checks before the final answer.";
+                    completionNudge = shellWaitElapsed && ctx.taskJoin.ids.length
+                        ? `The Shell join wait window elapsed. Pending task IDs: ${ctx.taskJoin.ids.join(", ")}. These tasks have not been stopped or declared failed. Inspect progress with task wait and an explicit Shell ID, adjust wait_ms to the task, continue independent work, or stop an unnecessary command. Complete verification before the final answer.`
+                        : "Continue the current task. Inspect task results, integrate changes, and run the remaining checks before the final answer.";
                     continue;
                 }
                 if (!textContent && !emptyResponseRetryUsed && hasNextIteration) {

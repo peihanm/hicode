@@ -20,6 +20,7 @@ import {
     type ManagedTask,
     snapshotAgent,
     snapshotShell,
+    readShellOutputChunk,
     snapshotTask,
 } from "./managed.js";
 import {TaskNotificationCenter, taskNotificationId, isExpectedShellShutdown} from "./notifications.js";
@@ -132,6 +133,7 @@ class TaskSession implements TaskSessionLike {
             startShell: input => child.startShell(input),
             runShell: input => child.runShell(input),
             get: id => child.get(id),
+            readShellOutput: (id, afterBytes) => child.readShellOutput(id, afterBytes),
             list: () => child.list(),
             stop: id => child.stop(id),
             subscribe: listener => child.subscribe(listener),
@@ -191,6 +193,11 @@ class TaskSession implements TaskSessionLike {
     async get(id: string): Promise<TaskSnapshot | undefined> {
         await this.ready;
         return this.runtime.get(this.binding, id);
+    }
+
+    async readShellOutput(id: string, afterBytes: number): ReturnType<TaskSessionLike["readShellOutput"]> {
+        await this.ready;
+        return this.runtime.readShellOutput(this.sessionId, id, afterBytes);
     }
 
     async list(): Promise<readonly TaskSnapshot[]> {
@@ -578,6 +585,13 @@ class TaskRuntime implements TaskRuntimeLike {
         const archived = this.archived.get(id);
         if (archived?.owner.sessionId !== binding.sessionId) return undefined;
         return archived;
+    }
+
+    async readShellOutput(sessionId: string, id: string, afterBytes: number): ReturnType<TaskSessionLike["readShellOutput"]> {
+        if (!Number.isSafeInteger(afterBytes) || afterBytes < 0) throw new Error("Invalid Shell output cursor");
+        const task = this.ownedTask(sessionId, id);
+        if (!task || !isShellTask(task) || !task.published || task.status !== "running") return undefined;
+        return readShellOutputChunk(task.outputPath, afterBytes);
     }
 
     async list(sessionId: string): Promise<readonly TaskSnapshot[]> {

@@ -193,6 +193,9 @@ export interface TaskSessionLike {
 
     get(id: string): Promise<TaskSnapshot | undefined>;
 
+    /** Bounded capture read for an owned live Shell; the cursor is local to one wait invocation. */
+    readShellOutput(id: string, afterBytes: number): Promise<{nextOffset: number; content: string} | undefined>;
+
     list(): Promise<readonly TaskSnapshot[]>;
 
     stop(id: string): Promise<TaskSnapshot | undefined>;
