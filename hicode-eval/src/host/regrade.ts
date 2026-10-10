@@ -11,6 +11,8 @@ import {readJson, save, exists, runEvidenceTree, run} from './store.js';
 import {isDeepStrictEqual} from 'node:util';
 import {EVAL_ROOT} from '../paths.js';
 import {lease} from './lease.js';
+import {serviceRegradeChanges} from './serviceRegrade.js';
+import {TaskCatalog} from './catalog.js';
 
 const patchManifestSchema = z.object({sha256:z.string().regex(/^[a-f0-9]{64}$/), baseCommit:z.string(), baselineCommit:z.string(), revision:z.string(), method:z.literal('host-owned-tree-diff')}).strict();
 const predictionSchema = z.object({instance_id:z.string(), model_name_or_path:z.string(), model_patch:z.string()}).strict();
@@ -26,7 +28,7 @@ export interface RegradeInput {
   verifierProxy:string|null;
 }
 
-export async function regradeRun(data: string, runId: string, verifierProxy?: string) {
+export async function regradeRun(data: string, runId: string, verifierProxy?: string, serviceRestartScript?:string) {
   idSchema.parse(runId);
   const proxy = verifierProxy === undefined ? null : verifierProxySchema.parse(verifierProxy);
   const release = await lease(data, 'service');
@@ -35,6 +37,21 @@ export async function regradeRun(data: string, runId: string, verifierProxy?: st
     if(config.data!==data)throw Error('Regrade data root differs from the recorded configuration');
     const original = join(data,'runs',runId);
     const state = await readJson(join(original,'state.json'),runSchema);
+    if(state.id!==runId)throw Error('Regrade run identity mismatch');
+    if(state.dataset==='terminal-bench-2.1'){
+      if(!serviceRestartScript||proxy!==null)throw Error('Terminal service regrade requires --service-restart-script and no proxy');
+      const catalog=await TaskCatalog.open(config.catalog),controller=new AbortController();
+      const cancel=()=>controller.abort();process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
+      try{
+        const scriptPath=await realpath(resolve(serviceRestartScript)),stat=await Bun.file(scriptPath).stat();
+        if(!stat.isFile()||stat.size>16384)throw Error('Invalid service restart script');
+        const result=await new LinuxMachine(config).regradeService(state,catalog.get(state.dataset,state.task),await Bun.file(scriptPath).text(),randomBytes(8).toString('hex'),controller.signal);
+        controller.signal.throwIfAborted();const changes=serviceRegradeChanges(result);
+        if(changes){const current=runSchema.parse({...state,...changes,updatedAt:Date.now()/1000});await save(join(original,'state.json'),current);await catalog.record(current);}
+        return {...result,evidencePath:join(original,'rechecks',result.reviewId)};
+      }finally{process.removeListener('SIGINT',cancel);process.removeListener('SIGTERM',cancel);}
+    }
+    if(serviceRestartScript)throw Error('Service restart is only supported for Terminal service rechecks');
     if (state.id!==runId || state.dataset!=='swe-bench-verified' || !done(state.state) || state.state==='needs_recovery' || state.execution==='pending' || state.collection!=='complete') throw Error('Regrade requires a finished, fully collected SWE run');
     if (state.task.includes('/') || state.task.includes('..')) throw Error('Invalid task identity');
     const taskRoot = join(original,'task',state.task);

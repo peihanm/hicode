@@ -7,13 +7,15 @@ import type {SweTask} from './sweTasks.js';
 import type {RegradeInput} from './regrade.js';
 import {taskAdapters} from './datasets.js';
 import { run, readJson, save, runEvidenceTree, exists } from './store.js';
-import type { Batch, Config, Run } from './types.js';
+import type { Batch, Config, Run,ServiceRegradeResult } from './types.js';
 import {regradeResultSchema,runSchema,containerSchema} from './types.js';
 import type {Dataset} from './datasets.js';
 import { EVAL_ROOT } from '../paths.js';
 import {RunContainers} from './containers.js';
 import {EnvironmentStore} from './environments.js';
 import {TaskCatalog} from './catalog.js';
+import type {CatalogTask} from './catalog.js';
+import {regradeService} from './serviceRegrade.js';
 import {EvalLayout} from './layout.js';
 import {WorkerBundle} from './workerBundle.js';
 
@@ -97,6 +99,17 @@ export class LinuxMachine {
     await this.containers.remove(reviewId);
   }
   async freeze():Promise<void>{this.workerBundle??=await WorkerBundle.capture(EVAL_ROOT);}
+  async regradeService(state:Run,task:CatalogTask,restartScript:string,reviewId:string,signal:AbortSignal):Promise<ServiceRegradeResult>{
+    const backend=this.backend(state.dataset);if(backend!==this)return backend.regradeService(state,task,restartScript,reviewId,signal);
+    await this.freeze();if(!this.workerBundle)throw Error('Worker package not frozen');
+    return regradeService(this.config,state,task,restartScript,this.workerBundle,reviewId,signal);
+  }
+  async disposeServiceRecheck(state:Run,reviewId:string):Promise<void>{
+    const backend=this.backend(state.dataset);if(backend!==this)return backend.disposeServiceRecheck(state,reviewId);
+    const path=new EvalLayout(this.config.data).recheck(state.id,reviewId),receipt=join(path,'container.json');
+    if(await exists(receipt))await readJson(receipt,z.object({reviewId:z.literal(reviewId),container:z.literal(this.containers.name(reviewId)),context:z.literal(this.config.context)}).strict());
+    await this.containers.remove(reviewId);await save(join(path,'container-disposed.json'),{reviewId,at:new Date().toISOString()});
+  }
   async prepare(): Promise<void> {
     await this.freeze();
     const bundle=this.workerBundle;if(!bundle)throw Error('Worker package not frozen');

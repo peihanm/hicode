@@ -126,3 +126,98 @@ test('reasoning is frozen through batch, execution manifest and retry even after
   expect(efforts).toEqual(['max','max','low']);
  }finally{await restarted?.close();await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();execute.mockRestore();dispose.mockRestore();boundary.mockRestore();await f.cleanup();}
 });
+
+async function failedService(f:Awaited<ReturnType<typeof fixture>>){
+ await seed(f,'mailman');const state={...finished('mailman'),state:'failed' as const,grading:'failed' as const};
+ await save(join(f.layout.run(state.id),'state.json'),state);
+ await save(f.layout.batch(state.batchId),batchSchema.parse({version:1,id:state.batchId,name:'sealed service',network:'open',concurrency:1,budget:{},createdAt:1,
+  taskRefs:[{dataset:state.dataset,id:state.task}],runIds:[state.id],model:f.config.model,payload:{}}));
+ await f.catalog.record(state);return state;
+}
+async function until(condition:()=>boolean|Promise<boolean>){
+ const end=Date.now()+3000;while(!await condition()){if(Date.now()>end)throw Error('Fixture did not settle');await Bun.sleep(5);}
+}
+
+test('live service recheck shares the worker catalog, permits other submissions, and defers cleanup until it finishes',async()=>{
+ const f=await fixture(),original=await failedService(f),active=await seed(f,'active'),next=await seed(f,'next','d');f.config.concurrency=2;
+ const lab=new Lab(f.config,'offline-secret');await save(join(f.layout.payload,'manifest.json'),{});
+ const metadata=publicTaskProfile({active:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'active');
+ let finishExecution!:()=>void,finishRecheck!:()=>void,executing=false,rechecking=false;
+ const executionGate=new Promise<void>(resolve=>{finishExecution=resolve;}),recheckGate=new Promise<void>(resolve=>{finishRecheck=resolve;});
+ const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata);
+ const resolve=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(active.binding);
+ const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
+ const execute=spyOn(LinuxMachine.prototype,'execute').mockImplementation(async(state,_path,_key,phase)=>{
+  await phase('Running HiCode');if(state.task==='active'){executing=true;await executionGate;}return {type:'result',execution:'completed',grading:'failed',uid:20000};
+ });
+ const regrade=spyOn(LinuxMachine.prototype,'regradeService').mockImplementation(async(state,task,script,reviewId)=>{
+  expect(state.id).toBe(original.id);expect(task.id).toBe('mailman');expect(script).toBe('restart reviewed service');
+  rechecking=true;await recheckGate;return {version:1,runId:state.id,reviewId,grading:'passed',reason:null,modelCalls:0,snapshotSha256:'a'.repeat(64),projectSha256:'b'.repeat(64),elapsedSeconds:1};
+ });
+ const dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
+ const boundary=spyOn(transport,'run').mockResolvedValue(active.binding.base.imageId+'\n'+active.binding.dependencies.imageId+'\n'+next.binding.dependencies.imageId);
+ let worker:ReturnType<typeof serveWorker>|undefined;
+ try{
+  await lab.init();worker=serveWorker(lab,0);const client=new Client(worker.port);
+  await lab.submit({name:'active task',concurrency:1,tasks:[{dataset:active.dataset,id:active.id}]});await until(()=>executing);
+  const input={run:original.id,restartScript:'restart reviewed service'};
+  const accepted=await client.request('regrade-service',input) as {reviewId:string};await until(()=>rechecking);
+  expect((await lab.recheck(original.id,accepted.reviewId)).state).toBe('running');
+  expect((await client.request('regrade-service',input) as {reviewId:string}).reviewId).toBe(accepted.reviewId);
+  await expect(lab.retry(original.id)).rejects.toThrow('Wait for completion');
+  await expect(lab.prepareEnvironments({tasks:[{dataset:original.dataset,id:original.task}]})).rejects.toThrow('active or retained');
+  const nextBatch=await lab.submit({name:'another submission',concurrency:1,tasks:[{dataset:next.dataset,id:next.id}]});
+  expect(lab.runs.get(nextBatch.runIds[0]!)?.state).toBe('queued');finishExecution();
+  await until(()=>lab.runs.get(nextBatch.runIds[0]!)?.execution==='completed');
+  expect(await exists(join(f.layout.state,'maintenance.json'))).toBe(false);
+  finishRecheck();await until(async()=> (await lab.recheck(original.id,accepted.reviewId)).state==='finished');
+  expect(lab.runs.get(original.id)?.grading).toBe('passed');
+  const catalog=await TaskCatalog.open(f.config.catalog);
+  expect(catalog.get(original.dataset,original.task).status).toBe('passed');
+  expect(catalog.get(active.dataset,active.id).status).toBe('unpassed');expect(catalog.get(next.dataset,next.id).status).toBe('unpassed');
+  expect(regrade).toHaveBeenCalledTimes(1);
+ }finally{finishExecution();finishRecheck();worker?.stop(true);await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();execute.mockRestore();regrade.mockRestore();dispose.mockRestore();boundary.mockRestore();await f.cleanup();}
+});
+
+test('queued service recheck can be cancelled without starting a verifier or changing the original score',async()=>{
+ const f=await fixture(),original=await failedService(f),active=await seed(f,'active');f.config.concurrency=1;
+ const lab=new Lab(f.config,'offline-secret');await save(join(f.layout.payload,'manifest.json'),{});
+ const metadata=publicTaskProfile({active:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'active');
+ let finish!:()=>void,executing=false;const gate=new Promise<void>(resolve=>{finish=resolve;});
+ const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata),resolve=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(active.binding);
+ const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
+ const execute=spyOn(LinuxMachine.prototype,'execute').mockImplementation(async()=>{executing=true;await gate;return {type:'result',execution:'completed',grading:'failed',uid:20000};});
+ const regrade=spyOn(LinuxMachine.prototype,'regradeService');const dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
+ const boundary=spyOn(transport,'run').mockResolvedValue(active.binding.base.imageId+'\n'+active.binding.dependencies.imageId);
+ try{
+  await lab.init();await lab.submit({name:'active',concurrency:1,tasks:[{dataset:active.dataset,id:active.id}]});await until(()=>executing);
+  const accepted=await lab.regrade({run:original.id,restartScript:'restart reviewed service'});expect(accepted.state).toBe('queued');
+  await lab.cancel(original.id);await until(async()=> (await lab.recheck(original.id,accepted.reviewId)).state==='cancelled');
+  expect(regrade).not.toHaveBeenCalled();expect(lab.runs.get(original.id)?.grading).toBe('failed');
+ }finally{finish();await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();execute.mockRestore();regrade.mockRestore();dispose.mockRestore();boundary.mockRestore();await f.cleanup();}
+});
+
+test('worker restart disposes an interrupted recheck without replaying the model or verifier',async()=>{
+ const f=await fixture(),original=await failedService(f),reviewId='b'.repeat(16),lab=new Lab(f.config,'offline-secret');
+ const path=join(f.layout.recheck(original.id,reviewId),'operation.json');await save(path,{version:1,runId:original.id,reviewId,state:'running'});
+ const dispose=spyOn(LinuxMachine.prototype,'disposeServiceRecheck').mockResolvedValue(undefined);
+ const regrade=spyOn(LinuxMachine.prototype,'regradeService'),execute=spyOn(LinuxMachine.prototype,'execute');
+ try{
+  await lab.init();expect(dispose).toHaveBeenCalledWith(original,reviewId);
+  expect((await lab.recheck(original.id,reviewId)).state).toBe('cancelled');expect(lab.runs.get(original.id)?.grading).toBe('failed');
+  expect(regrade).not.toHaveBeenCalled();expect(execute).not.toHaveBeenCalled();
+ }finally{await lab.close();dispose.mockRestore();regrade.mockRestore();execute.mockRestore();await f.cleanup();}
+});
+
+test('closing the worker aborts an in-flight recheck subprocess and preserves the original grade',async()=>{
+ const f=await fixture(),original=await failedService(f),lab=new Lab(f.config,'offline-secret');let started=false;
+ const regrade=spyOn(LinuxMachine.prototype,'regradeService').mockImplementation(async(state,_task,_script,reviewId,signal)=>{
+  started=true;await transport.run([process.execPath,'-e','setInterval(()=>{},1000)'],{signal,timeout:2000});
+  return {version:1,runId:state.id,reviewId,grading:'passed',reason:null,modelCalls:0,snapshotSha256:'a'.repeat(64),projectSha256:'b'.repeat(64),elapsedSeconds:1};
+ });
+ try{
+  await lab.init();const accepted=await lab.regrade({run:original.id,restartScript:'restart reviewed service'});await until(()=>started);
+  const begin=Date.now();await lab.close();expect(Date.now()-begin).toBeLessThan(1000);
+  expect((await lab.recheck(original.id,accepted.reviewId)).state).toBe('cancelled');expect(lab.runs.get(original.id)?.grading).toBe('failed');
+ }finally{await lab.close();regrade.mockRestore();await f.cleanup();}
+});

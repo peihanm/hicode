@@ -34,7 +34,7 @@
 
 - `(dataset,id)` 是题目身份，同名题不能混用。当前支持 Terminal-Bench 2.1、SWE-bench Verified、DeepSWE。2.0 留在离线历史中，没有生产执行分支。
 - 成绩为 passed / unpassed / untested；环境独立为 unprepared / ready / evicted / failed。删除镜像必须更新环境状态，不能删除成绩。
-- worker 是调度、模型凭据、容器、成绩和自动清理的唯一 owner，持有根目录 service lease。register、prepare、gc 和 regrade 必须获得同一 lease，运行服务期间拒绝离线写入。
+- worker 是调度、模型凭据、容器、成绩和自动清理的唯一 owner，持有根目录 service lease。register、prepare、gc 和 regrade 必须获得同一 lease，运行服务期间拒绝离线写入。在线服务题补判由 worker 接收，复用同一调度器、台账和冻结执行包，只占一个并发名额；其他题继续执行和提交，操作状态保存在原 Run 的 rechecks 中。同题重跑、准备与补判互斥；关闭取消补判，重启先确认中断补判容器已销毁，清理不明时停止调度。
 - 已登记题的环境可通过 prepare-environments --live 交给 worker 后台准备，其他题的执行继续；活动或待恢复题不得重建。原题和声明先离线审定，准备期间不运行清理，不提交正在构建的题。退出 worker 时等待准备收尾。
 - serve 只读原子记录并转交控制请求，不初始化执行资源。8878 是默认网页端口，8879 是默认 worker 端口。重启网页不停止跑题。
 - 完成定义必须同时满足执行 completed、原判题 passed 和收集 complete。错误、超时、取消不伪装成通过。启动前取消没有判题结论。
@@ -57,6 +57,8 @@
 - Docker 内释放空间不保证 Mac 文件立即缩小。服务空闲时可对审定 Colima 数据盘执行 fstrim，再分别测 Linux df 和宿主 du；不要通过重建空盘掩盖实际占用。
 
 ## 日志归档与备份
+
+服务题补判在原 Run 的 `rechecks/<reviewId>/` 保存输入哈希、原成绩、原测试日志、结果、operation.json 操作状态及容器销毁回执。仅恢复已封锁且完整收集的答案和服务快照；重启脚本只能恢复服务并清除上次测试副作用，不能改答案或测试。补判不调用模型，真实结果更新当前 Run 和台账，原证据保留；与 worker 使用同一 service lease。
 
 通过题收集完成、成绩入账、容器销毁回执确认后，先核验原证据哈希，再打包 evidence、task、inputs、public-test-inputs 和 worker。完整读取压缩包校验后写 SHA256 回执，最后才删除原目录。取消、异常和未通过现场保留供复核，不默认删除。归档失败保留原文件和错误回执，不改变题目成绩。
 

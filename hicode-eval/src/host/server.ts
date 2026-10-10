@@ -7,12 +7,13 @@ import type {Lab} from './manager.js';
 import {Client} from './client.js';
 import {EvaluationView} from './view.js';
 import {EVAL_ROOT} from '../paths.js';
-import {submissionSchema,idSchema,environmentPreparationSchema} from './types.js';
+import {submissionSchema,idSchema,environmentPreparationSchema,serviceRegradeRequestSchema} from './types.js';
 import {exists} from './store.js';
 
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
 const healthSchema=z.object({data:z.string(),schedulingBlocked:z.boolean()}).strict();
 const mutations={submit:submissionSchema,'prepare-environments':environmentPreparationSchema,'cancel-batch':z.object({batch:idSchema}).strict(),
+  'regrade-service':serviceRegradeRequestSchema,
   'resume-batch':z.object({batch:idSchema}).strict(),'recover-run':z.object({run:idSchema}).strict(),
   'retry-run':z.object({run:idSchema}).strict(),report:z.object({batch:idSchema,text:z.string().trim().min(1).max(200000)}).strict(),
   cancel:z.object({run:idSchema}).strict()};
@@ -73,6 +74,7 @@ export function serveWorker(lab:Lab,port:number){
     if(request.method==='GET'){
       if(url.pathname==='/'||url.pathname==='/api/health')return json(lab.health());
       if(url.pathname==='/api/status')return json(await lab.snapshot());
+      if(url.pathname==='/api/recheck')return json(await lab.recheck(idSchema.parse(url.searchParams.get('run')),idSchema.parse(url.searchParams.get('review'))));
       if(url.pathname==='/api/preparation'||url.pathname==='/api/terminal')
         return details(lab.path(idSchema.parse(url.searchParams.get('run'))),url.pathname==='/api/preparation'?'preparation':'terminal',url.searchParams.get('revision'));
     }
@@ -81,6 +83,7 @@ export function serveWorker(lab:Lab,port:number){
       const body:unknown=await request.json();
       if(name==='submit')return json({batch:await lab.submit(submissionSchema.parse(body))});
       if(name==='prepare-environments')return json(await lab.prepareEnvironments(environmentPreparationSchema.parse(body)));
+      if(name==='regrade-service')return json(await lab.regrade(serviceRegradeRequestSchema.parse(body)));
       if(name==='report'){const args=mutations.report.parse(body);await lab.report(args.batch,args.text);return json({ok:true});}
       if(name==='cancel-batch'||name==='resume-batch'){
         const args=mutations[name].parse(body);

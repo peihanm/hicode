@@ -1,4 +1,4 @@
-import { mkdir, readdir, cp, rm } from 'node:fs/promises';
+import { mkdir, readdir, cp, rm,realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
@@ -9,8 +9,9 @@ import {taskAdapters,taskKey} from './datasets.js';
 import {EnvironmentStore} from './environments.js';
 import { EvidenceCollectionError, LinuxMachine } from './linux.js';
 import { readJson, save, exists, contained } from './store.js';
-import { runSchema, done, modelSchema,batchSchema, submissionSchema,environmentPreparationSchema } from './types.js';
-import type { Config, Run, Batch, Submission,EnvironmentPreparation } from './types.js';
+import { runSchema, done, modelSchema,batchSchema, submissionSchema,environmentPreparationSchema,serviceRegradeRequestSchema,serviceRecheckSchema } from './types.js';
+import type { Config, Run, Batch, Submission,EnvironmentPreparation,ServiceRegradeRequest } from './types.js';
+import {serviceRegradeChanges,ServiceRegradeCleanupError} from './serviceRegrade.js';
 import {batchView,catalogView,runView} from './view.js';
 
 import { REPOSITORY_ROOT } from '../paths.js';
@@ -35,6 +36,7 @@ export class Lab {
   private pumping = false;
   private maintenancePending=false;
   private preparationJob:{tasks:ReadonlySet<string>;completion:Promise<void>}|undefined;
+  private readonly rechecks=new Map<string,{reviewId:string;task:string;restartScript:string;controller:AbortController}>();
   private readonly layout:EvalLayout;
   private readonly adapters:ReturnType<typeof taskAdapters>;
   constructor(readonly config: Config, private readonly credential: string) {this.layout=new EvalLayout(config.data);this.adapters=taskAdapters(this.layout);}
@@ -85,6 +87,19 @@ export class Lab {
       retried.add(origin.runId);
     }
     this.machine=new LinuxMachine(this.config);await this.machine.freeze();
+    for(const state of this.runs.values()){
+      const directory=join(this.path(state.id),'rechecks');if(!await exists(directory))continue;
+      if(await realpath(directory)!==directory)throw Error('Symlinked recheck directory');
+      for(const name of await readdir(directory)){
+        if(!/^[a-f0-9]{16}$/.test(name))continue;
+        const path=join(this.layout.recheck(state.id,name),'operation.json');if(!await exists(path))continue;
+        const record=await readJson(path,serviceRecheckSchema);
+        if(record.runId!==state.id||record.reviewId!==name||this.runs.has(name))throw Error('Invalid recheck ownership');
+        if(!['queued','running','retained'].includes(record.state))continue;
+        await this.machine.disposeServiceRecheck(state,name);
+        await save(path,{version:1,runId:state.id,reviewId:name,state:'cancelled',error:'Worker restarted; interrupted recheck stopped and stored Run result retained'});
+      }
+    }
   }
   private async prepareMachine():Promise<void>{
     if(this.machineReady)return;this.machine??=new LinuxMachine(this.config);await this.machine.prepare();this.machineReady=true;
@@ -108,13 +123,60 @@ export class Lab {
     this.submissions = operation.catch(() => {});
     return operation;
   }
+  async regrade(input:ServiceRegradeRequest){
+    const operation=this.submissions.then(async()=>{
+      const request=serviceRegradeRequestSchema.parse(input),state=this.runs.get(request.run);
+      if(this.closed||this.halted||!state)throw Error('Recheck unavailable while worker is closing/blocked or run is unknown');
+      const previous=this.rechecks.get(state.id);
+      if(previous){if(previous.restartScript!==request.restartScript)throw Error('This run already has a different pending recheck');return this.recheck(state.id,previous.reviewId);}
+      const key=taskKey({dataset:state.dataset,id:state.task});
+      if(state.dataset!=='terminal-bench-2.1'||state.execution!=='completed'||state.collection!=='complete'||!['passed','failed'].includes(state.state))
+        throw Error('Recheck requires a completed and fully collected Terminal service run');
+      if(this.preparationJob?.tasks.has(key)||[...this.rechecks.values()].some(item=>item.task===key)||[...this.runs.values()].some(run=>
+        taskKey({dataset:run.dataset,id:run.task})===key&&(!done(run.state)||run.state==='needs_recovery'||this.jobs.has(run.id))))
+        throw Error('This task has an active attempt, recheck, preparation or retained evidence');
+      const reviewId=randomBytes(8).toString('hex');
+      const record=serviceRecheckSchema.parse({version:1,runId:state.id,reviewId,state:'queued'});
+      await save(join(this.layout.recheck(state.id,reviewId),'operation.json'),record);
+      this.rechecks.set(state.id,{reviewId,task:key,restartScript:request.restartScript,controller:new AbortController()});
+      void this.pump();return record;
+    });
+    this.submissions=operation.catch(()=>{});return operation;
+  }
+  async recheck(runId:string,reviewId:string){
+    this.path(runId);
+    const record=await readJson(join(this.layout.recheck(runId,reviewId),'operation.json'),serviceRecheckSchema);
+    if(record.runId!==runId||record.reviewId!==reviewId)throw Error('Recheck identity mismatch');
+    return record;
+  }
+  private startRecheck(id:string){
+    const pending=this.rechecks.get(id);if(!pending||this.jobs.has(id))return;
+    const job=(async()=>{
+      const path=join(this.layout.recheck(id,pending.reviewId),'operation.json');
+      try{
+        pending.controller.signal.throwIfAborted();
+        await save(path,{version:1,runId:id,reviewId:pending.reviewId,state:'running'});
+        if(!this.machine||!this.taskCatalog)throw Error('Worker not initialized');
+        const state=this.runs.get(id)!;
+        const result=await this.machine.regradeService(state,this.taskCatalog.get(state.dataset,state.task),pending.restartScript,pending.reviewId,pending.controller.signal);
+        pending.controller.signal.throwIfAborted();
+        const changes=serviceRegradeChanges(result);if(changes)await this.update(id,changes);
+        await save(path,serviceRecheckSchema.parse({version:1,runId:id,reviewId:pending.reviewId,state:'finished',result}));
+      }catch(error){
+        if(error instanceof ServiceRegradeCleanupError)this.halted=true;
+        await save(path,{version:1,runId:id,reviewId:pending.reviewId,state:error instanceof ServiceRegradeCleanupError?'retained':pending.controller.signal.aborted?'cancelled':'failed',error:String(error).slice(-2000)});
+      }
+    })().catch(()=>{this.halted=true;console.error('Recheck state could not be persisted; scheduling stopped.');})
+      .finally(()=>{this.rechecks.delete(id);this.jobs.delete(id);void this.pump();});
+    this.jobs.set(id,job);
+  }
   async prepareEnvironments(input:EnvironmentPreparation):Promise<{accepted:string[]}>{
     const operation=this.submissions.then(async()=>{
       const request=environmentPreparationSchema.parse(input);
       if(this.closed||this.preparationJob)throw Error('Environment preparation is already running or the worker is closing');
       const keys=request.tasks.map(taskKey);if(new Set(keys).size!==keys.length)throw Error('Duplicate preparation tasks');
       const tasks=request.tasks.map(t=>this.taskCatalog!.get(t.dataset,t.id));
-      if(tasks.some(t=>!t.source||t.status==='passed'||[...this.runs.values()].some(r=>taskKey({dataset:r.dataset,id:r.task})===taskKey(t)&&(!done(r.state)||r.state==='needs_recovery'))))
+      if(tasks.some(t=>!t.source||t.status==='passed'||[...this.rechecks.values()].some(item=>item.task===taskKey(t))||[...this.runs.values()].some(r=>taskKey({dataset:r.dataset,id:r.task})===taskKey(t)&&(!done(r.state)||r.state==='needs_recovery'))))
         throw Error('Prepare only registered, unpassed tasks without active or retained attempts');
       const store=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends,request.buildProxy);
       const completion=(async()=>{
@@ -158,6 +220,7 @@ export class Lab {
     if(new Set(input.tasks.map(taskKey)).size!==input.tasks.length)
       throw Error('Choose distinct tasks');
     if(input.tasks.some(t=>this.preparationJob?.tasks.has(taskKey(t))))throw Error('Selected task environment is being prepared');
+    if(input.tasks.some(t=>[...this.rechecks.values()].some(item=>item.task===taskKey(t))))throw Error('Selected task is being rechecked');
     const model = modelSchema.parse(original ? this.batches.get(original.batchId)!.model : {...this.config.model, reasoning: input.reasoning ?? this.config.model.reasoning ?? {effort: "default"}});
     const selected:CatalogTask[]=input.tasks.map(ref=>{
       const matches=this.taskCatalog!.list().filter(task=>taskKey(task)===taskKey(ref));
@@ -288,6 +351,7 @@ export class Lab {
     if (this.pumping || this.closed || this.halted) return; this.pumping = true;
     try {
       if ([...this.runs.values()].some(r => r.state === 'needs_recovery')) return;
+      for(const id of this.rechecks.keys()){if(this.jobs.size>=this.config.concurrency)break;this.startRecheck(id);}
       for (const r of this.runs.values()) {
         if (this.jobs.size >= this.config.concurrency) break;
         if (r.state !== 'queued' || this.jobs.has(r.id) || this.attempted.has(r.id)) continue;
@@ -301,10 +365,10 @@ export class Lab {
       }
     } finally {
       this.pumping=false;
-      if(!this.closed&&!this.preparationJob&&!this.maintenancePending&&!this.jobs.size&&![...this.runs.values()].some(r=>!done(r.state)||r.state==='needs_recovery')){
+      if(!this.closed&&!this.preparationJob&&!this.rechecks.size&&!this.maintenancePending&&!this.jobs.size&&![...this.runs.values()].some(r=>!done(r.state)||r.state==='needs_recovery')){
         this.maintenancePending=true;
         const operation=this.submissions.then(async()=>{
-          if(this.closed||this.preparationJob||[...this.runs.values()].some(r=>!done(r.state)||r.state==='needs_recovery'))return;
+          if(this.closed||this.preparationJob||this.rechecks.size||[...this.runs.values()].some(r=>!done(r.state)||r.state==='needs_recovery'))return;
           await collectResources(this.config,this.taskCatalog!,[...this.runs.values()],true);
         }).catch(async error=>{
           await save(join(this.layout.state,'maintenance-error.json'),{at:new Date().toISOString(),message:String(error).slice(-1500)});
@@ -314,6 +378,7 @@ export class Lab {
     }
   }
   async cancel(id: string): Promise<void> {
+    const recheck=this.rechecks.get(id);if(recheck){recheck.controller.abort();this.startRecheck(id);return;}
     const r = this.runs.get(id); if (!r) throw Error('Unknown run'); if (done(r.state)) return;
     await save(join(this.path(id), 'cancel'), { at: Date.now() });
     if (r.state === 'queued' && !this.jobs.has(id)) { await this.update(id, { state: 'cancelled', execution: 'cancelled', finishedAt: Date.now() / 1000 }); return; }
@@ -365,7 +430,7 @@ export class Lab {
     }
     return { batches: [...this.batches.values()].sort((a,b) => b.createdAt - a.createdAt).map(b => this.batchView(b)), runs: runs.sort((a, b) => b.createdAt - a.createdAt), tasks: await this.catalog(),inventory:this.taskCatalog?.counts(new Set([...this.runs.values()].filter(r=>!done(r.state)&&r.state!=='queued').map(r=>taskKey({dataset:r.dataset,id:r.task})))), concurrency: this.config.concurrency, budget: this.config.budget, schedulingBlocked: this.halted || [...this.runs.values()].some(r => r.state === 'needs_recovery') };
   }
-  async close(): Promise<void> { this.closed = true; await this.submissions; await Promise.all([...this.runs.values()].filter(r => !done(r.state)).map(r => this.cancel(r.id))); await Promise.all(this.jobs.values());await this.preparationJob?.completion; }
+  async close(): Promise<void> { this.closed = true; await this.submissions;for(const [id,recheck] of this.rechecks){recheck.controller.abort();this.startRecheck(id);}await Promise.all([...this.runs.values()].filter(r => !done(r.state)).map(r => this.cancel(r.id))); await Promise.all(this.jobs.values());await this.preparationJob?.completion; }
 }
 
 async function appendPhase(path: string, phase: string): Promise<void> {

@@ -4,12 +4,12 @@ import {createHiCodeStorageLayout} from '../../src/persistence/index.js';
 import {PROVIDER_BASE_URLS} from '../../src/llm/providerRegistry.js';
 import {parseArgs} from 'node:util';
 import {join,resolve,dirname} from 'node:path';
-import {readdir,cp,rm,copyFile,mkdir,realpath,mkdtemp,rename} from 'node:fs/promises';
+import {readdir,cp,rm,copyFile,mkdir,realpath,mkdtemp,rename,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {parse} from 'dotenv';
 import {z} from 'zod';
 import {EvalLayout} from './host/layout.js';
-import {loadConfig,settingsSchema,modelSchema,submissionSchema,reasoningSchema,runSchema,idSchema} from './host/types.js';
+import {loadConfig,settingsSchema,modelSchema,submissionSchema,reasoningSchema,runSchema,idSchema,serviceRegradeRequestSchema,serviceRecheckSchema} from './host/types.js';
 import {TaskCatalog} from './host/catalog.js';
 import type {CatalogTask} from './host/catalog.js';
 import {taskAdapters,datasetSchema,taskKey} from './host/datasets.js';
@@ -28,11 +28,12 @@ import {EVAL_ROOT,REPOSITORY_ROOT} from './paths.js';
 async function main(){
   const {positionals,values:v}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
     preparation:{type:'string'},script:{type:'string'},root:{type:'string'},help:{type:'boolean'},file:{type:'string'},dataset:{type:'string'},tasks:{type:'string'},ids:{type:'string'},run:{type:'string'},batch:{type:'string'},apply:{type:'boolean'},
-    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},reasoning:{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},live:{type:'boolean'},'build-cache':{type:'boolean'},'verifier-proxy':{type:'string'}
+    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},reasoning:{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},'build-cache':{type:'boolean'},live:{type:'boolean'},'verifier-proxy':{type:'string'},'service-restart-script':{type:'string'},review:{type:'string'}
   }});
   const command=positionals[0];
-  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE [--reasoning EFFORT] | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL]\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
+  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE [--reasoning EFFORT] | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL | --service-restart-script FILE]\n  recheck --root DIR --run ID --review ID\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
   if(positionals.length!==1||!v.root)throw Error('Supply one command and --root');
+  if(v['service-restart-script']!==undefined&&command!=='regrade')throw Error('--service-restart-script is only supported by regrade');
   if(v.reasoning!==undefined&&command!=='submit')throw Error('--reasoning is only supported by submit; retry preserves the original batch reasoning');
   const reasoning=v.reasoning===undefined?undefined:reasoningSchema.parse({effort:v.reasoning});
   const layout=new EvalLayout(v.root);
@@ -91,7 +92,24 @@ async function main(){
     console.log(JSON.stringify(result,null,2));return;
   }
   if(command==='image-inventory'){console.log(JSON.stringify(await imageInventory(layout.root,v.dataset?datasetSchema.parse(v.dataset):undefined),null,2));return;}
-  if(command==='regrade'){console.log(JSON.stringify(await regradeRun(layout.root,idSchema.parse(required('run')),v['verifier-proxy']),null,2));return;}
+  if(command==='regrade'){
+    const runId=idSchema.parse(required('run'));
+    if(v['service-restart-script']&&await exists(join(layout.root,'.service.lock'))){
+      if(v['verifier-proxy'])throw Error('Service regrade does not accept --verifier-proxy');
+      const client=new Client(workerPort),health=z.object({data:z.string()}).passthrough().parse(await client.request('health'));
+      if(health.data!==layout.root)throw Error('Worker belongs to another root');
+      const file=await realpath(resolve(v['service-restart-script'])),info=await stat(file);
+      if(!info.isFile()||info.size>16384)throw Error('Invalid service restart script');
+      const input=serviceRegradeRequestSchema.parse({run:runId,restartScript:await Bun.file(file).text()});
+      console.log(JSON.stringify(serviceRecheckSchema.parse(await client.request('regrade-service',input)),null,2));return;
+    }
+    console.log(JSON.stringify(await regradeRun(layout.root,runId,v['verifier-proxy'],v['service-restart-script']),null,2));return;
+  }
+  if(command==='recheck'){
+    const client=new Client(workerPort),health=z.object({data:z.string()}).passthrough().parse(await client.request('health'));
+    if(health.data!==layout.root)throw Error('Worker belongs to another root');
+    console.log(JSON.stringify(serviceRecheckSchema.parse(await client.request('recheck?run='+idSchema.parse(required('run'))+'&review='+idSchema.parse(v.review))),null,2));return;
+  }
   const release=await lease(layout.root,'service');
   try{
     const catalog=await TaskCatalog.open(layout.catalog);
