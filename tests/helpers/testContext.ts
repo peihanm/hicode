@@ -54,6 +54,8 @@ export function createTestContext(
     fileCommits?: FileCommitCoordinator;
     instructions?: ProjectInstructions;
     shellRunner?: ShellRunnerLike;
+    reasoning?: ToolContext["reasoning"];
+    fastReasoning?: ToolContext["fastReasoning"];
     model?: string;
     provider?: LLMProviderName;
     fastModel?: string;
@@ -84,6 +86,8 @@ export function createTestContext(
       storage: createTestStorage(cwd),
       cwd,
       workspaceBoundary: options.workspaceBoundary,
+      reasoning: options.reasoning,
+      fastReasoning: options.fastReasoning,
       model: options.model ?? "glm-test",
       provider: options.provider ?? "glm",
       fastModel: options.fastModel ?? "glm-fast-test",

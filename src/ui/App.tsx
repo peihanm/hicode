@@ -405,7 +405,7 @@ export function App({
                 <StatusBar
                     showShortcuts={(activePanel !== "diff") && (activePanel !== "skills") && (activePanel !== "sandbox") && (activePanel !== "mcp")}
                     cwd={cwd}
-                    model={turn.primaryModel.label}
+                    model={`${turn.primaryModel.label} · Reasoning: ${(turn.primaryModel.reasoning ?? "default")}`}
                     permissionMode={turn.permissionMode}
                     collaborationMode={turn.collaborationMode}
                     tokenCount={turn.tokenInfo.count}

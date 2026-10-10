@@ -1,3 +1,4 @@
+import {validateReasoningEffort, type ReasoningPreference} from "../llm/reasoningPolicy.js";
 import {readBoundedTextFile} from "../persistence/readTextFile.js";
 import {lstat, mkdir, realpath} from "node:fs/promises";
 import {dirname, join} from "node:path";
@@ -8,7 +9,7 @@ import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PrimaryModelRuntime} from "../runtime/primaryModel.js";
 import {hicodeSettingsFileSchema} from "./schema.js";
 import {getSettingsPath} from "./document.js";
-import {resolveHiCodeSettings, resolveModelSources} from "./resolve.js";
+import {resolveHiCodeSettings, resolveModelSources, resolveReasoningPreferences} from "./resolve.js";
 import type {HiCodeSettingsFile, ModelTargetSettings, LoadedSettingsDocument} from "./types.js";
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -77,10 +78,17 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
         });
     }
 
-    function refresh(settings: HiCodeSettingsFile): void {
-        // Only connection metadata is refreshed; permissions and other Root resources stay with their owner.
+    async function refresh(settings: HiCodeSettingsFile): Promise<void> {
+        // Refresh model configuration only; permissions and other Root resources stay with their owner.
         const sources = resolveModelSources([{source: "user", path: userPath, value: {sources: settings.sources}}]);
+        const documents: LoadedSettingsDocument[] = [
+            {source: "user", path: userPath, value: settings},
+            {source: "project", path: projectPath, value: decode(await read(projectPath))},
+            {source: "local", path: localPath, value: decode(await read(localPath))},
+        ];
+        const preferences = resolveReasoningPreferences(documents, sources);
         runtime.updateSources(sources);
+        runtime.updateReasoning(preferences);
     }
 
     return {
@@ -123,7 +131,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                 if (baseUrl) connection.baseUrl = baseUrl; else delete connection.baseUrl;
                 settings.sources[source] = connection;
             });
-            refresh(settings);
+            await refresh(settings);
         },
         async addModel(source, rawId, rawLabel, imageInput = false) {
             const id = rawId.trim(), label = rawLabel.trim() || id;
@@ -136,7 +144,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                 connection.models = [...models, {id, label, imageInput}];
                 settings.sources[source] = connection;
             });
-            refresh(settings);
+            await refresh(settings);
         },
         async removeModel(source, id) {
             const matches = (target: ModelTargetSettings | undefined) => target?.source === source && target.model === id;
@@ -159,21 +167,34 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                     }
                 }
                 assertNotSelected();
+                if (documents.slice(1).some(document => document.value.models?.reasoning?.some(item => item.source === source && item.model === id))) throw new Error("Remove this model's project reasoning preference before deleting it");
+                if (settings.models?.reasoning) settings.models.reasoning = settings.models.reasoning.filter(item => item.source !== source || item.model !== id);
                 settings.sources ??= {};
                 settings.sources[source] = {...settings.sources[source], models: models.filter(model => model.id !== id)};
             });
-            refresh(settings);
+            await refresh(settings);
         },
         async saveSelection(target) {
             if (!runtime.available.some(item => item.source === target.source && item.model === target.model)) throw new Error("Model is not available; configure its API key first");
             const project = decode(await read(projectPath));
             const local = decode(await read(localPath));
-            const overridden = [project, local].some(settings => settings.models?.primary?.source !== undefined || settings.models?.primary?.model !== undefined);
+            const effort = target.reasoning ?? runtime.reasoningFor(target.source, target.model) ?? "default";
+            validateReasoningEffort(target.source, target.model, effort);
+            const overridden = [project, local].some(settings => settings.models?.primary?.source !== undefined || settings.models?.primary?.model !== undefined || settings.models?.reasoning?.some(item => item.source === target.source && item.model === target.model));
             const path = overridden ? localPath : userPath;
-            await update(path, settings => {
-                settings.models = {...settings.models, primary: {source: target.source, model: target.model}};
+            let preferences: ReasoningPreference[] = [];
+            await update(path, async settings => {
+                const reasoning = (settings.models?.reasoning ?? []).filter(item => item.source !== target.source || item.model !== target.model);
+                settings.models = {...settings.models, primary: {source: target.source, model: target.model}, reasoning: [...reasoning, {source: target.source, model: target.model, effort}]};
+                const documents: LoadedSettingsDocument[] = [
+                    {source: "user", path: userPath, value: path === userPath ? settings : decode(await read(userPath))},
+                    {source: "project", path: projectPath, value: project},
+                    {source: "local", path: localPath, value: path === localPath ? settings : local},
+                ];
+                preferences = resolveReasoningPreferences(documents, runtime.sources);
             });
-            runtime.select(target);
+            runtime.updateReasoning(preferences);
+            runtime.select({...target, reasoning: effort});
         },
     };
 }

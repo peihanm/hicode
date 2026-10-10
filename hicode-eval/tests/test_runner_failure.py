@@ -18,7 +18,7 @@ RUN_ID = '1234567890abcdef'
 
 
 class RunnerFailureTest(unittest.TestCase):
-    def run_attempt(self, *, saved=True, pending=False, exits=True, handoff=True, completed=False, claimed_dependencies=False, isolated=False, timed_out=False, service=False):
+    def run_attempt(self, *, saved=True, pending=False, exits=True, handoff=True, completed=False, claimed_dependencies=False, isolated=False, timed_out=False, service=False, verifier_raises=False, reasoning=None):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             root = base / 'eval/runs' / RUN_ID
@@ -31,6 +31,10 @@ class RunnerFailureTest(unittest.TestCase):
                       'release': '/release', 'packages': [], 'verifierPackages': ['toml==0.10.2'],
                       'initializer': None, 'agentSeconds': 3600, 'verifierSeconds': 10,
                       'verifierPrelude': 'none'}
+            config['reasoningPolicy']={'effort':reasoning or 'default'}
+            if reasoning:
+                config['model'].update(model='qwen3.8-flash',reasoning={'effort':reasoning})
+                config['reasoningPolicy'].update(switch='enable_thinking',efforts=['default','off','low','medium','xhigh'],reviewEffort='off')
             config['network'] = 'isolated' if isolated else 'open'
             if service:config['service']={'writablePaths':[]}
             (root / 'job.json').write_text(json.dumps(config))
@@ -78,16 +82,26 @@ class RunnerFailureTest(unittest.TestCase):
                     calls.append('install-verifier')
                 if 'new-session' in argv:
                     self.assertEqual(kwargs['env']['EVAL_FIXTURE_KEY'], 'eval-isolated')
+                if 'kill-server' in argv:calls.append('terminal-close')
                 return subprocess.CompletedProcess(argv, 0, stdout='', stderr='')
 
             def upload(*args):
-                self.assertIn('shutdown' if service else 'stop', calls)
+                if service and completed:
+                    self.assertNotIn('shutdown',calls)
+                    self.assertNotIn('terminal-close',calls)
+                    self.assertNotIn('service-close',calls)
+                    self.assertIn('gateway-close',calls)
+                else:self.assertIn('shutdown' if service else 'stop', calls)
                 calls.append('handoff')
                 return handoff
 
             def grade(*args, **kwargs):
                 self.assertIn('handoff', calls)
+                if service and completed:
+                    self.assertNotIn('shutdown',calls)
+                    self.assertNotIn('terminal-close',calls)
                 calls.append('verify')
+                if verifier_raises:raise RuntimeError('Fixture verifier failure')
                 return 'failed', 'Original verifier: missing output'
 
             actual_copytree=shutil.copytree
@@ -149,7 +163,7 @@ class RunnerFailureTest(unittest.TestCase):
                 else:stack.enter_context(patch('time.sleep', side_effect=AssertionError('Failed turn must not wait for budget')))
                 stack.enter_context(contextlib.redirect_stdout(output))
                 runpy.run_path(str(RUNNER), run_name='__main__')
-                self.assertEqual(gateway.call_args.args[1:], ('https://example.invalid', 'fixture', 'offline-fixture'))
+                self.assertEqual(gateway.call_args.args[1:], ('https://example.invalid', config['model']['model'], 'offline-fixture', config['reasoningPolicy']))
                 launch=(base/'run/hicode-eval'/RUN_ID/'launch.sh').read_text()
                 if service:self.assertIn('service-actor',launch)
                 elif isolated:self.assertIn('--unshare-net',launch)
@@ -157,6 +171,7 @@ class RunnerFailureTest(unittest.TestCase):
                 self.assertIn('network_entry.py',launch)
                 self.assertNotIn('offline-fixture',launch)
                 settings=json.loads((root/'home/.hicode/settings.json').read_text())
+                if reasoning:self.assertEqual(settings['models']['reasoning'],[{'source':'qwen','model':'qwen3.8-flash','effort':reasoning}])
                 self.assertEqual('web_fetch' in settings['permissions']['deny'],isolated)
                 self.assertEqual(json.loads((root/'network.json').read_text())['mode'],'isolated' if isolated else 'open')
             submitted=(root/'submitted-instruction.md').read_text()
@@ -169,6 +184,9 @@ class RunnerFailureTest(unittest.TestCase):
             self.assertIn('finalize', calls)
             self.assertEqual(calls.count('shutdown'), 1 if service or not completed else 0)
             return packets[-1], calls, None if completed and not service else json.loads((root / 'shutdown.json').read_text())
+
+    def test_actor_settings_and_gateway_receive_the_frozen_reasoning(self):
+        self.run_attempt(reasoning='low', completed=True)
 
     def test_completed_attempt_installs_verifier_only_after_sealing(self):
         result, calls, _ = self.run_attempt(completed=True)
@@ -225,10 +243,38 @@ class RunnerFailureTest(unittest.TestCase):
         self.assertEqual(result['execution'],'completed')
         self.assertEqual(result['grading'],'failed')
         self.assertTrue(receipt['cliExited'])
-        self.assertLess(calls.index('shutdown'),calls.index('handoff'))
+        self.assertLess(calls.index('gateway-close'),calls.index('handoff'))
         self.assertLess(calls.index('handoff'),calls.index('verify'))
+        self.assertLess(calls.index('verify'),calls.index('shutdown'))
+        self.assertLess(calls.index('shutdown'),calls.index('service-close'))
         self.assertLess(calls.index('verify'),calls.index('service-close'))
         self.assertLess(calls.index('service-close'),calls.index('finalize'))
+
+    def test_failed_service_reuses_successful_shutdown_receipt_before_grading(self):
+        result,calls,receipt=self.run_attempt(service=True)
+        self.assertEqual(result['execution'],'failed')
+        self.assertEqual(result['grading'],'failed')
+        self.assertTrue(receipt['cliExited'])
+        self.assertEqual(calls.count('shutdown'),1)
+        self.assertLess(calls.index('shutdown'),calls.index('handoff'))
+
+    def test_timed_out_service_reuses_shutdown_receipt_and_keeps_failed_grade(self):
+        result,calls,receipt=self.run_attempt(service=True,timed_out=True)
+        self.assertEqual(result['execution'],'timeout')
+        self.assertEqual(result['grading'],'failed')
+        self.assertTrue(receipt['cliExited'])
+        self.assertEqual(calls.count('shutdown'),1)
+        self.assertLess(calls.index('shutdown'),calls.index('handoff'))
+
+    def test_service_is_cleaned_after_cancelled_handoff_or_verifier_exception(self):
+        for options in [{'handoff':False},{'verifier_raises':True}]:
+            with self.subTest(options=options):
+                result,calls,receipt=self.run_attempt(service=True,completed=True,**options)
+                self.assertEqual(result['grading'],'unavailable')
+                self.assertTrue(receipt['cliExited'])
+                self.assertLess(calls.index('handoff'),calls.index('shutdown'))
+                self.assertLess(calls.index('shutdown'),calls.index('service-close'))
+                self.assertLess(calls.index('service-close'),calls.index('finalize'))
 
     def test_incomplete_service_shutdown_never_exposes_hidden_tests(self):
         result,calls,receipt=self.run_attempt(pending=True,isolated=True,service=True)
@@ -237,3 +283,13 @@ class RunnerFailureTest(unittest.TestCase):
         self.assertNotIn('handoff',calls)
         self.assertNotIn('verify',calls)
         self.assertLess(calls.index('service-close'),calls.index('finalize'))
+
+    def test_service_completion_with_pending_tools_or_unsaved_turn_never_hands_off(self):
+        for options in [{'pending':True},{'saved':False}]:
+            with self.subTest(options=options):
+                result,calls,_=self.run_attempt(service=True,completed=True,**options)
+                self.assertEqual(result['grading'],'unavailable')
+                self.assertNotIn('handoff',calls)
+                self.assertNotIn('verify',calls)
+                self.assertIn('shutdown',calls)
+                self.assertIn('service-close',calls)

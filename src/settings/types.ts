@@ -1,3 +1,4 @@
+import type {ReasoningEffort, ReasoningPreference} from "../llm/reasoningPolicy.js";
 import type {ContextSettings} from "../context/config.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PermissionMode, PermissionRules,} from "../permissions/types.js";
@@ -51,6 +52,7 @@ export interface ModelSourceSettings {
 }
 
 export interface ModelTargetSettings {
+    reasoning?: ReasoningEffort;
     source: LLMProviderName;
     model: string;
     label: string;
@@ -73,6 +75,7 @@ export interface HiCodeSettingsFile {
     context?: Partial<ContextSettings>;
     sources?: Partial<Record<LLMProviderName, ModelSourceSettingsFile>>;
     models?: {
+        reasoning?: ReasoningPreference[];
         reviewer?: ModelTargetSettingsFile;
         primary?: ModelTargetSettingsFile;
         fast?: ModelTargetSettingsFile;
@@ -111,6 +114,7 @@ export interface ResolvedHiCodeSettings {
     context: ContextSettings;
     sources: Record<LLMProviderName, ModelSourceSettings>;
     models: {
+        reasoning?: readonly ReasoningPreference[];
         reviewer?: ModelTargetSettings;
         primary: ModelTargetSettings;
         fast?: ModelTargetSettings;

@@ -169,3 +169,25 @@ test("new child uses refreshed connection while an existing child retains its or
         await memory.close();
     });
 });
+
+test("ordinary children freeze primary reasoning; Explore freezes fast reasoning across followups", async () => {
+    await withTempProject(async (cwd, storage) => {
+        process.env.DASHSCOPE_API_KEY = "fixture-key";
+        process.env.DEEPSEEK_API_KEY = "fixture-key";
+        const bodies: Record<string, unknown>[] = [];
+        globalThis.fetch = (async (_input, init) => {bodies.push(JSON.parse(String(init?.body))); return textStream("done");}) as typeof fetch;
+        const memory = createTestMemoryRuntime(cwd, {enabled: false});
+        const runtime = createAgentRuntime({storage, getSources: () => createTestSettings().sources, subagents: createWriterRegistry(), memory});
+        const parent = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", reasoning: "medium", fastModel: "deepseek-flash", fastProvider: "deepseek", fastReasoning: "max"});
+        const create = (agentType: string, agentId: string) => runtime.createSubagentThread({parentContext: parent, agentId, onEvent() {}}, {agentType, prompt: "inspect", description: "inspect", parentToolCallId: "spawn"});
+        const ordinary = create("FixtureWriter", "ordinary"), explore = create("Explore", "explore");
+        parent.reasoning = "low"; parent.fastReasoning = "off";
+        const input = {prompt: "inspect", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL};
+        try {
+            await ordinary.run(input); await explore.run(input); await ordinary.run({...input, prompt: "continue"}); await explore.run({...input, prompt: "continue"});
+            expect(bodies.map(body => [body.model, body.reasoning_effort])).toEqual([
+                ["qwen3.8-flash", "medium"], ["deepseek-flash", "max"], ["qwen3.8-flash", "medium"], ["deepseek-flash", "max"],
+            ]);
+        } finally {await memory.close();}
+    });
+});

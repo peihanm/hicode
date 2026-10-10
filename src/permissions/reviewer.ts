@@ -75,11 +75,12 @@ export function createApprovalReviewer(runAgent: AgentRunner): ApprovalReviewer 
             return {behavior: "deny" as const, message: "Review evidence gathering is limited to the relevant workspace and file under review"};
         }}));
         const runtime = createToolRuntime({allowedToolNames: REVIEW_TOOLS, toolOverrides: overrides});
-        const target = parent.reviewerModel ?? {model: parent.model, source: parent.provider};
+        const target = parent.reviewerModel ?? {model: parent.model, source: parent.provider, reasoning: parent.reasoning};
         const ctx = createToolContext({signal, turnId: request.id,
             resources: {
                 toolNames: runtime.toolNames, availableTools: runtime.getTools(),
-                contextSettings: parent.contextSettings, storage: parent.storage, cwd: parent.cwd, model: target.model, provider: target.source,
+                contextSettings: parent.contextSettings, storage: parent.storage, cwd: parent.cwd, model: target.model,
+                reasoning: target.reasoning, fastReasoning: target.reasoning, provider: target.source,
                 fastModel: target.model, fastProvider: target.source, skills: [], readOnlyTools: true,
                 fileCommits: new FileCommitCoordinator(), shellRunner: parent.shellRunner},
             session: {webSources: new WebSources(),sessionId: `${parent.sessionId}:review:${request.id}`, toolResultStore: parent.toolResultStore,

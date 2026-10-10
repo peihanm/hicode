@@ -548,12 +548,13 @@ export function useTurnController({
         const setPrimaryModel = useCallback(
             async (target: ModelTargetSettings) => {
                 if (!resources.modelConfiguration) throw new Error("This Host does not allow saving model configuration");
+                const previous = resources.primaryModel.target;
                 await resources.modelConfiguration.saveSelection(target);
                 rootSession.replaceConversation(
                     updateInitialHistoryModel(rootSession.history, target.model),
                     rootSession.compactState
                 );
-                setPrimaryModelState(target);
+                setPrimaryModelState(resources.primaryModel.target);
                 eventStore.updateTokenInfo(estimateRestoredTokenInfo(
                     rootSession.history,
                     resources.skills,
@@ -563,7 +564,9 @@ export function useTurnController({
                     resources.settings.context
                 ));
                 eventStore.appendNotice(
-                    `Switched to ${formatModelTarget(target)}.`
+                    previous.source === target.source && previous.model === target.model
+                        ? `Reasoning set to ${(resources.primaryModel.target.reasoning ?? "default")}.`
+                        : `Switched to ${formatModelTarget(target)}.`
                 );
                 void persistSnapshot();
             },

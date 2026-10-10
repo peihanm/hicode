@@ -35,6 +35,8 @@ export function AppForTest({
       Object.defineProperties(configured, {
         model: {get: () => resources.model, enumerable: true},
         provider: {get: () => resources.provider, enumerable: true},
+        reasoning: {get: () => resources.reasoning, enumerable: true},
+        fastReasoning: {get: () => resources.fastReasoning, enumerable: true},
         fastModel: {get: () => resources.fastModel, enumerable: true},
         fastProvider: {get: () => resources.fastProvider, enumerable: true},
       });

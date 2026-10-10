@@ -112,6 +112,8 @@ export function createSubagentFactories(
         const initialToolNames = runtime.getToolSchemas()
             .map((tool) => tool.function.name);
         const useFastModel = usesFastSubagentModel(definition);
+        const childReasoning = useFastModel ? parentContext.fastReasoning : parentContext.reasoning;
+        const childFastReasoning = parentContext.fastReasoning;
         const childModel = useFastModel ? parentContext.fastModel : parentContext.model;
         const runChildAgent = useFastModel ? dependencies.fastRunAgent : dependencies.primaryRunAgent;
         const childProvider = useFastModel ? parentContext.fastProvider : parentContext.provider;
@@ -217,6 +219,8 @@ export function createSubagentFactories(
                             fileCommits: parentContext.fileCommits,
                             agentMessaging: canMessageParent ? options.agentMessaging : undefined,
                             // Children gain edit authority only from their own actual reads.
+                            reasoning: childReasoning,
+                            fastReasoning: childFastReasoning,
                             model: childModel,
                             provider: childProvider,
                             fastModel: parentContext.fastModel,

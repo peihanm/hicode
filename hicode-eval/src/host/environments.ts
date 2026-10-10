@@ -55,10 +55,14 @@ export class EnvironmentStore {
   }
   private async verifyImage(layer:Layer){
     const image=await this.inspect(layer.imageId);
-    if(image.Config.Labels?.['dev.hicode.environment']!==layer.key)throw Error('Environment image identity changed');
+    if(image.Id!==layer.imageId||image.Config.Labels?.['dev.hicode.environment']!==layer.key)throw Error('Environment image identity changed');
   }
   private async available(layer:Layer){
-    return (await run(this.docker('image','ls','-a','--no-trunc','--quiet','--filter','label=dev.hicode.environment='+layer.key))).split('\n').includes(layer.imageId);
+    try{await this.verifyImage(layer);return true;}
+    catch(error){
+      if(error instanceof Error&&error.message.includes('Error response from daemon: No such image:'))return false;
+      throw error;
+    }
   }
   private async build(kind:Layer['kind'],parent:string,recipeSha256:string,stage:string,dockerfile:string){
     const key=digest(JSON.stringify({version:1,kind,parent,recipeSha256,dockerfile}));

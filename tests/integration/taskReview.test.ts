@@ -338,7 +338,7 @@ test("Qwen, Token Plan, DeepSeek and GLM disable thinking only for task reviews"
         try {
             for (const id of ["qwen", "qwen-token-plan", "deepseek", "glm"] as const) {
                 const call = createLLMCaller({id, label: "offline", apiKeyEnv: keyName, baseUrl: "https://offline.invalid/v1"});
-                const model = id.startsWith("qwen") ? "qwen3.8-flash" : id === "deepseek" ? "deepseek-v4.1-flash" : "glm-4.7";
+                const model = id.startsWith("qwen") ? "qwen3.8-flash" : id === "deepseek" ? "deepseek-v4.1-flash" : "glm-5.2";
                 const offset = requests.length;
                 for (const kind of ["task_review", "main"] as const) {
                     await call([{role: "user", origin: "user", content: "review"}], [], storage, cwd, model, kind);

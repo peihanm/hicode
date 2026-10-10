@@ -1,3 +1,4 @@
+import {validateReasoningEffort, type ReasoningPreference} from "../llm/reasoningPolicy.js";
 import {DEFAULT_LLM_PROVIDER, LLM_PROVIDER_NAMES, PROVIDER_BASE_URLS, type LLMProviderName,} from "../llm/providerRegistry.js";
 import {parsePermissionRule} from "../permissions/rules.js";
 import type {PermissionMode, PermissionRule, PermissionRules,} from "../permissions/types.js";
@@ -27,8 +28,9 @@ const DEFAULT_SOURCES: Record<LLMProviderName, ModelSourceSettings> = {
         label: "Zhipu GLM",
         apiKeyEnv: "GLM_API_KEY",
         models: [
+            {id: "glm-5.3", label: "GLM 5.3"},
+            {id: "glm-5.3-flash", label: "GLM 5.3 Flash"},
             {id: "glm-5.2", label: "GLM 5.2"},
-            {id: "glm-4.7", label: "GLM 4.7"},
         ],
     },
     qwen: {
@@ -111,6 +113,22 @@ export function resolveModelSources(
         }
     }
     return sources;
+}
+
+export function resolveReasoningPreferences(documents: readonly LoadedSettingsDocument[], sources: Record<LLMProviderName, ModelSourceSettings>): ReasoningPreference[] {
+    const preferences = new Map<string, ReasoningPreference>();
+    for (const document of documents) {
+        const seen = new Set<string>();
+        for (const preference of document.value.models?.reasoning ?? []) {
+            const key = `${preference.source}\0${preference.model}`;
+            if (seen.has(key)) throw new Error(`Duplicate reasoning preference for ${preference.source}/${preference.model}`);
+            seen.add(key);
+            if (!sources[preference.source].models.some(model => model.id === preference.model)) throw new Error(`Reasoning model ${preference.source}/${preference.model} is not configured`);
+            validateReasoningEffort(preference.source, preference.model, preference.effort);
+            preferences.set(key, {...preference});
+        }
+    }
+    return [...preferences.values()];
 }
 
 function resolveModelTarget(
@@ -204,6 +222,11 @@ export function resolveHiCodeSettings(
     cli: HiCodeSettingsOverrides = {}
 ): Pick<LoadedHiCodeSettings, "values" | "origins"> {
     const sources = resolveModelSources(documents);
+    const reasoning = resolveReasoningPreferences(documents, sources);
+    const target = (source: LLMProviderName, model: string, slot: "primary" | "fast" | "reviewer") => {
+        const effort = reasoning.find(item => item.source === source && item.model === model)?.effort;
+        return {...resolveModelTarget(sources, source, model, slot), ...(effort && effort !== "default" ? {reasoning: effort} : {})};
+    };
     let context = {...DEFAULT_CONTEXT_SETTINGS};
     let taskReviewEnabled = true;
     let reviewerTarget: {model: string; source: LLMProviderName} | undefined;
@@ -328,10 +351,11 @@ export function resolveHiCodeSettings(
             taskReview: {enabled: taskReviewEnabled},
             sources,
             models: {
-                ...(reviewerTarget ? {reviewer: resolveModelTarget(sources, reviewerTarget.source, reviewerTarget.model, "reviewer")} : {}),
-                primary: resolveModelTarget(sources, primarySource, primaryModel, "primary"),
+                reasoning,
+                ...(reviewerTarget ? {reviewer: target(reviewerTarget.source, reviewerTarget.model, "reviewer")} : {}),
+                primary: target(primarySource, primaryModel, "primary"),
                 ...(origins.fastModel !== "default" || origins.fastSource !== "default"
-                    ? {fast: resolveModelTarget(sources, fastSource, fastModel, "fast")} : {}),
+                    ? {fast: target(fastSource, fastModel, "fast")} : {}),
             },
             permissions: {
                 defaultMode: permissionMode,

@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import type {WebSources, WebFailures} from "./webFetch/state.js";
 import type {ChildTaskAccess} from "../tasks/childAccess.js";
 import type {TaskJoin} from "../tasks/taskJoin.js";
@@ -105,6 +106,8 @@ export interface ToolContext {
     instructions: ProjectInstructions;
 
     // Current model name for environment and context-window calculations.
+    reasoning?: ReasoningEffort;
+    fastReasoning?: ReasoningEffort;
     model: string;
 
     // Provider for the current main model, frozen per Turn; switching cannot alter an active Turn.

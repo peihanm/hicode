@@ -1,3 +1,4 @@
+import {reasoningCapability} from "../../../src/llm/reasoningPolicy.js";
 import { mkdir, appendFile, rename, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -6,7 +7,7 @@ import type {SweTask} from './sweTasks.js';
 import type {RegradeInput} from './regrade.js';
 import {taskAdapters} from './datasets.js';
 import { run, readJson, save, runEvidenceTree, exists } from './store.js';
-import type { Config, Run } from './types.js';
+import type { Batch, Config, Run } from './types.js';
 import {regradeResultSchema,runSchema,containerSchema} from './types.js';
 import type {Dataset} from './datasets.js';
 import { EVAL_ROOT } from '../paths.js';
@@ -114,7 +115,8 @@ export class LinuxMachine {
   }
   private async collect(id: string, path: string): Promise<void> {
     const stage = join(path, 'collecting'); await rm(stage, { recursive: true, force: true }); await mkdir(stage);
-    await run(this.docker('cp', this.containers.name(id) + ':/eval/runs/' + id + '/.', stage), { timeout: 60000 });
+    // Native build outputs can span several GiB; export has a separate bounded window.
+    await run(this.docker('cp', this.containers.name(id) + ':/eval/runs/' + id + '/.', stage), { timeout: 300000 });
     const files = await runEvidenceTree(stage);
     const previous = join(path, 'evidence.previous');
     // A prior interrupted rotation may have left both generations. The new stage
@@ -164,8 +166,8 @@ export class LinuxMachine {
     await this.collect(state.id, path);
     return { ...result, note: 'Recovered from verified durable evidence; no Agent or verifier rerun.' };
   }
-  async execute(state: Run, path: string, credential: string, onPhase: (phase: string) => Promise<void>): Promise<LinuxResult> {
-    const backend=this.backend(state.dataset);if(backend!==this)return backend.execute(state,path,credential,onPhase);
+  async execute(state: Run, path: string, credential: string, onPhase: (phase: string) => Promise<void>, model: Batch["model"]): Promise<LinuxResult> {
+    const backend=this.backend(state.dataset);if(backend!==this)return backend.execute(state,path,credential,onPhase,model);
     if (!this.release||!this.workerBundle) throw Error('Evaluation machine not initialized');
     const remote = '/eval/runs/' + state.id;
     const task = join(path, 'task', state.task);
@@ -189,7 +191,7 @@ export class LinuxMachine {
     await run(this.docker('exec',container,'mkdir','-p',remote+'/project'));
     await execution.stage({container,remote,runPath:path,docker:(...args)=>this.docker(...args)});
     await run(this.docker('cp', join(task, 'instruction.md'), container + ':' + remote + '/instruction.md'));
-    await save(join(path, 'job.json'), { model: this.config.model, network: state.network, release: this.release,
+    await save(join(path, 'job.json'), { model, reasoningPolicy: {...reasoningCapability(model.source, model.model), effort: model.reasoning?.effort ?? 'default'}, network: state.network, release: this.release,
       agentSeconds: state.budget.agentSeconds, originalAgentSeconds:execution.originalAgentSeconds,
       verifierSeconds:execution.verifierSeconds,...execution.job });
     await run(this.docker('cp', join(path, 'job.json'), container + ':' + remote + '/job.json'));
@@ -197,8 +199,8 @@ export class LinuxMachine {
     await mkdir(join(path, 'live'), { recursive: true });
     const env: Record<string, string> = {};
     for (const name of ['PATH', 'HOME', 'DOCKER_CONFIG', 'TMPDIR']) if (process.env[name]) env[name] = process.env[name];
-    env[this.config.model.apiKeyEnv] = credential;
-    proc = Bun.spawn(this.docker('exec', '--env', this.config.model.apiKeyEnv, container, execution.runnerPython, '/opt/hicode-eval/runner.py', state.id), { env, stdout: 'pipe', stderr: 'pipe' });
+    env[model.apiKeyEnv] = credential;
+    proc = Bun.spawn(this.docker('exec', '--env', model.apiKeyEnv, container, execution.runnerPython, '/opt/hicode-eval/runner.py', state.id), { env, stdout: 'pipe', stderr: 'pipe' });
     } catch(error){
       try {await save(join(path,'setup-failed.json'),{version:1,runId:state.id,runnerSpawned:false,error:String(error).replaceAll(credential,'[redacted]').slice(-2000)});}
       finally {await this.containers.remove(state.id);}

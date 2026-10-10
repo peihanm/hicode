@@ -109,7 +109,7 @@ printf '%s\n' '{"type":"result","execution":"completed","grading":"${uploadFailu
   try {
     const machine=new LinuxMachine(config);await machine.prepare();
     expect(calls).toEqual([]);
-    const executing=machine.execute(state,path,'fixture-secret',async()=>{});
+    const executing=machine.execute(state,path,'fixture-secret',async()=>{},config.model);
     if(finalFailure){
       try {await executing;throw Error('Expected evidence export failure');}
       catch(error){

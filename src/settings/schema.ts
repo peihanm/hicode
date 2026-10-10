@@ -1,3 +1,4 @@
+import {REASONING_EFFORTS} from "../llm/reasoningPolicy.js";
 import {z} from "zod";
 import {contextSettingsFileSchema} from "../context/config.js";
 import type {HiCodeSettingsFile} from "./types.js";
@@ -38,6 +39,14 @@ function settingsSchema(strict: boolean): z.ZodType<HiCodeSettingsFile> {
         context: contextSettingsFileSchema.optional(),
         sources: object(Object.fromEntries(LLM_PROVIDER_NAMES.map(name => [name, source.optional()]))).optional(),
         models: object({
+            reasoning: z.array(z.object({source: configuredLLMProviderSchema, model: z.string().trim().min(1).max(200), effort: z.enum(REASONING_EFFORTS)}).strict()).max(500).superRefine((items, ctx) => {
+                const seen = new Set<string>();
+                items.forEach((item, index) => {
+                    const key = `${item.source}\0${item.model}`;
+                    if (seen.has(key)) ctx.addIssue({code: z.ZodIssueCode.custom, path: [index], message: "Duplicate reasoning preference"});
+                    seen.add(key);
+                });
+            }).optional(),
             reviewer: z.object({model: z.string().trim().min(1), source: configuredLLMProviderSchema}).strict().optional(),
             primary: target.optional(), fast: target.optional(),
         }).optional(),

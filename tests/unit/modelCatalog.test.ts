@@ -32,16 +32,9 @@ describe("primary model catalog", () => {
         });
 
         expect(models).toEqual([
-            {
-                source: "glm",
-                model: "glm-5.2",
-                label: "GLM 5.2",
-            },
-            {
-                source: "glm",
-                model: "glm-4.7",
-                label: "GLM 4.7",
-            },
+            {source: "glm", model: "glm-5.3", label: "GLM 5.3"},
+            {source: "glm", model: "glm-5.3-flash", label: "GLM 5.3 Flash"},
+            {source: "glm", model: "glm-5.2", label: "GLM 5.2"},
             {
                 source: "qwen",
                 model: "qwen3.8-flash",

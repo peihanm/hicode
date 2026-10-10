@@ -25,7 +25,7 @@ export function createImageAccess(input: {
             const ref = readArchiveMessages(record, blocks).flatMap(message => imageReferences(message.content)).find(ref => ref.imageId === imageId);
             if (ref) return ref;
         }
-        throw new Error("Image ID is not reachable in the current session/resumed branch");
+        throw new Error("Image ID is not reachable in the current session/resumed branch. Copy the complete image- ID from an image result in this branch, or call view_image with the original local image file's path instead of image_id. Reopening a path reads the current file, not the stored snapshot.");
     };
     function authorized(reference: ImageReference): ImageReference {
         const allowed = find(reference.imageId);

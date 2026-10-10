@@ -38,8 +38,11 @@
 - 已登记题的环境可通过 prepare-environments --live 交给 worker 后台准备，其他题的执行继续；活动或待恢复题不得重建。原题和声明先离线审定，准备期间不运行清理，不提交正在构建的题。退出 worker 时等待准备收尾。
 - serve 只读原子记录并转交控制请求，不初始化执行资源。8878 是默认网页端口，8879 是默认 worker 端口。重启网页不停止跑题。
 - 完成定义必须同时满足执行 completed、原判题 passed 和收集 complete。错误、超时、取消不伪装成通过。启动前取消没有判题结论。
-- 每题使用独立容器、网络和可写 Home。作答进程只能通过本题模型网关访问接口；隐藏验收材料在确认 Agent 停止后物化。权限、收尾或证据不明时保留现场并停止新调度。
+- 每题使用独立容器、网络和可写 Home。作答进程只能通过本题模型网关访问接口；隐藏验收材料在确认 Agent 执行封锁或停止后物化。权限、收尾或证据不明时保留现场并停止新调度。
+- 正常完成的服务题必须先确认 `--single-task` 已封锁执行（持久化成功、工具回执完整、无运行或待消费子 Agent），并关闭模型网关；保留 HiCode Runtime 及其托管 Shell 服务，让私有 verifier 在独立文件／PID 视图中访问本题服务。判题完成、取消或失败后再关闭 Runtime、服务 namespace 和容器。未确认封锁不得暴露隐藏测试；超时／作答失败仍走原有停止确认，不保证服务存活。不能通过关闭全局 Task 清理或自行 daemonize 来替代此交接。
 - 默认允许联网，数据集适配器按原题许可逐题收窄；Terminal-Bench 2.1 只有冻结 task.toml 的 environment.allow_internet=true 才开放，false／缺失则隔离，DeepSWE 始终隔离。settings 和批次 network=isolated 可进一步禁网，open 不能覆盖原题限制。同批允许混合模式，实际模式写入各 Run，retry 沿用原模式。服务题联网时共享本题独立容器的网络，禁网时保留私有无外网 namespace；两者均保留文件、进程、隐藏判题隔离和本题模型网关，真实 Key 不进入作答环境。修改默认配置只在空闲 worker 停止后持 service lease 原子保存，再恢复服务；不改变已有 Run。
+
+模型强度随连接声明保存在 `state/settings.json` 的 `model.reasoning.effort`。init 可从 HiCode 当前 Settings 导入；submit 顶层 `reasoning: {effort: "max"}` 覆盖本批，省略沿用服务默认，`default` 保留厂商默认参数省略语义。批次冻结完整模型选择，manifest/job/Actor/模型网关均使用原值；retry 沿用原强度，regrade 不调用模型。不得给旧记录推填强度，实际字段查请求日志。GLM 5.3/5.3 Flash 强制思考，网关不接受 off，审定复盘使用 low；其他已支持关闭的型号继续使用 off。更新源码只在空闲时更新 payload 与重启 worker，不需重建题目依赖镜像。
 
 ## 镜像的实际存放位置
 
@@ -50,6 +53,7 @@
 - 通过题专用镜像可删除，使用明确 imageId 和本系统标签，不能强制删除冲突镜像或误删外部标签。Docker 不可达必须保留待处理状态。
 - 所有任务结束且没有 needs_recovery 后，worker 自动执行资源收尾。人工 gc 默认预览，`--apply` 才删除。
 - BuildKit 清理仅在 `gc --apply --build-cache` 时执行，保留默认 8 GB，只清理超过 7 天的缓存；不能为了空间不足放宽执行隔离。
+- 扩容只用 Colima 官方命令，在无活动评测、构建及容器执行时调整指定 profile；不直接改虚拟盘文件，不切换默认 Docker context，不停止其他项目的虚拟机。
 - Docker 内释放空间不保证 Mac 文件立即缩小。服务空闲时可对审定 Colima 数据盘执行 fstrim，再分别测 Linux df 和宿主 du；不要通过重建空盘掩盖实际占用。
 
 ## 日志归档与备份

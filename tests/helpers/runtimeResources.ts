@@ -130,7 +130,7 @@ export function createTestRuntimeResources(
   const primaryModel = overrides.primaryModel ?? createPrimaryModelRuntime(
     settings.models.primary,
     settings.sources,
-    [settings.models.primary]
+    [settings.models.primary], settings.models.reasoning
   );
   const defaultCatalog = createSubagentCatalog({
     load: async () => ({definitions: [], issues: []}),
@@ -240,6 +240,8 @@ export function createTestRuntimeResources(
   Object.defineProperties(result, {
     model: {get: () => primaryModel.target.model, enumerable: true},
     provider: {get: () => primaryModel.target.source, enumerable: true},
+    reasoning: {get: () => primaryModel.target.reasoning, enumerable: true},
+    fastReasoning: {get: () => {const target = settings.models.fast ?? primaryModel.target; return primaryModel.reasoningFor(target.source, target.model);}, enumerable: true},
     fastModel: {get: () => (settings.models.fast ?? primaryModel.target).model, enumerable: true},
     fastProvider: {get: () => (settings.models.fast ?? primaryModel.target).source, enumerable: true},
   });

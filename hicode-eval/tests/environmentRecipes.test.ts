@@ -10,11 +10,13 @@ import * as transport from '../src/host/store.js';
 test('clean base builds from explicit files and pinned images, never from a live machine',async()=>{
   const root=await realpath(await mkdtemp(join(tmpdir(),'hicode-clean-recipe-')));
   const calls:string[][]=[];let key='',builds=0;
+  let availability:'available'|'missing'|'unreachable'|'changed'='available';
   const id='sha256:'+'a'.repeat(64);
   const fake=spyOn(transport,'run').mockImplementation(async argv=>{
     calls.push(argv);
     if(argv.includes('build')){
       builds++;
+      availability='available';
       const dockerfile=await readFile(join(argv.at(-1)!,'Dockerfile'),'utf8');
       key=dockerfile.match(/dev.hicode.environment="([a-f0-9]+)"/)![1]!;
       expect(dockerfile).toContain('COPY package.json bun.lock /opt/hicode/');
@@ -22,8 +24,13 @@ test('clean base builds from explicit files and pinned images, never from a live
       expect(dockerfile).not.toContain('{{');
       return 'built';
     }
-    if(argv.includes('inspect'))return JSON.stringify([{Id:id,Config:{Labels:key?{'dev.hicode.environment':key}:{}}}]);
-    if(argv.includes('ls')&&argv.some(value=>value.startsWith('label=')))return key?id:'';
+    if(argv.includes('inspect')){
+      if(argv.at(-1)===id){
+        if(availability==='missing')throw Error('Error response from daemon: No such image: '+id);
+        if(availability==='unreachable')throw Error('Cannot connect to the Docker daemon');
+      }
+      return JSON.stringify([{Id:id,Config:{Labels:key?{'dev.hicode.environment':argv.at(-1)===id&&availability==='changed'?'f'.repeat(64):key}:{}}}]);
+    }
     return '';
   });
   try{
@@ -34,6 +41,11 @@ test('clean base builds from explicit files and pinned images, never from a live
     const first=await store.prepareBase(),second=await store.prepareBase();
     expect(first.version).toBe(1);expect(second).toEqual(first);expect(builds).toBe(1);
     expect(calls.some(argv=>argv.includes('exec')||argv.includes('cp'))).toBe(false);
+    availability='unreachable';await expect(store.prepareBase()).rejects.toThrow('Cannot connect');
+    availability='changed';await expect(store.prepareBase()).rejects.toThrow('identity changed');
+    expect(builds).toBe(1);
+    availability='missing';await store.prepareBase();expect(builds).toBe(2);
+    expect(calls.some(argv=>argv.some(value=>value.startsWith('label=')))).toBe(false);
   }finally{fake.mockRestore();await rm(root,{recursive:true,force:true});}
 });
 

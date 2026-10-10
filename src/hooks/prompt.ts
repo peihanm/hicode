@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {randomUUID} from "node:crypto";
 import {finishPromptLogRun} from "../llm/promptLog.js";
 import type {LLMTrace} from "../llm/types.js";
@@ -87,6 +88,7 @@ export function createHookPromptExecutorFactory(
     return function createConfiguredHookPromptExecutor(options: {
         storage: HiCodeStorageLayout;
         cwd: string;
+        reasoning?: ReasoningEffort;
         model: string;
     }): HookPromptExecutor {
         return {
@@ -116,7 +118,7 @@ export function createHookPromptExecutorFactory(
                         options.cwd,
                         options.model,
                         "hook",
-                        controller.signal, undefined, undefined, undefined, trace
+                        controller.signal, undefined, undefined, undefined, trace, options.reasoning
                     );
                     const text = result.message.role === "assistant"
                         ? result.message.content?.trim()
@@ -168,6 +170,7 @@ export function createHookPromptExecutor(options: {
     storage: HiCodeStorageLayout;
     source: LLMSourceConnection;
     cwd: string;
+    reasoning?: ReasoningEffort;
     model: string;
 }): HookPromptExecutor {
     return createHookPromptExecutorFactory({

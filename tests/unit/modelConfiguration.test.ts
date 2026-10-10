@@ -228,3 +228,62 @@ test("all Qwen entries can be removed once the saved main model uses another pro
         expect(runtime.target).toEqual(target);
     });
 });
+
+test("reasoning persists per source/model; switching restores it and local default overrides user max", async () => {
+    const keys = ["DASHSCOPE_API_KEY", "QWEN_TOKEN_PLAN_API_KEY"] as const;
+    const previous = keys.map(key => process.env[key]);
+    try {
+        await withTempProject(async (cwd, storage) => {
+            const {runtime, config} = setup(storage, cwd);
+            await config.saveKey("qwen", "ordinary-fixture");
+            await config.saveKey("qwen-token-plan", "plan-fixture");
+            const ordinary = runtime.available.find(item => item.source === "qwen" && item.model === "qwen3.8-flash")!;
+            const plan = runtime.available.find(item => item.source === "qwen-token-plan" && item.model === "deepseek-v4.1-flash")!;
+            await config.saveSelection({...ordinary, reasoning: "medium"});
+            await config.saveSelection({...plan, reasoning: "max"});
+            await config.saveSelection(runtime.available.find(item => item.source === ordinary.source && item.model === ordinary.model)!);
+            expect(runtime.target.reasoning).toBe("medium");
+            const loaded = loadHiCodeSettings({cwd, storage});
+            expect(loaded.values.models.primary.reasoning).toBe("medium");
+            expect(loaded.values.models.reasoning).toEqual(expect.arrayContaining([
+                {source: ordinary.source, model: ordinary.model, effort: "medium"},
+                {source: plan.source, model: plan.model, effort: "max"},
+            ]));
+            const before = await readFile(join(storage.hicodeHome, "settings.json"), "utf8");
+            await expect(config.saveSelection({...ordinary, reasoning: "high"})).rejects.toThrow("not supported");
+            expect(await readFile(join(storage.hicodeHome, "settings.json"), "utf8")).toBe(before);
+            await mkdir(join(cwd, ".hicode"), {recursive: true});
+            await writeFile(join(cwd, ".hicode", "settings.json"), JSON.stringify({models: {reasoning: [{source: plan.source, model: plan.model, effort: "max"}]}}));
+            await config.saveSelection({...plan, reasoning: "default"});
+            expect(loadHiCodeSettings({cwd, storage}).values.models.reasoning?.find(item => item.source === plan.source && item.model === plan.model)?.effort).toBe("default");
+            expect(runtime.target.reasoning).toBeUndefined();
+            expect(JSON.parse(await readFile(join(cwd, ".hicode", "settings.local.json"), "utf8")).models.reasoning).toEqual([{source: plan.source, model: plan.model, effort: "default"}]);
+        });
+    } finally {
+        keys.forEach((key, index) => {if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index];});
+    }
+});
+
+
+test("GLM saves independent native choices per model and restores them after reload", async () => {
+    const previous = process.env.GLM_API_KEY;
+    try {
+        await withTempProject(async (cwd, storage) => {
+            const {runtime, config} = setup(storage, cwd);
+            await config.saveKey("glm", "glm-fixture");
+            const main = runtime.available.find(item => item.source === "glm" && item.model === "glm-5.2")!;
+            const earlier = runtime.available.find(item => item.source === "glm" && item.model === "glm-5.3-flash")!;
+            await config.saveSelection({...main, reasoning: "max"});
+            await config.saveSelection({...earlier, reasoning: "low"});
+            await config.saveSelection(runtime.available.find(item => item.source === "glm" && item.model === "glm-5.2")!);
+            expect(runtime.target.reasoning).toBe("max");
+            const loaded = loadHiCodeSettings({cwd, storage});
+            expect(loaded.values.models.primary.reasoning).toBe("max");
+            expect(loaded.values.models.reasoning).toEqual(expect.arrayContaining([
+                {source: "glm", model: "glm-5.2", effort: "max"},
+                {source: "glm", model: "glm-5.3-flash", effort: "low"},
+            ]));
+            await expect(config.saveSelection({...earlier, reasoning: "off"})).rejects.toThrow("not supported");
+        });
+    } finally {if (previous === undefined) delete process.env.GLM_API_KEY; else process.env.GLM_API_KEY = previous;}
+});

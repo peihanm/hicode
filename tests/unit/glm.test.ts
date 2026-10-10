@@ -536,7 +536,7 @@ describe("GLM cancellation", () => {
     });
   });
 
-  test("GLM-4.7 保留 thinking 与工具流", async () => {
+  test("GLM-5.3 保留 thinking 与工具流", async () => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
       let requestBody: Record<string, unknown> = {};
@@ -562,7 +562,7 @@ describe("GLM cancellation", () => {
         messages: [{ role: "user", origin: "user" as const, content: "hello" }],
         tools: [],
         cwd,
-        model: "glm-4.7",
+        model: "glm-5.3",
         kind: "main",
       });
 
@@ -649,7 +649,7 @@ describe("GLM cancellation", () => {
     });
   });
 
-  test("连续两次输出停滞后第三次关闭深度推理", async () => {
+  test.each([["glm-5.2", undefined], ["glm-5.2", "high"], ["glm-5.2", "max"], ["glm-5.3", undefined], ["glm-5.3", "max"], ["glm-5.3-flash", undefined]] as const)("停滞重试遵循型号能力与固定档位：%s / %s", async (model, reasoning) => {
     await withTempProject(async (cwd) => {
       process.env.GLM_API_KEY = "test-token";
       const encoder = new TextEncoder();
@@ -674,7 +674,7 @@ describe("GLM cancellation", () => {
                 }
                 controller.enqueue(
                   encoder.encode(
-                    `data: ${JSON.stringify({ choices: [{ delta: { content: "降级成功" }, finish_reason: "stop" }] })}\n\n`
+                    `data: ${JSON.stringify({ choices: [{ delta: { content: "恢复成功" }, finish_reason: "stop" }] })}\n\n`
                   )
                 );
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -695,16 +695,17 @@ describe("GLM cancellation", () => {
         messages: [{ role: "user", origin: "user" as const, content: "degrade after two stalls" }],
         tools: [],
         cwd,
-        model: "glm-5.2",
+        model,
+        reasoning,
         kind: "main",
       });
 
       expect(fetchCalls).toBe(3);
       expect(requestBodies[0]?.thinking).toEqual({ type: "enabled" });
       expect(requestBodies[1]?.thinking).toEqual({ type: "enabled" });
-      expect(requestBodies[2]?.thinking).toEqual({ type: "disabled" });
-      expect(requestBodies[2]?.reasoning_effort).toBeUndefined();
-      expect(result.message.content).toBe("降级成功");
+      expect(requestBodies[2]?.thinking).toEqual({ type: reasoning === undefined && model === "glm-5.2" ? "disabled" : "enabled" });
+      for (const body of requestBodies) expect(body.reasoning_effort).toBe(reasoning);
+      expect(result.message.content).toBe("恢复成功");
     });
   });
 

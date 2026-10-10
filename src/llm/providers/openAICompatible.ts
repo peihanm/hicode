@@ -173,6 +173,12 @@ function toChatCompletionsUrl(baseUrl: string): string {
         : `${normalized}/chat/completions`;
 }
 
+function requestReasoningPolicy(options: LLMCallOptions, request: ChatCompletionsRequest) {
+    const thinking = request.thinking;
+    const disabled = request.enable_thinking === false || (thinking !== null && typeof thinking === "object" && "type" in thinking && thinking.type === "disabled");
+    return {requested: options.reasoning ?? "default", effective: disabled ? "off" : typeof request.reasoning_effort === "string" ? request.reasoning_effort : options.reasoning ?? "default"};
+}
+
 function createRequestBody(
     options: LLMCallOptions,
     requestFields: Record<string, unknown> | undefined,
@@ -344,7 +350,7 @@ async function callOpenAICompatibleCore(
             options.cwd,
             options.kind,
             options.model,
-            {...requestBody, messages: [...providerMessages.map(projectMessageForWire), ...recoveryMessage], ...(hasImages ? {imagesSubmitted: true} : {})},
+            {...requestBody, reasoningPolicy: requestReasoningPolicy(options, requestBody), messages: [...providerMessages.map(projectMessageForWire), ...recoveryMessage], ...(hasImages ? {imagesSubmitted: true} : {})},
             [endpoint.apiKey], options.trace, attempt
         );
         let lastStreamProgress: LLMStreamProgress | undefined;

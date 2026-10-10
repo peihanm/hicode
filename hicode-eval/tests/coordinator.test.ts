@@ -94,3 +94,35 @@ test('worker preparation returns immediately, lets other tasks finish, and block
   const progress=JSON.parse(await Bun.file(join(f.layout.state,'preparation.json')).text());expect(progress.running).toBe(false);expect(progress.ready).toEqual(['terminal-bench-2.1:candidate']);
  }finally{finishBuild();finishExecution();worker?.stop(true);await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();build.mockRestore();execute.mockRestore();dispose.mockRestore();boundary.mockRestore();await f.cleanup();}
 });
+
+test('reasoning is frozen through batch, execution manifest and retry even after the service default changes',async()=>{
+ const f=await fixture(),task=await seed(f,'reasoning'),second=await seed(f,'default-choice','d');
+ f.config.model={...f.config.model,source:'qwen-token-plan',model:'deepseek-v4.1-flash',reasoning:{effort:'high'}};
+ const lab=new Lab(f.config,'offline-secret');let restarted:Lab|undefined;await save(join(f.layout.payload,'manifest.json'),{});
+ const metadata=publicTaskProfile({reasoning:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'reasoning');
+ const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata);
+ const resolve=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(task.binding);
+ const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
+ const efforts:string[]=[];
+ const execute=spyOn(LinuxMachine.prototype,'execute').mockImplementation(async(_state,path,_key,phase,model)=>{
+  const manifest=await readJson(join(path,'manifest.json'),batchSchema.pick({model:true}).passthrough());
+  expect(manifest.model).toEqual(model);efforts.push(model.reasoning!.effort);
+  await phase('Running HiCode');return {type:'result',execution:'completed',grading:'failed',uid:20000};
+ });
+ const dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockImplementation(async id=>{await save(join(f.layout.run(id),'container-disposed.json'),{version:1,runId:id,at:new Date().toISOString()});});
+ const boundary=spyOn(transport,'run').mockResolvedValue(task.binding.base.imageId+'\n'+task.binding.dependencies.imageId+'\n'+second.binding.dependencies.imageId);
+ try{
+  await lab.init();
+  await expect(lab.submit({name:'invalid',concurrency:1,reasoning:{effort:'medium'},tasks:[{dataset:task.dataset,id:task.id}]})).rejects.toThrow('not supported');
+  expect(lab.batches.size).toBe(0);
+  const batch=await lab.submit({name:'explicit',concurrency:1,reasoning:{effort:'max'},tasks:[{dataset:task.dataset,id:task.id}]});await settled(lab);
+  expect(batch.model.reasoning).toEqual({effort:'max'});
+  await lab.close();f.config.model.reasoning={effort:'low'};
+  restarted=new Lab(f.config,'offline-secret');await restarted.init();
+  const retried=await restarted.retry(batch.runIds[0]!);await settled(restarted);
+  expect(retried.model.reasoning).toEqual({effort:'max'});
+  const next=await restarted.submit({name:'default',concurrency:1,tasks:[{dataset:second.dataset,id:second.id}]});await settled(restarted);
+  expect(next.model.reasoning).toEqual({effort:'low'});
+  expect(efforts).toEqual(['max','max','low']);
+ }finally{await restarted?.close();await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();execute.mockRestore();dispose.mockRestore();boundary.mockRestore();await f.cleanup();}
+});

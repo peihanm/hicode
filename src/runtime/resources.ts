@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {createModelConfiguration, type ModelConfiguration} from "../settings/modelConfiguration.js";
 import {acquireProjectActivity} from "../persistence/projectState.js";
 import {loadHiCodeSettings} from "../settings/index.js";
@@ -51,6 +52,8 @@ export interface RootRuntimeResources {
     readonly workspaceBoundary: string;
     readonly model: string;
     readonly provider: ResolvedHiCodeSettings["models"]["primary"]["source"];
+    readonly reasoning?: ReasoningEffort;
+    readonly fastReasoning?: ReasoningEffort;
     readonly fastModel: string;
     readonly fastProvider: ResolvedHiCodeSettings["models"]["primary"]["source"];
     readonly primaryModel: PrimaryModelRuntime;
@@ -228,7 +231,7 @@ export function createRootRuntimeResourcesFactory(
             const shellRunner = createShellRunner(sandbox, childEnvironment);
             const primaryModel = createPrimaryModelRuntime(
                 settings.models.primary,
-                settings.sources
+                settings.sources, undefined, settings.models.reasoning
             );
             const gitWorkspace = createGitWorkspaceRuntime(
                 cwd,
@@ -277,7 +280,7 @@ export function createRootRuntimeResourcesFactory(
                 promptExecutor: {execute(input) {
                     const target = settings.models.fast ?? primaryModel.target;
                     return createHookPromptExecutor({storage, cwd, model: target.model,
-                        source: primaryModel.sources[target.source]}).execute(input);
+                        reasoning: primaryModel.reasoningFor(target.source, target.model), source: primaryModel.sources[target.source]}).execute(input);
                 }},
                 requestTrust: options.requestHookTrust,
             });
@@ -385,6 +388,8 @@ export function createRootRuntimeResourcesFactory(
                 get provider() {
                     return primaryModel.target.source;
                 },
+                get reasoning() {return primaryModel.target.reasoning;},
+                get fastReasoning() {const target = settings.models.fast ?? primaryModel.target; return primaryModel.reasoningFor(target.source, target.model);},
                 get fastModel() {return (settings.models.fast ?? primaryModel.target).model;},
                 get fastProvider() {return (settings.models.fast ?? primaryModel.target).source;},
                 primaryModel,

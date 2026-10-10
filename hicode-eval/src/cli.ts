@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import {loadHiCodeSettings} from '../../src/settings/index.js';
+import {createHiCodeStorageLayout} from '../../src/persistence/index.js';
+import {PROVIDER_BASE_URLS} from '../../src/llm/providerRegistry.js';
 import {parseArgs} from 'node:util';
 import {join,resolve,dirname} from 'node:path';
 import {readdir,cp,rm,copyFile,mkdir,realpath,mkdtemp,rename} from 'node:fs/promises';
@@ -35,8 +38,13 @@ async function main(){
   const required=(name:'tasks'|'file'|'dataset'|'run'|'batch')=>{const value=v[name];if(!value)throw Error('Missing --'+name);return value;};
   const port=z.coerce.number().int().min(1024).max(65535).parse(v.port),workerPort=z.coerce.number().int().min(1024).max(65535).parse(v['worker-port']);
   if(command==='init'){
+    const model=v['model-config']?await readJson(resolve(v['model-config']),modelSchema):(() => {
+      const loaded=loadHiCodeSettings({cwd:process.cwd(),storage:createHiCodeStorageLayout()});
+      const target=loaded.values.models.primary,source=loaded.values.sources[target.source];
+      return modelSchema.parse({source:target.source,model:target.model,apiKeyEnv:source.apiKeyEnv,baseUrl:source.baseUrl??PROVIDER_BASE_URLS[target.source],
+        imageInput:source.models.find(model=>model.id===target.model)?.imageInput===true,reasoning:{effort:target.reasoning??'default'}});
+    })();
     if(!await layout.initialize())throw Error('Root already initialized');
-    const model=v['model-config']?await readJson(resolve(v['model-config']),modelSchema):modelSchema.parse({source:'qwen',model:'qwen3.8-flash',apiKeyEnv:'DASHSCOPE_API_KEY',baseUrl:'https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',imageInput:true});
     await save(layout.settings,settingsSchema.parse({version:1,context:'colima-hicode',machine:'hicode-eval-runtime',concurrency:5,cpus:1,memoryMb:4096,budget:{agentSeconds:1800},model}));
     await save(layout.catalog,{version:1,updatedAt:new Date().toISOString(),tasks:[]});
     await copyFile(join(EVAL_ROOT,'templates/data-README.md'),join(layout.root,'README.md'));console.log(JSON.stringify({root:layout.root,initialized:true}));return;

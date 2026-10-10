@@ -92,7 +92,7 @@ def tmux(*args,**kwargs):return command(['tmux','-S',socket,*args],**kwargs)
 def stop_user():
     stop_task_processes(uid)
 
-terminal_started=False;cli_fd=None;shutdown_attempted=False;agent_failed=False;gateway=None
+terminal_started=False;cli_fd=None;shutdown_attempted=False;shutdown_receipt=None;agent_failed=False;gateway=None
 model=config['model'];release=config['release'];status='failed';grade='unavailable';events=Events();offset=0
 
 def drain_events():
@@ -106,8 +106,9 @@ def drain_events():
     return False
 
 def shutdown_cli():
-    global shutdown_attempted
-    if shutdown_attempted or cli_fd is None:return
+    global shutdown_attempted,shutdown_receipt
+    if shutdown_attempted:return shutdown_receipt
+    if cli_fd is None:return None
     shutdown_attempted=True
     emit('phase',phase='Stopping HiCode: '+status)
     started=time.monotonic();exited=False;error=None
@@ -116,6 +117,7 @@ def shutdown_cli():
     receipt={'version':1,'reason':status,'graceSeconds':10,'elapsedSeconds':round(time.monotonic()-started,3),
         'cliExited':exited,'turnSaved':events.ending is not None and events.ending.get('persistence_status')=='saved',
         'pendingToolCallIds':sorted(events.pending_tools),'eventStreamComplete':not bool(events.partial.strip()),'error':error}
+    shutdown_receipt=receipt
     atomic_json(root/'shutdown.json',receipt)
     if error or not exited:emit('error',message='Graceful shutdown incomplete; forcing task cleanup. '+(error or 'CLI did not exit within 10 seconds.'))
     elif events.started and (not receipt['turnSaved'] or receipt['pendingToolCallIds'] or not receipt['eventStreamComplete']):
@@ -128,6 +130,8 @@ try:
     atomic_json(root/'job.json',config)
     emit('phase',phase='Deploying task in its isolated container')
     settings={'sources':{model['source']:{'baseUrl':model['baseUrl'],'apiKeyEnv':model['apiKeyEnv'],'models':[{'id':model['model'],'label':model['model'],'imageInput':model.get('imageInput',False)}]}},'models':{'primary':{'source':model['source'],'model':model['model']}},'memory':{'enabled':False},'permissions':{'defaultMode':config['permissionMode'],'deny':[f'{t}({p}/**)' for t in ['write_file','edit_file'] for p in [str(logs),str(actor_events),str(control)]]},'sandbox':{'network':{'mode':'open'},'filesystem':{'denyWrite':[str(logs),str(actor_events),str(control)]}}}
+    if model.get('reasoning') is not None:
+        settings['models']['reasoning']=[{'source':model['source'],'model':model['model'],'effort':model['reasoning']['effort']}]
     if network=='isolated':settings['permissions']['deny'].append('web_fetch')
     conf=home/'.hicode';conf.mkdir(exist_ok=True);atomic_json(conf/'settings.json',settings)
     subprocess.run(['chown','-R',f'{uid}:{account.pw_gid}',str(home)],check=True)
@@ -137,7 +141,7 @@ try:
     if network=='isolated':
         # Check the actual actor namespace before consuming model tokens. There is no open fallback.
         command(namespace(['python3','-c',"import socket; assert [n for _,n in socket.if_nameindex()] == ['lo']"],actor=True),timeout=15)
-    gateway=Gateway(control/'model.sock',model['baseUrl'],model['model'],os.environ[model['apiKeyEnv']])
+    gateway=Gateway(control/'model.sock',model['baseUrl'],model['model'],os.environ[model['apiKeyEnv']],config['reasoningPolicy'])
     os.chown(control/'model.sock',uid,account.pw_gid)
     if service_declaration is not None:
         owner=ServiceNamespace(root,uid,service_declaration,network=network)
@@ -214,14 +218,19 @@ try:
         except (OSError,RuntimeError,ValueError,subprocess.TimeoutExpired) as error:
             emit('error',message='Final terminal capture failed: '+str(error)[-1000:])
     if status in ['completed','timeout'] or agent_failed:
-        # Stop all assignment processes before exposing the original verifier.
+        # A completed single-task turn is sealed, but its Runtime still owns
+        # live Shell services. Keep that owner until the private verifier ends.
         if service is not None:
-            receipt=shutdown_cli()
-            if receipt is None or not receipt['cliExited'] or receipt['error'] or receipt['pendingToolCallIds'] or not receipt['eventStreamComplete']:
-                raise RuntimeError('Service handoff requires confirmed Agent shutdown')
-            tmux('kill-server')
-        else:stop_user()
-        terminal_started=False
+            if status=='completed':
+                drain_events()
+                if not events.complete() or events.settled['reason']!='completed':
+                    raise RuntimeError('Service handoff requires sealed Agent execution')
+            else:
+                receipt=shutdown_cli()
+                if receipt is None or not receipt['cliExited'] or receipt['error'] or receipt['pendingToolCallIds'] or not receipt['eventStreamComplete']:
+                    raise RuntimeError('Service handoff requires confirmed Agent shutdown')
+                tmux('kill-server');terminal_started=False
+        else:stop_user();terminal_started=False
         if gateway:gateway.close();gateway=None
         emit('phase',phase='Awaiting local verification')
         # Host uploads checks only after the assignment is sealed.
@@ -250,7 +259,7 @@ except BaseException as error:
 finally:
     try:
         try:
-            if terminal_started and status!='completed':shutdown_cli()
+            if terminal_started:shutdown_cli()
         except (OSError,RuntimeError,ValueError) as error:
             emit('error',message='Could not finish graceful shutdown: '+str(error)[-1000:])
         # Keep the final cancellation frame, independently of live sampling.

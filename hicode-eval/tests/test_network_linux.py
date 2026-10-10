@@ -52,7 +52,7 @@ code="const r=await fetch(process.argv[1]+'/chat/completions',{method:'POST',hea
 subprocess.run(['bun','-e',code,target.geturl()],check=True,timeout=5)
 print('ISOLATED_OK' if isolated else 'OPEN_OK')
 ''');os.chown(actor,65534,65534)
-                gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture')
+                gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture',{'effort':'default'})
                 try:
                     if gateway:os.chown(control/'model.sock',65534,65534)
                     args=['python3',str(actor),str(settings),str(provider.server_port),str(isolated)]

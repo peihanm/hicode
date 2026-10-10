@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../../llm/reasoningPolicy.js";
 import {createLLMCaller} from "../../llm/index.js";
 import type {LLMCaller} from "../../llm/types.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
@@ -22,12 +23,14 @@ export function createAgentDefinitionGenerator(
         storage,
         cwd,
         model,
+        reasoning,
         instructions,
         availableToolNames,
         getExistingAgentNames,
     }: {
         storage: HiCodeStorageLayout;
         cwd: string;
+        reasoning?: ReasoningEffort;
         model: string;
         instructions: ProjectInstructions;
         availableToolNames: readonly string[];
@@ -54,7 +57,7 @@ export function createAgentDefinitionGenerator(
                     cwd,
                     model,
                     "agent_authoring",
-                    signal
+                    signal, undefined, undefined, undefined, undefined, reasoning
                 );
                 const text = result.message.role === "assistant"
                     ? result.message.content?.trim()
@@ -118,6 +121,7 @@ export function createAgentAuthoringRuntime(options: {
                 storage: options.storage,
                 cwd: options.cwd,
                 model: target.model,
+                reasoning: target.reasoning,
                 instructions: options.instructions,
                 availableToolNames: options.availableToolNames,
                 getExistingAgentNames: options.getExistingAgentNames,

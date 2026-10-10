@@ -51,7 +51,7 @@ class ModelProxyTest(unittest.TestCase):
         self.upstream.shutdown();self.upstream.server_close();self.thread.join();self.tmp.cleanup()
 
     def start(self, path='/fixed/v1'):
-        self.gateway = Gateway(self.path, f'http://127.0.0.1:{self.upstream.server_port}'+path, 'fixture', 'server-secret')
+        self.gateway = Gateway(self.path, f'http://127.0.0.1:{self.upstream.server_port}'+path, 'fixture', 'server-secret', {'effort':'default'})
 
     def body(self, **kwargs):
         return json.dumps({'model':'fixture','stream':True,'messages':[{'role':'user','content':'test'}],**kwargs}).encode()
@@ -110,6 +110,39 @@ class ModelProxyTest(unittest.TestCase):
         response.close();client.close()
         self.assertTrue(self.disconnected.wait(2))
 
+    def test_frozen_reasoning_allows_auxiliary_off_but_rejects_changed_or_conflicting_levels(self):
+        policy={'switch':'enable_thinking','efforts':['default','off','low','high','max'],'effort':'max','reviewEffort':'off'}
+        value=validate_request(self.body(enable_thinking=True,reasoning_effort='max'),'fixture',policy)
+        self.assertEqual(value['reasoning_effort'],'max')
+        validate_request(self.body(enable_thinking=False),'fixture',policy)
+        for fields in [dict(enable_thinking=True,reasoning_effort='high'),dict(enable_thinking=True),
+                       dict(thinking={'type':'enabled'},reasoning_effort='max'),
+                       dict(enable_thinking=False,reasoning_effort='max'),
+                       dict(enable_thinking=True,reasoning_effort=99),dict(enable_thinking='true'),
+                       dict(enable_thinking=False,preserve_thinking=True),dict(thinking={'type':'other'}),
+                       dict(reasoning_effort={'malformed':'value'})]:
+            with self.assertRaises(ValueError):validate_request(self.body(**fields),'fixture',policy)
+        policy['effort']='default'
+        validate_request(self.body(enable_thinking=True),'fixture',policy)
+        with self.assertRaises(ValueError):validate_request(self.body(enable_thinking=True,reasoning_effort='max'),'fixture',policy)
+        policy['effort']='off'
+        with self.assertRaises(ValueError):validate_request(self.body(enable_thinking=True),'fixture',policy)
+        native={'switch':'thinking','efforts':['default','off','low','high','max'],'effort':'low','reviewEffort':'off'}
+        validate_request(self.body(thinking={'type':'enabled'},reasoning_effort='low'),'fixture',native)
+        validate_request(self.body(thinking={'type':'disabled'}),'fixture',native)
+
+    def test_forced_thinking_accepts_frozen_effort_or_review_low_and_never_off(self):
+        policy={'switch':'thinking','efforts':['default','low','high','max'],'effort':'max','reviewEffort':'low'}
+        for effort in ['max','low']:
+            validate_request(self.body(thinking={'type':'enabled'},reasoning_effort=effort),'fixture',policy)
+        for fields in [dict(thinking={'type':'disabled'}),dict(thinking={'type':'enabled'},reasoning_effort='high'),
+                       dict(reasoning_effort='max'),dict(thinking={'type':'enabled'},reasoning_effort='medium')]:
+            with self.assertRaises(ValueError):validate_request(self.body(**fields),'fixture',policy)
+        policy['effort']='default'
+        validate_request(self.body(thinking={'type':'enabled'}),'fixture',policy)
+        validate_request(self.body(thinking={'type':'enabled'},reasoning_effort='low'),'fixture',policy)
+        with self.assertRaises(ValueError):validate_request(self.body(thinking={'type':'enabled'},reasoning_effort='max'),'fixture',policy)
+
     def test_all_current_provider_options_and_inline_images(self):
         body=self.body(stream_options={'include_usage':True},enable_thinking=True,preserve_thinking=True,
                        thinking={'type':'enabled'},provider={'require_parameters':True},
@@ -120,5 +153,5 @@ class ModelProxyTest(unittest.TestCase):
 
     def test_invalid_credential_is_rejected_without_exposing_it(self):
         with self.assertRaisesRegex(ValueError,'^Invalid model credential format$'):
-            Gateway(self.path,'https://example.invalid/v1','fixture','secret\r\nInjected: x')
+            Gateway(self.path,'https://example.invalid/v1','fixture','secret\r\nInjected: x',{'effort':'default'})
         self.assertFalse(self.path.exists())

@@ -8,16 +8,17 @@ import {z} from 'zod';
 import {EvalLayout} from '../src/host/layout.js';
 import {loadConfig,settingsSchema,configSchema} from '../src/host/types.js';
 import {TaskCatalog} from '../src/host/catalog.js';
-import {datasetSchema} from '../src/host/datasets.js';
+import {datasetSchema,taskAdapters} from '../src/host/datasets.js';
 import {lease} from '../src/host/lease.js';
 import {Lab} from '../src/host/manager.js';
 import {RunContainers} from '../src/host/containers.js';
 import {bindingSchema,environmentBindingPath,EnvironmentStore} from '../src/host/environments.js';
 import {save,readJson,run,exists} from '../src/host/store.js';
 
-const {values:v}=parseArgs({options:{root:{type:'string'},dataset:{type:'string'},task:{type:'string'},cancel:{type:'boolean'},'probe-command':{type:'string'}}});
+const {values:v}=parseArgs({options:{root:{type:'string'},dataset:{type:'string'},task:{type:'string'},cancel:{type:'boolean'},'probe-command':{type:'string'},'expect-pass':{type:'boolean'}}});
 if(!v.root||!v.dataset||!v.task)throw Error('Use --root, --dataset and --task');
 if(v.cancel&&v['probe-command'])throw Error('Use cancellation or a functional command, not both');
+if(v['expect-pass']&&(v.cancel||v.dataset!=='deep-swe'||!v['probe-command']))throw Error('Passing reference control requires a functional DeepSWE probe');
 const probeCommand=v['probe-command']?await Bun.file(v['probe-command']).text():null,agentSeconds=probeCommand?180:45;
 const current=await loadConfig(v.root),original=await TaskCatalog.open(current.catalog),task=original.get(datasetSchema.parse(v.dataset),v.task);
 if(!task.source||task.environment!=='ready')throw Error('Prepare the smoke task first');
@@ -45,9 +46,12 @@ if(task.preparation){
 await catalog.register([{id:task.id,dataset:task.dataset,source:layout.source(task),...(preparation?{preparation}:{})}]);
 const originalBinding=await readJson(environmentBindingPath(current.environments,task),bindingSchema);
 await save(join(layout.environments,'base.json'),originalBinding.base);
-await new EnvironmentStore(layout.environments,config.context,config.datasetBackends).prepareTask(catalog.get(task.dataset,task.id));
+const smokeBinding=await new EnvironmentStore(layout.environments,config.context,config.datasetBackends).prepareTask(catalog.get(task.dataset,task.id));
 await catalog.setEnvironment(task,'ready');
 const docker=(...a:string[])=>['docker','--context',executionConfig.context,...a];
+// A successful fixture must not reclaim an image still referenced by the real data root.
+const retainedTag='hicode-smoke-retained:'+createHash('sha256').update(layout.root).digest('hex').slice(0,16);
+await run(docker('image','tag',(smokeBinding.preparation??smokeBinding.dependencies).imageId,retainedTag));
 const lab=new Lab(config,'local-fake-key'),containers=new RunContainers(executionConfig);
 const fake=`import http.server,json,time,re
 from pathlib import Path
@@ -74,26 +78,42 @@ http.server.ThreadingHTTPServer(('127.0.0.1',18991),H).serve_forever()`;
 try{
 
  await lab.init();const batch=await lab.submit({name:'Offline Linux smoke',concurrency:1,tasks:[{dataset:task.dataset,id:task.id,agentSeconds}]});const id=batch.runIds[0]!;
- let provider=false,cancelled=false;const deadline=Date.now()+(probeCommand?300000:180000);
+ const plan=await taskAdapters(layout)[task.dataset].execution(lab.runs.get(id)!,layout.source(task));
+ let provider=false,cancelled=false;const deadline=Date.now()+(agentSeconds+plan.verifierSeconds+plan.setupAllowance)*1000;
  while(Date.now()<deadline){
   const state=lab.runs.get(id)!;
   if(!provider&&await containers.exists(id)){await run(docker('exec','-d',containers.name(id),'python3','-c',fake));provider=true;}
   if(v.cancel&&state.state==='running'&&!cancelled){await lab.cancel(id);cancelled=true;}
   if(['passed','failed','error','cancelled','needs_recovery'].includes(state.state)){
+   await lab.close();
    // Container disposal follows the durable result; wait for its separate receipt.
-   if(state.state!=='needs_recovery'&&!await exists(join(layout.run(id),'container-disposed.json'))){await Bun.sleep(100);continue;}
+   if(state.state!=='needs_recovery'&&await exists(join(layout.run(id),'container.json'))&&!await exists(join(layout.run(id),'container-disposed.json'))){await Bun.sleep(100);continue;}
    const remaining=await containers.exists(id);
-   const proof=join(layout.run(id),'evidence/project/.probe-passed');
-   const functionalProof=!probeCommand||(await exists(proof)&&!!await readJson(proof,z.object({ok:z.literal(true)})));
-   const deep=task.dataset==='deep-swe'&&!v.cancel?await readJson(join(layout.run(id),'evidence/logs/verifier/reward.json'),z.object({p2p_total:z.number().int(),p2p_passed:z.number().int(),f2p_total:z.number().int(),f2p_passed:z.number().int()})):null;
-   const patch=deep?await Bun.file(join(layout.run(id),'evidence/artifacts/model.patch')).text():null;
-   const deepProof=!deep||(deep.p2p_total>0&&deep.p2p_passed===deep.p2p_total&&deep.f2p_total>0&&deep.f2p_passed<deep.f2p_total&&(!probeCommand||!!patch));
-   const ok=deepProof&&(v.cancel?state.execution==='cancelled':state.execution==='completed'&&state.grading==='failed')&&state.collection==='complete'&&!remaining&&functionalProof;
-   const report={at:new Date().toISOString(),kind:'local-fake-provider',task:{dataset:task.dataset,id:task.id},context:executionConfig.context,paidModelCalls:0,mode:v.cancel?'cancel':'complete',ok,execution:state.execution,grading:state.grading,collection:state.collection,containerRemaining:remaining,...(deep?{tests:deep,committedPatchBytes:Buffer.byteLength(patch!)}:{}),note:state.note};
+   const collectedText=async(name:string):Promise<string|null>=>{
+    const path=join(layout.run(id),'evidence',name);
+    if(await exists(path))return Bun.file(path).text();
+    const archive=join(layout.run(id),'evidence.tar.gz');
+    if(!await exists(join(layout.run(id),'archive.json')))return null;
+    const process=Bun.spawn(['tar','-xOzf',archive,'evidence/'+name],{stdout:'pipe',stderr:'pipe'});
+    const timer=setTimeout(()=>process.kill('SIGKILL'),30000);
+    try{
+     const [text,,code]=await Promise.all([new Response(process.stdout).text(),new Response(process.stderr).text(),process.exited]);
+     return code===0?text:null;
+    }finally{clearTimeout(timer);}
+   };
+   const proof=probeCommand?await collectedText('project/.probe-passed'):null;
+   const functionalProof=!probeCommand||(proof!==null&&z.object({ok:z.literal(true)}).safeParse(JSON.parse(proof)).success);
+   const needsDeep=task.dataset==='deep-swe'&&!v.cancel,reward=needsDeep?await collectedText('logs/verifier/reward.json'):null;
+   const deep=reward===null?null:z.object({p2p_total:z.number().int(),p2p_passed:z.number().int(),f2p_total:z.number().int(),f2p_passed:z.number().int()}).parse(JSON.parse(reward));
+   const patch=deep?await collectedText('artifacts/model.patch'):null;
+   const deepProof=!needsDeep||(!!deep&&deep.p2p_total>0&&deep.p2p_passed===deep.p2p_total&&deep.f2p_total>0&&(v['expect-pass']?deep.f2p_passed===deep.f2p_total:deep.f2p_passed<deep.f2p_total)&&(!probeCommand||!!patch));
+   const ok=deepProof&&(v.cancel?state.execution==='cancelled':state.execution==='completed'&&state.grading===(v['expect-pass']?'passed':'failed'))&&state.collection==='complete'&&!remaining&&functionalProof;
+   const report={at:new Date().toISOString(),kind:'local-fake-provider',task:{dataset:task.dataset,id:task.id},context:executionConfig.context,paidModelCalls:0,mode:v.cancel?'cancel':'complete',control:v['expect-pass']?'reference-solution':'baseline',ok,execution:state.execution,grading:state.grading,collection:state.collection,containerRemaining:remaining,...(deep?{tests:deep,committedPatchBytes:patch===null?0:Buffer.byteLength(patch)}:{}),note:state.note};
    await save(join(new EvalLayout(current.data).state,'validation.json'),report);console.log(JSON.stringify(report));
    if(!ok){
     const probeError=join(layout.run(id),'evidence/project/.probe-error');
     if(probeCommand&&await exists(probeError))console.error((await Bun.file(probeError).text()).slice(-8000));
+    const verifierOutput=join(layout.run(id),'evidence/logs/verifier/test-stdout.txt');if(await exists(verifierOutput))console.error((await Bun.file(verifierOutput).text()).slice(-6000));
     const screen=join(layout.run(id),'live/screen.txt');if(await exists(screen))console.error((await Bun.file(screen).text()).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-5000));
     const terminal=join(layout.run(id),'evidence/logs/terminal.bin');if(await exists(terminal)){const diagnostics=(await Bun.file(terminal).text()).match(/Model gateway [^\r\n\x1b]{0,150}/g);if(diagnostics)console.error(diagnostics.join('\n'));}
     throw Error('Linux smoke failed: '+state.note);
@@ -105,6 +125,7 @@ try{
  if(Date.now()>=deadline)throw Error('Smoke deadline exceeded');
 }finally{
  await lab.close();for(const id of lab.runs.keys())await containers.remove(id);
+ await run(docker('image','rm',retainedTag));
  await rm(layout.root,{recursive:true,force:true});
 }
 

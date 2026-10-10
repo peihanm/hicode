@@ -13,12 +13,13 @@ describe("context window", () => {
     expect(state.critical).toBe(false);
   });
 
-  test("GLM-5.2 使用 1M 窗口并预留 summary", () => {
+  test("GLM-5.2/5.3 使用 1M 窗口并预留 summary", () => {
     expect(getAutoCompactThreshold("glm-5.2")).toBe(450_000);
+    expect(getAutoCompactThreshold("glm-5.3")).toBe(450_000);
   });
 
-  test("早期 GLM 模型继续按 128K 处理", () => {
-    expect(getAutoCompactThreshold("glm-4.7")).toBe(95_000);
+  test("未审定窗口的 GLM 使用保守预算", () => {
+    expect(getAutoCompactThreshold("glm-test")).toBe(95_000);
   });
 
   test("Qwen 模型使用各自公开的上下文窗口", () => {
@@ -56,7 +57,7 @@ test("配置可调大到 1M，较小模型或 Provider 窗口仍限制预算", (
     expect(getTokenWarningState(899_999, model, undefined, settings).critical).toBe(false);
     expect(getTokenWarningState(900_000, model, undefined, settings).critical).toBe(true);
   }
-  expect(getAutoCompactThreshold("glm-4.7", undefined, settings)).toBe(95_000);
+  expect(getAutoCompactThreshold("glm-test", undefined, settings)).toBe(95_000);
   expect(getAutoCompactThreshold("deepseek-pro", 128_000, settings)).toBe(95_000);
   expect(getAutoCompactThreshold("deepseek-pro", 1_000_000)).toBe(450_000);
 });

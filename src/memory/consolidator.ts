@@ -49,10 +49,10 @@ export function createMemoryConsolidatorFactory(callLLM: LLMCaller) {
 }
 function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller): MemoryConsolidator {
     let logRunId:string|undefined;
-    const callLLM: LLMCaller = (messages, tools, _storage, cwd, model, _kind, signal, onProgress, onText, readImage, trace) => {
+    const callLLM: LLMCaller = (messages, tools, _storage, cwd, model, _kind, signal, onProgress, onText, readImage, trace, reasoning) => {
         logRunId=trace?.runId;
         return caller(messages,tools,options.storage,cwd,model,"memory",signal,onProgress,onText,readImage,
-            logRunId?{scope:"maintenance",ownerCwd:options.cwd,runId:logRunId}:undefined);
+            logRunId?{scope:"maintenance",ownerCwd:options.cwd,runId:logRunId}:undefined, reasoning);
     };
     const runAgent = createAgentRunner({ callLLM, compactHistory: async () => { throw new Error("Memory consolidation exceeded its fixed input budget; recursive compaction is disabled"); } });
     const tools = createToolRuntime({ allowedToolNames: ["read_file", "bash", "write_file", "edit_file"] });
@@ -81,7 +81,7 @@ function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller
                 const ctx = createToolContext({ signal: input.signal, resources: {toolNames: tools.toolNames, availableTools: tools.getTools(),
                         contextSettings: options.contextSettings, storage: draftStorage, cwd: directory, workspaceBoundary: directory, shellWorkspace: directory, shellRunner: options.shellRunner,
                         fileCommits: new FileCommitCoordinator(), model: options.target.model, provider: options.target.source,
-                        fastModel: options.target.model, fastProvider: options.target.source, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,
+                        reasoning: options.target.reasoning, fastReasoning: options.target.reasoning, fastModel: options.target.model, fastProvider: options.target.source, skills: [], instructions: EMPTY_PROJECT_INSTRUCTIONS,
                     }, session: {webSources: new WebSources(), sessionId: input.sessionId, compactState: createCompactState(), contextUsage: new ContextUsageTracker(), fileState: createFileStateTracker(),
                         toolResultStore: createToolResultStore(draftStorage, directory, input.sessionId) },
                     host: { canUseTool: async () => ({ behavior: "deny", message: "Memory consolidation cannot request interactive escalation" }), getPermissionRules: () => ({ allow: [], ask: [], deny: [] }),

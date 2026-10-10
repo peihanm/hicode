@@ -14,7 +14,7 @@ test.each(['passed','failed','needs_recovery','error','setup_error'])('batch vie
   const elements = new Map<string, Element>();
   const el = (id: string) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id)!; };
   const requests: string[] = []; const writes: string[] = [];
-  const status = { inventory:{total:589,passed:231,unpassed:52,untested:306,running:0},concurrency: 2, schedulingBlocked: blocked, batches: [{ id: 'batch', name: '<img onerror=attack()>', createdAt: 1, model: { model: 'fixture' }, concurrency: 2, budget: { agentSeconds: 900 }, payload: { commit: 'abc12345' }, counts: { total: 1, completed: 1, active: 0, queued: 0, passed: 1, failed: 0, errors: 0, cancelled: 0 }, state: 'finished', report: { text: '<script>bad()</script>' } }], runs: [{ batchId: 'batch', id: 'one', task: 'fixture', dataset:'terminal-bench-2.1', budget: {agentSeconds: 900}, state: 'passed', displayState: 'passed', evidencePath: '/tmp/fixture', execution: 'completed', grading: 'passed', collection: 'complete' }] };
+  const status = { inventory:{total:589,passed:231,unpassed:52,untested:306,running:0},concurrency: 2, schedulingBlocked: blocked, batches: [{ id: 'batch', name: '<img onerror=attack()>', createdAt: 1, model: { model: 'fixture', ...(state==='passed'?{reasoning:{effort:'max'}}:{}) }, concurrency: 2, budget: { agentSeconds: 900 }, payload: { commit: 'abc12345' }, counts: { total: 1, completed: 1, active: 0, queued: 0, passed: 1, failed: 0, errors: 0, cancelled: 0 }, state: 'finished', report: { text: '<script>bad()</script>' } }], runs: [{ batchId: 'batch', id: 'one', task: 'fixture', dataset:'terminal-bench-2.1', budget: {agentSeconds: 900}, state: 'passed', displayState: 'passed', evidencePath: '/tmp/fixture', execution: 'completed', grading: 'passed', collection: 'complete' }] };
   status.batches.push({ ...status.batches[0]!, id: 'batch-two', name: 'Older batch', createdAt: 0 });
   status.runs.push({ ...status.runs[0], id: 'two', task: 'queued-task', budget: {agentSeconds: 1800}, state: 'queued', displayState: 'queued', execution: 'pending', grading: 'pending', collection: 'pending' });
   status.runs.push({ ...status.runs[0]!, batchId: 'batch-two', id: 'three', task: 'other-task' });
@@ -48,6 +48,7 @@ test.each(['passed','failed','needs_recovery','error','setup_error'])('batch vie
   expect(elements.has('report')).toBe(false);
   expect(elements.has('inventory')).toBe(false);
   expect(el('batch-detail').textContent).toContain('各题独立时限');
+  expect(el('batch-detail').textContent).toContain('Reasoning: '+(state==='passed'?'max':'not recorded'));
   expect(el('batches').children[0].children[1].children[0].children[1].textContent).toContain('15 分钟');
   expect(el('batches').children[0].children[1].children[1].children[1].textContent).toContain('30 分钟');
   expect(el('detail').textContent).toContain('15 分钟');

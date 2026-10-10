@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {withExecutionContext} from "../prompt/collaboration.js";
 import {retainImageDeliveryBoundary} from "../images/request.js";
 import type {ContextSettings} from "./config.js";
@@ -45,6 +46,7 @@ type CompactSummaryGenerator = (input: {
     signal: AbortSignal;
     storage: HiCodeStorageLayout;
     cwd: string;
+    reasoning?: ReasoningEffort;
     model: string;
     customInstructions?: string;
     contextWindow?: number;
@@ -150,6 +152,7 @@ async function compactHistoryCore({
             storage: ctx.storage,
             cwd: ctx.cwd,
             model: ctx.model,
+            reasoning: ctx.reasoning,
             contextSettings: ctx.contextSettings,
             trace: ctx.llmTrace ?? {scope:"session", ownerCwd:ctx.cwd, sessionId:ctx.sessionId, runId:ctx.turnId},
             customInstructions: [customInstructions, ...formatHookContext("PreCompact", preHook?.additionalContexts ?? [])]

@@ -151,7 +151,7 @@ Path('/app/ready').touch();server.serve_forever()
                     self.send_response(200);self.end_headers();self.wfile.write(b'data: [DONE]\n\n')
             provider=http.server.ThreadingHTTPServer(('127.0.0.1',0),Provider)
             thread=threading.Thread(target=provider.serve_forever,daemon=True);thread.start()
-            gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture')
+            gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture',{'effort':'default'})
             os.chown(control/'model.sock',20000,20000)
             settings=home/'model-settings.json';settings.write_text(json.dumps({'sources':{'fixture':{'baseUrl':'unused'}}}));os.chown(settings,20000,20000)
             def actor(args):return namespace_argv(args,project,home,logs,control,isolated_network=isolated,

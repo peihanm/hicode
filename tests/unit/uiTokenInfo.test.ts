@@ -13,7 +13,7 @@ describe("restored session token info", () => {
       [],
       EMPTY_PROJECT_INSTRUCTIONS,
       [],
-      "glm-4.7"
+      "glm-5.2"
     );
     const withTool = estimateRestoredTokenInfo(
       [
@@ -33,7 +33,7 @@ describe("restored session token info", () => {
           },
         },
       ],
-      "glm-4.7"
+      "glm-5.2"
     );
 
     expect(withoutTool.status).toBe("estimated");

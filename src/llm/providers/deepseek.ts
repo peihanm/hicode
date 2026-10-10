@@ -1,3 +1,4 @@
+import {reasoningRequestFields, validateReasoningEffort} from "../reasoningPolicy.js";
 import {supportsToolImages} from "../../images/capability.js";
 import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProvider} from "../types.js";
@@ -15,6 +16,7 @@ export const deepseekProvider: LLMProvider = {
     name: "deepseek",
 
     async call(options, source) {
+        validateReasoningEffort(source.id, options.model, options.reasoning ?? "default");
         const apiKey = process.env[source.apiKeyEnv];
         if (!apiKey) {
             throw new Error(
@@ -27,10 +29,10 @@ export const deepseekProvider: LLMProvider = {
             baseUrl: source.baseUrl || PROVIDER_BASE_URLS.deepseek,
             apiKey,
             toolImages: supportsToolImages(source, options.model),
-            requestFields: {...createDeepSeekRequestFields(),
+            requestFields: {...createDeepSeekRequestFields(), ...reasoningRequestFields(source.id, options.model, options.kind === "task_review" ? "default" : options.reasoning),
                 ...(options.kind === "task_review" ? {thinking: {type: "disabled"}} : {})},
-            reasoningSource: source.id,
-            disableThinkingOnFinalStallRetry: true,
+            ...(options.reasoning !== "off" && options.kind !== "task_review" ? {reasoningSource: source.id} : {}),
+            disableThinkingOnFinalStallRetry: (options.reasoning ?? "default") === "default",
         });
     },
 };

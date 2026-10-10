@@ -80,7 +80,7 @@ async function tick(){if(ticking)return;ticking=true;try{
   const batch=data.batches.find(b=>b.id===selectedBatch);
   if(batch){
     $('batch-title').textContent=batch.name;
-    $('batch-detail').textContent=batch.id+' · '+batch.model.model+' · 并发 '+batch.concurrency+' · '+'各题独立时限'+' · 版本 '+String(batch.payload.commit||'未知').slice(0,8)+(batch.payload.worktree_overlay?.length?'（含工作区改动）':'');
+    $('batch-detail').textContent=batch.id+' · '+batch.model.model+' · Reasoning: '+(batch.model.reasoning?.effort??'not recorded')+' · 并发 '+batch.concurrency+' · '+'各题独立时限'+' · 版本 '+String(batch.payload.commit||'未知').slice(0,8)+(batch.payload.worktree_overlay?.length?'（含工作区改动）':'');
     const c=batch.counts;$('summary').replaceChildren(...cards([['已完成',c.completed+'/'+c.total],['运行中',c.active],['排队',c.queued],['通过',c.passed],['未通过',c.failed],['异常',c.errors],['取消',c.cancelled]]));
     const runs=data.runs.filter(r=>r.batchId===batch.id);
     if(!runs.some(r=>r.id===selected))choose(runs.find(r=>['running','preparing'].includes(r.displayState))?.id||runs[0]?.id||null);

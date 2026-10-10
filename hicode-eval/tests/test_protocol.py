@@ -61,6 +61,15 @@ class ProtocolTest(unittest.TestCase):
         stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,sealed=False))
         self.assertFalse(stream.complete())
 
+    def test_partial_record_after_seal_cannot_expose_private_verifier(self):
+        stream=Events()
+        stream.accept(self.record(1,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'saved'}}))
+        stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,sealed=True))
+        self.assertTrue(stream.complete())
+        next_record=self.record(3,type='agent_event',event={'type':'tool_call_start','toolCallId':'late'})
+        stream.accept(next_record[:15]);self.assertFalse(stream.complete())
+        stream.accept(next_record[15:]);self.assertFalse(stream.complete())
+
     def test_missing_tool_result_cannot_claim_saved_completion(self):
         stream=Events()
         stream.accept(self.record(1,type='agent_event',event={'type':'tool_call_start','toolCallId':'a'}))

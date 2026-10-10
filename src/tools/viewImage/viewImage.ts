@@ -13,7 +13,8 @@ import {isPathInside} from "../../permissions/pathGuard.js";
 const schema = z.object({
     region: imageRegionSchema.optional().describe("Absolute pixel region {x,y,width,height} of the oriented original, even when image_id refers to a crop."),
     path: z.string().min(1).max(16384).optional().describe("Local static PNG/JPEG/WebP path; URLs are not accepted."),
-    image_id: z.string().regex(/^image-[a-f0-9]{64}$/).optional().describe("Image ID from this session history/archive to revisit the stored snapshot."),
+    image_id: z.string().regex(/^image-[a-f0-9]{64}$/, "image_id must include image- followed by 64 lowercase hexadecimal characters. Copy the complete Image snapshot ID returned by view_image, not the bare hash. Alternatively, use the original image file's path. Provide exactly one of path or image_id.")
+        .optional().describe("Copy the complete image- plus 64-character lowercase hexadecimal ID from this session's Image snapshot result/history/archive, including the image- prefix. Reopens the stored snapshot; do not guess IDs or use a bare hash. Use path instead to read the original local image file."),
 }).strict().refine(value => Number(value.path !== undefined) + Number(value.image_id !== undefined) === 1, "Provide exactly one of path or image_id");
 
 export const viewImageTool: Tool<typeof schema> = {

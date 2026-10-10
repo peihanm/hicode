@@ -17,7 +17,39 @@ FIELDS = {'model', 'messages', 'tools', 'tool_choice', 'stream', 'stream_options
           'temperature', 'top_p', 'max_tokens', 'max_completion_tokens', 'parallel_tool_calls', 'provider'}
 
 
-def validate_request(body, model):
+def validate_reasoning(value, policy):
+    if 'enable_thinking' in value and type(value['enable_thinking']) is not bool:raise ValueError('Invalid thinking switch')
+    if 'preserve_thinking' in value and type(value['preserve_thinking']) is not bool:raise ValueError('Invalid replay switch')
+    thinking = value.get('thinking')
+    if thinking is not None and (not isinstance(thinking, dict) or set(thinking) != {'type'} or thinking['type'] not in {'enabled', 'disabled'}):raise ValueError('Invalid thinking mode')
+    effort = value.get('reasoning_effort')
+    if effort is not None and (not isinstance(effort, str) or effort not in {'low', 'medium', 'high', 'xhigh', 'max'}):raise ValueError('Invalid reasoning effort')
+    off = value.get('enable_thinking') is False or thinking == {'type': 'disabled'}
+    if off and value.get('preserve_thinking') is True:raise ValueError('Disabled thinking cannot preserve reasoning')
+    if off and effort is not None:raise ValueError('Disabled thinking cannot specify effort')
+    if policy is None:return
+    switch = policy.get('switch')
+    if switch is None:
+        if effort is not None:raise ValueError('Unknown model reasoning capability')
+        return
+    if 'reasoning' in value:raise ValueError('Unsupported reasoning protocol')
+    if (switch == 'enable_thinking' and thinking is not None) or (switch == 'thinking' and 'enable_thinking' in value):raise ValueError('Wrong reasoning protocol')
+    if effort is not None and effort not in policy['efforts']:raise ValueError('Unsupported model reasoning level')
+    # Purpose is not trusted from the actor. The reviewed auxiliary policy permits off
+    # or the lightest level for forced-thinking models; main calls retain the batch choice.
+    selected = policy['effort']
+    if off:
+        if 'off' not in policy['efforts']:raise ValueError('This model requires thinking')
+        return
+    if selected == 'off':raise ValueError('This batch disabled reasoning')
+    enabled = value.get('enable_thinking') is True if switch == 'enable_thinking' else thinking == {'type': 'enabled'}
+    if not enabled:raise ValueError('Thinking must remain enabled')
+    if effort == policy['reviewEffort']:return
+    if selected == 'default' and effort is not None:raise ValueError('Default batch must omit reasoning effort')
+    if selected not in {'default', 'off'} and (effort != selected or not enabled):raise ValueError('Reasoning differs from the frozen batch')
+
+
+def validate_request(body, model, reasoning_policy=None):
     value = json.loads(body)
     if (not isinstance(value, dict) or set(value) - FIELDS or value.get('model') != model
             or value.get('stream') is not True or not isinstance(value.get('messages'), list)):
@@ -31,6 +63,7 @@ def validate_request(body, model):
     if not (isinstance(choice, str) and choice in {'auto', 'none', 'required'} or
             isinstance(choice, dict) and choice.get('type') == 'function' and set(choice) == {'type', 'function'}):
         raise ValueError('Unsupported tool choice')
+    validate_reasoning(value, reasoning_policy)
     for message in value['messages']:
         if not isinstance(message, dict):raise ValueError('Invalid message')
         content = message.get('content')
@@ -51,7 +84,7 @@ class Gateway(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
     block_on_close = False
 
-    def __init__(self, path, base_url, model, credential):
+    def __init__(self, path, base_url, model, credential, reasoning_policy):
         if not isinstance(credential, str) or not credential or len(credential) > 8192 or any(ord(c) < 32 or ord(c) > 126 for c in credential):
             raise ValueError('Invalid model credential format')
         target = urlsplit(base_url)
@@ -60,6 +93,7 @@ class Gateway(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
         self.target = target
         self.endpoint = target.path.rstrip('/')
         if not self.endpoint.endswith('/chat/completions'):self.endpoint += '/chat/completions'
+        self.reasoning_policy = reasoning_policy
         self.model = model
         self.credential = credential
         self.active = set()
@@ -117,7 +151,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         size = int(lengths[0]);body = self.rfile.read(size)
         try:
             if len(body) != size:raise ValueError('Incomplete request')
-            validate_request(body, self.server.model)
+            validate_request(body, self.server.model, self.server.reasoning_policy)
         except (ValueError, TypeError):
             self.send_error(403, 'Unsupported model request');return
         target = self.server.target

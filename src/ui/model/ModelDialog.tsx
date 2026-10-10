@@ -1,3 +1,4 @@
+import {reasoningCapability, type ReasoningEffort} from "../../llm/reasoningPolicy.js";
 import {useMemo, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import stringWidth from "string-width";
@@ -42,12 +43,16 @@ export function ModelDialog({
 }) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const [choosingReasoning, setChoosingReasoning] = useState(false);
+    const [effortIndex, setEffortIndex] = useState(0);
     const initialIndex = Math.max(
         0,
         models.findIndex((target) => sameTarget(target, current))
     );
     const [selectedIndex, setSelectedIndex] = useState(initialIndex);
-    const rowWidth = Math.max(16, Math.min(52, useTerminalWidth() - 6));
+    const panelWidth = Math.max(12, Math.min(52, useTerminalWidth() - 4));
+    const rowWidth = Math.min(52, panelWidth);
+    const reasoningWidth = panelWidth - 4;
     const groups = useMemo(() => {
         const result: Array<{
             source: ModelTargetSettings["source"];
@@ -61,32 +66,67 @@ export function ModelDialog({
         return result;
     }, [models]);
 
+    const selected = models[selectedIndex];
+    const capability = selected ? reasoningCapability(selected.source, selected.model) : undefined;
+    const efforts = capability?.efforts ?? ["default"];
+    const savedEffort = (selected && sameTarget(selected, current) ? current.reasoning : selected?.reasoning) ?? "default";
+    const save = (reasoning?: ReasoningEffort) => {
+        if (!selected) return;
+        setSaving(true); setError("");
+        void onSelect({...selected, ...(reasoning ? {reasoning} : {})})
+            .catch(reason => setError(reason instanceof Error ? reason.message : "Could not save model selection"))
+            .finally(() => setSaving(false));
+    };
     useInput((_input, key) => {
         if (saving) return;
         if (key.escape) {
-            onClose();
+            if (choosingReasoning) setChoosingReasoning(false); else onClose();
             return;
         }
         if (models.length === 0) return;
+        if (choosingReasoning) {
+            if (key.upArrow) setEffortIndex(index => (index - 1 + efforts.length) % efforts.length);
+            else if (key.downArrow) setEffortIndex(index => (index + 1) % efforts.length);
+            else if (key.return) save(efforts[effortIndex]);
+            return;
+        }
         if (key.upArrow) {
             setSelectedIndex((index) => (index - 1 + models.length) % models.length);
         } else if (key.downArrow) {
             setSelectedIndex((index) => (index + 1) % models.length);
         } else if (key.return) {
-            const target = models[selectedIndex];
-            if (target) {
-                setSaving(true); setError("");
-                void onSelect(target).catch(reason => setError(reason instanceof Error ? reason.message : "Could not save model selection"))
-                    .finally(() => setSaving(false));
-            }
+            if (capability && selected) {
+                setEffortIndex(Math.max(0, efforts.indexOf(savedEffort)));
+                setChoosingReasoning(true);
+            } else save();
         }
     });
 
     return (
         <Box flexDirection="column" paddingLeft={2}>
-            <Text color={COLORS.accent} bold>◆ MODEL</Text>
+            <Text color={COLORS.accent} bold>
+                ◆ MODEL{choosingReasoning && <Text color={COLORS.dim} bold={false}> · 2/2 Reasoning</Text>}
+            </Text>
 
-            {groups.length > 0 ? (
+            {choosingReasoning && selected ? (
+                <Box marginTop={1} flexDirection="column" width={panelWidth} borderStyle="round" borderColor={COLORS.border} paddingX={1}>
+                    <Text bold wrap="truncate-end">{selected.label}</Text>
+                    <Box marginTop={1} flexDirection="column">
+                        {efforts.map((effort, index) => {
+                            const focused = index === effortIndex;
+                            const row = fitRow(
+                                `${focused ? "›" : " "} ${effort === savedEffort ? "●" : " "} ${effort}`,
+                                reasoningWidth
+                            );
+                            return (
+                                <Text key={effort} backgroundColor={focused ? COLORS.accent : undefined} color={focused ? "white" : undefined} bold={focused}>
+                                    {row}
+                                </Text>
+                            );
+                        })}
+                    </Box>
+                </Box>
+            ) : groups.length > 0 ? (
                 <Box marginTop={1} flexDirection="column">
                     {groups.map((group) => (
                         <Box
@@ -127,7 +167,7 @@ export function ModelDialog({
 
             {error && <Text color={COLORS.error}>{error}</Text>}
             <Box marginTop={1}>
-                <Text color={COLORS.dim}>{saving ? "Saving…" : `↑↓ select · enter switch and save · esc ${escapeAction}`}</Text>
+                <Text color={COLORS.dim}>{saving ? "Saving…" : choosingReasoning ? "● saved · ↑↓ select · enter save · esc back" : `↑↓ select · enter configure · esc ${escapeAction}`}</Text>
             </Box>
         </Box>
     );

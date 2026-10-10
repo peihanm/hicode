@@ -73,7 +73,7 @@ describe("Unified Settings", () => {
                 document("user", {
                     models: {
                         primary: {model: "glm-5.2", source: "glm"},
-                        fast: {model: "glm-4.7", source: "glm"},
+                        fast: {model: "glm-5.3-flash", source: "glm"},
                     },
                     permissions: {
                         defaultMode: "ask",
@@ -91,7 +91,7 @@ describe("Unified Settings", () => {
                     },
                 }),
                 document("local", {
-                    models: {primary: {model: "glm-4.7", source: "glm"}},
+                    models: {primary: {model: "glm-5.3", source: "glm"}},
                     permissions: {defaultMode: "ask"},
                 }),
             ],
@@ -360,11 +360,11 @@ describe("Unified Settings", () => {
                 storage,
                 cwd,
                 cliOverrides: {
-                    model: "glm-4.7",
+                    model: "glm-5.2",
                     source: "glm",
                 },
             });
-            expect(loaded.values.models.primary.model).toBe("glm-4.7");
+            expect(loaded.values.models.primary.model).toBe("glm-5.2");
             expect(loaded.values.permissions.defaultMode).toBe("ask");
             expect(
                 loaded.issues.some(

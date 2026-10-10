@@ -208,7 +208,8 @@ export function createRootSessionRuntime({
             });
             ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
             ctx.approvalEvidence = () => history;
-            ctx.reviewerModel = resources.settings.models.reviewer;
+            const reviewer = resources.settings.models.reviewer;
+            ctx.reviewerModel = reviewer ? {...reviewer, reasoning: resources.primaryModel.reasoningFor(reviewer.source, reviewer.model)} : undefined;
             ctx.onApprovalEvent = onEvent;
             ctx.memoryFiles = resources.memory.enabled ? resources.memory.fileAccess({sessionId: seed.sessionId, turnId: ctx.turnId, signal}) : undefined;
             ctx.sessionCompaction = {

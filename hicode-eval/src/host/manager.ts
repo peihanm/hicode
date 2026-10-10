@@ -9,7 +9,7 @@ import {taskAdapters,taskKey} from './datasets.js';
 import {EnvironmentStore} from './environments.js';
 import { EvidenceCollectionError, LinuxMachine } from './linux.js';
 import { readJson, save, exists, contained } from './store.js';
-import { runSchema, done, batchSchema, submissionSchema,environmentPreparationSchema } from './types.js';
+import { runSchema, done, modelSchema,batchSchema, submissionSchema,environmentPreparationSchema } from './types.js';
 import type { Config, Run, Batch, Submission,EnvironmentPreparation } from './types.js';
 import {batchView,catalogView,runView} from './view.js';
 
@@ -143,7 +143,9 @@ export class Lab {
       if([...this.runs.values()].some(run=>taskKey({dataset:run.dataset,id:run.task})===taskKey({dataset:original.dataset,id:original.task})&&(!done(run.state)||this.jobs.has(run.id))))throw Error('This task already has an active attempt');
       if(!this.machine)throw Error('Initialize the machine before rerunning');
       const parent=this.batches.get(original.batchId)!;
-      if(!isDeepStrictEqual(parent.model,this.config.model))throw Error('Current service model differs from the original; restore the original model configuration before rerunning');
+      const {reasoning: _originalReasoning, ...originalConnection} = parent.model;
+      const {reasoning: _currentReasoning, ...currentConnection} = this.config.model;
+      if(!isDeepStrictEqual(originalConnection,currentConnection))throw Error('Current service model differs from the original; restore the original model configuration before rerunning');
       return this.createBatch({name:original.task.slice(0,90)+' · 第 '+((parent.retryOf?.attempt??1)+1)+' 次尝试',
         network:original.network,concurrency:1,tasks:[{id:original.task,dataset:original.dataset,agentSeconds:original.budget.agentSeconds}]},original);
     });
@@ -156,6 +158,7 @@ export class Lab {
     if(new Set(input.tasks.map(taskKey)).size!==input.tasks.length)
       throw Error('Choose distinct tasks');
     if(input.tasks.some(t=>this.preparationJob?.tasks.has(taskKey(t))))throw Error('Selected task environment is being prepared');
+    const model = modelSchema.parse(original ? this.batches.get(original.batchId)!.model : {...this.config.model, reasoning: input.reasoning ?? this.config.model.reasoning ?? {effort: "default"}});
     const selected:CatalogTask[]=input.tasks.map(ref=>{
       const matches=this.taskCatalog!.list().filter(task=>taskKey(task)===taskKey(ref));
       if(matches.length!==1)throw Error('Unknown dataset task');
@@ -184,9 +187,9 @@ export class Lab {
     if (this.closed || this.halted) throw Error('Service closing or scheduling blocked');
     const id = randomBytes(8).toString('hex'), now = Date.now() / 1000;
     const batch = batchSchema.parse({name:input.name, network: input.network ?? this.config.network, concurrency:input.concurrency,
-      taskRefs,budget: this.config.budget, version: 1, id, createdAt: now, runIds: taskRefs.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
+      taskRefs,budget: this.config.budget, version: 1, id, createdAt: now, runIds: taskRefs.map(() => randomBytes(8).toString('hex')), model, payload,
       ...(original?{retryOf:{batchId:original.batchId,runId:original.id,attempt:(this.batches.get(original.batchId)!.retryOf?.attempt??1)+1}}:{}) });
-    const states = input.tasks.map((task, i) => runSchema.parse({ version: 1, network: networks[i], id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
+    const states = input.tasks.map((task, i) => runSchema.parse({ version: 1, network: networks[i], id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
     // Publish the batch only after all children are durable; no worker sees a partial submission.
     try {
       for (const state of states) {
@@ -327,13 +330,13 @@ export class Lab {
       if (!isDeepStrictEqual(await this.adapters[current.dataset].snapshot(join(path, 'task', current.task)),frozen)) throw Error('Frozen task changed');
       const payload = await readJson(join(this.config.payload, 'manifest.json'), z.record(z.unknown()));
       if (JSON.stringify(payload) !== JSON.stringify(this.batches.get(current.batchId)!.payload)) throw Error('Payload changed after submission');
-      await save(join(path, 'manifest.json'), { model: this.config.model, payload, task: current.task, dataset: current.dataset, task_files: frozen, machine: this.config.machine, entry: 'tui', network: current.network, budget: current.budget });
+      await save(join(path, 'manifest.json'), { model: this.batches.get(current.batchId)!.model, payload, task: current.task, dataset: current.dataset, task_files: frozen, machine: this.config.machine, entry: 'tui', network: current.network, budget: current.budget });
       if (!this.machine) throw Error('Initialize the evaluation machine before running tasks');
       const result = await this.machine.execute(current, path, this.credential, async phase => {
         await appendPhase(path, phase);
         const state = phase === 'Running HiCode' ? 'running' : phase.includes('verif') || phase.includes('Verif') ? 'verifying' : 'preparing';
         if (this.runs.get(id)?.state !== 'cancelling') await this.update(id, { state });
-      });
+      }, this.batches.get(current.batchId)!.model);
       const execution = result.execution;
       const classified = classify(execution === 'completed' ? undefined : execution, result.grading === 'unavailable' ? null : { reward: result.grading === 'passed' ? 1 : 0 });
       await this.update(id, { state: execution === 'cancelled' ? 'cancelled' : classified.state, execution, grading: result.grading, note: result.note, reward: result.grading === 'unavailable' ? undefined : result.grading === 'passed' ? 1 : 0, collection: 'complete', finishedAt: Date.now() / 1000 });

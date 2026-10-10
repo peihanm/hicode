@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {WebFailures, type WebSources} from "../tools/webFetch/state.js";
 import type {ChildTaskAccess} from "../tasks/childAccess.js";
 import {TaskJoin} from "../tasks/taskJoin.js";
@@ -41,6 +42,8 @@ interface ToolContextResources {
     cwd: string;
     workspaceBoundary?: string;
     shellWorkspace?: string;
+    reasoning?: ReasoningEffort;
+    fastReasoning?: ReasoningEffort;
     model: string;
     provider: LLMProviderName;
     fastModel: string;
@@ -130,6 +133,8 @@ export function createToolContext({
         skills: resources.skills,
         availableTools: resources.availableTools,
         instructions: resources.instructions ?? EMPTY_PROJECT_INSTRUCTIONS,
+        reasoning: resources.reasoning,
+        fastReasoning: resources.fastReasoning,
         model: resources.model,
         provider: resources.provider,
         fastModel: resources.fastModel,

@@ -15,7 +15,7 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
     "sandbox",
 ]);
 const KNOWN_MODEL_TARGET_KEYS = new Set(["model", "source"]);
-const KNOWN_MODELS_KEYS = new Set(["primary", "fast", "reviewer"]);
+const KNOWN_MODELS_KEYS = new Set(["primary", "fast", "reviewer", "reasoning"]);
 const KNOWN_SOURCE_KEYS = new Set(["label", "apiKeyEnv", "baseUrl", "models"]);
 const KNOWN_SOURCE_MODEL_KEYS = new Set(["id", "label", "imageInput"]);
 const KNOWN_SOURCE_NAMES = new Set<string>(LLM_PROVIDER_NAMES);

@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import type {ContextSettings} from "./config.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {LLMCaller, Message} from "../llm/types.js";
@@ -24,6 +25,7 @@ async function generateCompactSummaryCore(input: {
     signal: AbortSignal;
     storage: HiCodeStorageLayout;
     cwd: string;
+    reasoning?: ReasoningEffort;
     model: string;
     customInstructions?: string;
     contextWindow?: number;
@@ -43,7 +45,7 @@ async function generateCompactSummaryCore(input: {
     for (let attempt = 0; attempt < 2; attempt++) {
         throwIfTurnAborted(signal);
         // Transport failures are owned by the Provider; only local format failures get one correction.
-        const {message} = await callLLM(messages, [], storage, cwd, model, "compact", signal, undefined, undefined, undefined, input.trace);
+        const {message} = await callLLM(messages, [], storage, cwd, model, "compact", signal, undefined, undefined, undefined, input.trace, input.reasoning);
         throwIfTurnAborted(signal);
         if (message.role !== "assistant" || message.tool_calls?.length) throw new Error("Task handoff must be assistant text without tool calls");
         try {

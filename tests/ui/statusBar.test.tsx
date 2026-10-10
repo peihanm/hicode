@@ -13,7 +13,7 @@ function renderStatusBar(
     render(
       <StatusBar
         cwd="/tmp/project"
-        model="glm-4.7"
+        model="glm-5.2"
         permissionMode="ask"
         collaborationMode="build"
         tokenCount={1234}
@@ -49,7 +49,7 @@ describe("StatusBar token state", () => {
 
   test("保留完整模型、项目路径和快捷键说明", () => {
     const frame = renderStatusBar("actual");
-    expect(frame).toContain("glm-4.7 | /tmp/project | 1234 tokens (12%)");
+    expect(frame).toContain("glm-5.2 | /tmp/project | 1234 tokens (12%)");
     expect(frame).toContain("shift+tab Build/Plan");
     expect(frame).toContain("ctrl+o transcript");
     expect(frame).not.toContain("esc to cancel");

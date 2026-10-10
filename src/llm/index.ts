@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "./reasoningPolicy.js";
 import type {ImageReference} from "../images/content.js";
 import {deepseekProvider} from "./providers/deepseek.js";
 import {glmProvider} from "./providers/glm.js";
@@ -45,7 +46,8 @@ export function createLLMCaller(
         onStreamProgress?: (progress: LLMStreamProgress) => void,
         onText?: (update: LLMTextUpdate) => void | Promise<void>,
         readImage?: (reference: ImageReference) => Promise<Buffer>,
-        trace?: LLMTrace
+        trace?: LLMTrace,
+        reasoning?: ReasoningEffort
     ): Promise<LLMCallResult> {
         return provider.call({
             messages,
@@ -59,6 +61,7 @@ export function createLLMCaller(
             onText,
             readImage,
             trace,
+            reasoning,
         }, source);
     };
 }

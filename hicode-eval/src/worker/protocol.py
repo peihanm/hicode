@@ -120,7 +120,7 @@ class Events:
                         self.pending_tools.remove(tool_id)
 
     def complete(self):
-        return (self.settled is not None and self.settled.get('sealed') is True and not self.busy and self.settled['runningAgents'] == 0 and self.settled.get('pendingAgentMessages') == 0
+        return (not self.partial.strip() and self.settled is not None and self.settled.get('sealed') is True and not self.busy and self.settled['runningAgents'] == 0 and self.settled.get('pendingAgentMessages') == 0
                 and not self.pending_tools and self.ending is not None and self.ending['persistence_status'] == 'saved')
 
     def failed_turn(self):

@@ -1,3 +1,4 @@
+import type {ReasoningEffort} from "./reasoningPolicy.js";
 import type {LLMProviderName} from "./providerRegistry.js";
 import type {ReasoningState} from "./reasoning.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
@@ -89,6 +90,7 @@ export type LLMTrace = {ownerCwd:string;runId:string} & (
 );
 
 export interface LLMCallOptions {
+    reasoning?: ReasoningEffort;
     trace?: LLMTrace;
     storage: HiCodeStorageLayout;
     messages: Message[];
@@ -129,7 +131,8 @@ export type LLMCaller = (
     onStreamProgress?: (progress: LLMStreamProgress) => void,
     onText?: (update: LLMTextUpdate) => void | Promise<void>,
     readImage?: (reference: ImageReference) => Promise<Buffer>,
-    trace?: LLMTrace
+    trace?: LLMTrace,
+    reasoning?: ReasoningEffort
 ) => Promise<LLMCallResult>;
 
 export interface LLMProvider {

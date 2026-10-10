@@ -1,17 +1,22 @@
+import {REASONING_EFFORTS, validateReasoningEffort} from "../../../src/llm/reasoningPolicy.js";
 import { z } from 'zod';
 import { LLM_PROVIDER_NAMES } from '../../../src/llm/providerRegistry.js';
 import {datasetSchema,taskRefSchema} from './datasets.js';
 import {EvalLayout} from './layout.js';
 import {readJson} from './store.js';
 export const idSchema = z.string().regex(/^[a-f0-9]{16}$/);
-export const modelSchema = z.object({ source: z.enum(LLM_PROVIDER_NAMES), model: z.string().min(1), apiKeyEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), baseUrl: z.string().url().refine(s => { const u = new URL(s); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password && !u.search && !u.hash; }), imageInput: z.boolean().optional() }).strict();
+export const reasoningSchema = z.object({effort: z.enum(REASONING_EFFORTS)}).strict();
+export const modelSchema = z.object({ source: z.enum(LLM_PROVIDER_NAMES), model: z.string().min(1), apiKeyEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), baseUrl: z.string().url().refine(s => { const u = new URL(s); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password && !u.search && !u.hash; }), imageInput: z.boolean().optional(), reasoning: reasoningSchema.optional() }).strict().superRefine((value, ctx) => {
+  try {validateReasoningEffort(value.source, value.model, value.reasoning?.effort ?? "default");}
+  catch (error) {ctx.addIssue({code: z.ZodIssueCode.custom, path: ["reasoning"], message: error instanceof Error ? error.message : "Invalid reasoning"});}
+});
 export const budgetSchema = z.object({ agentSeconds: z.number().int().min(30).max(10800).default(1800) }).strict();
 export type Budget = z.infer<typeof budgetSchema>;
 export const networkSchema = z.enum(['open', 'isolated']);
 const batchName = z.string().trim().min(1).max(120);
 const concurrency = z.number().int().min(1).max(5).default(2);
 const retryOriginSchema=z.object({batchId:idSchema,runId:idSchema,attempt:z.number().int().min(2).max(1000)}).strict();
-export const submissionSchema = z.object({ name: batchName, network: networkSchema.optional(), tasks: z.array(z.object({ id: z.string().min(1), dataset:datasetSchema, agentSeconds: z.number().int().min(30).max(10800).optional() }).strict()).min(1).max(200), concurrency }).strict();
+export const submissionSchema = z.object({ reasoning: reasoningSchema.optional(), name: batchName, network: networkSchema.optional(), tasks: z.array(z.object({ id: z.string().min(1), dataset:datasetSchema, agentSeconds: z.number().int().min(30).max(10800).optional() }).strict()).min(1).max(200), concurrency }).strict();
 export const environmentPreparationSchema=z.object({tasks:z.array(taskRefSchema).min(1).max(200),buildProxy:z.string().url().refine(value=>{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}).optional()}).strict();
 export type EnvironmentPreparation=z.infer<typeof environmentPreparationSchema>;
 export type Submission = z.infer<typeof submissionSchema>;

@@ -17,7 +17,7 @@ bash hicode-eval/eval.sh worker --root /path/eval-data --worker-port 8879
 bash hicode-eval/eval.sh serve --root /path/eval-data --port 8878 --worker-port 8879
 ```
 
-init 不访问 Docker 或模型，创建空台账和连接声明；Key 只在 worker 进程通过声明的环境变量或 HiCode 的本机 .env 读取，不复制到评测根。模型、引擎、并发和时限在 `state/settings.json` 配置。prepare 要求干净 HiCode 工作树；明确需要当前改动时使用 `--snapshot-worktree`。worker 可以启动空根目录，第一次提交前校验冻结源码；每题在对应数据集镜像和 Docker 后端内独立安装运行版本；Python 执行模块在 worker 启动时冻结。
+init 不访问 Docker 或模型，创建空台账，并从 HiCode 当前 Settings 导入模型连接与强度（也可用 --model-config 显式指定）；Key 只在 worker 进程通过声明的环境变量或 HiCode 的本机 .env 读取，不复制到评测根。模型、引擎、并发和时限在 `state/settings.json` 配置。prepare 要求干净 HiCode 工作树；明确需要当前改动时使用 `--snapshot-worktree`。worker 可以启动空根目录，第一次提交前校验冻结源码；每题在对应数据集镜像和 Docker 后端内独立安装运行版本；Python 执行模块在 worker 启动时冻结。
 
 register 校验原题和公开/私有输入边界后复制到 `datasets/<dataset>/tasks/<id>`。依赖按固定配方准备，运行前再次验证源码及不可变镜像身份。系统依赖由 Data 声明中的 systemPackages 明确指定，commands 只校验命令存在，不在代码中猜包名。软件源在 Data 的运行 Dockerfile 配置。使用本机代理下载时只作用于构建，不作用于 Actor。Docker 引擎必须具备审定的嵌套 namespace、seccomp 和 AppArmor 条件，不能关闭安全边界来启动任务。
 
@@ -33,7 +33,11 @@ bash hicode-eval/eval.sh retry --root /path/eval-data --run RUN_ID
 
 批次项必须包含 dataset 和 id，单题可设 agentSeconds（30–10800 秒）。服务和批次并发均最多 5。示例应放在 Data 的 state/batch-example.json。每次尝试只执行一次，完成后用原判题评分。启动前取消保留未测；错误、超时和模型答错分别存储。恢复只校验原证据，不再次调用模型；retry 创建新尝试，不覆盖旧分数。已通过题不再提交，旧成绩保留在 `docs/eval` 离线记录中。
 
+submit 可加 `reasoning: {effort: "max"}`，省略沿用 state/settings.json 的 model.reasoning，显式 default 使用厂商默认。支持档位按模型校验，批次、执行与 retry 使用冻结值；看板显示英文 Reasoning，实际请求字段在原请求日志。不修改已运行任务，也不为参数变更重建依赖镜像。
+
 网络默认允许，每题由数据集适配器按原题许可收窄。Terminal-Bench 2.1 读取冻结 task.toml 的 environment.allow_internet，只有 true 才开放，false／缺失则隔离；DeepSWE 始终隔离。同一批可混合联网与禁网题。settings／批次的 network=isolated 可进一步禁网，open 不能覆盖原题限制；实际模式保存在各 Run，retry 沿用原模式。普通题与服务题均使用本题模型网关，真实 Key 不进入作答环境。联网只改变外网访问，单题容器、文件、进程与隐藏判题边界保持不变。
+
+正常完成的服务题必须先确认 `--single-task` 已封锁执行（持久化成功、工具回执完整、无运行或待消费子 Agent），并关闭模型网关；保留 HiCode Runtime 及其托管 Shell 服务，让私有 verifier 在独立文件／PID 视图中访问本题服务。判题完成、取消或失败后再关闭 Runtime、服务 namespace 和容器。未确认封锁不得暴露隐藏测试；超时／作答失败仍走原有停止确认，不保证服务存活。不能通过关闭全局 Task 清理或自行 daemonize 来替代此交接。
 
 SWE 的独立补判使用 `regrade --root DIR --run ID`，不调用模型，不改原答案或首次成绩；原始未通过现场仍保留。看板默认 http://127.0.0.1:8878/，断开 worker 后仍能读取保存的结果和终端。
 
