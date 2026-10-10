@@ -3,7 +3,7 @@ import {RunContainers} from '../src/host/containers.js';
 import {configSchema} from '../src/host/types.js';
 import * as transport from '../src/host/store.js';
 
-const config=()=>configSchema.parse({version:4,data:'/tmp/fake-runs',catalog:'/tmp/catalog.json',environments:'/tmp/environments',payload:'/tmp/payload',context:'offline',machine:'cache',concurrency:5,budget:{},model:{source:'qwen',model:'fake',apiKeyEnv:'UNUSED',baseUrl:'https://offline.invalid/v1'}});
+const config=()=>configSchema.parse({version:1,data:'/tmp/fake-runs',context:'offline',machine:'cache',concurrency:5,budget:{},model:{source:'qwen',model:'fake',apiKeyEnv:'UNUSED',baseUrl:'https://offline.invalid/v1'}});
 test('each attempt has its own network, identity and bounded resources without shared volumes',async()=>{
  const runtime=new RunContainers(config()),id='a'.repeat(16),image='sha256:'+'b'.repeat(64),calls:string[][]=[];
  const fake=spyOn(transport,'run').mockImplementation(async argv=>{

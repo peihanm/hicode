@@ -1,7 +1,0 @@
-{
-  "source": "qwen",
-  "model": "YOUR_MODEL_ID",
-  "apiKeyEnv": "HICODE_EVAL_API_KEY",
-  "baseUrl": "https://provider.example/v1",
-  "imageInput": false
-}

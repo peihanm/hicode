@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {EVAL_ROOT,REPOSITORY_ROOT} from '../paths.js';
 import {readJson,save,run,exists,tree} from './store.js';
 import {lease} from './lease.js';
+import {EvalLayout} from './layout.js';
 import {baseImagesSchema,dependencyRecipeSchema} from './environmentRecipes.js';
 import type {DependencyRecipe} from './environmentRecipes.js';
 import type {CatalogTask} from './catalog.js';
@@ -14,9 +15,9 @@ import type {DatasetBackends} from './types.js';
 
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const imageId=z.string().regex(/^sha256:[a-f0-9]{64}$/);
-const layerSchema=z.object({version:z.literal(2),kind:z.enum(['base','dependencies','task']),key:hash,
+const layerSchema=z.object({version:z.literal(1),kind:z.enum(['base','dependencies','task']),key:hash,
   imageId,parentImage:imageId,recipeSha256:hash,createdAt:z.string().datetime()}).strict();
-export const bindingSchema=z.object({version:z.literal(2),task:z.string(),sourceHash:hash,
+export const bindingSchema=z.object({version:z.literal(1),task:z.string(),sourceHash:hash,
   base:layerSchema,dependencies:layerSchema,preparation:layerSchema.nullable()}).strict().refine(value=>
     value.base.kind==='base'&&value.dependencies.kind==='dependencies'&&value.dependencies.parentImage===value.base.imageId&&
     (!value.preparation||(value.preparation.kind==='task'&&value.preparation.parentImage===value.dependencies.imageId)),
@@ -29,9 +30,8 @@ export function environmentBindingPath(root:string,task:Pick<CatalogTask,'datase
 }
 
 function aptInstall(packages:readonly string[]):string {
-  return packages.length?'RUN --mount=type=cache,id=hicode-clean-apt-lists-v1,target=/var/lib/apt/lists,sharing=locked --mount=type=cache,id=hicode-clean-apt-archives-v1,target=/var/cache/apt,sharing=locked sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|g" /etc/apt/sources.list.d/ubuntu.sources && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends '+packages.join(' ')+'\n':'';
+  return packages.length?'RUN --mount=type=cache,id=hicode-clean-apt-lists-v1,target=/var/lib/apt/lists,sharing=locked --mount=type=cache,id=hicode-clean-apt-archives-v1,target=/var/cache/apt,sharing=locked apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=15 update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends '+packages.join(' ')+'\n':'';
 }
-const commandPackages:Record<string,string>={gcc:'build-essential','g++':'build-essential',rustc:'rustc',bc:'bc',openssl:'openssl',vim:'vim',sqlite3:'sqlite3',ffmpeg:'ffmpeg',chromium:'chromium',chromedriver:'chromium-driver',oligotm:'primer3',Rscript:'r-base',cobc:'gnucobol3',screen:'screen',expect:'expect',gfortran:'gfortran',h5cc:'libhdf5-dev','pkg-config':'pkg-config',gcov:'gcc',tclsh:'tcl',pdflatex:'texlive-latex-base=2023.20240207-1',coqc:'coq',zip:'zip',unzip:'unzip',strings:'binutils',extundelete:'extundelete',foremost:'foremost',fls:'sleuthkit',e2fsck:'e2fsprogs',pmars:'pmars',nginx:'nginx'};
 function environmentBuilder(definition?:DependencyRecipe){
   if(definition?.python==='3.6.15')return 'prepare_source_environment.py';
   if(definition?.python==='3.7.17')return 'prepare_source_environment37.py';
@@ -61,7 +61,7 @@ export class EnvironmentStore {
     return (await run(this.docker('image','ls','-a','--no-trunc','--quiet','--filter','label=dev.hicode.environment='+layer.key))).split('\n').includes(layer.imageId);
   }
   private async build(kind:Layer['kind'],parent:string,recipeSha256:string,stage:string,dockerfile:string){
-    const key=digest(JSON.stringify({version:2,kind,parent,recipeSha256,dockerfile}));
+    const key=digest(JSON.stringify({version:1,kind,parent,recipeSha256,dockerfile}));
     const directory=join(this.root,'layers',key),receipt=join(directory,'layer.json');
     await mkdir(directory,{recursive:true,mode:0o700});
     const release=await lease(directory,'build');
@@ -73,22 +73,21 @@ export class EnvironmentStore {
       const tag='hicode-env-'+kind+':'+key;
       if(await run(this.docker('image','ls','--quiet','--filter','reference='+tag))){
         const image=await this.inspect(tag);
-        const layer:Layer={version:2,kind,key,imageId:image.Id,parentImage:imageId.parse(parent),recipeSha256,createdAt:new Date().toISOString()};
+        const layer:Layer={version:1,kind,key,imageId:image.Id,parentImage:imageId.parse(parent),recipeSha256,createdAt:new Date().toISOString()};
         await this.verifyImage(layer);await save(receipt,layer);return layer;
       }
       const source=dockerfile+'\nLABEL dev.hicode.environment="'+key+'" dev.hicode.layer="'+kind+'"\nWORKDIR /eval\nCMD ["sleep","infinity"]\n';
       await writeFile(join(stage,'Dockerfile'),source);
       // Keep only the explicit build context and immutable image receipt for reconstruction.
-      await cp(stage,join(directory,'context'),{recursive:true});
       try {
         const output=await run(this.docker('build',...(this.buildProxy?['--build-arg','HTTP_PROXY='+this.buildProxy,'--build-arg','HTTPS_PROXY='+this.buildProxy]:[]),'--network=default','--pull=false','--progress=plain','-t',tag,stage),{timeout:1800000,includeStderr:true});
-        await writeFile(join(directory,'build.log'),output);
+        await writeFile(join(directory,'build.log'),output.slice(-32768));
       }catch(error){
         const log=join(directory,'build.log');await writeFile(log,String(error));
         throw new Error('Environment build failed; full log: '+log+'\n'+String(error).slice(-1200));
       }
       const image=await this.inspect(tag);
-      const layer:Layer={version:2,kind,key,imageId:image.Id,parentImage:imageId.parse(parent),recipeSha256,createdAt:new Date().toISOString()};
+      const layer:Layer={version:1,kind,key,imageId:image.Id,parentImage:imageId.parse(parent),recipeSha256,createdAt:new Date().toISOString()};
       await this.verifyImage(layer);await save(receipt,layer);return layer;
     }finally{await release();}
   }
@@ -100,10 +99,10 @@ export class EnvironmentStore {
   async prepareBase():Promise<Layer>{
     await mkdir(this.root,{recursive:true,mode:0o700});
     const release=await lease(this.root,'prepare');
-    const stage=join(this.root,'stage-'+randomUUID());await mkdir(stage);
+    const stage=join(EvalLayout.fromEnvironments(this.root).builds,'stage-'+randomUUID());await mkdir(stage);
     try {
-      const images=await readJson(join(EVAL_ROOT,'config/clean-base-images.json'),baseImagesSchema);
-      let dockerfile=await readFile(join(EVAL_ROOT,'config/clean-base.Dockerfile'),'utf8');
+      const images=await readJson(join(EvalLayout.fromEnvironments(this.root).runtime,'images.json'),baseImagesSchema);
+      let dockerfile=await readFile(join(EvalLayout.fromEnvironments(this.root).runtime,'Dockerfile'),'utf8');
       for(const [name,ref] of Object.entries(images)){
         dockerfile=dockerfile.replaceAll('{{'+name+'}}',ref);
       }
@@ -124,10 +123,10 @@ export class EnvironmentStore {
   }
   private async identity(task:CatalogTask){
     if(!task.source)throw Error('Task source has not been prepared');
-    const metadata=await taskAdapters[task.dataset].validate(task.id,task.source);
+    const metadata=await taskAdapters(EvalLayout.fromEnvironments(this.root))[task.dataset].validate(task.id,task.source);
     let dependencies:DependencyRecipe|undefined;
     if('environment' in metadata&&typeof metadata.environment==='string'){
-      const path=join(EVAL_ROOT,'config/environment-recipes',metadata.environment.split('/').at(-1)!+'.json');
+      const path=join(EvalLayout.fromEnvironments(this.root).recipes(task.dataset),metadata.environment.split('/').at(-1)!+'.json');
       if(!await exists(path))throw Error('No reviewed clean dependency recipe for '+task.id);
       dependencies=await readJson(path,dependencyRecipeSchema);
       if(!('python' in metadata)||!dependencies.python.startsWith(metadata.python+'.'))throw Error('Recipe interpreter differs from task');
@@ -135,7 +134,7 @@ export class EnvironmentStore {
         throw Error('The target project must come from the frozen task source, not a package in the dependency image');
       }
     }
-    const recipe='image' in metadata?digest(await readFile(join(EVAL_ROOT,'config/deep-runtime.Dockerfile'),'utf8')+
+    const recipe='image' in metadata?digest(await readFile(EvalLayout.fromEnvironments(this.root).runtimeDockerfile(task.dataset),'utf8')+
       await readFile(join(REPOSITORY_ROOT,'package.json'),'utf8')+await readFile(join(REPOSITORY_ROOT,'bun.lock'),'utf8')+
       (metadata.runtimeTools?.length?'\n'+JSON.stringify(metadata.runtimeTools):'')):digest((await Promise.all([environmentBuilder(dependencies),'venv_paths.py'].map(name=>readFile(join(EVAL_ROOT,'src/worker',name),'utf8')))).join('\n')+
       JSON.stringify(dependencies??null)+await readFile(join(EVAL_ROOT,'src/datasets/reviewed_test_deps.py'),'utf8'));
@@ -144,7 +143,7 @@ export class EnvironmentStore {
       const files=await tree(task.preparation.directory);
       if(digest(JSON.stringify(files))!==task.preparation.sha256||!files[task.preparation.script])throw Error('Task preparation differs from its frozen recipe');
     }
-    return {metadata,dependencies,recipe,hash:digest(JSON.stringify({version:2,recipe,dataset:task.dataset,metadata,
+    return {metadata,dependencies,recipe,hash:digest(JSON.stringify({version:1,recipe,dataset:task.dataset,metadata,
       ...(dependencies?.sourceArchives?.length?{sourceArchiveAccess:'non-root-readable-v1'}:{}),
       preparation:task.preparation??null}))};
   }
@@ -155,7 +154,7 @@ export class EnvironmentStore {
     let build=this.dependencyBuilds.get(key);
     if(!build){
       build=(async()=>{
-        const stage=join(this.root,'stage-'+randomUUID());await mkdir(stage);
+        const stage=join(EvalLayout.fromEnvironments(this.root).builds,'stage-'+randomUUID());await mkdir(stage);
         try {
           let body='';
           if(definition){
@@ -164,7 +163,7 @@ export class EnvironmentStore {
             const builder=environmentBuilder(definition);
             for(const name of [builder,'venv_paths.py'])await cp(join(EVAL_ROOT,'src/worker',name),join(stage,'worker',name));
             if(definition.python==='3.6.15'||definition.python==='3.7.17'){
-              const sourceRoot=join(this.root,'runtime-sources');
+              const sourceRoot=join(EvalLayout.fromEnvironments(this.root).downloads,'runtime-sources');
               if(await realpath(sourceRoot)!==resolve(sourceRoot))throw Error('Symlinked runtime source cache');
               await mkdir(join(stage,'runtime-sources'));
               for(const name of [`Python-${definition.python}.tar.xz`,'openssl-1.1.1w.tar.gz']){
@@ -174,7 +173,7 @@ export class EnvironmentStore {
               }
             }
             if(definition.sourceArchives?.length){
-              const sourceRoot=join(this.root,'runtime-sources');
+              const sourceRoot=join(EvalLayout.fromEnvironments(this.root).downloads,'runtime-sources');
               if(await realpath(sourceRoot)!==resolve(sourceRoot))throw Error('Symlinked source archive cache');
               for(const archive of definition.sourceArchives){
                 const source=join(sourceRoot,archive.sha256),stat=await lstat(source);
@@ -191,11 +190,7 @@ export class EnvironmentStore {
               (definition.sourceArchives?.length?'COPY source-cache /opt/hicode-swe/source-cache\nENV XDG_CACHE_HOME=/opt/hicode-swe/source-cache\n':'')+
               'RUN --mount=type=cache,id=hicode-clean-uv-v1,target=/root/.cache/uv,sharing=locked python3 /opt/hicode-eval/'+builder+' /opt/hicode-environment/dependencies.json\n';
           }else if('packages' in metadata){
-            const packages=[...new Set([...(metadata.systemPackages??[]),...metadata.commands.map(command=>{
-              const value=commandPackages[command];if(!value)throw Error('No system package recipe for command '+command);return value;
-            })])];
-            body=aptInstall(packages);
-            if(metadata.commands.includes('pmars'))body+='ENV PATH="/usr/games:${PATH}"\n';
+            body=aptInstall(metadata.systemPackages??[]);
             for(const [name,pins] of [['actor',metadata.packages],['verifier',metadata.verifierPackages]] as const){
               if(pins.length)body+='RUN --mount=type=cache,id=hicode-clean-terminal-uv-v1,target=/root/.cache/uv,sharing=locked '+
                 JSON.stringify(['uv','pip','install','--python','/opt/python313/bin/python3.13','--target','/opt/hicode-terminal/'+name,...pins])+'\n';
@@ -214,7 +209,7 @@ export class EnvironmentStore {
   private async prepareImageTask(task:CatalogTask,identity:Awaited<ReturnType<EnvironmentStore['identity']>>):Promise<EnvironmentBinding>{
     const metadata=identity.metadata;if(!('image' in metadata))throw Error('Missing reviewed source image');
     await mkdir(this.root,{recursive:true,mode:0o700});
-    const stage=join(this.root,'stage-'+randomUUID());await mkdir(stage);
+    const stage=join(EvalLayout.fromEnvironments(this.root).builds,'stage-'+randomUUID());await mkdir(stage);
     try {
       let source;
       try{source=await this.inspect(metadata.image);}catch{await run(this.docker('pull','--platform','linux/amd64',metadata.image),{timeout:600000});source=await this.inspect(metadata.image);}
@@ -223,7 +218,7 @@ export class EnvironmentStore {
       await run(this.docker('tag',source.Id,'hicode-env-source:'+source.Id.slice(7)));
       const base=await this.build('base',source.Id,digest(metadata.image),stage,'FROM hicode-env-source:'+source.Id.slice(7)+'\nUSER root\n');
       for(const name of ['package.json','bun.lock'])await cp(join(REPOSITORY_ROOT,name),join(stage,name));
-      const template=await readFile(join(EVAL_ROOT,'config/deep-runtime.Dockerfile'),'utf8');
+      const template=await readFile(EvalLayout.fromEnvironments(this.root).runtimeDockerfile(task.dataset),'utf8');
       const parentTag='hicode-env-parent:'+base.imageId.slice(7);await run(this.docker('tag',base.imageId,parentTag));
       let dockerfile=template.replace('{{source}}',parentTag);
       if(metadata.runtimeTools?.includes('go-ctrf-json-reporter'))
@@ -233,12 +228,11 @@ export class EnvironmentStore {
         dockerfile+='\nRUN mkdir -p /opt/hicode-rust && cp -a /root/.cargo /opt/hicode-rust/cargo && cp -a /root/.rustup /opt/hicode-rust/rustup && chmod -R a+rX /opt/hicode-rust\n'+
           'ENV CARGO_HOME=/opt/hicode-rust/cargo RUSTUP_HOME=/opt/hicode-rust/rustup CARGO_NET_OFFLINE=true PATH=/opt/hicode-rust/cargo/bin:${PATH}\n';
       const dependencies=await this.build('dependencies',base.imageId,identity.recipe,stage,dockerfile);
-      const binding:EnvironmentBinding={version:2,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation:null};
+      const binding:EnvironmentBinding={version:1,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation:null};
       await save(this.bindingPath(task),binding);return binding;
     }finally{await rm(stage,{recursive:true,force:true});}
   }
   async prepareTask(task:CatalogTask):Promise<EnvironmentBinding>{
-    if(task.dataset==='terminal-bench')throw Error('Terminal-Bench 2.0 environment preparation is retired');
     const routed=this.routed(task);if(routed)return routed.prepareTask(task);
     const identity=await this.identity(task);
     if('image' in identity.metadata)return this.prepareImageTask(task,identity);
@@ -249,7 +243,7 @@ export class EnvironmentStore {
         await this.verifyImage(previous.dependencies);if(previous.preparation)await this.verifyImage(previous.preparation);return previous;
       }
     }
-    const stage=join(this.root,'stage-'+randomUUID());await mkdir(stage);
+    const stage=join(EvalLayout.fromEnvironments(this.root).builds,'stage-'+randomUUID());await mkdir(stage);
     try {
       const dependencies=await this.dependencies(identity.metadata,identity.recipe,base,identity.dependencies);
       let preparation:Layer|null=null,body='';
@@ -271,7 +265,7 @@ export class EnvironmentStore {
         body+='COPY preparation /opt/hicode-task/source\nRUN '+JSON.stringify(['/bin/bash','/opt/hicode-task/source/'+task.preparation.script])+'\n';
       }
       if(body)preparation=await this.build('task',dependencies.imageId,digest(JSON.stringify(await tree(stage))+body),stage,await this.childDockerfile(dependencies,body));
-      const binding:EnvironmentBinding={version:2,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation};
+      const binding:EnvironmentBinding={version:1,task:taskKey(task),sourceHash:identity.hash,base,dependencies,preparation};
       await save(this.bindingPath(task),binding);return binding;
     }finally{await rm(stage,{recursive:true,force:true});}
   }
@@ -280,10 +274,5 @@ export class EnvironmentStore {
     const binding=await readJson(this.bindingPath(task),bindingSchema);
     if(binding.task!==taskKey(task)||binding.sourceHash!==(await this.identity(task)).hash)throw Error('Task environment is stale; prepare it before submission');
     await this.verifyImage(binding.preparation??binding.dependencies);return binding;
-  }
-  /** Inventory shows validated local receipts; submission resolves source and image identity. */
-  async ready(task:CatalogTask):Promise<boolean>{
-    try{return (await readJson(this.bindingPath(task),bindingSchema)).task===taskKey(task);}
-    catch{return false;}
   }
 }

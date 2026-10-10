@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, appendFile, rename, rm, readFile } from 'node:fs/promises';
+import { mkdir, appendFile, rename, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -13,6 +13,7 @@ import { EVAL_ROOT } from '../paths.js';
 import {RunContainers} from './containers.js';
 import {EnvironmentStore} from './environments.js';
 import {TaskCatalog} from './catalog.js';
+import {EvalLayout} from './layout.js';
 import {WorkerBundle} from './workerBundle.js';
 
 const packetSchema = z.discriminatedUnion('type', [
@@ -94,27 +95,16 @@ export class LinuxMachine {
     await save(join(output,'collection.json'),{complete:true,files:await runEvidenceTree(join(output,'logs'))});
     await this.containers.remove(reviewId);
   }
+  async freeze():Promise<void>{this.workerBundle??=await WorkerBundle.capture(EVAL_ROOT);}
   async prepare(): Promise<void> {
-    this.workerBundle??=await WorkerBundle.capture(EVAL_ROOT);
-    const info = JSON.parse(await run(this.docker('inspect', this.config.machine), { timeout: 15000 }));
-    const machine = z.array(z.object({ State: z.object({ Running: z.literal(true) }), Config: z.object({ Labels: z.record(z.string()) }) })).length(1).parse(info)[0];
-    if (machine.Config.Labels['dev.hicode.role'] !== 'eval') throw Error('Use the dedicated evaluation machine, not the development container');
-    await run(this.docker('exec', this.config.machine, 'sh', '-c', 'command -v bun && command -v node && command -v tmux && command -v bwrap && command -v python3 && /opt/python313/bin/pip3 --version'), { timeout: 15000 });
-    await run(this.docker('exec', this.config.machine, '/opt/hicode-verifier/bin/python', '-c', "import sys,importlib.metadata as m; assert sys.version_info[:2] == (3,13); assert m.version('pytest') == '8.4.1'; assert m.version('pytest-json-ctrf') == '0.3.5'"));
+    await this.freeze();
+    const bundle=this.workerBundle;if(!bundle)throw Error('Worker package not frozen');
     const manifest = await readJson(join(this.config.payload, 'manifest.json'), z.object({ files: z.record(z.string()) }));
     const archive = await readFile(join(this.config.payload, 'source.tar.gz'));
     const hash = createHash('sha256').update(archive).digest('hex');
     if (manifest.files['source.tar.gz'] !== hash) throw Error('Source payload changed');
-    await run(this.docker('exec', this.config.machine, 'mkdir', '-p', '/opt/hicode-eval/eval_datasets', '/opt/hicode/releases', '/eval/runs'));
-    const stage=await mkdtemp(join(this.config.data,'.worker-'));
-    try {
-      const files=join(stage,'files');await this.workerBundle.writeTo(files);
-      await run(this.docker('cp',files+'/.',this.config.machine+':/opt/hicode-eval/'));
-    }finally{await rm(stage,{recursive:true,force:true});}
-    const target = '/opt/hicode-eval/source-' + hash + '.tar.gz';
-    await run(this.docker('cp', join(this.config.payload, 'source.tar.gz'), this.config.machine + ':' + target));
-    this.release = await run(this.docker('exec', this.config.machine, 'python3', '/opt/hicode-eval/bootstrap.py', target, hash), { timeout: 660000 });
-    if (this.release !== '/opt/hicode/releases/' + hash) throw Error('Invalid prepared release');
+    // Each attempt bootstraps this release inside its own dataset image.
+    this.release = '/opt/hicode/releases/' + hash;
   }
   async cancel(id: string): Promise<void> {
     const backend=await this.runBackend(id);if(backend!==this)return backend.cancel(id);
@@ -179,7 +169,7 @@ export class LinuxMachine {
     if (!this.release||!this.workerBundle) throw Error('Evaluation machine not initialized');
     const remote = '/eval/runs/' + state.id;
     const task = join(path, 'task', state.task);
-    const execution=await taskAdapters[state.dataset].execution(state,task);
+    const execution=await taskAdapters(new EvalLayout(this.config.data))[state.dataset].execution(state,task);
     const catalog=await TaskCatalog.open(this.config.catalog);
     const environment=await this.environments.resolve({...catalog.get(state.dataset,state.task),source:task});
     const container=this.containers.name(state.id);

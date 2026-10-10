@@ -39,7 +39,7 @@ class DatasetRuntimeTests(TestCase):
                               demote=lambda:None,cancelled=lambda:False)
 
     def test_release_selects_its_own_handler(self):
-        self.assertIsInstance(dataset_runtime({'dataset': 'terminal-bench'}), TerminalBenchRuntime)
+        self.assertIsInstance(dataset_runtime({'dataset': 'terminal-bench-2.1'}), TerminalBenchRuntime)
         self.assertIsInstance(dataset_runtime({'dataset': 'terminal-bench-2.1'}), TerminalBenchRuntime)
         self.assertIsInstance(dataset_runtime({'dataset': 'swe-bench-verified'}), SweBenchRuntime)
         with self.assertRaisesRegex(ValueError, 'Unsupported frozen dataset'):

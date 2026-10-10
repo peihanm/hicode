@@ -3,8 +3,6 @@ import { mkdir, copyFile, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { z } from 'zod';
 import { readJson, tree } from './store.js';
-import { EVAL_ROOT } from '../paths.js';
-import type {Dataset} from './datasets.js';
 export const taskSchema = z.object({ metadata: z.object({ category: z.string().optional() }).optional(), agent: z.object({ timeout_sec: z.number().positive() }), verifier: z.object({ timeout_sec: z.number().positive() }) });
 const inputPath = z.string().max(256).regex(/^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_][A-Za-z0-9_.-]*$/);
 const profileSchema = z.object({
@@ -73,17 +71,12 @@ const profileSchema = z.object({
     publicTargets.add(entry.target);
   }
 });
-const manifestPath=(dataset:Extract<Dataset,`terminal-bench${string}`>)=>
-  join(EVAL_ROOT,'config',dataset==='terminal-bench'?'terminal-bench.json':'terminal-bench-2.1.json');
-export async function profiles(dataset:Extract<Dataset,`terminal-bench${string}`>) {
-  return readJson(manifestPath(dataset), z.record(profileSchema));
-}
 export function publicTaskProfile(manifest:Record<string,unknown>,id:string){
   if(!Object.hasOwn(manifest,id))throw Error('Public task has not been adapted to the shared Linux machine');
   return profileSchema.parse(manifest[id]);
 }
-export async function validatePublicTask(id: string, path: string, dataset:Extract<Dataset,`terminal-bench${string}`>) {
-  const manifest=await readJson(manifestPath(dataset),z.record(z.unknown()));
+export async function validatePublicTask(id: string, path: string, definition:string) {
+  const manifest=await readJson(definition,z.record(z.unknown()));
   const profile=publicTaskProfile(manifest,id);
   const files = await tree(path);
   if (JSON.stringify(Object.keys(files).sort()) !== JSON.stringify(Object.keys(profile.hashes).sort()) || Object.entries(profile.hashes).some(([name, hash]) => files[name]?.sha256 !== hash)) throw Error('Public task differs from the reviewed dataset revision');

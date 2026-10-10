@@ -6,18 +6,20 @@ from pathlib import Path
 import select
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
 
 SYSTEM_PATHS = {'/etc', '/var', '/run', '/home', '/git', '/srv'}
 ACCOUNT_COUNT = 65536
+READY_FILE = '/tmp/.hicode-service-ready'
 
 
 def service_paths(config):
     value = config.get('service')
     if value is None:return None
-    if (config.get('dataset') not in {'terminal-bench', 'terminal-bench-2.1'}
+    if (config.get('dataset') not in {'terminal-bench-2.1'}
             or config.get('network') != 'isolated' or not isinstance(value, dict)
             or set(value) != {'writablePaths'} or not isinstance(value['writablePaths'], list)
             or len(value['writablePaths']) > len(SYSTEM_PATHS)
@@ -99,13 +101,23 @@ class ServiceNamespace:
         # /root is the same private Home, never the preparation machine's Home.
         self.mounts += ['--bind', str(self.root / 'home'), '/root']
 
-    def start(self, namespace, environment):
+    def start(self, namespace, environment, model_socket=None):
         from protocol import atomic_json
         from cleanup import process_start
         if self.process is not None:raise ValueError('Service namespace already started')
         args = ['python3', '/opt/hicode-eval/service_namespace.py', '--keep', *self.paths]
         argv = namespace(args)
-        argv = argv[:-len(args)] + self.mounts + ['--as-pid-1'] + args
+        mounts=list(self.mounts)
+        if model_socket is not None:
+            socket_path=Path(model_socket)
+            expected=Path('/run/hicode-eval')/self.root.name/'model.sock'
+            if socket_path!=expected or socket_path.resolve()!=expected or socket_path.is_symlink():raise ValueError('Model socket must belong to this service run')
+            info=socket_path.lstat()
+            if not stat.S_ISSOCK(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600 or info.st_uid!=self.uid:raise ValueError('Invalid owned model socket')
+            # The private /run overlay hides earlier mounts. Re-expose only
+            # the owned model socket after all service system directories.
+            mounts+=['--dir',str(socket_path.parent),'--ro-bind',str(socket_path),str(socket_path)]
+        argv = argv[:-len(args)] + mounts + ['--as-pid-1'] + args
         ready_read, ready_write = os.pipe()
         go_read, go_write = os.pipe()
         info_read, info_write = os.pipe()
@@ -136,9 +148,9 @@ class ServiceNamespace:
             self.pidfd = os.pidfd_open(self.pid)
             deadline = time.monotonic() + 5
             while True:
-                self._check()
-                result = subprocess.run(self.actor_argv(['true']), capture_output=True, timeout=2)
-                if result.returncode == 0:break
+                if self._ready():
+                    result = subprocess.run(self.actor_argv(['true']), capture_output=True, timeout=2)
+                    if result.returncode == 0:break
                 if time.monotonic() >= deadline:raise RuntimeError('Cannot enter the persistent service namespace')
                 time.sleep(.05)
             atomic_json(self.root / 'service.json', {'version': 1, 'pid': self.pid, 'start': self.start_identity,
@@ -149,6 +161,15 @@ class ServiceNamespace:
         finally:
             for fd in [ready_read, ready_write, go_read, go_write, info_read, info_write]:
                 if fd is not None:os.close(fd)
+
+    def _ready(self):
+        self._check()
+        path=Path(f'/proc/{self.pid}/root'+READY_FILE)
+        try:info=path.lstat()
+        except FileNotFoundError:return False
+        if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600 or info.st_uid!=self.uid:
+            raise RuntimeError('Invalid service readiness marker')
+        return info.st_size==6 and path.read_bytes()==b'ready\n'
 
     def _check(self):
         from cleanup import process_start
@@ -213,6 +234,11 @@ def main():
             os.lchown('/'+name,*owner)
         libc = ctypes.CDLL(None, use_errno=True)
         if libc.prctl(4, 1, 0, 0, 0):raise OSError(ctypes.get_errno(), 'Cannot expose owned namespace handles')
+        # Bubblewrap reports the PID before the final root and ownership are
+        # ready. A successful command in its earlier root is not readiness.
+        fd=os.open(READY_FILE,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        try:os.write(fd,b'ready\n')
+        finally:os.close(fd)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         while True:
             try:

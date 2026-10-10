@@ -11,7 +11,7 @@ class RecoveryTest(unittest.TestCase):
     def test_failed_import_recovers_without_actor_identity_or_model_execution(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp).resolve()/('a'*16);root.mkdir()
-            (root/'job.json').write_text(json.dumps({'dataset':'terminal-bench','release':'/opt/hicode/releases/'+'a'*64}))
+            (root/'job.json').write_text(json.dumps({'dataset':'terminal-bench-2.1','release':'/opt/hicode/releases/'+'a'*64}))
             with patch('recovery.pwd.getpwall',return_value=[]),patch.object(Path,'iterdir',return_value=iter([])),patch('cleanup.stop_task_processes') as stop:
                 result=recover(root)
             self.assertEqual(result,{'execution':'failed','grading':'unavailable','uid':20000})
@@ -36,7 +36,7 @@ class RecoveryTest(unittest.TestCase):
         outcome = {'execution':'completed','grading':'passed','uid':20001}
         (root/'identity.json').write_text(json.dumps(identity))
         (root/'outcome.json').write_text(json.dumps(outcome))
-        (root/'job.json').write_text(json.dumps({'dataset':'terminal-bench'}))
+        (root/'job.json').write_text(json.dumps({'dataset':'terminal-bench-2.1'}))
         records = [
             {'type':'ready'},
             {'type':'agent_event','event':{'type':'turn_end','input':{'persistence_status':'saved'}}},

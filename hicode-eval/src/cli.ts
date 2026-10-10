@@ -1,157 +1,152 @@
 #!/usr/bin/env bun
-import { parseArgs } from 'node:util';
-import { resolve, join, dirname } from 'node:path';
-import { realpath, readdir } from 'node:fs/promises';
-import { parse } from 'dotenv';
-import { z } from 'zod';
-import { Lab } from './host/manager.js';
-import { EVAL_ROOT, REPOSITORY_ROOT } from './paths.js';
-import { Client } from './host/client.js';
-import { configSchema, datasetBackendsSchema, modelSchema, submissionSchema, idSchema } from './host/types.js';
-import { directory, readJson, run, save, exists } from './host/store.js';
-import { lease } from './host/lease.js';
-import { serve,serveWorker } from './host/server.js';
-import {EvaluationView} from './host/view.js';
-import {regradeRun} from './host/regrade.js';
+import {parseArgs} from 'node:util';
+import {join,resolve,dirname} from 'node:path';
+import {readdir,cp,rm,copyFile,mkdir,realpath,mkdtemp,rename} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {parse} from 'dotenv';
+import {z} from 'zod';
+import {EvalLayout} from './host/layout.js';
+import {loadConfig,settingsSchema,modelSchema,submissionSchema,runSchema,idSchema} from './host/types.js';
 import {TaskCatalog} from './host/catalog.js';
+import type {CatalogTask} from './host/catalog.js';
+import {taskAdapters,datasetSchema,taskKey} from './host/datasets.js';
 import {EnvironmentStore} from './host/environments.js';
+import {readJson,save,run,exists,contained,tree} from './host/store.js';
+import {lease} from './host/lease.js';
+import {Lab} from './host/manager.js';
+import {Client} from './host/client.js';
+import {EvaluationView} from './host/view.js';
+import {serve,serveWorker} from './host/server.js';
+import {collectResources} from './host/resources.js';
 import {imageInventory} from './host/imageInventory.js';
-import {organizeEnvironmentImages} from './host/imageTags.js';
-import {archiveRuns} from './host/archive.js';
-import {sweCatalog,validateSweTask} from './host/sweTasks.js';
-import {profiles} from './host/publicTasks.js';
-import {deepProfiles} from './host/deepTasks.js';
-import {taskAdapters} from './host/datasets.js';
-import type {Dataset} from './host/datasets.js';
-import {datasetSchema,taskKey} from './host/datasets.js';
-async function main() {
-  process.umask(0o077);
-  const { positionals, values: v } = parseArgs({ allowPositionals: true, options: {
-    'worker-port':{type:'string',default:'8879'},'build-proxy':{type:'string'},'dataset-backends':{type:'string'},'verifier-proxy':{type:'string'},apply:{type:'boolean'},catalog:{type:'string'},environments:{type:'string'},'include-passed':{type:'boolean'},cpus:{type:'string',default:'1'},'memory-mb':{type:'string',default:'4096'},network: {type:'string', default:'isolated'}, ids: {type:'string'}, dataset:{type:'string'}, 'data-dir': { type: 'string' }, tasks: { type: 'string' }, 'swe-tasks': { type: 'string' }, payload: { type: 'string' }, 'docker-context': { type: 'string', default: 'colima-hicode' }, machine: { type: 'string', default: 'hicode-eval-clean' }, concurrency: { type: 'string', default: '2' }, port: { type: 'string', default: '8878' }, file: { type: 'string' }, run: { type: 'string' }, batch: { type: 'string' }, 'wait-seconds': { type: 'string', default: '30' }, source: { type: 'string' }, model: { type: 'string' }, 'model-config': { type: 'string' }, 'snapshot-worktree': { type: 'boolean' }, help: { type: 'boolean' }
-  } });
-  const command = positionals[0];
-  if (v.help || !command) { console.log('HiCode Eval · isolated containers\n  worker --data-dir DIR --payload DIR --catalog FILE --environments DIR [--worker-port 8879] [--machine hicode-eval-clean] [--network open|isolated] [--dataset-backends FILE]\n  serve --data-dir DIR [--port 8878] [--worker-port 8879]\n  prepare --payload DIR [--snapshot-worktree]\n  register-tasks --catalog FILE [--tasks DIR --dataset terminal-bench-2.1|deep-swe] [--swe-tasks DIR] [--ids DATASET:ID1,DATASET:ID2]\n  archive-runs --catalog FILE --data-dir DIR [--apply]\n  prepare-environments --catalog FILE --environments DIR [--ids DATASET:ID1,DATASET:ID2] [--include-passed] [--dataset-backends FILE] [--build-proxy URL]\n  image-inventory --data-dir DIR [--dataset DATASET]\n  organize-environments --data-dir DIR [--dataset DATASET] [--apply]  # Docker aliases only\n  catalog | submit --file batch.json | status [--batch ID]\n  wait --batch ID [--wait-seconds 30] | cancel --batch ID | resume --batch ID | recover --run ID | retry --run ID | report --batch ID --file report.md\n  regrade --data-dir DIR --run ID [--verifier-proxy URL]  # frozen SWE patch only; no Agent/model'); return; }
-  if (positionals.length !== 1 || !['worker','serve','prepare','catalog','submit','status','wait','cancel','resume','recover','retry','report','regrade','prepare-environments','register-tasks','archive-runs','image-inventory','organize-environments'].includes(command)) throw Error('Unknown command');
-  if (v['verifier-proxy'] && command !== 'regrade') throw Error('--verifier-proxy is only supported by regrade');
-  const required = (key: keyof typeof v) => { const value = v[key]; if (typeof value !== 'string' || !value) throw Error('Missing --' + key); return value; };
-  const port = z.number().int().min(1024).max(65535).parse(Number(v.port));
-  if(command==='image-inventory'){
-    console.log(JSON.stringify(await imageInventory(required('data-dir'),v.dataset?datasetSchema.parse(v.dataset):undefined),null,2));return;
+import {regradeRun} from './host/regrade.js';
+import {EVAL_ROOT,REPOSITORY_ROOT} from './paths.js';
+
+async function main(){
+  const {positionals,values:v}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
+    preparation:{type:'string'},script:{type:'string'},root:{type:'string'},help:{type:'boolean'},file:{type:'string'},dataset:{type:'string'},tasks:{type:'string'},ids:{type:'string'},run:{type:'string'},batch:{type:'string'},apply:{type:'boolean'},
+    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},live:{type:'boolean'},'build-cache':{type:'boolean'},'verifier-proxy':{type:'string'}
+  }});
+  const command=positionals[0];
+  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL]\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
+  if(positionals.length!==1||!v.root)throw Error('Supply one command and --root');
+  const layout=new EvalLayout(v.root);
+  if(contained(REPOSITORY_ROOT,layout.root))throw Error('Evaluation data must be outside the checkout');
+  const required=(name:'tasks'|'file'|'dataset'|'run'|'batch')=>{const value=v[name];if(!value)throw Error('Missing --'+name);return value;};
+  const port=z.coerce.number().int().min(1024).max(65535).parse(v.port),workerPort=z.coerce.number().int().min(1024).max(65535).parse(v['worker-port']);
+  if(command==='init'){
+    if(!await layout.initialize())throw Error('Root already initialized');
+    const model=v['model-config']?await readJson(resolve(v['model-config']),modelSchema):modelSchema.parse({source:'qwen',model:'qwen3.8-flash',apiKeyEnv:'DASHSCOPE_API_KEY',baseUrl:'https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',imageInput:true});
+    await save(layout.settings,settingsSchema.parse({version:1,context:'colima-hicode',machine:'hicode-eval-runtime',concurrency:5,cpus:1,memoryMb:4096,budget:{agentSeconds:1800},model}));
+    await save(layout.catalog,{version:1,updatedAt:new Date().toISOString(),tasks:[]});
+    await copyFile(join(EVAL_ROOT,'templates/data-README.md'),join(layout.root,'README.md'));console.log(JSON.stringify({root:layout.root,initialized:true}));return;
   }
-  if(command==='organize-environments'){
-    console.log(JSON.stringify(await organizeEnvironmentImages(required('data-dir'),v.dataset?datasetSchema.parse(v.dataset):undefined,v.apply??false),null,2));return;
-  }
-  if(command==='archive-runs'){
-    console.log(JSON.stringify(await archiveRuns(await directory(required('data-dir')),resolve(required('catalog')),v.apply??false),null,2));return;
-  }
-  if(command==='register-tasks'){
-    const path=resolve(required('catalog')),release=await lease(await directory(dirname(path)),'catalog');
-    try {
-      if(!await exists(path))await save(path,{version:1,updatedAt:new Date().toISOString(),tasks:[]});
-      const catalog=await TaskCatalog.open(path);
-      const entries: {id:string;dataset:Dataset;source:string}[]=[];
-      if(v['swe-tasks'])for(const task of await sweCatalog(await realpath(resolve(v['swe-tasks'])))){
-        const source=join(await realpath(resolve(v['swe-tasks'])),task.id);await validateSweTask(task.id,source);entries.push({id:task.id,dataset:'swe-bench-verified',source});
-      }
-      if(v.tasks){
-        const dataset=datasetSchema.parse(v.dataset??'terminal-bench-2.1');
-        if(dataset==='terminal-bench')throw Error('Terminal-Bench 2.0 is retired; register Terminal-Bench 2.1 tasks');
-        if(dataset==='swe-bench-verified')throw Error('Use --swe-tasks for SWE-bench Verified');
-        const root=await realpath(resolve(v.tasks)),supported=dataset==='deep-swe'?await deepProfiles():await profiles(dataset);
-        for(const entry of await readdir(root,{withFileTypes:true}))if(entry.isDirectory()&&!entry.isSymbolicLink()&&supported[entry.name]){
-          const source=join(root,entry.name);await taskAdapters[dataset].validate(entry.name,source);entries.push({id:entry.name,dataset,source});
-        }
-      }
-      if(!entries.length)throw Error('No reviewed task sources selected');
-      const ids=v.ids?new Set(v.ids.split(',')):undefined;
-      const chosen=ids?entries.filter(task=>ids.has(taskKey(task))):entries;
-      if(ids&&(chosen.length!==ids.size||!chosen.length))throw Error('Every registration ID must match an explicit DATASET:ID source');
-      await catalog.register(chosen);console.log(JSON.stringify({registered:chosen.length,catalog:path}));
-    }finally{await release();}return;
-  }
-  if(command==='prepare-environments'){
-    const catalog=await TaskCatalog.open(resolve(required('catalog')));
-    const root=await directory(required('environments'));
-    const backends=v['dataset-backends']?await readJson(resolve(v['dataset-backends']),datasetBackendsSchema):{};
-    const proxy=v['build-proxy']?z.string().url().refine(value=>{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}).parse(v['build-proxy']):undefined;
-    const store=new EnvironmentStore(root,v['docker-context']!,backends,proxy);
-    const selected=v.ids?new Set(v.ids.split(',').map(value=>{
-      const matches=catalog.list().filter(task=>taskKey(task)===value||task.id===value);
-      if(matches.length!==1)throw Error(matches.length?'Ambiguous task ID; use DATASET:ID':'Unknown task ID');
-      return taskKey(matches[0]!);
-    })):undefined;
-    if(selected&&[...selected].some(key=>key.startsWith('terminal-bench:')))throw Error('Terminal-Bench 2.0 environment preparation is retired');
-    if(catalog.list().some(task=>task.dataset!=='deep-swe'&&task.dataset!=='terminal-bench'&&(selected?selected.has(taskKey(task)):task.status!=='passed'||v['include-passed']))) {console.log('Checking public base runtime…');await store.prepareBase();}
-    const prepared:string[]=[],failed:{id:string;error:string}[]=[],unprepared:string[]=[];
-    for(const task of catalog.list()){
-      if(task.dataset==='terminal-bench')continue;
-      if(selected?!selected.has(taskKey(task)):task.status==='passed'&&!v['include-passed'])continue;
-      if(!task.source){unprepared.push(taskKey(task));continue;}
-      try{console.log('Preparing: '+taskKey(task));await store.prepareTask(task);prepared.push(taskKey(task));console.log('Ready: '+taskKey(task));}
-      catch(error){failed.push({id:taskKey(task),error:error instanceof Error?error.message:String(error)});console.error('Blocked: '+taskKey(task)+': '+(error instanceof Error?error.message:String(error)).slice(0,240));}
-    }
-    const report={at:new Date().toISOString(),prepared,failed,unprepared};await save(join(root,'preparation-report.json'),report);
-    console.log(JSON.stringify({prepared:prepared.length,failed,unprepared:unprepared.length}));
-    if(failed.length)process.exitCode=1;return;
-  }
-  if(command==='regrade'){
-    console.log(JSON.stringify(await regradeRun(await directory(required('data-dir')),idSchema.parse(required('run')),v['verifier-proxy']),null,2));
-    return;
-  }
-  if (command === 'prepare') {
-    console.log(await run(['python3',join(EVAL_ROOT,'src/host/prepare.py'),'--source',REPOSITORY_ROOT,'--payload',resolve(required('payload')),...(v['snapshot-worktree']?['--snapshot-worktree']:[])],{timeout:60000}));return;
+  const config=await loadConfig(layout.root);
+  if(command==='prepare-environments'&&v.live){
+    if(!v.ids)throw Error('Live preparation requires explicit --ids DATASET:ID');
+    const client=new Client(workerPort),health=z.object({data:z.string()}).passthrough().parse(await client.request('health'));
+    if(health.data!==layout.root)throw Error('Worker belongs to another data root');
+    const tasks=v.ids.split(',').map(key=>{const parts=key.split(':');if(parts.length!==2)throw Error('Use DATASET:ID');return {dataset:datasetSchema.parse(parts[0]),id:parts[1]!};});
+    console.log(JSON.stringify(await client.request('prepare-environments',{tasks,...(v['build-proxy']?{buildProxy:v['build-proxy']}:{})})));return;
   }
   if(command==='serve'){
-    if(v.payload||v.catalog||v.environments||v.source||v.model||v['model-config']||v['dataset-backends'])throw Error('Execution options belong to worker; serve only owns the dashboard');
-    const data=await realpath(resolve(required('data-dir'))),workerPort=z.number().int().min(1024).max(65535).parse(Number(v['worker-port']));
-    if(port===workerPort)throw Error('Dashboard and worker need different ports');
-    const server=serve(new EvaluationView(data),new Client(workerPort),port);
-    const shutdown=()=>{server.stop(true);process.exit(0);};
-    process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
-    console.log(`HiCode Eval dashboard: http://127.0.0.1:${port}\nExecution worker: http://127.0.0.1:${workerPort} · Dashboard shutdown never cancels runs`);
-    return;
+    const server=serve(new EvaluationView(layout.root),new Client(workerPort),port);
+    const stop=()=>{server.stop();process.exit(0);};process.on('SIGTERM',stop);process.on('SIGINT',stop);
+    console.log('HiCode Eval dashboard: http://127.0.0.1:'+server.port);return;
   }
-  if (command !== 'worker') {
-    const client = new Client(port), batch = v.batch ? idSchema.parse(v.batch) : undefined;
-    let result: unknown;
-    if (command === 'catalog') result = (await client.status()).tasks;
-    else if (command === 'submit') result = await client.request('submit', await readJson(await realpath(resolve(required('file'))), submissionSchema));
-    else if (command === 'retry') result = await client.request('retry-run',{run:idSchema.parse(required('run'))});
-    else if (command === 'recover') result = await client.request('recover-run',{run:idSchema.parse(required('run'))});
-    else if (command === 'status') result = await client.status(batch);
-    else {
-      if (!batch) throw Error('Missing --batch');
-      if (command === 'cancel') result = await client.request('cancel-batch',{batch});
-      else if (command === 'resume') result = await client.request('resume-batch',{batch});
-      else if (command === 'report') { const file=Bun.file(resolve(required('file')));if(file.size>200000)throw Error('Report too large');result=await client.request('report',{batch,text:await file.text()}); }
-      else {
-        const seconds=z.number().int().min(1).max(60).parse(Number(v['wait-seconds'])),deadline=Date.now()+seconds*1000;
-        for (;;) {
-          const status=await client.status(batch),b=status.batches[0];
-          if(b.state!=='running'||status.schedulingBlocked||Date.now()>=deadline){result={...status,waitOutcome:b.state==='finished'?'finished':status.schedulingBlocked?'blocked':'pending'};break;}
-          await Bun.sleep(Math.min(1000,Math.max(0,deadline-Date.now())));
-        }
-      }
-    }
+  if(command==='worker'){
+    const release=await lease(layout.root,'service');let lab:Lab|undefined;let server:ReturnType<typeof serveWorker>|undefined;
+    try{
+      let credential=process.env[config.model.apiKeyEnv]??'';
+      for(const path of [join(REPOSITORY_ROOT,'.env'),join(process.env.HOME??'','.hicode/.env')])if(!credential&&await exists(path))credential=parse(await Bun.file(path).text())[config.model.apiKeyEnv]??'';
+      lab=new Lab(config,credential);await lab.init();server=serveWorker(lab,workerPort);
+      let closing=false;const shutdown=async()=>{if(closing)return;closing=true;server?.stop();await lab?.close();await release();process.exit(0);};
+      process.on('SIGTERM',()=>{void shutdown();});process.on('SIGINT',()=>{void shutdown();});
+      console.log('HiCode Eval worker: http://127.0.0.1:'+server.port+' · root '+layout.root);return;
+    }catch(error){server?.stop();await lab?.close();await release();throw error;}
+  }
+  if(['catalog','status','submit','cancel','recover','retry'].includes(command)){
+    const client=new Client(workerPort);const health=z.object({data:z.string()}).passthrough().parse(await client.request('health'));
+    if(health.data!==layout.root)throw Error('Worker belongs to another root');
+    let result:unknown;
+    if(command==='catalog')result=(await client.status()).tasks;
+    else if(command==='status')result=await client.status(v.batch);
+    else if(command==='submit')result=await client.request('submit',await readJson(resolve(required('file')),submissionSchema));
+    else if(command==='cancel')result=await client.request('cancel-batch',{batch:idSchema.parse(required('batch'))});
+    else if(command==='recover')result=await client.request('recover-run',{run:idSchema.parse(required('run'))});
+    else result=await client.request('retry-run',{run:idSchema.parse(required('run'))});
     console.log(JSON.stringify(result,null,2));return;
   }
-  const data=await directory(required('data-dir')),release=await lease(data,'service');
-  let lab: Lab|undefined,server:ReturnType<typeof serveWorker>|undefined,catalogLease:(()=>Promise<void>)|undefined;
-  try {
-    catalogLease=await lease(dirname(resolve(required('catalog'))),'catalog');
-    if(!!v.source!==!!v.model)throw Error('Supply both --source and --model');
-    const model=v['model-config']?await readJson(resolve(v['model-config']),modelSchema):modelSchema.parse(JSON.parse(await run(['bun',join(EVAL_ROOT,'src/host/resolve-model.mjs'),REPOSITORY_ROOT,REPOSITORY_ROOT,join(process.env.HOME??'','.hicode'),...(v.source&&v.model?[v.source,v.model]:[])])));
-    let credential=process.env[model.apiKeyEnv];
-    for(const path of [join(REPOSITORY_ROOT,'.env'),join(process.env.HOME??'','.hicode/.env')])if(!credential&&await exists(path))credential=parse(await Bun.file(path).text())[model.apiKeyEnv];
-    if(!credential)throw Error('Missing provider credential');
-    const config=configSchema.parse({version:4,datasetBackends:v['dataset-backends']?await readJson(resolve(v['dataset-backends']),datasetBackendsSchema):{},network:v.network,data,catalog:resolve(required('catalog')),environments:resolve(required('environments')),cpus:Number(v.cpus),memoryMb:Number(v['memory-mb']),payload:resolve(required('payload')),context:v['docker-context'],machine:v.machine,concurrency:Number(v.concurrency),budget:{},model});
-    lab=new Lab(config,credential);await lab.init();
-    console.log('Checking clean preparation container and fixed source release…');await lab.prepareMachine();
-    const workerPort=z.number().int().min(1024).max(65535).parse(Number(v['worker-port']));
-    await save(join(data,'config.json'),config);server=serveWorker(lab,workerPort);
-    let closing=false;const shutdown=async()=>{if(closing)return;closing=true;server?.stop();await lab?.close();await catalogLease?.();await release();process.exit(0);};
-    process.on('SIGTERM',()=>{void shutdown();});process.on('SIGINT',()=>{void shutdown();});
-    console.log(`HiCode Eval worker: http://127.0.0.1:${v['worker-port']}\nMachine: ${config.machine} · Concurrency: ${config.concurrency} · Network default: ${config.network} · Disposable container per attempt`);
-  } catch(error){server?.stop();await lab?.close();await catalogLease?.();await release();throw error;}
+  if(command==='image-inventory'){console.log(JSON.stringify(await imageInventory(layout.root,v.dataset?datasetSchema.parse(v.dataset):undefined),null,2));return;}
+  if(command==='regrade'){console.log(JSON.stringify(await regradeRun(layout.root,idSchema.parse(required('run')),v['verifier-proxy']),null,2));return;}
+  const release=await lease(layout.root,'service');
+  try{
+    const catalog=await TaskCatalog.open(layout.catalog);
+    if(command==='prepare'){
+      if(await exists(layout.payload))throw Error('Payload already frozen; remove it only after checking every unfinished batch');
+      const stage=await mkdtemp(join(layout.builds,'payload-'));
+      try{await run(['python3','-B',join(EVAL_ROOT,'src/host/prepare.py'),'--source',REPOSITORY_ROOT,'--payload',join(stage,'payload'),...(v['snapshot-worktree']?['--snapshot-worktree']:[])],{timeout:60000});await rename(join(stage,'payload'),layout.payload);console.log(layout.payload);}
+      finally{await rm(stage,{recursive:true,force:true});}return;
+    }
+    if(command==='register'){
+      if(await exists(join(layout.state,'import.json')))throw Error('Interrupted import; run gc --apply before registering');
+      const dataset=datasetSchema.parse(required('dataset')),input=await realpath(resolve(required('tasks'))),selected=v.ids?new Set(v.ids.split(',')):undefined;
+      const names=(await readdir(input,{withFileTypes:true})).filter(d=>d.isDirectory()&&!d.isSymbolicLink()&&(!selected||selected.has(d.name))).map(d=>d.name);
+      if(!names.length||selected&&names.length!==selected.size)throw Error('Every selected task needs a validated source');
+      if(!!v.preparation!==!!v.script)throw Error('Specify --preparation and --script together');
+      const script=v.script?z.string().regex(/^[A-Za-z0-9_.-]+\.sh$/).parse(v.script):undefined;
+      const preparation=v.preparation?await realpath(resolve(v.preparation)):undefined;
+      const stage=await mkdtemp(join(layout.builds,'import-'));const entries:Pick<CatalogTask,'id'|'dataset'|'source'|'preparation'>[]=[];
+      try{
+        for(const id of names){
+          const task={dataset,id},source=join(input,id),target=layout.source(task);
+          if(catalog.list().some(t=>taskKey(t)===taskKey(task))||await exists(target))throw Error('Task/source already exists: '+taskKey(task));
+          await taskAdapters(layout)[dataset].validate(id,source);const before=await taskAdapters(layout)[dataset].snapshot(source);
+          const staged=join(stage,id);await mkdir(staged);await cp(source,join(staged,'source'),{recursive:true,errorOnExist:true,force:false,verbatimSymlinks:true,preserveTimestamps:true});
+          if(JSON.stringify(await taskAdapters(layout)[dataset].snapshot(join(staged,'source')))!==JSON.stringify(before))throw Error('Source changed during import');
+          let prepared:CatalogTask['preparation'];
+          if(preparation&&script){
+            const files=await tree(preparation);if(!files[script])throw Error('Preparation script missing');
+            await cp(preparation,join(staged,'preparation'),{recursive:true,errorOnExist:true,force:false});
+            if(JSON.stringify(await tree(join(staged,'preparation')))!==JSON.stringify(files))throw Error('Preparation changed during import');
+            const directory=join(layout.preparations,dataset,id);if(await exists(directory))throw Error('Preparation path exists');
+            prepared={directory,script,sha256:createHash('sha256').update(JSON.stringify(files)).digest('hex')};
+          }
+          entries.push({...task,source:target,...(prepared?{preparation:prepared}:{})});
+        }
+        await save(join(layout.state,'import.json'),{version:1,tasks:entries.map(t=>({dataset:t.dataset,id:t.id}))});
+        for(const entry of entries){
+          await mkdir(dirname(entry.source!),{recursive:true});await rename(join(stage,entry.id,'source'),entry.source!);
+          if(entry.preparation){await mkdir(dirname(entry.preparation.directory),{recursive:true});await rename(join(stage,entry.id,'preparation'),entry.preparation.directory);}
+        }
+        await catalog.register(entries);await rm(join(layout.state,'import.json'));console.log(JSON.stringify({registered:entries.length}));
+      }finally{await rm(stage,{recursive:true,force:true});}return;
+    }
+    if(command==='prepare-environments'){
+      const selected=v.ids?new Set(v.ids.split(',')):undefined;
+      if(selected&&[...selected].some(k=>!catalog.list().some(t=>taskKey(t)===k)))throw Error('Use registered DATASET:ID identities');
+      const tasks=catalog.list().filter(t=>t.status!=='passed'&&(!selected||selected.has(taskKey(t))));
+      const proxy=v['build-proxy']?z.string().url().refine(value=>{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}).parse(v['build-proxy']):undefined;
+      const store=new EnvironmentStore(config.environments,config.context,config.datasetBackends,proxy);
+      if(tasks.some(t=>t.dataset!=='deep-swe')){
+        console.log('Preparing common runtime from '+join(layout.runtime,'Dockerfile'));
+        await store.prepareBase();
+      }
+      const failed=[];
+      for(const task of tasks){
+        try{console.log('Preparing '+taskKey(task));await store.prepareTask(task);await catalog.setEnvironment(task,'ready');console.log('Ready: '+taskKey(task));}
+        catch(error){await catalog.setEnvironment(task,'failed');failed.push({task:taskKey(task),error:String(error).slice(-1000)});}
+      }
+      console.log(JSON.stringify({prepared:tasks.length-failed.length,failed}));if(failed.length)process.exitCode=1;return;
+    }
+    if(command==='gc'){
+      const runs=[];for(const name of await readdir(layout.runs))if(/^[a-f0-9]{16}$/.test(name))runs.push(await readJson(join(layout.run(name),'state.json'),runSchema));
+      const result=await collectResources(config,catalog,runs,v.apply??false);
+      if(v.apply&&v['build-cache'])for(const context of new Set([config.context,...Object.values(config.datasetBackends).map(b=>b.context)]))
+        await run(['docker','--context',context,'builder','prune','--force','--filter','until=168h','--keep-storage',config.cacheGiB+'GB'],{timeout:180000});
+      console.log(JSON.stringify(result,null,2));return;
+    }
+    throw Error('Unknown command');
+  }finally{await release();}
 }
 main().catch(error=>{console.error(error instanceof Error?error.message:'Evaluation failed');process.exitCode=1;});

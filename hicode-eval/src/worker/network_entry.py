@@ -20,8 +20,10 @@ class Relay(socketserver.BaseRequestHandler):
     def handle(self):
         if not self.server.capacity.acquire(blocking=False):return
         upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        phase = 'connect'
         try:
             upstream.settimeout(30);upstream.connect(self.server.gateway)
+            phase = 'relay'
             self.request.settimeout(30)
             sockets = [self.request, upstream]
             while True:
@@ -30,7 +32,8 @@ class Relay(socketserver.BaseRequestHandler):
                     data = source.recv(65536)
                     if not data:return
                     (upstream if source is self.request else self.request).sendall(data)
-        except OSError:pass
+        except OSError as error:
+            print(f'Model gateway {phase} failed (errno {error.errno})', file=sys.stderr, flush=True)
         finally:
             try:upstream.shutdown(socket.SHUT_RDWR)
             except OSError:pass

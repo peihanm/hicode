@@ -144,7 +144,8 @@ try:
         owner.prepare()
         try:
             owner.start(lambda args:namespace(args,actor=True),
-                        {'PATH':'/opt/python313/bin:'+os.environ['PATH'],'HOME':str(home),'SHELL':'/bin/bash','LANG':'C.UTF-8'})
+                        {'PATH':'/opt/python313/bin:'+os.environ['PATH'],'HOME':str(home),'SHELL':'/bin/bash','LANG':'C.UTF-8'},
+                        model_socket=control/'model.sock' if gateway else None)
         except BaseException:
             owner.close();raise
         service=owner

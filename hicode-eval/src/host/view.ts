@@ -2,10 +2,10 @@ import {readdir,realpath} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {z} from 'zod';
 import {TaskCatalog} from './catalog.js';
-import {EnvironmentStore} from './environments.js';
+import {EvalLayout} from './layout.js';
 import {taskKey} from './datasets.js';
 import {readJson,exists} from './store.js';
-import {batchSchema,runSchema,configSchema,idSchema,done,liveSchema,containerSchema} from './types.js';
+import {batchSchema,runSchema,idSchema,done,liveSchema,containerSchema,loadConfig} from './types.js';
 import type {Batch,Run,Config} from './types.js';
 
 export function batchView(batch:Batch,runs:ReadonlyMap<string,Run>,halted=false){
@@ -21,10 +21,9 @@ export function batchView(batch:Batch,runs:ReadonlyMap<string,Run>,halted=false)
     finishedAt:completed===children.length?Math.max(...children.map(r=>r.finishedAt??r.updatedAt)):undefined};
 }
 
-export async function catalogView(config:Config,catalog:TaskCatalog){
-  const environments=new EnvironmentStore(config.environments,config.context,config.datasetBackends);
+export async function catalogView(_config:Config,catalog:TaskCatalog){
   return Promise.all(catalog.list().map(async task=>({id:task.id,category:task.dataset,seconds:1800,dataset:task.dataset,
-    status:task.status,note:task.note,sourcePrepared:!!task.source,environmentPrepared:!!task.source&&await environments.ready(task)})));
+    status:task.status,note:task.note,sourcePrepared:!!task.source,environmentPrepared:!!task.source&&task.environment==='ready',environmentState:task.environment})));
 }
 
 export async function runView(path:string,run:Run){
@@ -46,7 +45,7 @@ export class EvaluationView {
   constructor(readonly data:string){}
   private async config(){
     if(await realpath(this.data)!==resolve(this.data))throw Error('Symlinked evaluation data');
-    const config=await readJson(join(this.data,'config.json'),configSchema);
+    const config=await loadConfig(this.data);
     if(config.data!==this.data)throw Error('Evaluation data identity mismatch');
     return config;
   }
@@ -54,11 +53,11 @@ export class EvaluationView {
     idSchema.parse(id);await this.config();
     const path=join(this.data,'runs',id),run=await readJson(join(path,'state.json'),runSchema);
     if(run.id!==id)throw Error('Run identity mismatch');
-    const batch=await readJson(join(this.data,'batches',run.batchId+'.json'),batchSchema);
+    const batch=await readJson(new EvalLayout(this.data).batch(run.batchId),batchSchema);
     validateChild(batch,run);return path;
   }
   async snapshot(halted=false){
-    const config=await this.config(),directory=join(this.data,'batches');
+    const config=await this.config(),directory=new EvalLayout(this.data).batches;
     const names=await exists(directory)?await readdir(directory):[];
     if(names.length>10000)throw Error('Too many batch records');
     const batches:Batch[]=[],runs=new Map<string,Run>();

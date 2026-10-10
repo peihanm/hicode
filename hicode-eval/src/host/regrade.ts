@@ -4,7 +4,7 @@ import {join,dirname,resolve} from 'node:path';
 import {createHash, randomBytes} from 'node:crypto';
 import {z} from 'zod';
 import {LinuxMachine} from './linux.js';
-import {configSchema, runSchema, done,idSchema,regradeResultSchema} from './types.js';
+import {loadConfig, runSchema, done,idSchema,regradeResultSchema} from './types.js';
 import type {Run} from './types.js';
 import {validateFrozenSweTask} from './sweTasks.js';
 import {readJson, save, exists, runEvidenceTree, run} from './store.js';
@@ -29,9 +29,9 @@ export interface RegradeInput {
 export async function regradeRun(data: string, runId: string, verifierProxy?: string) {
   idSchema.parse(runId);
   const proxy = verifierProxy === undefined ? null : verifierProxySchema.parse(verifierProxy);
-  const release = await lease(data, 'regrade');
+  const release = await lease(data, 'service');
   try {
-    const config = await readJson(join(data,'config.json'),configSchema);
+    const config = await loadConfig(data);
     if(config.data!==data)throw Error('Regrade data root differs from the recorded configuration');
     const original = join(data,'runs',runId);
     const state = await readJson(join(original,'state.json'),runSchema);

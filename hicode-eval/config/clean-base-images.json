@@ -1,7 +1,0 @@
-{
-  "system": "ubuntu@sha256:a853f94d226358a79c740cfc7bce0c289748f3fe3488d921d038ccd752c61b60",
-  "python": "python@sha256:5024f48ba9441d4b13a95d3945abc6365538e3a31109833367a1923523c6efed",
-  "bun": "oven/bun@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4",
-  "node": "node@sha256:cadbfafeb6baf87eaaffa40b3640209c4b7fd38cebde65059d15bc39cd636b85",
-  "uv": "ghcr.io/astral-sh/uv@sha256:a5727064a0de127bdb7c9d3c1383f3a9ac307d9f2d8a391edc7896c54289ced0"
-}

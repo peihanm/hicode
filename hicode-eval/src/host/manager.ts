@@ -9,11 +9,13 @@ import {taskAdapters,taskKey} from './datasets.js';
 import {EnvironmentStore} from './environments.js';
 import { EvidenceCollectionError, LinuxMachine } from './linux.js';
 import { readJson, save, exists, contained } from './store.js';
-import { runSchema, done, batchSchema, submissionSchema } from './types.js';
-import type { Config, Run, Batch, Submission } from './types.js';
+import { runSchema, done, batchSchema, submissionSchema,environmentPreparationSchema } from './types.js';
+import type { Config, Run, Batch, Submission,EnvironmentPreparation } from './types.js';
 import {batchView,catalogView,runView} from './view.js';
 
 import { REPOSITORY_ROOT } from '../paths.js';
+import {EvalLayout} from './layout.js';
+import {collectResources} from './resources.js';
 export function classify(error: string | undefined, rewards: Record<string, number> | null | undefined): Pick<Run, 'state' | 'execution' | 'grading'> {
   const grading = rewards && Object.keys(rewards).length ? (Object.values(rewards).every(x => x === 1) ? 'passed' : 'failed') : 'unavailable';
   return { execution: error ? (error === 'timeout' ? 'timeout' : 'failed') : 'completed', grading, state: error || grading === 'unavailable' ? 'error' : grading === 'passed' ? 'passed' : 'failed' };
@@ -28,19 +30,24 @@ export class Lab {
   private readonly writes = new Map<string, Promise<void>>();
   private closed = false;
   private halted = false;
+  private machineReady=false;
   private readonly attempted = new Set<string>();
   private pumping = false;
-  constructor(readonly config: Config, private readonly credential: string) { }
-  path(id: string): string { if (!this.runs.has(id)) throw Error('Unknown run'); return join(this.config.data, 'runs', id); }
+  private maintenancePending=false;
+  private preparationJob:{tasks:ReadonlySet<string>;completion:Promise<void>}|undefined;
+  private readonly layout:EvalLayout;
+  private readonly adapters:ReturnType<typeof taskAdapters>;
+  constructor(readonly config: Config, private readonly credential: string) {this.layout=new EvalLayout(config.data);this.adapters=taskAdapters(this.layout);}
+  path(id: string): string { if (!this.runs.has(id)) throw Error('Unknown run'); return this.layout.run(id); }
   async init(): Promise<void> {
     if (contained(REPOSITORY_ROOT, this.config.data)) throw Error('Run data must be outside checkout');
-    if(await exists(join(this.config.data,'.archive-cleanup.json')))throw Error('Resume archive-runs --apply before starting the service');
+    await this.layout.assert();
     await mkdir(join(this.config.data, 'runs'), { recursive: true, mode: 0o700 });
-    await mkdir(join(this.config.data, 'batches'), { recursive: true, mode: 0o700 });
+    await mkdir(this.layout.batches, { recursive: true, mode: 0o700 });
     this.taskCatalog=await TaskCatalog.open(this.config.catalog);
-    for (const name of await readdir(join(this.config.data, 'batches'))) {
+    for (const name of await readdir(this.layout.batches)) {
       if (!/^[a-f0-9]{16}\.json$/.test(name)) continue;
-      const batch = await readJson(join(this.config.data, 'batches', name), batchSchema);
+      const batch = await readJson(join(this.layout.batches,name), batchSchema);
       if (name !== batch.id + '.json' || batch.taskRefs.length !== batch.runIds.length ||
         new Set(batch.taskRefs.map(taskKey)).size!==batch.taskRefs.length||new Set(batch.runIds).size !== batch.runIds.length) throw Error('Invalid batch identity');
       this.batches.set(batch.id, batch);
@@ -77,8 +84,11 @@ export class Lab {
         throw Error('Invalid retry lineage');
       retried.add(origin.runId);
     }
+    this.machine=new LinuxMachine(this.config);await this.machine.freeze();
   }
-  async prepareMachine(): Promise<void> { this.machine = new LinuxMachine(this.config); await this.machine.prepare(); }
+  private async prepareMachine():Promise<void>{
+    if(this.machineReady)return;this.machine??=new LinuxMachine(this.config);await this.machine.prepare();this.machineReady=true;
+  }
   async catalog() {
     const catalog=this.taskCatalog??await TaskCatalog.open(this.config.catalog);
     return catalogView(this.config,catalog);
@@ -98,10 +108,35 @@ export class Lab {
     this.submissions = operation.catch(() => {});
     return operation;
   }
+  async prepareEnvironments(input:EnvironmentPreparation):Promise<{accepted:string[]}>{
+    const operation=this.submissions.then(async()=>{
+      const request=environmentPreparationSchema.parse(input);
+      if(this.closed||this.preparationJob)throw Error('Environment preparation is already running or the worker is closing');
+      const keys=request.tasks.map(taskKey);if(new Set(keys).size!==keys.length)throw Error('Duplicate preparation tasks');
+      const tasks=request.tasks.map(t=>this.taskCatalog!.get(t.dataset,t.id));
+      if(tasks.some(t=>!t.source||t.status==='passed'||[...this.runs.values()].some(r=>taskKey({dataset:r.dataset,id:r.task})===taskKey(t)&&(!done(r.state)||r.state==='needs_recovery'))))
+        throw Error('Prepare only registered, unpassed tasks without active or retained attempts');
+      const store=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends,request.buildProxy);
+      const completion=(async()=>{
+        const ready:string[]=[],failed:{task:string;error:string}[]=[];
+        const progress=async(current:string|null)=>save(join(this.layout.state,'preparation.json'),{at:new Date().toISOString(),running:current!==null,current,ready,failed});
+        try{
+          for(const task of tasks){
+            await progress(taskKey(task));
+            try{await store.prepareTask(task);await this.taskCatalog!.setEnvironment(task,'ready');ready.push(taskKey(task));}
+            catch(error){await this.taskCatalog!.setEnvironment(task,'failed');failed.push({task:taskKey(task),error:String(error).slice(-1500)});}
+          }
+          await progress(null);
+        }catch(error){await save(join(this.layout.state,'preparation.json'),{at:new Date().toISOString(),running:false,ready,failed,error:String(error).slice(-1500)});}
+      })().catch(error=>{console.error('Environment preparation record failed:',String(error).slice(-250));}).finally(()=>{this.preparationJob=undefined;void this.pump();});
+      this.preparationJob={tasks:new Set(keys),completion};
+      return {accepted:keys};
+    });
+    this.submissions=operation.catch(()=>{});return operation;
+  }
   async retry(id:string):Promise<Batch>{
     const operation=this.submissions.then(async()=>{
       const original=this.runs.get(id);if(!original)throw Error('Unknown run');
-      if(original.dataset==='terminal-bench')throw Error('Terminal-Bench 2.0 retry is retired');
       const existing=[...this.batches.values()].find(batch=>batch.retryOf?.runId===id);
       if(existing)return existing;
       if(!done(original.state)||original.state==='needs_recovery'||this.jobs.has(id))throw Error('Wait for completion or recover retained evidence before rerunning');
@@ -118,49 +153,52 @@ export class Lab {
     if (this.closed || this.halted) throw Error('Service closing or scheduling blocked');
     if ([...this.runs.values()].some(r => r.state === 'needs_recovery')) throw Error('Recover retained runs before submitting more');
     if (input.concurrency > this.config.concurrency) throw Error('Batch exceeds service concurrency');
-    if(new Set(input.tasks.map(ref=>ref.dataset?taskKey({dataset:ref.dataset,id:ref.id}):ref.id)).size!==input.tasks.length)
+    if(new Set(input.tasks.map(taskKey)).size!==input.tasks.length)
       throw Error('Choose distinct tasks');
+    if(input.tasks.some(t=>this.preparationJob?.tasks.has(taskKey(t))))throw Error('Selected task environment is being prepared');
     const selected:CatalogTask[]=input.tasks.map(ref=>{
-      const matches=this.taskCatalog!.list().filter(task=>task.id===ref.id&&(!ref.dataset||task.dataset===ref.dataset));
-      if(matches.length!==1)throw Error(matches.length?'Ambiguous task ID; specify dataset':'Unknown task');
+      const matches=this.taskCatalog!.list().filter(task=>taskKey(task)===taskKey(ref));
+      if(matches.length!==1)throw Error('Unknown dataset task');
       return matches[0]!;
     });
     if(new Set(selected.map(taskKey)).size!==selected.length)throw Error('Choose distinct tasks');
-    if(selected.some(task=>task.dataset==='terminal-bench'))throw Error('Terminal-Bench 2.0 is retired; use Terminal-Bench 2.1');
+    if(selected.some(task=>task.status==='passed'))throw Error('Passed tasks are archived; select untested or unpassed tasks');
+    if(!this.credential)throw Error('Missing provider credential');
     const environments=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends);
     for(const task of selected){
       if((input.network??this.config.network)!=='isolated'){
-        const metadata=await taskAdapters[task.dataset].validate(task.id,task.source??'');
+        const metadata=await this.adapters[task.dataset].validate(task.id,task.source??'');
         if('service' in metadata&&metadata.service)throw Error('Service assignments require isolated execution');
       }
-      const network=taskAdapters[task.dataset].requiredNetwork;
+      const network=this.adapters[task.dataset].requiredNetwork;
       if(network&&(input.network??this.config.network)!==network)throw Error(task.dataset+' requires '+network+' execution');
       if(!task.source)throw Error('Prepare the selected task source before submission: '+taskKey(task));
       try{await environments.resolve(task);}
       catch(error){throw Error('Prepare the selected task environment before submission: '+taskKey(task)+' · '+String(error));}
     }
+    if(!this.machineReady)await this.prepareMachine();
     const taskRefs=selected.map(task=>({id:task.id,dataset:task.dataset}));
     const payload = await readJson(join(this.config.payload, 'manifest.json'), z.record(z.unknown()));
     if(original&&!isDeepStrictEqual(this.batches.get(original.batchId)!.payload,payload))throw Error('Current payload differs from the original; restore the original payload before rerunning');
     if (this.closed || this.halted) throw Error('Service closing or scheduling blocked');
     const id = randomBytes(8).toString('hex'), now = Date.now() / 1000;
     const batch = batchSchema.parse({name:input.name, network: input.network ?? this.config.network, concurrency:input.concurrency,
-      taskRefs,budget: this.config.budget, version: 2, id, createdAt: now, runIds: taskRefs.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
+      taskRefs,budget: this.config.budget, version: 1, id, createdAt: now, runIds: taskRefs.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
       ...(original?{retryOf:{batchId:original.batchId,runId:original.id,attempt:(this.batches.get(original.batchId)!.retryOf?.attempt??1)+1}}:{}) });
-    const states = input.tasks.map((task, i) => runSchema.parse({ version: 2, network: batch.network, id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
+    const states = input.tasks.map((task, i) => runSchema.parse({ version: 1, network: batch.network, id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
     // Publish the batch only after all children are durable; no worker sees a partial submission.
     try {
       for (const state of states) {
         const root = join(this.config.data, 'runs', state.id), source = original?join(this.path(original.id),'task',original.task):this.taskCatalog!.get(state.dataset,state.task).source!, target = join(root, 'task', state.task);
-        await taskAdapters[state.dataset].validate(state.task,source);
-        const hashes = await taskAdapters[state.dataset].snapshot(source);
+        await this.adapters[state.dataset].validate(state.task,source);
+        const hashes = await this.adapters[state.dataset].snapshot(source);
         if(original){
           const frozen=await readJson(join(this.path(original.id),'task-files.json'),z.record(z.object({bytes:z.number(),sha256:z.string(),symlink:z.string().optional(),mode:z.number().optional()})));
           if(!isDeepStrictEqual(hashes,frozen))throw Error('Original frozen task changed; refusing to rerun');
         }
         // Native build outputs depend on source timestamps as well as bytes.
         await cp(source, target, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true, preserveTimestamps: true });
-        const copied = await taskAdapters[state.dataset].snapshot(target);
+        const copied = await this.adapters[state.dataset].snapshot(target);
         if (!isDeepStrictEqual(copied, hashes)) {
           const changed = [...new Set([...Object.keys(hashes), ...Object.keys(copied)])].find(name => !isDeepStrictEqual(hashes[name],copied[name]));
           throw Error(`Task changed during submission: ${state.task} (${changed ?? 'snapshot metadata'})`);
@@ -168,7 +206,7 @@ export class Lab {
         await save(join(root, 'task-files.json'), hashes);
         await save(join(root, 'state.json'), state);
       }
-      await save(join(this.config.data, 'batches', id + '.json'), batch);
+      await save(this.layout.batch(id), batch);
     } catch (error) {
       for (const state of states) await rm(join(this.config.data, 'runs', state.id), { recursive: true, force: true });
       throw error;
@@ -181,7 +219,7 @@ export class Lab {
     const operation = this.submissions.then(async () => {
       const batch = this.batches.get(id); if (!batch) throw Error('Unknown batch');
       const next = { ...batch, cancelledAt: Date.now() / 1000 };
-      await save(join(this.config.data, 'batches', id + '.json'), next); this.batches.set(id, next);
+      await save(this.layout.batch(id), next); this.batches.set(id, next);
       await Promise.all(batch.runIds.map(run => this.cancel(run)));
     });
     this.submissions = operation.catch(() => {}); await operation;
@@ -191,7 +229,7 @@ export class Lab {
       const batch = this.batches.get(id); if (!batch) throw Error('Unknown batch');
       if (batch.runIds.some(run => !done(this.runs.get(run)!.state))) throw Error('Wait for every attempt to finish before publishing analysis');
       const next = batchSchema.parse({ ...batch, report: { text, updatedAt: Date.now() / 1000 } });
-      await save(join(this.config.data, 'batches', id + '.json'), next); this.batches.set(id, next);
+      await save(this.layout.batch(id), next); this.batches.set(id, next);
     });
     this.submissions = operation.catch(() => {}); await operation;
   }
@@ -199,11 +237,11 @@ export class Lab {
     const operation = this.submissions.then(async () => {
       const batch = this.batches.get(id);
       if (!batch) throw Error('Unknown batch');
-      if (this.closed || this.halted || !this.machine || [...this.runs.values()].some(r => r.state === 'needs_recovery'))
+      if (this.closed || this.halted || [...this.runs.values()].some(r => r.state === 'needs_recovery'))
         throw Error('Recover retained runs and initialize the machine before resuming');
       if (batch.cancelledAt) throw Error('Cancelled batches cannot resume');
-      if(batch.taskRefs.some(task=>task.dataset==='terminal-bench'))throw Error('Terminal-Bench 2.0 batches cannot resume');
       if (!batch.runIds.some(run => this.runs.get(run)?.state === 'queued')) throw Error('No queued tasks to resume');
+      if(!this.machineReady)await this.prepareMachine();
       // Pump only existing queued records. Completed and attempted tasks are never replayed.
       await this.pump();
     });
@@ -215,7 +253,8 @@ export class Lab {
       if (!current) throw Error('Unknown run');
       if (this.closed || this.halted || this.jobs.has(id)) throw Error('Recovery unavailable while task or service is active/closing');
       if (done(current.state) && current.state !== 'needs_recovery') return current;
-      if (current.state !== 'needs_recovery' || !this.machine) throw Error('Task must require recovery and machine must be initialized');
+      if(current.state!=='needs_recovery')throw Error('Task must require recovery');
+      if(!this.machineReady)await this.prepareMachine();
       await this.reconcileRetained(id);
       await this.pump();
       return this.runs.get(id)!;
@@ -247,7 +286,7 @@ export class Lab {
       if ([...this.runs.values()].some(r => r.state === 'needs_recovery')) return;
       for (const r of this.runs.values()) {
         if (this.jobs.size >= this.config.concurrency) break;
-        if (r.state !== 'queued' || r.dataset==='terminal-bench' || this.jobs.has(r.id) || this.attempted.has(r.id)) continue;
+        if (r.state !== 'queued' || this.jobs.has(r.id) || this.attempted.has(r.id)) continue;
         const batch = this.batches.get(r.batchId)!;
         if (batch.cancelledAt || [...this.jobs.keys()].filter(id => this.runs.get(id)?.batchId === r.batchId).length >= batch.concurrency) continue;
         this.attempted.add(r.id);
@@ -256,7 +295,19 @@ export class Lab {
           console.error('Run state could not be persisted; scheduling stopped. Inspect retained evidence.');
         }).finally(() => { this.jobs.delete(r.id); void this.pump(); }); this.jobs.set(r.id, job);
       }
-    } finally { this.pumping = false; }
+    } finally {
+      this.pumping=false;
+      if(!this.closed&&!this.preparationJob&&!this.maintenancePending&&!this.jobs.size&&![...this.runs.values()].some(r=>!done(r.state)||r.state==='needs_recovery')){
+        this.maintenancePending=true;
+        const operation=this.submissions.then(async()=>{
+          if(this.closed||this.preparationJob||[...this.runs.values()].some(r=>!done(r.state)||r.state==='needs_recovery'))return;
+          await collectResources(this.config,this.taskCatalog!,[...this.runs.values()],true);
+        }).catch(async error=>{
+          await save(join(this.layout.state,'maintenance-error.json'),{at:new Date().toISOString(),message:String(error).slice(-1500)});
+        }).finally(()=>{this.maintenancePending=false;});
+        this.submissions=operation;
+      }
+    }
   }
   async cancel(id: string): Promise<void> {
     const r = this.runs.get(id); if (!r) throw Error('Unknown run'); if (done(r.state)) return;
@@ -272,7 +323,7 @@ export class Lab {
       await this.update(id, { state: 'preparing', startedAt: Date.now() / 1000 });
       const current = this.runs.get(id)!;
       const frozen = await readJson(join(path, 'task-files.json'), z.record(z.object({ bytes: z.number(), sha256: z.string(), symlink: z.string().optional(), mode:z.number().optional() })));
-      if (!isDeepStrictEqual(await taskAdapters[current.dataset].snapshot(join(path, 'task', current.task)),frozen)) throw Error('Frozen task changed');
+      if (!isDeepStrictEqual(await this.adapters[current.dataset].snapshot(join(path, 'task', current.task)),frozen)) throw Error('Frozen task changed');
       const payload = await readJson(join(this.config.payload, 'manifest.json'), z.record(z.unknown()));
       if (JSON.stringify(payload) !== JSON.stringify(this.batches.get(current.batchId)!.payload)) throw Error('Payload changed after submission');
       await save(join(path, 'manifest.json'), { model: this.config.model, payload, task: current.task, dataset: current.dataset, task_files: frozen, machine: this.config.machine, entry: 'tui', network: current.network, budget: current.budget });
@@ -308,9 +359,9 @@ export class Lab {
       const path = this.path(r.id);
       runs.push(await runView(path,r));
     }
-    return { batches: [...this.batches.values()].sort((a,b) => b.createdAt - a.createdAt).map(b => this.batchView(b)), runs: runs.sort((a, b) => b.createdAt - a.createdAt), tasks: await this.catalog(),inventory:this.taskCatalog?.counts(new Set([...this.runs.values()].filter(r=>!done(r.state)&&r.state!=='queued').map(r=>r.task))), concurrency: this.config.concurrency, budget: this.config.budget, schedulingBlocked: this.halted || [...this.runs.values()].some(r => r.state === 'needs_recovery') };
+    return { batches: [...this.batches.values()].sort((a,b) => b.createdAt - a.createdAt).map(b => this.batchView(b)), runs: runs.sort((a, b) => b.createdAt - a.createdAt), tasks: await this.catalog(),inventory:this.taskCatalog?.counts(new Set([...this.runs.values()].filter(r=>!done(r.state)&&r.state!=='queued').map(r=>taskKey({dataset:r.dataset,id:r.task})))), concurrency: this.config.concurrency, budget: this.config.budget, schedulingBlocked: this.halted || [...this.runs.values()].some(r => r.state === 'needs_recovery') };
   }
-  async close(): Promise<void> { this.closed = true; await this.submissions; await Promise.all([...this.runs.values()].filter(r => !done(r.state)).map(r => this.cancel(r.id))); await Promise.all(this.jobs.values()); }
+  async close(): Promise<void> { this.closed = true; await this.submissions; await Promise.all([...this.runs.values()].filter(r => !done(r.state)).map(r => this.cancel(r.id))); await Promise.all(this.jobs.values());await this.preparationJob?.completion; }
 }
 
 async function appendPhase(path: string, phase: string): Promise<void> {

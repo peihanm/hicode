@@ -1,7 +1,6 @@
 import {z} from 'zod';
 import {join} from 'node:path';
 import {readFile} from 'node:fs/promises';
-import {EVAL_ROOT} from '../paths.js';
 import {readJson,tree,run} from './store.js';
 import type {DatasetExecution} from './executionPlan.js';
 import type {Run} from './types.js';
@@ -16,9 +15,9 @@ const profileSchema=z.object({repository:z.string().regex(/^https:\/\/github\.co
     CARGO_HOME:z.literal('/opt/hicode-rust/cargo').optional(),RUSTUP_HOME:z.literal('/opt/hicode-rust/rustup').optional(),
     CARGO_NET_OFFLINE:z.literal('true').optional()}).strict(),
   runtimeTools:z.array(z.enum(['go-ctrf-json-reporter','rust-toolchain'])).max(2).optional()}).strict();
-export async function deepProfiles(){return readJson(join(EVAL_ROOT,'config/deep-swe.json'),z.record(profileSchema));}
-export async function validateDeepTask(id:string,source:string){
-  const profile=(await deepProfiles())[id];if(!profile)throw Error('No reviewed DeepSWE task: '+id);
+export async function validateDeepTask(id:string,source:string,definition:string){
+  const raw=(await readJson(definition,z.record(z.unknown())))[id];if(!raw)throw Error('No reviewed DeepSWE task: '+id);
+  const profile=profileSchema.parse(raw);
   const files=await tree(source);
   if(JSON.stringify(Object.keys(files).sort())!==JSON.stringify(Object.keys(profile.hashes).sort())||
       Object.entries(files).some(([name,file])=>profile.hashes[name]!==file.sha256))throw Error('DeepSWE frozen task changed');
@@ -33,9 +32,9 @@ export async function validateDeepTask(id:string,source:string){
   if(task.verifier.collect[0]!.command!==collect)throw Error('Unreviewed DeepSWE collection contract');
   return {...profile,kind:'deep-swe' as const};
 }
-export async function deepExecution(state:Run,source:string):Promise<DatasetExecution>{
+export async function deepExecution(state:Run,source:string,definition:string):Promise<DatasetExecution>{
   if(state.network!=='isolated')throw Error('DeepSWE requires the original no-network contract');
-  const deep=await validateDeepTask(state.task,source);
+  const deep=await validateDeepTask(state.task,source,definition);
   return {originalAgentSeconds:deep.agentSeconds,verifierSeconds:deep.verifierSeconds,setupAllowance:600,
     runnerPython:'python3',verifierSource:join(source,'tests'),
     job:{dataset:'deep-swe',deep:{id:state.task,baseCommit:deep.baseCommit,runtimeEnvironment:deep.runtimeEnvironment},initializer:null,packages:[],verifierPackages:[]},

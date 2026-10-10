@@ -5,7 +5,6 @@ from eval_datasets.deep_swe import DeepSweRuntime
 
 
 _RUNTIMES = {
-    'terminal-bench': TerminalBenchRuntime,
     'terminal-bench-2.1': TerminalBenchRuntime,
     'deep-swe': DeepSweRuntime,
     'swe-bench-verified': SweBenchRuntime,

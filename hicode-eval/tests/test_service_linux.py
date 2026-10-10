@@ -6,12 +6,59 @@ import sys
 import tempfile
 import unittest
 import zipfile
+import stat
+from types import SimpleNamespace
+from unittest.mock import patch
 from protocol import namespace_argv
 from service_bwrap import bwrap_argv
 from service_namespace import ServiceNamespace,service_paths
 
 
 class ServiceDeclarationTest(unittest.TestCase):
+    def test_service_waits_for_owned_keeper_marker_after_root_setup(self):
+        owner=ServiceNamespace('/eval/runs/1234567890abcdef',20000,[])
+        owner.pid=42
+        with patch.object(owner,'_check'),patch.object(Path,'lstat',side_effect=FileNotFoundError()):
+            self.assertFalse(owner._ready())
+        for mode,uid in [(stat.S_IFLNK|0o600,20000),(stat.S_IFREG|0o666,20000),(stat.S_IFREG|0o600,0)]:
+            with patch.object(owner,'_check'),patch.object(Path,'lstat',return_value=SimpleNamespace(st_mode=mode,st_uid=uid,st_size=6)):
+                with self.assertRaisesRegex(RuntimeError,'readiness marker'):owner._ready()
+        info=SimpleNamespace(st_mode=stat.S_IFREG|0o600,st_uid=20000,st_size=6)
+        with patch.object(owner,'_check'),patch.object(Path,'lstat',return_value=info),patch.object(Path,'read_bytes',return_value=b'ready\n'):
+            self.assertTrue(owner._ready())
+        with patch.object(owner,'_check'),patch.object(Path,'lstat',return_value=info),patch.object(Path,'read_bytes',return_value=b'wrong\n'):
+            self.assertFalse(owner._ready())
+
+    def test_model_socket_is_rebound_after_private_run_and_rejects_unsafe_ownership(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);owner=ServiceNamespace(root,20000,['/run'])
+            socket=Path('/run/hicode-eval')/root.name/'model.sock'
+            owner.mounts=['--bind','/private-run','/run']
+            namespace=lambda args:['bwrap','--ro-bind',str(socket),str(socket),*args]
+            for info in [SimpleNamespace(st_mode=stat.S_IFREG|0o600,st_uid=20000),
+                         SimpleNamespace(st_mode=stat.S_IFSOCK|0o666,st_uid=20000),
+                         SimpleNamespace(st_mode=stat.S_IFSOCK|0o600,st_uid=0)]:
+                with patch.object(Path,'lstat',return_value=info),self.assertRaisesRegex(ValueError,'Invalid owned'):
+                    owner.start(namespace,{},model_socket=socket)
+                self.assertIsNone(owner.process)
+            with patch.object(Path,'lstat',return_value=SimpleNamespace(st_mode=stat.S_IFSOCK|0o600,st_uid=20000)),\
+                    patch('service_namespace.subprocess.Popen',side_effect=RuntimeError('stop before spawn')) as spawn:
+                with self.assertRaisesRegex(RuntimeError,'stop before spawn'):
+                    owner.start(namespace,{},model_socket=socket)
+            args=spawn.call_args.args[0]
+            overlay=args.index('/private-run')
+            bind=max(i for i,value in enumerate(args) if value==str(socket))
+            self.assertGreater(bind,overlay)
+            self.assertNotIn(str(socket.parent),[args[i+1] for i,value in enumerate(args[:-1]) if value=='--ro-bind'])
+
+    def test_model_socket_cannot_come_from_another_control_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            owner=ServiceNamespace(Path(directory)/'owned-run',20000,['/run'])
+            for socket in [Path('/tmp/model.sock'),Path('/run/hicode-eval/other-run/model.sock')]:
+                with self.assertRaisesRegex(ValueError,'must belong'):
+                    owner.start(lambda args:['bwrap',*args],{},model_socket=socket)
+                self.assertIsNone(owner.process)
+
     def test_service_bwrap_keeps_only_the_uid_mapping_capability(self):
         self.assertEqual(bwrap_argv(['--version']),['/usr/bin/bwrap','--version'])
         self.assertEqual(bwrap_argv(['--unshare-user','--cap-drop','ALL','--proc','/proc']),

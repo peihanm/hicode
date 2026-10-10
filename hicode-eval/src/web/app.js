@@ -38,7 +38,7 @@ const label={pending:'待处理',completed:'正常完成',timeout:'超时',cance
 const limit=seconds=>seconds%60===0?seconds/60+' 分钟':seconds+' 秒';
 const names={queued:'排队',preparing:'准备环境',running:'执行中',waiting_for_approval:'等待审批',verifying:'自动判题',passed:'通过',failed:'未通过',error:'运行异常',cancelled:'已取消',cancelling:'正在停止',needs_recovery:'收尾异常 · 待恢复',finished:'已结束',blocked:'调度暂停'};
 const runLabel=run=>run.state==='error'&&run.execution==='completed'&&run.grading==='unavailable'?'判题异常 · 无法判定':names[run.displayState]||run.displayState;
-const datasetNames={'deep-swe':'DeepSWE 1.1','terminal-bench':'Terminal-Bench 2.0','terminal-bench-2.1':'Terminal-Bench 2.1','swe-bench-verified':'SWE-bench Verified'};
+const datasetNames={'deep-swe':'DeepSWE 1.1','terminal-bench-2.1':'Terminal-Bench 2.1','swe-bench-verified':'SWE-bench Verified'};
 const runTitle=run=>(datasetNames[run.dataset]||run.dataset)+' · '+run.task;
 async function api(path,body,signal){
   const requestSignal=body===undefined?AbortSignal.any([AbortSignal.timeout(10000),...(signal?[signal]:[])]):undefined;
@@ -110,7 +110,7 @@ async function tick(){if(ticking)return;ticking=true;try{
   if(run){
     const finished=['passed','failed','error','cancelled','needs_recovery'].includes(run.state);
     const child=data.batches.find(b=>b.retryOf?.runId===run.id),recovery=run.state==='needs_recovery';
-    $('run-action').hidden=!finished&&!child;$('run-action').disabled=actionPending||(!child&&!recovery&&data.schedulingBlocked);
+    $('run-action').hidden=run.state==='passed'||(!finished&&!child);$('run-action').disabled=actionPending||(!child&&!recovery&&data.schedulingBlocked);
     $('run-action').textContent=child?'查看重跑任务':recovery?'恢复结果':'重新运行';
     $('run-action').title=child?'打开已创建的尝试':recovery?'核验已有证据，不再次调用模型':'保留原记录，沿用原题、模型和预算开始新的模型执行';
     $('run-action').onclick=()=>child?openAttempt(child.id,child.runIds[0]):actOnRun(run.id,recovery?'recover-run':'retry-run');

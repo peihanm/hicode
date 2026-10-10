@@ -1,5 +1,6 @@
+import {EvalLayout} from '../src/host/layout.js';
 import {test,expect,spyOn} from 'bun:test';
-import {mkdtemp,readFile,rm,realpath} from 'node:fs/promises';
+import {mkdtemp,readFile,rm,realpath,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {EnvironmentStore} from '../src/host/environments.js';
@@ -26,9 +27,12 @@ test('clean base builds from explicit files and pinned images, never from a live
     return '';
   });
   try{
-    const store=new EnvironmentStore(root,'offline');
+    const layout=new EvalLayout(root);await layout.initialize();await mkdir(layout.runtime,{recursive:true});
+    const images={system:'ubuntu@sha256:'+'a'.repeat(64),python:'python@sha256:'+'b'.repeat(64),bun:'oven/bun@sha256:'+'c'.repeat(64),node:'node@sha256:'+'d'.repeat(64),uv:'ghcr.io/astral-sh/uv@sha256:'+'e'.repeat(64)};
+    await writeFile(join(layout.runtime,'images.json'),JSON.stringify(images));await writeFile(join(layout.runtime,'Dockerfile'),'FROM {{system}}\nCOPY package.json bun.lock /opt/hicode/\n');
+    const store=new EnvironmentStore(layout.environments,'offline');
     const first=await store.prepareBase(),second=await store.prepareBase();
-    expect(first.version).toBe(2);expect(second).toEqual(first);expect(builds).toBe(1);
+    expect(first.version).toBe(1);expect(second).toEqual(first);expect(builds).toBe(1);
     expect(calls.some(argv=>argv.includes('exec')||argv.includes('cp'))).toBe(false);
   }finally{fake.mockRestore();await rm(root,{recursive:true,force:true});}
 });

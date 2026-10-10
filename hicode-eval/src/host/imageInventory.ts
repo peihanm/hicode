@@ -6,7 +6,7 @@ import type {Dataset} from './datasets.js';
 import {bindingSchema,environmentBindingPath} from './environments.js';
 import type {EnvironmentBinding} from './environments.js';
 import {readJson,run} from './store.js';
-import {configSchema} from './types.js';
+import {loadConfig} from './types.js';
 
 type Layer=EnvironmentBinding['base'];
 type ImageRef={context:string;imageId:string;datasets:Set<Dataset>;tasks:Set<string>;
@@ -44,13 +44,13 @@ async function inspectContext(name:string,referenced:readonly string[]):Promise<
 /** A derived view of validated local receipts; source/recipe validity still belongs to resolve(). */
 export async function imageInventory(dataDir:string,selected?:Dataset){
   const data=await realpath(resolve(dataDir));
-  const config=await readJson(join(data,'config.json'),configSchema);
+  const config=await loadConfig(data);
   if(resolve(config.data)!==data)throw Error('Inventory data directory differs from service config');
   const environment=await realpath(config.environments);
   if(environment!==resolve(config.environments))throw Error('Symlinked environment directory');
   const catalog=await TaskCatalog.open(config.catalog);
   const catalogStatus=new Map(catalog.list().map(task=>[taskKey(task),task.status]));
-  const names=await readdir(join(environment,'tasks'),{withFileTypes:true});
+  const names=await readdir(join(environment,'tasks'),{withFileTypes:true}).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return [];throw error;});
   if(names.length>10000)throw Error('Too many environment receipts');
   const images=new Map<string,ImageRef>();
   const receiptCounts=new Map<Dataset,number>();

@@ -26,7 +26,7 @@ class RunnerFailureTest(unittest.TestCase):
             logs.mkdir(parents=True)
             if claimed_dependencies:
                 (root / 'project/.eval-verifier-python').mkdir(parents=True)
-            config = {'dataset': 'terminal-bench', 'model': {'source': 'qwen', 'baseUrl': 'https://example.invalid',
+            config = {'dataset': 'terminal-bench-2.1', 'model': {'source': 'qwen', 'baseUrl': 'https://example.invalid',
                                 'apiKeyEnv': 'EVAL_FIXTURE_KEY', 'model': 'fixture'},
                       'release': '/release', 'packages': [], 'verifierPackages': ['toml==0.10.2'],
                       'initializer': None, 'agentSeconds': 3600, 'verifierSeconds': 10,
@@ -126,7 +126,10 @@ class RunnerFailureTest(unittest.TestCase):
                     owner=stack.enter_context(patch('service_namespace.ServiceNamespace')).return_value
                     owner.actor_argv.side_effect=lambda args:['service-actor',*args]
                     owner.verifier_argv.side_effect=lambda args,view:['service-verifier',*args]
-                    owner.start.side_effect=lambda *_:calls.append('service-start')
+                    def start_service(namespace, environment, *, model_socket=None):
+                        self.assertEqual(model_socket, base/'run/hicode-eval'/RUN_ID/'model.sock' if isolated else None)
+                        calls.append('service-start')
+                    owner.start.side_effect=start_service
                     owner.snapshot.side_effect=lambda:calls.append('service-snapshot')
                     owner.close.side_effect=lambda:calls.append('service-close')
                 stack.enter_context(patch('terminal.capture'))

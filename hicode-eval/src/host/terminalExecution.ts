@@ -4,15 +4,15 @@ import {run} from './store.js';
 import type {Run} from './types.js';
 import type {DatasetExecution} from './executionPlan.js';
 
-export async function terminalExecution(state:Run,task:string,dataset:'terminal-bench'|'terminal-bench-2.1'):Promise<DatasetExecution>{
-  const profile=await validatePublicTask(state.task,task,dataset);
+export async function terminalExecution(state:Run,task:string,definition:string):Promise<DatasetExecution>{
+  const profile=await validatePublicTask(state.task,task,definition);
   const spec=taskSchema.parse(Bun.TOML.parse(await Bun.file(join(task,'task.toml')).text()));
   return {
     originalAgentSeconds:spec.agent.timeout_sec,
     verifierSeconds:spec.verifier.timeout_sec,
     setupAllowance:profile.verifierPackages.length?660:profile.packages.length?360:240,
     runnerPython:'python3',verifierSource:join(task,'tests'),
-    job:{dataset,service:profile.service,commands:profile.commands,workspaceAliases:profile.workspaceAliases??[],publicTestInputs:profile.publicTestInputs,
+    job:{dataset:'terminal-bench-2.1',service:profile.service,commands:profile.commands,workspaceAliases:profile.workspaceAliases??[],publicTestInputs:profile.publicTestInputs,
       writableRuntimeBin:profile.writableRuntimeBin??false,
       verifierInputs:profile.verifierInputs??[],verifierSetup:profile.verifierSetup,
       verifierWritableTests:profile.verifierWritableTests??false,

@@ -1,5 +1,7 @@
 import {z} from 'zod';
 import {isAbsolute} from 'node:path';
+import {EvalLayout} from './layout.js';
+import {dirname} from 'node:path';
 import {readJson, save} from './store.js';
 import type {Run} from './types.js';
 import {datasetSchema,taskKey} from './datasets.js';
@@ -7,11 +9,10 @@ import type {Dataset} from './datasets.js';
 
 const taskId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,180}$/);
 const resultSchema = z.object({
-  runId:z.string().min(1).max(100), model:z.string().max(200),
+  runId:z.string().regex(/^[a-f0-9]{16}$/), model:z.string().max(200),
   execution:z.enum(['pending','completed','timeout','cancelled','failed']),
   grading:z.enum(['pending','passed','failed','unavailable']), accepted:z.boolean(),
   finishedAt:z.number().nonnegative(), note:z.string().max(4000).optional(),
-  record:z.string().max(4096).optional(),
 }).strict();
 export const catalogTaskSchema = z.object({
   id:taskId, dataset:datasetSchema,
@@ -19,6 +20,7 @@ export const catalogTaskSchema = z.object({
   preparation:z.object({directory:z.string().max(4096).refine(isAbsolute),
     script:z.string().regex(/^[A-Za-z0-9_.-]+\.sh$/),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict().optional(),
   status:z.enum(['passed','unpassed','untested']),
+  environment:z.enum(['unprepared','ready','evicted','failed']),
   results:z.array(resultSchema).max(1000),
   note:z.string().max(4000).optional(),
 }).strict().superRefine((task,ctx)=>{
@@ -38,22 +40,47 @@ export type CatalogTask=z.infer<typeof catalogTaskSchema>;
 export class TaskCatalog {
   private writes:Promise<void>=Promise.resolve();
   private constructor(readonly path:string, private document:z.infer<typeof catalogSchema>){}
-  static async open(path:string):Promise<TaskCatalog>{return new TaskCatalog(path,await readJson(path,catalogSchema,16*1024*1024));}
+  static async open(path:string):Promise<TaskCatalog>{
+    const layout=new EvalLayout(dirname(dirname(path)));await layout.assert();
+    if(path!==layout.catalog)throw Error('Catalog must belong to the current root');
+    const document=await readJson(path,catalogSchema,16*1024*1024);
+    for(const task of document.tasks){
+      if(task.source&&task.source!==layout.source(task))throw Error('Task source must be stored under datasets/');
+      if(task.preparation&&task.preparation.directory!==layout.preparations+'/'+task.dataset+'/'+task.id)throw Error('Preparation must be stored under environments/preparations/');
+    }
+    return new TaskCatalog(path,document);
+  }
   list():readonly CatalogTask[]{return this.document.tasks;}
   get(dataset:Dataset,id:string):CatalogTask {
     const task=this.document.tasks.find(task=>task.dataset===dataset&&task.id===id);
     if(!task)throw Error('Unknown catalog task');
     return task;
   }
-  async register(entries:readonly Pick<CatalogTask,'id'|'dataset'|'source'>[]):Promise<void>{
-    if(entries.some(entry=>entry.dataset==='terminal-bench'))throw Error('Terminal-Bench 2.0 registration is retired');
+  async register(entries:readonly Pick<CatalogTask,'id'|'dataset'|'source'|'preparation'>[]):Promise<void>{
+    const layout=new EvalLayout(dirname(dirname(this.path)));
+    for(const entry of entries)if(entry.source!==layout.source(entry))throw Error('Register only root-owned sources');
     const tasks=new Map(this.document.tasks.map(task=>[taskKey(task),task]));
     for(const entry of entries){
       const key=taskKey(entry),previous=tasks.get(key);
-      tasks.set(key,catalogTaskSchema.parse({...previous,...entry,status:previous?.status??'untested',results:previous?.results??[]}));
+      tasks.set(key,catalogTaskSchema.parse({...previous,...entry,status:previous?.status??'untested',environment:previous?.environment??'unprepared',results:previous?.results??[]}));
     }
     const next=catalogSchema.parse({version:1,updatedAt:new Date().toISOString(),tasks:[...tasks.values()].sort((a,b)=>taskKey(a).localeCompare(taskKey(b)))});
     await save(this.path,next);this.document=next;
+  }
+  async setEnvironment(task:Pick<CatalogTask,'dataset'|'id'>,environment:CatalogTask['environment']):Promise<void>{
+    const key=taskKey(task);this.get(task.dataset,task.id);
+    const operation=this.writes.then(async()=>{
+      const next=catalogSchema.parse({...this.document,updatedAt:new Date().toISOString(),tasks:this.document.tasks.map(t=>taskKey(t)===key?{...t,environment}:t)});
+      await save(this.path,next);this.document=next;
+    });this.writes=operation.catch(()=>{});await operation;
+  }
+  async releasePassedSource(task:Pick<CatalogTask,'dataset'|'id'>):Promise<void>{
+    const key=taskKey(task);if(this.get(task.dataset,task.id).status!=='passed')throw Error('Only passed sources may be released');
+    const operation=this.writes.then(async()=>{
+      const tasks=this.document.tasks.map(t=>{if(taskKey(t)!==key)return t;const {source,preparation,...rest}=t;return {...rest,environment:'evicted' as const};});
+      const next=catalogSchema.parse({...this.document,updatedAt:new Date().toISOString(),tasks});
+      await save(this.path,next);this.document=next;
+    });this.writes=operation.catch(()=>{});await operation;
   }
   async record(run:Run):Promise<void>{
     if(!['passed','failed','error','cancelled'].includes(run.state))return;
