@@ -27,7 +27,7 @@ export const liveSchema = z.object({ phase: z.string(), event: z.string().nullab
 export const containerSchema = z.object({ session: z.string(), id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$/), attach: z.string() });
 export const datasetBackendsSchema=z.record(datasetSchema,z.object({context:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$/),cpus:z.number().positive().max(64),memoryMb:z.number().int().min(256).max(65536)}).strict());
 export type DatasetBackends=z.infer<typeof datasetBackendsSchema>;
-export const settingsSchema=z.object({version:z.literal(1),datasetBackends:datasetBackendsSchema.default({}),network:networkSchema.default('isolated'),context:z.string().min(1),machine:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$/),concurrency:z.number().int().min(1).max(5),cpus:z.number().positive().max(64).default(1),memoryMb:z.number().int().min(256).max(65536).default(4096),budget:budgetSchema,model:modelSchema,cacheGiB:z.number().int().min(1).max(64).default(8)}).strict();
+export const settingsSchema=z.object({version:z.literal(1),datasetBackends:datasetBackendsSchema.default({}),network:networkSchema.default('open'),context:z.string().min(1),machine:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$/),concurrency:z.number().int().min(1).max(5),cpus:z.number().positive().max(64).default(1),memoryMb:z.number().int().min(256).max(65536).default(4096),budget:budgetSchema,model:modelSchema,cacheGiB:z.number().int().min(1).max(64).default(8)}).strict();
 export const configSchema=settingsSchema.extend({data:z.string()}).transform(value=>{
   const layout=new EvalLayout(value.data);
   return {...value,data:layout.root,catalog:layout.catalog,environments:layout.environments,payload:layout.payload};

@@ -7,6 +7,7 @@ import type {DatasetExecution} from './executionPlan.js';
 export async function terminalExecution(state:Run,task:string,definition:string):Promise<DatasetExecution>{
   const profile=await validatePublicTask(state.task,task,definition);
   const spec=taskSchema.parse(Bun.TOML.parse(await Bun.file(join(task,'task.toml')).text()));
+  if(state.network==='open'&&spec.environment?.allow_internet!==true)throw Error('Frozen task does not permit internet access');
   return {
     originalAgentSeconds:spec.agent.timeout_sec,
     verifierSeconds:spec.verifier.timeout_sec,

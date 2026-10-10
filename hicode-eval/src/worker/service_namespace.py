@@ -20,7 +20,7 @@ def service_paths(config):
     value = config.get('service')
     if value is None:return None
     if (config.get('dataset') not in {'terminal-bench-2.1'}
-            or config.get('network') != 'isolated' or not isinstance(value, dict)
+            or config.get('network') not in {'open','isolated'} or not isinstance(value, dict)
             or set(value) != {'writablePaths'} or not isinstance(value['writablePaths'], list)
             or len(value['writablePaths']) > len(SYSTEM_PATHS)
             or any(not isinstance(p, str) or p not in SYSTEM_PATHS for p in value['writablePaths'])
@@ -45,18 +45,23 @@ def _verifier_exec(pid,args):
     network=os.open(f'/proc/{pid}/ns/net',os.O_RDONLY)
     libc=ctypes.CDLL(None,use_errno=True)
     try:
+        # Open services already use this container's network. Only an isolated
+        # service network needs entry after acquiring its owning user namespace.
+        shares_network=os.fstat(network).st_ino==os.stat('/proc/self/ns/net').st_ino
         if libc.setns(user,0):raise OSError(ctypes.get_errno(),'Cannot enter service user namespace')
         os.setgroups([]);os.setgid(0);os.setuid(0)
-        if libc.setns(network,0):raise OSError(ctypes.get_errno(),'Cannot enter service network namespace')
+        if not shares_network and libc.setns(network,0):raise OSError(ctypes.get_errno(),'Cannot enter service network namespace')
     finally:os.close(user);os.close(network)
     _user_namespace_exec(args)
 
 
 class ServiceNamespace:
-    def __init__(self, root, uid, paths):
+    def __init__(self, root, uid, paths, *, network='isolated'):
+        if network not in {'open','isolated'}:raise ValueError('Invalid service network mode')
         if type(uid) is not int or uid < 20000 or uid + ACCOUNT_COUNT >= 2**32:
             raise ValueError('Invalid service account mapping')
         self.root, self.uid = Path(root), uid
+        self.network=network
         self.sandbox_runtime = self.root / 'service-sandbox'
         self.paths = paths
         self.mounts = []
@@ -146,6 +151,8 @@ class ServiceNamespace:
             self.start_identity = process_start(self.pid)
             if self.start_identity is None:raise RuntimeError('Service namespace exited during startup')
             self.pidfd = os.pidfd_open(self.pid)
+            shares_network=os.stat(f'/proc/{self.pid}/ns/net').st_ino==os.stat('/proc/self/ns/net').st_ino
+            if shares_network!=(self.network=='open'):raise RuntimeError('Service network differs from the reviewed mode')
             deadline = time.monotonic() + 5
             while True:
                 if self._ready():
@@ -180,7 +187,7 @@ class ServiceNamespace:
 
     def actor_argv(self, args):
         self._check()
-        return ['nsenter', '--target', str(self.pid), '--user', '--mount', '--net', '--pid',
+        return ['nsenter', '--target', str(self.pid), '--user', '--mount', *(['--net'] if self.network=='isolated' else []), '--pid',
                 '--root', '--setuid', '0', '--setgid', '0', 'env', '-C', '/app', '-u', 'TMUX', '-u', 'TMUX_PANE', *args]
 
     def verifier_argv(self, args, namespace):

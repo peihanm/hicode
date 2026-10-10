@@ -26,8 +26,9 @@ try{
 const layout=new EvalLayout(await realpath(await mkdtemp(join(tmpdir(),'hicode-linux-smoke-'))));temporary=layout.root;await layout.initialize();
 const model={source:'qwen' as const,model:'fixture',apiKeyEnv:'HICODE_SMOKE_KEY',baseUrl:'http://127.0.0.1:18991/v1'};
 const backend=current.datasetBackends[task.dataset];
-const settings=settingsSchema.parse({...await readJson(new EvalLayout(current.data).settings,settingsSchema),...backend,datasetBackends:{},model,machine:'hicode-smoke-'+createHash('sha256').update(layout.root).digest('hex').slice(0,12),concurrency:1,budget:{agentSeconds}});
+const settings=settingsSchema.parse({...await readJson(new EvalLayout(current.data).settings,settingsSchema),model,machine:'hicode-smoke-'+createHash('sha256').update(layout.root).digest('hex').slice(0,12),concurrency:1,budget:{agentSeconds}});
 const config=configSchema.parse({...settings,data:layout.root});
+const executionConfig=configSchema.parse({...settings,...backend,datasetBackends:{},data:layout.root});
 await save(layout.settings,settings);await save(layout.catalog,{version:1,updatedAt:new Date().toISOString(),tasks:[]});
 await mkdir(join(layout.datasets,task.dataset),{recursive:true});
 await cp(new EvalLayout(current.data).definition(task.dataset),layout.definition(task.dataset));
@@ -44,10 +45,10 @@ if(task.preparation){
 await catalog.register([{id:task.id,dataset:task.dataset,source:layout.source(task),...(preparation?{preparation}:{})}]);
 const originalBinding=await readJson(environmentBindingPath(current.environments,task),bindingSchema);
 await save(join(layout.environments,'base.json'),originalBinding.base);
-await new EnvironmentStore(layout.environments,config.context).prepareTask(catalog.get(task.dataset,task.id));
+await new EnvironmentStore(layout.environments,config.context,config.datasetBackends).prepareTask(catalog.get(task.dataset,task.id));
 await catalog.setEnvironment(task,'ready');
-const docker=(...a:string[])=>['docker','--context',config.context,...a];
-const lab=new Lab(config,'local-fake-key'),containers=new RunContainers(config);
+const docker=(...a:string[])=>['docker','--context',executionConfig.context,...a];
+const lab=new Lab(config,'local-fake-key'),containers=new RunContainers(executionConfig);
 const fake=`import http.server,json,time,re
 from pathlib import Path
 command=json.loads(${JSON.stringify(JSON.stringify(probeCommand))})
@@ -88,7 +89,7 @@ try{
    const patch=deep?await Bun.file(join(layout.run(id),'evidence/artifacts/model.patch')).text():null;
    const deepProof=!deep||(deep.p2p_total>0&&deep.p2p_passed===deep.p2p_total&&deep.f2p_total>0&&deep.f2p_passed<deep.f2p_total&&(!probeCommand||!!patch));
    const ok=deepProof&&(v.cancel?state.execution==='cancelled':state.execution==='completed'&&state.grading==='failed')&&state.collection==='complete'&&!remaining&&functionalProof;
-   const report={at:new Date().toISOString(),kind:'local-fake-provider',mode:v.cancel?'cancel':'complete',ok,execution:state.execution,grading:state.grading,collection:state.collection,containerRemaining:remaining,...(deep?{tests:deep,committedPatchBytes:Buffer.byteLength(patch!)}:{}),note:state.note};
+   const report={at:new Date().toISOString(),kind:'local-fake-provider',task:{dataset:task.dataset,id:task.id},context:executionConfig.context,paidModelCalls:0,mode:v.cancel?'cancel':'complete',ok,execution:state.execution,grading:state.grading,collection:state.collection,containerRemaining:remaining,...(deep?{tests:deep,committedPatchBytes:Buffer.byteLength(patch!)}:{}),note:state.note};
    await save(join(new EvalLayout(current.data).state,'validation.json'),report);console.log(JSON.stringify(report));
    if(!ok){
     const probeError=join(layout.run(id),'evidence/project/.probe-error');

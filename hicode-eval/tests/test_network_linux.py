@@ -44,20 +44,20 @@ assert reachable != isolated, (reachable,isolated)
 if isolated:
  assert [n for _,n in socket.if_nameindex()]==['lo']
  assert subprocess.run(['curl','--noproxy','*','-sS','--max-time','2','http://198.51.100.1'],capture_output=True).returncode != 0
- target=urlsplit(json.loads(Path(settings).read_text())['sources']['fixture']['baseUrl'])
- c=http.client.HTTPConnection(target.hostname,target.port,timeout=5)
- c.request('POST','/v1/chat/completions',body=json.dumps({'model':'fixture','stream':True,'messages':[{'role':'user','content':'fixture'}]}))
- r=c.getresponse();assert r.status==200;assert b'[DONE]' in r.read();c.close()
- code="const r=await fetch(process.argv[1]+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'fixture',stream:true,messages:[{role:'user',content:'fixture'}]})});if(!r.ok||!(await r.text()).includes('[DONE]'))process.exit(1)"
- subprocess.run(['bun','-e',code,target.geturl()],check=True,timeout=5)
+target=urlsplit(json.loads(Path(settings).read_text())['sources']['fixture']['baseUrl'])
+c=http.client.HTTPConnection(target.hostname,target.port,timeout=5)
+c.request('POST','/v1/chat/completions',body=json.dumps({'model':'fixture','stream':True,'messages':[{'role':'user','content':'fixture'}]}))
+r=c.getresponse();assert r.status==200;assert b'[DONE]' in r.read();c.close()
+code="const r=await fetch(process.argv[1]+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'fixture',stream:true,messages:[{role:'user',content:'fixture'}]})});if(!r.ok||!(await r.text()).includes('[DONE]'))process.exit(1)"
+subprocess.run(['bun','-e',code,target.geturl()],check=True,timeout=5)
 print('ISOLATED_OK' if isolated else 'OPEN_OK')
 ''');os.chown(actor,65534,65534)
-                gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture') if isolated else None
+                gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture')
                 try:
                     if gateway:os.chown(control/'model.sock',65534,65534)
                     args=['python3',str(actor),str(settings),str(provider.server_port),str(isolated)]
-                    if isolated:args=['python3','/opt/hicode-eval/network_entry.py',str(control/'model.sock'),str(settings),*args]
-                    argv=namespace_argv(args,project,home,logs,control,isolated_network=isolated,actor_release=os.environ['HICODE_EVAL_ACTOR_RELEASE'],actor_events=root/'actor-events')
+                    args=['python3','/opt/hicode-eval/network_entry.py',str(control/'model.sock'),str(settings),*args]
+                    argv=namespace_argv(args,project,home,logs,control,isolated_network=isolated,actor_release=os.environ['HICODE_EVAL_ACTOR_RELEASE'],actor_events=root/'actor-events',model_gateway=True)
                     def demote():os.setgroups([]);os.setgid(65534);os.setuid(65534)
                     result=subprocess.run(argv,env={'PATH':os.environ['PATH'],'HOME':str(home)},preexec_fn=demote,
                                           capture_output=True,text=True,timeout=20)

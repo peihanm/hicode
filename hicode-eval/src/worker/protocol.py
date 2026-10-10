@@ -236,13 +236,13 @@ def assignment_prompt(instruction, agent_seconds, network, workdir, public_entri
            '公开测试入口：'+('、'.join(public_entries) if public_entries else '未提供额外挂载；可使用工作区已有的公开测试与自测')+'。',
            '仅提供本题文件、必要运行工具和已准备依赖；其他题目、准备缓存和隐藏验收不向做题进程提供。']
     if network=='isolated':lines.append('当前外网不可用，请使用提供的工作区、已准备依赖和公开测试；模型连接由评测系统单独管理。')
-    else:lines.append('模型连接由评测系统管理。')
+    else:lines.append('本题允许访问外网，可自行查询和下载所需公开资料；模型连接仍由评测系统单独管理。')
     return '\n'.join(lines)+'\n\n'+instruction
 
 
 def namespace_argv(args, project, home, logs, control, tests=None, *, writable_tests=False, root_overlay=False, workdir="/app", environment=None, readonly_logs=False, public_tests=None, private_root=None, isolated_network=False, actor_release=None, actor_events=None, workspace_aliases=(), writable_runtime_bin=False, verifier_release=None, model_gateway=False):
-    if type(model_gateway) is not bool or (model_gateway and (actor_release is None or not isolated_network)):
-        raise ValueError('Model gateway requires an isolated actor')
+    if type(model_gateway) is not bool or (model_gateway and actor_release is None):
+        raise ValueError('Model gateway requires an actor view')
     if verifier_release is not None and (tests is None or actor_release is not None or public_tests is not None or root_overlay or private_root is not None):
         raise ValueError('Minimal verifier view requires a separate verifier workspace')
     if type(writable_runtime_bin) is not bool or (writable_runtime_bin and workdir!='/app'):

@@ -36,7 +36,7 @@ export async function runView(path:string,run:Run){
 
 function validateChild(batch:Batch,run:Run){
   const index=batch.runIds.indexOf(run.id);
-  if(run.batchId!==batch.id||index<0||!batch.taskRefs[index]||taskKey(batch.taskRefs[index]!)!==taskKey({dataset:run.dataset,id:run.task})||run.network!==batch.network)
+  if(run.batchId!==batch.id||index<0||!batch.taskRefs[index]||taskKey(batch.taskRefs[index]!)!==taskKey({dataset:run.dataset,id:run.task})||(batch.network==='isolated'&&run.network!=='isolated'))
     throw Error('Run does not belong to its frozen batch');
 }
 

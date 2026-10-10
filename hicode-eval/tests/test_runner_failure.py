@@ -77,7 +77,7 @@ class RunnerFailureTest(unittest.TestCase):
                     self.assertIn('handoff', calls)
                     calls.append('install-verifier')
                 if 'new-session' in argv:
-                    self.assertEqual(kwargs['env']['EVAL_FIXTURE_KEY'], 'eval-isolated' if isolated else 'offline-fixture')
+                    self.assertEqual(kwargs['env']['EVAL_FIXTURE_KEY'], 'eval-isolated')
                 return subprocess.CompletedProcess(argv, 0, stdout='', stderr='')
 
             def upload(*args):
@@ -127,7 +127,7 @@ class RunnerFailureTest(unittest.TestCase):
                     owner.actor_argv.side_effect=lambda args:['service-actor',*args]
                     owner.verifier_argv.side_effect=lambda args,view:['service-verifier',*args]
                     def start_service(namespace, environment, *, model_socket=None):
-                        self.assertEqual(model_socket, base/'run/hicode-eval'/RUN_ID/'model.sock' if isolated else None)
+                        self.assertEqual(model_socket, base/'run/hicode-eval'/RUN_ID/'model.sock')
                         calls.append('service-start')
                     owner.start.side_effect=start_service
                     owner.snapshot.side_effect=lambda:calls.append('service-snapshot')
@@ -149,15 +149,16 @@ class RunnerFailureTest(unittest.TestCase):
                 else:stack.enter_context(patch('time.sleep', side_effect=AssertionError('Failed turn must not wait for budget')))
                 stack.enter_context(contextlib.redirect_stdout(output))
                 runpy.run_path(str(RUNNER), run_name='__main__')
-                if isolated:
-                    self.assertEqual(gateway.call_args.args[1:], ('https://example.invalid', 'fixture', 'offline-fixture'))
-                    launch=(base/'run/hicode-eval'/RUN_ID/'launch.sh').read_text()
-                    self.assertIn('service-actor' if service else '--unshare-net',launch)
-                    self.assertIn('network_entry.py',launch)
-                    self.assertNotIn('offline-fixture',launch)
-                    settings=json.loads((root/'home/.hicode/settings.json').read_text())
-                    self.assertIn('web_fetch',settings['permissions']['deny'])
-                    self.assertEqual(json.loads((root/'network.json').read_text())['mode'],'isolated')
+                self.assertEqual(gateway.call_args.args[1:], ('https://example.invalid', 'fixture', 'offline-fixture'))
+                launch=(base/'run/hicode-eval'/RUN_ID/'launch.sh').read_text()
+                if service:self.assertIn('service-actor',launch)
+                elif isolated:self.assertIn('--unshare-net',launch)
+                else:self.assertNotIn('--unshare-net',launch)
+                self.assertIn('network_entry.py',launch)
+                self.assertNotIn('offline-fixture',launch)
+                settings=json.loads((root/'home/.hicode/settings.json').read_text())
+                self.assertEqual('web_fetch' in settings['permissions']['deny'],isolated)
+                self.assertEqual(json.loads((root/'network.json').read_text())['mode'],'isolated' if isolated else 'open')
             submitted=(root/'submitted-instruction.md').read_text()
             self.assertIn('60 分钟',submitted)
             self.assertIn('/app',submitted)
@@ -172,7 +173,7 @@ class RunnerFailureTest(unittest.TestCase):
     def test_completed_attempt_installs_verifier_only_after_sealing(self):
         result, calls, _ = self.run_attempt(completed=True)
         self.assertEqual(result['execution'], 'completed')
-        self.assertEqual(calls, ['stop', 'handoff', 'verify', 'finalize'])
+        self.assertEqual(calls, ['stop', 'gateway-close', 'handoff', 'verify', 'finalize'])
 
     def test_saved_shutdown_still_records_execution_timeout_without_false_cleanup_error(self):
         result,calls,receipt=self.run_attempt(timed_out=True)
@@ -187,7 +188,7 @@ class RunnerFailureTest(unittest.TestCase):
         result, calls, receipt = self.run_attempt()
         self.assertEqual(result['execution'], 'failed')
         self.assertEqual(result['grading'], 'failed')
-        self.assertEqual(calls, ['shutdown', 'stop', 'handoff', 'verify', 'finalize'])
+        self.assertEqual(calls, ['shutdown', 'stop', 'gateway-close', 'handoff', 'verify', 'finalize'])
         self.assertTrue(receipt['turnSaved'])
 
     def test_incomplete_shutdown_never_uploads_tests_or_installs_verifier(self):

@@ -11,7 +11,7 @@ run_id=sys.argv[1]
 if len(run_id)!=16 or any(c not in '0123456789abcdef' for c in run_id):raise ValueError('Invalid run ID')
 root=Path('/eval/runs')/run_id
 config=json.loads((root/'job.json').read_text())
-network=config.get('network','open')
+network=config.get('network')
 if network not in {'open','isolated'}:raise ValueError('Invalid evaluation network mode')
 dataset=dataset_runtime(config)
 service_declaration=None
@@ -137,10 +137,10 @@ try:
     if network=='isolated':
         # Check the actual actor namespace before consuming model tokens. There is no open fallback.
         command(namespace(['python3','-c',"import socket; assert [n for _,n in socket.if_nameindex()] == ['lo']"],actor=True),timeout=15)
-        gateway=Gateway(control/'model.sock',model['baseUrl'],model['model'],os.environ[model['apiKeyEnv']])
-        os.chown(control/'model.sock',uid,account.pw_gid)
+    gateway=Gateway(control/'model.sock',model['baseUrl'],model['model'],os.environ[model['apiKeyEnv']])
+    os.chown(control/'model.sock',uid,account.pw_gid)
     if service_declaration is not None:
-        owner=ServiceNamespace(root,uid,service_declaration)
+        owner=ServiceNamespace(root,uid,service_declaration,network=network)
         owner.prepare()
         try:
             owner.start(lambda args:namespace(args,actor=True),

@@ -59,7 +59,7 @@ export class Lab {
       const batch = this.batches.get(state.batchId);
       const index=batch?.runIds.indexOf(name)??-1;
       if (!batch || index<0 || taskKey(batch.taskRefs[index]!)!==taskKey({dataset:state.dataset,id:state.task})) throw Error('Orphan or mismatched run');
-      if (state.network !== batch.network) throw Error('Run network mode differs from its frozen batch');
+      if (batch.network==='isolated'&&state.network!=='isolated') throw Error('Run exceeds its frozen batch network permission');
       this.runs.set(name, state);
       if(done(state.state)&&state.state!=='needs_recovery'){
         // A crash may occur after state.json commits but before the catalog or disposal receipt.
@@ -165,14 +165,15 @@ export class Lab {
     if(selected.some(task=>task.status==='passed'))throw Error('Passed tasks are archived; select untested or unpassed tasks');
     if(!this.credential)throw Error('Missing provider credential');
     const environments=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends);
+    const networks:Run['network'][]=[];
     for(const task of selected){
-      if((input.network??this.config.network)!=='isolated'){
-        const metadata=await this.adapters[task.dataset].validate(task.id,task.source??'');
-        if('service' in metadata&&metadata.service)throw Error('Service assignments require isolated execution');
-      }
-      const network=this.adapters[task.dataset].requiredNetwork;
-      if(network&&(input.network??this.config.network)!==network)throw Error(task.dataset+' requires '+network+' execution');
       if(!task.source)throw Error('Prepare the selected task source before submission: '+taskKey(task));
+      const source=original?join(this.path(original.id),'task',original.task):task.source;
+      await this.adapters[task.dataset].validate(task.id,source);
+      const permitted=await this.adapters[task.dataset].network(source);
+      const network=(input.network??this.config.network)==='isolated'?'isolated':permitted;
+      if(original&&network!==original.network)throw Error('Original frozen task network permission changed; refusing to rerun');
+      networks.push(network);
       try{await environments.resolve(task);}
       catch(error){throw Error('Prepare the selected task environment before submission: '+taskKey(task)+' · '+String(error));}
     }
@@ -185,7 +186,7 @@ export class Lab {
     const batch = batchSchema.parse({name:input.name, network: input.network ?? this.config.network, concurrency:input.concurrency,
       taskRefs,budget: this.config.budget, version: 1, id, createdAt: now, runIds: taskRefs.map(() => randomBytes(8).toString('hex')), model: this.config.model, payload,
       ...(original?{retryOf:{batchId:original.batchId,runId:original.id,attempt:(this.batches.get(original.batchId)!.retryOf?.attempt??1)+1}}:{}) });
-    const states = input.tasks.map((task, i) => runSchema.parse({ version: 1, network: batch.network, id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
+    const states = input.tasks.map((task, i) => runSchema.parse({ version: 1, network: networks[i], id: batch.runIds[i], batchId: id, task: task.id, dataset: selected[i]!.dataset, state: 'queued', createdAt: now, updatedAt: now, model: this.config.model.model, budget: { agentSeconds: task.agentSeconds ?? batch.budget.agentSeconds } }));
     // Publish the batch only after all children are durable; no worker sees a partial submission.
     try {
       for (const state of states) {

@@ -33,6 +33,8 @@ bash hicode-eval/eval.sh retry --root /path/eval-data --run RUN_ID
 
 批次项必须包含 dataset 和 id，单题可设 agentSeconds（30–10800 秒）。服务和批次并发均最多 5。示例应放在 Data 的 state/batch-example.json。每次尝试只执行一次，完成后用原判题评分。启动前取消保留未测；错误、超时和模型答错分别存储。恢复只校验原证据，不再次调用模型；retry 创建新尝试，不覆盖旧分数。已通过题不再提交，旧成绩保留在 `docs/eval` 离线记录中。
 
+网络默认允许，每题由数据集适配器按原题许可收窄。Terminal-Bench 2.1 读取冻结 task.toml 的 environment.allow_internet，只有 true 才开放，false／缺失则隔离；DeepSWE 始终隔离。同一批可混合联网与禁网题。settings／批次的 network=isolated 可进一步禁网，open 不能覆盖原题限制；实际模式保存在各 Run，retry 沿用原模式。普通题与服务题均使用本题模型网关，真实 Key 不进入作答环境。联网只改变外网访问，单题容器、文件、进程与隐藏判题边界保持不变。
+
 SWE 的独立补判使用 `regrade --root DIR --run ID`，不调用模型，不改原答案或首次成绩；原始未通过现场仍保留。看板默认 http://127.0.0.1:8878/，断开 worker 后仍能读取保存的结果和终端。
 
 ## 资源收尾

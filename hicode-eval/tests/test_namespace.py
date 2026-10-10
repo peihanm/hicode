@@ -105,7 +105,7 @@ class NamespaceTest(unittest.TestCase):
 class ActorFilesystemTest(unittest.TestCase):
     def test_actor_hides_terminal_control_and_only_mounts_its_model_gateway(self):
         for isolated in (False,True):
-            for gateway in (False,True) if isolated else (False,):
+            for gateway in (False,True):
                 with patch('protocol.actor_readonly_mounts',return_value=['--ro-bind','/usr','/usr']):
                     args=namespace_argv(['bun','cli'],'/p','/h','/l','/run/control',
                                         actor_release='/release',actor_events='/events',
@@ -115,9 +115,8 @@ class ActorFilesystemTest(unittest.TestCase):
                 self.assertNotIn('/run/control/tmux.sock',args)
                 self.assertEqual([args[i+1] for i,flag in enumerate(args) if flag=='--unsetenv'],['TMUX','TMUX_PANE'])
                 self.assertEqual(['--ro-bind','/run/control/model.sock','/run/control/model.sock'] in mounts,gateway)
-        for options in ({'model_gateway':True},{'model_gateway':1},
-                        {'model_gateway':True,'actor_release':'/release','actor_events':'/events'}):
-            with self.assertRaisesRegex(ValueError,'Model gateway requires an isolated actor'):
+        for options in ({'model_gateway':True},{'model_gateway':1}):
+            with self.assertRaisesRegex(ValueError,'Model gateway requires an actor view'):
                 namespace_argv(['bun'],'/p','/h','/l','/c',**options)
 
     def test_actor_has_no_host_root_terminal_logs_or_hidden_tests(self):

@@ -7,11 +7,16 @@ import tempfile
 import unittest
 import zipfile
 import stat
+import http.server
+import json
+import shutil
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 from protocol import namespace_argv
 from service_bwrap import bwrap_argv
 from service_namespace import ServiceNamespace,service_paths
+from model_proxy import Gateway
 
 
 class ServiceDeclarationTest(unittest.TestCase):
@@ -68,11 +73,12 @@ class ServiceDeclarationTest(unittest.TestCase):
         for args in [['--unshare-user'],['--unshare-all','--cap-drop','ALL','--cap-add','ALL']]:
             with self.assertRaises(ValueError):bwrap_argv(args)
 
-    def test_only_reviewed_isolated_terminal_paths_are_accepted(self):
+    def test_only_reviewed_terminal_paths_and_network_modes_are_accepted(self):
         self.assertEqual(service_paths({'dataset':'terminal-bench-2.1','network':'isolated',
                                         'service':{'writablePaths':['/etc','/var']}}),['/etc','/var'])
+        self.assertEqual(service_paths({'dataset':'terminal-bench-2.1','network':'open','service':{'writablePaths':[]}}),[])
         for value in [
-            {'dataset':'terminal-bench-2.1','network':'open','service':{'writablePaths':[]}},
+            {'dataset':'terminal-bench-2.1','network':'unknown','service':{'writablePaths':[]}},
             {'dataset':'deep-swe','network':'isolated','service':{'writablePaths':[]}},
             {'dataset':'terminal-bench-2.1','network':'isolated','service':{'writablePaths':['/proc']}},
             {'dataset':'terminal-bench-2.1','network':'isolated','service':{'writablePaths':['/etc','/etc']}},
@@ -84,11 +90,18 @@ class ServiceDeclarationTest(unittest.TestCase):
                      'Requires a disposable Linux evaluation container')
 class ServiceLinuxTest(unittest.TestCase):
     def test_service_survives_actor_exit_and_private_verifier_reaches_original_localhost(self):
+        self.check_service_handoff(True)
+
+    def test_open_service_survives_actor_exit_and_private_verifier_reaches_original_localhost(self):
+        self.check_service_handoff(False)
+
+    def check_service_handoff(self,isolated):
         release=os.environ['HICODE_EVAL_ACTOR_RELEASE']
         ssh_smoke=os.environ.get('HICODE_EVAL_SERVICE_SSH_SMOKE')=='1'
         with tempfile.TemporaryDirectory(dir='/eval',prefix='service-handoff-') as directory:
             root=Path(directory);os.chown(root,20000,20000)
-            project=root/'project';home=root/'home';logs=root/'logs';control=root/'control';events=root/'events';tests=root/'tests'
+            project=root/'project';home=root/'home';logs=root/'logs';control=Path('/run/hicode-eval')/root.name;events=root/'events';tests=root/'tests'
+            control.parent.mkdir(parents=True,exist_ok=True)
             for path in [project,home,logs,control,events,tests]:
                 path.mkdir();os.chown(path,20000,20000)
             (logs/'verifier').mkdir();os.chown(logs/'verifier',20000,20000)
@@ -131,14 +144,34 @@ Path('/app/ready').touch();server.serve_forever()
                 env['PYTHONPATH']='/opt/hicode-terminal/verifier:'+str(home/'.local/lib/python3.13/site-packages')
             if env['HICODE_EVAL_SERVICE_HF_SMOKE']=='1':
                 env['PYTHONPATH']='/opt/hicode-terminal/actor'
-            def actor(args):return namespace_argv(args,project,home,logs,control,isolated_network=True,
-                                                  actor_release=release,actor_events=events)
-            owner=ServiceNamespace(root,20000,['/etc','/var','/run',*(['/home','/git'] if ssh_smoke else [])])
+            class Provider(http.server.BaseHTTPRequestHandler):
+                def log_message(self,*args):pass
+                def do_POST(self):
+                    self.rfile.read(int(self.headers['Content-Length']))
+                    self.send_response(200);self.end_headers();self.wfile.write(b'data: [DONE]\n\n')
+            provider=http.server.ThreadingHTTPServer(('127.0.0.1',0),Provider)
+            thread=threading.Thread(target=provider.serve_forever,daemon=True);thread.start()
+            gateway=Gateway(control/'model.sock',f'http://127.0.0.1:{provider.server_port}/v1','fixture','fixture')
+            os.chown(control/'model.sock',20000,20000)
+            settings=home/'model-settings.json';settings.write_text(json.dumps({'sources':{'fixture':{'baseUrl':'unused'}}}));os.chown(settings,20000,20000)
+            def actor(args):return namespace_argv(args,project,home,logs,control,isolated_network=isolated,
+                                                  actor_release=release,actor_events=events,model_gateway=True)
+            owner=ServiceNamespace(root,20000,['/etc','/var','/run',*(['/home','/git'] if ssh_smoke else [])],network='isolated' if isolated else 'open')
             try:
                 owner.prepare()
-                try:owner.start(actor,env)
+                try:owner.start(actor,env,model_socket=control/'model.sock')
                 except Exception as error:
-                    raise RuntimeError(str(error)+'; '+(root/'service-namespace.log').read_text()[-2000:]) from error
+                    raise RuntimeError(str(error)+'; '+((root/'service-namespace.log').read_text()[-2000:] if (root/'service-namespace.log').exists() else 'before namespace spawn')) from error
+                model_check="""import http.client,json,sys
+from pathlib import Path
+from urllib.parse import urlsplit
+url=urlsplit(json.loads(Path(sys.argv[1]).read_text())['sources']['fixture']['baseUrl'])
+c=http.client.HTTPConnection(url.hostname,url.port,timeout=5)
+c.request('POST','/v1/chat/completions',body=json.dumps({'model':'fixture','stream':True,'messages':[{'role':'user','content':'fixture'}]}))
+r=c.getresponse();assert r.status==200;assert b'[DONE]' in r.read();print('MODEL_GATEWAY_OK')
+"""
+                model_result=subprocess.run(owner.actor_argv(['python3','/opt/hicode-eval/network_entry.py',str(control/'model.sock'),str(settings),'python3','-c',model_check,str(settings)]),env=env,capture_output=True,text=True,timeout=15)
+                self.assertEqual(model_result.returncode,0,model_result.stderr);self.assertIn('MODEL_GATEWAY_OK',model_result.stdout)
                 code='''import subprocess,time,os
 from pathlib import Path
 assert 'TMUX' not in os.environ
@@ -246,4 +279,5 @@ print('PRIVATE_VERIFIER_OK')
                 owner.snapshot();self.assertTrue((root/'service-system.tar').is_file())
                 owner.close()
                 with self.assertRaises(RuntimeError):owner.actor_argv(['true'])
-            finally:owner.close()
+            finally:
+                owner.close();gateway.close();provider.shutdown();provider.server_close();thread.join(timeout=2);shutil.rmtree(control)

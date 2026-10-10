@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {validateDeepTask,deepExecution} from './deepTasks.js';
-import {validatePublicTask} from './publicTasks.js';
+import {validatePublicTask,publicTaskNetwork} from './publicTasks.js';
 import {validateSweTask, sweTree} from './sweTasks.js';
 import {tree} from './store.js';
 import {terminalExecution} from './terminalExecution.js';
@@ -17,7 +17,7 @@ export function taskKey(task:TaskRef):string{return task.dataset+':'+task.id;}
 
 export type TaskMetadata=Awaited<ReturnType<typeof validateDeepTask>>|Awaited<ReturnType<typeof validateSweTask>>|Awaited<ReturnType<typeof validatePublicTask>>;
 type TaskAdapter={
-  requiredNetwork?:'isolated';
+  network:(source:string)=>Promise<'open'|'isolated'>;
   validate:(id:string,source:string)=>Promise<TaskMetadata>;
   snapshot:(source:string)=>ReturnType<typeof tree>;
   execution:(state:Run,source:string)=>Promise<DatasetExecution>;
@@ -26,11 +26,12 @@ type TaskAdapter={
 export function taskAdapters(layout:EvalLayout):Record<Dataset,TaskAdapter>{
   return {
     'terminal-bench-2.1':{
+      network:publicTaskNetwork,
       validate:(id,source)=>validatePublicTask(id,source,layout.definition('terminal-bench-2.1')),
       snapshot:tree,
       execution:(state,source)=>terminalExecution(state,source,layout.definition('terminal-bench-2.1')),
     },
-    'deep-swe':{requiredNetwork:'isolated',validate:(id,source)=>validateDeepTask(id,source,layout.definition('deep-swe')),snapshot:tree,execution:(state,source)=>deepExecution(state,source,layout.definition('deep-swe'))},
-    'swe-bench-verified':{validate:validateSweTask,snapshot:sweTree,execution:sweExecution},
+    'deep-swe':{network:async()=> 'isolated',validate:(id,source)=>validateDeepTask(id,source,layout.definition('deep-swe')),snapshot:tree,execution:(state,source)=>deepExecution(state,source,layout.definition('deep-swe'))},
+    'swe-bench-verified':{network:async()=> 'open',validate:validateSweTask,snapshot:sweTree,execution:sweExecution},
   };
 }

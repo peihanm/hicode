@@ -1,9 +1,13 @@
 import { dirname, join, resolve } from 'node:path';
-import { mkdir, copyFile, realpath } from 'node:fs/promises';
+import { mkdir, copyFile, realpath, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { z } from 'zod';
 import { readJson, tree } from './store.js';
-export const taskSchema = z.object({ metadata: z.object({ category: z.string().optional() }).optional(), agent: z.object({ timeout_sec: z.number().positive() }), verifier: z.object({ timeout_sec: z.number().positive() }) });
+export const taskSchema = z.object({ metadata: z.object({ category: z.string().optional() }).optional(), agent: z.object({ timeout_sec: z.number().positive() }), verifier: z.object({ timeout_sec: z.number().positive() }), environment:z.object({allow_internet:z.boolean().optional()}).optional() });
+export async function publicTaskNetwork(source:string):Promise<'open'|'isolated'>{
+  const spec=taskSchema.parse(Bun.TOML.parse(await readFile(join(source,'task.toml'),'utf8')));
+  return spec.environment?.allow_internet===true?'open':'isolated';
+}
 const inputPath = z.string().max(256).regex(/^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_][A-Za-z0-9_.-]*$/);
 const profileSchema = z.object({
   hashes: z.record(z.string().regex(/^[a-f0-9]{64}$/)),

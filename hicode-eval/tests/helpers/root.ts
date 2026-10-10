@@ -21,6 +21,7 @@ export function binding(key:string,letter='c'):EnvironmentBinding{
 }
 export async function seed(f:Awaited<ReturnType<typeof fixture>>,id:string,letter='c'){
  const task={id,dataset:'terminal-bench-2.1' as const},source=f.layout.source(task);await mkdir(source,{recursive:true});await writeFile(join(source,'instruction.md'),'fixture task');
+ await writeFile(join(source,'task.toml'),'[agent]\ntimeout_sec=30\n[verifier]\ntimeout_sec=30\n[environment]\nallow_internet=true\n');
  await f.catalog.register([{...task,source}]);await f.catalog.setEnvironment(task,'ready');
  const b=binding(taskKey(task),letter);await save(environmentBindingPath(f.config.environments,task),b);return {...task,source,binding:b};
 }

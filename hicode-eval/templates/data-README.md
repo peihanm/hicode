@@ -14,6 +14,7 @@
 | `state/batches/` | worker 创建的批次与尝试关联 | 保留小型元数据 |
 | `state/maintenance*.json` | 最近清理结果或错误，由资源管理写入 | 仅保留最新回执，不形成第二套台账 |
 | `state/preparation.json` | worker 后台环境准备的当前进度与结果 | 仅保留最近一次；就绪状态以 catalog 为准 |
+| `state/validation.json` | 最近一次本地假模型 Linux 链路快检回执；与成绩分离 | 只保留最新回执，不计真实模型通过 |
 | `datasets/<dataset>/definition.json`、`recipes/`、`runtime.Dockerfile` | 按数据集逐项审定的输入/依赖/运行声明；register 和 prepare 校验 | 存在 Data，不批量导入旧 config，不保存真实 Key或历史评分 |
 | `environments/runtime/` | 当前公共运行底座的固定 images.json 与 Dockerfile | 从公开固定来源建立，配方变化重新准备 |
 | `state/import.json` | register 的原子导入 journal | 中断后由离线 gc 回收未入账输入，不能当作第二台账 |
@@ -38,6 +39,7 @@
 - serve 只读原子记录并转交控制请求，不初始化执行资源。8878 是默认网页端口，8879 是默认 worker 端口。重启网页不停止跑题。
 - 完成定义必须同时满足执行 completed、原判题 passed 和收集 complete。错误、超时、取消不伪装成通过。启动前取消没有判题结论。
 - 每题使用独立容器、网络和可写 Home。作答进程只能通过本题模型网关访问接口；隐藏验收材料在确认 Agent 停止后物化。权限、收尾或证据不明时保留现场并停止新调度。
+- 默认允许联网，数据集适配器按原题许可逐题收窄；Terminal-Bench 2.1 只有冻结 task.toml 的 environment.allow_internet=true 才开放，false／缺失则隔离，DeepSWE 始终隔离。settings 和批次 network=isolated 可进一步禁网，open 不能覆盖原题限制。同批允许混合模式，实际模式写入各 Run，retry 沿用原模式。服务题联网时共享本题独立容器的网络，禁网时保留私有无外网 namespace；两者均保留文件、进程、隐藏判题隔离和本题模型网关，真实 Key 不进入作答环境。修改默认配置只在空闲 worker 停止后持 service lease 原子保存，再恢复服务；不改变已有 Run。
 
 ## 镜像的实际存放位置
 

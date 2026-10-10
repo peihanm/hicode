@@ -52,7 +52,7 @@ test.each([{finalFailure:false,uploadFailure:false},{finalFailure:true,uploadFai
   const archive=Buffer.from('offline source fixture'),hash=createHash('sha256').update(archive).digest('hex');
   await writeFile(join(payload,'source.tar.gz'),archive);
   await transport.save(join(payload,'manifest.json'),{files:{'source.tar.gz':hash}});
-  await writeFile(join(path,'task','fixture','task.toml'),'[agent]\ntimeout_sec=30\n[verifier]\ntimeout_sec=30\n');
+  await writeFile(join(path,'task','fixture','task.toml'),'[agent]\ntimeout_sec=30\n[verifier]\ntimeout_sec=30\n[environment]\nallow_internet=true\n');
   await writeFile(join(tools,'docker'),`#!/bin/sh
 printf '%s\n' '{"type":"phase","phase":"Running HiCode"}'
 printf '%s\n' '{"type":"screen","screen":"final screen"}'
