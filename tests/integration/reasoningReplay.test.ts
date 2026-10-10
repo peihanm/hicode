@@ -31,11 +31,11 @@ function response(reasoning: string, tool: boolean) {
         {headers:{"content-type":"text/event-stream"}});
 }
 
-test.each(["qwen", "deepseek"] as const)("%s replays tool and text reasoning across Session restore and a follow-up", async id => {
+test.each(["qwen", "deepseek", "qwen-token-plan"] as const)("%s replays tool and text reasoning across Session restore and a follow-up", async id => {
     await withTempProject(async (cwd, storage) => {
         process.env.HICODE_REPLAY_TEST_KEY = "fixture-key";
         const call = createLLMCaller({...source, id});
-        const model = id === "qwen" ? "qwen3.8-flash" : "deepseek-flash";
+        const model = id === "qwen" ? "qwen3.8-flash" : id === "qwen-token-plan" ? "deepseek-v4.1-flash" : "deepseek-flash";
         const longReasoning = "Compare candidate moves α\n".repeat(3000);
         let calls = 0;
         globalThis.fetch = (async (_input, init) => {
@@ -43,6 +43,11 @@ test.each(["qwen", "deepseek"] as const)("%s replays tool and text reasoning acr
             expect(request).not.toHaveProperty("reasoning_effort");
             expect(request).not.toHaveProperty("thinking_budget");
             if (id === "qwen") expect(request.preserve_thinking).toBe(true);
+            if (id === "qwen-token-plan") {
+                expect(request.enable_thinking).toBe(true);
+                expect(request).not.toHaveProperty("thinking");
+                expect(request).not.toHaveProperty("preserve_thinking");
+            }
             const assistants = request.messages.filter((message: {role:string}) => message.role === "assistant");
             if (calls > 0) {
                 expect(assistants[0].reasoning_content).toBe(longReasoning);
@@ -72,19 +77,25 @@ test.each(["qwen", "deepseek"] as const)("%s replays tool and text reasoning acr
     });
 });
 
-test("reasoning replay is scoped to source, endpoint and model without mutating History", async () => {
+test.each([
+    {id:"qwen" as const, model:"qwen3.8-flash"},
+    {id:"qwen-token-plan" as const, model:"deepseek-v4.1-flash"},
+])("$id reasoning replay is scoped to source, endpoint and model without mutating History", async ({id, model}) => {
     await withTempProject(async (cwd, storage) => {
         process.env.HICODE_REPLAY_TEST_KEY = "fixture-key";
+        const selected = {...source, id};
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => response("original model reasoning", false)) as typeof fetch;
         const user: Message = {role:"user", origin:"user", content:"hello"};
-        const first = await createLLMCaller(source)([user], tools, storage, cwd, "qwen3.8-flash", "main");
+        const first = await createLLMCaller(selected)([user], tools, storage, cwd, model, "main");
         const history: Message[] = [user, first.message, {role:"user", origin:"user", content:"continue"}];
         for (const target of [
-            {source, model:"qwen3.8-max"},
-            {source:{...source, baseUrl:"https://other.test/v1"}, model:"qwen3.8-flash"},
-            {source:{...source, id:"deepseek" as const}, model:"qwen3.8-flash"},
-            {source, model:"qwen3-coder-plus"},
-            {source, model:"vendor/custom-alias"},
+            {source:selected, model:"qwen3.8-max"},
+            {source:{...selected, baseUrl:"https://other.test/v1"}, model},
+            {source:{...selected, id:"deepseek" as const}, model},
+            {source:{...selected, id:id === "qwen-token-plan" ? "qwen" as const : "qwen-token-plan" as const}, model},
+            {source:selected, model:"qwen3-coder-plus"},
+            {source:selected, model:"deepseek-v4.1-flash-unconfirmed-alias"},
+            {source:selected, model:"vendor/custom-alias"},
         ]) {
             globalThis.fetch = (async (_input, init) => {
                 const request = JSON.parse(String(init?.body));
@@ -98,8 +109,43 @@ test("reasoning replay is scoped to source, endpoint and model without mutating 
             expect(request.messages[1].reasoning_content).toBe("original model reasoning");
             return response("continued", false);
         }) as typeof fetch;
-        await createLLMCaller(source)(history, tools, storage, cwd, "qwen3.8-flash", "main");
+        await createLLMCaller(selected)(history, tools, storage, cwd, model, "main");
         expect(first.message).toMatchObject({reasoning:{content:"original model reasoning"}});
+    });
+});
+
+test("Token Plan DeepSeek off and task review omit replay without discarding the original reasoning", async () => {
+    await withTempProject(async (cwd, storage) => {
+        process.env.HICODE_REPLAY_TEST_KEY = "fixture-key";
+        const caller = createLLMCaller({...source, id:"qwen-token-plan"});
+        const requests: Record<string, unknown>[] = [];
+        globalThis.fetch = (async (_input, init) => {
+            requests.push(JSON.parse(String(init?.body)));
+            return response("keep the verified tool result", requests.length === 1);
+        }) as typeof fetch;
+        const history: Message[] = [{role:"user", origin:"user", content:"Inspect the file"}];
+        const first = await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", "main",
+            undefined, undefined, undefined, undefined, undefined, "max");
+        history.push(first.message, {role:"tool", tool_call_id:"read-1", content:"verified contents"});
+        const original = structuredClone(history);
+        for (const kind of ["main", "task_review"] as const) {
+            const reply = await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", kind,
+                undefined, undefined, undefined, undefined, undefined, kind === "main" ? "off" : "max");
+            expect(reply.message).not.toHaveProperty("reasoning");
+            const request = requests.at(-1)!;
+            expect(request.enable_thinking).toBe(false);
+            expect(request).not.toHaveProperty("preserve_thinking");
+            expect(request.messages).toEqual([
+                {role:"user", content:"Inspect the file"},
+                {role:"assistant", content:null, tool_calls:first.toolCalls},
+                {role:"tool", tool_call_id:"read-1", content:"verified contents"},
+            ]);
+        }
+        await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", "main",
+            undefined, undefined, undefined, undefined, undefined, "max");
+        expect(requests.at(-1)).toMatchObject({enable_thinking:true, reasoning_effort:"max",
+            messages:[{role:"user"}, {reasoning_content:"keep the verified tool result"}, {role:"tool"}]});
+        expect(history).toEqual(original);
     });
 });
 

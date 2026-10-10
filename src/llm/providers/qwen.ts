@@ -10,7 +10,7 @@ function supportsThinking(model: string): boolean {
         !normalized.startsWith("qwen3-coder-plus");
 }
 
-function supportsReasoningReplay(model: string): boolean {
+function supportsPreservedThinking(model: string): boolean {
     return /^qwen3\.(?:6|7|8)-(?:plus|flash|max)(?:-|$)/i.test(model);
 }
 
@@ -21,7 +21,7 @@ export function createQwenRequestFields(
     return {
         stream_options: {include_usage: true},
         ...(supportsThinking(model) ? {enable_thinking: true} : {}),
-        ...(supportsReasoningReplay(model) ? {preserve_thinking: true} : {}),
+        ...(supportsPreservedThinking(model) ? {preserve_thinking: true} : {}),
         ...(hasTools ? {parallel_tool_calls: true} : {}),
     };
 }
@@ -40,18 +40,20 @@ export const qwenProvider: LLMProvider = {
 
         const review = options.kind === "task_review";
         const thinkingOff = review || options.reasoning === "off";
+        const replay = !thinkingOff && (supportsPreservedThinking(options.model) ||
+            (source.id === "qwen-token-plan" && options.model === "deepseek-v4.1-flash"));
         const requestFields = {
             ...createQwenRequestFields(options.model, options.tools.length > 0),
             ...reasoningRequestFields(source.id, options.model, review ? "default" : options.reasoning),
             ...(thinkingOff ? {
                 ...(supportsThinking(options.model) ? {enable_thinking: false} : {}),
-                ...(supportsReasoningReplay(options.model) ? {preserve_thinking: false} : {}),
+                ...(supportsPreservedThinking(options.model) ? {preserve_thinking: false} : {}),
             } : {}),
         };
         return callOpenAICompatible(options, {
             displayName: source.label,
             toolImages: supportsToolImages(source, options.model),
-            ...(supportsReasoningReplay(options.model) && !thinkingOff ? {reasoningSource: source.id} : {}),
+            ...(replay ? {reasoningSource: source.id} : {}),
             baseUrl: source.baseUrl || PROVIDER_BASE_URLS[source.id],
             apiKey,
             requestFields,
