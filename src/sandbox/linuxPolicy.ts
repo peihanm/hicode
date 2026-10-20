@@ -35,6 +35,20 @@ export async function linuxDotEnvMask(roots: readonly string[], store: MaskedFil
     return {maskedFileBinds, maskedFileStoreDir: store.dirPath};
 }
 
+/** bwrap rejects mount destinations that are symlinks; resolve them before ASRT emits masks. */
+async function resolveDenyReadPaths(paths: readonly string[]): Promise<string[]> {
+    const resolved = await Promise.all(paths.map(async path => {
+        try {
+            return await realpath(path);
+        } catch {
+            // Missing and cyclic paths are skipped by the mount generator. Keep the
+            // configured spelling so diagnostics still identify the original rule.
+            return path;
+        }
+    }));
+    return [...new Set(resolved)];
+}
+
 /** Mount masks protect concrete paths. Never approximate a user-supplied glob denial. */
 export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal: AbortSignal, roots: readonly string[]): Promise<SandboxRuntimeConfig> {
     for (const path of [...config.filesystem.denyRead, ...config.filesystem.denyWrite]) {
@@ -42,6 +56,10 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
             throw new Error("Linux Sandbox requires literal denyRead/denyWrite paths; glob denials cannot be enforced by mount masks");
         }
     }
+    // Directory deny paths are emitted as --tmpfs destinations. bwrap 0.13 refuses
+    // a mount destination that is a symlink (common for ~/.aws in WSL/dotfile
+    // setups), so resolve existing paths to the inode that reads actually reach.
+    const denyRead = await resolveDenyReadPaths(config.filesystem.denyRead);
     const canonicalRoots = await protectedRoots(roots);
     const denied = new Set(config.filesystem.denyWrite);
     for (const root of canonicalRoots) {
@@ -89,5 +107,5 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
             }
         }
     }
-    return {...config, filesystem: {...config.filesystem, denyWrite: [...denied]}};
+    return {...config, filesystem: {...config.filesystem, denyRead, denyWrite: [...denied]}};
 }

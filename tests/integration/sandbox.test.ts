@@ -6,6 +6,7 @@ import {
     readFile,
     rm,
     stat,
+    symlink,
     writeFile,
 } from "node:fs/promises";
 import {tmpdir} from "node:os";
@@ -33,6 +34,24 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe("OS Sandbox integration", () => {
+    test("符号链接形式的 denyRead 路径不阻止沙箱初始化", async () => {
+        if (!ENABLED) return;
+        await withTempProject(async (cwd, storage) => {
+            const target = join(cwd, "deny-target");
+            const link = join(cwd, "deny-link");
+            await mkdir(target);
+            await symlink(target, link);
+            const runtime = await createSandboxRuntime({cwd, storage, settings: {
+                filesystem: {denyRead: [link], denyWrite: []},
+                network: {mode: "open", allowedDomains: [], allowLocalBinding: false},
+            }});
+            try {
+                expect(runtime.status.kind).toBe("ready");
+            } finally {
+                await runtime.close();
+            }
+        });
+    });
     test("CLI 标准临时目录可写且显式禁止仍生效", async () => {
         if (!ENABLED) return;
         await withTempProject(async (cwd, storage) => {

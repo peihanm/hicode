@@ -99,7 +99,7 @@ test("streamed tool arguments and exact reasoning fragments survive restore and 
     });
 });
 
-test("details-only replies persist; malformed details fail and HTTP-200 provider errors retry once without exposing secrets", async () => {
+test("details-only replies persist; malformed details fail and HTTP-200 provider errors share the bounded retry budget without exposing secrets", async () => {
     await withTempProject(async (cwd, storage) => {
         process.env.HICODE_OPENROUTER_TEST_KEY = "fixture-openrouter-secret";
         const call = createLLMCaller(source);
@@ -115,7 +115,7 @@ test("details-only replies persist; malformed details fail and HTTP-200 provider
             expect(String(error)).toContain("429");
             expect(String(error)).not.toContain("fixture-openrouter-secret");
         }
-        expect(requests).toBe(2);
+        expect(requests).toBe(3);
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => sse([{choices: [{delta: {reasoning_details: [{type: "reasoning.text", text: 12}]}}]}])) as typeof fetch;
         await expect(call([user], [], storage, cwd, model, "main")).rejects.toThrow("Invalid stream reasoning_details");
     });

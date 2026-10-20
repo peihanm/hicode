@@ -16,6 +16,13 @@ import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 
 afterEach(() => cleanup());
 
+async function until(check: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100 && !check(); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(check()).toBe(true);
+}
+
 describe("subagent UI", () => {
   test("长中文用户消息不会留下只有一两个词的孤立尾行", () => {
     const prompt = "我想做一个能让我自己刷leetcode的网站，你能帮我做一个嘛，我希望能把服务起来，然后在本地web页面上写题目，然后跑程序。题目可以就一道先，主要是把整体框架搭起";
@@ -159,14 +166,12 @@ describe("subagent UI", () => {
       instance.stdin.write("调查");
       await new Promise((resolve) => setTimeout(resolve, 10));
       instance.stdin.write("\r");
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await until(() => (instance.lastFrame() ?? "").includes("Started · /tasks"));
 
-      expect(instance.lastFrame()).toContain("Started · /tasks");
       expect(instance.lastFrame()).not.toContain("task_id: t_123456789abc");
 
       instance.stdin.write("\x0f");
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("task_id: t_123456789abc");
+      await until(() => (instance.lastFrame() ?? "").includes("task_id: t_123456789abc"));
     });
   });
 

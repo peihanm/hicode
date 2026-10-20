@@ -79,18 +79,22 @@ async function lockWithIdentity<T>(path: string, action: () => Promise<T>, local
         if (created) {
             let published = false;
             try {
-                const handle = await open(marker, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-                published = true;
-                await handle.close();
-                const {entries} = await inspectDirectory(path);
-                // An initializer paused while its empty directory was reaped must not
-                // enter alongside the initializer of a replacement directory.
-                if (entries.length === 1 && entries[0]!.name === owner) return await action();
-            } catch (error) {
-                // macOS can report EINVAL instead of ENOENT if another releaser
-                // removes the directory during exclusive marker creation. Retry
-                // only before publication; no action has acquired the lease yet.
-                if (published || (!isCode(error, "ENOENT") && !(process.platform === "darwin" && isCode(error, "EINVAL")))) throw error;
+                let acquired = false;
+                try {
+                    const handle = await open(marker, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+                    published = true;
+                    await handle.close();
+                    const {entries} = await inspectDirectory(path);
+                    // An initializer paused while its empty directory was reaped must not
+                    // enter alongside the initializer of a replacement directory.
+                    acquired = entries.length === 1 && entries[0]!.name === owner;
+                } catch (error) {
+                    // Retry only acquisition races, including a vanished published marker.
+                    // macOS may report EINVAL during exclusive marker creation.
+                    if (!isCode(error, "ENOENT") && !(process.platform === "darwin" && !published && isCode(error, "EINVAL"))) throw error;
+                }
+                // Once entered, an action may have side effects; never replay its errors.
+                if (acquired) return await action();
             } finally {
                 if (published) {
                     try { await unlink(marker); }

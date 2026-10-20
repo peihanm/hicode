@@ -52,6 +52,28 @@ test("Linux discovers nested protected paths, hidden directories and aliases on 
     });
 });
 
+test("Linux resolves symlinked read deny paths before mount generation", async () => {
+    await withTempProject(async root => {
+        const canonicalRoot = await realpath(root);
+        const target = join(canonicalRoot, "credential-target");
+        const link = join(canonicalRoot, "credential-link");
+        const dangling = join(canonicalRoot, "dangling-read-link");
+        await mkdir(target);
+        await symlink(target, link);
+        await symlink(join(canonicalRoot, "missing-target"), dangling);
+
+        const input = config(canonicalRoot);
+        input.filesystem.denyRead.push(link, dangling);
+        const result = await linuxFilesystemPolicy(input, AbortSignal.timeout(5000), [canonicalRoot]);
+
+        expect(result.filesystem.denyRead).toContain(target);
+        expect(result.filesystem.denyRead).not.toContain(link);
+        // Unresolvable paths stay as configured so the mount generator can skip them.
+        expect(result.filesystem.denyRead).toContain(dangling);
+        expect(input.filesystem.denyRead).toEqual([link, dangling]);
+    });
+});
+
 test("Linux rejects configured glob denies and responds to cancellation", async () => {
     await withTempProject(async root => {
         for (const field of ["denyRead", "denyWrite"] as const) {

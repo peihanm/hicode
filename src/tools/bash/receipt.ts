@@ -16,5 +16,8 @@ export function shellResultReceipt(termination: ShellTermination, outputFailed =
 }
 
 export function shellResultUI(termination: ShellTermination | undefined, outputFailed = false) {
-    return termination ? {uiData: {type: "shell_result" as const, receipt: shellResultReceipt(termination, outputFailed)}} : {};
+    if (!termination) return {};
+    // A clean exit needs no UI receipt; its absence is the ordinary success state.
+    if (!outputFailed && termination.kind === "exit" && termination.code === 0 && !termination.signal) return {};
+    return {uiData: {type: "shell_result" as const, receipt: shellResultReceipt(termination, outputFailed)}};
 }

@@ -26,6 +26,24 @@ test("a dead recovery guard cannot block a new directory lease", async () => {
     });
 });
 
+test("an action's ENOENT propagates without replaying its partial writes", async () => {
+    await withTempProject(async cwd => {
+        const path = join(cwd, "state.lock");
+        const missing = join(cwd, "missing");
+        const counter = join(cwd, "count");
+        let calls = 0;
+        await expect(withFileLock(path, async () => {
+            await writeFile(counter, String(++calls));
+            if (calls === 1) await readFile(missing);
+            return "unexpected retry";
+        })).rejects.toMatchObject({code: "ENOENT", path: missing});
+        expect(calls).toBe(1);
+        expect(await readFile(counter, "utf8")).toBe("1");
+        await expect(stat(path)).rejects.toMatchObject({code: "ENOENT"});
+        expect(await withFileLock(path, async () => "reacquired")).toBe("reacquired");
+    });
+});
+
 test("recovers a killed process without stealing a live lease", async () => {
     await withTempProject(async cwd => {
         const path=join(cwd,"state.lock");

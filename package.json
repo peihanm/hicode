@@ -23,6 +23,7 @@
     "test:integration": "bun test tests/integration",
     "test:ui": "bun test tests/ui",
     "test:tooling": "bun test tooling",
+    "test:sandbox": "bun tooling/scripts/test-sandbox.ts",
     "audit:dead-code": "knip --production --no-progress --no-exit-code",
     "audit:test-only-api": "bun tooling/scripts/audit-test-only-api.ts",
     "audit:test-only-members": "bun tooling/scripts/audit-test-only-api.ts --include-ambiguous-members",
