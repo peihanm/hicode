@@ -12,7 +12,7 @@
 
 HiCode is a lightweight terminal coding agent built in TypeScript with its own execution framework and under 40,000 lines of core source code. Describe what you need in natural language, and it writes code, fixes issues, and runs tests.
 
-Runs locally on **macOS and Linux**. Connect your own model API key to get started.
+Runs locally on **macOS, Linux, and Windows via WSL2**. Connect your own model API key to get started.
 
 ---
 
@@ -71,6 +71,8 @@ Historical results: as of October 7, 2026, **39 Terminal-Bench 2.0 tasks** and *
 
 ### Recent improvements
 
+- 💻 **10-21 · WSL2 support**: HiCode now runs on Windows through WSL2.
+
 - 🛠️ **10-17 · Execution framework improvements**: unified background subagent execution and result notifications, strengthened todo completion checks, and improved background reviews, request error recovery, and tool result presentation for more reliable execution of complex tasks.
 
 - 🧠 **10-11 · Models and long-running tasks**: added reasoning-effort controls and reasoning replay across requests, and improved background reviews, web retrieval, and tool waits for more reliable execution of complex tasks.
@@ -91,7 +93,7 @@ Historical results: as of October 7, 2026, **39 Terminal-Bench 2.0 tasks** and *
 
 ## Quick start
 
-Install or update from your macOS or Linux terminal:
+Install or update from your macOS or Linux terminal. On Windows, run this command inside your WSL2 Linux terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh

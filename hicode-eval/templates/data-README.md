@@ -76,6 +76,8 @@
 
 通过题收集完成、成绩入账、容器销毁回执确认后，先核验原证据哈希，再打包 evidence、task、inputs、public-test-inputs 和 worker。完整读取压缩包校验后写 SHA256 回执，最后才删除原目录。取消、异常和未通过现场保留供复核，不默认删除。归档失败保留原文件和错误回执，不改变题目成绩。
 
+用户明确要求回收失败、异常或取消现场时，可在服务空闲且持同一service lease的离线维护中，筛选collection=complete、容器销毁回执有效且无活动补判／续跑引用的终态Run；沿用collection哈希核验、完整压缩包回读和archive.json哈希回执后，才删除evidence等展开副本。原Run、成绩、终端和小型判题记录不变，不把未通过伪装成通过；不完整／retained现场跳过。归档后的补判／续跑需先在受控维护中恢复并核验原目录，不能把压缩包直接当可写输入；这不是默认自动清理策略。
+
 DeepSWE 证据导出保留完整 Actor project/Home、执行事件、原题、补丁与判题日志；跳过根目录的 baseline、verifier-project、verifier-home 三份可由固定镜像与补丁重建的副本，不跳过 Actor 内同名目录。保留 100000 条目／8 GiB 边界。收集使用当前 worker 启动时冻结的导出模块，collection.json 记录 exporterSha256；恢复已停止题目不覆盖原执行模块、不调用模型。
 
 Linux 的大小写／Unicode 冲突路径在宿主 evidence 中使用可还原的存储名，映射保存在 `.hicode-evidence-paths.json` 并进入 collection.json 的哈希回执。不得按 Mac 上的存储名反推原答案、删除冲突条目或跟随 symlink；原路径仅在 Linux 判题副本中恢复。导出视图位于单题容器 `/eval/evidence-export/<runId>`，随容器销毁，不另建永久数据目录。

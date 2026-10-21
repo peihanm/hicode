@@ -12,7 +12,7 @@
 
 HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心源码不到 4 万行。用自然语言描述需求，即可让它编写代码、修复问题并运行测试。
 
-支持 **macOS 和 Linux**，在本机运行，接入你自己的模型 API Key 即可使用。
+支持 **macOS、Linux 和 Windows（通过 WSL2）**，在本机运行，接入你自己的模型 API Key 即可使用。
 
 ---
 
@@ -71,6 +71,8 @@ DeepSWE 包含 113 道原创工程任务，覆盖 91 个开源仓库；官方参
 
 ### 近期重点优化
 
+- 💻 **10-21 · WSL2 支持**：支持在 Windows 的 WSL2 环境运行。
+
 - 🛠️ **10-17 · 执行框架优化**：统一子 Agent 后台执行与结果通知，强化待办完成校验，优化后台复盘、请求异常恢复和工具结果展示，提升复杂任务的执行稳定性。
 
 - 🧠 **10-11 · 模型与长任务执行**：支持推理强度调节与思考过程续传，优化后台复盘、网络获取和工具等待，提升复杂任务的执行稳定性。
@@ -91,7 +93,7 @@ DeepSWE 包含 113 道原创工程任务，覆盖 91 个开源仓库；官方参
 
 ## 快速开始
 
-在 macOS 或 Linux 终端安装或更新：
+在 macOS 或 Linux 终端安装或更新；Windows 用户请在 WSL2 的 Linux 终端内执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/peihanm/hicode/main/install.sh -o hicode-install.sh && bash hicode-install.sh
