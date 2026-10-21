@@ -39,7 +39,7 @@ test.each(['qwen-token-plan','ark-agent-plan'] as const)('init imports the isola
 
 test('submit CLI reasoning overrides the file without changing it; invalid values and retry overrides never reach the worker',async()=>{
  const f=await fixture(),file=join(f.layout.root,'batch-input.json'),received:Submission[]=[];
- const input={name:'fixture',concurrency:1,reasoning:{effort:'high'},tasks:[{dataset:'terminal-bench-2.1',id:'fixture'}]};
+ const input={name:'fixture',concurrency:1,model:{source:'qwen',model:'qwen3.8-flash'},reasoning:{effort:'high'},tasks:[{dataset:'terminal-bench-2.1',id:'fixture'}]};
  await writeFile(file,JSON.stringify(input));
  const server=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){
   const path=new URL(request.url).pathname;
@@ -65,6 +65,17 @@ test('submit CLI reasoning overrides the file without changing it; invalid value
   const invalid=await invoke('submit',['--file',file,'--reasoning','ultra']);expect(invalid.code).not.toBe(0);
   const retry=await invoke('retry',['--run','a'.repeat(16),'--reasoning','max']);expect(retry.code).not.toBe(0);expect(retry.error).toContain('retry preserves');
   expect(received.map(s=>s.reasoning?.effort)).toEqual(['high','max','default']);expect(JSON.parse(await Bun.file(file).text())).toEqual(input);
+  expect(received.every(s=>s.model?.source==='qwen')).toBe(true);
+  const selected=await invoke('submit',['--file',file,'--model-source','ark-agent-plan','--model','glm-5.3-flash','--reasoning','max']);
+  expect(selected.code).toBe(0);
+  expect(received.at(-1)?.model).toEqual({source:'ark-agent-plan',model:'glm-5.3-flash'});
+  expect(received.at(-1)?.reasoning).toEqual({effort:'max'});
+  for(const args of [['--model-source','qwen'],['--model','qwen3.8-flash'],['--model-source','unknown','--model','fake']]){
+   expect((await invoke('submit',['--file',file,...args])).code).not.toBe(0);
+  }
+  expect((await invoke('retry',['--run','a'.repeat(16),'--model-source','qwen','--model','qwen3.8-flash'])).code).not.toBe(0);
+  expect(received).toHaveLength(4);
+  expect(JSON.parse(await Bun.file(file).text())).toEqual(input);
  }finally{server.stop(true);await f.cleanup();}
 });
 

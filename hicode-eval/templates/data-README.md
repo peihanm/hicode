@@ -49,6 +49,8 @@
 
 模型强度随连接声明保存在 `state/settings.json` 的 `model.reasoning.effort`。init 可从 HiCode 当前 Settings 导入；submit 的 --reasoning 选项优先于文件顶层；文件顶层 `reasoning: {effort: "max"}` 覆盖本批，省略沿用服务默认，`default` 保留厂商默认参数省略语义。批次冻结完整模型选择，manifest/job/Actor/模型网关均使用原值；retry 沿用原强度，regrade 不调用模型。不得给旧记录推填强度，实际字段查请求日志。GLM 5.3/5.3 Flash 强制思考，网关不接受 off；后台复盘沿用本 Turn 冻结的模型强度，不再按用途关闭思考或降为 low。方舟 Agent Plan 为独立 `ark-agent-plan` 来源，使用 `ARK_AGENT_PLAN_API_KEY` 和专属 `/api/plan/v3`，与其他账号分开。DeepSeek 4.1 Flash 的 default 省略 effort、off 编码 none；网关显式档位只接受冻结值，default 保留 Provider 现有的有限停滞恢复，不混用其他思考开关。更新源码只在空闲时更新 payload 与重启 worker，不需重建题目依赖镜像。
 
+评测 worker 支持多模型批次共存：state/settings.json 的 model 是默认连接，models 是额外审定连接列表，source/model 组合必须唯一。新 submit 可通过顶层 model: {source, model} 或 --model-source SOURCE --model MODEL 选择，CLI 优先；只能选择已配置连接，不能随请求覆盖 baseUrl、apiKeyEnv 或传 Key。未选模型沿用默认；强度优先级为 CLI、提交顶层 reasoning、所选连接默认、厂商 default。worker 启动在边界读取所有声明凭据（进程环境→项目.env→用户.env），只驻留内存；逐题按冻结 batch.model 选择对应 Key。不同模型批次共用全局并发上限及 service lease；retry/continue 沿用原模型、连接与强度，不要求它仍是默认，但原连接必须仍在配置中且完整匹配（默认强度变化不影响冻结值）。追加或更换连接与 Key 仍需空闲时重新加载 worker；已配置模型之间提交无需切账号或重启。单批次仍冻结一个模型，不增加逐题覆盖或第二套调度。
+
 ## 镜像的实际存放位置
 
 镜像和 BuildKit 缓存位于 `state/settings.json` 指定 Docker context 的 Linux Docker Root，不是本目录里的 tar 文件。用显式 `docker --context CONTEXT info --format '{{.DockerRootDir}}'` 查询。Colima 的宿主数据盘由 Colima 管理；本机实际 profile、数据盘文件和容量记录在本节末尾的“本机定位”。禁止直接删除 Docker Root 或虚拟磁盘，禁止无范围 system prune。

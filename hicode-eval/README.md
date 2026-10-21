@@ -23,8 +23,11 @@ register 校验原题和公开/私有输入边界后复制到 `datasets/<dataset
 
 ## 提交、状态与复核
 
+评测 worker 支持多模型批次共存：state/settings.json 的 model 是默认连接，models 是额外审定连接列表，source/model 组合必须唯一。新 submit 可通过顶层 model: {source, model} 或 --model-source SOURCE --model MODEL 选择，CLI 优先；只能选择已配置连接，不能随请求覆盖 baseUrl、apiKeyEnv 或传 Key。未选模型沿用默认；强度优先级为 CLI、提交顶层 reasoning、所选连接默认、厂商 default。worker 启动在边界读取所有声明凭据（进程环境→项目.env→用户.env），只驻留内存；逐题按冻结 batch.model 选择对应 Key。不同模型批次共用全局并发上限及 service lease；retry/continue 沿用原模型、连接与强度，不要求它仍是默认，但原连接必须仍在配置中且完整匹配（默认强度变化不影响冻结值）。追加或更换连接与 Key 仍需空闲时重新加载 worker；已配置模型之间提交无需切账号或重启。单批次仍冻结一个模型，不增加逐题覆盖或第二套调度。
+
 ```bash
 bash hicode-eval/eval.sh submit --root /path/eval-data --file /path/batch.json --reasoning max
+bash hicode-eval/eval.sh submit --root /path/eval-data --file /path/qwen-batch.json --model-source qwen --model qwen3.8-flash --reasoning xhigh
 bash hicode-eval/eval.sh status --root /path/eval-data
 bash hicode-eval/eval.sh cancel --root /path/eval-data --batch BATCH_ID
 bash hicode-eval/eval.sh recover --root /path/eval-data --run RUN_ID
@@ -38,7 +41,7 @@ Terminal-Bench 2.1 和 DeepSWE 的超时、取消和模型失败尝试，在确�
 
 标准续跑接收判题前生成且通过收集回执、哈希、容器销毁回执和环境身份校验的快照。DeepSWE 的已收集超时尝试若没有快照，可显式使用 `continue --restore-actor`（网页自动选择对应入口）：审定原冻结 runner、隔离与判题模块，核验停机封锁、会话保存及 Actor 文件哈希后，仅从封存的 project/Home 恢复原会话；不读取 verifier 副本、隐藏测试或判题日志，不修改原证据或冒充原先已有快照。新尝试记录 `continueOf.inputSource=sealed-deep-actor`，恢复包只暂存于 cache/builds，发布后清理。保存不完整、环境或 payload 变化时拒绝续跑。SWE-bench Verified 未开放该入口。执行模块升级只在所有任务和构建结束后重启 worker，不向活动题热部署。
 
-submit 可用 `--reasoning max`，或在提交文件顶层添加 `reasoning: {effort: "max"}`；CLI 选项优先于文件，两者都省略时沿用 state/settings.json 的 model.reasoning，显式 default 使用厂商默认。支持档位按模型校验，批次、执行与 retry 使用冻结值；看板显示英文 Reasoning，实际请求字段在原请求日志。`--reasoning` 仅用于新 submit，retry 不允许覆盖原强度。不修改已运行任务，也不为参数变更重建依赖镜像。
+submit 可用 `--reasoning max`，或在提交文件顶层添加 `reasoning: {effort: "max"}`；CLI 选项优先于文件，两者都省略时沿用所选模型连接的 reasoning，显式 default 使用厂商默认。支持档位按模型校验，批次、执行与 retry 使用冻结值；看板显示英文 Reasoning，实际请求字段在原请求日志。`--reasoning` 仅用于新 submit，retry 不允许覆盖原强度。不修改已运行任务，也不为参数变更重建依赖镜像。
 
 网络默认允许，每题由数据集适配器按原题许可收窄。Terminal-Bench 2.1 读取冻结 task.toml 的 environment.allow_internet，只有 true 才开放，false／缺失则隔离；DeepSWE 始终隔离。同一批可混合联网与禁网题。settings／批次的 network=isolated 可进一步禁网，open 不能覆盖原题限制；实际模式保存在各 Run，retry 沿用原模式。普通题与服务题均使用本题模型网关，真实 Key 不进入作答环境。联网只改变外网访问，单题容器、文件、进程与隐藏判题边界保持不变。
 
@@ -53,6 +56,23 @@ SWE 的独立补判使用 `regrade --root DIR --run ID`，不调用模型，不�
 补判校验原答案和服务快照，在独立临时容器恢复服务并执行冻结原测试，不调用模型。重启脚本只恢复服务并清理首次测试的副作用，不能修改答案或断言；输入、原成绩、日志、结果、操作状态和销毁回执保存在原 Run 的 `rechecks/`。补判异常不改成绩；不能确认容器清理时保留记录并暂停调度。
 
 ## 资源收尾
+
+多模型配置示例：保留 `settings.json.model` 作为默认 GLM 连接，在 `models` 中添加个人千问连接（不要重复添加默认连接）。Key 仍保存在原有环境变量或 `.env` 中。
+
+```json
+{
+  "models": [{
+    "source": "qwen",
+    "model": "qwen3.8-flash",
+    "apiKeyEnv": "DASHSCOPE_API_KEY",
+    "baseUrl": "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "imageInput": true,
+    "reasoning": {"effort": "xhigh"}
+  }]
+}
+```
+
+提交文件顶层添加 `"model": {"source": "qwen", "model": "qwen3.8-flash"}` 即选择该连接。同一 worker 可以同时接收默认 GLM 与个人千问批次，所有任务共享服务总并发上限。
 
 每个评测容器显式设置文件句柄软／硬上限为 65536，避免继承 Docker 的 1024 软上限，导致 MongoDB 等服务在完整验收中因句柄耗尽退出。额度只作用于本次容器，不修改 VM 或 Docker 全局配置；CPU、内存、进程与证据预算仍独立限制。
 

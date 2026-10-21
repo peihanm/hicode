@@ -45,7 +45,7 @@ test('continuation rejects edited checkpoints and uncollected attempts without m
 
 test('multiple saved sessions publish one batch with independent checkpoint identities and shared concurrency',async()=>{
  const f=await fixture(),a=await stopped(f),b=await stopped(f,'b'.repeat(16),'second-task','e'.repeat(16));
- const lab=new Lab(f.config,'offline-secret');
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  const profile=publicTaskProfile({fixture:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'fixture');
  const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(profile);
  const resolve=spyOn(EnvironmentStore.prototype,'resolve').mockImplementation(async task=>task.id===a.task.id?a.task.binding:b.task.binding);
@@ -66,13 +66,13 @@ test('multiple saved sessions publish one batch with independent checkpoint iden
   const deadline=Date.now()+2000;while(seen.size!==2){if(Date.now()>deadline)throw Error('Batch did not start both sessions');await Bun.sleep(5);}
   for(const original of [a,b])expect(await readJson(join(f.layout.run(original.state.id),'state.json'),runSchema)).toEqual(original.state);
   finish();await lab.close();expect(execute).toHaveBeenCalledTimes(2);
-  const restarted=new Lab(f.config,'offline-secret');await restarted.init();await restarted.close();
+  const restarted=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));await restarted.init();await restarted.close();
  }finally{finish();await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();dispose.mockRestore();cancel.mockRestore();execute.mockRestore();await f.cleanup();}
 });
 
 test('live continuation freezes original model, restores the checkpoint, adds time, and leaves original scores intact',async()=>{
  const f=await fixture();f.config.model={...f.config.model,source:'qwen-token-plan',model:'deepseek-v4.1-flash',reasoning:{effort:'max'}};
- const originalModel=structuredClone(f.config.model),{task,state,checkpoint}=await stopped(f),lab=new Lab(f.config,'offline-secret');
+ const originalModel=structuredClone(f.config.model),{task,state,checkpoint}=await stopped(f),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  const metadata=publicTaskProfile({fixture:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'fixture');
  const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata),resolve=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(task.binding);
  const prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined),dispose=spyOn(LinuxMachine.prototype,'disposeRun').mockResolvedValue(undefined);
@@ -87,7 +87,8 @@ test('live continuation freezes original model, restores the checkpoint, adds ti
  });
  let worker:ReturnType<typeof serveWorker>|undefined;
  try{
-  await lab.init();f.config.model={...f.config.model,reasoning:{effort:'off'}};
+  await lab.init();f.config.models=[{...f.config.model,reasoning:{effort:'off'}}];
+  f.config.model={source:'qwen',model:'fake-default',apiKeyEnv:'OTHER_DEFAULT_KEY',baseUrl:'https://default.invalid/v1'};
   worker=serveWorker(lab,0);const client=new Client(worker.port),request={run:state.id,agentSeconds:1800,prompt:'继续，检查保存的 checkpoint。'};
   const batch=batchSchema.parse((await client.request('continue-run',request) as {batch:unknown}).batch);
   expect(batch.continueOf?.runId).toBe(state.id);expect(batch.retryOf).toBeUndefined();expect(batch.continueOf?.attempt).toBe(2);
@@ -102,7 +103,7 @@ test('live continuation freezes original model, restores the checkpoint, adds ti
 });
 
 test('changed runtime and provider connections cannot silently continue an old attempt',async()=>{
- const f=await fixture(),{state}=await stopped(f),lab=new Lab(f.config,'offline-secret');
+ const f=await fixture(),{state}=await stopped(f),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  try{
   await lab.init();f.config.model={...f.config.model,baseUrl:'https://other.invalid/v1'};
   await expect(lab.continueRun({run:state.id,agentSeconds:60,prompt:'继续'})).rejects.toThrow('original model connection');
@@ -137,7 +138,7 @@ test('explicit DeepSWE Actor recovery resumes its saved session, records input p
   expect(continuation?.prompt).toBe('继续');executed=true;await phase('Running HiCode');await gate;
   return {type:'result',execution:'completed',grading:'failed',uid:20000};
  });
- const lab=new Lab(f.config,'offline-secret');
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  try{
   await lab.init();const request={run:state.id,agentSeconds:1800,prompt:'继续',restoreActor:true};
   const batch=await lab.continueRun(request);

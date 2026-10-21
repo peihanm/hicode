@@ -37,7 +37,7 @@ DeepSWE 包含 113 道原创工程任务，覆盖 91 个开源仓库；官方参
 
 🔥 持续评测中。
 
-1. HiCode：截至 2026 年 10 月 19 日，按已归档结果累计通过 **89/113（78.8%）**，使用 Qwen3.8-Flash + GLM 5.3 Flash + DeepSeek V4.1 Flash。
+1. HiCode：截至 2026 年 10 月 21 日，累计通过 **95/113（84.1%）**，使用 Qwen3.8-Flash + GLM 5.3 Flash + DeepSeek V4.1 Flash。
 2. [DeepSeek V4.1 Flash 公开参考](https://arxiv.org/html/2609.19969v1#S5.SS3.SSS4)：搭配 Codex、Claude Code、mini-SWE、DeepSeek Harness Minimal 的通过率分别为 **65.6%、69.8%、74.2%、72.6%**。推理强度为 max，每题独立评测 8 次，统计平均通过率。
 3. 其他模型的公开参考：[Kimi K3 + Kimi Code](https://www.kimi.com/en/blog/kimi-k3) **67.5%**、[GLM-5.3 + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3) **66.9%**、[GLM-5.3-Flash + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3-Flash) **63.4%**、[Qwen3.8-Max + Claude Code](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8#benchmark-results) **56.6%**。
 

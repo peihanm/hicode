@@ -34,7 +34,8 @@ const continuationOriginSchema=retryOriginSchema.extend({checkpoint:checkpointSc
   inputSource:z.enum(['checkpoint','sealed-deep-actor']).default('checkpoint'),
   environmentSha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export type ContinuationOrigin=z.infer<typeof continuationOriginSchema>;
-export const submissionSchema = z.object({ reasoning: reasoningSchema.optional(), name: batchName, network: networkSchema.optional(), tasks: z.array(z.object({ id: z.string().min(1), dataset:datasetSchema, agentSeconds: z.number().int().min(30).max(10800).optional() }).strict()).min(1).max(200), concurrency }).strict();
+export const modelSelectionSchema = z.object({source: z.enum(LLM_PROVIDER_NAMES), model: z.string().min(1)}).strict();
+export const submissionSchema = z.object({ model: modelSelectionSchema.optional(), reasoning: reasoningSchema.optional(), name: batchName, network: networkSchema.optional(), tasks: z.array(z.object({ id: z.string().min(1), dataset:datasetSchema, agentSeconds: z.number().int().min(30).max(10800).optional() }).strict()).min(1).max(200), concurrency }).strict();
 export const environmentPreparationSchema=z.object({afterEvaluations:z.boolean().optional(),tasks:z.array(taskRefSchema).min(1).max(200),buildProxy:z.string().url().refine(value=>{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}).optional()}).strict();
 export type EnvironmentPreparation=z.infer<typeof environmentPreparationSchema>;
 export type Submission = z.infer<typeof submissionSchema>;
@@ -69,8 +70,17 @@ export const liveSchema = z.object({ phase: z.string(), event: z.string().nullab
 export const containerSchema = z.object({ session: z.string(), id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$/), attach: z.string() });
 export const datasetBackendsSchema=z.record(datasetSchema,z.object({context:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,100}$/),cpus:z.number().positive().max(64),memoryMb:z.number().int().min(256).max(65536)}).strict());
 export type DatasetBackends=z.infer<typeof datasetBackendsSchema>;
-export const settingsSchema=z.object({version:z.literal(1),datasetBackends:datasetBackendsSchema.default({}),network:networkSchema.default('open'),context:z.string().min(1),machine:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$/),concurrency:z.number().int().min(1).max(5),cpus:z.number().positive().max(64).default(1),memoryMb:z.number().int().min(256).max(65536).default(4096),budget:budgetSchema,model:modelSchema,cacheGiB:z.number().int().min(1).max(64).default(8)}).strict();
-export const configSchema=settingsSchema.extend({data:z.string()}).transform(value=>{
+const settingsObjectSchema=z.object({version:z.literal(1),datasetBackends:datasetBackendsSchema.default({}),network:networkSchema.default('open'),context:z.string().min(1),machine:z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$/),concurrency:z.number().int().min(1).max(5),cpus:z.number().positive().max(64).default(1),memoryMb:z.number().int().min(256).max(65536).default(4096),budget:budgetSchema,model:modelSchema,models:z.array(modelSchema).max(32).default([]),cacheGiB:z.number().int().min(1).max(64).default(8)}).strict();
+function checkModelConnections(value: z.infer<typeof settingsObjectSchema>, ctx: z.RefinementCtx): void {
+  const seen=new Set<string>();
+  for(const [index,model] of [value.model,...value.models].entries()){
+    const key=JSON.stringify([model.source,model.model]);
+    if(seen.has(key))ctx.addIssue({code:z.ZodIssueCode.custom,path:index===0?['model']:['models',index-1],message:'Duplicate source/model connection'});
+    seen.add(key);
+  }
+}
+export const settingsSchema=settingsObjectSchema.superRefine(checkModelConnections);
+export const configSchema=settingsObjectSchema.extend({data:z.string()}).superRefine(checkModelConnections).transform(value=>{
   const layout=new EvalLayout(value.data);
   return {...value,data:layout.root,catalog:layout.catalog,environments:layout.environments,payload:layout.payload};
 });

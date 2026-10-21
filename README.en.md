@@ -36,7 +36,7 @@ DeepSWE contains 113 original engineering tasks across 91 open-source repositori
 
 🔥 Evaluation in progress.
 
-1. HiCode: as of October 19, 2026, **89/113 (78.8%)** cumulative passes based on archived results, using Qwen3.8-Flash, GLM 5.3 Flash, and DeepSeek V4.1 Flash.
+1. HiCode: as of October 21, 2026, **95/113 (84.1%)** cumulative passes, using Qwen3.8-Flash, GLM 5.3 Flash, and DeepSeek V4.1 Flash.
 2. [DeepSeek V4.1 Flash public reference](https://arxiv.org/html/2609.19969v1#S5.SS3.SSS4): pass rates of **65.6%, 69.8%, 74.2%, and 72.6%** with Codex, Claude Code, mini-SWE, and DeepSeek Harness Minimal, respectively. Reasoning effort is max, with eight independent trials per task and the average pass rate reported.
 3. Other published references: [Kimi K3 + Kimi Code](https://www.kimi.com/en/blog/kimi-k3) **67.5%**, [GLM-5.3 + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3) **66.9%**, [GLM-5.3-Flash + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3-Flash) **63.4%**, and [Qwen3.8-Max + Claude Code](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8#benchmark-results) **56.6%**.
 

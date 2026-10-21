@@ -43,7 +43,7 @@ export class Lab {
   private readonly rechecks=new Map<string,{reviewId:string;task:string;restartScript:string|undefined;controller:AbortController}>();
   private readonly layout:EvalLayout;
   private readonly adapters:ReturnType<typeof taskAdapters>;
-  constructor(readonly config: Config, private readonly credential: string) {this.layout=new EvalLayout(config.data);this.adapters=taskAdapters(this.layout);}
+  constructor(readonly config: Config, private readonly credentials: ReadonlyMap<string,string>) {this.layout=new EvalLayout(config.data);this.adapters=taskAdapters(this.layout);}
   path(id: string): string { if (!this.runs.has(id)) throw Error('Unknown run'); return this.layout.run(id); }
   async init(): Promise<void> {
     if (contained(REPOSITORY_ROOT, this.config.data)) throw Error('Run data must be outside checkout');
@@ -128,6 +128,20 @@ export class Lab {
       await this.taskCatalog?.record(next);
     });
     this.writes.set(id, write); await write;
+  }
+
+  private configuredModel(selection: Pick<Batch['model'],'source'|'model'>): Batch['model'] {
+    const matches=[this.config.model,...this.config.models].filter(model=>model.source===selection.source&&model.model===selection.model);
+    if(matches.length!==1)throw Error('Select a configured, unambiguous source/model connection');
+    return matches[0]!;
+  }
+  private credentialFor(model: Batch['model']): string {
+    const {reasoning:_frozen,...frozen}=model;
+    const {reasoning:_current,...configured}=this.configuredModel(model);
+    if(!isDeepStrictEqual(frozen,configured))throw Error('Restore the original model connection before retrying or executing its batch');
+    const credential=this.credentials.get(model.apiKeyEnv);
+    if(!credential)throw Error('Missing provider credential for '+model.source+'/'+model.model);
+    return credential;
   }
 
   async submit(input: Submission): Promise<Batch> {
@@ -238,9 +252,7 @@ export class Lab {
       if([...this.runs.values()].some(run=>taskKey({dataset:run.dataset,id:run.task})===taskKey({dataset:original.dataset,id:original.task})&&(!done(run.state)||this.jobs.has(run.id))))throw Error('This task already has an active attempt');
       if(!this.machine)throw Error('Initialize the machine before rerunning');
       const parent=this.batches.get(original.batchId)!;
-      const {reasoning: _originalReasoning, ...originalConnection} = parent.model;
-      const {reasoning: _currentReasoning, ...currentConnection} = this.config.model;
-      if(!isDeepStrictEqual(originalConnection,currentConnection))throw Error('Current service model differs from the original; restore the original model configuration before rerunning');
+      this.credentialFor(parent.model);
       return this.createBatch({name:original.task.slice(0,90)+' · 第 '+((parent.retryOf?.attempt??continuationFor(parent,original.id)?.attempt??1)+1)+' 次尝试',
         network:original.network,concurrency:1,tasks:[{id:original.task,dataset:original.dataset,agentSeconds:original.budget.agentSeconds}]},original);
     });
@@ -263,8 +275,7 @@ export class Lab {
         ||[...this.runs.values()].some(run=>run.dataset===original.dataset&&run.task===original.task&&(!done(run.state)||run.state==='needs_recovery'||this.jobs.has(run.id))))
         throw Error('Wait for this task to finish and its evidence to be collected');
       const parent=this.batches.get(original.batchId)!;
-      const {reasoning:_old,...oldConnection}=parent.model,{reasoning:_new,...currentConnection}=this.config.model;
-      if(!isDeepStrictEqual(oldConnection,currentConnection))throw Error('Restore the original model connection before continuing');
+      this.credentialFor(parent.model);
       const recoverActor=this.adapters[original.dataset].recoverActor;
       if(request.restoreActor&&!recoverActor)throw Error('This dataset cannot recover collected Actor evidence');
       const restored=request.restoreActor?await recoverActor!(original):null;
@@ -301,8 +312,7 @@ export class Lab {
             ||[...this.runs.values()].some(r=>taskKey({dataset:r.dataset,id:r.task})===key&&(!done(r.state)||r.state==='needs_recovery'||this.jobs.has(r.id))))
             throw Error('Task is active, being prepared or selected twice');
           const parent=this.batches.get(original.batchId)!;
-          const {reasoning:_old,...oldConnection}=parent.model,{reasoning:_new,...currentConnection}=this.config.model;
-          if(!isDeepStrictEqual(oldConnection,currentConnection))throw Error('Restore original model connection');
+          this.credentialFor(parent.model);
           const recover=this.adapters[original.dataset].recoverActor;
           const restore=request.restoreActors&&!await exists(join(this.path(id),'evidence/continuation.json'));
           if(restore&&!recover)throw Error('This dataset cannot recover Actor evidence');
@@ -331,7 +341,8 @@ export class Lab {
       throw Error('Choose distinct tasks');
     if(input.tasks.some(t=>this.preparationJob?.tasks.has(taskKey(t))))throw Error('Selected task environment is being prepared');
     if(input.tasks.some(t=>[...this.rechecks.values()].some(item=>item.task===taskKey(t))))throw Error('Selected task is being rechecked');
-    const model = modelSchema.parse(original ? this.batches.get(original.batchId)!.model : {...this.config.model, reasoning: input.reasoning ?? this.config.model.reasoning ?? {effort: "default"}});
+    const selectedModel = this.configuredModel(input.model ?? this.config.model);
+    const model = modelSchema.parse(original ? this.batches.get(original.batchId)!.model : {...selectedModel, reasoning: input.reasoning ?? selectedModel.reasoning ?? {effort: "default"}});
     const selected:CatalogTask[]=input.tasks.map(ref=>{
       const matches=this.taskCatalog!.list().filter(task=>taskKey(task)===taskKey(ref));
       if(matches.length!==1)throw Error('Unknown dataset task');
@@ -339,7 +350,7 @@ export class Lab {
     });
     if(new Set(selected.map(taskKey)).size!==selected.length)throw Error('Choose distinct tasks');
     if(selected.some(task=>task.status==='passed'))throw Error('Passed tasks are archived; select untested or unpassed tasks');
-    if(!this.credential)throw Error('Missing provider credential');
+    this.credentialFor(model);
     const environments=new EnvironmentStore(this.config.environments,this.config.context,this.config.datasetBackends);
     const networks:Run['network'][]=[];
     for(const task of selected){
@@ -536,7 +547,7 @@ export class Lab {
       await save(join(path, 'manifest.json'), { model: batch.model, payload, task: current.task, dataset: current.dataset, task_files: frozen, machine: this.config.machine, entry: 'tui', network: current.network, budget: current.budget,
         ...(continuationFor(batch,id)?{continueOf:continuationFor(batch,id)}:{}) });
       if (!this.machine) throw Error('Initialize the evaluation machine before running tasks');
-      const result = await this.machine.execute(current, path, this.credential, async phase => {
+      const result = await this.machine.execute(current, path, this.credentialFor(batch.model), async phase => {
         await appendPhase(path, phase);
         const state = phase === 'Running HiCode' ? 'running' : phase.includes('verif') || phase.includes('Verif') ? 'verifying' : 'preparing';
         if (this.runs.get(id)?.state !== 'cancelling') await this.update(id, { state });

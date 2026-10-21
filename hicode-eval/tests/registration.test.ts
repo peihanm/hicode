@@ -93,7 +93,7 @@ test('a symlinked destination is rejected before creating an import journal or p
 });
 
 test('worker imports new tasks during execution; dashboard sees the additions and the completed result survives',async()=>{
-  const f=await fixture(),active=await seed(f,'active'),i=await inputs(),lab=new Lab(f.config,'offline-secret');
+  const f=await fixture(),active=await seed(f,'active'),i=await inputs(),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
   await i.add('candidate');await save(f.layout.definition(dataset),{active:await profile(active.source)});
   await save(join(f.layout.payload,'manifest.json'),{});
   let finish!:()=>void,started!:()=>void;

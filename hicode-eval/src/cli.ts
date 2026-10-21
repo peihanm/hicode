@@ -5,11 +5,11 @@ import {PROVIDER_BASE_URLS} from '../../src/llm/providerRegistry.js';
 import {parseArgs} from 'node:util';
 import {join,resolve} from 'node:path';
 import {readdir,rm,copyFile,realpath,mkdtemp,rename,stat} from 'node:fs/promises';
-import {parse} from 'dotenv';
+import {loadModelCredentials} from './host/modelCredentials.js';
 import {z} from 'zod';
 import {registerTasks,taskRegistrationSchema} from './host/taskRegistration.js';
 import {EvalLayout} from './host/layout.js';
-import {loadConfig,settingsSchema,modelSchema,submissionSchema,reasoningSchema,runSchema,idSchema,terminalRegradeRequestSchema,terminalRecheckSchema,continuationRequestSchema} from './host/types.js';
+import {loadConfig,settingsSchema,modelSchema,modelSelectionSchema,submissionSchema,reasoningSchema,runSchema,idSchema,terminalRegradeRequestSchema,terminalRecheckSchema,continuationRequestSchema} from './host/types.js';
 import {TaskCatalog} from './host/catalog.js';
 import {datasetSchema,taskKey} from './host/datasets.js';
 import {EnvironmentStore} from './host/environments.js';
@@ -27,14 +27,16 @@ import {EVAL_ROOT,REPOSITORY_ROOT} from './paths.js';
 async function main(){
   const {positionals,values:v}=parseArgs({args:process.argv.slice(2),allowPositionals:true,options:{
     definition:{type:'string'},preparation:{type:'string'},script:{type:'string'},root:{type:'string'},help:{type:'boolean'},file:{type:'string'},dataset:{type:'string'},tasks:{type:'string'},ids:{type:'string'},run:{type:'string'},batch:{type:'string'},apply:{type:'boolean'},
-    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},reasoning:{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},'build-cache':{type:'boolean'},'after-evaluations':{type:'boolean'},live:{type:'boolean'},'verifier-proxy':{type:'string'},'service-restart-script':{type:'string'},review:{type:'string'},'agent-seconds':{type:'string'},prompt:{type:'string'},'restore-actor':{type:'boolean'}
+    port:{type:'string',default:'8878'},'worker-port':{type:'string',default:'8879'},'model-config':{type:'string'},'model-source':{type:'string'},model:{type:'string'},reasoning:{type:'string'},'snapshot-worktree':{type:'boolean'},'build-proxy':{type:'string'},'build-cache':{type:'boolean'},'after-evaluations':{type:'boolean'},live:{type:'boolean'},'verifier-proxy':{type:'string'},'service-restart-script':{type:'string'},review:{type:'string'},'agent-seconds':{type:'string'},prompt:{type:'string'},'restore-actor':{type:'boolean'}
   }});
   const command=positionals[0];
-  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2] [--definition FILE] [--live]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL] [--live --after-evaluations]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE [--reasoning EFFORT] | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL | --service-restart-script FILE]\n  recheck --root DIR --run ID --review ID\n  continue --root DIR --run ID --agent-seconds SECONDS [--prompt TEXT] [--restore-actor]\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
+  if(v.help||!command){console.log('HiCode Eval · current root only\n  init --root DIR [--model-config FILE]\n  prepare --root DIR [--snapshot-worktree]\n  register --root DIR --dataset DATASET --tasks DIR [--ids ID1,ID2] [--definition FILE] [--live]\n  prepare-environments --root DIR [--ids DATASET:ID1,DATASET:ID2] [--build-proxy URL] [--live --after-evaluations]\n  worker --root DIR [--worker-port 8879]\n  serve --root DIR [--port 8878] [--worker-port 8879]\n  submit --file FILE [--model-source SOURCE --model MODEL] [--reasoning EFFORT] | status [--batch ID] | catalog | cancel --batch ID | recover --run ID | retry --run ID\n  image-inventory --root DIR [--dataset DATASET]\n  gc --root DIR [--apply] [--build-cache]\n  regrade --root DIR --run ID [--verifier-proxy URL | --service-restart-script FILE]\n  recheck --root DIR --run ID --review ID\n  continue --root DIR --run ID --agent-seconds SECONDS [--prompt TEXT] [--restore-actor]\nAll operations read the root README first. No old format, old data-dir or independent catalog paths.');return;}
   if(positionals.length!==1||!v.root)throw Error('Supply one command and --root');
   if((v['agent-seconds']!==undefined||v.prompt!==undefined)&&command!=='continue')throw Error('--agent-seconds/--prompt are only supported by continue');
   if(v['restore-actor']&&command!=='continue')throw Error('--restore-actor is only supported by continue');
   if(v['service-restart-script']!==undefined&&command!=='regrade')throw Error('--service-restart-script is only supported by regrade');
+  if((v['model-source']!==undefined||v.model!==undefined)&&command!=='submit')throw Error('--model-source/--model are only supported by submit');
+  const modelSelection=v['model-source']===undefined&&v.model===undefined?undefined:modelSelectionSchema.parse({source:v['model-source'],model:v.model});
   if(v.reasoning!==undefined&&command!=='submit')throw Error('--reasoning is only supported by submit; retry preserves the original batch reasoning');
   if(v['after-evaluations']&&!(command==='prepare-environments'&&v.live))throw Error('--after-evaluations requires live prepare-environments');
   if(v.live&& !['register','prepare-environments'].includes(command))throw Error('--live is supported only by register and prepare-environments');
@@ -83,9 +85,8 @@ async function main(){
   if(command==='worker'){
     const release=await lease(layout.root,'service');let lab:Lab|undefined;let server:ReturnType<typeof serveWorker>|undefined;
     try{
-      let credential=process.env[config.model.apiKeyEnv]??'';
-      for(const path of [join(REPOSITORY_ROOT,'.env'),join(process.env.HOME??'','.hicode/.env')])if(!credential&&await exists(path))credential=parse(await Bun.file(path).text())[config.model.apiKeyEnv]??'';
-      lab=new Lab(config,credential);await lab.init();server=serveWorker(lab,workerPort);
+      const credentials=await loadModelCredentials([config.model,...config.models],process.env,[join(REPOSITORY_ROOT,'.env'),join(createHiCodeStorageLayout().hicodeHome,'.env')]);
+      lab=new Lab(config,credentials);await lab.init();server=serveWorker(lab,workerPort);
       let closing=false;const shutdown=async()=>{if(closing)return;closing=true;server?.stop();await lab?.close();await release();process.exit(0);};
       process.on('SIGTERM',()=>{void shutdown();});process.on('SIGINT',()=>{void shutdown();});
       console.log('HiCode Eval worker: http://127.0.0.1:'+server.port+' · root '+layout.root);return;
@@ -99,7 +100,7 @@ async function main(){
     else if(command==='status')result=await client.status(v.batch);
     else if(command==='submit'){
       const input=await readJson(resolve(required('file')),submissionSchema);
-      result=await client.request('submit',reasoning?{...input,reasoning}:input);
+      result=await client.request('submit',{...input,...(modelSelection?{model:modelSelection}:{}),...(reasoning?{reasoning}:{})});
     }
     else if(command==='cancel')result=await client.request('cancel-batch',{batch:idSchema.parse(required('batch'))});
     else if(command==='recover')result=await client.request('recover-run',{run:idSchema.parse(required('run'))});

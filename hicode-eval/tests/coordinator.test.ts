@@ -20,7 +20,7 @@ async function settled(lab:Lab){
 }
 
 test('real coordinator freezes source, records independent grading, disposes resources and keeps the web contract',async()=>{
- const f=await fixture(),task=await seed(f,'fixture'),lab=new Lab(f.config,'offline-secret');
+ const f=await fixture(),task=await seed(f,'fixture'),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTaskProfile({fixture:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'fixture');
  const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata);
@@ -45,19 +45,19 @@ test('real coordinator freezes source, records independent grading, disposes res
 });
 
 test('passed tasks cannot create new attempts and a restart cannot silently resume an active run',async()=>{
- const f=await fixture(),task=await seed(f,'one'),lab=new Lab(f.config,'unused');
+ const f=await fixture(),task=await seed(f,'one'),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']]));
  try{
   await f.catalog.record(finished(task.id));await lab.init();
   await expect(lab.submit({name:'bad',concurrency:1,tasks:[{dataset:task.dataset,id:task.id}]})).rejects.toThrow('Passed tasks');expect(lab.runs.size).toBe(0);
   const id='d'.repeat(16),batchId='e'.repeat(16);
   await save(f.layout.batch(batchId),batchSchema.parse({version:1,id:batchId,name:'interrupted',taskRefs:[{dataset:task.dataset,id:task.id}],runIds:[id],createdAt:1,concurrency:1,budget:{},model:f.config.model,payload:{}}));
   await save(join(f.layout.run(id),'state.json'),runSchema.parse({...finished(task.id,id),state:'running',batchId,grading:'pending',collection:'pending',execution:'pending',startedAt:1}));
-  const recovered=new Lab(f.config,'unused');await recovered.init();expect(recovered.runs.get(id)?.state).toBe('needs_recovery');expect(recovered.health().schedulingBlocked).toBe(true);await recovered.close();
+  const recovered=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']]));await recovered.init();expect(recovered.runs.get(id)?.state).toBe('needs_recovery');expect(recovered.health().schedulingBlocked).toBe(true);await recovered.close();
  }finally{await lab.close();await f.cleanup();}
 });
 
 test('local API rejects cross-origin commands and missing sessions',async()=>{
- const f=await fixture(),lab=new Lab(f.config,'');await lab.init();const worker=serveWorker(lab,0),base='http://127.0.0.1:'+worker.port;
+ const f=await fixture(),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'']]));await lab.init();const worker=serveWorker(lab,0),base='http://127.0.0.1:'+worker.port;
  try{
   expect((await fetch(base+'/api/status')).status).toBe(403);
   const root=await fetch(base),cookie=root.headers.get('set-cookie')!.split(';')[0]!;await root.body?.cancel();
@@ -66,7 +66,7 @@ test('local API rejects cross-origin commands and missing sessions',async()=>{
 });
 
 test('worker preparation returns immediately, lets other tasks finish, and blocks conflicting submissions and garbage collection',async()=>{
- const f=await fixture(),active=await seed(f,'active','c'),candidate=await seed(f,'candidate','d'),lab=new Lab(f.config,'offline-secret');
+ const f=await fixture(),active=await seed(f,'active','c'),candidate=await seed(f,'candidate','d'),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTaskProfile({active:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'active');
  let finishExecution!:()=>void,finishBuild!:()=>void;let executing=false,building=false;
@@ -96,7 +96,7 @@ test('worker preparation returns immediately, lets other tasks finish, and block
 });
 
 test('closing aborts the routed environment build and leaves queued preparations unstarted',async()=>{
- const f=await fixture(),first=await seed(f,'first-build'),second=await seed(f,'next-build'),lab=new Lab(f.config,'unused');
+ const f=await fixture(),first=await seed(f,'first-build'),second=await seed(f,'next-build'),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']]));
  f.config.datasetBackends={'terminal-bench-2.1':{context:'offline-routed',cpus:1,memoryMb:2048}};
  await f.catalog.setEnvironment(first,'unprepared');await f.catalog.setEnvironment(second,'unprepared');
  await save(join(f.layout.environments,'base.json'),first.binding.base);
@@ -124,7 +124,7 @@ test('closing aborts the routed environment build and leaves queued preparations
 test.each(['qwen-token-plan','ark-agent-plan'] as const)('%s reasoning is frozen through batch, execution manifest and retry even after the service default changes',async source=>{
  const f=await fixture(),task=await seed(f,'reasoning'),second=await seed(f,'default-choice','d');
  f.config.model={...f.config.model,source,model:'deepseek-v4.1-flash',reasoning:{effort:'high'}};
- const lab=new Lab(f.config,'offline-secret');let restarted:Lab|undefined;await save(join(f.layout.payload,'manifest.json'),{});
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));let restarted:Lab|undefined;await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTaskProfile({reasoning:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'reasoning');
  const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata);
  const resolve=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(task.binding);
@@ -144,7 +144,7 @@ test.each(['qwen-token-plan','ark-agent-plan'] as const)('%s reasoning is frozen
   const batch=await lab.submit({name:'explicit',concurrency:1,reasoning:{effort:'max'},tasks:[{dataset:task.dataset,id:task.id}]});await settled(lab);
   expect(batch.model.reasoning).toEqual({effort:'max'});
   await lab.close();f.config.model.reasoning={effort:'low'};
-  restarted=new Lab(f.config,'offline-secret');await restarted.init();
+  restarted=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));await restarted.init();
   const retried=await restarted.retry(batch.runIds[0]!);await settled(restarted);
   expect(retried.model.reasoning).toEqual({effort:'max'});
   const next=await restarted.submit({name:'default',concurrency:1,tasks:[{dataset:second.dataset,id:second.id}]});await settled(restarted);
@@ -166,7 +166,7 @@ async function until(condition:()=>boolean|Promise<boolean>){
 
 test('live service recheck shares the worker catalog, permits other submissions, and defers cleanup until it finishes',async()=>{
  const f=await fixture(),original=await failedService(f),active=await seed(f,'active'),next=await seed(f,'next','d');f.config.concurrency=2;
- const lab=new Lab(f.config,'offline-secret');await save(join(f.layout.payload,'manifest.json'),{});
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTaskProfile({active:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'active');
  let finishExecution!:()=>void,finishRecheck!:()=>void,executing=false,rechecking=false;
  const executionGate=new Promise<void>(resolve=>{finishExecution=resolve;}),recheckGate=new Promise<void>(resolve=>{finishRecheck=resolve;});
@@ -207,7 +207,7 @@ test('live service recheck shares the worker catalog, permits other submissions,
 
 test('queued service recheck can be cancelled without starting a verifier or changing the original score',async()=>{
  const f=await fixture(),original=await failedService(f),active=await seed(f,'active');f.config.concurrency=1;
- const lab=new Lab(f.config,'offline-secret');await save(join(f.layout.payload,'manifest.json'),{});
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTaskProfile({active:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'active');
  let finish!:()=>void,executing=false;const gate=new Promise<void>(resolve=>{finish=resolve;});
  const validate=spyOn(publicTasks,'validatePublicTask').mockResolvedValue(metadata),resolve=spyOn(EnvironmentStore.prototype,'resolve').mockResolvedValue(active.binding);
@@ -224,7 +224,7 @@ test('queued service recheck can be cancelled without starting a verifier or cha
 });
 
 test('worker restart disposes an interrupted recheck without replaying the model or verifier',async()=>{
- const f=await fixture(),original=await failedService(f),reviewId='b'.repeat(16),lab=new Lab(f.config,'offline-secret');
+ const f=await fixture(),original=await failedService(f),reviewId='b'.repeat(16),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  const path=join(f.layout.recheck(original.id,reviewId),'operation.json');await save(path,{version:1,runId:original.id,reviewId,state:'running'});
  const dispose=spyOn(LinuxMachine.prototype,'disposeTerminalRecheck').mockResolvedValue(undefined);
  const regrade=spyOn(LinuxMachine.prototype,'regradeTerminal'),execute=spyOn(LinuxMachine.prototype,'execute');
@@ -236,7 +236,7 @@ test('worker restart disposes an interrupted recheck without replaying the model
 });
 
 test('closing the worker aborts an in-flight recheck subprocess and preserves the original grade',async()=>{
- const f=await fixture(),original=await failedService(f),lab=new Lab(f.config,'offline-secret');let started=false;
+ const f=await fixture(),original=await failedService(f),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));let started=false;
  const regrade=spyOn(LinuxMachine.prototype,'regradeTerminal').mockImplementation(async(state,_task,_script,reviewId,signal)=>{
   started=true;await transport.run([process.execPath,'-e','setInterval(()=>{},1000)'],{signal,timeout:2000});
   return {version:1,runId:state.id,reviewId,grading:'passed',reason:null,modelCalls:0,snapshotSha256:'a'.repeat(64),projectSha256:'b'.repeat(64),elapsedSeconds:1};
@@ -255,7 +255,7 @@ test('ordinary Terminal recheck uses the worker result queue without a restart s
  await save(f.layout.batch(original.batchId),batchSchema.parse({version:1,id:original.batchId,name:'sealed ordinary task',network:'open',concurrency:1,budget:{},createdAt:1,
   taskRefs:[{dataset:original.dataset,id:original.task}],runIds:[original.id],model:f.config.model,payload:{}}));
  await f.catalog.record(original);
- const lab=new Lab(f.config,'unused'),execute=spyOn(LinuxMachine.prototype,'execute');
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']])),execute=spyOn(LinuxMachine.prototype,'execute');
  let finish!:()=>void;const gate=new Promise<void>(resolve=>{finish=resolve;});
  const regrade=spyOn(LinuxMachine.prototype,'regradeTerminal').mockImplementation(async(state,task,script,reviewId)=>{
   expect(state.id).toBe(original.id);expect(task.id).toBe('ordinary');expect(script).toBeUndefined();await gate;
@@ -283,7 +283,7 @@ test('DeepSWE recheck preserves failed execution while recording the independent
  await save(f.layout.batch(original.batchId),batchSchema.parse({version:1,id:original.batchId,name:'failed sealed answer',network:'isolated',concurrency:1,budget:{},createdAt:1,
   taskRefs:[{dataset:original.dataset,id:original.task}],runIds:[original.id],model:f.config.model,payload:{}}));
  await f.catalog.record(original);
- const lab=new Lab(f.config,'unused'),execute=spyOn(LinuxMachine.prototype,'execute');
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']])),execute=spyOn(LinuxMachine.prototype,'execute');
  const regrade=spyOn(LinuxMachine.prototype,'regradeTerminal').mockImplementation(async(state,_task,_script,reviewId)=>({
   version:1,kind:'ordinary',runId:state.id,reviewId,grading:'passed',reason:null,modelCalls:0,projectSha256:'a'.repeat(64),elapsedSeconds:1}));
  const cleanup=spyOn(transport,'run').mockRejectedValue(new Error('Offline fixture engine unavailable'));
@@ -302,7 +302,7 @@ test('explicitly abandoning cancelled retained evidence unblocks scheduling with
  await save(join(f.layout.payload,'manifest.json'),{});
  await save(f.layout.batch(batchId),batchSchema.parse({version:1,id:batchId,name:'cancelled',taskRefs:[{dataset:task.dataset,id:task.id}],runIds:[id],createdAt:1,concurrency:1,budget:{},model:f.config.model,payload:{}}));
  await save(join(f.layout.run(id),'state.json'),runSchema.parse({...finished(task.id,id),batchId,state:'needs_recovery',execution:'cancelled',grading:'unavailable',collection:'retained'}));
- const lab=new Lab(f.config,'unused'),prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
+ const lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']])),prepare=spyOn(LinuxMachine.prototype,'prepare').mockResolvedValue(undefined);
  const abandon=spyOn(LinuxMachine.prototype,'abandonCancelled').mockRejectedValueOnce(Error('runner still alive')).mockResolvedValue(undefined);
  const cleanup=spyOn(transport,'run').mockResolvedValue('');
  let worker:ReturnType<typeof serveWorker>|undefined;
@@ -319,7 +319,7 @@ test('explicitly abandoning cancelled retained evidence unblocks scheduling with
 });
 
 test.each([false,true])('deferred preparation waits for evaluation or is cancelled while waiting: %s',async cancel=>{
- const f=await fixture(),active=await seed(f,'deferred-active'),candidate=await seed(f,'deferred-build','d'),lab=new Lab(f.config,'offline-secret');
+ const f=await fixture(),active=await seed(f,'deferred-active'),candidate=await seed(f,'deferred-build','d'),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTaskProfile({active:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none'}},'active');
  let finish!:()=>void,started!:()=>void;const gate=new Promise<void>(r=>{finish=r;}),running=new Promise<void>(r=>{started=r;});
@@ -345,7 +345,7 @@ test.each([false,true])('deferred preparation waits for evaluation or is cancell
 
 
 test('worker startup and read-only status keep queued attempts idle without model execution',async()=>{
- const f=await fixture(),task=await seed(f,'queued-maintenance'),lab=new Lab(f.config,'unused');
+ const f=await fixture(),task=await seed(f,'queued-maintenance'),lab=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'unused']]));
  const id='a'.repeat(16),batchId='f'.repeat(16);
  await save(f.layout.batch(batchId),batchSchema.parse({version:1,id:batchId,name:'queued maintenance',taskRefs:[{dataset:task.dataset,id:task.id}],runIds:[id],createdAt:1,concurrency:1,budget:{},model:f.config.model,payload:{}}));
  await save(join(f.layout.run(id),'state.json'),runSchema.parse({version:1,id,batchId,dataset:task.dataset,task:task.id,state:'queued',execution:'pending',grading:'pending',collection:'pending',model:'fake',budget:{},createdAt:1,updatedAt:1}));

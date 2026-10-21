@@ -27,7 +27,7 @@ test('dataset network rules parse original permission and refuse malformed decla
 });
 
 test.each(['open','isolated'] as const)('one %s batch freezes per-task networking and the dashboard accepts mixed runs',async network=>{
- const f=await fixture(),online=await seed(f,'online'),offline=await seed(f,'offline','d'),lab=new Lab({...f.config,network},'offline-secret');
+ const f=await fixture(),online=await seed(f,'online'),offline=await seed(f,'offline','d'),lab=new Lab({...f.config,network},new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
  await writeFile(join(offline.source,'task.toml'),'[agent]\ntimeout_sec=30\n[verifier]\ntimeout_sec=30\n[environment]\nallow_internet=false\n');
  await save(join(f.layout.payload,'manifest.json'),{});
  const metadata=publicTasks.publicTaskProfile({fixture:{hashes:{},inputs:[],initializer:null,directories:[],packages:[],verifierPrelude:'none',service:{writablePaths:[]}}},'fixture');
@@ -48,7 +48,7 @@ test.each(['open','isolated'] as const)('one %s batch freezes per-task networkin
   finish();const deadline=Date.now()+3000;
   while([...lab.runs.values()].some(r=>!done(r.state))){if(Date.now()>deadline)throw Error('Fixture did not finish');await Bun.sleep(1);}
   await lab.close();
-  const restored=new Lab(f.config,'offline-secret');
+  const restored=new Lab(f.config,new Map([[f.config.model.apiKeyEnv,'offline-secret']]));
   try{await restored.init();expect(restored.runs.get(batch.runIds[1]!)?.network).toBe('isolated');}
   finally{await restored.close();}
  }finally{finish();await lab.close();validate.mockRestore();resolve.mockRestore();prepare.mockRestore();execute.mockRestore();dispose.mockRestore();cancel.mockRestore();boundary.mockRestore();await f.cleanup();}

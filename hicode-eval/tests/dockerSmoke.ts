@@ -58,7 +58,7 @@ const docker=(...a:string[])=>['docker','--context',executionConfig.context,...a
 // A successful fixture must not reclaim an image still referenced by the real data root.
 const retainedTag='hicode-smoke-retained:'+createHash('sha256').update(layout.root).digest('hex').slice(0,16);
 await run(docker('image','tag',(smokeBinding.preparation??smokeBinding.dependencies).imageId,retainedTag));
-const lab=new Lab(config,'local-fake-key'),containers=new RunContainers(executionConfig);
+const lab=new Lab(config,new Map([[config.model.apiKeyEnv,'local-fake-key']])),containers=new RunContainers(executionConfig);
 const fake=`import http.server,json,time,re
 from pathlib import Path
 command=json.loads(${JSON.stringify(JSON.stringify(probeCommand))})
