@@ -13,7 +13,7 @@ test("interactive export preserves event order and refuses overwrite or workspac
         const log=createInteractiveEventLog(path,cwd,()=>{failed=true;});
         log.emit({type:"ready",sessionId:"test"});
         log.emit({type:"agent_event",sessionId:"test",event:{type:"assistant_text",content:"你好"}});
-        log.emit({type:"settled",sessionId:"test",reason:"completed",status:"completed",persistenceStatus:"saved",runningAgents:0,pendingAgentMessages:0,sealed:true});
+        log.emit({type:"settled",sessionId:"test",reason:"completed",status:"completed",persistenceStatus:"saved",runningAgents:0,pendingAgentMessages:0});
         log.close();log.close();log.emit({type:"ready",sessionId:"ignored"});
         const records=readFileSync(path,"utf8").trim().split("\n").map(line=>JSON.parse(line));
         expect(records.map(r=>r.sequence)).toEqual([1,2,3]);

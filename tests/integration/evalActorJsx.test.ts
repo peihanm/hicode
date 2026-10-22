@@ -22,7 +22,7 @@ test("evaluation CLI uses its frozen JSX config in a classic React benchmark wor
         let baselineScreen = "";
         const baselineTerminal = new Bun.Terminal({cols: 140, rows: 40, data(_terminal, bytes) {baselineScreen += new TextDecoder().decode(bytes);}});
         const env = {PATH: process.env.PATH ?? "", HOME: home, EVAL_FIXTURE_KEY: "offline-fixture", TERM: "xterm-256color", LANG: "C.UTF-8"};
-        const baseline = Bun.spawn([process.execPath, join(release, "src/index.tsx"), "--single-task", "--event-log", join(root, "baseline-events.jsonl"),
+        const baseline = Bun.spawn([process.execPath, join(release, "src/index.tsx"), "--event-log", join(root, "baseline-events.jsonl"),
             "--permission-mode", "full-access", "--source", "qwen", "--model", "qwen3.8-flash"], {cwd, terminal: baselineTerminal, env});
         const baselineTimeout = setTimeout(() => baseline.kill("SIGKILL"), 5000);
         try {

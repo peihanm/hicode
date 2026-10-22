@@ -1,4 +1,3 @@
-import {hasCompleteToolPairs} from "../../session/codec.js";
 import {InteractiveEvents} from "../interactiveEvents.js";
 import type {McpToolPolicy} from "../../mcp/types.js";
 import {FileSuggestions} from "../../runtime/fileSuggestions.js";
@@ -367,10 +366,8 @@ export function useTurnController({
                                     (message.type === "task_notification" && agentIds.has(message.taskId)));
                                 const runningAgents = tasks.filter(task => task.kind === "agent" && task.status === "running").length;
                                 const pendingAgentMessages = queued.length + pending.filter(message => message.kind === "agent").length;
-                                const sealed = outcome.persistence_status === "saved" && hasCompleteToolPairs(rootSession.history) && interactiveHost?.singleTask === true && runningAgents === 0 && pendingAgentMessages === 0;
-                                if (sealed) turnControllerRef.current!.seal();
                                 observe({type: "settled", sessionId: rootSession.sessionId, reason: outcome.reason,
-                                    runningAgents, pendingAgentMessages, sealed, status: outcome.status, persistenceStatus: outcome.persistence_status});
+                                    runningAgents, pendingAgentMessages, status: outcome.status, persistenceStatus: outcome.persistence_status});
                             }
                         },
                         getSnapshotState: () => ({

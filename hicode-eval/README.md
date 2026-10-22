@@ -45,7 +45,7 @@ submit 可用 `--reasoning max`，或在提交文件顶层添加 `reasoning: {ef
 
 网络默认允许，每题由数据集适配器按原题许可收窄。Terminal-Bench 2.1 读取冻结 task.toml 的 environment.allow_internet，只有 true 才开放，false／缺失则隔离；DeepSWE 始终隔离。同一批可混合联网与禁网题。settings／批次的 network=isolated 可进一步禁网，open 不能覆盖原题限制；实际模式保存在各 Run，retry 沿用原模式。普通题与服务题均使用本题模型网关，真实 Key 不进入作答环境。联网只改变外网访问，单题容器、文件、进程与隐藏判题边界保持不变。
 
-正常完成的服务题必须先确认 `--single-task` 已封锁执行（持久化成功、工具回执完整、无运行或待消费子 Agent），并关闭模型网关；保留 HiCode Runtime 及其托管 Shell 服务，让私有 verifier 在独立文件／PID 视图中访问本题服务。判题完成、取消或失败后再关闭 Runtime、服务 namespace 和容器。未确认封锁不得暴露隐藏测试；超时／作答失败仍走原有停止确认，不保证服务存活。不能通过关闭全局 Task 清理或自行 daemonize 来替代此交接。
+评测使用普通交互 CLI 与 `--event-log`，不提供 single-task 开关或 UI 执行封锁。宿主只提交一次题目；正常完成的服务题必须确认 saved turn_end 与 saved settled、UI 空闲且不等待审批、工具回执完整、无运行或待消费子 Agent，然后关闭模型网关再上传隐藏测试。保留 HiCode Runtime 及其托管 Shell 服务，让私有 verifier 在独立文件／PID 视图中访问本题服务；判题完成、取消或失败后再关闭 Runtime、服务 namespace 和容器。未确认收尾不得暴露隐藏测试；超时／作答失败仍走原有停止确认，不保证服务存活。不能通过关闭全局 Task 清理或自行 daemonize 来替代此交接。
 
 SWE 的独立补判使用 `regrade --root DIR --run ID`，不调用模型，不改原答案或首次成绩；原始未通过现场仍保留。看板默认 http://127.0.0.1:8878/，断开 worker 后仍能读取保存的结果和终端。
 
@@ -104,7 +104,7 @@ bash hicode-eval/eval.sh gc --root /path/eval-data --apply --build-cache
 
 审定服务题可声明 verifierProcessView 与 /tmp 下具名 verifierSockets；只向私有判题提供本题封锁时的服务 PID 目录和指定归属 socket，判题仍使用独立 PID namespace，self/net 来自自己的 Proc。Proc 构造辅助进程进入服务 PID 前先 chroot 到空 tmpfs，隐藏文件不能经辅助进程 root 暴露；socket 放本题 service-tmp，只绑定审定文件，不开放整份 tmp 或控制目录。
 
-DeepSWE 补判也使用现有 regrade/recheck 入口，交持锁 worker 占一个并发名额，可与其他题和环境准备并行；取消发生在判题阶段时，须先验证作答已封锁、完成事件和答案哈希，才能按原答案补判并恢复真实执行/判题结论。大历史会话续跑的 TUI 就绪与首次请求确认分别最多等 300/120 秒，与追加作答时间分开。
+DeepSWE 补判也使用现有 regrade/recheck 入口，交持锁 worker 占一个并发名额，可与其他题和环境准备并行；取消发生在判题阶段时，须先验证作答已完成、完成事件和答案哈希，才能按原答案补判并恢复真实执行/判题结论。大历史会话续跑的 TUI 就绪与首次请求确认分别最多等 300/120 秒，与追加作答时间分开。
 
 公共运行底座保留；DeepSWE 的逐题官方镜像封装底图不属于公共底座，仅被通过题引用且无容器占用时可回收。按题目层、依赖层、底图的顺序删除，不强制删除有引用的镜像。
 

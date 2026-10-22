@@ -7,6 +7,6 @@ export type InteractiveEvent =
     | {type: "ready"; sessionId: string}
     | {type: "agent_event"; sessionId: string; event: AgentEvent}
     | {type: "state"; sessionId: string; busy: boolean; waitingForApproval: boolean}
-    | {type: "settled"; sessionId: string; reason: string; status: Extract<HookInput, {hook_event_name: "TurnEnd"}>["status"]; persistenceStatus: "saved" | "failed"; runningAgents: number; pendingAgentMessages: number; sealed: boolean};
+    | {type: "settled"; sessionId: string; reason: string; status: Extract<HookInput, {hook_event_name: "TurnEnd"}>["status"]; persistenceStatus: "saved" | "failed"; runningAgents: number; pendingAgentMessages: number};
 
-export const InteractiveEvents = createContext<{emit(event: InteractiveEvent): void; singleTask: boolean} | undefined>(undefined);
+export const InteractiveEvents = createContext<{emit(event: InteractiveEvent): void} | undefined>(undefined);

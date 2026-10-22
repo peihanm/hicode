@@ -40,7 +40,7 @@ class RecoveryTest(unittest.TestCase):
         records = [
             {'type':'ready'},
             {'type':'agent_event','event':{'type':'turn_end','input':{'persistence_status':'saved'}}},
-            {'type':'settled','reason':'completed','sealed':True,'runningAgents':0,'pendingAgentMessages':0},
+            {'type':'settled','reason':'completed','persistenceStatus':'saved','runningAgents':0,'pendingAgentMessages':0},
             {'type':'state','busy':False,'waitingForApproval':False},
         ]
         (root/'actor-events/events.jsonl').write_text(''.join(json.dumps({'version':1,'sequence':i+1,'sessionId':'fixture',**r})+'\n' for i,r in enumerate(records)))
@@ -75,7 +75,7 @@ class RecoveryTest(unittest.TestCase):
             lambda root:(root/'logs/verifier/ctrf.json').write_text('{}'),
             lambda root:(root/'result.json').write_text(json.dumps({'execution':'failed','grading':'unavailable','uid':20001})),
             lambda root:(root/'actor-events/events.jsonl').write_text((root/'actor-events/events.jsonl').read_text()+'{"partial":'),
-            lambda root:(root/'actor-events/events.jsonl').write_text((root/'actor-events/events.jsonl').read_text().replace('"sealed": true','"sealed": false')),
+            lambda root:(root/'actor-events/events.jsonl').write_text((root/'actor-events/events.jsonl').read_text().replace('"persistenceStatus": "saved"','"persistenceStatus": "failed"')),
         ]
         for mutate in mutations:
             with tempfile.TemporaryDirectory() as tmp:

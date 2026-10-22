@@ -101,7 +101,7 @@ class RunnerFailureTest(unittest.TestCase):
                        {'type': 'state', 'busy': False, 'waitingForApproval': False}]
             if completed:
                 events.append({'type': 'settled', 'reason': 'completed', 'runningAgents': 0,
-                               'pendingAgentMessages': 0, 'sealed': True})
+                               'pendingAgentMessages': 0, 'persistenceStatus': 'saved'})
             (root/'actor-events').mkdir()
             serialized = [json.dumps({
                 'version': 1, 'sequence': i, 'sessionId': 'fixture', **event}) + '\n'
@@ -115,7 +115,7 @@ class RunnerFailureTest(unittest.TestCase):
                 if timed_out:
                     with (root/'actor-events/events.jsonl').open('a') as output:
                         output.write(json.dumps({'version':1,'sequence':len(events)+1,'sessionId':'fixture',
-                            'type':'settled','reason':'shutdown','runningAgents':0,'pendingAgentMessages':0,'sealed':True})+'\n')
+                            'type':'settled','reason':'shutdown','runningAgents':0,'pendingAgentMessages':0,'persistenceStatus':'saved'})+'\n')
                     drain()
                 return exits
 
@@ -321,7 +321,7 @@ class RunnerFailureTest(unittest.TestCase):
     def test_actor_settings_and_gateway_receive_the_frozen_reasoning(self):
         self.run_attempt(reasoning='low', completed=True)
 
-    def test_completed_attempt_installs_verifier_only_after_sealing(self):
+    def test_completed_attempt_installs_verifier_only_after_stop_and_gateway_close(self):
         result, calls, _ = self.run_attempt(completed=True)
         self.assertEqual(result['execution'], 'completed')
         self.assertEqual(calls, ['stop', 'gateway-close', 'handoff', 'verify', 'finalize'])

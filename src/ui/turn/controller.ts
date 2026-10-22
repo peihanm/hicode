@@ -69,7 +69,7 @@ export class UITurnController {
     private readonly taskActions = new Map<AbortController, Promise<void>>();
 
     async stopTask(id: string): Promise<void> {
-        if (this.disposed || this.sealed) throw new Error("Session is closed for execution");
+        if (this.disposed) throw new Error("Session is closed for execution");
         if (this.taskActions.size) throw new Error("Another task operation is in progress");
         const controller = createTurnAbortController();
         const operation = (async () => {
@@ -90,10 +90,7 @@ export class UITurnController {
     private immediateSlashSettled: Promise<void> | null = null;
     private snapshot: UITurnStatus = IDLE_STATUS;
     private disposed = false;
-    private sealed = false;
 
-    /** End this assignment without closing Runtime-owned task services. */
-    seal(): void {this.sealed = true;}
     private attachmentState: {images: readonly ImageReference[]; preparing: boolean} = {images: [], preparing: false};
     private imageImport: {controller: AbortController; settled: Promise<void>} | undefined;
     getAttachmentSnapshot = () => this.attachmentState;
@@ -109,7 +106,7 @@ export class UITurnController {
     }
 
     removeAttachment(target: number | "last" | "all"): void {
-        if (this.disposed || this.sealed || this.imageImport) return;
+        if (this.disposed || this.imageImport) return;
         if (target === "all") this.setAttachments([]);
         else {
             const index = target === "last" ? this.attachmentState.images.length - 1 : target;
@@ -123,7 +120,7 @@ export class UITurnController {
     }
 
     pasteImage(path: string, originalText: string): boolean {
-        if (this.disposed || this.sealed || this.imageImport) return false;
+        if (this.disposed || this.imageImport) return false;
         void this.prepareImages(1, signal => this.dependencies.importImages([path], signal)).then(imported => {
             if (!imported && !this.disposed) this.dependencies.restoreDraft(originalText);
         });
@@ -131,7 +128,7 @@ export class UITurnController {
     }
 
     private async prepareImages(count: number, prepare: (signal: AbortSignal) => Promise<ImageReference[]>): Promise<boolean> {
-        if (this.disposed || this.sealed || this.imageImport) return false;
+        if (this.disposed || this.imageImport) return false;
         if (count + this.attachmentState.images.length > IMAGE_MAX_COUNT) {this.dependencies.onUnexpectedError(new Error("Up to 8 images may be attached")); return false;}
         const controller = createTurnAbortController();
         this.setAttachments(this.attachmentState.images, true);
@@ -156,7 +153,6 @@ export class UITurnController {
     }
 
     async submit(input: string): Promise<boolean> {
-        if (this.sealed) return false;
         if (this.imageImport) return false;
         // Slash commands do not consume the pending prompt's attachments.
         const content = input.trim().startsWith("/") ? input : this.withAttachments(input);
@@ -167,7 +163,7 @@ export class UITurnController {
         } catch (error) {
             this.dependencies.restoreDraft(input); this.dependencies.onUnexpectedError(error); return false;
         }
-        if (this.disposed || this.sealed || this.snapshot.busy) return false;
+        if (this.disposed || this.snapshot.busy) return false;
         if (Array.isArray(content)) this.setAttachments([]);
         return this.submitPrepared(content);
     }
@@ -180,7 +176,7 @@ export class UITurnController {
     }
 
     private async submitPrepared(input: MessageContent): Promise<boolean> {
-        if (this.disposed || this.sealed || !this.guard.reserve()) return false;
+        if (this.disposed || !this.guard.reserve()) return false;
         const isSlash = typeof input === "string" && input.trim().startsWith("/");
         this.publish({busy: true, stopping: false, ...(isSlash ? {} : {startedAt: this.now()})});
 
@@ -242,7 +238,7 @@ export class UITurnController {
                     });
                     this.dependencies.messageQueue.demoteNextUserInputs();
                     const next = this.dependencies.messageQueue.dequeueDeferredTurnInput();
-                    if (next && !this.disposed && !this.sealed) {
+                    if (next && !this.disposed) {
                         queueMicrotask(() => {
                             void this.submitPrepared(next.content);
                         });
@@ -259,7 +255,7 @@ export class UITurnController {
     }
 
     enqueue(input: string): boolean {
-        if (this.disposed || this.sealed || !this.snapshot.busy) return false;
+        if (this.disposed || !this.snapshot.busy) return false;
         const trimmed = input.trim();
         if (
             trimmed.startsWith("/") &&

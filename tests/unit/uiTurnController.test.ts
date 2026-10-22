@@ -643,28 +643,3 @@ test("unhandled slash input still times the Agent turn it starts", async () => {
     await harness.controller.submit("/unhandled");
     expect(harness.controller.getSnapshot()).toEqual({busy: false, stopping: false, elapsedMs: 3000});
 });
-
-test("sealing an assignment blocks queued and new turns without aborting runtime services", async () => {
-  let release = () => {};
-  const pending = new Promise<void>(resolve => {release = resolve;});
-  const signals: AbortSignal[] = [];
-  const h = createHarness({runTurn: async (_input, signal) => {
-    signals.push(signal);
-    await pending;
-    h.controller.seal();
-  }});
-  const first = h.controller.submit("first");
-  while (signals.length === 0) await Promise.resolve();
-  expect(h.controller.enqueue("queued followup")).toBe(true);
-  release();
-  await first;
-  await Promise.resolve();
-  expect(signals.length).toBe(1);
-  expect(signals[0]?.aborted).toBe(false);
-  expect(h.controller.getSnapshot().busy).toBe(false);
-  expect(await h.controller.submit("new turn")).toBe(false);
-  expect(await h.controller.submit("/compact")).toBe(false);
-  expect(h.controller.enqueue("late followup")).toBe(false);
-  await h.controller.waitForSettled();
-  h.controller.dispose();
-});

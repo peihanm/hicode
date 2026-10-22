@@ -41,16 +41,16 @@ class ServiceRegradeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_snapshot(self.archive([self.member('etc/passwd'),self.member('etc/passwd')]),['/etc'])
 
-    def test_ordinary_recheck_requires_persisted_sealed_completion(self):
-        def record(sealed=True, saved=True, pending=False):
+    def test_ordinary_recheck_requires_persisted_completion(self):
+        def record(settled_saved=True, saved=True, pending=False):
             rows=[{'type':'ready'}, {'type':'agent_event','event':{'type':'model_stream_start'}}]
             if pending:rows.append({'type':'agent_event','event':{'type':'tool_call_start','toolCallId':'unpaired'}})
             rows.extend([{'type':'agent_event','event':{'type':'turn_end','input':{'persistence_status':'saved' if saved else 'failed'}}},
-                         {'type':'settled','sealed':sealed,'reason':'completed','runningAgents':0,'pendingAgentMessages':0}])
+                         {'type':'settled','persistenceStatus':'saved' if settled_saved else 'failed','reason':'completed','runningAgents':0,'pendingAgentMessages':0}])
             return ''.join(json.dumps({'version':1,'sequence':i,'sessionId':'fixture',**row})+'\n' for i,row in enumerate(rows,1)).encode()
         validate_completion(record())
-        for data in [record(sealed=False),record(saved=False),record(pending=True),record()+b'{']:
-            with self.assertRaisesRegex(ValueError,'sealed, saved'):
+        for data in [record(settled_saved=False),record(saved=False),record(pending=True),record()+b'{']:
+            with self.assertRaisesRegex(ValueError,'settled, saved'):
                 validate_completion(data)
 
     def test_failed_deep_answer_requires_saved_events_and_shutdown_without_claiming_completion(self):

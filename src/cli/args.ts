@@ -17,7 +17,6 @@ export interface CliOptions {
     resumeMode: ResumeMode;
     printPrompt?: string;
     eventLog?: string;
-    singleTask?: boolean;
     images?: string[];
     outputFormat: CliOutputFormat;
 }
@@ -32,7 +31,6 @@ Options:
   -p, --print <prompt>           Run one prompt in headless mode and print the final reply
   -i, --image <path>             Attach a local PNG/JPEG/WebP; repeat for multiple images
   --output-format <format>       Headless output format: text | json
-  --single-task                 Seal interactive execution after one completed assignment; requires --event-log
   --event-log <absolute-path>    Export interactive runtime events to a new JSONL file outside the workspace
   -r, --resume [sessionId]       Resume an existing session; omit sessionId to pick from a list
   -c, --continue                 Resume the most recently updated session
@@ -93,7 +91,6 @@ export function parseCliArgs(args: string[]): CliOptions {
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
-        if (arg === "--single-task") { options.singleTask = true; continue; }
         if (arg === "--event-log" || arg?.startsWith("--event-log=")) {
             const value = arg === "--event-log" ? args[++i] : arg.slice(12);
             if (!value || !value.startsWith("/") || /[\0\r\n]/.test(value) || options.eventLog)
@@ -208,7 +205,6 @@ export function parseCliArgs(args: string[]): CliOptions {
         throw new Error(`Unknown argument: ${arg}`);
     }
 
-    if (options.singleTask && !options.eventLog) throw new Error("--single-task requires --event-log");
     if (options.eventLog && options.printPrompt !== undefined) throw new Error("--event-log is only available in interactive mode");
     if (options.outputFormat !== "text" && options.printPrompt === undefined) {
         throw new Error("--output-format is only available in -p/--print headless mode");

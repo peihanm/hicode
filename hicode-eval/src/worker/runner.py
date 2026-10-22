@@ -277,13 +277,13 @@ try:
                 atomic_json(root/'continuation-error.json',{'message':str(error)[-1000:]})
                 emit('error',message='Continuation checkpoint unavailable: '+str(error)[-1000:])
     if status in ['completed','timeout'] or agent_failed:
-        # A completed single-task turn is sealed, but its Runtime still owns
+        # The assignment has finished, but its Runtime still owns
         # live Shell services. Keep that owner until the private verifier ends.
         if service is not None:
             if status=='completed':
                 drain_events()
                 if not events.complete() or events.settled['reason']!='completed':
-                    raise RuntimeError('Service handoff requires sealed Agent execution')
+                    raise RuntimeError('Service handoff requires persisted Agent completion')
             else:
                 receipt=shutdown_cli()
                 if receipt is None or not receipt['cliExited'] or receipt['error'] or receipt['pendingToolCallIds'] or not receipt['eventStreamComplete']:
@@ -292,7 +292,7 @@ try:
         else:stop_user();terminal_started=False
         if gateway:gateway.close();gateway=None
         emit('phase',phase='Awaiting local verification')
-        # Host uploads checks only after the assignment is sealed.
+        # Host uploads checks only after completion/shutdown and gateway closure.
         emit('verification_request',runId=run_id)
         if not wait_verifier_handoff(root,run_id,lambda:cancelled or (root/'cancel').exists()):status='cancelled'
         if status in ['completed','timeout'] or (agent_failed and status=='failed'):

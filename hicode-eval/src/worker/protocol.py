@@ -26,7 +26,7 @@ def atomic_json(path, value):
 
 
 def wait_verifier_handoff(root, run_id, cancelled):
-    """Host ACK and upload share one bounded, run-scoped handoff after sealing."""
+    """Host ACK and upload share one bounded, run-scoped handoff after confirmed completion or shutdown."""
     started = time.monotonic()
     accepted = False
     path = Path(root) / 'verification.json'
@@ -96,7 +96,7 @@ class Events:
             if kind not in {'ready','state','settled','agent_event'}:raise ValueError('Unknown interactive event')
             if kind=='state' and any(type(event.get(k)) is not bool for k in ['busy','waitingForApproval']):raise ValueError('Invalid UI state')
             if kind=='settled':
-                if type(event.get('sealed')) is not bool:raise ValueError('Missing execution seal state')
+                if event.get('persistenceStatus') not in {'saved', 'failed'}:raise ValueError('Invalid persistence status')
                 if any(type(event.get(k)) is not int or event[k]<0 for k in ['runningAgents','pendingAgentMessages']):raise ValueError('Invalid Agent completion counters')
                 if event.get('reason') not in {'completed','incomplete','max_turns','permission_denied','hook_blocked','hook_error','hook_limit','no_tool_calls','interrupted','shutdown','error'}:raise ValueError('Unknown stop reason')
             if kind=='agent_event' and (not isinstance(event.get('event'),dict) or not isinstance(event['event'].get('type'),str)):
@@ -124,11 +124,11 @@ class Events:
                         self.pending_tools.remove(tool_id)
 
     def complete(self):
-        return (not self.partial.strip() and self.settled is not None and self.settled.get('sealed') is True and not self.busy and self.settled['runningAgents'] == 0 and self.settled.get('pendingAgentMessages') == 0
+        return (not self.partial.strip() and self.settled is not None and self.settled['persistenceStatus'] == 'saved' and not self.busy and not self.waiting and self.settled['runningAgents'] == 0 and self.settled.get('pendingAgentMessages') == 0
                 and not self.pending_tools and self.ending is not None and self.ending['persistence_status'] == 'saved')
 
     def failed_turn(self):
-        # An exported Root failure is a stop request, not an execution seal.
+        # An exported Root failure is a stop request, not confirmed completion.
         # The runner must terminate and confirm cleanup before exposing tests.
         return (self.started and not self.busy and not self.waiting and not self.partial.strip()
                 and isinstance(self.ending, dict) and self.ending.get('status') == 'failed'
@@ -233,7 +233,7 @@ def actor_readonly_mounts(release, environment):
 def hicode_command(release, event_path, permission_mode, model, resume_session=None):
     # Bun otherwise discovers the benchmark's tsconfig from the Actor cwd.
     args = ['bun', '--tsconfig-override', str(Path(release) / 'tsconfig.json'),
-            str(Path(release) / 'src/index.tsx'), '--single-task', '--event-log', str(event_path),
+            str(Path(release) / 'src/index.tsx'), '--event-log', str(event_path),
             '--permission-mode', permission_mode, '--source', model['source'], '--model', model['model']]
     if resume_session is not None:args += ['--resume', resume_session]
     return args

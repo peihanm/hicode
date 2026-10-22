@@ -59,7 +59,7 @@ class DeepCheckpointTest(unittest.TestCase):
             {'type': 'agent_event', 'event': {'type': 'turn_end', 'input': {'session_id': 'original-session',
              'status': 'cancelled', 'reason': 'shutdown', 'persistence_status': 'saved'}}},
             {'type': 'settled', 'reason': 'shutdown', 'status': 'cancelled', 'persistenceStatus': 'saved',
-             'sealed': True, 'runningAgents': 0, 'pendingAgentMessages': 0}]
+             'runningAgents': 0, 'pendingAgentMessages': 0}]
         self.save_events()
         self.receipt()
 
@@ -107,10 +107,9 @@ class DeepCheckpointTest(unittest.TestCase):
                 recover(str(self.run), str(self.stage), self.hashes)
             path.write_bytes(original)
 
-    def test_shutdown_missing_tool_result_or_saved_seal_rejected(self):
+    def test_shutdown_missing_tool_result_or_saved_observation_rejected(self):
         original = json.loads(json.dumps(self.events))
         variants = [original[:-1], original[:4]+original[5:],
-                    original[:-1]+[{**original[-1], 'sealed': False}],
                     original[:-1]+[{**original[-1], 'runningAgents': 1}],
                     original[:-1]+[{**original[-1], 'pendingAgentMessages': 1}],
                     original[:-1]+[{**original[-1], 'persistenceStatus': 'failed'}],

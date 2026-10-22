@@ -4,7 +4,8 @@ import {InteractiveEvents} from "./ui/interactiveEvents.js";
 import {createInteractiveEventLog} from "./cli/interactiveEventLog.js";
 import {InteractiveShutdown, bindInteractiveSignals} from "./cli/interactiveShutdown.js";
 import {Root} from "./ui/Root.js";
-import {type CliOptions, loadEnv, parseCliArgs, printHelp} from "./cli/index.js";
+import {type CliOptions, parseCliArgs, printHelp} from "./cli/args.js";
+import {loadEnv} from "./cli/env.js";
 import {runHeadlessFromCli} from "./headless/cli.js";
 import {loadHiCodeSettings, type LoadedHiCodeSettings} from "./settings/index.js";
 import {createTerminalCursorOutput} from "./ui/input/terminalCursor.js";
@@ -112,7 +113,7 @@ if (cliOptions.printPrompt !== undefined) {
             try {unmount?.();} catch {}
         });
         const app = render(
-            <InteractiveEvents.Provider value={eventLog ? {emit: eventLog.emit, singleTask: cliOptions.singleTask === true} : undefined}>
+            <InteractiveEvents.Provider value={eventLog ? {emit: eventLog.emit} : undefined}>
             <TerminalSizeProvider>
                 <TerminalCursorAnchorProvider enabled>
                     <Root

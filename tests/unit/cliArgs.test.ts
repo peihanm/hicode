@@ -120,8 +120,6 @@ test("interactive event export is explicit and cannot be used with headless", ()
   expect(() => parseCliArgs(["--event-log=/tmp/a", "-p", "hello"])).toThrow("interactive");
 });
 
-test("single-task is explicit and requires interactive event export", () => {
-  expect(() => parseCliArgs(["--single-task"])).toThrow("requires --event-log");
-  expect(parseCliArgs(["--single-task", "--event-log", "/tmp/task.jsonl"]).singleTask).toBe(true);
-  expect(() => parseCliArgs(["--single-task", "--event-log", "/tmp/task.jsonl", "-p", "test"])).toThrow("interactive");
+test("removed single-task option is rejected", () => {
+  expect(() => parseCliArgs(["--single-task"])).toThrow("Unknown argument: --single-task");
 });

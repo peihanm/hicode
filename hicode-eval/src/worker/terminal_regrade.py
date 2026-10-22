@@ -52,7 +52,7 @@ def validate_completion(data, *, execution='completed', shutdown=None):
                 or shutdown.get('eventStreamComplete') is not True or shutdown.get('error') is not None):
             raise ValueError('Failed recheck requires saved events and confirmed shutdown')
     elif execution not in {'completed', 'cancelled'} or not events.ready or not events.complete() or events.settled['reason'] != 'completed':
-        raise ValueError('Ordinary recheck requires sealed, saved completion events')
+        raise ValueError('Ordinary recheck requires settled, saved completion events')
 
 
 def main():

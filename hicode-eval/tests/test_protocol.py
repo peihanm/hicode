@@ -15,14 +15,14 @@ class ProtocolTest(unittest.TestCase):
         self.assertTrue(stream.started)
 
     def record(self, seq, **event):return (json.dumps({'version':1,'sequence':seq,'sessionId':'a',**event})+'\n').encode()
-    def test_shutdown_seals_saved_cancelled_turn_without_ignoring_missing_results(self):
-        # SymPy 16597 exports cancelled/shutdown, followed by a sealed shutdown.
+    def test_shutdown_confirms_saved_cancelled_turn_without_ignoring_missing_results(self):
+        # SymPy 16597 exports cancelled/shutdown, followed by a persisted shutdown observation.
         for persistence in ('saved', 'failed'):
             stream=Events()
             stream.accept(self.record(1,type='agent_event',event={'type':'tool_call_start','toolCallId':'bash'}))
             stream.accept(self.record(2,type='agent_event',event={'type':'turn_end','input':{
                 'session_id':'a','status':'cancelled','reason':'shutdown','persistence_status':persistence}}))
-            stream.accept(self.record(3,type='settled',reason='shutdown',runningAgents=0,pendingAgentMessages=0,sealed=True))
+            stream.accept(self.record(3,type='settled',reason='shutdown',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
             self.assertFalse(stream.complete())
             stream.accept(self.record(4,type='agent_event',event={'type':'tool_call_end','toolCallId':'bash'}))
             self.assertEqual(stream.complete(),persistence=='saved')
@@ -30,41 +30,55 @@ class ProtocolTest(unittest.TestCase):
 
     def test_unknown_stop_reason_still_fails_closed(self):
         with self.assertRaisesRegex(ValueError,'Unknown stop reason'):
-            Events().accept(self.record(1,type='settled',reason='made-up',runningAgents=0,pendingAgentMessages=0,sealed=True))
+            Events().accept(self.record(1,type='settled',reason='made-up',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
     def test_partial_event_and_child_guard(self):
         stream=Events();data=self.record(1,type='ready',sessionId='a')
         stream.accept(data[:7]);self.assertFalse(stream.ready)
         stream.accept(data[7:]);self.assertTrue(stream.ready)
         stream.accept(self.record(2,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'saved'}}))
-        stream.accept(self.record(3,type='settled',reason='completed',runningAgents=1,pendingAgentMessages=0,sealed=True))
+        stream.accept(self.record(3,type='settled',reason='completed',runningAgents=1,pendingAgentMessages=0,persistenceStatus='saved'))
         self.assertFalse(stream.complete())
-        stream.accept(self.record(4,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,sealed=True))
+        stream.accept(self.record(4,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
         self.assertTrue(stream.complete())
-        stream.accept(self.record(5,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=1,sealed=False))
+        stream.accept(self.record(5,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=1,persistenceStatus='failed'))
         self.assertFalse(stream.complete())
     def test_missing_sequence_and_failed_persistence(self):
         stream=Events()
         with self.assertRaises(ValueError):stream.accept(self.record(2,type='ready'))
         stream=Events()
-        stream.accept(self.record(1,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,sealed=True))
+        stream.accept(self.record(1,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
         stream.accept(self.record(2,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'failed'}}))
         self.assertFalse(stream.complete())
     def test_invalid_counters_and_mixed_sessions(self):
         stream=Events()
-        with self.assertRaises(ValueError):stream.accept(self.record(1,type='settled',reason='completed',runningAgents=False,pendingAgentMessages=0,sealed=True))
+        with self.assertRaises(ValueError):stream.accept(self.record(1,type='settled',reason='completed',runningAgents=False,pendingAgentMessages=0,persistenceStatus='saved'))
         stream=Events();stream.accept(self.record(1,type='ready'))
         with self.assertRaises(ValueError):stream.accept(self.record(2,type='ready',sessionId='different'))
 
-    def test_saved_turn_requires_execution_seal(self):
+    def test_saved_turn_requires_saved_final_observation(self):
         stream=Events()
         stream.accept(self.record(1,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'saved'}}))
-        stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,sealed=False))
+        stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,persistenceStatus='failed'))
         self.assertFalse(stream.complete())
 
-    def test_partial_record_after_seal_cannot_expose_private_verifier(self):
+    def test_saved_idle_completion_needs_no_execution_switch_and_new_turn_invalidates_it(self):
         stream=Events()
         stream.accept(self.record(1,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'saved'}}))
-        stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,sealed=True))
+        stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
+        self.assertTrue(stream.complete())
+        stream.accept(self.record(3,type='state',busy=False,waitingForApproval=True))
+        self.assertFalse(stream.complete())
+        stream.accept(self.record(4,type='state',busy=False,waitingForApproval=False))
+        self.assertTrue(stream.complete())
+        stream.accept(self.record(5,type='state',busy=True,waitingForApproval=False))
+        self.assertFalse(stream.complete())
+        stream.accept(self.record(6,type='state',busy=False,waitingForApproval=False))
+        self.assertFalse(stream.complete())
+
+    def test_partial_record_after_completion_cannot_expose_private_verifier(self):
+        stream=Events()
+        stream.accept(self.record(1,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'saved'}}))
+        stream.accept(self.record(2,type='settled',reason='completed',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
         self.assertTrue(stream.complete())
         next_record=self.record(3,type='agent_event',event={'type':'tool_call_start','toolCallId':'late'})
         stream.accept(next_record[:15]);self.assertFalse(stream.complete())
@@ -74,7 +88,7 @@ class ProtocolTest(unittest.TestCase):
         stream=Events()
         stream.accept(self.record(1,type='agent_event',event={'type':'tool_call_start','toolCallId':'a'}))
         stream.accept(self.record(2,type='agent_event',event={'type':'turn_end','input':{'persistence_status':'saved'}}))
-        stream.accept(self.record(3,type='settled',reason='interrupted',runningAgents=0,pendingAgentMessages=0,sealed=True))
+        stream.accept(self.record(3,type='settled',reason='interrupted',runningAgents=0,pendingAgentMessages=0,persistenceStatus='saved'))
         self.assertFalse(stream.complete())
         self.assertEqual(stream.pending_tools, {'a'})
         stream.accept(self.record(4,type='agent_event',event={'type':'tool_call_end','toolCallId':'a'}))
@@ -91,7 +105,7 @@ class ProtocolTest(unittest.TestCase):
         self.assertTrue(stream.failed_turn())
         self.assertFalse(stream.complete())
         stream.accept(self.record(5,type='settled',reason='error',status='failed',persistenceStatus='saved',
-                                  runningAgents=0,pendingAgentMessages=0,sealed=True))
+                                  runningAgents=0,pendingAgentMessages=0))
         self.assertTrue(stream.failed_turn())
 
     def test_failed_persistence_and_pending_tools_still_need_owner_shutdown(self):

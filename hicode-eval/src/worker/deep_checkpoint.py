@@ -71,9 +71,9 @@ def recover(run, output, module_hashes, unstarted_run=None):
             or ending.get('persistence_status') != 'saved' or not isinstance(settled, dict)
             or settled['sequence'] != events.sequence or settled.get('reason') != 'shutdown'
             or settled.get('status') != 'cancelled' or settled.get('persistenceStatus') != 'saved'
-            or settled.get('sealed') is not True or settled['runningAgents'] != 0
+            or settled['runningAgents'] != 0
             or settled['pendingAgentMessages'] != 0):
-        raise ValueError('Actor event stream is not completely sealed')
+        raise ValueError('Actor event stream does not confirm saved shutdown')
     session = events.session_id
     if not isinstance(session, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}', session):
         raise ValueError('Missing Actor Session identity')

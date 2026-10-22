@@ -28,7 +28,7 @@ for (const phase of ["model", "tool"] as const) test(`SIGTERM closes actual eval
         }));
         let screen = "";
         const terminal = new Bun.Terminal({cols: 140, rows: 40, data(_terminal, bytes) {screen = (screen + new TextDecoder().decode(bytes)).slice(-4000);}});
-        const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "../../src/index.tsx"), "--single-task", "--event-log", log, "--permission-mode", "full-access"], {
+        const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "../../src/index.tsx"), "--event-log", log, "--permission-mode", "full-access"], {
             cwd, terminal, env: {PATH: process.env.PATH ?? "", HOME: home, EVAL_FIXTURE_KEY: "offline-fixture", TERM: "xterm-256color", LANG: "C.UTF-8"},
         });
         const timeout = setTimeout(() => child.kill("SIGKILL"), 15000);

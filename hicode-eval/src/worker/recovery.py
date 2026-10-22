@@ -69,7 +69,7 @@ def recover(root):
                 events.accept(data[offset:offset + 65536])
             if outcome['execution'] == 'completed':
                 if events.partial.strip() or not events.ready or not events.complete() or events.settled['reason'] != 'completed':
-                    raise ValueError('No sealed, persisted completion event')
+                    raise ValueError('No persisted completion event')
             else:
                 shutdown = record(root/'shutdown.json')
                 if (not events.ready or not events.failed_turn() or events.pending_tools
