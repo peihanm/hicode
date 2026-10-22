@@ -644,7 +644,7 @@ describe("tool registry contract", () => {
       let asked = false;
       const ctx = createTestContext(cwd, {
         permissionMode: "ask",
-        collaborationMode: "build",
+
         permissionPromptPolicy: "never",
         canUseTool: async () => {
           asked = true;
@@ -667,7 +667,7 @@ describe("tool registry contract", () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd, {
         permissionMode: "ask",
-        collaborationMode: "build",
+
         canUseTool: async () => {
           throw new Error("workspace-scoped write_file 不应请求权限");
         },
@@ -695,7 +695,7 @@ describe("tool registry contract", () => {
       });
       const ctx = createTestContext(cwd, {
         permissionMode: "ask",
-        collaborationMode: "build",
+
         signal: controller.signal,
         canUseTool: async () => {
           permissionRequested();
@@ -727,7 +727,7 @@ describe("tool registry contract", () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd, {
         permissionMode: "ask",
-        collaborationMode: "build",
+
         canUseTool: async () => ({
           behavior: "allow",
           updatedInput: {path: "mutated.txt", content: "changed"},
@@ -756,7 +756,7 @@ describe("tool registry contract", () => {
     await withTempProject(async (cwd) => {
       const ctx = createTestContext(cwd, {
         permissionMode: "ask",
-        collaborationMode: "build",
+
         canUseTool: async () => {
           throw new Error("interaction unavailable");
         },

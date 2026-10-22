@@ -1,7 +1,6 @@
 import type {HookTrustRequest} from "../hooks/index.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
 import {isPermissionMode} from "../permissions/index.js";
-import {isCollaborationMode} from "../collaboration/index.js";
 import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime/resources.js";
 import {isHiCodeRootConfiguration} from "../runtime/rootConfiguration.js";
 import {loadSession} from "../session/index.js";
@@ -93,19 +92,9 @@ export class HiCode {
                 `Invalid permissionMode: ${String(options.permissionMode)}`
             );
         }
-        if (
-            options.collaborationMode !== undefined &&
-            !isCollaborationMode(options.collaborationMode)
-        ) {
-            throw new HiCodeSDKError(
-                "invalid_collaboration_mode",
-                `Invalid collaborationMode: ${String(options.collaborationMode)}`
-            );
-        }
         if ((options.permissionMode ?? this.resources.settings.permissions.defaultMode) === "full-access" && !this.resources.allowFullAccess) throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         const initial = prepareThreadSession(this.resources);
         initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;
-        initial.state.collaborationMode = options.collaborationMode ?? initial.state.collaborationMode;
         return this.openThread(initial);
     }
 

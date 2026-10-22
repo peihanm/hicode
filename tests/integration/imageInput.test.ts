@@ -54,7 +54,7 @@ test("an earlier lazy text stream cannot start while image preparation owns the 
 });
 
 const png = (red = 30) => sharp({create: {width: 32, height: 16, channels: 4, background: {r: red, g: 70, b: 100, alpha: 1}}}).png().toBuffer();
-const state = {todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []};
+const state = {todos: [], permissionMode: "ask" as const,  uiEvents: []};
 function settings() {
     const value = createTestSettings();
     value.models.primary = {source: "qwen", model: "qwen3.8-flash", label: "Qwen"};

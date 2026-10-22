@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import type { LoadedSession } from "../../src/session/index.js";
 import type { PermissionMode } from "../../src/permissions/index.js";
-import type {CollaborationMode} from "../../src/collaboration/index.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { App } from "../../src/ui/App.js";
 import type { AgentRunner } from "../../src/agent/index.js";
@@ -11,14 +10,12 @@ import {TerminalSizeProvider} from "../../src/ui/terminalSize.js";
 export function AppForTest({
   resources,
   initialPermissionMode,
-  initialCollaborationMode,
   initialSession,
   runAgentImpl,
   requestSessionSwitch,
 }: {
   resources: RootRuntimeResources;
   initialPermissionMode?: PermissionMode;
-  initialCollaborationMode?: CollaborationMode;
   initialSession?: LoadedSession;
   runAgentImpl?: AgentRunner;
   requestSessionSwitch?: (sessionId: string) => Promise<void>;
@@ -55,7 +52,6 @@ export function AppForTest({
         rootSession={turnSession.rootSession}
         resumedDraft={turnSession.resumedDraft}
         initialPermissionMode={initialPermissionMode}
-        initialCollaborationMode={initialCollaborationMode}
         initialSession={initialSession}
         requestSessionSwitch={requestSessionSwitch}
       />

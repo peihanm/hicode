@@ -95,7 +95,7 @@ export function PermissionsDialog({
     }
 
     const subtitle = "Choose who approves extra access, or allow host execution.";
-    const explanation = "Build/Plan chooses the work mode. /sandbox controls network access for sandboxed commands.";
+    const explanation = "/sandbox controls network access for sandboxed commands.";
     const shortcuts = "↑↓ select · enter switch · esc back";
     const bodyHeight = Math.max(2, height - 6 - wrapPanelText(subtitle, contentWidth).length
         - wrapPanelText(explanation, contentWidth).length - wrapPanelText(shortcuts, contentWidth).length);

@@ -25,7 +25,7 @@ describe("session persistence", () => {
       await saveSessionSnapshot(storage, {
         cwd, model: "glm-test", sessionId: "shell-receipt",
         history: [{role: "system", content: "system"}, {role: "user", origin: "user", content: "check"}],
-        todos: [], permissionMode: "ask", collaborationMode: "build",
+        todos: [], permissionMode: "ask",
         uiEvents: [{version: 1, type: "tool_call", turnId: "turn", toolCallId: "wait",
           timestamp: "2026-10-02T00:00:00.000Z", outcome: "failed", completedTask}],
       });
@@ -46,7 +46,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
         taskNotificationReceipts: ["a".repeat(64)],
         queuedInputs: [{
           id: "queued-1",
@@ -83,7 +83,7 @@ describe("session persistence", () => {
         history,
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
         compactState: createCompactState(),
         toolDiscovery: {
           version: 2,
@@ -112,7 +112,8 @@ describe("session persistence", () => {
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(8);
+      expect(snapshot.version).toBe(9);
+      expect(snapshot).not.toHaveProperty("collaborationMode");
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionSnapshotPath(storage, cwd, "session-1"))).mode & 0o777)
         .toBe(0o600);
@@ -136,7 +137,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       const path = getSessionSnapshotPath(storage, cwd, "legacy-tool-discovery");
       const snapshot = JSON.parse(await readFile(path, "utf8"));
@@ -169,7 +170,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       const path = getSessionSnapshotPath(storage, cwd, "unversioned");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
@@ -216,7 +217,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       const path = getSessionSnapshotPath(storage, cwd, "untrusted-session");
       const snapshot = JSON.parse(await readFile(path, "utf8")) as Record<
@@ -256,7 +257,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       const path = getSessionSnapshotPath(storage, cwd, "strict-mutation");
       await appendFile(path, "{}\n");
@@ -272,7 +273,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       })).rejects.toThrow("Invalid Session snapshot JSON");
       expect(await readFile(path, "utf8")).toBe(before);
 
@@ -291,7 +292,7 @@ describe("session persistence", () => {
         }],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
         allowEmpty: true,
         summaryHint: "invalid",
       });
@@ -311,7 +312,7 @@ describe("session persistence", () => {
         history: [{ role: "system", content: "system only" }],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       expect(listSessionIndex(storage, cwd)).toEqual([]);
     });
@@ -346,7 +347,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
         uiEvents: [{
           version: 1,
           type: "file_change",
@@ -388,7 +389,7 @@ describe("session persistence", () => {
             ],
             todos: [],
             permissionMode: "ask",
-        collaborationMode: "build",
+
           })
         )
       );
@@ -417,7 +418,7 @@ describe("session persistence", () => {
             ],
             todos: [],
             permissionMode: "ask",
-        collaborationMode: "build",
+
           })
         )
       );
@@ -447,7 +448,7 @@ describe("session persistence", () => {
           ],
           todos: [],
           permissionMode: "ask",
-        collaborationMode: "build",
+
         });
       }
 
@@ -476,7 +477,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       await writeFile(indexPath, "{corrupt-index", "utf8");
 
@@ -491,7 +492,7 @@ describe("session persistence", () => {
           ],
           todos: [],
           permissionMode: "ask",
-        collaborationMode: "build",
+
         })
       ).resolves.toBeUndefined();
       expect(await readFile(indexPath, "utf8")).toBe("{corrupt-index");
@@ -520,7 +521,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       })).rejects.toThrow("Unsafe HiCode storage directory");
     });
 
@@ -535,7 +536,7 @@ describe("session persistence", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       const logPath = getSessionSnapshotPath(storage, cwd, "file-symlink");
       const originalLog = await readFile(logPath, "utf8");
@@ -552,7 +553,7 @@ describe("session persistence", () => {
         history: [{role: "user", origin: "user" as const, content: "继续"}],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       })).rejects.toThrow();
       expect(await readFile(redirectedLog, "utf8")).toBe(originalLog);
 

@@ -16,8 +16,8 @@ import {SandboxNetworkApproval} from "../../src/sandbox/networkApproval.js";
 import type {ReviewVerdict} from "../../src/permissions/approval.js";
 import type {PermissionDecision} from "../../src/permissions/types.js";
 
-for (const automatic of [false, true]) for (const change of ["permission", "collaboration"] as const) {
-    test(`pending network ${automatic ? "review" : "human approval"} is invalidated by ${change} changes`, async () => {
+for (const automatic of [false, true]) {
+    test(`pending network ${automatic ? "review" : "human approval"} is invalidated by permission changes`, async () => {
         await withTempProject(async cwd => {
             const broker = new SandboxNetworkApproval();
             let entered!: () => void;
@@ -41,8 +41,7 @@ for (const automatic of [false, true]) for (const change of ["permission", "coll
             try {
                 const execution = createToolRuntime().executeTool("bash", '{"command":"printf test"}', ctx, "network-policy");
                 await ready;
-                if (change === "permission") ctx.setPermissionMode(automatic ? "ask" : "auto-review");
-                else ctx.setCollaborationMode("plan");
+                ctx.setPermissionMode(automatic ? "ask" : "auto-review");
                 expect(approvalSignal?.aborted).toBe(true);
                 allowReview({decision: "allow", risk: "low", reason: "late review"});
                 allowHuman({behavior: "allow", networkScope: "session"});
@@ -81,7 +80,7 @@ test("background network review survives Turn cancellation but stops on Session 
             await ready;
             controller.abort("user-cancel");
             expect(reviewSignal?.aborted).toBe(false);
-            ctx.setCollaborationMode("plan");
+            ctx.setPermissionMode(ctx.permissionMode === "ask" ? "auto-review" : "ask");
             expect(reviewSignal?.aborted).toBe(true);
             allow({decision: "allow", risk: "low", reason: "late approval"});
             await execution;
@@ -94,7 +93,7 @@ test.each(["ask", "auto-review"] as const)("%s cannot return allow after its fin
     await withTempProject(async cwd => {
         const ctx = createTestContext(cwd, {permissionMode: mode, canUseTool: async () => ({behavior: "allow"})});
         ctx.approvalReviewer = async () => ({decision: "allow", risk: "low", reason: "reviewed"});
-        ctx.onApprovalEvent = event => {if (event.phase === "end" && event.outcome === "allow") ctx.setCollaborationMode("plan");};
+        ctx.onApprovalEvent = event => {if (event.phase === "end" && event.outcome === "allow") ctx.setPermissionMode(ctx.permissionMode === "ask" ? "auto-review" : "ask");};
         await expect(requestApproval(ctx, "bash", {command: "true"}, "approve", "event-policy")).rejects.toBeDefined();
     });
 });

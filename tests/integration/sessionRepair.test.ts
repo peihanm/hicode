@@ -8,7 +8,7 @@ import type {SaveSessionSnapshotInput} from "../../src/session/types.js";
 
 test("index failure does not undo committed content and explicit repair preserves evidence",async()=>{
  await withTempProject(async(cwd,storage)=>{
-  const input:SaveSessionSnapshotInput={cwd,sessionId:"good",model:"test",history:[{role:"user",origin:"user",content:"hello"}],todos:[],permissionMode:"ask",collaborationMode:"build"};
+  const input:SaveSessionSnapshotInput={cwd,sessionId:"good",model:"test",history:[{role:"user",origin:"user",content:"hello"}],todos:[],permissionMode:"ask",};
   const writer=createSessionPersistence(storage,cwd,"good");await writer.save(input);
   const bad={...input,sessionId:"bad"};await createSessionPersistence(storage,cwd,"bad").save(bad);
   await writeFile(getSessionSnapshotPath(storage,cwd,"bad"),"broken snapshot");
@@ -34,7 +34,7 @@ test("a long write in one Session does not hold another Session's content lock",
   const held=withSessionPersistenceLock(storage,cwd,"busy",async()=>{entered();await gate;});
   await ready;
   try{
-   await createSessionPersistence(storage,cwd,"other").save({cwd,sessionId:"other",model:"test",history:[{role:"user",origin:"user",content:"independent"}],todos:[],permissionMode:"ask",collaborationMode:"build"});
+   await createSessionPersistence(storage,cwd,"other").save({cwd,sessionId:"other",model:"test",history:[{role:"user",origin:"user",content:"independent"}],todos:[],permissionMode:"ask",});
    expect(loadSession(storage,cwd,"other","test")?.history.at(-1)?.content).toBe("independent");
   }finally{release();await held;}
  });

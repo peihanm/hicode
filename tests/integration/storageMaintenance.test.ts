@@ -48,7 +48,7 @@ test("cleanup preserves referenced text and image source/view dependencies, remo
   const blue=await sharp({create:{width:4,height:4,channels:3,background:"blue"}}).png().toBuffer();
   const removedImages=await importUserInput([{type:"image",data:blue}],store,true,new AbortController().signal);
   const images=await importUserInput([{type:"image",data:png}],store,true,new AbortController().signal);
-  await writer.save({cwd,sessionId:"session",model:"test",history:[{role:"user",origin:"user",content:`Retain ${used.path}`},{role:"user",origin:"user",content:images}],todos:[],permissionMode:"ask",collaborationMode:"build"});
+  await writer.save({cwd,sessionId:"session",model:"test",history:[{role:"user",origin:"user",content:`Retain ${used.path}`},{role:"user",origin:"user",content:images}],todos:[],permissionMode:"ask",});
   const orphan=join(dirname(unused.path),`${"a".repeat(32)}.txt`);await writeFile(orphan,"orphan");
   const cache=join(getProjectStorageDirectory(storage,cwd),"cache","npm");await mkdir(cache,{recursive:true});await writeFile(join(cache,"cache"),"cached");
   const preview=await inspectStorage(storage,cwd,true);
@@ -75,7 +75,7 @@ test("active Root protects draft attachments and all project cleanup",async()=>{
 test("damaged references block deletion and remain inspectable",async()=>{
  await withTempProject(async(cwd,storage)=>{
   const writer=createSessionPersistence(storage,cwd,"session");
-  await writer.save({cwd,sessionId:"session",model:"test",history:[{role:"user",origin:"user",content:"hello"}],todos:[],permissionMode:"ask",collaborationMode:"build"});
+  await writer.save({cwd,sessionId:"session",model:"test",history:[{role:"user",origin:"user",content:"hello"}],todos:[],permissionMode:"ask",});
   const {getSessionSnapshotPath}=await import("../../src/session/paths.js");
   const path=getSessionSnapshotPath(storage,cwd,"session");await writeFile(path,"broken");
   const preview=await inspectStorage(storage,cwd,true);expect(preview.issues.length).toBeGreaterThan(0);
@@ -86,7 +86,7 @@ test("damaged references block deletion and remain inspectable",async()=>{
 test("subagent state protects its artifacts and structurally corrupt JSON blocks cleanup", async () => {
  await withTempProject(async (cwd, storage) => {
   const persistence = createSessionPersistence(storage, cwd, "session");
-  await persistence.save({cwd, sessionId:"session", model:"test", history:[{role:"user", origin:"user", content:"inspect"}], todos:[], permissionMode:"ask", collaborationMode:"build"});
+  await persistence.save({cwd, sessionId:"session", model:"test", history:[{role:"user", origin:"user", content:"inspect"}], todos:[], permissionMode:"ask", });
   const store = createToolResultStore(storage, cwd, "session");
   const artifact = await store.persistText({toolCallId:"child", toolName:"bash", content:"child output"});
   const transcript = new SubagentTranscriptWriter(storage, cwd, "session", "agent");

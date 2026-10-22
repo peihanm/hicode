@@ -103,7 +103,7 @@ describe("TypeScript SDK", () => {
             const sessionId = "sdk-auto-review";
             const thread = await createSDKThread({resources,
                 seed: {sessionId, history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "auto-review", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {},
+                state: {todos: [], permissionMode: "auto-review",  uiEvents: []}, resumed: false, onClose() {},
             });
             try {
                 const stream = await thread.runStreamed("请创建 ../reviewed.txt");
@@ -130,7 +130,7 @@ describe("TypeScript SDK", () => {
             ]);
             const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
             const thread = await createSDKThread({resources, seed: {sessionId, history: createInitialHistory(cwd, "glm-test"), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "full-access", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+                state: {todos: [], permissionMode: "full-access",  uiEvents: []}, resumed: false, onClose() {}});
             try {
                 expect((await thread.run("write")).finalResponse).toBe("done");
                 expect(await readFile(join(cwd, "durable.txt"), "utf8")).toBe("written");
@@ -150,7 +150,7 @@ describe("TypeScript SDK", () => {
             const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
             const open = () => createSDKThread({resources,
                 seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "full-access", collaborationMode: "build", uiEvents: []},
+                state: {todos: [], permissionMode: "full-access",  uiEvents: []},
                 resumed: false, onClose() {},
             });
             try {
@@ -200,7 +200,7 @@ describe("TypeScript SDK", () => {
             const thread = await createSDKThread({
                 resources,
                 seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []},
+                state: {todos: [], permissionMode: "ask",  uiEvents: []},
                 resumed: false,
                 host: {async onInteraction(request) {
                     interactions.push(request);
@@ -239,14 +239,14 @@ describe("TypeScript SDK", () => {
             });
             const thread = await hicode.startThread({
                 permissionMode: "ask",
-        collaborationMode: "build",
+
             });
 
             expect(thread.getInfo()).toMatchObject({
                 id: thread.id,
                 cwd,
                 permissionMode: "ask",
-        collaborationMode: "build",
+
                 resumed: false,
             });
             await expect(hicode.startThread()).rejects.toMatchObject({
@@ -364,7 +364,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -438,7 +438,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -529,7 +529,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -553,7 +553,6 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: loaded!.todos,
                     permissionMode: loaded!.permissionMode,
-                    collaborationMode: loaded!.collaborationMode,
                     uiEvents: loaded!.uiEvents,
                 },
                 resumed: true,
@@ -603,7 +602,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -645,7 +644,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -709,7 +708,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -798,7 +797,7 @@ describe("TypeScript SDK", () => {
                 state: {
                     todos: [],
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     uiEvents: [],
                 },
                 resumed: false,
@@ -859,7 +858,7 @@ for (const action of ["resume", "return", "close", "abort"] as const) {
             const resources = createTestRuntimeResources(cwd, {storage, agentRuntime});
             const thread = await createSDKThread({resources,
                 seed: {sessionId: createSessionId(), history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-                state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []},
+                state: {todos: [], permissionMode: "ask",  uiEvents: []},
                 resumed: false, onClose() {},
             });
             const controller = new AbortController();
@@ -939,7 +938,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
         const first = await createSDKThread({resources, seed: {sessionId,
             history: [...createInitialHistory(cwd, resources.model), {role: "user", origin: "user" as const, content: "原始目标\n" + "x".repeat(250_000)},
                 {role: "assistant", content: "已检查"}], compactState: createCompactState()},
-            state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+            state: {todos: [], permissionMode: "ask",  uiEvents: []}, resumed: false, onClose() {}});
         try {
             expect((await first.run("继续实现")).finalResponse).toBe("本轮完成");
             await first.close();
@@ -948,7 +947,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
             expect(JSON.stringify(loaded.history)).toContain("Handoff coverage limit");
             indexPath = archiveIndexPath(storage, cwd, sessionId, loaded.compactState!.archives![0]!.id);
             const second = await createSDKThread({resources, seed: {...loaded, compactState: loaded.compactState!},
-                state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: loaded.uiEvents}, resumed: true, onClose() {}});
+                state: {todos: [], permissionMode: "ask",  uiEvents: loaded.uiEvents}, resumed: true, onClose() {}});
             try {expect((await second.run("回查原始来源")).finalResponse).toBe("找到原始来源索引");}
             finally {await second.close();}
             expect(fake.calls).toHaveLength(4);
@@ -969,7 +968,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
         const sessionId = "sdk-agent-inbox";
         const thread = await createSDKThread({resources,
             seed: {sessionId, history: createInitialHistory(cwd, resources.model), compactState: createCompactState(), queuedInputs: inbox.list()},
-            state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {},
+            state: {todos: [], permissionMode: "ask",  uiEvents: []}, resumed: false, onClose() {},
         });
         try {
             const result = await thread.run("Continue my task");
@@ -984,7 +983,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
     const resources = createTestRuntimeResources(cwd, {storage, allowFullAccess: false});
     const thread = await createSDKThread({resources,
         seed: {sessionId: "denied-stream", history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
-        state: {todos: [], permissionMode: "ask", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+        state: {todos: [], permissionMode: "ask",  uiEvents: []}, resumed: false, onClose() {}});
     try {await expect(thread.runStreamed("hello", {permissionMode: "full-access"})).rejects.toMatchObject({code: "permission_mode_not_allowed"});}
     finally {await thread.close(); await resources.close();}
 }));

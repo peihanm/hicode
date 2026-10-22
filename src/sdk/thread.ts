@@ -8,7 +8,6 @@ import {supportsToolImages} from "../images/capability.js";
 import {randomUUID} from "node:crypto";
 import {getHookExecutionIssues, formatHookContext} from "../hooks/index.js";
 import {isPermissionMode, type PermissionDecision, type PermissionMode,} from "../permissions/index.js";
-import {isCollaborationMode, type CollaborationMode,} from "../collaboration/index.js";
 import {normalizeTurnAbortReason} from "../runtime/abort.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {createRootSessionRuntime, type RootSessionRuntime, type RootSessionSeed,} from "../runtime/sessionRuntime.js";
@@ -42,7 +41,6 @@ const MAX_SDK_ITERATIONS = 100;
 interface SDKSessionState {
     todos: Todo[];
     permissionMode: PermissionMode;
-    collaborationMode: CollaborationMode;
     uiEvents: PersistedUIEvent[];
 }
 
@@ -141,7 +139,6 @@ class SDKThreadImpl implements SessionThread {
             model: this.options.resources.model,
             provider: this.options.resources.provider,
             permissionMode: this.options.state.permissionMode,
-            collaborationMode: this.options.state.collaborationMode,
             sandbox: this.options.resources.sandbox.status,
             mcpServers:
                 this.options.resources.mcpManager?.getSnapshots() ?? [],
@@ -304,12 +301,9 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
-        if (turnOptions.permissionMode !== undefined || turnOptions.collaborationMode !== undefined) this.options.session.invalidateApprovals();
+        if (turnOptions.permissionMode !== undefined) this.options.session.invalidateApprovals();
         if (turnOptions.permissionMode !== undefined) {
             this.options.state.permissionMode = turnOptions.permissionMode;
-        }
-        if (turnOptions.collaborationMode !== undefined) {
-            this.options.state.collaborationMode = turnOptions.collaborationMode;
         }
 
         try {
@@ -337,7 +331,6 @@ class SDKThreadImpl implements SessionThread {
                 getSnapshotState: () => ({
                     todos: this.options.state.todos,
                     permissionMode: this.options.state.permissionMode,
-                    collaborationMode: this.options.state.collaborationMode,
                     uiEvents: limitPersistedUIEvents([
                         ...this.options.state.uiEvents,
                         ...adapter.getPersistedUIEvents(),
@@ -423,7 +416,6 @@ class SDKThreadImpl implements SessionThread {
             getPermissionRules: () =>
                 this.options.resources.settings.permissions.rules,
             getPermissionMode: () => this.options.state.permissionMode,
-            getCollaborationMode: () => this.options.state.collaborationMode,
             getPermissionPromptPolicy: () =>
                 this.options.host?.onInteraction ? "onRequest" : "never",
             setTodos: async (todos) => {
@@ -523,7 +515,6 @@ class SDKThreadImpl implements SessionThread {
                 this.options.session.createSnapshot({
                     todos: this.options.state.todos,
                     permissionMode: this.options.state.permissionMode,
-                    collaborationMode: this.options.state.collaborationMode,
                     uiEvents: this.options.state.uiEvents,
                 })
             );
@@ -543,15 +534,6 @@ function validateTurnOptions(options: TurnOptions): void {
         throw new HiCodeSDKError(
             "invalid_permission_mode",
             `Invalid permissionMode: ${String(options.permissionMode)}`
-        );
-    }
-    if (
-        options.collaborationMode !== undefined &&
-        !isCollaborationMode(options.collaborationMode)
-    ) {
-        throw new HiCodeSDKError(
-            "invalid_collaboration_mode",
-            `Invalid collaborationMode: ${String(options.collaborationMode)}`
         );
     }
     if (
@@ -662,7 +644,6 @@ export function prepareThreadSession(resources: RootRuntimeResources, loaded?: L
         state: {
             todos: loaded?.todos ?? [],
             permissionMode: loaded?.permissionMode ?? resources.settings.permissions.defaultMode,
-            collaborationMode: loaded?.collaborationMode ?? "build" as const,
             uiEvents: loaded?.uiEvents ?? [],
         },
         resumed: loaded !== undefined,

@@ -123,13 +123,6 @@ async function resolvePermissionInner(
         return {behavior: "deny", message: "This Agent only allows read-only tool calls"};
     }
 
-    // Host controls Plan; one-time approval cannot enable explicit implementation side effects.
-    // Mode instructions constrain Bash intent; actual access still follows the permission chain below.
-    if (ctx.collaborationMode === "plan" && tool.name !== "bash" &&
-        !(tool.isReadOnly?.(input) ?? false) && tool.name !== "ask_user" && tool.name !== "todo_write") {
-        return {behavior: "deny", message: `Plan mode does not execute modifying operations for ${tool.name} ; the user must switch to Build before implementation`};
-    }
-
     // User questions require interaction, not access preauthorization.
     if (tool.name === "ask_user") return toolResult;
     if (mode === "full-access") return {behavior: "allow"};

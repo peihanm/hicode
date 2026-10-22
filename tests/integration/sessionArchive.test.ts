@@ -20,10 +20,10 @@ import type {Message} from "../../src/llm/types.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 import {referencedResultPaths} from "../../src/toolResults/references.js";
 
-const state = () => ({todos: [], uiEvents: [], permissionMode: "ask" as const, collaborationMode: "build" as const});
+const state = () => ({todos: [], uiEvents: [], permissionMode: "ask" as const, });
 const host: ToolContextHost = {
     canUseTool: async () => ({behavior: "deny", message: "No interactive approvals in tests"}), getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-    getPermissionMode: () => "ask", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",
+    getPermissionMode: () => "ask", getPermissionPromptPolicy: () => "never",
     setTodos() {},
 };
 

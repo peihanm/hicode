@@ -2,7 +2,6 @@ import type {InteractiveShutdown} from "../../cli/interactiveShutdown.js";
 import {useEffect, useRef, useState} from "react";
 import {Box, Text, useApp, useInput} from "ink";
 import type {PermissionMode} from "../../permissions/index.js";
-import type {CollaborationMode} from "../../collaboration/index.js";
 import {loadSession, type LoadedSession} from "../../session/index.js";
 import {
     createRootRuntimeResources,
@@ -40,7 +39,6 @@ interface RuntimeBootstrapProps {
     shutdown: InteractiveShutdown;
     configuration: HiCodeRootConfiguration;
     initialPermissionMode?: PermissionMode;
-    initialCollaborationMode?: CollaborationMode;
     initialImages?: readonly string[];
     session?: LoadedSession;
     onSessionSwitch?: (session: LoadedSession) => void;
@@ -60,7 +58,6 @@ export function createRuntimeBootstrap(
         configuration,
         shutdown,
         initialPermissionMode,
-        initialCollaborationMode,
         initialImages,
         session,
         onSessionSwitch,
@@ -222,7 +219,6 @@ export function createRuntimeBootstrap(
                     </Box>
                     <StatusBar cwd={cwd} model={settings.models.primary.label}
                         permissionMode={initialPermissionMode ?? session?.permissionMode ?? settings.permissions.defaultMode}
-                        collaborationMode={initialCollaborationMode ?? session?.collaborationMode ?? "build"}
                         tokenCount={0} percentUsed={0} warning={false} tokenStatus="unavailable" showShortcuts={false}/>
                     <Text color={COLORS.dim}> Ctrl+C to exit</Text>
                 </Box>
@@ -238,7 +234,6 @@ export function createRuntimeBootstrap(
                 rootSession={ready.session.rootSession}
                 resumedDraft={ready.session.resumedDraft}
                 initialPermissionMode={initialPermissionMode}
-                initialCollaborationMode={initialCollaborationMode}
                 initialImages={sessionKey === initialImageSession.current ? initialImages : undefined}
                 initialSession={ready.initialSession}
                 registerSessionShutdown={(shutdown) => {

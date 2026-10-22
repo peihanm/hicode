@@ -98,8 +98,8 @@ export const memoryCommand: SlashCommand = {
         }
 
         if (action === "maintain") {
-            if (context.ctx.readOnlyTools || context.ctx.collaborationMode === "plan") {
-                await context.onEvent({type: "assistant_text", content: "Cannot consolidate Memory in read-only/Plan mode."}); return;
+            if (context.ctx.readOnlyTools) {
+                await context.onEvent({type: "assistant_text", content: "Cannot consolidate Memory in read-only mode."}); return;
             }
             if(!context.ctx.tasks || !("startMemory" in context.ctx.tasks)) {await context.onEvent({type:"assistant_text",content:"This Runtime has no Memory maintenance task capability."});return;}
             const task=await context.ctx.tasks.startMemory({turnId:context.ctx.turnId,signal:context.ctx.signal,background:false});

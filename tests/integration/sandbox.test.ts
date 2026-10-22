@@ -209,7 +209,7 @@ describe("OS Sandbox integration", () => {
                     }),
                     createTestContext(cwd, {
                         permissionMode: "ask",
-        collaborationMode: "build",
+
                         shellRunner: runner,
                         canUseTool: async () => {
                             throw new Error("ready Sandbox 内的普通 Bash 不应请求权限");

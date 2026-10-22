@@ -84,12 +84,11 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
     });
 });
 
-test.each(["file-deny", "shell-deny", "read-only", "plan", "elevated", "tool-scope"])("子 Agent 不扩大父能力：%s", async mode => {
+test.each(["file-deny", "shell-deny", "read-only", "elevated", "tool-scope"])("子 Agent 不扩大父能力：%s", async mode => {
     await withTempProject(async cwd => {
         const target = join(cwd, "child"); await mkdir(target);
         await writeFile(join(target, "secret.txt"), "SECRET_CONTENT");
         const parent = createTestContext(cwd, {
-            ...(mode === "plan" ? {collaborationMode: "plan" as const} : {}),
             ...(mode === "read-only" ? {readOnlyTools: true} : {}),
             ...(mode === "tool-scope" ? {toolNames: ["read_file"]} : {}),
         });

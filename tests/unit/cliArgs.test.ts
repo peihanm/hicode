@@ -10,13 +10,11 @@ describe("parseCliArgs", () => {
         "--output-format=json",
         "--permission-mode",
         "ask",
-        "--collaboration-mode=plan",
       ])
     ).toMatchObject({
       printPrompt: "检查项目",
       outputFormat: "json",
       permissionMode: "ask",
-      collaborationMode: "plan",
       resumeMode: { kind: "none" },
     });
   });
@@ -86,11 +84,11 @@ describe("parseCliArgs", () => {
         parseCliArgs(["--permission-mode", legacyMode])
       ).toThrow("Unknown permission mode");
     }
-    expect(() => parseCliArgs(["--collaboration-mode", "unknown"])).toThrow(
-      "Unknown collaboration mode"
+    expect(() => parseCliArgs(["--collaboration-mode", "plan"])).toThrow(
+      "Unknown argument"
     );
-    expect(() => parseCliArgs(["--collaboration-mode", "PLAN"])).toThrow(
-      "Unknown collaboration mode"
+    expect(() => parseCliArgs(["--collaboration-mode=build"])).toThrow(
+      "Unknown argument"
     );
     expect(() => parseCliArgs(["--model="])).toThrow("--model requires a non-empty");
     expect(() => parseCliArgs(["--source", "unknown"])).toThrow(

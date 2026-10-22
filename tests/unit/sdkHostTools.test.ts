@@ -51,7 +51,7 @@ describe("SDK Host Tools", () => {
                 JSON.stringify({key: "alpha"}),
                 createTestContext(cwd, {
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     sessionId: "sdk-thread",
                     canUseTool: async () => {
                         permissionCalls += 1;
@@ -108,7 +108,7 @@ describe("SDK Host Tools", () => {
                 JSON.stringify({value: "x"}),
                 createTestContext(cwd, {
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     canUseTool: async (name) => {
                         requestedTool = name;
                         return {behavior: "deny", message: "host denied"};

@@ -1,5 +1,5 @@
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
-import {withExecutionContext} from "../prompt/collaboration.js";
+import {withExecutionContext} from "../prompt/executionContext.js";
 import {retainImageDeliveryBoundary} from "../images/request.js";
 import type {ContextSettings} from "./config.js";
 import {formatHookContext} from "../hooks/index.js";

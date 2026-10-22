@@ -15,7 +15,6 @@ function renderStatusBar(
         cwd="/tmp/project"
         model="glm-5.2"
         permissionMode="ask"
-        collaborationMode="build"
         tokenCount={1234}
         percentUsed={0.12}
         warning={false}
@@ -27,13 +26,13 @@ function renderStatusBar(
 }
 
 describe("StatusBar token state", () => {
-  test("长项目路径不会挤掉审批状态和 Plan 标记", () => {
+  test("长项目路径不会挤掉审批状态", () => {
     const instance = render(<StatusBar
       cwd={`/project/${"long-path/".repeat(30)}`} model="Qwen"
-      permissionMode="auto-review" collaborationMode="plan"
+      permissionMode="auto-review"
       tokenCount={0} percentUsed={0} warning={false} tokenStatus="unavailable"
     />);
-    expect(instance.lastFrame()).toContain("Qwen | Agent review | Plan | /project/");
+    expect(instance.lastFrame()).toContain("Qwen | Agent review | /project/");
   });
   test("新进程在首次模型调用前明确显示新会话", () => {
     const frame = renderStatusBar("unavailable");
@@ -50,7 +49,7 @@ describe("StatusBar token state", () => {
   test("保留完整模型、项目路径和快捷键说明", () => {
     const frame = renderStatusBar("actual");
     expect(frame).toContain("glm-5.2 | /tmp/project | 1234 tokens (12%)");
-    expect(frame).toContain("shift+tab Build/Plan");
+    expect(frame).not.toContain("Build/Plan");
     expect(frame).toContain("ctrl+o transcript");
     expect(frame).not.toContain("esc to cancel");
     expect(frame).not.toContain("? for shortcuts");
@@ -61,7 +60,7 @@ describe("StatusBar token state", () => {
 describe("StatusBar background tasks", () => {
   test("正常 Sandbox 隐藏，异常保留诊断入口", () => {
     const props = {cwd: "/project", model: "Qwen", permissionMode: "ask" as const,
-      collaborationMode: "build" as const, tokenCount: 1, percentUsed: 0, warning: false, tokenStatus: "actual" as const};
+       tokenCount: 1, percentUsed: 0, warning: false, tokenStatus: "actual" as const};
     const instance = render(<StatusBar {...props} sandboxStatus={{kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}}/>);
     expect(instance.lastFrame()).not.toContain("Sandbox");
     instance.unmount();

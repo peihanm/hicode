@@ -1,6 +1,5 @@
 import {imageReferences, IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ImageReference, type MessageContent} from "../../images/content.js";
 import type {AgentEvent} from "../../agent/types.js";
-import type {CollaborationMode} from "../../collaboration/index.js";
 import type {Message} from "../../llm/types.js";
 import type {ToolContext} from "../../tools/types.js";
 import type {SlashCommandProcessor} from "../../slash/types.js";
@@ -53,7 +52,6 @@ interface UITurnControllerDependencies {
     openModel?(): void;
     openProviders?(): void;
     openPermissions?(): void;
-    setCollaborationMode?(mode: CollaborationMode): void;
 
     runTurn(input: MessageContent, signal: AbortSignal): Promise<void>;
 
@@ -219,7 +217,6 @@ export class UITurnController {
                     openModel: this.dependencies.openModel,
                     openProviders: this.dependencies.openProviders,
                     openPermissions: this.dependencies.openPermissions,
-                    setCollaborationMode: this.dependencies.setCollaborationMode,
                 });
                 if (handled) return true;
             }
@@ -367,7 +364,6 @@ export class UITurnController {
             openGitDiff: this.dependencies.openGitDiff,
             openModel: this.dependencies.openModel,
             openPermissions: this.dependencies.openPermissions,
-                    setCollaborationMode: this.dependencies.setCollaborationMode,
         }).then((result) => {
             if (result !== true) {
                 throw new Error(`Running Slash did not finish as a local command: ${input}`);

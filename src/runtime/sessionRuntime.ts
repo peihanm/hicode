@@ -17,7 +17,6 @@ import {
     type PermissionMode,
 } from "../permissions/index.js";
 import {appendLocalPermissionDirectory} from "../settings/index.js";
-import type {CollaborationMode} from "../collaboration/index.js";
 import {type SaveSessionSnapshotInput} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
@@ -44,7 +43,6 @@ export interface RootSessionSeed {
 interface RootSessionSnapshotState {
     todos: readonly Todo[];
     permissionMode: PermissionMode;
-    collaborationMode: CollaborationMode;
     uiEvents: readonly PersistedUIEvent[];
     allowEmpty?: boolean;
     summaryHint?: string;
@@ -147,7 +145,6 @@ export function createRootSessionRuntime({
         history: [...history],
         todos: [...state.todos],
         permissionMode: state.permissionMode,
-        collaborationMode: state.collaborationMode,
         compactState: {...compactState},
         uiEvents: [...state.uiEvents],
         queuedInputs: messageQueue.list(),

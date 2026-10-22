@@ -9,7 +9,6 @@ import {useRef, useCallback, useEffect, useMemo, useState, type ReactNode} from 
 import {Box, Text, useApp, useInput} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
-import {getNextCollaborationMode, type CollaborationMode} from "../collaboration/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {MessageList} from "./conversation/MessageList.js";
 import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
@@ -77,7 +76,6 @@ export function App({
                             resources,
                             runtimeApproval,
                             initialPermissionMode,
-                            initialCollaborationMode,
         initialImages,
                             initialSession,
                             rootSession,
@@ -88,7 +86,6 @@ export function App({
         resources: RootRuntimeResources;
         runtimeApproval?: ReactNode;
         initialPermissionMode?: PermissionMode;
-        initialCollaborationMode?: CollaborationMode;
     initialImages?: readonly string[];
         initialSession?: LoadedSession;
         rootSession: RootSessionRuntime;
@@ -124,7 +121,6 @@ export function App({
         const turn = useTurnController({
             resources,
             initialPermissionMode,
-            initialCollaborationMode,
             initialSession,
             rootSession,
             resumedDraft,
@@ -200,12 +196,6 @@ export function App({
                     return;
                 }
                 void requestExit();
-                return;
-            }
-            if (!turn.confirmRequest && key.shift && key.tab) {
-                turn.setCollaborationMode(
-                    getNextCollaborationMode(turn.collaborationMode)
-                );
                 return;
             }
             if (key.ctrl && input === "o") {
@@ -407,7 +397,6 @@ export function App({
                     cwd={cwd}
                     model={`${turn.primaryModel.label} · Reasoning: ${(turn.primaryModel.reasoning ?? "default")}`}
                     permissionMode={turn.permissionMode}
-                    collaborationMode={turn.collaborationMode}
                     tokenCount={turn.tokenInfo.count}
                     percentUsed={turn.tokenInfo.percentUsed}
                     warning={turn.tokenInfo.warning}

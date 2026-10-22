@@ -45,7 +45,7 @@ describe("resolvePermission", () => {
   test("Full Access 保留 deny，普通 ask 由预授权满足", async () => {
     const ctx = createTestContext("/tmp/project", {
       permissionMode: "full-access",
-        collaborationMode: "build",
+
     });
     ctx.permissionRules.deny.push({ toolName: "synthetic", source: "project" });
     await expect(resolvePermission(createTool(), {}, ctx)).resolves.toMatchObject({
@@ -62,7 +62,7 @@ describe("resolvePermission", () => {
   test("工具自身 deny 始终优先", async () => {
     const ctx = createTestContext("/tmp/project", {
       permissionMode: "full-access",
-        collaborationMode: "build",
+
     });
     const tool = createTool({
       checkPermissions: async () => ({ behavior: "deny", message: "stale" }),
@@ -195,7 +195,7 @@ describe("resolvePermission", () => {
     });
     const defaultContext = createTestContext("/tmp/project", {
       permissionMode: "ask",
-        collaborationMode: "build",
+
     });
     await expect(resolvePermission(tool, {}, defaultContext)).resolves.toEqual({
       behavior: "allow",
@@ -209,24 +209,24 @@ describe("resolvePermission", () => {
       behavior: "ask",
     });
 
-    const planContext = createTestContext("/tmp/project", {
+    const readOnlyContext = createTestContext("/tmp/project", {
       permissionMode: "ask",
-        collaborationMode: "plan",
+        readOnlyTools: true,
     });
-    await expect(resolvePermission(tool, {}, planContext)).resolves.toEqual({
+    await expect(resolvePermission(tool, {}, readOnlyContext)).resolves.toEqual({
       behavior: "deny",
-      message: "Plan mode does not execute modifying operations for synthetic ; the user must switch to Build before implementation",
+      message: "This Agent only allows read-only tool calls",
     });
   });
 
-  test("Plan 在 Bypass 之前收窄写操作", async () => {
+  test("只读限制在 Full Access 之前收窄写操作", async () => {
     const context = createTestContext("/tmp/project", {
       permissionMode: "full-access",
-      collaborationMode: "plan",
+      readOnlyTools: true,
     });
     await expect(resolvePermission(createTool(), {}, context)).resolves.toEqual({
       behavior: "deny",
-      message: "Plan mode does not execute modifying operations for synthetic ; the user must switch to Build before implementation",
+      message: "This Agent only allows read-only tool calls",
     });
   });
 });

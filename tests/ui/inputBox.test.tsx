@@ -321,7 +321,7 @@ describe("multiline input box", () => {
     const initial = instance.lastFrame() ?? "";
     expect(initial).toContain("❯ /help");
     expect(initial).toContain("/model");
-    expect(initial).toContain("/plan");
+    expect(initial).not.toContain("/plan");
     expect(initial).not.toContain("/agents");
     expect(initial).not.toContain("/tasks");
     expect(initial).toContain("↑/↓ select · Tab complete");

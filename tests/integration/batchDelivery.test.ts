@@ -25,7 +25,7 @@ test.each([[0, true], [0, false], [1_000_000, true]] as const)("batch delivery u
         let threads: UIThread[] = [], frozen: Message[] = [];
         let hookOutcomes: string[] = [];
         const snapshot = () => ({cwd, sessionId: ctx.sessionId, model: ctx.model, history, todos: [],
-            permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: [...collector.getEvents()]});
+            permissionMode: "ask" as const,  uiEvents: [...collector.getEvents()]});
         ctx.runHook = async input => {
             if (input.hook_event_name === "PostToolBatch") hookOutcomes = input.tools.map(tool => tool.outcome);
             return {blocked: false, additionalContexts: [], executions: []};

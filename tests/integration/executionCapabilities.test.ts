@@ -37,7 +37,7 @@ describe("effective execution capabilities", () => {
         });
     });
 
-    test.each(["ask", "auto-review", "full-access"] as const)("Plan %s refuses writer launches without approval", async permissionMode => {
+    test.each(["ask", "auto-review", "full-access"] as const)("Read-only %s refuses writer launches without approval", async permissionMode => {
         await withTempProject(async cwd => {
             const workspace = `${cwd}/workspace`;
             await mkdir(workspace);
@@ -46,7 +46,7 @@ describe("effective execution capabilities", () => {
                 allowedTools: ["write_file"],
             }]});
             let approvals = 0;
-            const ctx = createTestContext(workspace, {permissionMode, collaborationMode: "plan", workspaceBoundary: cwd,
+            const ctx = createTestContext(workspace, {permissionMode, readOnlyTools: true, workspaceBoundary: cwd,
                 canUseTool: async () => { approvals++; return {behavior: "allow"}; }});
             const child = createFakeLLM([
                 assistantToolCall("write_file", {path: "inside.txt", content: "approved"}, "inside"),
@@ -64,7 +64,7 @@ describe("effective execution capabilities", () => {
             expect(await Bun.file(`${workspace}/inside.txt`).exists()).toBe(false);
             expect(child.calls).toHaveLength(0);
             expect(await Bun.file(`${cwd}/outside.txt`).exists()).toBe(false);
-            expect(ctx.collaborationMode).toBe("plan");
+
             expect(ctx.permissionMode).toBe(permissionMode);
         });
     });
@@ -72,7 +72,7 @@ describe("effective execution capabilities", () => {
     test("invalid parent cwd outside its hard boundary stays fail closed after approval", async () => {
         await withTempProject(async cwd => {
             await mkdir(`${cwd}/allowed`);
-            const ctx = createTestContext(cwd, {collaborationMode: "plan", workspaceBoundary: `${cwd}/allowed`});
+            const ctx = createTestContext(cwd, {readOnlyTools: true, workspaceBoundary: `${cwd}/allowed`});
             const child = createFakeLLM([
                 assistantToolCall("write_file", {path: "allowed/ok.txt", content: "ok"}, "ok"),
                 assistantToolCall("write_file", {path: "root.txt", content: "wrong"}, "wrong"),
@@ -85,11 +85,11 @@ describe("effective execution capabilities", () => {
             await createToolRuntime({toolOverrides: [createAgentTool(createWriterRegistry())]}).executeTool("agent", JSON.stringify({subagent_type: "FixtureWriter", description: "bounded write", prompt: "write"}), ctx, "bounded");
             expect(await Bun.file(`${cwd}/allowed/ok.txt`).exists()).toBe(false);
             expect(await Bun.file(`${cwd}/root.txt`).exists()).toBe(false);
-            expect(ctx.collaborationMode).toBe("plan");
+
         });
     });
 
-    test.each(["bash", "mcp__fixture__mutate"])("approval to launch %s child does not remove Plan", async toolName => {
+    test.each(["bash", "mcp__fixture__mutate"])("approval to launch %s child does not remove read-only restrictions", async toolName => {
         await withTempProject(async cwd => {
             let writes = 0;
             const tool: Tool = {name: toolName, description: "fixture", parameters: z.object({}),
@@ -99,7 +99,7 @@ describe("effective execution capabilities", () => {
                 allowedTools: [toolName],
             }]});
             let approvals = 0;
-            const ctx = createTestContext(cwd, {permissionMode: "full-access", collaborationMode: "plan",
+            const ctx = createTestContext(cwd, {permissionMode: "full-access", readOnlyTools: true,
                 mcpManager: {
         async initialize() {}, getSnapshots: () => [], getTools: () => [tool], subscribe: () => () => {}, async setToolPolicy() {}, async reconnect() {}, async closeAll() {}},
                 canUseTool: async () => { approvals++; return {behavior: "allow"}; }});
@@ -128,7 +128,7 @@ describe("effective execution capabilities", () => {
                 await Bun.write(`${cwd}/input`, "b\na\n");
                 let approvals = 0;
                 const ctx = createTestContext(cwd, {
-                    permissionMode: "ask", collaborationMode: "plan", readOnlyTools: true,
+                    permissionMode: "ask", readOnlyTools: true,
                     canUseTool: async () => { approvals++; return {behavior: "deny", message: "no writes"}; },
                 });
                 const rt = createToolRuntime();
@@ -152,14 +152,14 @@ describe("effective execution capabilities", () => {
         });
     });
 
-    test.each(["ask", "auto-review", "full-access"] as const)("Plan %s cannot escape via Bash Agent", async permissionMode => {
+    test.each(["ask", "auto-review", "full-access"] as const)("Read-only %s cannot escape via Bash Agent", async permissionMode => {
         await withTempProject(async cwd => {
             const registry = createSubagentRegistry({issues: [], definitions: [{
                 source: "host", id: "fixture", agentType: "ShellHelper", whenToUse: "fixture",
                 systemPrompt: "fixture", allowedTools: ["bash"],
             }]});
             let approvals = 0;
-            const ctx = createTestContext(cwd, {permissionMode, collaborationMode: "plan",
+            const ctx = createTestContext(cwd, {permissionMode, readOnlyTools: true,
                 canUseTool: async () => { approvals++; return {behavior: "deny", message: "no writes"}; },
             });
             const child = createFakeLLM([

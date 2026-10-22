@@ -2,7 +2,7 @@
 
 ## Three separate controls
 
-**Build/Plan chooses the kind of work. `/permissions` chooses how extra access is approved. `/sandbox` chooses network policy for sandboxed Bash.** Changing one is not equivalent to changing all three.
+**The user request defines the work. `/permissions` chooses how extra access is approved. `/sandbox` chooses network policy for sandboxed Bash.**
 
 | Profile | Behavior |
 | --- | --- |

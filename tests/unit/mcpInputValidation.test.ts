@@ -152,8 +152,8 @@ test("service allow preserves deny/ask, Plan and read-only boundaries; exception
     const tool = adaptMcpTools(server, {default: "allow", exceptions: {}}).tools[0]!;
     expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("allow");
     expect(tool.isReadOnly?.({})).toBe(false); expect(tool.isConcurrencySafe?.({})).toBe(false);
-    ctx.setCollaborationMode("plan"); expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("deny");
-    ctx.setCollaborationMode("build");
+    Object.assign(ctx, {readOnlyTools: true}); expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("deny");
+    Object.assign(ctx, {readOnlyTools: false});
     expect((await resolvePermission(tool, {}, createTestContext(cwd, {readOnlyTools: true}))).behavior).toBe("deny");
     ctx.permissionRules.ask.push({source: "local", toolName: name});
     expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("ask");

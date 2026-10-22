@@ -22,7 +22,7 @@ export interface CommandReadAccess {
 /** Preparing a view or validating a result grants only that exact managed file for this invocation. */
 export async function prepareCommandReadAccess(command: string, cwd: string, ctx: ToolContext): Promise<CommandReadAccess | undefined> {
     const plan = analyzeReadCommand(command);
-    const restricted = ctx.readOnlyTools || ctx.collaborationMode === "plan";
+    const restricted = ctx.readOnlyTools;
     if (!plan) {
         if (restricted) throw new Error("Read-only commands must use rg, ls, pwd, cat, head, tail, wc or echo with literal arguments; use read_file for other reads. Shell expansion, redirection and executing other programs are not allowed.");
         return undefined;

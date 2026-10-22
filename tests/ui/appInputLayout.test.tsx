@@ -152,7 +152,7 @@ test("Ctrl+T 不隐藏 Todo，也不改变输入草稿", async () => {
       history: [{role: "system", content: "fixture"}],
       todos: [{content: "检查实现", activeForm: "正在检查实现", status: "in_progress"},
         {content: "运行测试", activeForm: "正在运行测试", status: "pending"}],
-      permissionMode: "ask", collaborationMode: "build", uiEvents: [],
+      permissionMode: "ask",  uiEvents: [],
       taskNotificationReceipts: [], queuedInputs: [],
     }}/>);
     try {

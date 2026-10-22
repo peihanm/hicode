@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {contentText} from "../../src/images/content.js";
 import {createInitialHistory, updateInitialHistoryModel} from "../../src/prompt/index.js";
 import {getWorkerInstructions} from "../../src/prompt/sections.js";
-import {withExecutionContext} from "../../src/prompt/collaboration.js";
+import {withExecutionContext} from "../../src/prompt/executionContext.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createAgentSystemPrompt} from "../../src/subagents/prompt.js";
 import {EXPLORE_SUBAGENT} from "../../src/subagents/builtins/explore/index.js";
@@ -23,14 +23,14 @@ describe("English prompt contracts", () => {
             else process.env.SHELL = previous;
         }
     });
-    test("Root and actual worker prompts share evidence-driven implementation guidance without overriding Plan", () => {
+    test("Root and actual worker prompts share evidence-driven implementation guidance while preserving read-only restrictions", () => {
         const history = createInitialHistory("/project", "test-model");
-        const plan = withExecutionContext(history, {
-            collaborationMode: "plan", permissionMode: "ask",
+        const readOnly = withExecutionContext(history, {
+            permissionMode: "ask",
             permissionPromptPolicy: "onRequest", readOnlyTools: true,
         });
         const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", "worker-model", ["read_file"]);
-        for (const prompt of [contentText(history[0]!.content), contentText(plan[0]!.content), worker]) {
+        for (const prompt of [contentText(history[0]!.content), contentText(readOnly[0]!.content), worker]) {
             expect(prompt.match(/# Task execution/g)).toHaveLength(1);
             expect(prompt).toContain("For implementation work");
             expect(prompt).toContain("next verifiable change");
@@ -41,7 +41,7 @@ describe("English prompt contracts", () => {
             expect(prompt).toContain("without making unsolicited implementation changes");
             expect(prompt).toContain("Speed does not justify skipping necessary analysis or verification");
         }
-        expect(contentText(plan[0]!.content)).toContain("restricted to read-only tools");
+        expect(contentText(readOnly[0]!.content)).toContain("restricted to read-only tools");
         expect(worker).not.toContain("# Tools and coordination");
     });
     test("Root keeps authorization, language and verification boundaries while tool details live with tools", () => {
@@ -92,7 +92,7 @@ describe("English prompt contracts", () => {
     test("permission facts reflect interaction policy without mutating History or conversation", () => {
         const history = [...createInitialHistory("/project", "m"), {role: "user" as const, origin: "user" as const, content: "保留中文任务"}];
         const before = structuredClone(history);
-        const base = {collaborationMode: "build" as const, permissionMode: "ask" as const, permissionPromptPolicy: "never" as const, readOnlyTools: false};
+        const base = { permissionMode: "ask" as const, permissionPromptPolicy: "never" as const, readOnlyTools: false};
         const never = withExecutionContext(history, base);
         expect(contentText(never[0]!.content)).toContain("There is no interactive approval channel");
         expect(never.slice(1)).toEqual(history.slice(1));
@@ -100,10 +100,10 @@ describe("English prompt contracts", () => {
         const review = withExecutionContext(history, {...base, permissionMode: "auto-review", permissionPromptPolicy: "onRequest"});
         expect(contentText(review[0]!.content)).toContain("independent approval reviewer");
         expect(contentText(review[0]!.content)).not.toContain("no interactive approval channel");
-        const fullPlan = withExecutionContext(history, {...base, permissionMode: "full-access", collaborationMode: "plan", readOnlyTools: true});
-        expect(contentText(fullPlan[0]!.content)).toContain("Current mode: Plan");
-        expect(contentText(fullPlan[0]!.content)).toContain("restricted to read-only tools");
-        expect(contentText(fullPlan[0]!.content)).toContain("does not authorize unrelated tasks");
+        const fullReadOnly = withExecutionContext(history, {...base, permissionMode: "full-access", readOnlyTools: true});
+        expect(contentText(fullReadOnly[0]!.content)).not.toContain("collaboration_mode");
+        expect(contentText(fullReadOnly[0]!.content)).toContain("restricted to read-only tools");
+        expect(contentText(fullReadOnly[0]!.content)).toContain("does not authorize unrelated tasks");
         expect(JSON.stringify(history)).not.toContain("execution_context");
     });
     test("model switch updates only the system model line", () => {

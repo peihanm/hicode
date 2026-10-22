@@ -116,7 +116,7 @@ describe("running input queue UI", () => {
                 ],
                 todos: [],
                 permissionMode: "ask",
-                collaborationMode: "build",
+
                 uiEvents: [],
                 taskNotificationReceipts: [],
                 queuedInputs: [

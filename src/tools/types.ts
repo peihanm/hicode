@@ -8,7 +8,6 @@ import type {ImageAccess} from "../images/access.js";
 import type {FileCommitCoordinator} from "./shared/fileCommit.js";
 import {z} from "zod";
 import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionPromptPresentation, PermissionResult, PermissionRules,} from "../permissions/index.js";
-import type {CollaborationMode} from "../collaboration/index.js";
 import type {Todo} from "../todos.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {CompactState} from "../context/index.js";
@@ -90,9 +89,6 @@ export interface ToolContext {
     reviewerModel?: ModelTargetSettings;
     approvalEvidence?: () => readonly Message[];
     onApprovalEvent?: (event: ApprovalEvent) => void | Promise<void>;
-
-    // Build/Plan is independent of permission profiles; Plan narrows capabilities without changing permissionMode.
-    readonly collaborationMode: CollaborationMode;
 
     // A non-interactive Host narrows ask to deny; this is not a user permission profile.
     permissionPromptPolicy: PermissionPromptPolicy;

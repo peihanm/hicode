@@ -1,5 +1,4 @@
 import {parsePermissionMode, type PermissionMode,} from "../permissions/index.js";
-import {parseCollaborationMode, type CollaborationMode} from "../collaboration/index.js";
 import type {ResumeMode} from "../session/index.js";
 import {
     formatLLMProviderNames,
@@ -16,7 +15,6 @@ export interface CliOptions {
     model?: string;
     source?: LLMProviderName;
     permissionMode?: PermissionMode;
-    collaborationMode?: CollaborationMode;
     resumeMode: ResumeMode;
     printPrompt?: string;
     eventLog?: string;
@@ -42,7 +40,6 @@ Options:
   --model <model>                Override the primary model for this run
   --source <source>              Override primary model source: ${LLM_PROVIDER_NAMES.join(" | ")}
   --permission-mode <mode>       ask | auto-review | full-access
-  --collaboration-mode <mode>    build | plan
   --storage <action>             projects | inspect | preview | clean | repair-index (no model request)
   -h, --help                     Show help
 `);
@@ -204,28 +201,6 @@ export function parseCliArgs(args: string[]): CliOptions {
             }
             options.permissionMode = mode;
             i++;
-            continue;
-        }
-        if (arg === "--collaboration-mode") {
-            const value = args[i + 1];
-            if (!value) {
-                throw new Error("--collaboration-mode requires a mode");
-            }
-            const mode = parseCollaborationMode(value);
-            if (!mode) {
-                throw new Error(`Unknown collaboration mode: ${value}`);
-            }
-            options.collaborationMode = mode;
-            i++;
-            continue;
-        }
-        if (arg.startsWith("--collaboration-mode=")) {
-            const value = arg.slice("--collaboration-mode=".length);
-            const mode = parseCollaborationMode(value);
-            if (!mode) {
-                throw new Error(`Unknown collaboration mode: ${value}`);
-            }
-            options.collaborationMode = mode;
             continue;
         }
         if (arg.startsWith("--permission-mode=")) {

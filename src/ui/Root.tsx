@@ -10,7 +10,6 @@ import {
     type SessionIndexEntry,
 } from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
-import type {CollaborationMode} from "../collaboration/index.js";
 import {COLORS} from "./theme.js";
 import {RuntimeBootstrap} from "./bootstrap/RuntimeBootstrap.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
@@ -57,14 +56,12 @@ export function Root({
                          configuration,
                          shutdown,
                          initialPermissionMode,
-                         initialCollaborationMode,
         initialImages,
                          resumeMode,
                      }: {
     configuration: HiCodeRootConfiguration;
     shutdown: InteractiveShutdown;
     initialPermissionMode?: PermissionMode;
-    initialCollaborationMode?: CollaborationMode;
     initialImages?: readonly string[];
     resumeMode: ResumeMode;
 }) {
@@ -146,7 +143,6 @@ export function Root({
             shutdown={shutdown}
             configuration={configuration}
             initialPermissionMode={initialPermissionMode}
-            initialCollaborationMode={initialCollaborationMode}
                 initialImages={initialImages}
             session={state.session}
             onSessionSwitch={(session) => setState({view: "app", session})}

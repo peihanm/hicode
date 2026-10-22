@@ -50,7 +50,7 @@ describe("managed Agent and isolated child threads", () => {
       ]);
       const ctx = createTestContext(cwd, {
         permissionMode: "ask",
-        collaborationMode: "build",
+
         canUseTool: async () => {
           confirmations += 1;
           return {behavior: "allow"};

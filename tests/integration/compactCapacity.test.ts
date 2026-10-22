@@ -1,4 +1,4 @@
-import {withExecutionContext} from "../../src/prompt/collaboration.js";
+import {withExecutionContext} from "../../src/prompt/executionContext.js";
 import {buildInvokeMessages} from "../../src/prompt/invokeMessages.js";
 import {getUserContextBlocks} from "../../src/prompt/attachments.js";
 import {tokenCountWithEstimation} from "../../src/context/tokens.js";
@@ -133,9 +133,9 @@ test("近期 ask_user 回答以完整工具组保留，旧源码观察不会随�
 });
 
 
-test("压缩计入实际模式与权限说明，但只持久化原始 system", async () => {
+test("压缩计入实际权限与只读说明，但只持久化原始 system", async () => {
     await withTempProject(async cwd => {
-        const ctx = createTestContext(cwd, {permissionMode: "auto-review", permissionPromptPolicy: "never", collaborationMode: "plan"});
+        const ctx = createTestContext(cwd, {permissionMode: "auto-review", permissionPromptPolicy: "never", readOnlyTools: true});
         const history: Message[] = [{role: "system", content: "unchanged system"},
             {role: "user", origin: "user", content: "旧请求"},
             {role: "assistant", content: "old material ".repeat(12000)},
@@ -147,7 +147,8 @@ test("压缩计入实际模式与权限说明，但只持久化原始 system", a
         expect(result.postTokenCount).toBe(tokenCountWithEstimation(actual, []));
         expect(String(actual[0]?.content)).toContain("independent approval reviewer");
         expect(String(actual[0]?.content)).toContain("no interactive approval channel");
-        expect(String(actual[0]?.content)).toContain("Current mode: Plan");
+        expect(String(actual[0]?.content)).toContain("restricted to read-only tools");
+        expect(String(actual[0]?.content)).not.toContain("collaboration_mode");
         expect(history[0]?.content).toBe("unchanged system");
     });
 });

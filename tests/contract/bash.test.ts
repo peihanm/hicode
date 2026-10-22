@@ -144,7 +144,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command: "printf sandboxed-default"}),
         createTestContext(cwd, {
           permissionMode: "ask",
-        collaborationMode: "build",
+
           shellRunner: readySandboxRunner,
           canUseTool: async () => {
             throw new Error("ready Sandbox 内的普通 Bash 不应请求权限");
@@ -166,7 +166,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command: "printf host-default"}),
         createTestContext(cwd, {
           permissionMode: "ask",
-        collaborationMode: "build",
+
           canUseTool: async (tool) => {
             requests.push(tool);
             return {behavior: "allow"};
@@ -192,7 +192,7 @@ describe("bash tool contract", () => {
         }),
         createTestContext(cwd, {
           permissionMode: "full-access",
-        collaborationMode: "build",
+
           canUseTool: async (tool, message) => {
             requests.push({ tool, message });
             return { behavior: "allow" };
@@ -218,7 +218,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command: "npm install && npm run build"}),
         createTestContext(cwd, {
           permissionMode: "ask",
-          collaborationMode: "build",
+
           shellRunner: runner,
           canUseTool: async (_tool, message, _input, options) => {
             requests.push({message, options});
@@ -251,7 +251,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command}),
         createTestContext(cwd, {
           permissionMode: "ask",
-          collaborationMode: "build",
+
           shellRunner: runner,
           canUseTool: async (_tool, message, _input, options) => {
             requests.push({message, options});
@@ -277,7 +277,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command}),
         createTestContext(cwd, {
           permissionMode: "ask",
-          collaborationMode: "build",
+
           shellRunner: runner,
           canUseTool: async () => {
             throw new Error("普通参数不应触发宿主执行授权");
@@ -299,7 +299,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command: "npx --version"}),
         createTestContext(cwd, {
           permissionMode: "ask",
-          collaborationMode: "build",
+
           shellRunner: runner,
           canUseTool: async () => {
             throw new Error("已允许的 Registry 不应再次询问");
@@ -324,7 +324,7 @@ describe("bash tool contract", () => {
         JSON.stringify({command: "npm install"}),
         createTestContext(cwd, {
           permissionMode: "ask",
-          collaborationMode: "build",
+
           permissionPromptPolicy: "never",
           shellRunner: runner,
           canUseTool: async () => {
@@ -349,7 +349,7 @@ describe("bash tool contract", () => {
         }),
         createTestContext(cwd, {
           permissionMode: "ask",
-        collaborationMode: "build",
+
           permissionPromptPolicy: "never",
           canUseTool: async () => {
             throw new Error("不应进入交互确认");

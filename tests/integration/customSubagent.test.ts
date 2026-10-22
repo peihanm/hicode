@@ -146,7 +146,7 @@ describe("custom subagent runtime", () => {
             ]);
             const ctx = createTestContext(cwd, {
                 permissionMode: "ask",
-        collaborationMode: "build",
+
                 canUseTool: async () => {
                     confirmations += 1;
                     return {behavior: "allow"};
@@ -210,7 +210,7 @@ describe("custom subagent runtime", () => {
             const accepted = createSubagentRunnerForTest({
                 parentContext: createTestContext(cwd, {
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                 }),
                 onEvent: () => {},
                 registry,
@@ -225,43 +225,43 @@ describe("custom subagent runtime", () => {
             });
             expect(await Bun.file(`${cwd}/allowed.txt`).exists()).toBe(false);
 
-            const planLLM = createFakeLLM([
+            const readOnlyLLM = createFakeLLM([
                 assistantToolCall(
                     "write_file",
-                    {path: "plan-blocked.txt", content: "blocked"},
-                    "plan-write"
+                    {path: "readonly-blocked.txt", content: "blocked"},
+                    "readonly-write"
                 ),
                 (options) => {
                     const result = options.messages.find((message) =>
                         message.role === "tool" &&
-                        message.tool_call_id === "plan-write"
+                        message.tool_call_id === "readonly-write"
                     );
                     expect(result?.content).toContain("This Agent only allows read-only tool calls");
-                    return assistantText("plan 写入未执行");
+                    return assistantText("只读上下文写入未执行");
                 },
             ]);
-            const planContext = createTestContext(cwd, {
+            const readOnlyContext = createTestContext(cwd, {
                 permissionMode: "ask",
-                collaborationMode: "plan",
+                readOnlyTools: true,
             });
-            planContext.permissionRules.allow.push({
+            readOnlyContext.permissionRules.allow.push({
                 toolName: "write_file",
                 source: "project",
             });
-            const planned = createSubagentRunnerForTest({
-                parentContext: planContext,
+            const readOnlyRunner = createSubagentRunnerForTest({
+                parentContext: readOnlyContext,
                 onEvent: () => {},
                 registry,
-                agentOptions: {callLLM: planLLM.callLLM},
-                toolResultStoreOptions: {hicodeHome: `${cwd}/plan-results`},
+                agentOptions: {callLLM: readOnlyLLM.callLLM},
+                toolResultStoreOptions: {hicodeHome: `${cwd}/readonly-results`},
             });
-            await planned({
+            await readOnlyRunner({
                 agentType: "writer",
-                description: "plan 隔离",
-                prompt: "尝试创建 plan-blocked.txt",
-                parentToolCallId: "custom-plan",
+                description: "只读隔离",
+                prompt: "尝试创建 readonly-blocked.txt",
+                parentToolCallId: "custom-readonly",
             });
-            expect(await Bun.file(`${cwd}/plan-blocked.txt`).exists()).toBe(false);
+            expect(await Bun.file(`${cwd}/readonly-blocked.txt`).exists()).toBe(false);
         });
     });
 
@@ -291,7 +291,7 @@ describe("custom subagent runtime", () => {
             ]);
             const ctx = createTestContext(cwd, {
                 permissionMode: "full-access",
-        collaborationMode: "build",
+
             });
             ctx.permissionRules.deny.push({
                 toolName: "write_file",
@@ -386,7 +386,7 @@ describe("custom subagent runtime", () => {
             const runner = createSubagentRunnerForTest({
                 parentContext: createTestContext(cwd, {
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     mcpManager,
                 }),
                 onEvent: () => {},

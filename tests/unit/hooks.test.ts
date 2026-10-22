@@ -782,7 +782,7 @@ describe("Hook tool boundary", () => {
             const runtime = createToolRuntime({hooks});
             const context = createTestContext(cwd, {
                     permissionMode: "ask",
-        collaborationMode: "build",
+
                     canUseTool: async (_name, _message, input) => {
                         askedInput = input;
                         return {behavior: "deny", message: "fixture deny"};
@@ -819,7 +819,7 @@ describe("Hook tool boundary", () => {
                     JSON.stringify({command: "pwd"}),
                     createTestContext(cwd, {
                         permissionMode: "ask",
-        collaborationMode: "build",
+
                         canUseTool: async () => {
                             permissionCalls += 1;
                             return {behavior: "allow"};

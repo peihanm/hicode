@@ -28,7 +28,7 @@ const {configuration} = loadHiCodeHostConfig({
 
 const hicode = await HiCode.create({configuration});
 try {
-  const thread = await hicode.startThread({collaborationMode: 'plan'});
+  const thread = await hicode.startThread();
   const result = await thread.run('Explain the project structure.');
   console.log(result.finalResponse);
   console.log(result.stopReason);
@@ -65,4 +65,4 @@ Current SDK/headless execution does not allow managed Agent tasks and rejects Ag
 
 `thread.run()` returns structured items, finalResponse, usage, stopReason, iterations and duration. Inspect stopReason and tool outcomes; a returned string alone is not proof of successful completion. `thread.runStreamed()` exposes the same operation as an event stream; consume or close it before starting another turn on that Thread.
 
-Per-turn options include `signal`, `permissionMode`, `collaborationMode` and optional `maxIterations` (1–100). Use a new AbortController for each run. Always close the HiCode instance in `finally` to release sessions, MCP connections and processes. Host event/log content can include user data or source code and should not be published without review.
+Per-turn options include `signal`, `permissionMode` and optional `maxIterations` (1–100). Use a new AbortController for each run. Always close the HiCode instance in `finally` to release sessions, MCP connections and processes. Host event/log content can include user data or source code and should not be published without review.

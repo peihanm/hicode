@@ -71,9 +71,8 @@ export function createSubagentFactories(
         }
         const {definition} = registration;
         const writable = request.workspaceWriteApproved === true && request.readOnly !== true && !definition.readOnly &&
-            !parentContext.readOnlyTools && parentContext.collaborationMode !== "plan";
+            !parentContext.readOnlyTools;
         const permissionRules = subagentPermissionRules(parentContext);
-        const collaborationMode = parentContext.collaborationMode;
         const canMessageParent = options.agentMessaging !== undefined && parentContext.toolNames.includes("agent_message");
         const tools = parentContext.availableTools.filter(tool =>
             parentContext.toolNames.includes(tool.name) && !CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool.name) &&
@@ -239,7 +238,6 @@ export function createSubagentFactories(
                             }),
                             getPermissionRules: () => permissionRules,
                             getPermissionMode: () => "ask",
-                            getCollaborationMode: () => collaborationMode,
                             getPermissionPromptPolicy: () =>
                                 "never",
                             async setTodos(todos) {
@@ -252,7 +250,7 @@ export function createSubagentFactories(
                     });
                     const snapshot = (history = childHistory, compactState = childCompactState) => ({
                         cwd: storageCwd, sessionId: childSessionId, model: childModel, history, compactState,
-                        todos: childTodos, permissionMode: "ask" as const, collaborationMode, allowEmpty: true,
+                        todos: childTodos, permissionMode: "ask" as const, allowEmpty: true,
                         toolDiscovery: runtime.getToolDiscoverySnapshot(),
                     });
                     childContext.sessionArchives = archiveAccess;

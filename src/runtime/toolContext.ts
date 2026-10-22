@@ -10,7 +10,6 @@ import type {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import type {CompactState} from "../context/index.js";
 import type {McpManagerLike} from "../mcp/types.js";
 import type {PermissionMode, PermissionPromptPolicy, PermissionRules,} from "../permissions/index.js";
-import type {CollaborationMode} from "../collaboration/index.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {Todo} from "../todos.js";
@@ -80,8 +79,6 @@ export interface ToolContextHost {
 
     getPermissionMode(): PermissionMode;
 
-    getCollaborationMode(): CollaborationMode;
-
     getPermissionPromptPolicy(): PermissionPromptPolicy;
 
     setTodos(todos: Todo[]): void | Promise<void>;
@@ -122,9 +119,6 @@ export function createToolContext({
         },
         get permissionMode() {
             return host.getPermissionMode();
-        },
-        get collaborationMode() {
-            return host.getCollaborationMode();
         },
         get permissionPromptPolicy() {
             return host.getPermissionPromptPolicy();

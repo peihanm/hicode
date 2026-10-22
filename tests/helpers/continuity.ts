@@ -8,10 +8,10 @@ import type {LLMCaller, Message} from "../../src/llm/types.js";
 import type {HiCodeStorageLayout} from "../../src/persistence/layout.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 
-export const continuityState = () => ({todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []});
+export const continuityState = () => ({todos: [], permissionMode: "ask" as const,  uiEvents: []});
 export const continuityHost: ToolContextHost = {canUseTool: async () => ({behavior: "allow"}),
     getPermissionRules: () => ({allow: [], ask: [], deny: []}), getPermissionMode: () => "full-access",
-    getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",
+    getPermissionPromptPolicy: () => "never",
     setTodos() {}};
 
 export function continuityFixture(cwd: string, storage: HiCodeStorageLayout, callLLM: LLMCaller, history: Message[] = [{role: "system", content: "fixture"}]) {

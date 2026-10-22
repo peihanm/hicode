@@ -7,8 +7,6 @@ Slash commands below are typed into the HiCode input box, not the operating-syst
 | Command | Purpose |
 | --- | --- |
 | `/help` | List available commands. |
-| `/plan` | Switch to exploration/planning without implementation writes. |
-| `/build` | Execute work under the selected permission profile. |
 | `/providers` | Configure provider keys, endpoints and model lists. |
 | `/model` | Select and persist the primary model. |
 | `/permissions` | Select Ask me, Agent review or Full Access. |
@@ -37,7 +35,6 @@ Slash commands below are typed into the HiCode input box, not the operating-syst
 ## Input and keyboard controls
 
 - **Enter:** submit. **Shift+Enter:** newline when the terminal sends a distinguishable key sequence.
-- **Shift+Tab:** switch Build/Plan. This is separate from the permission profile.
 - **Ctrl+O:** toggle expanded transcript/tool output; press again to return.
 - **@:** suggest workspace file paths. Insert a selected path with Tab/Enter. A file mention is not proof that the model has read the file contents.
 - Paste a supported local image path into the input to prepare an image attachment, or use CLI `--image`. The model must support images. Do not claim an attached image was understood until the model receives it.
@@ -66,7 +63,6 @@ Run `hicode --help` in the terminal for the installed CLI flags. Common examples
 hicode --continue
 hicode --resume
 hicode --resume <session-id>
-hicode --collaboration-mode plan
 hicode -p 'Explain the project structure' --output-format json
 hicode --image /absolute/path/screenshot.png
 ```

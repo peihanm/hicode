@@ -57,9 +57,9 @@ test("Memory overlay keeps live modes and revocations without granting Memory ac
  Object.defineProperty(ctx, "permissionPromptPolicy", {get: () => promptPolicy});
  try {await createMemoryAwareAgentRunner(async (_input, _history, _event, scoped) => {
   expect(scoped.memoryFiles).toBeUndefined();expect(ctx.memoryFiles).toBe(original);
-  ctx.setPermissionMode("full-access");ctx.setCollaborationMode("plan");promptPolicy="never";
+  ctx.setPermissionMode("full-access");Object.assign(ctx, {readOnlyTools: true});promptPolicy="never";
   rules={...rules,deny:[{source:"local",toolName:"mcp__fixture__execute"}]};
-  expect(scoped.permissionMode).toBe("full-access");expect(scoped.collaborationMode).toBe("plan");
+  expect(scoped.permissionMode).toBe("full-access");
   expect(scoped.permissionPromptPolicy).toBe("never");expect(scoped.permissionRules).toBe(rules);
   return {reply:"done",reason:"completed",iterations:1};
  },memory)("忽略记忆",[],()=>{},ctx,EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:()=>[],executeTool:async()=>"",isToolConcurrencySafe:()=>false});}

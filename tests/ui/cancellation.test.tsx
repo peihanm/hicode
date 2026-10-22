@@ -12,7 +12,7 @@ import { createTestRuntimeResources } from "../helpers/runtimeResources.js";
 afterEach(() => cleanup());
 
 describe("App cancellation", () => {
-  test("Agent 运行期间 Shift+Tab 会切换后续工具使用的协作模式", async () => {
+  test("Agent 运行期间 Shift+Tab 不改变执行权限", async () => {
     await withTempProject(async (cwd) => {
       let release!: () => void;
       const released = new Promise<void>((resolve) => {
@@ -22,7 +22,6 @@ describe("App cancellation", () => {
       const didStart = new Promise<void>((resolve) => {
         started = resolve;
       });
-      let observedCollaborationMode: string | undefined;
       let observedPermissionMode: string | undefined;
       const runAgentImpl: AgentRunner = async (
         _input,
@@ -32,7 +31,6 @@ describe("App cancellation", () => {
       ) => {
         started();
         await released;
-        observedCollaborationMode = ctx.collaborationMode;
         observedPermissionMode = ctx.permissionMode;
         return {
           reply: "done",
@@ -58,12 +56,11 @@ describe("App cancellation", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       const frame = instance.lastFrame() ?? "";
       expect(frame).toContain("GLM Test");
-      // The status bar may truncate a long cwd; this test checks mode switching.
-      expect(frame).toContain("| Plan |");
+      // The removed shortcut must not change permissions during a running turn.
+      expect(frame).not.toContain("| Plan |");
 
       release();
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(observedCollaborationMode).toBe("plan");
       expect(observedPermissionMode).toBe("ask");
     });
   });

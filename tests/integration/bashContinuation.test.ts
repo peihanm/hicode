@@ -280,7 +280,7 @@ test("Shell result receipt is ACKed only after paired History is saved, and wait
             compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: Number.MAX_SAFE_INTEGER})});
         const session = createRootSessionRuntime({resources, seed: {sessionId: "durable-shell",
             history: [{role: "system", content: "fixture"}], compactState: createCompactState()}});
-        const state = () => ({todos: [], permissionMode: "full-access" as const, collaborationMode: "build" as const, uiEvents: []});
+        const state = () => ({todos: [], permissionMode: "full-access" as const,  uiEvents: []});
         try {
             const result = await runRootTurn({resources, session, prompt: "run", signal: new AbortController().signal,
                 host: continuityHost, onEvent() {}, onHookResult() {}, onLifecycleIssue(issue) {throw issue.error;}, getSnapshotState: state});
@@ -310,7 +310,7 @@ test("explicit finite background work survives a normal reply and delivers its c
             compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: Number.MAX_SAFE_INTEGER})});
         const session = createRootSessionRuntime({resources, seed: {sessionId: "background-across-turns",
             history: [{role: "system", content: "fixture"}], compactState: createCompactState()}});
-        const state = () => ({todos: [], permissionMode: "full-access" as const, collaborationMode: "build" as const, uiEvents: []});
+        const state = () => ({todos: [], permissionMode: "full-access" as const,  uiEvents: []});
         const run = (prompt: string) => runRootTurn({resources, session, prompt, signal: new AbortController().signal,
             host: continuityHost, onEvent() {}, onHookResult() {}, onLifecycleIssue(issue) {throw issue.error;}, getSnapshotState: state});
         let finished!: () => void;
@@ -340,7 +340,7 @@ test("SDK finite continuation is available while services stay disabled; Thread.
         resources.agentRuntime.runAgent = createAgentRunner({callLLM: fake.callLLM,
             compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: Number.MAX_SAFE_INTEGER})});
         const thread = await createSDKThread({resources, seed: {sessionId: "sdk-shell", history: [{role: "system", content: "fixture"}], compactState: createCompactState()},
-            state: {todos: [], permissionMode: "full-access", collaborationMode: "build", uiEvents: []}, resumed: false, onClose() {}});
+            state: {todos: [], permissionMode: "full-access",  uiEvents: []}, resumed: false, onClose() {}});
         const tasks = resources.taskRuntime.forSession({sessionId: thread.id, toolResultStore: createTestContext(cwd).toolResultStore});
         try {
             expect((await thread.run("run", {maxIterations: 2})).stopReason).toBe("max_turns");

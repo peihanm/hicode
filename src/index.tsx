@@ -98,7 +98,6 @@ if (cliOptions.printPrompt !== undefined) {
         prompt: cliOptions.printPrompt,
         images: cliOptions.images,
         permissionMode: cliOptions.permissionMode,
-        collaborationMode: cliOptions.collaborationMode,
         resumeMode: cliOptions.resumeMode,
         outputFormat: cliOptions.outputFormat,
     });
@@ -135,7 +134,6 @@ if (cliOptions.printPrompt !== undefined) {
                         configuration={configuration}
                         initialImages={cliOptions.images}
                         initialPermissionMode={cliOptions.permissionMode}
-                        initialCollaborationMode={cliOptions.collaborationMode}
                         resumeMode={cliOptions.resumeMode}
                     />
                 </TerminalCursorAnchorProvider>

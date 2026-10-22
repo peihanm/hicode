@@ -37,7 +37,7 @@ if (mode === "session") {
       ],
       todos: [],
       permissionMode: "ask",
-        collaborationMode: "build",
+
     });
   }
 } else if (mode === "permission") {

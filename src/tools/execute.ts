@@ -133,7 +133,6 @@ export async function executeRegisteredTool(
     let permission;
     const approvalEpoch = ctx.approvalEpoch.signal;
     const executionMode = ctx.permissionMode;
-    const collaborationMode = ctx.collaborationMode;
     let authorizedPath: string | undefined;
     const inputPath = toolPathInput(name, input);
     try {
@@ -263,7 +262,7 @@ export async function executeRegisteredTool(
         }
         if (approvalEpoch.aborted) return inlineToolResult("Mode or permissions changed during approval; invoke the tool again", "denied");
         if (ctx.approvalBudget.stopped) return inlineToolResult(ctx.approvalBudget.stopMessage, "denied");
-        result = await tool.execute(input, {...ctx, permissionMode: executionMode, collaborationMode}, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(permissionApproved ? {permissionApproved} : {})});
+        result = await tool.execute(input, {...ctx, permissionMode: executionMode}, {toolCallId, ...(userAnswers ? {userAnswers} : {}), ...(permissionApproved ? {permissionApproved} : {})});
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
             return interruptedToolResult(ctx.signal);

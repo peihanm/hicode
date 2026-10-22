@@ -9,7 +9,7 @@ import {createTestMemoryRuntime,memoryOwner,remember} from "../helpers/memory.js
 import {withTempProject} from "../helpers/tempProject.js";
 test("unpublished extraction is not recalled as a second copy of Memory",async()=>withTempProject(async(cwd,storage)=>{
  const memory=createTestMemoryRuntime(cwd,{autoExtract:true,extractor:{async extract(messages){return [{key:"unverified",type:"project",basis:"assistant-claimed",sources:[messages.find(m=>m.role==="assistant")!.id],content:"助手称部署成功，未独立验证"}];}},consolidator:{async consolidate(){throw new Error("offline failure");}}});
- await saveSessionSnapshot(storage,{cwd,sessionId:"evidence",model:"glm-test",history:[{role:"user",origin:"user",content:"结果如何"},{role:"assistant",content:"部署成功"}],todos:[],permissionMode:"ask",collaborationMode:"build",uiEvents:[]});
+ await saveSessionSnapshot(storage,{cwd,sessionId:"evidence",model:"glm-test",history:[{role:"user",origin:"user",content:"结果如何"},{role:"assistant",content:"部署成功"}],todos:[],permissionMode:"ask",uiEvents:[]});
  await memory.captureSource("evidence",[],memoryOwner().signal);await expect(memory.maintain(memoryOwner())).rejects.toThrow("offline failure");
  expect((await memory.contextForTurn("继续")).block).not.toContain("部署成功");expect(await memory.read("unverified")).toBeUndefined();expect((await memory.status()).pending).toBe(1);
  await memory.close();

@@ -158,9 +158,9 @@ test("headless joins acknowledge notifications only after paired History is pers
             await session.initialize();
             session.history.push({role: "user", origin: "user", content: "Implement the delegated work"});
             const ctx = session.createContext({signal: new AbortController().signal, onEvent() {},
-                getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"}),
+                getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", }),
                 host: {canUseTool: async () => ({behavior: "deny", message: "No interaction in this test"}), getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-                    getPermissionMode: () => "ask", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never", setTodos() {}}});
+                    getPermissionMode: () => "ask", getPermissionPromptPolicy: () => "never", setTodos() {}}});
             const started = await session.taskSession.startAgent({request: {agentType: "Worker", description: "work", prompt: "work", parentToolCallId: "spawn"}, parentContext: ctx});
             ctx.taskJoin!.register(started);
             await waitForTaskCompletion(session.taskSession, [started.id], ctx.signal, "agent");

@@ -54,9 +54,9 @@ import {waitForTaskCompletion} from "../../src/tasks/wait.js";
                 ctx.permissionRules.ask = [];
                 ctx.permissionRules.allow = [];
 
-                ctx.setCollaborationMode("plan");
+                Object.assign(ctx, {readOnlyTools: true});
                 expect((await execute()).outcome).toBe("denied");
-                ctx.setCollaborationMode("build");
+                Object.assign(ctx, {readOnlyTools: false});
                 expect(approvals).toBe(1);
                 expect((await session.get(task.id))?.status).toBe("running");
                 ctx.setPermissionMode("ask");

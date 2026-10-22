@@ -65,12 +65,6 @@ export function Welcome() {
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>
                     <Text color={COLORS.accent}>Enter</Text> send
-                    {!compact && (
-                        <>
-                            {"  ·  "}
-                            <Text color={COLORS.accent}>shift+tab</Text> Build/Plan
-                        </>
-                    )}
                 </Text>
             </Box>
         </Box>

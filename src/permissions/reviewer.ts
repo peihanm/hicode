@@ -86,7 +86,7 @@ export function createApprovalReviewer(runAgent: AgentRunner): ApprovalReviewer 
             session: {webSources: new WebSources(),sessionId: `${parent.sessionId}:review:${request.id}`, toolResultStore: parent.toolResultStore,
                 fileState: createFileStateTracker(), compactState: createCompactState(), contextUsage: new ContextUsageTracker()},
             host: {canUseTool: async () => ({behavior: "deny", message: "Reviewer cannot request additional permissions"}),
-                getPermissionMode: () => "ask", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "never",
+                getPermissionMode: () => "ask", getPermissionPromptPolicy: () => "never",
                 getPermissionRules: () => ({allow: [], ask: [], deny: [...parent.permissionRules.deny]}),
                 setTodos() {}},
         });

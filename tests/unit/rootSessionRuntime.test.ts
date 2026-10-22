@@ -54,7 +54,7 @@ describe("RootSessionRuntime", () => {
       expect(runtime.taskSession.sessionId).toBe("session-runtime-test");
 
       let permissionMode: PermissionMode = "ask";
-      const ctx = runtime.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"}),
+      const ctx = runtime.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", }),
         signal: new AbortController().signal,
         onEvent: () => {},
         host: {
@@ -64,7 +64,6 @@ describe("RootSessionRuntime", () => {
           }),
           getPermissionRules: () => ({allow: [], ask: [], deny: []}),
           getPermissionMode: () => permissionMode,
-          getCollaborationMode: () => "build",
           getPermissionPromptPolicy: () => "onRequest",
           setTodos: () => {},
         },
@@ -84,7 +83,7 @@ describe("RootSessionRuntime", () => {
       const snapshot = runtime.createSnapshot({
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
         uiEvents: [],
       });
       expect(snapshot.history.at(-1)?.content).toBe("new turn");

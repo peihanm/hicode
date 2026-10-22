@@ -2,7 +2,6 @@ import {Box, Text} from "ink";
 import stringWidth from "string-width";
 import type {PermissionMode} from "../../permissions/index.js";
 import {getPermissionModeShortLabel} from "../../permissions/index.js";
-import type {CollaborationMode} from "../../collaboration/index.js";
 import {COLORS} from "../theme.js";
 import type {UITokenInfo} from "../turn/eventStore.js";
 import type {SandboxStatus} from "../../sandbox/index.js";
@@ -21,7 +20,6 @@ export function StatusBar({
                               cwd,
                               model,
                               permissionMode,
-                              collaborationMode,
                               tokenCount,
                               percentUsed,
                               warning,
@@ -35,7 +33,6 @@ export function StatusBar({
     cwd: string;
     model: string;
     permissionMode: PermissionMode;
-    collaborationMode: CollaborationMode;
     tokenCount: number;
     percentUsed: number; // 0-1
     warning: boolean;
@@ -66,7 +63,6 @@ export function StatusBar({
             : `${tokenStatus === "estimated" ? "~" : ""}${tokenCount} tokens (${tokenStatus === "estimated" ? "~" : ""}${pct}%)`;
     const modeLabel = getPermissionModeShortLabel(permissionMode);
     const showPermissionMode = permissionMode !== "ask";
-    const collaborationLabel = collaborationMode === "plan" ? "Plan" : undefined;
     const backgroundTaskLabel = getBackgroundTaskLabel(backgroundTasks);
     const showSandboxFailure = permissionMode !== "full-access" && sandboxStatus?.kind === "unavailable";
     const runtimeDetails = [
@@ -79,13 +75,12 @@ export function StatusBar({
     const firstPlain = [
         model,
         ...(showPermissionMode ? [modeLabel] : []),
-        ...(collaborationLabel ? [collaborationLabel] : []),
         cwd,
         tokenLabel,
         ...runtimeDetails,
     ].join(" | ");
     const shortcuts =
-        "shift+tab Build/Plan · ctrl+o transcript";
+        "ctrl+o transcript";
     const firstPadding = " ".repeat(Math.max(0, width - stringWidth(firstPlain) - 1));
     const shortcutPadding = " ".repeat(Math.max(0, width - stringWidth(shortcuts) - 1));
 
@@ -101,12 +96,6 @@ export function StatusBar({
                     <>
                         <Text> | </Text>
                         <Text color={modeColor}>{modeLabel}</Text>
-                    </>
-                )}
-                {collaborationLabel && (
-                    <>
-                        <Text> | </Text>
-                        <Text color={COLORS.warning}>{collaborationLabel}</Text>
                     </>
                 )}
                 <Text> | </Text>

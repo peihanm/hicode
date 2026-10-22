@@ -11,10 +11,10 @@ import {createTestContext} from "../helpers/testContext.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
-test("read-only roles and Plan reject unsupported shell capabilities without requesting approval", async () => {
+test("read-only roles reject unsupported shell capabilities without requesting approval", async () => {
     await withTempProject(async cwd => {
         let approvals = 0;
-        for (const options of [{readOnlyTools: true}, {collaborationMode: "plan" as const}]) {
+        for (const options of [{readOnlyTools: true}]) {
             const ctx = createTestContext(cwd, {...options, canUseTool: async () => {approvals++; return {behavior: "allow"};}});
             for (const command of ["node -e 'process.stdout.write(1)'", "rg --pre ./pre -e x .", "rg x . > output", "PATH=. rg x ."]) {
                 expect((await executeToolResult("bash", JSON.stringify({command}), ctx, command)).outcome).toBe("denied");

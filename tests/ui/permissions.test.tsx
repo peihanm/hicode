@@ -22,24 +22,7 @@ async function flush(ms = 20): Promise<void> {
 }
 
 describe("permission confirmation UI", () => {
-  test("/plan 和 /build 只切换工作方式，不启动模型或改变审批策略", async () => {
-    await withTempProject(async cwd => {
-      const instance = render(<App resources={createTestRuntimeResources(cwd)} initialPermissionMode="auto-review"/>);
-      await flush();
-      instance.stdin.write("/plan");
-      await flush();
-      instance.stdin.write(ENTER);
-      await flush(60);
-      expect(instance.lastFrame()).toContain("Agent review | Plan");
-      instance.stdin.write("/build");
-      await flush();
-      instance.stdin.write(ENTER);
-      await flush(60);
-      expect(instance.lastFrame()).toContain("Agent review");
-      expect(instance.lastFrame()).not.toContain("Agent review | Plan");
-    });
-  });
-  test("Shift+Tab 只切换 Build/Plan，不改变权限 Profile", async () => {
+  test("Shift+Tab 不改变权限 Profile", async () => {
     await withTempProject(async (cwd) => {
       const instance = render(
         <App
@@ -54,7 +37,7 @@ describe("permission confirmation UI", () => {
 
       instance.stdin.write("\u001B[Z");
       await flush(10);
-      expect(instance.lastFrame()).toContain("Agent review | Plan");
+      expect(instance.lastFrame()).not.toContain("Agent review | Plan");
 
       instance.stdin.write("\u001B[Z");
       await flush(10);

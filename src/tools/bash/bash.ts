@@ -103,7 +103,7 @@ async function commandWorkspace(ctx: ToolContext, cwd: string | undefined): Prom
     // A Bash directory capability never overrides explicit file-tool denial/approval rules.
     if ([...ctx.permissionRules.deny, ...ctx.permissionRules.ask].some(rule => ["read_file", "write_file", "edit_file"].includes(rule.toolName)))
         throw new Error("Memory Bash cannot bypass explicit file access rules; use the file tools or revise the applicable rules");
-    return {root, writable: !ctx.readOnlyTools && ctx.collaborationMode !== "plan"};
+    return {root, writable: !ctx.readOnlyTools};
 }
 
 function backgroundSyntaxMessage(): string {
@@ -260,7 +260,7 @@ export const bashTool: Tool<typeof inputSchema> = {
             if (commandCwd.outcome === "failed") throw new ToolInputError(commandCwd.message);
             return {behavior: "deny", message: commandCwd.message};
         }
-        if ((ctx.readOnlyTools || ctx.collaborationMode === "plan") && sandbox_permissions === "require_escalated") {
+        if ((ctx.readOnlyTools) && sandbox_permissions === "require_escalated") {
             return {behavior: "deny", message: "Read-only command execution cannot leave the Sandbox"};
         }
         if (sandbox_permissions !== "require_escalated") {

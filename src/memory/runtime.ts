@@ -260,7 +260,6 @@ export function createMemoryAwareAgentRunner(baseRunAgent: AgentRunner, memory: 
             // The Memory overlay must not freeze the Host's live permission state.
             get permissionRules() {return ctx.permissionRules;},
             get permissionMode() {return ctx.permissionMode;},
-            get collaborationMode() {return ctx.collaborationMode;},
             get permissionPromptPolicy() {return ctx.permissionPromptPolicy;},
             memoryFiles: recalled.ignoredForTurn ? undefined : ctx.memoryFiles,
         };

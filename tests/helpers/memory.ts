@@ -36,6 +36,6 @@ export async function queueSource(store: MemoryPublicationStore, key: string, co
 }
 export async function queueMemory(cwd: string, key: string, content: string) {
  const storage=createTestStorage(cwd); const sessionId=`memory-source-${key}`;
- await saveSessionSnapshot(storage,{cwd,sessionId,model:"glm-test",history:[{role:"user",origin:"user",content:JSON.stringify({key,content})}],todos:[],permissionMode:"ask",collaborationMode:"build",uiEvents:[]});
+ await saveSessionSnapshot(storage,{cwd,sessionId,model:"glm-test",history:[{role:"user",origin:"user",content:JSON.stringify({key,content})}],todos:[],permissionMode:"ask",uiEvents:[]});
  await queueSource(new MemoryPublicationStore(storage,cwd),key,content,sessionId,readSessionSourceIds(storage,cwd,sessionId));
 }

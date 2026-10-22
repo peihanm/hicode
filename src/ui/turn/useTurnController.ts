@@ -14,7 +14,6 @@ import {
 } from "../../session/index.js";
 import type {PermissionDecision} from "../../permissions/index.js";
 import {addToAllowList, type PermissionMode, type PermissionRules,} from "../../permissions/index.js";
-import type {CollaborationMode} from "../../collaboration/index.js";
 import type {RootRuntimeResources} from "../../runtime/resources.js";
 import type {Todo} from "../../todos.js";
 import type {UIThread} from "../conversation/types.js";
@@ -34,7 +33,6 @@ import {formatModelTarget} from "../../llm/modelCatalog.js";
 interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
     initialPermissionMode?: PermissionMode;
-    initialCollaborationMode?: CollaborationMode;
     initialSession?: LoadedSession;
     rootSession: RootSessionRuntime;
     resumedDraft?: MessageContent;
@@ -65,7 +63,6 @@ export function selectLiveThreads(
 export function useTurnController({
                                           resources,
                                           initialPermissionMode,
-                                          initialCollaborationMode,
                                           initialSession,
                                           rootSession,
                                           resumedDraft,
@@ -108,11 +105,6 @@ export function useTurnController({
             () => resources.primaryModel.target
         );
         const permissionModeRef = useRef<PermissionMode>(permissionMode);
-        const [collaborationMode, setCollaborationModeState] =
-            useState<CollaborationMode>(
-                () => initialCollaborationMode ?? initialSession?.collaborationMode ?? "build"
-            );
-        const collaborationModeRef = useRef<CollaborationMode>(collaborationMode);
         const [todos, setTodosState] = useState<Todo[]>(
             () => initialSession?.todos ?? []
         );
@@ -217,15 +209,12 @@ export function useTurnController({
             (overrides?: {
                 todos?: Todo[];
                 permissionMode?: PermissionMode;
-                collaborationMode?: CollaborationMode;
                 allowEmpty?: boolean;
                 summaryHint?: string;
             }): SaveSessionSnapshotInput => rootSession.createSnapshot({
                 todos: [...(overrides?.todos ?? todosRef.current)],
                 permissionMode:
                     overrides?.permissionMode ?? permissionModeRef.current,
-                collaborationMode:
-                    overrides?.collaborationMode ?? collaborationModeRef.current,
                 uiEvents: eventStore.getPersistedUIEvents(),
                 allowEmpty: overrides?.allowEmpty,
                 summaryHint: overrides?.summaryHint,
@@ -237,7 +226,6 @@ export function useTurnController({
             (overrides?: {
                 todos?: Todo[];
                 permissionMode?: PermissionMode;
-                collaborationMode?: CollaborationMode;
                 allowEmpty?: boolean;
                 summaryHint?: string;
             }) => saveSnapshot(createSnapshot(overrides)),
@@ -278,15 +266,6 @@ export function useTurnController({
             [persistSnapshot]
         );
 
-        const setCollaborationMode = useCallback(
-            (mode: CollaborationMode) => {
-                rootSession.invalidateApprovals();
-                collaborationModeRef.current = mode;
-                setCollaborationModeState(mode);
-                void persistSnapshot({collaborationMode: mode});
-            },
-            [persistSnapshot]
-        );
 
         const setTodos = useCallback(
             (nextTodos: Todo[]) => {
@@ -309,16 +288,15 @@ export function useTurnController({
         );
 
         const fileSuggestionsRef = useRef<FileSuggestions | null>(null);
-        fileSuggestionsRef.current ??= new FileSuggestions(signal => rootSession.createContext({
+        fileSuggestionsRef.current ??= new FileSuggestions(signal => ({...rootSession.createContext({
             signal, onEvent: () => {},
             host: {
                 canUseTool: async () => ({behavior: "deny", message: "File suggestions cannot request additional permissions; type a path directly"}),
                 getPermissionRules: () => permissionRulesRef.current!,
-                getPermissionMode: () => "ask", getCollaborationMode: () => "plan",
-                getPermissionPromptPolicy: () => "never", setTodos() {},
+                getPermissionMode: () => "ask", getPermissionPromptPolicy: () => "never", setTodos() {},
             },
             getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()}),
-        }));
+        }), readOnlyTools: true}));
         const fileSuggestions = fileSuggestionsRef.current;
 
         const turnControllerRef = useRef<UITurnController | null>(null);
@@ -327,7 +305,6 @@ export function useTurnController({
                 canUseTool,
                 getPermissionRules: () => permissionRulesRef.current!,
                 getPermissionMode: () => permissionModeRef.current,
-                getCollaborationMode: () => collaborationModeRef.current,
                 getPermissionPromptPolicy: () => "onRequest" as const,
                 setTodos,
             };
@@ -363,7 +340,6 @@ export function useTurnController({
                 openModel,
                 openProviders,
                 openPermissions,
-                setCollaborationMode,
                 runTurn: async (input, signal) => {
                     await startSessionHooks();
                     await runRootTurn({
@@ -400,7 +376,6 @@ export function useTurnController({
                         getSnapshotState: () => ({
                             todos: todosRef.current,
                             permissionMode: permissionModeRef.current,
-                            collaborationMode: collaborationModeRef.current,
                             uiEvents: eventStore.getPersistedUIEvents(),
                         }),
                         sessionStartContextBlocks:
@@ -598,7 +573,6 @@ export function useTurnController({
             modelStreamProgressRef: eventStore.getModelStreamProgressRef(),
             todos,
             permissionMode,
-            collaborationMode,
             primaryModel,
             availableModels: resources.primaryModel.available,
             confirmRequest,
@@ -613,7 +587,6 @@ export function useTurnController({
             takeQueuedInputsForEditing:
                 turnController.takeQueuedInputsForEditing.bind(turnController),
             setPermissionMode,
-            setCollaborationMode,
             setPrimaryModel,
             clearConfirmRequest: (request: ConfirmReq | null) =>
                 permissionRequests.clear(request),

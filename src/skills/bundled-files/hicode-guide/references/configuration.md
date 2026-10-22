@@ -84,7 +84,7 @@ For scalar settings: built-in → user → project → project-local → SDK Hos
 - Hook groups append across sources; duplicate handlers can therefore run more than once.
 - Explicit source model lists and sandbox path/domain arrays replace lower-priority arrays.
 - If any selected source explicitly disables `memory.enabled` or `memory.autoExtract`, higher-priority sources cannot turn that field back on.
-- CLI permission mode overrides a resumed session's mode, which overrides Settings defaults. Build/Plan is separate session state, not a Settings field.
+- CLI permission mode overrides a resumed session's mode, which overrides Settings defaults. Planning and implementation follow the user request; there is no separate work-mode setting.
 - Resume restores the conversation; the old session's model metadata does not override the currently selected startup model.
 
 Never write a fully merged configuration back to one file: that can copy private user defaults into a shared project file. Read the chosen source, update just the requested fields, and preserve unrelated entries.

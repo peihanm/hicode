@@ -7,7 +7,6 @@ import {
 } from "../agent/index.js";
 import {formatHookContext, type HookBatchResult, type HookInput} from "../hooks/index.js";
 import type {PermissionMode} from "../permissions/index.js";
-import type {CollaborationMode} from "../collaboration/index.js";
 import {
     type SaveSessionSnapshotInput,
     type PersistedUIEvent,
@@ -24,7 +23,6 @@ import type {TaskJoin} from "../tasks/taskJoin.js";
 interface RootTurnSnapshotState {
     todos: readonly Todo[];
     permissionMode: PermissionMode;
-    collaborationMode: CollaborationMode;
     uiEvents: readonly PersistedUIEvent[];
 }
 
@@ -121,7 +119,7 @@ export function createRootTurnRunnerFactory(
         };
 
         try {
-            memoryBaseline = host.getCollaborationMode() === "plan" ? undefined : await resources.memory.captureBaseline(session.sessionId, contentText(prompt));
+            memoryBaseline = await resources.memory.captureBaseline(session.sessionId, contentText(prompt));
             const initialState = getSnapshotState();
             await session.initialize();
             await createTaskNotificationDelivery({tasks: session.taskSession, queue: session.messageQueue,
@@ -173,7 +171,7 @@ export function createRootTurnRunnerFactory(
                 session.createSnapshot(getSnapshotState())
             );
             sessionSaved = true;
-            if(result.reason==="completed"&&!signal.aborted&&memoryBaseline&&host.getCollaborationMode()!=="plan"){
+            if(result.reason==="completed"&&!signal.aborted&&memoryBaseline){
                 try {await session.taskSession.startMemory({turnId,signal,background:true,baseline:memoryBaseline});}
                 catch(error){try{await onLifecycleIssue({scope:"host",message:"Memory source scheduling failed; main task result was saved",error});}catch{}}
             }

@@ -26,7 +26,7 @@ test("child owns durable compaction and reads only inherited parent archives acr
   const parentState = {...createCompactState(), compactCount:1, archives:[draft.record]};
   const inherited: Message[] = [original[0]!,{role:"user",origin:"compaction",content:`Evidence: ${draft.indexPath}`}];
   await createSessionPersistence(storage,cwd,ctx.sessionId).compact({cwd,sessionId:ctx.sessionId,model:ctx.model,
-    history:inherited,compactState:parentState,todos:[],permissionMode:"ask",collaborationMode:"build",allowEmpty:true},draft,ctx.signal);
+    history:inherited,compactState:parentState,todos:[],permissionMode:"ask",allowEmpty:true},draft,ctx.signal);
   Object.assign(ctx.compactState,parentState);
   ctx.sessionArchives = createSessionArchiveAccess(storage,cwd,ctx.sessionId,()=>ctx.compactState);
   const childCwd=join(cwd,"child"); await mkdir(childCwd);

@@ -33,7 +33,7 @@ function options(cwd: string): HeadlessTestInput {
     settings: createTestSettings(),
     prompt: "执行任务",
     permissionMode: "full-access",
-        collaborationMode: "build",
+
     resumeMode: { kind: "none" },
     outputFormat: "json",
   };

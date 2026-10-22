@@ -33,8 +33,8 @@ test.skipIf(!enabled)("Memory Bash deletes real files while protecting private s
   const server=Bun.serve({hostname:"127.0.0.1",port:0,fetch:()=>new Response("reachable")});
   try{expect((await run(`echo test > /dev/tcp/127.0.0.1/${server.port}`)).outcome).toBe("failed");}finally{server.stop(true);}
   expect(await readFile(secret,"utf8")).toBe("private");expect(await readFile(join(cwd,"outside.txt"),"utf8")).toBe("outside");
-  ctx.setCollaborationMode("plan");expect((await run("rm -- created.md")).outcome).toBe("denied");await access(join(topics,"created.md"));
-  ctx.setCollaborationMode("build");ctx.permissionRules.deny.push({toolName:"bash",content:"rm:*",source:"local"});expect((await run("rm -- created.md")).outcome).toBe("denied");await access(join(topics,"created.md"));
+  Object.assign(ctx, {readOnlyTools: true});expect((await run("rm -- created.md")).outcome).toBe("denied");await access(join(topics,"created.md"));
+  Object.assign(ctx, {readOnlyTools: false});ctx.permissionRules.deny.push({toolName:"bash",content:"rm:*",source:"local"});expect((await run("rm -- created.md")).outcome).toBe("denied");await access(join(topics,"created.md"));
   ctx.permissionRules.deny.length=0;ctx.memoryFiles=undefined;expect((await run("rm -- created.md")).outcome).toBe("denied");
  }finally{await sandbox.close();await memory.close();}
 }),20000);

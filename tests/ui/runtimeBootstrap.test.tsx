@@ -353,7 +353,7 @@ describe("RuntimeBootstrap lifecycle", () => {
         ],
         todos: [],
         permissionMode: "ask",
-        collaborationMode: "build",
+
       });
       const order: string[] = [];
       let switched: LoadedSession | undefined;

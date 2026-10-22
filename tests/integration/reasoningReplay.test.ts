@@ -65,7 +65,7 @@ test.each(["qwen", "deepseek", "qwen-token-plan", "ark-agent-plan"] as const)("%
         expect(estimateMessageTokens(first.message)).toBeGreaterThan(10_000);
         history.push(first.message, {role:"tool", tool_call_id:"read-1", content:"file contents"});
         const writer = createSessionPersistence(storage, cwd, "replay");
-        await writer.save({cwd, sessionId:"replay", model, history, todos:[], permissionMode:"ask", collaborationMode:"build"});
+        await writer.save({cwd, sessionId:"replay", model, history, todos:[], permissionMode:"ask", });
         const restored = loadSession(storage, cwd, "replay", model);
         expect(restored).not.toBeNull();
         const next = restored!.history;

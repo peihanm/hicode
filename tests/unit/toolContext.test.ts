@@ -10,7 +10,6 @@ import type {
   PermissionPromptPolicy,
   PermissionRules,
 } from "../../src/permissions/index.js";
-import type {CollaborationMode} from "../../src/collaboration/index.js";
 import { createToolContext } from "../../src/runtime/toolContext.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -23,7 +22,6 @@ describe("ToolContext builder", () => {
     await withTempProject(async (cwd, storage) => {
       let rules: PermissionRules = { allow: [], ask: [], deny: [] };
       let mode: PermissionMode = "ask";
-      let collaborationMode: CollaborationMode = "build";
       let promptPolicy: PermissionPromptPolicy = "onRequest";
       const context = createToolContext({
         signal: new AbortController().signal,
@@ -52,7 +50,6 @@ describe("ToolContext builder", () => {
           canUseTool: async () => ({ behavior: "allow" }),
           getPermissionRules: () => rules,
           getPermissionMode: () => mode,
-          getCollaborationMode: () => collaborationMode,
           getPermissionPromptPolicy: () => promptPolicy,
           setTodos() {},
         },
@@ -60,7 +57,7 @@ describe("ToolContext builder", () => {
 
       expect(context.permissionRules.allow).toEqual([]);
       expect(context.permissionMode).toBe("ask");
-      expect(context.collaborationMode).toBe("build");
+
       expect(context.permissionPromptPolicy).toBe("onRequest");
 
       rules = {
@@ -69,14 +66,13 @@ describe("ToolContext builder", () => {
         deny: [],
       };
       mode = "ask";
-      collaborationMode = "plan";
       promptPolicy = "never";
 
       expect(context.permissionRules.allow).toEqual([
         { toolName: "write_file", source: "local" },
       ]);
       expect(context.permissionMode).toBe("ask");
-      expect(context.collaborationMode).toBe("plan");
+
       expect(context.permissionPromptPolicy).toBe("never");
     });
   });
@@ -124,7 +120,6 @@ describe("ToolContext builder", () => {
         canUseTool: async () => ({ behavior: "allow" as const }),
         getPermissionRules: () => ({ allow: [], ask: [], deny: [] }),
         getPermissionMode: () => "ask" as const,
-        getCollaborationMode: () => "build" as const,
         getPermissionPromptPolicy: () => "onRequest" as const,
         setTodos() {},
       };

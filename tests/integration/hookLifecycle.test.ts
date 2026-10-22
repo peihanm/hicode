@@ -30,7 +30,7 @@ import {executeToolCallBatch} from "../../src/agent/toolBatch.js";
 const sources = {settings: ["project"] as const, instructions: [], skills: [], agents: [], mcp: []};
 const host: ToolContextHost = {
     canUseTool: async () => ({behavior: "allow"}), getPermissionRules: () => ({allow: [], ask: [], deny: []}),
-    getPermissionMode: () => "ask", getCollaborationMode: () => "build", getPermissionPromptPolicy: () => "onRequest",
+    getPermissionMode: () => "ask", getPermissionPromptPolicy: () => "onRequest",
     setTodos() {},
 };
 function sessionFor(resources: RootRuntimeResources) {
@@ -44,7 +44,7 @@ async function resourcesFor(cwd: string, storage: HiCodeStorageLayout, hooks: Re
             stderr: "", termination: {kind: "exit", code: 0}}),
     })})({configuration: createTestRootConfiguration(cwd, createTestSettings({hooks}), storage, sources)});
 }
-const state = () => ({todos: [], permissionMode: "ask" as const, collaborationMode: "build" as const, uiEvents: []});
+const state = () => ({todos: [], permissionMode: "ask" as const,  uiEvents: []});
 
 test("a valid reviewer model has no unknown-field warning and permits Hook reload", async () => {
     await withTempProject(async (cwd, storage) => {
@@ -315,7 +315,7 @@ test("Root /hooks reload 仅重读声明来源，活动 Turn 禁止重载，坏�
         });
         try {
             const session = sessionFor(resources);
-            const ctx = session.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", collaborationMode: "build"}),host, signal: new AbortController().signal, onEvent() {}});
+            const ctx = session.createContext({getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask", }),host, signal: new AbortController().signal, onEvent() {}});
             const release = resources.holdHookConfiguration();
             await expect(ctx.hookControl!.reload(ctx.signal)).rejects.toThrow("still active");
             release();

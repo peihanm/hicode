@@ -42,7 +42,6 @@ export function createHeadlessRunner(overrides: Partial<HeadlessRunnerDependenci
             for (const issue of resources.hooks.issues) await dependencies.writeDiagnostic(`Hook: ${issue.message}`);
             const initial = prepareThreadSession(resources, loaded ?? undefined);
             initial.state.permissionMode = options.permissionMode ?? initial.state.permissionMode;
-            initial.state.collaborationMode = options.collaborationMode ?? initial.state.collaborationMode;
             thread = await createThread({...initial, resources, signal: activeSignal, shellContinuation: false, onClose() {},
                 host: {onDiagnostic: diagnostic => dependencies.writeDiagnostic(`${diagnostic.scope}: ${diagnostic.message}`)}});
             const stream = await thread.runStreamedWithImagePaths(options.prompt, options.images ?? [], {signal: activeSignal});

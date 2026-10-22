@@ -127,7 +127,6 @@ export function runHeadlessForTest(
     prompt: options.prompt,
     images: options.images,
     permissionMode: options.permissionMode,
-    collaborationMode: options.collaborationMode,
     resumeMode: options.resumeMode,
     outputFormat: options.outputFormat,
   }, test.signal);
