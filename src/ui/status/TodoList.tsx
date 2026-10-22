@@ -1,6 +1,6 @@
 import {Box, Text} from "ink";
 import {useEffect, useState} from "react";
-import type {Todo} from "../../todos.js";
+import type {Todo} from "../../session/todo.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 
 // TodoList stays above the input and shows current progress.

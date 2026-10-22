@@ -1,7 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {render} from "ink-testing-library";
 import {TodoList} from "../../src/ui/status/TodoList.js";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {executeToolResult} from "../helpers/executeTool.js";
 import {withTempProject} from "../helpers/tempProject.js";

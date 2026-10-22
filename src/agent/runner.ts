@@ -17,7 +17,7 @@ import {
     formatTodoCompletionReminder,
 } from "./turnCompletion.js";
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import {TodoProgress} from "./todoProgress.js";
 import {ContextLengthError} from "../llm/errors.js";
 

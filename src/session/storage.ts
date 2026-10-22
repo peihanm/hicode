@@ -117,7 +117,7 @@ async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnap
             });
         };
         try { await updateProjections(); }
-        catch { onIssue("Session content was saved, but its listing index could not be updated. Run hicode --storage repair-index; existing snapshots remain available by ID."); }
+        catch { onIssue("Session content was saved, but its listing index could not be updated. Existing snapshots remain available by ID."); }
     });
 }
 

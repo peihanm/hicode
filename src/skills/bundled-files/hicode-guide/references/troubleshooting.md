@@ -49,16 +49,8 @@ Reasoning text exists only when the provider actually returned it and logging ca
 
 For a failed command, read its saved full output where available instead of rerunning it repeatedly with different `tail`/`grep` filters. Distinguish model-authored code errors from tool/runtime/permission failures; a nonzero test exit alone does not establish a framework bug.
 
-## Storage maintenance
+## Storage diagnosis
 
-CLI-only inspection, with no model request:
-
-```sh
-hicode --storage projects
-hicode --storage inspect
-hicode --storage preview
-```
-
-`hicode --storage clean` and `hicode --storage repair-index` are explicit maintenance operations, not routine debugging steps. Inspect their scope first and close active HiCode Roots for the affected project before running them. They are not a blanket command to delete all conversation history or memory.
+Read the project and session identity files to locate the affected data. A corrupt resume index is reported as an error; intact snapshots remain accessible by session ID. Do not overwrite the index or infer that conversation bodies are lost.
 
 Do not clean real user storage while diagnosing a read-only question. Prefer a targeted report showing the exact error, affected run, evidence and next action.

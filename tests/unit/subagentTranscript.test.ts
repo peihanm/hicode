@@ -3,31 +3,8 @@ import type {SubagentResult} from "../../src/subagents/types.js";
 import { describe, expect, test } from "bun:test";
 import {mkdir, readFile, symlink, writeFile, stat} from "node:fs/promises";
 import {dirname, relative, join} from "node:path";
-import {SubagentTranscriptWriter, readSubagentTranscriptReferences} from "../../src/subagents/transcript.js";
+import {SubagentTranscriptWriter} from "../../src/subagents/transcript.js";
 import { withTempProject } from "../helpers/tempProject.js";
-
-test("transcript validation accepts a bounded system prompt but rejects malformed or misplaced system messages", async () => {
-  await withTempProject(async (cwd, storage) => {
-    const writer = new SubagentTranscriptWriter(storage, cwd, "parent", "agent");
-    const timestamp = new Date().toISOString();
-    const result: SubagentResult = {agentId: "agent", agentType: "Explore", description: "inspect", reply: "done",
-      reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
-    await writer.append({type: "start", version: 1, timestamp, parentSessionId: "parent", parentToolCallId: "call",
-      agentId: "agent", agentType: "Explore", description: "inspect", model: "test", cwd, allowedTools: []});
-    await writer.append({type: "snapshot", timestamp, history: [{role: "system", content: "policy"},
-      {role: "user", origin: "assignment", content: "inspect"}], result});
-    const directory = dirname(writer.path);
-    expect(readSubagentTranscriptReferences(storage, directory, "parent").length).toBeGreaterThan(0);
-    for (const history of [
-      [{role: "system", content: 1}],
-      [{role: "system", content: "policy", unexpected: true}],
-      [{role: "user", origin: "assignment", content: "inspect"}, {role: "system", content: "late"}],
-    ]) {
-      await writeFile(join(directory, "state.json"), JSON.stringify({version: 1, timestamp, history, result}));
-      expect(() => readSubagentTranscriptReferences(storage, directory, "parent")).toThrow("Invalid transcript message");
-    }
-  });
-});
 
 describe("subagent transcript", () => {
   test("标识经过哈希，不能穿越工作目录", async () => {

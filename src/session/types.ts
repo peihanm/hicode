@@ -3,7 +3,7 @@ import type {PersistedUIEvent} from "./uiEvents.js";
 import type {Message} from "../llm/types.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {RuntimeQueuedMessage} from "../runtime/messageQueue.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "./todo.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 2;

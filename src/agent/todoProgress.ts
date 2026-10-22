@@ -1,4 +1,4 @@
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {ToolCallOutcome} from "./toolBatch.js";
 
 const REMINDER_INTERVAL = 10;

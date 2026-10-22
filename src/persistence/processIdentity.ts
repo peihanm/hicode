@@ -2,14 +2,11 @@ import {createHash} from "node:crypto";
 import {execFile} from "node:child_process";
 import {readFile, readlink} from "node:fs/promises";
 import {promisify} from "node:util";
-import {z} from "zod";
-
-export const processIdentitySchema = z.object({
-    pid: z.number().int().min(1).max(2_147_483_647),
-    environment: z.string().regex(/^[a-f0-9]{64}$/),
-    start: z.string().regex(/^[a-f0-9]{64}$/),
-}).strict();
-type ProcessIdentity = z.infer<typeof processIdentitySchema>;
+interface ProcessIdentity {
+    pid: number;
+    environment: string;
+    start: string;
+}
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const execute = promisify(execFile);

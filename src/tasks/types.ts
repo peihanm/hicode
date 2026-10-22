@@ -1,6 +1,6 @@
 import type {ShellResultReceipt} from "../tools/bash/receipt.js";
 import type {ChildShellSession} from "./childAccess.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {SandboxExecutionPreference} from "../sandbox/index.js";

@@ -1,6 +1,6 @@
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {createModelConfiguration, type ModelConfiguration} from "../settings/modelConfiguration.js";
-import {acquireProjectActivity} from "../persistence/projectState.js";
+import {ensureProjectIdentity} from "../persistence/projectState.js";
 import {loadHiCodeSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
@@ -186,8 +186,7 @@ export function createRootRuntimeResourcesFactory(
         options: CreateRootRuntimeResourcesOptions
     ): Promise<RootRuntimeResources> {
         const {cwd, settings, storage} = options.configuration;
-        const releaseActivity = await acquireProjectActivity(storage,cwd);
-        try {
+        await ensureProjectIdentity(storage,cwd);
         const [loadedSkills, instructions, loadedCustomAgents] = await Promise.all([
             Promise.resolve(dependencies.loadSkills({
                 storage,
@@ -412,7 +411,7 @@ export function createRootRuntimeResourcesFactory(
                 fileCommits,
                 gitWorkspace,
                 beginShutdown: closeOwnedResources.beginShutdown,
-                close: () => finalClose ??= (async () => {try {await closeOwnedResources!.close();} finally {await releaseActivity();}})(),
+                close: () => finalClose ??= closeOwnedResources!.close(),
             };
         } catch (error) {
             if (closeOwnedResources) {
@@ -427,7 +426,6 @@ export function createRootRuntimeResourcesFactory(
             }
             throw error;
         }
-        } catch (error) {await releaseActivity();throw error;}
     };
 }
 

@@ -10,7 +10,7 @@ import type { ToolContext } from "../../src/tools/types.js";
 import { UITurnController } from "../../src/ui/turn/controller.js";
 import { RuntimeMessageQueue } from "../../src/runtime/messageQueue.js";
 import type {SlashCommandProcessor} from "../../src/slash/types.js";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 
 function createHarness(overrides: {
   importImages?: ConstructorParameters<typeof UITurnController>[0]["importImages"];

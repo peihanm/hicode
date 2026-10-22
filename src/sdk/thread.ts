@@ -14,7 +14,7 @@ import {createRootSessionRuntime, type RootSessionRuntime, type RootSessionSeed,
 import type {ToolContextHost} from "../runtime/toolContext.js";
 import {runRootTurn, type RootTurnLifecycleIssue,} from "../runtime/turnRuntime.js";
 import {limitPersistedUIEvents, type PersistedUIEvent,} from "../session/index.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import {AsyncEventQueue} from "./eventQueue.js";
 import {SDKEventAdapter} from "./eventAdapter.js";
 import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";

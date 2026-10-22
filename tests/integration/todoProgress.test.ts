@@ -1,6 +1,6 @@
 import {expect, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 import type {Message} from "../../src/llm/types.js";
 import {runAgentForTest} from "../helpers/agent.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";

@@ -12,7 +12,7 @@ import type {McpManagerLike} from "../mcp/types.js";
 import type {PermissionMode, PermissionPromptPolicy, PermissionRules,} from "../permissions/index.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {ToolResultStore} from "../toolResults/index.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {Tool, ToolContext} from "../tools/types.js";
 import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";

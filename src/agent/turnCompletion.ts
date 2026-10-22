@@ -1,4 +1,4 @@
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 
 function sanitizeCandidateReply(reply: string): string {
     return reply

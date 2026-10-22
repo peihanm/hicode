@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import type {AgentEvent} from "../../src/agent/types.js";
 import type {Message} from "../../src/llm/types.js";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 import {runAgentForTest} from "../helpers/agent.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {createTestContext} from "../helpers/testContext.js";

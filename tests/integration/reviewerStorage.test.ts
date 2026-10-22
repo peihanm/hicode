@@ -7,10 +7,9 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createTestRuntimeResources, createTestSettings} from "../helpers/runtimeResources.js";
 import {ensureSessionIdentity} from "../../src/persistence/projectState.js";
 import {getPromptLogDirectory, getProjectSessionsDirectory} from "../../src/persistence/layout.js";
-import {inspectStorage, cleanStorage} from "../../src/runtime/storageMaintenance.js";
 
 for (const outcome of ["success", "invalid", "cancelled"] as const) {
-    test(`reviewer ${outcome} logs belong to the parent and finish without blocking storage cleanup`, async () => {
+    test(`reviewer ${outcome} logs belong to the parent and finish with completed request records`, async () => {
         await withTempProject(async (cwd, storage) => {
             const keyName = "HICODE_REVIEW_STORAGE_OFFLINE_KEY";
             const previousKey = process.env[keyName];
@@ -56,8 +55,6 @@ for (const outcome of ["success", "invalid", "cancelled"] as const) {
                 const files = (await readdir(join(directory, runs[0]!))).filter(file => file !== "run.json");
                 for (const file of files) expect(await readFile(join(directory, runs[0]!, file), "utf8")).not.toContain("REJECTED_AUTHORIZATION");
                 await resources.close();
-                expect((await inspectStorage(storage, cwd, true)).issues).toEqual([]);
-                await cleanStorage(storage, cwd);
             } finally {
                 await resources.close();
                 globalThis.fetch = previousFetch;

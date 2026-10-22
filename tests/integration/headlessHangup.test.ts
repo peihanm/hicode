@@ -1,10 +1,8 @@
 import {expect, test} from "bun:test";
-import {readdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
-import {getProjectActivityDirectory} from "../../src/persistence/layout.js";
 
-test.skipIf(process.platform === "win32")("real Headless SIGHUP cancels the local stream and releases Root activity", async () => {
+test.skipIf(process.platform === "win32")("real Headless SIGHUP cancels the local stream and exits", async () => {
     let requested = false;
     const server = Bun.serve({hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: () => {
         requested = true;
@@ -30,7 +28,6 @@ test.skipIf(process.platform === "win32")("real Headless SIGHUP cancels the loca
                 expect(await child.exited).toBe(130);
                 const output = JSON.parse(await stdout);
                 expect(output.abortReason).toBe("shutdown");
-                expect(await readdir(getProjectActivityDirectory(storage, cwd))).toEqual([]);
                 expect(await stderr).not.toContain("Unhandled");
             } finally {clearTimeout(watchdog); child.kill(); await child.exited;}
         });

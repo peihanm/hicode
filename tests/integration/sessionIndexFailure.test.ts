@@ -2,11 +2,10 @@ import {expect,test} from "bun:test";
 import {readFile,writeFile} from "node:fs/promises";
 import {createSessionPersistence,listSessionIndex,loadSession} from "../../src/session/storage.js";
 import {getSessionIndexPath,getSessionSnapshotPath} from "../../src/session/paths.js";
-import {repairSessionIndex} from "../../src/session/repair.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import type {SaveSessionSnapshotInput} from "../../src/session/types.js";
 
-test("index failure does not undo committed content and explicit repair preserves evidence",async()=>{
+test("index failure preserves committed content and leaves damaged records unchanged",async()=>{
  await withTempProject(async(cwd,storage)=>{
   const input:SaveSessionSnapshotInput={cwd,sessionId:"good",model:"test",history:[{role:"user",origin:"user",content:"hello"}],todos:[],permissionMode:"ask",};
   const writer=createSessionPersistence(storage,cwd,"good");await writer.save(input);
@@ -16,12 +15,8 @@ test("index failure does not undo committed content and explicit repair preserve
   await writer.save({...input,history:[...input.history,{role:"assistant",content:"saved after damage"}]});
   expect(writer.takeIssues()[0]).toContain("content was saved");
   expect(loadSession(storage,cwd,"good","test")?.history.at(-1)?.content).toBe("saved after damage");
-  expect(()=>listSessionIndex(storage,cwd)).toThrow("repair-index");
-  const result=await repairSessionIndex(storage,cwd);
-  expect(result.sessions.map(entry=>entry.sessionId)).toEqual(["good"]);
-  expect(result.issues).toHaveLength(1);expect(result.backup).toBeDefined();
-  expect(await readFile(result.backup!,"utf8")).toBe("broken index");
-  expect(listSessionIndex(storage,cwd).map(entry=>entry.sessionId)).toEqual(["good"]);
+  expect(()=>listSessionIndex(storage,cwd)).toThrow("corrupt session index");
+  expect(await readFile(getSessionIndexPath(storage,cwd),"utf8")).toBe("broken index");
   expect(await readFile(getSessionSnapshotPath(storage,cwd,"bad"),"utf8")).toBe("broken snapshot");
  });
 });

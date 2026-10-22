@@ -137,10 +137,6 @@ export function getSessionInputHistoryPath(storage: HiCodeStorageLayout, cwd: st
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "input-history.jsonl");
 }
 
-export function getSessionIndexRecoveryDirectory(storage: HiCodeStorageLayout, cwd: string): string {
-    return join(getProjectSessionsDirectory(storage, cwd), "index-recovery");
-}
-
 export function getPromptLogDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId?: string): string {
     return join(sessionId ? getSessionStorageDirectory(storage,cwd,sessionId) : getProjectStorageDirectory(storage,cwd), "debug", "requests");
 }
@@ -150,9 +146,7 @@ export function getSubagentStorageDirectory(storage: HiCodeStorageLayout, cwd: s
 }
 
 export function getProjectIdentityPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json");}
-// Activity v2 binds each PID to its boot/namespace and process start identity.
-export function getProjectActivityDirectory(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"activity");}
-export function getProjectMaintenanceLockPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),".maintenance.lock");}
+export function getProjectIdentityLockPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json.lock");}
 export function getSessionIdentityPath(storage:HiCodeStorageLayout,cwd:string,sessionId:string):string {return join(getSessionStorageDirectory(storage,cwd,sessionId),"identity.json");}
 
 export function getUserSettingsPath(storage: HiCodeStorageLayout): string {

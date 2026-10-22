@@ -15,7 +15,7 @@ import {
 import type {PermissionDecision} from "../../permissions/index.js";
 import {addToAllowList, type PermissionMode, type PermissionRules,} from "../../permissions/index.js";
 import type {RootRuntimeResources} from "../../runtime/resources.js";
-import type {Todo} from "../../todos.js";
+import type {Todo} from "../../session/todo.js";
 import type {UIThread} from "../conversation/types.js";
 import type {ConfirmReq} from "./types.js";
 import {UITurnController} from "./controller.js";

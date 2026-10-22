@@ -8,7 +8,7 @@ import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "./types.js";
 import type {Message, OpenAITool} from "../llm/types.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import {buildLiveStateContext} from "../context/liveState.js";
 import {projectImagesForRequest} from "../images/request.js";
 

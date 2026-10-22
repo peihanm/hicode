@@ -11,7 +11,6 @@ type CliOutputFormat = "text" | "json";
 
 export interface CliOptions {
     help: boolean;
-    storageAction?: "projects" | "inspect" | "preview" | "clean" | "repair-index";
     model?: string;
     source?: LLMProviderName;
     permissionMode?: PermissionMode;
@@ -40,7 +39,6 @@ Options:
   --model <model>                Override the primary model for this run
   --source <source>              Override primary model source: ${LLM_PROVIDER_NAMES.join(" | ")}
   --permission-mode <mode>       ask | auto-review | full-access
-  --storage <action>             projects | inspect | preview | clean | repair-index (no model request)
   -h, --help                     Show help
 `);
 }
@@ -102,11 +100,6 @@ export function parseCliArgs(args: string[]): CliOptions {
                 throw new Error("--event-log requires one absolute file path");
             options.eventLog = value;
             continue;
-        }
-        if (arg === "--storage") {
-            const value=args[++i];
-            if(value!=="projects"&&value!=="inspect"&&value!=="preview"&&value!=="clean"&&value!=="repair-index")throw new Error("--storage requires projects, inspect, preview, clean or repair-index");
-            options.storageAction=value;continue;
         }
         if (arg === "-h" || arg === "--help") {
             options.help = true;
@@ -215,7 +208,6 @@ export function parseCliArgs(args: string[]): CliOptions {
         throw new Error(`Unknown argument: ${arg}`);
     }
 
-    if (options.storageAction && args.length !== 2) throw new Error("Use --storage on its own");
     if (options.singleTask && !options.eventLog) throw new Error("--single-task requires --event-log");
     if (options.eventLog && options.printPrompt !== undefined) throw new Error("--event-log is only available in interactive mode");
     if (options.outputFormat !== "text" && options.printPrompt === undefined) {

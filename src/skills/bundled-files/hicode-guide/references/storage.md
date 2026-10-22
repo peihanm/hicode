@@ -20,8 +20,7 @@ The diagram describes file roles, not a supported schema for manually manufactur
   skills/<name>/SKILL.md              # user Skills and optional resources
   projects/<project-key>/
     project.json                      # canonical project identity
-    activity/<pid>-<uuid>.json         # Root liveness records
-    .maintenance.lock/                # maintenance/Root registration lease
+    project.json.lock/                # short lease for project identity creation/validation
     cache/
       bun/                            # rebuildable package cache
       npm/                            # rebuildable npm/npx cache
@@ -36,7 +35,6 @@ The diagram describes file roles, not a supported schema for manually manufactur
     sessions/
       index.json                      # resume-list metadata, not conversation body
       .index.lock/
-      index-recovery/<hash>.json       # evidence retained by index repair
       session-<session-hash>/
         identity.json                 # session ID, cwd, creation time
         snapshot.json                 # current message/UI references and state
@@ -64,7 +62,7 @@ Other locks, such as `.env.lock/`, `settings.json.lock/`, input-history and tool
 
 ## Locate a particular run
 
-1. `hicode --storage projects` lists known project storage. Confirm the canonical cwd in `project.json`; do not guess from a folder name.
+1. Inspect `projects/<project-key>/project.json` to confirm the canonical cwd; do not guess from a folder name.
 2. In that project's `sessions/`, use index metadata and `identity.json` to find the session.
 3. For model behavior, read the relevant `debug/requests/run-<hash>/run.json` first, then selected request/response records. Trace agentId/runId identifies child requests in the parent's request directory.
 4. For task completion, inspect `tasks/events.jsonl` and the matching child's `state.json`/`events.jsonl`. For large output or images, follow the recorded result reference to its owning session.
@@ -80,7 +78,7 @@ Project/session/agent hashes are safe storage identifiers, not reversible IDs. D
 | `memory/topics/*.md` | Editable formal memory; can be removed as ordinary authorized files. |
 | `memory/MEMORY.md` | Generated index; editing it is not how to update a topic. |
 | Memory state, approvals, identity, snapshots, content blocks, task/child logs | Runtime-managed protocols; inspect rather than hand-edit. |
-| Package caches and unreachable artifacts | Potentially rebuildable; inspect with storage maintenance before cleanup. |
+| Package caches and unreachable artifacts | Potentially rebuildable; verify ownership and active references before any authorized cleanup. |
 
 ### Formal memory format
 
@@ -102,16 +100,6 @@ Use `/memory` to find the active project's exact topic location. Deleting a topi
 ## Backup and cleanup
 
 For a complete conversation backup, preserve the session directory, including snapshot references, `content/`, referenced tool artifacts and child data. Snapshot alone is insufficient. Preserve the project's memory separately when needed. Back up credentials only to an appropriate private location; do not attach a whole HiCode Home directory to a bug report.
-
-Storage maintenance runs without model calls:
-
-```sh
-hicode --storage projects
-hicode --storage inspect
-hicode --storage preview
-```
-
-`inspect`/`preview` are the starting points for the current project. `clean` removes only eligible generated/unreferenced artifacts after validation; it does not promise to delete sessions, memory or old formats. `repair-index` rebuilds the resume index from validated session data and keeps old-index evidence. Both require no active Root for that project and recheck references under maintenance locking.
 
 Do not delete active session files, individual content blocks, one half of an artifact pair, or an entire `~/.hicode` tree as a routine fix. Cleanup must match the user's requested scope. A clean application exit preserves conversation state but closes background processes; the state files do not restart them.
 

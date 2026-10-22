@@ -6,7 +6,7 @@ import type {AgentType} from "../subagents/types.js";
 import type {ToolUIData} from "../toolResults/uiData.js";
 import type {LLMStreamProgress} from "../llm/types.js";
 import type {MemoryChange} from "../memory/types.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {ApprovalEvent} from "../permissions/approval.js";
 
 export type StopReason =

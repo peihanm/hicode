@@ -12,7 +12,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createSubagentThreadForTest} from "../helpers/subagent.js";
 import {createFakeLLM, assistantText, assistantToolCall} from "../helpers/fakeLLM.js";
 import {createTaskRuntimeForTest} from "../helpers/taskRuntime.js";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 import type {AgentEvent} from "../../src/agent/types.js";
 import {contentText} from "../../src/images/content.js";
 

@@ -16,7 +16,7 @@ import type {
     TodoListItem,
     ToolCallItem,
 } from "./protocol.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 
 const ITEM_TEXT_LIMIT = 10_000;
 

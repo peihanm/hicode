@@ -7,7 +7,6 @@ import {createSubagentFactories} from "../../src/subagents/runSubagent.js";
 import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
 import {readLatestSessionSnapshot} from "../../src/session/snapshotStore.js";
-import {repairSessionIndex} from "../../src/session/repair.js";
 import {createSessionPersistence, listSessionIndex, loadSession} from "../../src/session/storage.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../../src/session/archive.js";
 import {createCompactState} from "../../src/context/state.js";
@@ -67,7 +66,6 @@ test("child owns durable compaction and reads only inherited parent archives acr
   expect(listSessionIndex(storage,cwd).map(s=>s.sessionId)).toEqual([ctx.sessionId]);
   expect(readLatestSessionSnapshot(storage,cwd,"subagent-compact-child")?.compactState?.compactCount).toBe(1);
   expect(loadSession(storage,cwd,"subagent-compact-child",ctx.model)).toBeNull();
-  expect((await repairSessionIndex(storage,cwd)).sessions.map(s=>s.sessionId)).toEqual([ctx.sessionId]);
   await expect(ctx.sessionArchives.resolve(childIndex)).rejects.toThrow("another Session");
  });
 });

@@ -1,4 +1,4 @@
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {ToolContext} from "../tools/types.js";
 
 /** Transient projection of the existing owners; never persisted as another task ledger. */

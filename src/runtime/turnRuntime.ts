@@ -11,7 +11,7 @@ import {
     type SaveSessionSnapshotInput,
     type PersistedUIEvent,
 } from "../session/index.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {ToolContextHost} from "./toolContext.js";
 import type {RootRuntimeResources} from "./resources.js";
 import type {RootSessionRuntime} from "./sessionRuntime.js";

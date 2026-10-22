@@ -1,4 +1,4 @@
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {MemoryTaskSnapshot, TaskReviewSnapshot} from "./types.js";
 import {type FileHandle, open} from "node:fs/promises";
 import type {StopReason} from "../agent/types.js";

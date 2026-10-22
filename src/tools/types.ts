@@ -8,7 +8,7 @@ import type {ImageAccess} from "../images/access.js";
 import type {FileCommitCoordinator} from "./shared/fileCommit.js";
 import {z} from "zod";
 import type {PermissionDecision, PermissionMode, PermissionPromptPolicy, PermissionPromptPresentation, PermissionResult, PermissionRules,} from "../permissions/index.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {LoadedSkill} from "../skills/types.js";
 import type {CompactState} from "../context/index.js";
 import type {ToolOutput, ToolResultStore} from "../toolResults/index.js";

@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {TodoProgress} from "../../src/agent/todoProgress.js";
 import {buildLiveStateContext} from "../../src/context/liveState.js";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 import type {ToolCallOutcome} from "../../src/agent/toolBatch.js";
 
 const todos: Todo[] = [

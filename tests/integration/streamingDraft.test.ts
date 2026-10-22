@@ -6,7 +6,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import type {AgentEvent} from "../../src/agent/types.js";
 import type {Message} from "../../src/llm/types.js";
 import {consumeOpenAICompatibleSSE} from "../../src/llm/providers/openAICompatibleStream.js";
-import type {Todo} from "../../src/todos.js";
+import type {Todo} from "../../src/session/todo.js";
 
 test("SSE 正文在完成前可见，推理和残缺工具参数不会成为正文", async () => {
     const encoder = new TextEncoder();

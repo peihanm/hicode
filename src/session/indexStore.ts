@@ -25,7 +25,7 @@ function emptySessionIndex(): SessionIndexFile {
     return {version: SESSION_INDEX_VERSION, sessions: []};
 }
 
-/** A corrupt directory is not an empty history. Repair preserves the original evidence. */
+/** A corrupt index is not an empty history; leave the evidence unchanged. */
 export function readSessionIndex(storage: HiCodeStorageLayout, cwd: string): SessionIndexFile {
     const path = getSessionIndexPath(storage, cwd);
     const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_INDEX_BYTES);
@@ -37,7 +37,7 @@ export function readSessionIndex(storage: HiCodeStorageLayout, cwd: string): Ses
         const sessions = decodeSessionIndexEntries(parsed.sessions, cwd);
         if (!sessions) throw new Error("Invalid entries");
         return {version: SESSION_INDEX_VERSION, sessions};
-    } catch { throw new Error(`Cannot read corrupt session index: ${path}. Run hicode --storage repair-index to rebuild it.`); }
+    } catch { throw new Error(`Cannot read corrupt session index: ${path}.`); }
 }
 
 async function readSessionIndexForMutation(

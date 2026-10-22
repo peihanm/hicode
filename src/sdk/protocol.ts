@@ -8,7 +8,7 @@ import type {HookTrustRequest} from "../hooks/index.js";
 import type {MemoryChange} from "../memory/types.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
 import type {AgentType} from "../subagents/types.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import type {LLMRetryInfo} from "../llm/types.js";
 
 export interface Usage {

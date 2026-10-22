@@ -20,7 +20,7 @@ import {appendLocalPermissionDirectory} from "../settings/index.js";
 import {type SaveSessionSnapshotInput} from "../session/index.js";
 import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
-import type {Todo} from "../todos.js";
+import type {Todo} from "../session/todo.js";
 import {createToolResultStore, type ToolResultStore} from "../toolResults/index.js";
 import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
