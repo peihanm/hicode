@@ -15,7 +15,7 @@ import {SessionContentStore} from "../../src/session/contentStore.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {hasCompleteToolPairs} from "../../src/session/codec.js";
 const scenarios=z.array(z.object({id:z.string(),goal:z.string(),stages:z.array(z.object({request:z.string(),evidence:z.string(),constraint:z.string()})).length(5)})).length(2)
- .parse(JSON.parse(await readFile(new URL("../../tooling/evals/fixtures/context-memory/scenarios.json",import.meta.url),"utf8")));
+ .parse(JSON.parse(await readFile(new URL("../fixtures/context-memory/scenarios.json",import.meta.url),"utf8")));
 // The summarizer is a deterministic oracle. This verifies evidence transport, not model understanding.
 for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全部纠正与验证证据 ${scenario.id}`,async()=>withTempProject(async(cwd,storage)=>{
  const resources=createTestRuntimeResources(cwd,{storage});

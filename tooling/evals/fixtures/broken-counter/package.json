@@ -1,8 +1,0 @@
-{
-  "name": "hicode-eval-broken-counter",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "bun test"
-  }
-}

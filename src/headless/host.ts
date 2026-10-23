@@ -17,13 +17,7 @@ interface HeadlessRunnerDependencies {
     writeDiagnostic(line: string): void | Promise<void>;
 }
 
-export function createHeadlessRunner(overrides: Partial<HeadlessRunnerDependencies> = {}) {
-    const dependencies: HeadlessRunnerDependencies = {
-        createResources: overrides.createResources ?? createRootRuntimeResources,
-        saveSession: overrides.saveSession ?? ((session, snapshot) => session.saveSnapshot(snapshot)),
-        writeOutput: overrides.writeOutput ?? writeHeadlessOutput,
-        writeDiagnostic: overrides.writeDiagnostic ?? writeHeadlessDiagnostic,
-    };
+export function createHeadlessRunner(dependencies: HeadlessRunnerDependencies) {
     const createThread = createSDKThreadFactory({runTurn: createRootTurnRunnerFactory({saveSession: dependencies.saveSession})});
     return async (options: HeadlessOptions, signal?: AbortSignal): Promise<HeadlessRunSummary> => {
         const {configuration, resumeMode} = options;
@@ -63,4 +57,9 @@ export function createHeadlessRunner(overrides: Partial<HeadlessRunnerDependenci
         }
     };
 }
-export const runHeadless = createHeadlessRunner();
+export const runHeadless = createHeadlessRunner({
+    createResources: createRootRuntimeResources,
+    saveSession: (session, snapshot) => session.saveSnapshot(snapshot),
+    writeOutput: writeHeadlessOutput,
+    writeDiagnostic: writeHeadlessDiagnostic,
+});

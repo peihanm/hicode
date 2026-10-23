@@ -12,11 +12,8 @@
   "scripts": {
     "start": "bun src/index.tsx",
     "dev": "bun src/index.tsx",
-    "sdk:run": "bun tooling/examples/sdk/run.ts",
     "build:sdk": "bun tooling/scripts/build-sdk-package.ts",
     "verify:sdk-package": "bun tooling/scripts/verify-sdk-package.ts",
-    "eval": "bun tooling/evals/cli.ts",
-    "eval:suite": "bun tooling/evals/cli.ts --suite",
     "test": "bun test",
     "test:unit": "bun test tests/unit",
     "test:contract": "bun test tests/contract",

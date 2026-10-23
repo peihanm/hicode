@@ -1,9 +1,0 @@
-{
-  "name": "hicode-eval-leetcode-web-starter",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "bun server.ts",
-    "test": "bun test"
-  }
-}
