@@ -106,7 +106,7 @@ export const StructuredDiff = memo(function StructuredDiff({
     const numberWidth = String(maxDiffLineNumber(allLines)).length;
     const limit = expanded ? EXPANDED_MAX_LINES : defaultMaxLines;
     let remaining = limit;
-    let hidden = omittedDiffLines;
+    let hidden = 0;
 
     return (
         <Box flexDirection="column">
@@ -142,6 +142,10 @@ export const StructuredDiff = memo(function StructuredDiff({
             {hidden > 0 && (
                 <Text dimColor>… {hidden} more diff
                     line{hidden === 1 ? "" : "s"}{expanded ? "" : " · ctrl+o to expand"}</Text>
+            )}
+            {omittedDiffLines > 0 && (
+                <Text dimColor>… {omittedDiffLines} diff
+                    line{omittedDiffLines === 1 ? "" : "s"} omitted (display limit)</Text>
             )}
         </Box>
     );

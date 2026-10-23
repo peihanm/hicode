@@ -524,6 +524,32 @@ describe("UITurnEventStore", () => {
     expect(JSON.stringify(restored)).not.toContain("newContent");
   });
 
+  test("不连续文件修改在实时展示和持久化恢复后均保留", () => {
+    const store = new UITurnEventStore();
+    for (const [index, [oldContent, newContent]] of [["A", "B"], ["X", "Y"], ["Y", "Z"]].entries()) {
+      const toolCallId = `gap-${index}`;
+      const change = createFileChange({path: "a.txt", kind: "update", oldContent: oldContent!, newContent: newContent!});
+      store.handleEvent({type: "tool_call_start", turnId: "turn-gap", toolCallId, name: "edit_file", args: "{}"});
+      store.handleEvent({type: "tool_call_end", turnId: "turn-gap", toolCallId, result: "ok", outcome: "ok", uiData: {type: "file_change", change}});
+    }
+    const events = store.getPersistedUIEvents().filter(event => event.type === "file_change");
+    expect(events).toHaveLength(3);
+    const restored = JSON.parse(JSON.stringify(events)) as typeof events;
+    expect(restored.map(event => event.change.hunks.flatMap(hunk => hunk.lines).map(line => line.content))).toEqual([["A", "B"], ["X", "Y"], ["Y", "Z"]]);
+    const group = store.getSnapshot().threads.find(thread => thread.role === "file_change_group");
+    expect(group?.role === "file_change_group" && group.changes.length).toBe(3);
+    const resumed = new UITurnEventStore({
+      uiEvents: restored,
+      history: restored.map(event => ({
+        role: "assistant" as const,
+        content: "",
+        tool_calls: [{id: event.toolCallId, type: "function" as const, function: {name: "edit_file", arguments: "{}"}}],
+      })),
+    });
+    const restoredGroup = resumed.getSnapshot().threads.find(thread => thread.role === "file_change_group");
+    expect(restoredGroup?.role === "file_change_group" && restoredGroup.changes).toEqual(events.map(event => event.change));
+  });
+
   test("error thread 使用现有错误文案", () => {
     const store = new UITurnEventStore();
     store.appendError(new Error("boom"));

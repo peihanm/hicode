@@ -36,7 +36,12 @@ export interface FileChange {
 
 const DIFF_CONTEXT_LINES = 3;
 const DIFF_TIMEOUT_MS = 5_000;
-const MAX_FILE_CHANGE_UI_BYTES = 2 * 1024 * 1024;
+export const FILE_CHANGE_LIMITS = Object.freeze({
+    bytes: 2 * 1024 * 1024,
+    lineBytes: 1024 * 1024,
+    linesPerHunk: 10_000,
+    hunks: 4_096,
+});
 
 interface CreateFileChangeInput {
     path: string;
@@ -211,8 +216,14 @@ export function createFileChange(input: CreateFileChangeInput): FileChange {
 }
 
 function limitFileChangeUIData(change: FileChange): FileChange {
-    const maxBytes = MAX_FILE_CHANGE_UI_BYTES;
-    if (Buffer.byteLength(JSON.stringify(change), "utf8") <= maxBytes) {
+    const maxBytes = FILE_CHANGE_LIMITS.bytes;
+    // Aggregation adds scope after generation; reserve its serialized size now.
+    const serializedBytes = (value: FileChange) =>
+        Buffer.byteLength(JSON.stringify({...value, scope: "turn"}), "utf8");
+    if (serializedBytes(change) <= maxBytes &&
+        change.hunks.length <= FILE_CHANGE_LIMITS.hunks &&
+        change.hunks.every(hunk => hunk.lines.length <= FILE_CHANGE_LIMITS.linesPerHunk &&
+            hunk.lines.every(line => Buffer.byteLength(line.content, "utf8") <= FILE_CHANGE_LIMITS.lineBytes))) {
         return change;
     }
 
@@ -228,8 +239,9 @@ function limitFileChangeUIData(change: FileChange): FileChange {
         diffStatus: "truncated",
         omittedDiffLines: totalLines,
     };
-    let estimatedBytes = Buffer.byteLength(JSON.stringify(base), "utf8");
+    let estimatedBytes = serializedBytes(base);
     outer: for (const hunk of change.hunks) {
+        if (hunks.length >= FILE_CHANGE_LIMITS.hunks) break;
         const next: DiffHunk = {...hunk, lines: []};
         estimatedBytes += Buffer.byteLength(
             JSON.stringify({...hunk, lines: []}),
@@ -238,7 +250,9 @@ function limitFileChangeUIData(change: FileChange): FileChange {
         if (estimatedBytes > maxBytes) break;
         for (const line of hunk.lines) {
             const lineBytes = Buffer.byteLength(JSON.stringify(line), "utf8") + 1;
-            if (estimatedBytes + lineBytes > maxBytes) {
+            if (estimatedBytes + lineBytes > maxBytes ||
+                next.lines.length >= FILE_CHANGE_LIMITS.linesPerHunk ||
+                Buffer.byteLength(line.content, "utf8") > FILE_CHANGE_LIMITS.lineBytes) {
                 if (next.lines.length > 0) hunks.push(next);
                 break outer;
             }
@@ -257,7 +271,7 @@ function limitFileChangeUIData(change: FileChange): FileChange {
     // The estimate intentionally includes conservative separators. Keep a final
     // defensive trim for unusually large path/metadata fields.
     while (
-        Buffer.byteLength(JSON.stringify(limited), "utf8") > maxBytes &&
+        serializedBytes(limited) > maxBytes &&
         limited.hunks.length > 0
         ) {
         const lastHunk = limited.hunks.at(-1)!;

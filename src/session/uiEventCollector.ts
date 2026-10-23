@@ -38,15 +38,15 @@ export class SessionUIEventCollector {
         if (event.type !== "tool_call_end") return;
         if (!this.activeToolCalls.delete(event.toolCallId)) return;
         for (const change of toolFileChanges(event.uiData, event.outcome)) {
-            const previous = [...this.currentEvents].reverse().find(
+            const previous = this.currentEvents.filter(
                 (item): item is PersistedFileChangeUIEvent =>
                     item.type === "file_change" &&
                     item.turnId === event.turnId &&
                     item.change.path === change.path
             );
-            const persistedChange = previous
+            const persistedChange = previous.length > 0
                 ? mergeFileChange(
-                    [previous.change],
+                    previous.map(item => item.change),
                     change
                 ).at(-1)!
                 : change;

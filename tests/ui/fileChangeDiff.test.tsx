@@ -7,6 +7,7 @@ import { reduceThreads, threadsFromHistory } from "../../src/ui/conversation/thr
 import type { UIThread } from "../../src/ui/conversation/types.js";
 import type { Message } from "../../src/llm/types.js";
 import { MessageList } from "../../src/ui/conversation/MessageList.js";
+import {StructuredDiff} from "../../src/ui/fileChanges/StructuredDiff.js";
 
 afterEach(() => cleanup());
 
@@ -43,6 +44,22 @@ function addChange(
 }
 
 describe("file change diff UI", () => {
+  test("超限省略与可展开折叠分别提示，序列化恢复后提示一致", () => {
+    const change = createFileChange({path: "large.txt", kind: "create", oldContent: "", newContent: "x".repeat(1024 * 1024 + 1)});
+    const event = {version: 1 as const, type: "file_change" as const, turnId: "turn-large", toolCallId: "call-large", timestamp: "2026-10-23T00:00:00.000Z", change};
+    const restored = decodeSessionContentBlock(JSON.parse(JSON.stringify({kind: "ui", value: event})));
+    if (restored.kind !== "ui" || restored.value.type !== "file_change") throw new Error("Expected file change");
+    for (const current of [change, restored.value.change]) {
+      const frame = render(<StructuredDiff hunks={current.hunks} omittedDiffLines={current.omittedDiffLines} width={80} expanded={false} />).lastFrame() ?? "";
+      expect(frame).toContain("1 diff line omitted (display limit)");
+      expect(frame).not.toContain("ctrl+o");
+    }
+    const small = createFileChange({path: "small.txt", kind: "create", oldContent: "", newContent: "a\nb\n"});
+    const folded = render(<StructuredDiff hunks={small.hunks} omittedDiffLines={3} width={80} expanded={false} defaultMaxLines={1} />).lastFrame() ?? "";
+    expect(folded).toContain("1 more diff line · ctrl+o to expand");
+    expect(folded).toContain("3 diff lines omitted (display limit)");
+  });
+
   test("新文件在同一 turn 修复后只展示最终净 diff", () => {
     let threads: UIThread[] = [];
     const changes = [

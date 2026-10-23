@@ -3,6 +3,7 @@ import {fileReadReceiptSchema} from "../tools/readFile/receipt.js";
 import {agentReceiptSchema} from "../tools/agent/receipt.js";
 import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
+import {FILE_CHANGE_LIMITS} from "../fileChanges/diff.js";
 import {reasoningStateSchema} from "../llm/reasoning.js";
 import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";
@@ -123,7 +124,7 @@ const todoSchema = z.object({
 
 const diffLineSchema = z.object({
     type: z.enum(["context", "add", "remove"]),
-    content: boundedString(1024 * 1024),
+    content: boundedString(FILE_CHANGE_LIMITS.lineBytes),
     oldLineNumber: nonNegativeIntegerSchema.optional(),
     newLineNumber: nonNegativeIntegerSchema.optional(),
 }).strict();
@@ -133,7 +134,7 @@ const diffHunkSchema = z.object({
     oldLines: nonNegativeIntegerSchema,
     newStart: nonNegativeIntegerSchema,
     newLines: nonNegativeIntegerSchema,
-    lines: z.array(diffLineSchema).max(20_000),
+    lines: z.array(diffLineSchema).max(FILE_CHANGE_LIMITS.linesPerHunk),
 }).strict();
 
 const fileChangeSchema = z.object({
@@ -141,14 +142,14 @@ const fileChangeSchema = z.object({
     path: z.string().min(1).max(MAX_PATH_CHARS),
     kind: z.enum(["create", "update", "delete"]),
     scope: z.literal("turn").optional(),
-    hunks: z.array(diffHunkSchema).max(4_096),
+    hunks: z.array(diffHunkSchema).max(FILE_CHANGE_LIMITS.hunks),
     linesAdded: nonNegativeIntegerSchema.nullable(),
     linesRemoved: nonNegativeIntegerSchema.nullable(),
     replacements: nonNegativeIntegerSchema.optional(),
     diffStatus: z.enum(["complete", "truncated", "unavailable"]),
     omittedDiffLines: nonNegativeIntegerSchema.optional(),
     diffUnavailableReason: z.enum(["timeout", "too_large", "binary", "error"]).optional(),
-}).strict();
+}).strict().refine(change => byteLength(JSON.stringify(change)) <= FILE_CHANGE_LIMITS.bytes);
 
 const persistedUIEventSchema = z.discriminatedUnion("type", [
     z.object({version: z.literal(1), type: z.literal("approval_review"), phase: z.literal("end"),

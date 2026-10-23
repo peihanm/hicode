@@ -12,6 +12,10 @@ function coalesceFileChanges(
     next: FileChange
 ): FileChange | null {
     if (previous.path !== next.path) return null;
+    // Empty contents do not imply absence. Creation/deletion must also connect.
+    if ((previous.kind !== "delete") !== (next.kind !== "create")) return null;
+    // FileChange has no absent-to-absent kind; retain both operations.
+    if (previous.kind === "create" && next.kind === "delete") return null;
     const before = getFileChangeContents(previous);
     const after = getFileChangeContents(next);
     if (!before || !after || before.newContent !== after.oldContent) return null;
@@ -19,9 +23,9 @@ function coalesceFileChanges(
     const merged = createFileChange({
         path: previous.path,
         kind:
-            before.oldContent.length === 0 && after.newContent.length > 0
+            previous.kind === "create"
                 ? "create"
-                : before.oldContent.length > 0 && after.newContent.length === 0
+                : next.kind === "delete"
                     ? "delete"
                     : "update",
         oldContent: before.oldContent,
@@ -42,6 +46,9 @@ export function mergeFileChange(
 ): FileChange[] {
     const indices = samePathIndices(changes, incoming.path);
     if (indices.length === 0) return [...changes, incoming];
+    // Multiple records mean continuity was lost. A partial merge must not be
+    // labelled turn-wide: persistence/replay would discard earlier segments.
+    if (indices.length > 1) return [...changes, incoming];
 
     const firstIndex = indices[0]!;
     const latest = changes[indices.at(-1)!]!;

@@ -2,8 +2,68 @@ import { describe, expect, test } from "bun:test";
 import {createFileChange} from "../../src/fileChanges/diff.js";
 import {mergeFileChange} from "../../src/fileChanges/aggregate.js";
 import {limitPersistedUIEvents} from "../../src/session/index.js";
+import {decodeSessionContentBlock, limitSessionUIEvents} from "../../src/session/codec.js";
 
 describe("file change diff", () => {
+  test.each([
+    {name: "普通修改", content: "hello\n", status: "complete", added: 1, omitted: 0},
+    {name: "恰好 10000 行", content: "x\n".repeat(10_000), status: "complete", added: 10_000, omitted: 0},
+    {name: "超过 hunk 行数限制", content: "x\n".repeat(10_001), status: "truncated", added: 10_001, omitted: 1},
+    {name: "恰好 1 MiB 单行", content: "x".repeat(1024 * 1024), status: "complete", added: 1, omitted: 0},
+    {name: "超长单行", content: "x".repeat(1024 * 1024 + 1), status: "truncated", added: 1, omitted: 1},
+    {name: "中文 emoji 按 UTF-8 字节限制", content: "中😀".repeat(150_000), status: "truncated", added: 1, omitted: 1},
+  ])("$name 的展示记录可保存并恢复", ({content, status, added, omitted}) => {
+    const change = createFileChange({path: "example.txt", kind: "create", oldContent: "", newContent: content});
+    expect(change.diffStatus).toBe(status);
+    expect(change.linesAdded).toBe(added);
+    expect(change.linesRemoved).toBe(0);
+    expect(change.omittedDiffLines ?? 0).toBe(omitted);
+    const event = {version: 1 as const, type: "file_change" as const, turnId: "turn-1", toolCallId: "call-1", timestamp: "2026-10-23T00:00:00.000Z", change};
+    expect(limitSessionUIEvents([event])).toEqual([event]);
+    expect(decodeSessionContentBlock(JSON.parse(JSON.stringify({kind: "ui", value: event})))).toEqual({kind: "ui", value: event});
+  });
+
+  test("截断保留原始全文用于下一次合并，不将裁剪后的展示当作文件内容", () => {
+    const content = "x\n".repeat(10_001);
+    const first = createFileChange({path: "example.txt", kind: "create", oldContent: "", newContent: content});
+    const second = createFileChange({path: "example.txt", kind: "update", oldContent: content, newContent: "final\n"});
+    const [merged] = mergeFileChange([first], second);
+    expect(merged).toMatchObject({kind: "create", scope: "turn", diffStatus: "complete", linesAdded: 1, linesRemoved: 0});
+    expect(merged?.hunks[0]?.lines.map(line => line.content)).toEqual(["final"]);
+  });
+
+  test("空文件的连续编辑仍为 update，清空新文件仍为 create", () => {
+    for (const kind of ["create", "update"] as const) {
+      const first = createFileChange({path: "a.txt", kind, oldContent: "", newContent: "a\n"});
+      const edited = createFileChange({path: "a.txt", kind: "update", oldContent: "a\n", newContent: "b\n"});
+      expect(mergeFileChange([first], edited)[0]?.kind).toBe(kind);
+      const second = createFileChange({path: "a.txt", kind: "update", oldContent: "a\n", newContent: ""});
+      expect(mergeFileChange([first], second)[0]).toMatchObject({kind, linesAdded: 0, linesRemoved: 0});
+    }
+    const first = createFileChange({path: "a.txt", kind: "update", oldContent: "a\n", newContent: "b\n"});
+    const cleared = createFileChange({path: "a.txt", kind: "update", oldContent: "b\n", newContent: ""});
+    expect(mergeFileChange([first], cleared)[0]).toMatchObject({kind: "update", linesRemoved: 1});
+  });
+
+  test("删除后重建是 update；创建后删除保留操作；空内容不绕过存在性校验", () => {
+    const created = createFileChange({path: "a.txt", kind: "create", oldContent: "", newContent: ""});
+    const deleted = createFileChange({path: "a.txt", kind: "delete", oldContent: "", newContent: ""});
+    expect(mergeFileChange([deleted], created)[0]).toMatchObject({kind: "update"});
+    expect(mergeFileChange([created], deleted)).toEqual([created, deleted]);
+    const updated = createFileChange({path: "a.txt", kind: "update", oldContent: "", newContent: "x\n"});
+    expect(mergeFileChange([deleted], updated)).toEqual([deleted, updated]);
+  });
+
+  test("断开的修改链后续可衔接时也不覆盖之前的记录或其他文件", () => {
+    const first = createFileChange({path: "a.txt", kind: "update", oldContent: "A", newContent: "B"});
+    const other = createFileChange({path: "b.txt", kind: "create", oldContent: "", newContent: "other"});
+    const second = createFileChange({path: "a.txt", kind: "update", oldContent: "X", newContent: "Y"});
+    const third = createFileChange({path: "a.txt", kind: "update", oldContent: "Y", newContent: "Z"});
+    const changes = mergeFileChange(mergeFileChange([first, other], second), third);
+    expect(changes).toEqual([first, other, second, third]);
+    expect(changes.every(change => change.scope === undefined)).toBe(true);
+  });
+
   test("同一 turn 的连续修改合并为初始内容到最终内容", () => {
     const created = createFileChange({
       path: "new.txt",
@@ -182,6 +242,10 @@ describe("file change diff", () => {
     expect(change.diffStatus).toBe("truncated");
     expect(change.linesAdded).toBe(30_000);
     expect(change.omittedDiffLines).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify({...change, scope: "turn"}))).toBeLessThanOrEqual(2 * 1024 * 1024);
+    const event = {version: 1 as const, type: "file_change" as const, turnId: "turn-large", toolCallId: "call-large", timestamp: "2026-10-23T00:00:00.000Z", change: {...change, scope: "turn" as const}};
+    expect(limitSessionUIEvents([event])).toEqual([event]);
+    expect(decodeSessionContentBlock(JSON.parse(JSON.stringify({kind: "ui", value: event})))).toEqual({kind: "ui", value: event});
   });
 
   test("持久化 UI 事件同时遵守条数和字节配额", () => {
