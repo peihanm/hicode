@@ -3,7 +3,7 @@ import {fileReadReceiptSchema} from "../tools/readFile/receipt.js";
 import {agentReceiptSchema} from "../tools/agent/receipt.js";
 import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";
-import {FILE_CHANGE_LIMITS} from "../fileChanges/diff.js";
+import {FILE_CHANGE_LIMITS} from "../fileChanges/index.js";
 import {reasoningStateSchema} from "../llm/reasoning.js";
 import {archiveRecordSchema} from "./archiveSchema.js";
 import type {Message} from "../llm/types.js";

@@ -1,5 +1,5 @@
 import type {ShellResultReceipt} from "../tools/bash/receipt.js";
-import type {FileChange} from "../fileChanges/diff.js";
+import type {FileChange} from "../fileChanges/index.js";
 import type {FileReadReceipt} from "../tools/readFile/receipt.js";
 import type {AgentReceipt} from "../tools/agent/receipt.js";
 import type {ToolOutcome} from "./types.js";

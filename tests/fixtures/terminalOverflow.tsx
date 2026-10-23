@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {Writable} from "node:stream";
 import {Box, Text, render} from "ink";
-import {createFileChange} from "../../src/fileChanges/diff.js";
+import {createFileChange} from "../../src/fileChanges/index.js";
 import {ScrollbackTranscript} from "../../src/ui/conversation/ScrollbackTranscript.js";
 import type {UIThread} from "../../src/ui/conversation/types.js";
 import {createTerminalCursorOutput} from "../../src/ui/input/terminalCursor.js";

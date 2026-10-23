@@ -1,7 +1,7 @@
 import {lstat} from "node:fs/promises";
 import {resolve} from "node:path";
 import {parsePatch} from "diff";
-import {convertUnifiedDiffHunk} from "../fileChanges/diff.js";
+import {convertUnifiedDiffHunk} from "../fileChanges/index.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {mapWithConcurrencyLimit} from "../tools/orchestration.js";
 import {
@@ -9,7 +9,7 @@ import {
     formatGitProcessError,
     type GitCommandRunner,
 } from "./process.js";
-import {parseGitNumstatZ, readGitRepositorySnapshot,} from "./status.js";
+import {compareGitText, parseGitNumstatZ, readGitRepositorySnapshot,} from "./status.js";
 import type {
     GitDiffFile,
     GitDiffSnapshotResult,
@@ -18,7 +18,6 @@ import type {
     GitRepositorySnapshotResult,
     GitRepositoryUnavailableReason,
 } from "./types.js";
-import {compareGitText} from "./sort.js";
 
 const MAX_DIFF_FILES = 500;
 const MAX_DIFF_HUNK_LINES = 10_000;

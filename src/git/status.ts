@@ -16,7 +16,11 @@ import type {
     GitStatusCode,
     ParsedGitStatus,
 } from "./types.js";
-import {compareGitText} from "./sort.js";
+
+/** Locale-independent ordering for Git paths and metadata. */
+export function compareGitText(left: string, right: string): number {
+    return left < right ? -1 : left > right ? 1 : 0;
+}
 
 interface FixedFields {
     fields: string[];

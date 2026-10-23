@@ -2,7 +2,7 @@ import {contentText, type MessageContent} from "../../images/content.js";
 import {userContentText} from "./userContent.js";
 import {toolFileChanges} from "../../toolResults/uiData.js";
 import {randomUUID} from "node:crypto";
-import {mergeFileChange} from "../../fileChanges/aggregate.js";
+import {mergeFileChange} from "../../fileChanges/index.js";
 import type {PersistedUIEvent} from "../../session/index.js";
 import type {AgentEvent} from "../../agent/types.js";
 import type {Message} from "../../llm/types.js";

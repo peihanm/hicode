@@ -2,7 +2,7 @@ import {basename} from "node:path";
 import {useEffect, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import type {GitDiffFile, GitDiffSnapshotResult,} from "../../git/index.js";
-import type {DiffHunk} from "../../fileChanges/diff.js";
+import type {DiffHunk} from "../../fileChanges/index.js";
 import {StructuredDiff} from "../fileChanges/StructuredDiff.js";
 import {COLORS} from "../theme.js";
 import {panelWindow, usePanelLayout, wrapPanelText} from "../panelLayout.js";

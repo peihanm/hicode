@@ -5,7 +5,7 @@ import {
   processToolOutput,
 } from "../../src/toolResults/index.js";
 import {toolFileChanges} from "../../src/toolResults/uiData.js";
-import { createFileChange } from "../../src/fileChanges/diff.js";
+import { createFileChange } from "../../src/fileChanges/index.js";
 import type { Message } from "../../src/llm/types.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";

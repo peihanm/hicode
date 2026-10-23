@@ -2,7 +2,7 @@ import {z} from "zod";
 import {lstat} from "node:fs/promises";
 import type {Tool} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
-import {createFileChange} from "../../fileChanges/diff.js";
+import {createFileChange} from "../../fileChanges/index.js";
 import {commitFileWrite} from "../shared/fileWrite.js";
 import {readFileSnapshot} from "../shared/fileSnapshot.js";
 

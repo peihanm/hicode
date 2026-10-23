@@ -1,7 +1,7 @@
 import React, {memo, useMemo} from "react";
 import {Box, Text} from "ink";
 import stringWidth from "string-width";
-import type {DiffHunk, DiffLine} from "../../fileChanges/diff.js";
+import type {DiffHunk, DiffLine} from "../../fileChanges/index.js";
 import {COLORS} from "../theme.js";
 import {maxDiffLineNumber, wrapDisplayText} from "./layout.js";
 import {getWordParts, pairChangedLines} from "./wordDiff.js";

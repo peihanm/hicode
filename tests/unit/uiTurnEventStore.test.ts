@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createFileChange } from "../../src/fileChanges/diff.js";
+import { createFileChange } from "../../src/fileChanges/index.js";
 import {
   UITurnEventStore,
 } from "../../src/ui/turn/eventStore.js";
