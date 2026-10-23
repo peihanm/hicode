@@ -22,26 +22,26 @@ HiCode 是一个基于 TypeScript 自研的轻量级终端 Code Agent，核心�
 
 于 2026 年 10 月 11 日完成评测。
 
-1. HiCode：原题干通过 **83/89（93.3%）**；含两道题干补充后通过 **85/89（95.5%）**。使用 Qwen3.8-Flash + DeepSeek V4.1 Flash。
-2. [DeepSeek V4.1 Flash 公开参考](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash#performance-across-agent-scaffolds-deepswe-v11-and-terminal-bench-21-max-reasoning-effort)：搭配 Codex、Claude Code、DeepSeek Harness Minimal 的通过率分别为 **84.1%、88.0%、90.6%**。每题独立评测 3 次，统计平均通过率。
+1. HiCode：原题干通过 **83/89（93.3%）**；含两道题干补充后通过 **85/89（95.5%）**。使用 Qwen3.8-Flash + DeepSeek-v4.1-Flash-0910。
+2. [DeepSeek V4.1 Flash 初版（2026-09-10）公开参考](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash#performance-across-agent-scaffolds-deepswe-v11-and-terminal-bench-21-max-reasoning-effort)：搭配 Codex、Claude Code、DeepSeek Harness Minimal 的通过率分别为 **84.1%、88.0%、90.6%**。每题独立评测 3 次，统计平均通过率。
 3. 其他模型的公开参考：[GPT-5.6 Sol + Codex](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash#comparison-with-frontier-models-max-reasoning-effort) **88.8%**、[Kimi K3 + Kimi Code](https://www.kimi.com/en/blog/kimi-k3) **88.3%**、[GLM-5.3 + Claude Code](https://huggingface.co/zai-org/GLM-5.3) **88.2%**、[Qwen3.8-Max + Claude Code](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8) **86.6%**（每题评测 10 次取平均）。
 
 题干说明：两道题的原题干未明确说明输出格式或行为要求，因此补充了说明，验收测试保持不变。
 
-评测说明：为控制成本，HiCode 每题验收通过后即记为通过，不再重复测试；若独立重复评测，平均通过率预计会略有下降。
+评测说明：为控制成本，HiCode 每题验收通过后即记为通过，不再重复测试。从个人体感来看，Terminal-Bench 2.1 的题目相对简单，若独立重复评测，平均通过率预计会略有下降。
 
 
 ### ⭐ DeepSWE 1.1
 
 DeepSWE 包含 113 道原创工程任务，覆盖 91 个开源仓库；官方参考解平均新增 **668 行代码、修改 7.4 个文件**，重点考察仓库探索与跨文件实现能力。[官方统计](https://arxiv.org/pdf/2607.07946#page=6)
 
-🔥 持续评测中。
+HiCode：本轮评测于 2026 年 10 月 22 日结束，累计通过 **108/113（95.6%）**。其中，**Qwen3.8-Flash 通过 19 道、GLM 5.3 Flash 通过 61 道、DeepSeek V4.1 Flash（含1017）通过 28 道**。
 
-1. HiCode：截至 2026 年 10 月 21 日，累计通过 **95/113（84.1%）**，使用 Qwen3.8-Flash + GLM 5.3 Flash + DeepSeek V4.1 Flash。
-2. [DeepSeek V4.1 Flash 公开参考](https://arxiv.org/html/2609.19969v1#S5.SS3.SSS4)：搭配 Codex、Claude Code、mini-SWE、DeepSeek Harness Minimal 的通过率分别为 **65.6%、69.8%、74.2%、72.6%**。推理强度为 max，每题独立评测 8 次，统计平均通过率。
-3. 其他模型的公开参考：[Kimi K3 + Kimi Code](https://www.kimi.com/en/blog/kimi-k3) **67.5%**、[GLM-5.3 + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3) **66.9%**、[GLM-5.3-Flash + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3-Flash) **63.4%**、[Qwen3.8-Max + Claude Code](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8#benchmark-results) **56.6%**。
+- [DeepSeek-v4.1-Flash-0910 公开参考](https://arxiv.org/html/2609.19969v1#S5.SS3.SSS4)：搭配 Codex、Claude Code、mini-SWE、DeepSeek Harness Minimal 的通过率分别为 **65.6%、69.8%、74.2%、72.6%**。推理强度为 max，每题独立评测 8 次，统计平均通过率。
+- [DeepSeek-v4.1-Flash-1017 公开参考](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017#introduction)：2026 年 10 月 17 日更新，搭配 **Mini-SWE-V2**，DeepSWE 1.1 通过率为 **77.0%**。
+- 其他模型的公开参考：[Kimi K3 + Kimi Code](https://www.kimi.com/en/blog/kimi-k3) **67.5%**、[GLM-5.3 + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3) **66.9%**、[GLM-5.3-Flash + mini-SWE-agent](https://huggingface.co/zai-org/GLM-5.3-Flash) **63.4%**、[Qwen3.8-Max + Claude Code](https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B-FP8#benchmark-results) **56.6%**。
 
-评测说明：从个人体感来看，DeepSWE 1.1 的难度显著高于 Terminal-Bench 2.1，平均输出 Token 消耗为其 **2.5 倍左右**。为控制成本，HiCode 每题验收通过后即记为通过，不再重复测试；若独立重复评测，平均通过率预计会有较明显的下降。
+评测说明：从个人体感来看，DeepSWE 1.1 的难度显著高于 Terminal-Bench 2.1，平均输出 Token 消耗为其 **2.5 倍左右**。为控制成本，HiCode 每题验收通过后即记为通过，不再重复测试；考虑到题目难度较高，若独立重复评测，平均通过率预计会有较明显的下降。
 
 
 ---
