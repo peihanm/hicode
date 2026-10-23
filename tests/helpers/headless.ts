@@ -3,7 +3,7 @@ import { createHeadlessRunner } from "../../src/headless/host.js";
 import {
   writeHeadlessDiagnostic,
   writeHeadlessOutput,
-} from "../../src/headless/io.js";
+} from "../../src/headless/output.js";
 import type {
   HeadlessOptions,
   HeadlessOutputFormat,

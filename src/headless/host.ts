@@ -6,8 +6,7 @@ import {createSDKThreadFactory, prepareThreadSession} from "../sdk/thread.js";
 import {collectTurnResult} from "../sdk/resultCollector.js";
 import type {ThreadEvent} from "../sdk/protocol.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
-import {writeHeadlessDiagnostic, writeHeadlessOutput} from "./io.js";
-import {buildHeadlessRunSummary, formatHeadlessProgress} from "./output.js";
+import {buildHeadlessRunSummary, formatHeadlessProgress, writeHeadlessDiagnostic, writeHeadlessOutput} from "./output.js";
 import type {HeadlessOptions, HeadlessOutputFormat, HeadlessRunSummary} from "./types.js";
 
 interface HeadlessRunnerDependencies {

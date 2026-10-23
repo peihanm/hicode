@@ -1,4 +1,4 @@
-import {createFileChange} from "../../src/fileChanges/index.js";
+import {createFileChange} from "../../src/fileChanges/diff.js";
 import {describe, expect, test} from "bun:test";
 import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import type {ThreadEventPayload} from "../../src/sdk/protocol.js";

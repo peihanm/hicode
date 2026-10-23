@@ -1,6 +1,6 @@
 import {memo} from "react";
 import {Box, Text} from "ink";
-import type {FileChange} from "../../fileChanges/index.js";
+import type {FileChange} from "../../fileChanges/diff.js";
 import {COLORS} from "../theme.js";
 import {FileChangeView} from "./FileChangeView.js";
 import {useTerminalWidth} from "../terminalSize.js";

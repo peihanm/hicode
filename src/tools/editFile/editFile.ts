@@ -3,7 +3,7 @@ import type {Tool, ToolContext} from "../types.js";
 import {displayToolPath, resolveToolPath} from "../shared/paths.js";
 import {findMatches, type MatchSpan} from "./strMatch.js";
 import {normalizeFileText} from "../shared/fileState.js";
-import {createFileChange} from "../../fileChanges/index.js";
+import {createFileChange} from "../../fileChanges/diff.js";
 import {commitFileWrite} from "../shared/fileWrite.js";
 import {readFileSnapshot} from "../shared/fileSnapshot.js";
 

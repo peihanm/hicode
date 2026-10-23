@@ -1,6 +1,6 @@
 import {toolFileChanges} from "../toolResults/uiData.js";
 import type {AgentEvent} from "../agent/types.js";
-import {mergeFileChange} from "../fileChanges/index.js";
+import {mergeFileChange} from "../fileChanges/aggregate.js";
 import {
     limitPersistedUIEvents,
     type PersistedFileChangeUIEvent,

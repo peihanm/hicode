@@ -11,7 +11,7 @@ import {
 } from "../helpers/fakeLLM.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createFileChange } from "../../src/fileChanges/index.js";
+import { createFileChange } from "../../src/fileChanges/diff.js";
 import {hasCompleteToolPairs} from "../../src/session/codec.js";
 
 function initialHistory(): Message[] {

@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createFileChange,
-  mergeFileChange,
-} from "../../src/fileChanges/index.js";
+import {createFileChange} from "../../src/fileChanges/diff.js";
+import {mergeFileChange} from "../../src/fileChanges/aggregate.js";
 import {limitPersistedUIEvents} from "../../src/session/index.js";
 
 describe("file change diff", () => {

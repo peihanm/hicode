@@ -1,6 +1,6 @@
 import React, {memo} from "react";
 import {Box, Text} from "ink";
-import type {FileChange} from "../../fileChanges/index.js";
+import type {FileChange} from "../../fileChanges/diff.js";
 import {COLORS} from "../theme.js";
 import {StructuredDiff} from "./StructuredDiff.js";
 

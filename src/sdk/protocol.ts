@@ -3,7 +3,7 @@ import type {ImageReference} from "../images/content.js";
 import type {HookExecution, HookInput} from "../hooks/types.js";
 import type {StopReason} from "../agent/types.js";
 import type {TurnAbortReason} from "../runtime/abort.js";
-import type {FileChange} from "../fileChanges/index.js";
+import type {FileChange} from "../fileChanges/diff.js";
 import type {HookTrustRequest} from "../hooks/index.js";
 import type {MemoryChange} from "../memory/types.js";
 import type {McpApprovalRequest} from "../mcp/index.js";

@@ -2,7 +2,7 @@ import {SessionUIEventCollector} from "../../src/session/uiEventCollector.js";
 import {decodeSessionContentBlock} from "../../src/session/codec.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
-import { createFileChange } from "../../src/fileChanges/index.js";
+import { createFileChange } from "../../src/fileChanges/diff.js";
 import { reduceThreads, threadsFromHistory } from "../../src/ui/conversation/threadReducer.js";
 import type { UIThread } from "../../src/ui/conversation/types.js";
 import type { Message } from "../../src/llm/types.js";

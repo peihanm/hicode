@@ -13,7 +13,7 @@ import {dirname, join} from "node:path";
 import { createCompactState } from "../../src/context/index.js";
 import {listSessionIndex, loadLatestSession, loadSession} from "../../src/session/index.js";
 import type { Message } from "../../src/llm/types.js";
-import { createFileChange } from "../../src/fileChanges/index.js";
+import { createFileChange } from "../../src/fileChanges/diff.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import {getSessionIndexPath, getSessionSnapshotPath} from "../../src/session/paths.js";
 import {getProjectSessionsDirectory} from "../../src/persistence/index.js";

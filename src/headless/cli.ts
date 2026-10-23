@@ -1,7 +1,6 @@
 import {createTurnAbortController} from "../runtime/abort.js";
 import {runHeadless} from "./host.js";
-import {writeHeadlessStdout} from "./io.js";
-import {formatHeadlessCliError} from "./output.js";
+import {formatHeadlessCliError, writeHeadlessStdout} from "./output.js";
 import type {HeadlessOptions, HeadlessRunSummary} from "./types.js";
 
 type SigintListener = () => void;

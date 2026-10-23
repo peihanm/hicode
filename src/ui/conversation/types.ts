@@ -2,7 +2,7 @@ import type {ShellResultReceipt} from "../../tools/bash/receipt.js";
 import type {HookExecution} from "../../hooks/types.js";
 import type {PersistedToolResult, ToolOutcome} from "../../toolResults/index.js";
 import type {AgentType} from "../../subagents/types.js";
-import type {FileChange} from "../../fileChanges/index.js";
+import type {FileChange} from "../../fileChanges/diff.js";
 import type {ToolUIData} from "../../toolResults/uiData.js";
 
 export type UIThread =

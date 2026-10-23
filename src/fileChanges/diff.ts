@@ -1,5 +1,38 @@
 import {structuredPatch} from "diff";
-import type {DiffHunk, DiffLine, DiffLineType, FileChange,} from "./types.js";
+
+export type DiffLineType = "context" | "add" | "remove";
+
+export interface DiffLine {
+    type: DiffLineType;
+    content: string;
+    oldLineNumber?: number;
+    newLineNumber?: number;
+}
+
+export interface DiffHunk {
+    oldStart: number;
+    oldLines: number;
+    newStart: number;
+    newLines: number;
+    lines: DiffLine[];
+}
+
+type DiffUnavailableReason = "timeout" | "too_large" | "binary" | "error";
+
+export interface FileChange {
+    version: 1;
+    path: string;
+    kind: "create" | "update" | "delete";
+    /** Initial-to-final state after merging file-tool changes in this Turn. */
+    scope?: "turn";
+    hunks: DiffHunk[];
+    linesAdded: number | null;
+    linesRemoved: number | null;
+    replacements?: number;
+    diffStatus: "complete" | "truncated" | "unavailable";
+    omittedDiffLines?: number;
+    diffUnavailableReason?: DiffUnavailableReason;
+}
 
 const DIFF_CONTEXT_LINES = 3;
 const DIFF_TIMEOUT_MS = 5_000;

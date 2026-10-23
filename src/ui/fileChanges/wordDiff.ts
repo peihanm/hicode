@@ -1,5 +1,5 @@
 import {diffWordsWithSpace} from "diff";
-import type {DiffHunk} from "../../fileChanges/index.js";
+import type {DiffHunk} from "../../fileChanges/diff.js";
 
 interface WordPart {
     value: string;

@@ -6,10 +6,10 @@ import type {AgentEvent} from "../../src/agent/types.js";
 import {createCompactState} from "../../src/context/index.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {createHookRuntimeFactory, type HookEnvelope, type HookInput, type ResolvedHookSettings} from "../../src/hooks/index.js";
-import {createRootRuntimeResourcesFactory, type RootRuntimeResources} from "../../src/runtime/resources.js";
+import type {RootRuntimeResources} from "../../src/runtime/resources.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import {runRootTurn, createRootTurnRunnerFactory} from "../../src/runtime/turnRuntime.js";
-import {createTestRootConfiguration, createTestSettings, createRootRuntimeResourcesForTest} from "../helpers/runtimeResources.js";
+import {createTestRootConfiguration, createTestSettings, createRootRuntimeResourcesForTest, createRootRuntimeResourcesFactoryForTest} from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createSubagentThreadForTest} from "../helpers/subagent.js";
@@ -39,7 +39,7 @@ function sessionFor(resources: RootRuntimeResources) {
 }
 async function resourcesFor(cwd: string, storage: HiCodeStorageLayout, hooks: ResolvedHookSettings,
     handler: (input: HookInput) => unknown) {
-    return createRootRuntimeResourcesFactory({createHookRuntime: createHookRuntimeFactory({
+    return createRootRuntimeResourcesFactoryForTest({createHookRuntime: createHookRuntimeFactory({
         getTrust: async () => "allow", executeCommand: async ({stdin}) => ({stdout: JSON.stringify(handler((JSON.parse(stdin) as HookEnvelope).event)),
             stderr: "", termination: {kind: "exit", code: 0}}),
     })})({configuration: createTestRootConfiguration(cwd, createTestSettings({hooks}), storage, sources)});
@@ -309,7 +309,7 @@ test("Root /hooks reload 仅重读声明来源，活动 Turn 禁止重载，坏�
         await writeFile(path, JSON.stringify(declaration));
         const loaded = loadHiCodeSettings({cwd, storage, sources: ["project"]});
         let approvals = 0;
-        const resources = await createRootRuntimeResourcesFactory()({
+        const resources = await createRootRuntimeResourcesFactoryForTest()({
             configuration: createTestRootConfiguration(cwd, createTestSettings({hooks: loaded.values.hooks}), storage, sources),
             requestHookTrust: async () => {approvals++; return "once";},
         });
@@ -339,7 +339,7 @@ test("delegated tools enforce approved policies and keep independent once state 
     const envelopes: HookEnvelope[] = [];
     const hooks = {...resolvedHooks("PreToolUse", [{type:"command",purpose:"control",command:"policy"}]),
         PostToolUse: resolvedHooks("PostToolUse", [{type:"command",purpose:"observe",command:"audit",once:true}]).PostToolUse};
-    const resources = await createRootRuntimeResourcesFactory({createHookRuntime:createHookRuntimeFactory({
+    const resources = await createRootRuntimeResourcesFactoryForTest({createHookRuntime:createHookRuntimeFactory({
         getTrust:async()=>"allow",executeCommand:async({stdin})=>{
             const envelope:HookEnvelope=JSON.parse(stdin);envelopes.push(envelope);
             const event=envelope.event;

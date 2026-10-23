@@ -1,4 +1,4 @@
-import type {DiffHunk} from "../fileChanges/index.js";
+import type {DiffHunk} from "../fileChanges/diff.js";
 
 export type GitOperationState =
     | "normal"

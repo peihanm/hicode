@@ -3,9 +3,13 @@ import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
-import type { TaskRuntimeLike } from "../../src/tasks/index.js";
+import {createTaskRuntime, type TaskRuntimeLike} from "../../src/tasks/index.js";
 import { createTaskRuntimeForTest } from "./taskRuntime.js";
-import { EMPTY_PROJECT_INSTRUCTIONS } from "../../src/prompt/instructions.js";
+import {EMPTY_PROJECT_INSTRUCTIONS, loadProjectInstructions} from "../../src/prompt/instructions.js";
+import {createMcpManager} from "../../src/mcp/manager.js";
+import {loadSkills} from "../../src/skills/loader.js";
+import {createHookRuntime} from "../../src/hooks/index.js";
+import {createSandboxRuntime} from "../../src/sandbox/index.js";
 import {
   createRootRuntimeResourcesFactory,
   type CreateRootRuntimeResourcesOptions,
@@ -24,6 +28,7 @@ import {
   createAgentDefinitionManager,
   createAgentDefinitionStore,
   createSubagentCatalog,
+  loadCustomAgentDefinitions,
   type SubagentCatalog,
   type SubagentRegistry,
 } from "../../src/subagents/index.js";
@@ -289,6 +294,24 @@ interface RootRuntimeTestDependencies {
   loadedCustomAgents?: LoadedCustomAgents;
 }
 
+export function createRootRuntimeResourcesFactoryForTest(
+  overrides: Partial<Parameters<typeof createRootRuntimeResourcesFactory>[0]> = {}
+) {
+  return createRootRuntimeResourcesFactory({
+    createSandboxRuntime,
+    createMcpManager,
+    loadSkills,
+    loadProjectInstructions,
+    createToolRuntime,
+    createHookRuntime,
+    createTaskRuntime,
+    createAgentRuntime,
+    createMemoryRuntime,
+    loadCustomAgentDefinitions,
+    ...overrides,
+  });
+}
+
 export function createRootRuntimeResourcesForTest(
   options: Omit<CreateRootRuntimeResourcesOptions, "configuration"> & {
     cwd: string;
@@ -300,7 +323,7 @@ export function createRootRuntimeResourcesForTest(
   },
   test: RootRuntimeTestDependencies = {}
 ) {
-  return createRootRuntimeResourcesFactory({
+  return createRootRuntimeResourcesFactoryForTest({
     ...(test.mcpManager === undefined
       ? {}
       : {

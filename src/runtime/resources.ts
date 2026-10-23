@@ -164,24 +164,8 @@ function createResourceCloser(
 }
 
 export function createRootRuntimeResourcesFactory(
-    overrides: Partial<RootRuntimeDependencies> = {}
+    dependencies: RootRuntimeDependencies
 ) {
-    const dependencies: RootRuntimeDependencies = {
-        createSandboxRuntime: overrides.createSandboxRuntime ?? createSandboxRuntime,
-        createMcpManager: overrides.createMcpManager ?? createMcpManager,
-        loadSkills: overrides.loadSkills ?? loadSkills,
-        loadProjectInstructions:
-            overrides.loadProjectInstructions ?? loadProjectInstructions,
-        createToolRuntime: overrides.createToolRuntime ?? createToolRuntime,
-        createHookRuntime: overrides.createHookRuntime ?? createHookRuntime,
-        createTaskRuntime: overrides.createTaskRuntime ?? createTaskRuntime,
-        createAgentRuntime: overrides.createAgentRuntime ?? createAgentRuntime,
-        createMemoryRuntime:
-            overrides.createMemoryRuntime ?? createMemoryRuntime,
-        loadCustomAgentDefinitions:
-            overrides.loadCustomAgentDefinitions ?? loadCustomAgentDefinitions,
-    };
-
     return async function createRootRuntimeResources(
         options: CreateRootRuntimeResourcesOptions
     ): Promise<RootRuntimeResources> {
@@ -429,5 +413,15 @@ export function createRootRuntimeResourcesFactory(
     };
 }
 
-export const createRootRuntimeResources =
-    createRootRuntimeResourcesFactory();
+export const createRootRuntimeResources = createRootRuntimeResourcesFactory({
+    createSandboxRuntime,
+    createMcpManager,
+    loadSkills,
+    loadProjectInstructions,
+    createToolRuntime,
+    createHookRuntime,
+    createTaskRuntime,
+    createAgentRuntime,
+    createMemoryRuntime,
+    loadCustomAgentDefinitions,
+});

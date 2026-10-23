@@ -1,6 +1,6 @@
 import {describe, expect, test} from "bun:test";
 import stringWidth from "string-width";
-import {createFileChange} from "../../src/fileChanges/index.js";
+import {createFileChange} from "../../src/fileChanges/diff.js";
 import type {UIThread} from "../../src/ui/conversation/types.js";
 import {
     CLEAR_SCROLLBACK_AND_SCREEN,

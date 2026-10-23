@@ -1,5 +1,5 @@
 import {createFileChange, getFileChangeContents} from "./diff.js";
-import type {FileChange} from "./types.js";
+import type {FileChange} from "./diff.js";
 
 function samePathIndices(changes: FileChange[], path: string): number[] {
     return changes.flatMap((change, index) =>

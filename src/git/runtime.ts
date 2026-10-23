@@ -1,7 +1,7 @@
 import {lstat} from "node:fs/promises";
 import {resolve} from "node:path";
 import {parsePatch} from "diff";
-import {convertUnifiedDiffHunk} from "../fileChanges/index.js";
+import {convertUnifiedDiffHunk} from "../fileChanges/diff.js";
 import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {mapWithConcurrencyLimit} from "../tools/orchestration.js";
 import {
