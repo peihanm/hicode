@@ -8,6 +8,8 @@ import {readFile} from "node:fs/promises";
 import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
 import {AppForTest as App} from "../helpers/AppForTest.js";
+import {createInitialHistory} from "../../src/prompt/index.js";
+import type {Message} from "../../src/llm/types.js";
 
 afterEach(() => cleanup());
 
@@ -77,11 +79,13 @@ describe("Model dialog", () => {
             const resources = createTestRuntimeResources(cwd, {primaryModel, settings});
             const fastBefore = resources.fastModel;
             let nextContext: ToolContext | undefined;
+            let nextSystem: Message | undefined;
             const instance = render(
                 <App
                     resources={resources}
-                    runAgentImpl={async (_input, _history, _onEvent, ctx) => {
+                    runAgentImpl={async (_input, history, _onEvent, ctx) => {
                         nextContext = ctx;
+                        nextSystem = history[0];
                         return {reply: "ok", reason: "completed", iterations: 1};
                     }}
                 />
@@ -130,6 +134,7 @@ describe("Model dialog", () => {
             await waitForState(() => nextContext !== undefined, "the next Turn to capture the saved model");
             expect(nextContext?.provider).toBe("deepseek");
             expect(nextContext?.model).toBe("deepseek-pro");
+            expect(nextSystem).toEqual(createInitialHistory(cwd)[0]);
             expect(nextContext?.reasoning).toBe("max");
             expect(nextContext?.fastReasoning).toBe(explicitFast ? undefined : "max");
             expect(nextContext?.fastModel).toBe(explicitFast ? fastBefore : deepseek.model);

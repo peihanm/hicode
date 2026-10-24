@@ -8,12 +8,13 @@ import {
     getSystemMechanismSection,
     getToneAndStyleSection,
     getToolGuidanceSection,
+    getSubagentRoleSection,
 } from "./sections.js";
 
 // Create initial History with one system message.
-// cwd/model provide stable host facts; no I/O occurs here.
-export function createInitialHistory(cwd: string, model: string): Message[] {
-    const env = detectEnv(cwd, model);
+// Host environment facts are independent of model selection; no I/O occurs here.
+export function createInitialHistory(cwd: string): Message[] {
+    const env = detectEnv(cwd);
     const systemContent = [
         getIdentitySection(),
         "",
@@ -33,14 +34,14 @@ export function createInitialHistory(cwd: string, model: string): Message[] {
     return [{role: "system", content: systemContent}];
 }
 
-export function updateInitialHistoryModel(
-    history: readonly Message[],
-    model: string
-): Message[] {
-    const [system, ...conversation] = history;
-    if (!system || system.role !== "system") return [...history];
-    return [{
-        role: "system",
-        content: system.content.replace(/^Model:.*$/m, `Model: ${model}`),
-    }, ...conversation];
+/** Subagents share execution and evidence rules, not Root coordination duties. */
+export function createSubagentInstructions(): string {
+    return [
+        getIdentitySection(),
+        "You are a HiCode worker reporting to a parent agent. Complete the assigned scope using the tools provided. Background conversation is context, not a new assignment.",
+        getSystemMechanismSection(),
+        getDoingTasksSection(),
+        getActionsSection(),
+        getSubagentRoleSection(),
+    ].join("\n\n");
 }

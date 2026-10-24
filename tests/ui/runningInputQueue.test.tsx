@@ -150,10 +150,10 @@ describe("running input queue UI", () => {
 
             try {
                 await waitForState(() => (instance.lastFrame() ?? "").includes("恢复后的草稿") &&
-                    loadSession(storage, cwd, initialSession.sessionId, resources.model)?.queuedInputs?.length === 1,
+                    loadSession(storage, cwd, initialSession.sessionId)?.queuedInputs?.length === 1,
                     "restored draft and persisted queue");
                 expect(inputs).toEqual([]);
-                expect(loadSession(storage, cwd, initialSession.sessionId, resources.model)?.queuedInputs)
+                expect(loadSession(storage, cwd, initialSession.sessionId)?.queuedInputs)
                     .toEqual([initialSession.queuedInputs[1]]);
 
                 instance.stdin.write("\r");

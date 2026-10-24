@@ -41,7 +41,7 @@ for (const twice of [false, true]) test(`结构化超长错误只恢复一次，
             else expect((await run).reply).toBe("恢复成功");
             expect(fake.calls).toHaveLength(2);
             expect(f.compactions()).toBe(1);
-            expect(loadSession(storage, cwd, "continuity", "glm-test")?.compactState?.archives).toHaveLength(1);
+            expect(loadSession(storage, cwd, "continuity")?.compactState?.archives).toHaveLength(1);
         } finally {await f.resources.close();}
     });
 });

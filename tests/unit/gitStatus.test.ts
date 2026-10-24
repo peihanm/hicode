@@ -342,7 +342,10 @@ describe("Git process", () => {
             expect((await runtime.status(new AbortController().signal)).status).toBe("available");
             const diff = await runtime.diff(new AbortController().signal);
             expect(diff.status).toBe("available");
-            if (diff.status === "available") expect(diff.snapshot.patch).toContain("+after");
+            if (diff.status === "available") {
+                expect(diff.snapshot.files[0]?.hunks.flatMap(hunk => hunk.lines))
+                    .toContainEqual(expect.objectContaining({type: "add", content: "after"}));
+            }
             await expect(stat(marker)).rejects.toMatchObject({code: "ENOENT"});
         });
     });
@@ -404,9 +407,10 @@ describe("Git diff snapshot", () => {
             if (current.status === "available") {
                 expect(current.snapshot.files.map((file) => file.status.path))
                     .toEqual(["mixed.txt", "new file.txt"]);
-                expect(current.snapshot.patch).toContain("+working");
-                expect(current.snapshot.patch).toContain("+new");
-                expect(current.snapshot.patch).not.toContain("+staged");
+                const addedLines = current.snapshot.files.map(file =>
+                    file.hunks.flatMap(hunk => hunk.lines)
+                        .filter(line => line.type === "add").map(line => line.content));
+                expect(addedLines).toEqual([["working"], ["new"]]);
             }
         });
     });
@@ -485,7 +489,7 @@ describe("Git diff snapshot", () => {
             );
             expect(result.status).toBe("available");
             if (result.status === "available") {
-                expect(result.snapshot.patch).not.toContain("root:");
+                expect(JSON.stringify(result.snapshot)).not.toContain("root:");
                 expect(result.snapshot.files[0]).toMatchObject({
                     status: {path: "outside-link"},
                     diffStatus: "unavailable",

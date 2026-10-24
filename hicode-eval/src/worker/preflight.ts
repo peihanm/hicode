@@ -5,7 +5,7 @@ const resume=process.env.HICODE_EVAL_RESUME_SESSION_ID;
 if(resume){
  const {loadSession}=await import(source+'/src/session/storage.js');
  const {createHiCodeStorageLayout}=await import(source+'/src/persistence/layout.js');
- if(!loadSession(createHiCodeStorageLayout({hicodeHome:home}),process.cwd(),resume,'evaluation'))
+ if(!loadSession(createHiCodeStorageLayout({hicodeHome:home}),process.cwd(),resume))
   throw Error('Continuation session cannot be restored');
 }
 const {createSandboxRuntime}=await import(source+'/src/sandbox/runtime.js');

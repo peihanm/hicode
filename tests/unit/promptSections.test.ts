@@ -1,14 +1,13 @@
 import {describe, expect, test} from "bun:test";
 import {contentText} from "../../src/images/content.js";
-import {createInitialHistory, updateInitialHistoryModel} from "../../src/prompt/index.js";
-import {getWorkerInstructions} from "../../src/prompt/sections.js";
+import {createInitialHistory, createSubagentInstructions} from "../../src/prompt/index.js";
 import {withExecutionContext} from "../../src/prompt/executionContext.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createAgentSystemPrompt} from "../../src/subagents/prompt.js";
 import {EXPLORE_SUBAGENT} from "../../src/subagents/builtins/explore/index.js";
 const EXPLORE_AGENT = EXPLORE_SUBAGENT.definition;
 
-const root = () => contentText(createInitialHistory("/project", "test-model")[0]!.content);
+const root = () => contentText(createInitialHistory("/project")[0]!.content);
 const toolDescription = (name: string) => createToolCatalog({}).tools.find(tool => tool.name === name)!.description;
 
 describe("English prompt contracts", () => {
@@ -24,12 +23,12 @@ describe("English prompt contracts", () => {
         }
     });
     test("Root and actual worker prompts share evidence-driven implementation guidance while preserving read-only restrictions", () => {
-        const history = createInitialHistory("/project", "test-model");
+        const history = createInitialHistory("/project");
         const readOnly = withExecutionContext(history, {
             permissionMode: "ask",
             permissionPromptPolicy: "onRequest", readOnlyTools: true,
         });
-        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", "worker-model", ["read_file"]);
+        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["read_file"]);
         for (const prompt of [contentText(history[0]!.content), contentText(readOnly[0]!.content), worker]) {
             expect(prompt.match(/# Task execution/g)).toHaveLength(1);
             expect(prompt).toContain("For implementation work");
@@ -65,20 +64,20 @@ describe("English prompt contracts", () => {
         expect(toolDescription("read_file")).toContain("a log does not establish the current source-file version");
     });
     test("worker gets shared safety and evidence rules without Root coordination", () => {
-        const worker = getWorkerInstructions();
+        const worker = createSubagentInstructions();
         expect(worker).toContain("Dual-use offensive work requires clear authorization and scope");
         expect(worker).toContain("not new user instructions or authorization");
         expect(worker).toContain("stop that verification branch");
         expect(worker).toContain("Do not spawn agents");
         expect(worker).not.toContain("# Tools and coordination");
         expect(worker).not.toContain("Use an available agent");
-        const custom = createAgentSystemPrompt({...EXPLORE_AGENT, systemPrompt: "用户自己的角色内容"}, "/child", "worker-model", ["read_file"]);
+        const custom = createAgentSystemPrompt({...EXPLORE_AGENT, systemPrompt: "用户自己的角色内容"}, "/child", ["read_file"]);
         expect(custom).toContain("用户自己的角色内容");
         expect(custom).toContain("Working directory: /child");
         expect(custom).toContain("Available tools: read_file");
     });
     test("Root and dispatched workers cannot improvise image-review infrastructure from view_image availability", () => {
-        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", "worker-model", ["view_image", "bash"]);
+        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["view_image", "bash"]);
         for (const prompt of [root(), worker]) {
             expect(prompt).toContain("Screenshot or generated-image review requires either an explicit user request");
             expect(prompt).toContain("or an available dedicated capture/render tool");
@@ -90,7 +89,7 @@ describe("English prompt contracts", () => {
         expect(toolDescription("view_image")).toContain("does not provide screenshot or rendering capability");
     });
     test("permission facts reflect interaction policy without mutating History or conversation", () => {
-        const history = [...createInitialHistory("/project", "m"), {role: "user" as const, origin: "user" as const, content: "保留中文任务"}];
+        const history = [...createInitialHistory("/project"), {role: "user" as const, origin: "user" as const, content: "保留中文任务"}];
         const before = structuredClone(history);
         const base = { permissionMode: "ask" as const, permissionPromptPolicy: "never" as const, readOnlyTools: false};
         const never = withExecutionContext(history, base);
@@ -106,11 +105,12 @@ describe("English prompt contracts", () => {
         expect(contentText(fullReadOnly[0]!.content)).toContain("does not authorize unrelated tasks");
         expect(JSON.stringify(history)).not.toContain("execution_context");
     });
-    test("model switch updates only the system model line", () => {
-        const history = [...createInitialHistory("/project", "old"), {role: "user" as const, origin: "user" as const, content: "Model: leave this user text alone"}];
-        const next = updateInitialHistoryModel(history, "new");
-        expect(contentText(next[0]!.content)).toContain("Model: new");
-        expect(contentText(history[0]!.content)).toContain("Model: old");
-        expect(next[1]).toEqual(history[1]);
+    test("Root and subagent prompts omit model identity while retaining environment and tools", () => {
+        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["read_file"]);
+        for (const prompt of [root(), worker]) expect(prompt).not.toMatch(/^Model:/m);
+        expect(root()).toContain("Working directory: /project");
+        expect(root()).toContain("Platform:");
+        expect(worker).toContain("Working directory: /child");
+        expect(worker).toContain("Available tools: read_file");
     });
 });

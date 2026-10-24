@@ -21,10 +21,9 @@ export function createHeadlessRunner(dependencies: HeadlessRunnerDependencies) {
     return async (options: HeadlessOptions, signal?: AbortSignal): Promise<HeadlessRunSummary> => {
         const {configuration, resumeMode} = options;
         if (resumeMode.kind === "picker") throw new Error("Headless mode cannot use interactive -r; use -c or -r <sessionId>");
-        const {storage, cwd, settings} = configuration;
-        const model = settings.models.primary.model;
-        const loaded = resumeMode.kind === "continue" ? loadLatestSession(storage, cwd, model) :
-            resumeMode.kind === "session" ? loadSession(storage, cwd, resumeMode.sessionId, model) : null;
+        const {storage, cwd} = configuration;
+        const loaded = resumeMode.kind === "continue" ? loadLatestSession(storage, cwd) :
+            resumeMode.kind === "session" ? loadSession(storage, cwd, resumeMode.sessionId) : null;
         if (resumeMode.kind !== "none" && !loaded) throw new Error("No previous session available to resume");
         const activeSignal = signal ?? createTurnAbortController().signal;
         const resources = await dependencies.createResources({configuration, signal: activeSignal, headless: true});

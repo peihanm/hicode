@@ -61,7 +61,6 @@ interface GitDiffSnapshot {
     version: 1;
     repository: GitRepositorySnapshot;
     files: readonly GitDiffFile[];
-    patch: string;
     truncated: boolean;
     omittedFiles: number;
 }

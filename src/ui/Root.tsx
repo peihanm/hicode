@@ -25,7 +25,6 @@ type RootState =
 function createRootState(
     storage: HiCodeStorageLayout,
     cwd: string,
-    model: string,
     resumeMode: ResumeMode
 ): RootState {
     if (resumeMode.kind === "none") {
@@ -33,14 +32,14 @@ function createRootState(
     }
 
     if (resumeMode.kind === "continue") {
-        const session = loadLatestSession(storage, cwd, model);
+        const session = loadLatestSession(storage, cwd);
         return session
             ? {view: "app", session}
             : {view: "error", message: "No previous session available to continue."};
     }
 
     if (resumeMode.kind === "session") {
-        const session = loadSession(storage, cwd, resumeMode.sessionId, model);
+        const session = loadSession(storage, cwd, resumeMode.sessionId);
         return session
             ? {view: "app", session}
             : {view: "error", message: `Session not found: ${resumeMode.sessionId}`};
@@ -66,14 +65,13 @@ export function Root({
     resumeMode: ResumeMode;
 }) {
     const {exit} = useApp();
-    const {cwd, settings, storage} = configuration;
-    const model = settings.models.primary.model;
+    const {cwd, storage} = configuration;
     const [state, setState] = useState<RootState>({view: "loading"});
 
     useEffect(() => {
         let active = true;
         Promise.resolve().then(() =>
-            createRootState(storage, cwd, model, resumeMode)
+            createRootState(storage, cwd, resumeMode)
         ).then((next) => {
             if (active) setState(next);
         }).catch((error) => {
@@ -87,7 +85,7 @@ export function Root({
         return () => {
             active = false;
         };
-    }, [cwd, model, resumeMode, storage]);
+    }, [cwd, resumeMode, storage]);
 
     useInput(
         (input, key) => {
@@ -105,8 +103,7 @@ export function Root({
                         const session = loadSession(
                             storage,
                             cwd,
-                            sessionId,
-                            model
+                            sessionId
                         );
                         setState(
                             session

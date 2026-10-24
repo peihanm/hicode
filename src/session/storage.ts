@@ -140,8 +140,7 @@ export function listSessionIndex(
 export function loadSession(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string,
-    model: string
+    sessionId: string
 ): LoadedSession | null {
     const snapshot = readLatestSessionSnapshot(storage, cwd, sessionId);
     if (!snapshot || snapshot.visibility === "internal") return null;
@@ -151,7 +150,7 @@ export function loadSession(
         sessionId,
         cwd,
         model: snapshot.model,
-        history: [...createInitialHistory(cwd, model), ...snapshot.conversation],
+        history: [...createInitialHistory(cwd), ...snapshot.conversation],
         todos: snapshot.todos,
         permissionMode: snapshot.permissionMode,
         compactState: snapshot.compactState,
@@ -165,9 +164,8 @@ export function loadSession(
 
 export function loadLatestSession(
     storage: HiCodeStorageLayout,
-    cwd: string,
-    model: string
+    cwd: string
 ): LoadedSession | null {
     const latest = listSessionIndex(storage, cwd)[0];
-    return latest ? loadSession(storage, cwd, latest.sessionId, model) : null;
+    return latest ? loadSession(storage, cwd, latest.sessionId) : null;
 }

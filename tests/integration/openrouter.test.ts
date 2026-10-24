@@ -77,7 +77,7 @@ test("streamed tool arguments and exact reasoning fragments survive restore and 
         expect(estimateMessageTokens(first.message)).toBeGreaterThan(100);
         const history: Message[] = [user, first.message, {role: "tool", tool_call_id: "add-1", content: '{"result":42}'}];
         await createSessionPersistence(storage, cwd, "router").save({cwd, sessionId: "router", model, history, todos: [], permissionMode: "ask", });
-        const restored = loadSession(storage, cwd, "router", model);
+        const restored = loadSession(storage, cwd, "router");
         expect(restored?.history.filter(message => message.role !== "system")).toEqual(history.filter(message => message.role !== "system"));
         expect((await caller(restored!.history, tools, storage, cwd, model, "main")).message).toEqual({role: "assistant", content: "42"});
         expect(requests).toBe(2);

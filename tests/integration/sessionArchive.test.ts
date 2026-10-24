@@ -35,7 +35,7 @@ test("只有摘要 reminder 的候选也必须实际落盘，不能被普通快�
             const compactState = {...createCompactState(), compactCount: 1, archives: [draft.record]};
             await saveSessionCompaction(storage, {...f.session.createSnapshot(state()), compactState,
                 history: [{role: "user", origin: "user" as const, content: "<system-reminder>summary</system-reminder>"}]}, draft, f.controller.signal);
-            expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")!.compactState?.archives).toHaveLength(1);
+            expect(loadSession(storage, cwd, f.session.sessionId)!.compactState?.archives).toHaveLength(1);
         } finally {await f.resources.close();}
     });
 });
@@ -70,7 +70,7 @@ test("连续五次压缩保留原文、工具配对及大结果，Resume 可用 
                 expect((await f.compact()).compacted).toBe(true);
             }
             await saveSessionSnapshot(storage, stale);
-            const loaded = loadSession(storage, cwd, f.session.sessionId, "glm-test")!;
+            const loaded = loadSession(storage, cwd, f.session.sessionId)!;
             expect(loaded.compactState?.archives).toHaveLength(5);
             const records = loaded.compactState!.archives!;
             const messages = readArchiveMessages(records[0]!, new SessionContentStore(storage, cwd, loaded.sessionId));
@@ -117,7 +117,7 @@ test("压缩提交失败或取消不替换原 History，不留下生效档案", 
             const cancelled = createCompactHistoryRunner({async generateSummary() {f.controller.abort(); return "summary";}});
             await expect(cancelled({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true})).rejects.toThrow();
             expect(f.session.history).toEqual(before);
-            expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")!.compactState?.archives).toBeUndefined();
+            expect(loadSession(storage, cwd, f.session.sessionId)!.compactState?.archives).toBeUndefined();
         } finally {await f.resources.close();}
     });
 });
@@ -141,7 +141,7 @@ test("档案正文损坏、未授权 Agent 与符号链接均 fail closed", asyn
             const block = join(getSessionContentDirectory(storage, cwd, f.session.sessionId), record.messages[0]! + ".json");
             await writeFile(block, '{"kind":"message","value":{"role":"user","content":"tampered"}}');
             expect((await f.tool("read_file", {path})).outcome).toBe("denied");
-            expect(() => loadSession(storage, cwd, f.session.sessionId, "glm-test")).toThrow();
+            expect(() => loadSession(storage, cwd, f.session.sessionId)).toThrow();
         } finally {await f.resources.close();}
     });
 });
@@ -212,7 +212,7 @@ test("生产交接链校验引用、保留纠正原话，Resume 保持可回查�
             expect((await compact({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true})).compacted).toBe(true);
             expect(f.session.history.filter(message => message.role === "user" && message.content === correction)).toHaveLength(1);
             expect(f.session.history[1]!.content).toContain(`[[${originalRef}]]`);
-            const loaded = loadSession(storage, cwd, f.session.sessionId, "glm-test")!;
+            const loaded = loadSession(storage, cwd, f.session.sessionId)!;
             expect(loaded.history.slice(1)).toEqual(f.session.history.slice(1));
             const before = structuredClone(f.session.history);
             f.session.history.push({role: "assistant", content: "资料\n".repeat(10_000)});
@@ -226,7 +226,7 @@ test("生产交接链校验引用、保留纠正原话，Resume 保持可回查�
             expect(result.message).toContain("outside the current sources");
             expect(f.session.history).toEqual(beforeFailure);
             expect(f.session.compactState.archives).toHaveLength(1);
-            expect(loadSession(storage, cwd, f.session.sessionId, "glm-test")!.history.slice(1)).toEqual(before.slice(1));
+            expect(loadSession(storage, cwd, f.session.sessionId)!.history.slice(1)).toEqual(before.slice(1));
         } finally {await f.resources.close();}
     });
 });
@@ -265,7 +265,7 @@ test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果�
                 expect(f.session.history[1]!.content).toContain(`[[${firstSource}]]`);
                 expect(f.session.history[1]!.content).toContain(`采用纠正_${round}`);
             }
-            const loaded = loadSession(storage, cwd, f.session.sessionId, "glm-test")!;
+            const loaded = loadSession(storage, cwd, f.session.sessionId)!;
             expect(loaded.compactState!.archives).toHaveLength(5);
             const earliest = readArchiveMessages(loaded.compactState!.archives![0]!, new SessionContentStore(storage, cwd, f.session.sessionId));
             expect(earliest.slice(0, initial.length)).toEqual(initial);

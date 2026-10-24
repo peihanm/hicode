@@ -49,7 +49,7 @@ test("round 10 launches review without blocking round 11 or final completion; Tu
             return assistantText("done");
         }]);
         try {
-            const history = createInitialHistory(cwd, "glm-test");
+            const history = createInitialHistory(cwd);
             const result = await runAgentForTest("Fix the task", history, () => {}, ctx, {callLLM: fake.callLLM, ...bindings});
             expect(result.reason).toBe("completed");
             expect(fake.calls).toHaveLength(11);
@@ -101,7 +101,7 @@ test("the 90-second review deadline cancels only the reviewer and the main Agent
             return assistantText("done after review timed out");
         }]);
         try {
-            const history = createInitialHistory(cwd, "glm-test");
+            const history = createInitialHistory(cwd);
             const result = await runAgentForTest("Fix the task", history, () => {}, ctx, {callLLM: fake.callLLM, ...bindings});
             expect(result.reason).toBe("completed");
             expect(fake.calls).toHaveLength(11);
@@ -143,7 +143,7 @@ test("a delayed review is injected once at the request tail with the frozen roun
             expect(JSON.stringify(options.messages)).not.toContain("<task-review>");
             return assistantText("done");
         }]);
-        const history = createInitialHistory(cwd, "glm-test");
+        const history = createInitialHistory(cwd);
         try {
             await runAgentForTest("Keep the original task requirements", history, () => {}, ctx, {callLLM: fake.callLLM, ...bindings});
             expect(captured).toContain("Keep the original task requirements");
@@ -302,7 +302,7 @@ test("an oversized review does not interrupt the main Agent or call the reviewer
         const ctx = createTestContext(cwd, {tasks: session, taskReviewEnabled: true,
             model: base.model, provider: base.provider, fastModel: base.fastModel, fastProvider: base.fastProvider});
         const fake = createFakeLLM([...steps(), async () => {await reviewFinished.promise; return assistantText("done");}]);
-        const history = createInitialHistory(cwd, base.model);
+        const history = createInitialHistory(cwd);
         history.push({role: "user", origin: "user", content: "x".repeat(300_000)});
         try {
             const result = await runAgentForTest("Finish the task", history, () => {}, ctx, {callLLM: fake.callLLM, ...bindings});
@@ -413,7 +413,7 @@ test("long plain-text feedback is bounded without discarding the review or split
 
 test("a review reminder survives request rebuild after compaction without entering History", async () => {
     await withTempProject(async cwd => {
-        const history = createInitialHistory(cwd, "glm-test");
+        const history = createInitialHistory(cwd);
         const ctx = createTestContext(cwd);
         const result = await prepareAgentInvoke({history, ctx, onEvent: () => {}, getToolSchemas: () => [], forceCompact: true,
             taskReviewReminder: "<task-review>rounds 1-10: advice</task-review>",

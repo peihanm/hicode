@@ -79,7 +79,7 @@ for (const existing of [false, true]) for (const failure of ["block", "error"] a
                 const result = await runRootTurn({...run, prompt: rejected});
                 expect(result.reason).toBe(failure === "block" ? "hook_blocked" : "hook_error");
                 expect(fake.calls).toHaveLength(0);
-                const loaded = loadSession(storage, cwd, session.sessionId, resources.model)!;
+                const loaded = loadSession(storage, cwd, session.sessionId)!;
                 expect(loaded.history).toContainEqual({role: "user", origin: "hook_rejected", content: rejected});
                 expect(loaded.history).toContainEqual({role: "assistant", content: result.reply});
                 expect(loaded.history.slice(1)).toEqual(session.history.slice(1));

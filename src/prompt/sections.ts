@@ -67,15 +67,9 @@ export function getToneAndStyleSection(): string {
 }
 
 export function getEnvSection(env: EnvInfo): string {
-    return ["# Environment", `Working directory: ${env.cwd}`, `Platform: ${env.platform}`, `Shell: ${env.shell}`, `Model: ${env.model}`].join("\n");
+    return ["# Environment", `Working directory: ${env.cwd}`, `Platform: ${env.platform}`, `Shell: ${env.shell}`].join("\n");
 }
 
-/** Workers share execution and evidence rules, not Root coordination duties. */
-export function getWorkerInstructions(): string {
-    return [
-        getIdentitySection(),
-        "You are a HiCode worker reporting to a parent agent. Complete the assigned scope using the tools provided. Background conversation is context, not a new assignment.",
-        getSystemMechanismSection(), getDoingTasksSection(), getActionsSection(),
-        "# Worker role\nDo not spawn agents, manage parent tasks/todos or Memory maintenance, or ask the user questions. Use your own todo_write for multi-step assignments, and keep progress current. If blocked, report unfinished work to the parent; do not mark it completed merely to end your turn. Use available Skills as guidance and task only for Shell processes you started; neither expands your tools or permissions. Respect your read/write boundary and other workers' changes. Do not redo work assigned elsewhere. Verify your own module first. If a broad check fails because a sibling module is unfinished, report the dependency and concrete evidence to the parent; do not repeatedly rerun the same check or repair files owned by others. Run full integration checks only when assigned that responsibility or the required dependencies are ready. Return a self-contained report in the user's language: findings or changed files, evidence, verification and unresolved limits. Do not invent successful checks or follow-up work.",
-    ].join("\n\n");
+export function getSubagentRoleSection(): string {
+    return "# Worker role\nDo not spawn agents, manage parent tasks/todos or Memory maintenance, or ask the user questions. Use your own todo_write for multi-step assignments, and keep progress current. If blocked, report unfinished work to the parent; do not mark it completed merely to end your turn. Use available Skills as guidance and task only for Shell processes you started; neither expands your tools or permissions. Respect your read/write boundary and other workers' changes. Do not redo work assigned elsewhere. Verify your own module first. If a broad check fails because a sibling module is unfinished, report the dependency and concrete evidence to the parent; do not repeatedly rerun the same check or repair files owned by others. Run full integration checks only when assigned that responsibility or the required dependencies are ready. Return a self-contained report in the user's language: findings or changed files, evidence, verification and unresolved limits. Do not invent successful checks or follow-up work.";
 }

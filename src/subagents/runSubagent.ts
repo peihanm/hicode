@@ -178,7 +178,7 @@ export function createSubagentFactories(
                         childCwd = cwd;
                         instructions = await subagentInstructions(parentContext, cwd);
                         const workerSystem: Message = {role: "system",
-                            content: createAgentSystemPrompt(definition, cwd, childModel, initialToolNames)};
+                            content: createAgentSystemPrompt(definition, cwd, initialToolNames)};
                         if (request.contextSnapshot !== undefined) {
                             if (childHistory[0]?.role !== "system") throw new Error("Fork History is missing a system message");
                             childHistory[0] = workerSystem;

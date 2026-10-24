@@ -26,7 +26,7 @@ test("三条后台通知不抢占长用户原话，重复压缩/Resume 保持来
                 expect(result.compacted).toBe(true);
                 expect(f.session.history).toContainEqual({role: "user", origin: "user", content: original});
             }
-            const loaded = loadSession(storage, cwd, "continuity", "glm-test")!;
+            const loaded = loadSession(storage, cwd, "continuity")!;
             expect(loaded.history).toContainEqual({role: "user", origin: "user", content: original});
             const threads = threadsFromHistory(loaded.history);
             expect(threads.filter(thread => thread.role === "user")).toHaveLength(1);

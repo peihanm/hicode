@@ -30,7 +30,7 @@ describe("Session recovery and storage boundaries", () => {
                 const session = createRootSessionRuntime({resources,  seed: {sessionId: "first", history: [], compactState: createCompactState()}});
                 await session.beginTurn("first interrupted request", state);
                 await writeFile(join(cwd, "changed.txt"), "current file");
-                const loaded = loadSession(storage, cwd, "first", resources.model)!;
+                const loaded = loadSession(storage, cwd, "first")!;
                 expect(loaded.history.at(-1)?.content).toBe("first interrupted request");
                 const resumed = createRootSessionRuntime({resources,  seed: {...loaded, compactState: createCompactState()}});
                 await resumed.initialize();
@@ -50,7 +50,7 @@ describe("Session recovery and storage boundaries", () => {
                 await saveSessionSnapshot(storage, input);
             }
             expect(await directoryBytes(getSessionStorageDirectory(storage, cwd, input.sessionId))).toBeLessThan(2 * 1024 * 1024);
-            expect(loadSession(storage, cwd, input.sessionId, input.model)?.history.at(-1)?.content).toBe(input.history[0]!.content);
+            expect(loadSession(storage, cwd, input.sessionId)?.history.at(-1)?.content).toBe(input.history[0]!.content);
         });
     });
 
@@ -60,7 +60,7 @@ describe("Session recovery and storage boundaries", () => {
                 todos: [], permissionMode: "ask", });
             await writeFile(getSessionSnapshotPath(storage, cwd, "indexed"), "corrupt conversation\n");
             expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["indexed"]);
-            expect(() => loadSession(storage, cwd, "indexed", "glm-test")).toThrow();
+            expect(() => loadSession(storage, cwd, "indexed")).toThrow();
         });
     });
 
@@ -72,7 +72,7 @@ describe("Session recovery and storage boundaries", () => {
                 const history = Array.from({length: 8}, (_, n) => ({role: "user" as const, origin: "user" as const,
                     content: `${turn}:${n}:` + "x".repeat(8 * 1024 * 1024 - 100)}));
                 await saveSessionSnapshot(storage, {...input, history});
-                expect(contentText(loadSession(storage, cwd, input.sessionId, input.model)?.history.at(-1)?.content).startsWith(`${turn}:7:`)).toBe(true);
+                expect(contentText(loadSession(storage, cwd, input.sessionId)?.history.at(-1)?.content).startsWith(`${turn}:7:`)).toBe(true);
             }
         });
     }, 60_000);
@@ -97,7 +97,7 @@ describe("Session recovery and storage boundaries", () => {
                 reference.conversation = corruption === "traversal" ? ["../../outside"] : Array(65).fill(reference.conversation[0]);
                 await writeFile(path, JSON.stringify(reference) + "\n");
             }
-            expect(() => loadSession(storage, cwd, "blocks", input.model)).toThrow();
+            expect(() => loadSession(storage, cwd, "blocks")).toThrow();
             await expect(saveSessionSnapshot(storage, input)).rejects.toThrow();
         });
     });

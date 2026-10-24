@@ -35,7 +35,7 @@ for(const scenario of scenarios)test(`固定场景五次交接后仍能回查全
    expect((await compact({history:session.history,ctx,tools:[],preTokenCount:100_000,force:true})).compacted).toBe(true);
    expect(session.history[1]?.content).toContain(stage.constraint);
   }
-  const restored=loadSession(storage,cwd,scenario.id,"glm-test")!;expect(restored.compactState?.compactCount).toBe(5);
+  const restored=loadSession(storage,cwd,scenario.id)!;expect(restored.compactState?.compactCount).toBe(5);
   const archives=restored.compactState!.archives!;const store=new SessionContentStore(storage,cwd,scenario.id);
   const originals=archives.flatMap(archive=>{const messages=readArchiveMessages(archive,store);expect(hasCompleteToolPairs(messages)).toBe(true);return messages;});
   for(const stage of scenario.stages){expect(originals.some(message=>message.role==="user"&&message.content===stage.request)).toBe(true);expect(originals.some(message=>message.role==="tool"&&message.content===stage.evidence)).toBe(true);}

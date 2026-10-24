@@ -155,12 +155,27 @@ function fileFromTrackedDiff(
     };
 }
 
+function unavailableStandaloneFile(
+    status: GitFileStatus,
+    reason: "missing" | "symlink" | "unsupported-file" | "parse-error"
+): GitDiffFile {
+    return {
+        status,
+        additions: null,
+        deletions: null,
+        binary: false,
+        hunks: [],
+        diffStatus: "unavailable",
+        unavailableReason: reason,
+    };
+}
+
 async function diffStandaloneFile(input: {
     runGit: GitCommandRunner;
     repositoryRoot: string;
     status: GitFileStatus;
     signal: AbortSignal;
-}): Promise<{file?: GitDiffFile; patch: string}> {
+}): Promise<GitDiffFile> {
     let stat;
     try {
         stat = await lstat(resolve(input.repositoryRoot, input.status.path));
@@ -169,36 +184,13 @@ async function diffStandaloneFile(input: {
             error && typeof error === "object" && "code" in error &&
             (error as {code?: string}).code === "ENOENT"
         ) {
-            return {
-                patch: "",
-                file: {
-                    status: input.status,
-                    additions: null,
-                    deletions: null,
-                    binary: false,
-                    hunks: [],
-                    diffStatus: "unavailable",
-                    unavailableReason: "missing",
-                },
-            };
+            return unavailableStandaloneFile(input.status, "missing");
         }
         throw error;
     }
     if (stat.isSymbolicLink() || !stat.isFile()) {
-        return {
-            patch: "",
-            file: {
-                status: input.status,
-                additions: null,
-                deletions: null,
-                binary: false,
-                hunks: [],
-                diffStatus: "unavailable",
-                unavailableReason: stat.isSymbolicLink()
-                    ? "symlink"
-                    : "unsupported-file",
-            },
-        };
+        return unavailableStandaloneFile(input.status,
+            stat.isSymbolicLink() ? "symlink" : "unsupported-file");
     }
     const result = await input.runGit(input.repositoryRoot, [
         "--no-optional-locks",
@@ -215,21 +207,9 @@ async function diffStandaloneFile(input: {
     if (result.code !== 0 && result.code !== 1) {
         throw new Error(formatGitProcessError(result));
     }
-    const patchText = result.stdout.toString("utf8");
-    const parsed = parsePatch(patchText)[0];
+    const parsed = parsePatch(result.stdout.toString("utf8"))[0];
     if (!parsed) {
-        return {
-            patch: patchText,
-            file: {
-                status: input.status,
-                additions: null,
-                deletions: null,
-                binary: false,
-                hunks: [],
-                diffStatus: "unavailable",
-                unavailableReason: "parse-error",
-            },
-        };
+        return unavailableStandaloneFile(input.status, "parse-error");
     }
     const hunks = parsed.hunks.map(convertUnifiedDiffHunk);
     const additions = hunks.reduce(
@@ -242,16 +222,13 @@ async function diffStandaloneFile(input: {
     );
     const binary = parsed.isBinary === true;
     return {
-        patch: patchText,
-        file: {
-            status: input.status,
-            additions: binary ? null : additions,
-            deletions: binary ? null : deletions,
-            binary,
-            hunks: binary ? [] : hunks,
-            diffStatus: binary ? "unavailable" : "complete",
-            ...(binary ? {unavailableReason: "binary" as const} : {}),
-        },
+        status: input.status,
+        additions: binary ? null : additions,
+        deletions: binary ? null : deletions,
+        binary,
+        hunks: binary ? [] : hunks,
+        diffStatus: binary ? "unavailable" : "complete",
+        ...(binary ? {unavailableReason: "binary" as const} : {}),
     };
 }
 
@@ -279,7 +256,6 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
             (file) => !standalonePaths.has(file.path)
         );
 
-        let trackedPatch = "";
         let trackedFiles: GitDiffFile[] = [];
         if (trackedStatuses.length > 0) {
             const paths = [...new Set(trackedStatuses.flatMap((file) => [
@@ -308,13 +284,12 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
                     formatGitProcessError(failed)
                 );
             }
-            trackedPatch = patchResult.stdout.toString("utf8");
             try {
                 const stats = new Map(
                     parseGitNumstatZ(numstatResult.stdout).map((entry) => [entry.path, entry])
                 );
                 const patches = new Map(
-                    parsePatchFiles(trackedPatch).map((entry) => [entry.path, entry])
+                    parsePatchFiles(patchResult.stdout.toString("utf8")).map((entry) => [entry.path, entry])
                 );
                 trackedFiles = trackedStatuses.flatMap((status) => {
                     const file = fileFromTrackedDiff(
@@ -332,7 +307,7 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
             }
         }
 
-        let standalone: Array<{file?: GitDiffFile; patch: string}>;
+        let standalone: GitDiffFile[];
         try {
             standalone = await mapWithConcurrencyLimit(
                 standaloneStatuses,
@@ -359,7 +334,7 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
         }
         const files = applyHunkBudget([
             ...trackedFiles,
-            ...standalone.flatMap((item) => item.file ? [item.file] : []),
+            ...standalone,
         ].sort((left, right) =>
             compareGitText(left.status.path, right.status.path)
         ));
@@ -369,10 +344,6 @@ class GitWorkspaceRuntime implements GitWorkspaceRuntimeLike {
                 version: 1,
                 repository: snapshot,
                 files,
-                patch: [
-                    trackedPatch.trimEnd(),
-                    ...standalone.map((item) => item.patch.trimEnd()),
-                ].filter(Boolean).join("\n"),
                 truncated: omittedFiles > 0 || files.some(
                     (file) => file.diffStatus === "truncated"
                 ),

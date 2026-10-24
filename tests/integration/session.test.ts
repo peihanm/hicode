@@ -14,6 +14,7 @@ import { createCompactState } from "../../src/context/index.js";
 import {listSessionIndex, loadLatestSession, loadSession} from "../../src/session/index.js";
 import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
+import {createInitialHistory} from "../../src/prompt/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import {getSessionIndexPath, getSessionSnapshotPath} from "../../src/session/paths.js";
 import {getProjectSessionsDirectory} from "../../src/persistence/index.js";
@@ -29,7 +30,7 @@ describe("session persistence", () => {
         uiEvents: [{version: 1, type: "tool_call", turnId: "turn", toolCallId: "wait",
           timestamp: "2026-10-02T00:00:00.000Z", outcome: "failed", completedTask}],
       });
-      const event = loadSession(storage, cwd, "shell-receipt", "glm-test")?.uiEvents[0];
+      const event = loadSession(storage, cwd, "shell-receipt")?.uiEvents[0];
       expect(event).toMatchObject({type: "tool_call", outcome: "failed", completedTask});
     });
   });
@@ -57,8 +58,8 @@ describe("session persistence", () => {
         }],
       });
 
-      expect(loadSession(storage, cwd, "queued-session", "glm-test")?.taskNotificationReceipts).toEqual(["a".repeat(64)]);
-      expect(loadSession(storage, cwd, "queued-session", "glm-test")?.queuedInputs)
+      expect(loadSession(storage, cwd, "queued-session")?.taskNotificationReceipts).toEqual(["a".repeat(64)]);
+      expect(loadSession(storage, cwd, "queued-session")?.queuedInputs)
         .toEqual([{
           id: "queued-1",
           type: "user_input",
@@ -98,7 +99,9 @@ describe("session persistence", () => {
         messageCount: 2,
       });
 
-      const loaded = loadSession(storage, cwd, "session-1", "glm-test");
+      const loaded = loadSession(storage, cwd, "session-1");
+      expect(loaded?.model).toBe("glm-test");
+      expect(loaded?.history[0]).toEqual(createInitialHistory(cwd)[0]);
       expect(loaded?.history[0]?.role).toBe("system");
       expect(loaded?.history.filter((message) => message.role === "system")).toHaveLength(1);
       expect(loaded?.history.slice(-2)).toEqual(history.slice(-2));
@@ -120,7 +123,7 @@ describe("session persistence", () => {
       expect((await stat(dirname(
         getSessionSnapshotPath(storage, cwd, "session-1")
       ))).mode & 0o777).toBe(0o700);
-      expect(loadLatestSession(storage, cwd, "glm-test")?.sessionId).toBe("session-1");
+      expect(loadLatestSession(storage, cwd)?.sessionId).toBe("session-1");
     });
   });
 
@@ -150,8 +153,7 @@ describe("session persistence", () => {
       const loaded = loadSession(
         storage,
         cwd,
-        "legacy-tool-discovery",
-        "glm-test"
+        "legacy-tool-discovery"
       );
       expect(loaded?.history.at(-1)?.content).toBe("可以继续");
       expect(loaded?.toolDiscovery).toBeUndefined();
@@ -179,19 +181,19 @@ describe("session persistence", () => {
       >;
       snapshot.version = 3;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "unversioned")).toThrow();
       snapshot.version = 2;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "unversioned")).toThrow();
 
       snapshot.version = 1;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "unversioned")).toThrow();
 
       delete snapshot.version;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
 
-      expect(() => loadSession(storage, cwd, "unversioned", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "unversioned")).toThrow();
       expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["unversioned"]);
     });
   });
@@ -201,7 +203,7 @@ describe("session persistence", () => {
       const path = getSessionSnapshotPath(storage, cwd, "broken");
       await mkdir(dirname(path), {recursive: true});
       await writeFile(path, "{partial-json");
-      expect(() => loadSession(storage, cwd, "broken", "glm-test")).toThrow("Invalid Session snapshot JSON");
+      expect(() => loadSession(storage, cwd, "broken")).toThrow("Invalid Session snapshot JSON");
     });
   });
 
@@ -227,7 +229,7 @@ describe("session persistence", () => {
 
       snapshot.cwd = `${cwd}-other`;
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(() => loadSession(storage, cwd, "untrusted-session", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "untrusted-session")).toThrow();
       expect(listSessionIndex(storage, cwd).map(entry => entry.sessionId)).toEqual(["untrusted-session"]);
 
       snapshot.cwd = cwd;
@@ -241,7 +243,7 @@ describe("session persistence", () => {
         }],
       }];
       await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-      expect(() => loadSession(storage, cwd, "untrusted-session", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "untrusted-session")).toThrow();
     });
   });
 
@@ -296,7 +298,7 @@ describe("session persistence", () => {
         allowEmpty: true,
         summaryHint: "invalid",
       });
-      expect(loadSession(storage, cwd, "invalid-outgoing", "glm-test")).toBeNull();
+      expect(loadSession(storage, cwd, "invalid-outgoing")).toBeNull();
       expect(listSessionIndex(storage, cwd).some(
         (entry) => entry.sessionId === "invalid-outgoing"
       )).toBe(false);
@@ -358,7 +360,7 @@ describe("session persistence", () => {
         }],
       });
 
-      const loaded = loadSession(storage, cwd, "with-ui", "glm-test");
+      const loaded = loadSession(storage, cwd, "with-ui");
       expect(loaded?.uiEvents).toHaveLength(1);
       const restoredChange = loaded?.uiEvents.find(
         (event) => event.type === "file_change"
@@ -431,7 +433,7 @@ describe("session persistence", () => {
       expect(lines).toHaveLength(1);
       expect(lines.every((line) => JSON.parse(line).type === "snapshot")).toBe(true);
       expect(listSessionIndex(storage, cwd)).toHaveLength(1);
-      expect(loadSession(storage, cwd, "shared", "glm-test")).not.toBeNull();
+      expect(loadSession(storage, cwd, "shared")).not.toBeNull();
     });
   });
 
@@ -459,7 +461,7 @@ describe("session persistence", () => {
       expect(lines.map((line) => line.type)).toEqual([
         "snapshot",
       ]);
-      expect(loadSession(storage, cwd, "compact-log", "glm-test")?.history.at(-1))
+      expect(loadSession(storage, cwd, "compact-log")?.history.at(-1))
         .toEqual({role: "user", origin: "user" as const, content: "latest"});
     });
   });
@@ -496,7 +498,7 @@ describe("session persistence", () => {
         })
       ).resolves.toBeUndefined();
       expect(await readFile(indexPath, "utf8")).toBe("{corrupt-index");
-      expect(loadSession(storage, cwd, "after-corruption", "glm-test")?.history.at(-1)).toEqual({
+      expect(loadSession(storage, cwd, "after-corruption")?.history.at(-1)).toEqual({
         role: "user", origin: "user" as const,
         content: "recoverable",
       });
@@ -545,7 +547,7 @@ describe("session persistence", () => {
       await unlink(logPath);
       await symlink(redirectedLog, logPath);
 
-      expect(() => loadSession(storage, cwd, "file-symlink", "glm-test")).toThrow();
+      expect(() => loadSession(storage, cwd, "file-symlink")).toThrow();
       await expect(saveSessionSnapshot(storage, {
         cwd,
         model: "glm-test",

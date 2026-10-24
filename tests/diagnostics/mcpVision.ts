@@ -74,7 +74,7 @@ async function main() {
         report.stopReason = result.stopReason; report.finalResponse = result.finalResponse; report.usage = result.usage;
         report.tools = result.items.filter(item => item.type === "tool_call");
         await thread.close();
-        const saved = loadSession(configuration.storage, cwd, thread.id, model);
+        const saved = loadSession(configuration.storage, cwd, thread.id);
         report.savedImages = saved?.history.flatMap(message => imageReferences(message.content));
         let logsClean = true;
         const logDir = getPromptLogDirectory(configuration.storage, cwd, thread.id);

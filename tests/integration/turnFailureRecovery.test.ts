@@ -32,7 +32,7 @@ for (const failureEvent of ["token_update", "assistant_text"] as const) {
                 expect(fixture.session.history).toContainEqual({role: "tool", tool_call_id: "pending-second",
                     content: "Tool was not executed because the turn failed: projection failed"});
                 await expect(stat(join(cwd, "marker"))).rejects.toMatchObject({code: "ENOENT"});
-                const loaded = loadSession(storage, cwd, fixture.session.sessionId, fixture.resources.model)!;
+                const loaded = loadSession(storage, cwd, fixture.session.sessionId)!;
                 expect(loaded.history.slice(1)).toEqual(fixture.session.history.slice(1));
                 const resumed = createRootSessionRuntime({resources: fixture.resources, seed: {
                     sessionId: loaded.sessionId, history: loaded.history, compactState: loaded.compactState ?? createCompactState(),

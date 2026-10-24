@@ -127,7 +127,7 @@ test("public SDK consumes MCP images through production Provider, preserves Hist
             expect(result.stopReason).toBe("completed"); expect(calls).toBe(3);
             expect(result.items.filter(item => item.type === "tool_call").map(item => item.status)).toEqual(["completed", "completed"]);
             await thread.close();
-            const saved = loadSession(storage, cwd, thread.id, "qwen3.8-flash")!;
+            const saved = loadSession(storage, cwd, thread.id)!;
             const refs = saved.history.flatMap(message => imageReferences(message.content));
             expect(refs).toHaveLength(1); expect(JSON.stringify(saved)).not.toContain("base64");
             expect(await createToolResultStore(storage, cwd, thread.id).readImage(refs[0]!)).toBeInstanceOf(Buffer);

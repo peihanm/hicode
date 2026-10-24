@@ -34,7 +34,7 @@ for (const archived of [false, true]) test(`追加不重新读取/编码既有�
             } finally {reads.mockRestore(); encodes.mockRestore();}
             expect(readBytes).toBeLessThan(64 * 1024);
             expect(encodedBytes).toBeLessThan(64 * 1024);
-            expect(loadSession(storage, cwd, sessionId, "glm-test")?.history.at(-1)?.content).toBe("新增结果");
+            expect(loadSession(storage, cwd, sessionId)?.history.at(-1)?.content).toBe("新增结果");
         }
     });
 });
@@ -48,6 +48,6 @@ test("跨提交缓存不能掩盖磁盘内容被篡改", async () => {
         const record: {conversation: string[]} = JSON.parse(await readFile(getSessionSnapshotPath(storage, cwd, "tamper"), "utf8"));
         await writeFile(join(getSessionContentDirectory(storage, cwd, "tamper"), `${record.conversation[0]}.json`), '{}');
         await expect(writer.save(input)).rejects.toThrow("changed since last commit");
-        expect(() => loadSession(storage, cwd, "tamper", "glm-test")).toThrow();
+        expect(() => loadSession(storage, cwd, "tamper")).toThrow();
     });
 });

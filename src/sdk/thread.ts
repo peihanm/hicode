@@ -635,7 +635,7 @@ export function prepareThreadSession(resources: RootRuntimeResources, loaded?: L
     return {
         seed: {
             sessionId: loaded?.sessionId ?? createSessionId(),
-            history: loaded?.history ?? createInitialHistory(resources.cwd, resources.model),
+            history: loaded?.history ?? createInitialHistory(resources.cwd),
             compactState: loaded?.compactState ?? createCompactState(),
             queuedInputs: loaded?.queuedInputs,
             taskNotificationReceipts: loaded?.taskNotificationReceipts,

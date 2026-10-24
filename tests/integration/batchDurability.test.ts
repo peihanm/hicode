@@ -30,7 +30,7 @@ for (const mode of ["batch", "half"]) test(`真实子进程强制退出后恢复
             expect(stderr).toBe("");
             expect(observed).toContain(mode === "batch" ? "BATCH_SAVED" : "HALF_EXECUTED");
             expect(await readFile(join(cwd, "written.txt"), "utf8")).toBe("side effect");
-            const loaded = loadSession(storage, cwd, "continuity", "glm-test")!;
+            const loaded = loadSession(storage, cwd, "continuity")!;
             expect(loaded).not.toBeNull();
             expect(hasCompleteToolPairs(loaded.history)).toBe(true);
             expect(loaded.history.filter(message => message.role === "tool")).toHaveLength(mode === "batch" ? 1 : 0);

@@ -109,8 +109,7 @@ export class HiCode {
         const loaded = loadSession(
             this.resources.storage,
             this.resources.cwd,
-            sessionId,
-            this.resources.model
+            sessionId
         );
         if (!loaded) {
             throw new HiCodeSDKError(

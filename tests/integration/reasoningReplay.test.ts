@@ -66,7 +66,7 @@ test.each(["qwen", "deepseek", "qwen-token-plan", "ark-agent-plan"] as const)("%
         history.push(first.message, {role:"tool", tool_call_id:"read-1", content:"file contents"});
         const writer = createSessionPersistence(storage, cwd, "replay");
         await writer.save({cwd, sessionId:"replay", model, history, todos:[], permissionMode:"ask", });
-        const restored = loadSession(storage, cwd, "replay", model);
+        const restored = loadSession(storage, cwd, "replay");
         expect(restored).not.toBeNull();
         const next = restored!.history;
         const second = await call(next, tools, storage, cwd, model, "main");

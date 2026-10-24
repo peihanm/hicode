@@ -5,7 +5,6 @@ import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/capability.js";
 import {imageReferences, type MessageContent} from "../../images/content.js";
 import {useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore,} from "react";
-import {updateInitialHistoryModel} from "../../prompt/index.js";
 import {createSlashCommandProcessor} from "../../slash/index.js";
 import {
     type LoadedSession,
@@ -522,10 +521,6 @@ export function useTurnController({
                 if (!resources.modelConfiguration) throw new Error("This Host does not allow saving model configuration");
                 const previous = resources.primaryModel.target;
                 await resources.modelConfiguration.saveSelection(target);
-                rootSession.replaceConversation(
-                    updateInitialHistoryModel(rootSession.history, target.model),
-                    rootSession.compactState
-                );
                 setPrimaryModelState(resources.primaryModel.target);
                 eventStore.updateTokenInfo(estimateRestoredTokenInfo(
                     rootSession.history,

@@ -30,7 +30,7 @@ test("an earlier lazy text stream cannot start while image preparation owns the 
             turns++;
             return {reply: "offline", reason: "completed", iterations: 0};
         }});
-        const thread = await open({resources, seed: {sessionId: "lazy-image", history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+        const thread = await open({resources, seed: {sessionId: "lazy-image", history: createInitialHistory(cwd), compactState: createCompactState()},
             state: {...state}, resumed: false, onClose() {}});
         const store = createToolResultStore(storage, cwd, thread.id);
         const capture = await store.createCapture();
@@ -77,7 +77,7 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             }
             return new Response('data: {"choices":[{"index":0,"delta":{"content":"图片收到"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {headers: {"content-type": "text/event-stream"}});
         }) as typeof fetch;
-        const first = await createSDKThread({resources, seed: {sessionId: "user-image", history: createInitialHistory(cwd, resources.model), compactState: createCompactState()},
+        const first = await createSDKThread({resources, seed: {sessionId: "user-image", history: createInitialHistory(cwd), compactState: createCompactState()},
             state, resumed: false, onClose() {}});
         try {
             const red = await png(), blue = await png(180), savedRed = Buffer.from(red);
@@ -93,7 +93,7 @@ test("SDK snapshots ordered user bytes before deferred streaming, sends actual u
             expect(wire.filter(part => part.type === "text").map(part => part.text)).toEqual(["第一张", "第二张"]);
             expect(await sharp(Buffer.from(wire[1]!.image_url!.url.split(",")[1]!, "base64")).raw().toBuffer()).toEqual(await sharp(savedRed).raw().toBuffer());
             await first.close();
-            const loaded = loadSession(storage, cwd, first.id, resources.model)!;
+            const loaded = loadSession(storage, cwd, first.id)!;
             const refs = loaded.history.flatMap(message => imageReferences(message.content));
             expect(refs).toHaveLength(2);
             rereadIds = refs.map(reference => reference.imageId);
@@ -143,7 +143,7 @@ test("selected local images obey policy and queue immutable snapshots through pe
             expect(imageReferences(queue.list()[0]!.content)).toHaveLength(1);
             const args = {...state, cwd, model: resources.model, sessionId: ctx.sessionId, history: [{role: "user" as const, origin: "user" as const, content: "original"}]};
             await saveSessionSnapshot(storage, {...args, queuedInputs: queue.list()});
-            const loaded = loadSession(storage, cwd, ctx.sessionId, resources.model)!;
+            const loaded = loadSession(storage, cwd, ctx.sessionId)!;
             expect(normalizeRuntimeQueuedMessages(loaded.queuedInputs)).toEqual([...queue.list()]);
             const ui = createUITurnSessionRuntime(resources, loaded);
             expect(imageReferences(ui.resumedDraft!)).toEqual(images);
@@ -174,7 +174,7 @@ test("bad, unsupported, forged and cancelled input cannot become user image refe
 test("SDK cancels preparation on close, rejects concurrent import and can recover from unsupported input", async () => {
     await withTempProject(async (cwd, storage) => {
         const resources = createTestRuntimeResources(cwd, {storage, settings: settings()});
-        const open = (id: string) => createSDKThread({resources, seed: {sessionId: id, history: createInitialHistory(cwd, resources.model), compactState: createCompactState()}, state, resumed: false, onClose() {}});
+        const open = (id: string) => createSDKThread({resources, seed: {sessionId: id, history: createInitialHistory(cwd), compactState: createCompactState()}, state, resumed: false, onClose() {}});
         const thread = await open("cancel-import");
         try {
             const bytes = await png();
@@ -185,7 +185,7 @@ test("SDK cancels preparation on close, rejects concurrent import and can recove
             expect(await cancelled).toMatchObject({code: "interrupted"});
             expect(await busy).toMatchObject({code: "thread_busy"});
             await expect(thread.runStreamed("closed")).rejects.toMatchObject({code: "thread_closed"});
-            const loaded = loadSession(storage, cwd, thread.id, resources.model);
+            const loaded = loadSession(storage, cwd, thread.id);
             expect(loaded?.history.flatMap(message => imageReferences(message.content)) ?? []).toHaveLength(0);
             const retry = await open("retry-import");
             try {
@@ -217,6 +217,6 @@ test("headless -p imports explicit files as user input before running the shared
             },
         });
         expect(result.ok).toBe(true); expect(observed).toBe(true);
-        expect(loadSession(storage, cwd, result.threadId, "qwen3.8-flash")!.history.flatMap(message => imageReferences(message.content))).toHaveLength(1);
+        expect(loadSession(storage, cwd, result.threadId)!.history.flatMap(message => imageReferences(message.content))).toHaveLength(1);
     });
 });

@@ -65,7 +65,7 @@ test("child owns durable compaction and reads only inherited parent archives acr
   await thread.run({prompt:"continue",signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
   expect(listSessionIndex(storage,cwd).map(s=>s.sessionId)).toEqual([ctx.sessionId]);
   expect(readLatestSessionSnapshot(storage,cwd,"subagent-compact-child")?.compactState?.compactCount).toBe(1);
-  expect(loadSession(storage,cwd,"subagent-compact-child",ctx.model)).toBeNull();
+  expect(loadSession(storage,cwd,"subagent-compact-child")).toBeNull();
   await expect(ctx.sessionArchives.resolve(childIndex)).rejects.toThrow("another Session");
  });
 });

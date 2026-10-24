@@ -25,7 +25,7 @@ export function createUITurnSessionRuntime(
             sessionId: initialSession?.sessionId ?? createSessionId(),
             history:
                 initialSession?.history ??
-                createInitialHistory(resources.cwd, resources.model),
+                createInitialHistory(resources.cwd),
             compactState:
                 initialSession?.compactState ?? createCompactState(),
             toolDiscovery: initialSession?.toolDiscovery,

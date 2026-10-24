@@ -244,8 +244,7 @@ export function createRuntimeBootstrap(
                         const target = loadSession(
                             storage,
                             cwd,
-                            sessionId,
-                            settings.models.primary.model
+                            sessionId
                         );
                         if (!target) {
                             throw new Error(`Session not found: ${sessionId}`);

@@ -175,7 +175,7 @@ test("headless joins acknowledge notifications only after paired History is pers
             session.history.pop();
             await ctx.commitToolBatch!();
             expect(await session.taskSession.pendingNotifications()).toHaveLength(0);
-            expect(JSON.stringify(loadSession(resources.storage, cwd, session.sessionId, resources.model)?.history)).toContain("persisted child evidence");
+            expect(JSON.stringify(loadSession(resources.storage, cwd, session.sessionId)?.history)).toContain("persisted child evidence");
         } finally {await runtime.close(); await resources.close();}
     });
 });

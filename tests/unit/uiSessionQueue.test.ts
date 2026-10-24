@@ -15,15 +15,15 @@ test("Session 串行捕获输入数组，不被后续 Host 更新改变；保存
         input.history[0] = {role: "user", origin: "user", content: "next"};
         input.toolDiscovery!.loadedNames[0] = "second";
         await first;
-        expect(loadSession(storage, cwd, "queue", "glm-test")?.history.at(-1)?.content).toBe("original");
-        expect(loadSession(storage, cwd, "queue", "glm-test")?.toolDiscovery?.loadedNames).toEqual(["first"]);
+        expect(loadSession(storage, cwd, "queue")?.history.at(-1)?.content).toBe("original");
+        expect(loadSession(storage, cwd, "queue")?.toolDiscovery?.loadedNames).toEqual(["first"]);
         await writeFile(getSessionIndexPath(storage, cwd), "invalid index");
         await writer.save(input);
         expect(writer.takeIssues()[0]).toContain("content was saved");
         await writeFile(getSessionIndexPath(storage, cwd), JSON.stringify({version: SESSION_INDEX_VERSION, sessions: []}));
         await writer.save(input);
         await writer.drain();
-        expect(loadSession(storage, cwd, "queue", "glm-test")?.history.at(-1)?.content).toBe("next");
+        expect(loadSession(storage, cwd, "queue")?.history.at(-1)?.content).toBe("next");
     });
 });
 
@@ -37,14 +37,14 @@ test("半批次只保存通知收据和队列，不覆盖完整正文，也不�
         const receipt = "a".repeat(64);
         await writer.save({...input, history: [...input.history, pending], taskNotificationReceipts: [receipt],
             queuedInputs: [{id: receipt, type: "task_notification", taskId: "task", priority: "next", content: "completed", createdAt: new Date().toISOString()}]});
-        const loaded = loadSession(storage, cwd, "metadata", "glm-test")!;
+        const loaded = loadSession(storage, cwd, "metadata")!;
         expect(loaded.history.filter(message => message.role === "assistant")).toHaveLength(0);
         expect(loaded.taskNotificationReceipts).toEqual([receipt]);
         expect(loaded.queuedInputs).toHaveLength(1);
         expect(Object.isFrozen(pending)).toBe(false);
         await writer.save({...input, history: [...input.history, pending, {role: "tool", tool_call_id: "pending", content: "done"}],
             taskNotificationReceipts: [receipt], queuedInputs: []});
-        const final = loadSession(storage, cwd, "metadata", "glm-test")!;
+        const final = loadSession(storage, cwd, "metadata")!;
         expect(final.history.filter(message => message.role === "tool")).toHaveLength(1);
         expect(final.queuedInputs).toHaveLength(0);
     });

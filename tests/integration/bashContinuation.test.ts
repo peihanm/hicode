@@ -269,7 +269,7 @@ test("Shell result receipt is ACKed only after paired History is saved, and wait
                 return assistantToolCall("task", {action: "wait", task_id: id}, "wait");
             },
             async options => {
-                const saved = loadSession(storage, cwd, "durable-shell", resources.model)!;
+                const saved = loadSession(storage, cwd, "durable-shell")!;
                 expect(saved.history.find(message => message.role === "tool" && message.tool_call_id === "wait")?.content).toContain("durable-evidence");
                 expect(await session.taskSession.pendingNotifications()).toEqual([]);
                 expect(options.messages.filter(message => message.role === "user" && contentText(message.content).includes("<task-notification>"))).toEqual([]);

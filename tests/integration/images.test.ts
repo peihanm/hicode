@@ -72,7 +72,7 @@ test("图片按回复边界只送一次，历史与重看权限保留，Resume �
         f.history.push({role: "assistant", content: "Observed a blue rectangle."});
         await saveSessionSnapshot(storage, {...state, cwd, model: "qwen3.8-flash", sessionId: "images", history: f.history});
         await unlink(join(cwd, "screen.png"));
-        const loaded = loadSession(storage, cwd, "images", "qwen3.8-flash")!;
+        const loaded = loadSession(storage, cwd, "images")!;
         const request = projectImagesForRequest(loaded.history);
         expect(request.flatMap(m => imageReferences(m.content))).toHaveLength(0);
         expect(JSON.stringify(request)).toContain("Observed a blue rectangle.");
@@ -102,7 +102,7 @@ test("压缩删除回复后旧图片仍只作为引用，Resume 和显式重看�
         expect(f.history.flatMap(m => imageReferences(m.content))).toHaveLength(1);
         expect(f.history.flatMap(m => imageReferences(m.content))[0]?.referenceOnly).toBe(true);
         await saveSessionSnapshot(storage, {...state, cwd, sessionId: "images", model: "qwen3.8-flash", history: f.history, compactState: f.ctx.compactState});
-        const loaded = loadSession(storage, cwd, "images", "qwen3.8-flash")!;
+        const loaded = loadSession(storage, cwd, "images")!;
         expect(projectImagesForRequest(loaded.history).flatMap(m => imageReferences(m.content))).toHaveLength(0);
         const reread = await f.tool({image_id: ref!.imageId});
         expect(reread.outcome).toBe("ok");
@@ -181,7 +181,7 @@ test("view_image saves pixels, gives no edit evidence, Resume and ID reread surv
         expect(JSON.stringify(f.history)).not.toContain(bytes.toString("base64"));
         await saveSessionSnapshot(storage, {...state, cwd, model: "qwen3.8-flash", sessionId: "images", history: f.history});
         await unlink(path);
-        const loaded = loadSession(storage, cwd, "images", "qwen3.8-flash")!;
+        const loaded = loadSession(storage, cwd, "images")!;
         expect(loaded).toBeDefined();
         const store = createToolResultStore(storage, cwd, "images");
         const access = createImageAccess({storage, store, history: () => loaded.history, state: () => loaded.compactState ?? createCompactState()});
@@ -214,7 +214,7 @@ test("image access survives archive Resume and rejects unreachable references", 
         const part = await archives.resolve(parts[0]!);
         expect(await readFile(part!.path, "utf8")).toContain(ref!.imageId);
         expect(await readFile(part!.path, "utf8")).not.toContain("[object Object]");
-        const loaded = loadSession(storage, cwd, "images", input.model)!;
+        const loaded = loadSession(storage, cwd, "images")!;
         const target = createToolResultStore(storage, cwd, "images");
         const access = createImageAccess({storage, store: target, history: () => loaded.history, state: () => loaded.compactState!});
         const original = await f.ctx.toolResultStore.readImageSource(ref!);

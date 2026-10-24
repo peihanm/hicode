@@ -9,7 +9,7 @@ test("planning uses user intent without mode commands or injected mode state", (
     expect(getSlashCommands().map(command => command.name)).not.toContain("build");
     expect(getSlashCommandSuggestions("/plan")).toEqual([]);
     expect(getSlashCommandSuggestions("/build")).toEqual([]);
-    const history = createInitialHistory("/project", "fixture");
+    const history = createInitialHistory("/project");
     const before = structuredClone(history);
     const messages = withExecutionContext(history, {permissionMode: "full-access", permissionPromptPolicy: "never", readOnlyTools: true});
     const system = contentText(messages[0]!.content);

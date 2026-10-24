@@ -14,7 +14,7 @@ test("index failure preserves committed content and leaves damaged records uncha
   await writeFile(getSessionIndexPath(storage,cwd),"broken index");
   await writer.save({...input,history:[...input.history,{role:"assistant",content:"saved after damage"}]});
   expect(writer.takeIssues()[0]).toContain("content was saved");
-  expect(loadSession(storage,cwd,"good","test")?.history.at(-1)?.content).toBe("saved after damage");
+  expect(loadSession(storage,cwd,"good")?.history.at(-1)?.content).toBe("saved after damage");
   expect(()=>listSessionIndex(storage,cwd)).toThrow("corrupt session index");
   expect(await readFile(getSessionIndexPath(storage,cwd),"utf8")).toBe("broken index");
   expect(await readFile(getSessionSnapshotPath(storage,cwd,"bad"),"utf8")).toBe("broken snapshot");
@@ -30,7 +30,7 @@ test("a long write in one Session does not hold another Session's content lock",
   await ready;
   try{
    await createSessionPersistence(storage,cwd,"other").save({cwd,sessionId:"other",model:"test",history:[{role:"user",origin:"user",content:"independent"}],todos:[],permissionMode:"ask",});
-   expect(loadSession(storage,cwd,"other","test")?.history.at(-1)?.content).toBe("independent");
+   expect(loadSession(storage,cwd,"other")?.history.at(-1)?.content).toBe("independent");
   }finally{release();await held;}
  });
 });

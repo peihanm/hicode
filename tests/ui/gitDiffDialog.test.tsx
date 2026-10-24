@@ -53,7 +53,6 @@ function result(): GitDiffSnapshotResult {
                     ],
                 }],
             }],
-            patch: "patch",
             truncated: false,
             omittedFiles: 0,
         },

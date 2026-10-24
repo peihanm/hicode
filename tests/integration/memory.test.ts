@@ -15,12 +15,12 @@ test("Root 使用标准工具单次接收 note，下一轮直接召回，不维�
  const memory=createTestMemoryRuntime(cwd);const path=join(memory.directory,"topics","brief.md");
  const fake=createFakeLLM([assistantToolCall("write_file",{path,content:serializeMemoryTopic({name:"Preference",description:"Saved preference",type:"feedback",content:"保持简洁"})},"note"),assistantText("已记住")]);
  const root=createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory);const tools=createToolRuntime();const events:string[]=[];
- const result=await root("请记住保持简洁",createInitialHistory(cwd,"glm-test"),event=>{events.push(event.type);},(()=>{const ctx=createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);return ctx;})(),EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
+ const result=await root("请记住保持简洁",createInitialHistory(cwd),event=>{events.push(event.type);},(()=>{const ctx=createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);return ctx;})(),EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
  expect(fake.calls[1]?.messages.some(message=>message.role==="user"&&contentText(message.content).includes("topics/brief.md"))).toBe(true);expect(result.reason).toBe("completed");expect(events).toContain("memory_update");expect((await memory.read("brief"))?.content).toBe("保持简洁");expect((await memory.status()).pending).toBe(0);expect(tools.toolNames).not.toContain("memory");await memory.close();
 }));
 test("忽略 Memory 后即使模型试图读索引也被真实工具链拒绝",async()=>withTempProject(async cwd=>{
  const memory=createTestMemoryRuntime(cwd);const fake=createFakeLLM([assistantToolCall("read_file",{path:join(memory.directory,"MEMORY.md")},"read"),assistantText("本轮不使用")]);const tools=createToolRuntime();
- await createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory)("忽略记忆",createInitialHistory(cwd,"glm-test"),()=>{},(()=>{const ctx=createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);return ctx;})(),EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
+ await createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory)("忽略记忆",createInitialHistory(cwd),()=>{},(()=>{const ctx=createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);return ctx;})(),EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
  expect(JSON.stringify(fake.calls[1]?.messages)).toContain("no Memory");await memory.close();
 }));
 
@@ -41,7 +41,7 @@ test("Memory overlay sees a project tool grant on the very next call in the same
  const fake = createFakeLLM([assistantToolCall(name, {}, "first"), assistantToolCall(name, {}, "second"), assistantText("done")]);
  try {
   await createMemoryAwareAgentRunner(createAgentRunner({callLLM: fake.callLLM, compactHistory: noCompact}), memory)(
-   "run twice", createInitialHistory(cwd, "glm-test"), () => {}, ctx, EMPTY_AGENT_INPUT_CHANNEL,
+   "run twice", createInitialHistory(cwd), () => {}, ctx, EMPTY_AGENT_INPUT_CHANNEL,
    {getToolSchemas: tools.getToolSchemas, executeTool: tools.executeTool, isToolConcurrencySafe: tools.isConcurrencySafe});
   expect(executions).toBe(2); expect(approvals).toBe(1);
   expect(JSON.parse(await Bun.file(join(cwd, ".hicode/settings.local.json")).text()).permissions.allow).toContain(name);
