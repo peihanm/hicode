@@ -13,12 +13,14 @@ async function put(path: string, content: string): Promise<void> {
 }
 
 describe("HICODE.md project instructions", () => {
-  test("按用户、上层到 cwd、local 的顺序加载，且不兼容旧 CODE.md 或 CLAUDE.md", async () => {
+  test("按用户、Git 根到 cwd、local 的顺序加载，忽略仓库外规则和其他文件名", async () => {
     await withTempProject(async (root) => {
       const home = join(root, "home");
       const repo = join(root, "repo");
       const cwd = join(repo, "packages", "web");
       await mkdir(cwd, { recursive: true });
+      await mkdir(join(repo, ".git"));
+      await put(join(root, "HICODE.md"), "must-not-load-outside-repository");
       await put(join(home, ".hicode", "HICODE.md"), "user-rule");
       await put(join(repo, "HICODE.md"), "repo-rule");
       await put(join(repo, ".hicode", "HICODE.md"), "repo-dot-rule");
@@ -68,6 +70,7 @@ describe("HICODE.md project instructions", () => {
       const repo = join(root, "repo");
       const cwd = join(repo, "app");
       await mkdir(cwd, { recursive: true });
+      await mkdir(join(repo, ".git"));
       await put(join(repo, "HICODE.md"), "p".repeat(30));
       await put(join(cwd, "HICODE.local.md"), "L".repeat(20));
 
@@ -92,6 +95,7 @@ describe("HICODE.md project instructions", () => {
       const boundary = join(outer, "isolated");
       const cwd = join(boundary, "packages", "web");
       await mkdir(cwd, {recursive: true});
+      await mkdir(join(boundary, ".git"));
       await put(join(outer, "HICODE.md"), "outer-uncommitted-rule");
       await put(join(boundary, "HICODE.md"), "isolated-rule");
 
@@ -103,6 +107,82 @@ describe("HICODE.md project instructions", () => {
       );
 
       expect(loaded.files.map((file) => file.content)).toEqual(["isolated-rule"]);
+    });
+  });
+
+  test("非 Git 目录只读 cwd 规则，用户级和 Host 指令仍加载", async () => {
+    await withTempProject(async root => {
+      const cwd = join(root, "project", "app");
+      const home = join(root, "home");
+      await mkdir(cwd, {recursive: true});
+      await put(join(root, "HICODE.md"), "outside-rule");
+      await put(join(root, "project", "HICODE.md"), "parent-rule");
+      await put(join(home, "HICODE.md"), "user-rule");
+      await put(join(cwd, "HICODE.md"), "cwd-rule");
+      await put(join(cwd, ".hicode", "HICODE.md"), "cwd-dot-rule");
+      await put(join(cwd, "HICODE.local.md"), "cwd-local-rule");
+      const loaded = await createProjectInstructionLoader({
+        userHiCodeHome: home, sources: ["user", "project", "local"],
+        hostInstructions: [{id: "host", content: "host-rule"}],
+      })(cwd, root);
+      expect(loaded.files.map(file => file.content)).toEqual([
+        "user-rule", "cwd-rule", "cwd-dot-rule", "cwd-local-rule", "host-rule",
+      ]);
+    });
+  });
+
+  test("在仓库根启动不加载兄弟目录或子目录规则", async () => {
+    await withTempProject(async root => {
+      await mkdir(join(root, ".git"));
+      await put(join(root, "HICODE.md"), "root-rule");
+      await put(join(root, "frontend", "HICODE.md"), "frontend-rule");
+      await put(join(root, "backend", "HICODE.md"), "backend-rule");
+      const loaded = await createProjectInstructionLoader()(root, root);
+      expect(loaded.files.map(file => file.content)).toEqual(["root-rule"]);
+    });
+  });
+
+  test.each(["directory", "file"])("最近的 .git %s 截止祖先查找，支持嵌套仓库和 worktree 标记", async kind => {
+    await withTempProject(async root => {
+      const repo = join(root, "inner");
+      const cwd = join(repo, "src");
+      await mkdir(cwd, {recursive: true});
+      await mkdir(join(root, ".git"));
+      if (kind === "directory") await mkdir(join(repo, ".git"));
+      else await writeFile(join(repo, ".git"), "gitdir: /not-read-by-instruction-loader\n");
+      await put(join(root, "HICODE.md"), "outer-rule");
+      await put(join(repo, "HICODE.md"), "inner-rule");
+      await put(join(cwd, "HICODE.md"), "src-rule");
+      const loaded = await createProjectInstructionLoader()(cwd, root);
+      expect(loaded.files.map(file => file.content)).toEqual(["inner-rule", "src-rule"]);
+    });
+  });
+
+  test("宿主边界外的 Git 根不扩大查找范围，范围内无标记时只读取 cwd", async () => {
+    await withTempProject(async root => {
+      const boundary = join(root, "restricted");
+      const cwd = join(boundary, "src");
+      await mkdir(cwd, {recursive: true});
+      await mkdir(join(root, ".git"));
+      await put(join(root, "HICODE.md"), "outside-rule");
+      await put(join(boundary, "HICODE.md"), "parent-rule");
+      await put(join(cwd, "HICODE.md"), "cwd-rule");
+      const loaded = await createProjectInstructionLoader()(cwd, boundary);
+      expect(loaded.files.map(file => file.content)).toEqual(["cwd-rule"]);
+      await expect(createProjectInstructionLoader()(cwd, join(root, "other"))).rejects.toThrow("does not contain cwd");
+    });
+  });
+
+  test("Git 标记为 symlink 时拒绝扩大范围；禁用项目来源不探测 Git", async () => {
+    await withTempProject(async root => {
+      const cwd = join(root, "project");
+      const home = join(root, "home");
+      await mkdir(cwd);
+      await symlink(root, join(cwd, ".git"));
+      await expect(createProjectInstructionLoader()(cwd, root)).rejects.toThrow("Invalid Git marker");
+      await put(join(home, "HICODE.md"), "user-rule");
+      const loaded = await createProjectInstructionLoader({sources: ["user"], userHiCodeHome: home})(cwd, root);
+      expect(loaded.files.map(file => file.content)).toEqual(["user-rule"]);
     });
   });
 

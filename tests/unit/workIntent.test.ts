@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {getSlashCommands, getSlashCommandSuggestions} from "../../src/slash/registry.js";
 import {createInitialHistory} from "../../src/prompt/index.js";
-import {withExecutionContext} from "../../src/prompt/executionContext.js";
+import {withExecutionContext} from "../../src/prompt/messages.js";
 import {contentText} from "../../src/images/content.js";
 
 test("planning uses user intent without mode commands or injected mode state", () => {

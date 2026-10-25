@@ -4,7 +4,7 @@ import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart, type ImageRefere
 function withoutPixels(reference: ImageReference, deferred: boolean): ContentPart {
     const reason = deferred
         ? "Pixels were NOT sent: this batch exceeds the request image budget (8 images / 10 MiB). Request this snapshot separately; do not infer its contents."
-        : "Historical image reference: pixels are not repeated in this request after an earlier response. This is not a new viewing result or a budget-deferral notice, and does not imply that the earlier view failed or image support is unavailable. Retain earlier recorded observations; reopen only when visual detail is needed.";
+        : "Historical image reference: this request contains only a text reference, without pixels, after an earlier response. This is not a new viewing result or a budget-deferral notice, and does not imply that the earlier view failed or image support is unavailable. Retain earlier recorded observations; reopen only when visual detail is needed.";
     return {type: "text", text: `[Image ${reference.imageId}; ${reason} Use view_image with image_id to inspect the stored snapshot again.]`};
 }
 

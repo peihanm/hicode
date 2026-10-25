@@ -75,6 +75,7 @@ test("图片按回复边界只送一次，历史与重看权限保留，Resume �
         const loaded = loadSession(storage, cwd, "images")!;
         const request = projectImagesForRequest(loaded.history);
         expect(request.flatMap(m => imageReferences(m.content))).toHaveLength(0);
+        expect(JSON.stringify(request)).toContain("only a text reference, without pixels");
         expect(JSON.stringify(request)).toContain("Observed a blue rectangle.");
         expect(JSON.stringify(request)).toContain(reference!.imageId);
         expect(await encodeImageMessages({messages: request, supported: false})).toBeArray();

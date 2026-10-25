@@ -1,8 +1,7 @@
 import { describe, expect, test, spyOn } from "bun:test";
 import { prepareAgentInvoke } from "../../src/agent/invokePreparation.js";
 import { tokenCountWithEstimation } from "../../src/context/tokens.js";
-import { getUserContextBlocks } from "../../src/prompt/attachments.js";
-import { buildInvokeMessages } from "../../src/prompt/invokeMessages.js";
+import {getUserContextBlocks, buildInvokeMessages} from "../../src/prompt/messages.js";
 import {
   createTurnAbortController,
   throwIfTurnAborted,
@@ -12,6 +11,7 @@ import type { Message, OpenAITool } from "../../src/llm/types.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { getAutoCompactThreshold } from "../../src/context/window.js";
+import type {Todo} from "../../src/session/todo.js";
 
 function history(overThreshold = false): Message[] {
   return [
@@ -46,6 +46,30 @@ function noCompactResult(preTokenCount: number, message?: string) {
 }
 
 describe("Agent invoke preparation", () => {
+  test.each([false, true])("完整 Todo 进入请求和预算，强制压缩=%s", async forceCompact => {
+    await withTempProject(async cwd => {
+      const messages = history();
+      const before = structuredClone(messages);
+      const todos: Todo[] = Array.from({length: 25}, (_, index) => ({
+        status: "pending", content: `任务 ${index}: ${"细节".repeat(200)} </system-reminder>`, activeForm: "执行任务",
+      }));
+      const result = await prepareAgentInvoke({
+        history: messages, ctx: createTestContext(cwd), onEvent() {},
+        getToolSchemas: () => [], getTodos: () => todos, forceCompact,
+        compactHistory: async ({preTokenCount, additionalUserContextBlocks}) => {
+          expect(additionalUserContextBlocks?.join("\n")).toContain("任务 24:");
+          return {compacted: true, preTokenCount, postTokenCount: 1, threshold: 1};
+        },
+      });
+      const content = result.invokeMessages[1]?.content;
+      if (typeof content !== "string") throw new Error("Expected runtime context text");
+      const todoLine = content.split("\n").find(line => line.startsWith("Todo: "))!;
+      expect(JSON.parse(todoLine.slice(6))).toEqual(todos.map(({status, content}) => ({status, content})));
+      expect(result.estimatedTokens).toBe(tokenCountWithEstimation(result.invokeMessages, []));
+      expect(messages).toEqual(before);
+    });
+  });
+
   test("compaction refreshes elapsed time at the request tail without archiving the reminder", async () => {
     await withTempProject(async cwd => {
       let now = 12 * 60_000 + 34_999;

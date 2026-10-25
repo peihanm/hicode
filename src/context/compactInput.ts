@@ -3,7 +3,7 @@ import type {Message} from "../llm/types.js";
 import {findCompactTailStart} from "./compactTail.js";
 import {estimateMessageTokens, tokenCountWithEstimation} from "./tokens.js";
 import {labelHandoffSources, type HandoffSources} from "./handoff.js";
-import {buildInvokeMessages} from "../prompt/invokeMessages.js";
+import {buildInvokeMessages} from "../prompt/messages.js";
 
 export function selectCompactInput(input: {
     system: Extract<Message, {role: "system"}>;

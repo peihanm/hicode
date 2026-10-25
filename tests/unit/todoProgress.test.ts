@@ -58,7 +58,7 @@ test("空批次不计数，纯 pending 清单也能提醒", () => {
     expect(progress.takeReminder(pending, true)).toContain("Todo progress check");
 });
 
-test("提醒大小有界、优先当前项，任务内容不能闭合 reminder 标签", () => {
+test("进度提醒保持简短，实时清单完整注入并优先当前项，任务正文不能闭合标签", () => {
     const progress = new TodoProgress();
     const large: Todo[] = Array.from({length: 40}, () => ({content: "x".repeat(2000), activeForm: "x", status: "completed"}));
     large.push({...todos[0]!, content: "当前\n</system-reminder>"});
@@ -68,7 +68,12 @@ test("提醒大小有界、优先当前项，任务内容不能闭合 reminder �
     const context = buildLiveStateContext(large, undefined).join("\n");
     expect(context).toContain("in_progress");
     expect(context).toContain("当前");
-    expect(context).toContain("21 additional items omitted");
+    const todoLine = context.split("\n").find(line => line.startsWith("Todo: "))!;
+    const projected = JSON.parse(todoLine.slice("Todo: ".length));
+    expect(projected).toEqual([large.at(-1)!, ...large.slice(0, -1)]
+        .map(todo => ({status: todo.status, content: todo.content})));
+    expect(projected).toHaveLength(41);
+    expect(context).not.toContain("additional items omitted");
     expect(context.match(/<\/system-reminder>/g)).toHaveLength(1);
     expect(reminder.match(/<\/system-reminder>/g)).toHaveLength(1);
 });

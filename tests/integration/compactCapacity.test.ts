@@ -1,6 +1,4 @@
-import {withExecutionContext} from "../../src/prompt/executionContext.js";
-import {buildInvokeMessages} from "../../src/prompt/invokeMessages.js";
-import {getUserContextBlocks} from "../../src/prompt/attachments.js";
+import {withExecutionContext, buildInvokeMessages, getUserContextBlocks} from "../../src/prompt/messages.js";
 import {tokenCountWithEstimation} from "../../src/context/tokens.js";
 import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {expect, test} from "bun:test";

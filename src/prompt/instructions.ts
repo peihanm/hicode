@@ -1,7 +1,7 @@
 import {Buffer} from "node:buffer";
 import {dirname, isAbsolute, join, parse, relative, resolve} from "node:path";
 import {constants} from "node:fs";
-import {open} from "node:fs/promises";
+import {lstat, open} from "node:fs/promises";
 import type {HostInstructionContribution} from "../runtime/rootContributions.js";
 
 const MAX_INSTRUCTION_FILE_CHARS = 40_000;
@@ -72,7 +72,7 @@ async function readInstructionFile(
     }
 }
 
-function discoveryDirectories(cwd: string, boundary?: string): string[] {
+async function discoveryDirectories(cwd: string, boundary?: string): Promise<string[]> {
     const directories: string[] = [];
     let current = resolve(cwd);
     const root = boundary === undefined ? parse(current).root : resolve(boundary);
@@ -82,18 +82,30 @@ function discoveryDirectories(cwd: string, boundary?: string): string[] {
     }
     while (true) {
         directories.push(current);
+        // A directory marks a normal repository; a file marks a worktree/submodule.
+        // Only inspect the marker, without reading Git configuration or following it.
+        try {
+            const marker = await lstat(join(current, ".git"));
+            if (!marker.isDirectory() && !marker.isFile()) {
+                throw new Error(`Invalid Git marker for HICODE.md discovery: ${join(current, ".git")}`);
+            }
+            return directories.reverse();
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
         if (current === root) break;
         current = dirname(current);
     }
-    return directories.reverse();
+    // Outside a repository, ancestor rules do not belong to this project.
+    return [resolve(cwd)];
 }
 
-function instructionCandidates(
+async function instructionCandidates(
     cwd: string,
     userHiCodeHome: string | undefined,
     sources: readonly InstructionFileSource[],
     boundary?: string
-): InstructionCandidate[] {
+): Promise<InstructionCandidate[]> {
     const candidates: InstructionCandidate[] = [];
     if (sources.includes("user") && userHiCodeHome) {
         candidates.push({
@@ -101,7 +113,10 @@ function instructionCandidates(
             scope: "user",
         });
     }
-    for (const directory of discoveryDirectories(cwd, boundary)) {
+    const directories = sources.includes("project") || sources.includes("local")
+        ? await discoveryDirectories(cwd, boundary)
+        : [];
+    for (const directory of directories) {
         if (sources.includes("project")) {
             candidates.push(
                 {
@@ -168,7 +183,7 @@ export function createProjectInstructionLoader(
         const seen = new Set<string>();
         const discovered: LoadedInstructionFile[] = [];
 
-        for (const candidate of instructionCandidates(
+        for (const candidate of await instructionCandidates(
             cwd,
             userHiCodeHome,
             sources,

@@ -1,9 +1,7 @@
 import type {CompactHistoryRunner} from "../context/compact.js";
 import {shouldAutoCompact} from "../context/compact.js";
 import {getAutoCompactThreshold, getModelInputBudget, getTokenWarningState,} from "../context/window.js";
-import {getUserContextBlocks} from "../prompt/attachments.js";
-import {buildInvokeMessages} from "../prompt/invokeMessages.js";
-import {withExecutionContext} from "../prompt/executionContext.js";
+import {getUserContextBlocks, buildInvokeMessages, withExecutionContext} from "../prompt/messages.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {ToolContext} from "../tools/types.js";
 import type {AgentEvent} from "./types.js";

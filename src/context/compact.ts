@@ -1,5 +1,5 @@
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
-import {withExecutionContext} from "../prompt/executionContext.js";
+import {withExecutionContext, getUserContextBlocks, buildInvokeMessages} from "../prompt/messages.js";
 import {retainImageDeliveryBoundary} from "../images/request.js";
 import type {ContextSettings} from "./config.js";
 import {formatHookContext} from "../hooks/index.js";
@@ -10,8 +10,6 @@ import {estimateMessageTokens, tokenCountWithEstimation} from "./tokens.js";
 import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
 import {buildCompactSummaryMessage} from "./compactPrompt.js";
 import {findCompactTailStart} from "./compactTail.js";
-import {getUserContextBlocks} from "../prompt/attachments.js";
-import {buildInvokeMessages} from "../prompt/invokeMessages.js";
 import type {CompactState} from "./state.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {HandoffSources} from "./handoff.js";

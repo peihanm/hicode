@@ -1,5 +1,4 @@
-import {buildInvokeMessages} from "../../prompt/invokeMessages.js";
-import {getUserContextBlocks} from "../../prompt/attachments.js";
+import {buildInvokeMessages, getUserContextBlocks} from "../../prompt/messages.js";
 import {getAutoCompactThreshold, getTokenWarningState, tokenCountWithEstimation,} from "../../context/index.js";
 import type {SlashCommand} from "../types.js";
 

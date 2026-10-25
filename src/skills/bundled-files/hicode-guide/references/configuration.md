@@ -14,7 +14,7 @@ Paths below describe the CLI. `<cwd>` is the directory where HiCode starts. SDK 
 | `~/.hicode/mcp.json` | JSON | User MCP servers. |
 | `<cwd>/.hicode/mcp.json` | JSON | Project MCP servers. A project `.mcp.json` is also read at lower precedence. |
 | `~/.hicode/HICODE.md` | Markdown | User instructions. |
-| `HICODE.md`, `.hicode/HICODE.md`, `HICODE.local.md` along the project discovery path | Markdown | Project instructions; local files should not be committed. |
+| `HICODE.md`, `.hicode/HICODE.md`, `HICODE.local.md` from the nearest Git root to cwd | Markdown | Project instructions; without a `.git` marker within the Host boundary, only cwd is checked. User instructions are loaded separately. Local files should not be committed. |
 | `~/.hicode/skills/<name>/SKILL.md`, `<cwd>/.hicode/skills/<name>/SKILL.md` | Markdown with simple frontmatter | Skill entry points. |
 | `~/.hicode/agents/<name>.md`, `<cwd>/.hicode/agents/<name>.md` | Markdown with YAML frontmatter | Custom Agent definitions. |
 | `<cwd>/.hicode/hooks/` | Scripts referenced by Settings | Suggested Hook script location; this directory is not scanned automatically. |

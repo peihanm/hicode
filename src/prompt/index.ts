@@ -1,9 +1,9 @@
+import {release, type} from "node:os";
+import {bashExecutable} from "../tools/bash/command.js";
 import type {Message} from "../llm/types.js";
-import {detectEnv} from "./env.js";
 import {
     getActionsSection,
     getDoingTasksSection,
-    getEnvSection,
     getIdentitySection,
     getSystemMechanismSection,
     getToneAndStyleSection,
@@ -14,7 +14,6 @@ import {
 // Create initial History with one system message.
 // Host environment facts are independent of model selection; no I/O occurs here.
 export function createInitialHistory(cwd: string): Message[] {
-    const env = detectEnv(cwd);
     const systemContent = [
         getIdentitySection(),
         "",
@@ -28,7 +27,7 @@ export function createInitialHistory(cwd: string): Message[] {
         "",
         getToneAndStyleSection(),
         "",
-        getEnvSection(env),
+        getEnvSection(cwd),
     ].join("\n");
 
     return [{role: "system", content: systemContent}];
@@ -44,4 +43,9 @@ export function createSubagentInstructions(): string {
         getActionsSection(),
         getSubagentRoleSection(),
     ].join("\n\n");
+}
+
+/** Build stable host facts without Git, file or network I/O. */
+function getEnvSection(cwd: string): string {
+    return ["# Environment", `Working directory: ${cwd}`, `Platform: ${type()} ${release()}`, `Shell: ${bashExecutable()}`].join("\n");
 }

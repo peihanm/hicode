@@ -2,7 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile, symlink} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {loadSkills} from "../../src/skills/loader.js";
-import {getUserContextBlocks} from "../../src/prompt/attachments.js";
+import {getUserContextBlocks} from "../../src/prompt/messages.js";
 import {prepareCommandReadAccess} from "../../src/tools/bash/readAccess.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

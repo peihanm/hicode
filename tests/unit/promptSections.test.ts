@@ -1,7 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {contentText} from "../../src/images/content.js";
 import {createInitialHistory, createSubagentInstructions} from "../../src/prompt/index.js";
-import {withExecutionContext} from "../../src/prompt/executionContext.js";
+import {withExecutionContext} from "../../src/prompt/messages.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createAgentSystemPrompt} from "../../src/subagents/prompt.js";
 import {EXPLORE_SUBAGENT} from "../../src/subagents/builtins/explore/index.js";
@@ -50,11 +50,13 @@ describe("English prompt contracts", () => {
         expect(prompt).toContain("Commit and push each require explicit authorization");
         expect(prompt).toContain("does not change tool permissions or replace runtime approval");
         expect(prompt).toContain("not automatically unresolved work");
-        expect(prompt).toContain("Only an explicit request to build that infrastructure");
+        expect(prompt).toContain("unless explicitly asked to build that infrastructure");
         expect(prompt).toContain("stop that verification branch");
         expect(prompt).toContain("Once the user's requirements are met and necessary checks provide sufficient evidence, stop and deliver");
         expect(prompt).not.toContain("64 MiB");
         expect(prompt).not.toContain("timeout_ms");
+        expect(prompt).not.toContain("Respect explicit denials, Plan,");
+        expect(prompt).toContain("Respect explicit denials, read-only restrictions");
         expect(toolDescription("bash")).toContain("rg --files");
         expect(toolDescription("bash")).toContain("Bash has no model-set execution deadline");
         expect(toolDescription("bash")).toContain("stop it before restarting");
@@ -79,12 +81,15 @@ describe("English prompt contracts", () => {
     test("Root and dispatched workers cannot improvise image-review infrastructure from view_image availability", () => {
         const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["view_image", "bash"]);
         for (const prompt of [root(), worker]) {
-            expect(prompt).toContain("Screenshot or generated-image review requires either an explicit user request");
+            expect(prompt).toContain("Screenshot or generated-image review requires an explicit user request");
             expect(prompt).toContain("or an available dedicated capture/render tool");
-            expect(prompt).toContain("do not install canvas/rendering packages");
-            expect(prompt).toContain("Existing test artifacts or installed packages do not authorize starting it");
-            expect(prompt).toContain("Reading user-provided images and producing images explicitly requested as deliverables remain valid uses");
-            expect(prompt).toContain("not a screenshot or evidence of actual browser/WebGL rendering");
+            expect(prompt).toContain("Missing capture infrastructure requires an explicit setup request");
+            expect(prompt).toContain("Installed dependencies and existing artifacts do not authorize creating an image-review workflow");
+            expect(prompt).toContain("Reading user-provided images and producing requested image deliverables remain valid");
+            expect(prompt).toContain("Do not present script-generated approximations as real browser/WebGL rendering evidence");
+            expect(prompt).toContain("the project's established E2E workflow");
+            expect(prompt).toContain("earlier images are sent only as text references, without pixels");
+            expect(prompt).toContain("call view_image(image_id) when you need visual detail again");
         }
         expect(toolDescription("view_image")).toContain("does not provide screenshot or rendering capability");
     });
