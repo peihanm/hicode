@@ -9,7 +9,7 @@ import {createTestRuntimeResources, createTestSettings} from "../helpers/runtime
 import {imageReferences, type MessageContent} from "../../src/images/content.js";
 import {contentText} from "../../src/images/content.js";
 import {prepareImage} from "../../src/images/prepare.js";
-import {imageAssetId} from "../../src/images/identity.js";
+import {imageAssetId} from "../../src/images/persist.js";
 import {UITurnEventStore} from "../../src/ui/turn/eventStore.js";
 import {QueuedInputPreview} from "../../src/ui/input/QueuedInputPreview.js";
 import {userContentText} from "../../src/ui/conversation/userContent.js";

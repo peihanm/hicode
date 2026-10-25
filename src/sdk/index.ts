@@ -63,4 +63,4 @@ export type {
     HostMcpServerContribution,
 } from "../runtime/rootConfiguration.js";
 
-export type {TurnInput} from "../images/input.js";
+export type {TurnInput} from "../runtime/turnInput.js";

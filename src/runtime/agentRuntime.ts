@@ -1,4 +1,4 @@
-import {supportsToolImages} from "../images/capability.js";
+import {supportsToolImages} from "../images/request.js";
 import {createApprovalReviewer} from "../permissions/reviewer.js";
 import type {ApprovalReviewer} from "../permissions/approval.js";
 import {type AgentRunner, createAgentRunner} from "../agent/index.js";

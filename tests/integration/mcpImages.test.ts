@@ -10,7 +10,7 @@ import {createMcpManager} from "../../src/mcp/manager.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {normalizeMcpResultWithArtifacts} from "../../src/mcp/result.js";
 import {contentText, imageReferences} from "../../src/images/content.js";
-import {encodeImageMessages} from "../../src/images/wire.js";
+import {encodeImageMessages} from "../../src/images/request.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";

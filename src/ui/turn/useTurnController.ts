@@ -2,7 +2,7 @@ import {InteractiveEvents} from "../interactiveEvents.js";
 import type {McpToolPolicy} from "../../mcp/types.js";
 import {FileSuggestions} from "../../runtime/fileSuggestions.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
-import {supportsToolImages} from "../../images/capability.js";
+import {supportsToolImages} from "../../images/request.js";
 import {imageReferences, type MessageContent} from "../../images/content.js";
 import {useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore,} from "react";
 import {createSlashCommandProcessor} from "../../slash/index.js";

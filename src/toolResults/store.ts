@@ -1,4 +1,4 @@
-import {imageAssetId} from "../images/identity.js";
+import {imageAssetId} from "../images/persist.js";
 import {constants} from "node:fs";
 import {createHash, randomUUID} from "node:crypto";
 import {storedImageSchema, imageReferenceSchema, type StoredImage, type ImageReference} from "../images/content.js";

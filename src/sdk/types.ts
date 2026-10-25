@@ -1,4 +1,4 @@
-import type {TurnInput} from "../images/input.js";
+import type {TurnInput} from "../runtime/turnInput.js";
 import type {McpServerSnapshot} from "../mcp/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {SandboxStatus} from "../sandbox/types.js";

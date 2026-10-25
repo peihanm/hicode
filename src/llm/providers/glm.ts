@@ -1,5 +1,5 @@
 import {reasoningCapability, reasoningRequestFields, validateReasoningEffort} from "../reasoningPolicy.js";
-import {supportsToolImages} from "../../images/capability.js";
+import {supportsToolImages} from "../../images/request.js";
 import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMCallOptions, LLMCallResult, LLMProvider} from "../types.js";
 import {callOpenAICompatible, type OpenAICompatibleEndpoint,} from "./openAICompatible.js";

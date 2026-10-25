@@ -13,7 +13,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {createImageAccess} from "../../src/images/access.js";
 import {imageReferences} from "../../src/images/content.js";
-import {imageAssetId} from "../../src/images/identity.js";
+import {imageAssetId} from "../../src/images/persist.js";
 import {prepareImage} from "../../src/images/prepare.js";
 import type {Message} from "../../src/llm/types.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";

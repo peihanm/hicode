@@ -7,7 +7,7 @@ import {HiCode, loadHiCodeHostConfig} from "../../src/sdk/index.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {loadHiCodeSettings} from "../../src/settings/index.js";
-import {supportsToolImages} from "../../src/images/capability.js";
+import {supportsToolImages} from "../../src/images/request.js";
 import {imageReferences} from "../../src/images/content.js";
 import {loadSession} from "../../src/session/storage.js";
 

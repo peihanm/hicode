@@ -9,7 +9,7 @@ import {getPromptLogDirectory} from "../../src/persistence/layout.js";
 import type {Message} from "../../src/llm/types.js";
 import sharp from "sharp";
 import {prepareImage} from "../../src/images/prepare.js";
-import {imageAssetId} from "../../src/images/identity.js";
+import {imageAssetId} from "../../src/images/persist.js";
 
 const originalFetch = globalThis.fetch;
 const keys = ["ARK_AGENT_PLAN_API_KEY", "QWEN_TOKEN_PLAN_API_KEY", "DEEPSEEK_API_KEY"] as const;

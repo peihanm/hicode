@@ -1,7 +1,6 @@
 import {ProviderStreamError} from "./openAICompatibleStreamCodec.js";
 import {createHash, randomUUID} from "node:crypto";
-import {encodeImageMessages, ImageRequestError, projectMessageForWire} from "../../images/wire.js";
-import {projectImagesForRequest} from "../../images/request.js";
+import {encodeImageMessages, ImageRequestError, projectMessageForWire, projectImagesForRequest} from "../../images/request.js";
 import type {LLMProviderName} from "../providerRegistry.js";
 import {ContextLengthError, isContextLengthResponse} from "../errors.js";
 import {imageReferences} from "../../images/content.js";

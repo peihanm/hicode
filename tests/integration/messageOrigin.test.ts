@@ -5,7 +5,7 @@ import {continuityFixture, continuityHost, continuityState} from "../helpers/con
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {loadSession} from "../../src/session/storage.js";
 import {createMemorySourceExtractorFactory} from "../../src/memory/sourceExtractor.js";
-import {encodeImageMessages} from "../../src/images/wire.js";
+import {encodeImageMessages} from "../../src/images/request.js";
 import {threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";
 import type {Message, UserMessageOrigin} from "../../src/llm/types.js";
 

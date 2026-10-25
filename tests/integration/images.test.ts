@@ -10,10 +10,8 @@ import {createTestRuntimeResources, createTestSettings} from "../helpers/runtime
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {createImageAccess} from "../../src/images/access.js";
 import {imageReferences, IMAGE_MAX_BYTES} from "../../src/images/content.js";
-import {projectImagesForRequest} from "../../src/images/request.js";
+import {projectImagesForRequest, supportsToolImages, encodeImageMessages} from "../../src/images/request.js";
 import {prepareImage} from "../../src/images/prepare.js";
-import {supportsToolImages} from "../../src/images/capability.js";
-import {encodeImageMessages} from "../../src/images/wire.js";
 import {ToolResultStore, createToolResultStore} from "../../src/toolResults/store.js";
 import {applyBatchToolResultBudget, processToolOutput} from "../../src/toolResults/budget.js";
 import type {Message} from "../../src/llm/types.js";

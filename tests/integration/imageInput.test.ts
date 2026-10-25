@@ -12,7 +12,7 @@ import {createSDKThread, createSDKThreadFactory} from "../../src/sdk/thread.js";
 import {collectTurnResult} from "../../src/sdk/resultCollector.js";
 import {createCompactState} from "../../src/context/state.js";
 import {createInitialHistory} from "../../src/prompt/index.js";
-import {importUserInput, snapshotTurnInput} from "../../src/images/input.js";
+import {importUserInput, snapshotTurnInput} from "../../src/runtime/turnInput.js";
 import {imageReferences, contentText} from "../../src/images/content.js";
 import {importSelectedImages} from "../../src/runtime/imageInput.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";

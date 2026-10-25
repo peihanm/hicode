@@ -1,10 +1,11 @@
-import {persistPreparedImage} from "./persist.js";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
-import {prepareImage} from "./prepare.js";
-import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES, type ContentPart, type MessageContent} from "./content.js";
+import {prepareImage} from "../images/prepare.js";
+import {persistPreparedImage} from "../images/persist.js";
+import {IMAGE_MAX_COUNT, IMAGE_REQUEST_BYTES} from "../images/content.js";
+import type {ContentPart, MessageContent} from "../images/content.js";
 import type {ToolResultStore} from "../toolResults/store.js";
-import {throwIfTurnAborted} from "../runtime/abort.js";
+import {throwIfTurnAborted} from "./abort.js";
 
 /** Host uploads bytes explicitly. Local paths are handled by the CLI selection boundary. */
 export type TurnInput = string | readonly ({type: "text"; text: string} | {type: "image"; data: Uint8Array})[];

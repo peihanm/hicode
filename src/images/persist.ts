@@ -1,7 +1,8 @@
+import {createHash} from "node:crypto";
+import {storedImageSchema} from "./content.js";
 import type {ToolResultStore} from "../toolResults/store.js";
 import type {BinaryArtifactOrigin} from "../toolResults/types.js";
-import type {ImageDescriptor, ImageReference} from "./content.js";
-import {imageAssetId} from "./identity.js";
+import type {ImageDescriptor, ImageReference, StoredImage} from "./content.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 
 // Source first, view second, reference last: failure never publishes a partial dependency.
@@ -20,4 +21,8 @@ export async function persistPreparedImage(input: {
     await store.readImage(reference);
     throwIfTurnAborted(signal);
     return reference;
+}
+
+export function imageAssetId(image: StoredImage): string {
+    return `image-${createHash("sha256").update(JSON.stringify(storedImageSchema.parse(image))).digest("hex")}`;
 }
