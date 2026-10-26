@@ -2,14 +2,11 @@
 export type SkillFileSource = "user" | "project";
 
 interface LoadedSkillContent {
-    // Skill name: directory name for files, declared name for Host contributions.
+    // Declared name; file Skills without name use their directory name.
     name: string;
 
     // frontmatter.description describes the Skill for model selection.
     description: string;
-
-    // Optional frontmatter.when_to_use accompanies description.
-    whenToUse?: string;
 
     // Markdown body after frontmatter.
     // Skill invocation returns this as a tool result for the next model request.

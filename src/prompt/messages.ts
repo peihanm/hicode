@@ -23,10 +23,7 @@ import type {ProjectInstructions} from "./instructions.js";
 // Format the Skill list.
 function formatSkillListing(skills: LoadedSkill[]): string {
     if (skills.length === 0) return "";
-    const lines = skills.map((s) => {
-        const desc = s.whenToUse ? `${s.description} — ${s.whenToUse}` : s.description;
-        return `- ${s.name}: ${desc}`;
-    });
+    const lines = skills.map(skill => `- ${skill.name}: ${skill.description}`);
     return `Available Skills (invoke skill with the skill parameter):\n${lines.join("\n")}`;
 }
 

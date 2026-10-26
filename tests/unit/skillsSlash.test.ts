@@ -16,7 +16,7 @@ describe("/skills", () => {
                 [join(cwd, ".hicode", "skills", "review"), "Review project code"],
             ] as const) {
                 await mkdir(directory, {recursive: true});
-                await writeFile(join(directory, "SKILL.md"), `---\ndescription: ${description}\nwhen_to_use: Before a release\n---\nPRIVATE_SKILL_BODY`);
+                await writeFile(join(directory, "SKILL.md"), `---\nname: review\ndescription: ${description} Before a release.\n---\nPRIVATE_SKILL_BODY`);
             }
             const skills = loadSkills({cwd, storage, sources: ["user", "project"]}).skills;
             const path = join(cwd, ".hicode", "skills", "review", "SKILL.md");
@@ -35,7 +35,7 @@ describe("/skills", () => {
             expect(messages[0]).toContain("hicode-guide · Built-in");
             expect(messages[0]).toContain("review · Project");
             expect(messages[0]).toContain("Review project code");
-            expect(messages[0]).toContain("When to use: Before a release");
+            expect(messages[0]).toContain("Review project code Before a release.");
             expect(messages[0]).toContain(`Path: ${path}`);
             expect(messages[0]).not.toContain("Overridden user description");
             expect(messages[0]).not.toContain("Changed on disk");

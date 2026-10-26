@@ -2,6 +2,7 @@ import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile, symlink} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {loadSkills} from "../../src/skills/loader.js";
+import {parseFrontmatter} from "../../src/skills/frontmatter.js";
 import {getUserContextBlocks} from "../../src/prompt/messages.js";
 import {prepareCommandReadAccess} from "../../src/tools/bash/readAccess.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -15,7 +16,7 @@ async function writeSkill(
     await mkdir(directory, {recursive: true});
     await writeFile(
         join(directory, "SKILL.md"),
-        `---\ndescription: ${description}\n---\n${name} body\n`
+        `---\nname: ${name}\ndescription: ${description}\n---\n${name} body\n`
     );
 }
 
@@ -91,43 +92,91 @@ describe("Skill file sources", () => {
 import {executeToolResult} from "../helpers/executeTool.js";
 import {createTestContext} from "../helpers/testContext.js";
 
+test("Skill 使用声明名称选择和覆盖，资源根仍来自实际文件目录", async () => {
+    await withTempProject(async (cwd, storage) => {
+        await writeSkill(join(storage.hicodeHome, "skills"), "westock-data", "user description");
+        const root = join(cwd, ".hicode/skills/finance-resources");
+        await mkdir(root, {recursive: true});
+        const description = "金融市场数据查询；查询股票和财报时使用。";
+        await writeFile(join(root, "SKILL.md"), `---\nname: westock-data\ndescription: ${description}\n---\nRead references/routing-guide.md.`);
+        const {skills, issues} = loadSkills({cwd, storage, sources: ["user", "project"]});
+        expect(issues).toEqual([]);
+        expect(skills.filter(skill => skill.name === "westock-data")).toHaveLength(1);
+        expect(getUserContextBlocks(skills).join("\n")).toContain(`westock-data: ${description}`);
+        const ctx = {...createTestContext(cwd), skills};
+        const result = await executeToolResult("skill", '{"skill":"westock-data"}', ctx, "declared");
+        expect(result.outcome).toBe("ok");
+        expect(result.modelContent).toContain(JSON.stringify({resourceRoot: root}));
+        expect((await executeToolResult("skill", '{"skill":"finance-resources"}', ctx, "directory")).outcome).toBe("failed");
+        const duplicate = join(cwd, ".hicode/skills/other-directory");
+        await mkdir(duplicate);
+        await writeFile(join(duplicate, "SKILL.md"), "---\nname: westock-data\ndescription: duplicate\n---\nbody");
+        expect(loadSkills({cwd, storage, sources: ["project"]}).issues[0]?.message).toContain("Duplicate Skill name");
+    });
+});
+
+test("Skill 名称可省略但不能显式为空，旧使用条件不解析且正文换行保持原样", () => {
+    expect(parseFrontmatter("---\ndescription: fixture\n---\nbody").name).toBeUndefined();
+    expect(() => parseFrontmatter("---\nname: \ndescription: fixture\n---\nbody")).toThrow("Skill name");
+    expect(() => parseFrontmatter("---\nname: fixture\n---\nbody")).toThrow("Skill description");
+    expect(() => parseFrontmatter("---\nname: one\nname: two\ndescription: fixture\n---\nbody")).toThrow("Duplicate Skill field");
+    expect(parseFrontmatter("---\r\nname: westock-data\r\ndescription: 金融查询，查询股票时使用。\r\nwhen_to_use: ignored\r\n---\r\nbody\r\nnext")).toEqual({
+        name: "westock-data", description: "金融查询，查询股票时使用。", body: "body\r\nnext",
+    });
+});
+
+test("未声明 name 的 Skill 按目录名加载和激活", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const root = join(cwd, ".hicode/skills/westock-data");
+        await mkdir(root, {recursive: true});
+        await writeFile(join(root, "SKILL.md"), "---\ndescription: 查询金融数据\n---\nBODY");
+        const {skills, issues} = loadSkills({cwd, storage, sources: ["project"]});
+        expect(issues).toEqual([]);
+        expect(skills.find(skill => skill.name === "westock-data")?.description).toBe("查询金融数据");
+        const result = await executeToolResult("skill", '{"skill":"westock-data"}', {...createTestContext(cwd), skills}, "fallback");
+        expect(result.outcome).toBe("ok");
+        expect(result.modelContent).toContain(JSON.stringify({resourceRoot: root}));
+        expect(result.modelContent).toContain("BODY");
+    });
+});
+
 test("激活 Skill 提供真实资源根且不会把参数替换串当 replacement 模板", async () => {
     await withTempProject(async (cwd, storage) => {
         const root = join(storage.hicodeHome, "skills", "with spaces");
         await mkdir(join(root, "references"), {recursive: true});
-        await writeFile(join(root, "SKILL.md"), "---\ndescription: fixture\n---\nRead references/schema.md. Args: $ARGUMENTS");
+        await writeFile(join(root, "SKILL.md"), "---\nname: with spaces\ndescription: fixture\n---\nRead references/schema.md. Args: $ARGUMENTS");
         await writeFile(join(root, "references/schema.md"), "RESOURCE_BODY");
         const ctx = {...createTestContext(cwd), skills: loadSkills({storage, cwd, sources: ["user"]}).skills};
         const result = await executeToolResult("skill", JSON.stringify({skill: "with spaces", args: "$&"}), ctx, "activate");
         expect(result.modelContent).toContain(JSON.stringify(root));
-        expect(result.modelContent).toContain("user");
+        expect(result.modelContent).toContain(JSON.stringify({resourceRoot: root}));
+        expect(result.modelContent).not.toContain('"filePath"');
+        expect(result.modelContent).not.toContain('"source"');
         expect(result.modelContent).toContain("Args: $&");
-        expect(result.modelContent).toContain("Project paths remain relative to the working directory");
+        expect(result.modelContent).toContain("project paths remain relative to the working directory");
         const resource = await executeToolResult("read_file", JSON.stringify({path: join(root, "references/schema.md")}), ctx, "resource");
         expect(resource.modelContent).toContain("RESOURCE_BODY");
     });
 });
 
-test("Host inline Skill 给出来源身份，不能继承被覆盖文件 Skill 的目录", async () => {
+test("Host inline Skill 不虚构资源目录或继承被覆盖文件 Skill 的目录", async () => {
     await withTempProject(async (cwd, storage) => {
         await writeSkill(join(cwd, ".hicode/skills"), "review", "project");
         const skills = loadSkills({storage, cwd, sources: ["project"], hostSkills: [{name: "review", description: "host", content: "host body"}]}).skills;
         const result = await executeToolResult("skill", JSON.stringify({skill: "review"}), {...createTestContext(cwd), skills}, "host");
-        expect(result.modelContent).toContain('"source":"host"');
-        expect(result.modelContent).toContain('"id":"review"');
+        expect(result.modelContent).not.toContain('"resourceRoot"');
         expect(result.modelContent).not.toContain(join(cwd, ".hicode/skills/review"));
         expect(result.modelContent).toContain("no local resource directory");
     });
 });
 
-test("项目覆盖激活指向实际读取的 Markdown 文件", async () => {
+test("项目覆盖激活使用实际生效 Skill 的资源目录", async () => {
     await withTempProject(async (cwd, storage) => {
         await writeSkill(join(storage.hicodeHome, "skills"), "review", "user");
         await writeSkill(join(cwd, ".hicode/skills"), "review", "project");
         const ctx = {...createTestContext(cwd), skills: loadSkills({storage, cwd, sources: ["user", "project"]}).skills};
         const project = await executeToolResult("skill", JSON.stringify({skill: "review"}), ctx, "project");
-        expect(project.modelContent).toContain('"source":"project"');
-        expect(project.modelContent).toContain(join(cwd, ".hicode/skills/review/SKILL.md"));
+        expect(project.modelContent).toContain(JSON.stringify({resourceRoot: join(cwd, ".hicode/skills/review")}));
         expect(project.modelContent).not.toContain(join(storage.hicodeHome, "skills/review"));
     });
 });

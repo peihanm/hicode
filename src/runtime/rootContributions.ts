@@ -20,7 +20,6 @@ export interface HostInstructionContribution {
 export interface HostSkillContribution {
     readonly name: string;
     readonly description: string;
-    readonly whenToUse?: string;
     readonly content: string;
 }
 
@@ -47,7 +46,6 @@ const instructionSchema: z.ZodType<HostInstructionContribution> = z.object({
 const skillSchema: z.ZodType<HostSkillContribution> = z.object({
     name: contributionIdSchema,
     description: z.string().trim().min(1).max(500),
-    whenToUse: z.string().trim().min(1).max(500).optional(),
     content: z.string().trim().min(1).max(MAX_INLINE_CONTENT_CHARS),
 }).strict();
 

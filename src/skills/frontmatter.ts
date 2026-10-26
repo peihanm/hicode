@@ -1,55 +1,34 @@
-// Minimal frontmatter parser for single-line description and when_to_use fields.
-// This is not a general YAML parser; other fields are ignored.
-//
-// Format:
-// ---
-// description: xxx
-// when_to_use: yyy
-// ---
-// <markdown body>
-
+// Minimal parser for single-line name and description fields, not general YAML.
 interface ParsedFrontmatter {
+    name?: string;
     description: string;
-    whenToUse?: string;
     body: string;
 }
 
-// Frontmatter starts with ---\n and ends with \n---\n.
-const FRONTMATTER_START = "---\n";
-const FRONTMATTER_END = "\n---\n";
-
 export function parseFrontmatter(raw: string): ParsedFrontmatter {
-    // Without frontmatter, all Markdown is body content.
-    if (!raw.startsWith(FRONTMATTER_START)) {
-        return {description: "", body: raw};
-    }
-
-    const endIdx = raw.indexOf(FRONTMATTER_END, FRONTMATTER_START.length);
-    if (endIdx === -1) {
-        // Treat an unclosed frontmatter block as plain Markdown.
-        return {description: "", body: raw};
-    }
-
-    const frontmatterBlock = raw.slice(FRONTMATTER_START.length, endIdx);
-    const body = raw.slice(endIdx + FRONTMATTER_END.length);
-
-    // Only single-line key: value fields are parsed.
-    // Multiline values, lists and nesting are unsupported.
+    const opening = /^---\r?\n/.exec(raw);
+    if (!opening) throw new Error("Skill requires frontmatter with a description");
+    const closing = /\r?\n---(?:\r?\n|$)/g;
+    closing.lastIndex = opening[0].length;
+    const end = closing.exec(raw);
+    if (!end) throw new Error("Skill frontmatter must have a closing --- line");
+    let name: string | undefined;
     let description = "";
-    let whenToUse: string | undefined;
-
-    for (const line of frontmatterBlock.split("\n")) {
-        const colonIdx = line.indexOf(":");
-        if (colonIdx === -1) continue;
-        const key = line.slice(0, colonIdx).trim();
-        const value = line.slice(colonIdx + 1).trim();
-        if (key === "description") {
-            description = value;
-        } else if (key === "when_to_use") {
-            whenToUse = value;
-        }
-        // Ignore other fields such as allowed-tools, paths and model.
+    const seen = new Set<string>();
+    for (const line of raw.slice(opening[0].length, end.index).split(/\r?\n/)) {
+        const colon = line.indexOf(":");
+        if (colon === -1) continue;
+        const key = line.slice(0, colon).trim();
+        if (key !== "name" && key !== "description") continue;
+        if (seen.has(key)) throw new Error(`Duplicate Skill field: ${key}`);
+        seen.add(key);
+        const value = line.slice(colon + 1).trim();
+        if (key === "name") name = value;
+        else description = value;
     }
-
-    return {description, whenToUse, body};
+    if (name !== undefined && (!name || name.length > 64 || /[\x00-\x1f\x7f]/.test(name)))
+        throw new Error("Skill name must contain 1–64 characters without controls");
+    if (!description || description.length > 500)
+        throw new Error("Skill description must contain 1–500 characters");
+    return {name, description, body: raw.slice(end.index + end[0].length)};
 }

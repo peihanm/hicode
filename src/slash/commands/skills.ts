@@ -19,7 +19,6 @@ export const skillsCommand: SlashCommand = {
         const entries = ctx.skills.map(skill => [
             `${skill.name} · ${sources[skill.source]}`,
             skill.description.trim() || "No description provided.",
-            ...(skill.whenToUse ? [`When to use: ${skill.whenToUse}`] : []),
             skill.source === "host" ? `Host ID: ${skill.id} (inline; no local file)` : `Path: ${skill.filePath}`,
         ].join("\n"));
 

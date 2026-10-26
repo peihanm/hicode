@@ -1,6 +1,6 @@
 ---
-description: Explain how to install, update, configure, use and troubleshoot HiCode, including models, permissions, Skills, MCP, Hooks, subagents and session memory.
-when_to_use: Use when the user asks about HiCode itself or explicitly requests its usage guide; not for ordinary coding tasks merely performed inside HiCode.
+name: hicode-guide
+description: Explain how to install, update, configure, use and troubleshoot HiCode, including models, permissions, Skills, MCP, Hooks, subagents and session memory. Use when the user asks about HiCode itself or explicitly requests its usage guide; not for ordinary coding tasks merely performed inside HiCode.
 ---
 
 # HiCode Guide

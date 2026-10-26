@@ -38,7 +38,7 @@ Reasoning text exists only when the provider actually returned it and logging ca
 
 | Symptom | First checks |
 | --- | --- |
-| Skill missing | `/skills`; directory name and `SKILL.md`; supported frontmatter; source precedence; restart after edits. |
+| Skill missing | `/skills`; `SKILL.md` with valid `name` and `description`; source precedence; restart after edits. |
 | MCP unavailable | `/mcp`; authorization vs launch/connection failure; real command/path and dependencies; reconnect the named server. |
 | Repeated permission prompts | Identify file/network/host-command/MCP/Hook category before changing policy. See [Permissions](permissions.md). |
 | Model fails immediately | Selected source, model ID, API endpoint, credential source, provider entitlement and reported API error. See [Models](models.md). |

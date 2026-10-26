@@ -25,7 +25,7 @@ export function loadSkills({storage, cwd, sources, hostSkills = []}: {
     const skills: LoadedSkill[] = [];
     let listingCharacters = 0;
     for (const skill of merged.values()) {
-        const length = skill.name.length + skill.description.length + (skill.whenToUse?.length ?? 0) + 10;
+        const length = skill.name.length + skill.description.length + 10;
         if (skills.length >= 100 || listingCharacters + length > 16_000) {
             issues.push({path: skill.source === "host" ? `host:${skill.id}` : skill.filePath, message: "Skill catalog exceeds 100 entries or 16000 characters; Skill was not loaded"});
             continue;
@@ -62,12 +62,13 @@ function loadDirectory(base: string, source: SkillFileSource, issues: SkillLoadI
     for (const name of names.sort()) {
         const path = join(base, name, "SKILL.md");
         try {
-            if (name.length > 64 || /[\x00-\x1f\x7f]/.test(name)) throw new Error("Skill name exceeds 64 characters or contains controls");
+            if (name.length > 64 || /[\x00-\x1f\x7f]/.test(name)) throw new Error("Skill directory name exceeds 64 characters or contains controls");
             const directory = lstatSync(join(base, name));
             if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Skill directory changed or is a symlink");
             const parsed = parseFrontmatter(readBoundedTextFile(path, 64 * 1024));
-            if (parsed.description.length > 500 || (parsed.whenToUse?.length ?? 0) > 500) throw new Error("Skill description/when_to_use exceeds 500 characters");
-            skills.push({name, description: parsed.description, whenToUse: parsed.whenToUse, content: parsed.body, source, filePath: path});
+            const skillName = parsed.name ?? name;
+            if (skills.some(skill => skill.name === skillName)) throw new Error(`Duplicate Skill name in this source: ${skillName}`);
+            skills.push({name: skillName, description: parsed.description, content: parsed.body, source, filePath: path});
         } catch (error) {
             if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
             issues.push({path, message: error instanceof Error ? error.message : "Cannot load Skill"});

@@ -37,14 +37,12 @@ export const skillTool: Tool<typeof inputSchema> = {
         // Always substitute $ARGUMENTS.
         // Use args when provided, otherwise an empty string so placeholders are not shown to the user.
         const argsValue = args ?? "";
-        const source = found.source === "host"
-            ? {source: found.source, id: found.id}
-            : {source: found.source, filePath: found.filePath, resourceRoot: dirname(found.filePath)};
-        const resolution = found.source === "host"
-            ? "This is a Host inline Skill with no local resource directory. Use only absolute paths or resource identifiers explicitly provided by the Host; do not infer a directory from the Skill name."
-            : "Resolve Skill-relative scripts/references/assets against resourceRoot and use absolute paths to read or execute them. Project paths remain relative to the working directory, not the Skill directory. Quote shell paths containing spaces.";
-        return ["<skill-source>", JSON.stringify(source), resolution,
-            "Loading a Skill does not expand file or command permissions. All subsequent actions use the normal tool execution chain.", "</skill-source>", "",
+        const resources = found.source === "host"
+            ? "This Skill has no local resource directory. Use only absolute paths or resource identifiers explicitly provided in its content; do not infer a directory from its name."
+            : [JSON.stringify({resourceRoot: dirname(found.filePath)}),
+                "Resolve Skill-relative scripts/references/assets against resourceRoot; project paths remain relative to the working directory. Use absolute paths and quote shell paths containing spaces."].join("\n");
+        return ["<skill-source>", resources,
+            "Loading a Skill does not expand file or command permissions.", "</skill-source>", "",
             found.content.replace(/\$ARGUMENTS/g, () => argsValue)].join("\n");
     },
 };

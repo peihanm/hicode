@@ -22,10 +22,10 @@ export function loadBundledSkills(): LoadedSkill[] {
         const filePath = join(BUNDLED_DIR, name, "SKILL.md");
         const raw = readFileSync(filePath, "utf-8");
         const parsed = parseFrontmatter(raw);
+        if (parsed.name !== undefined && parsed.name !== name) throw new Error(`Bundled Skill name does not match registration: ${filePath}`);
         skills.push({
-            name,
+            name: parsed.name ?? name,
             description: parsed.description,
-            whenToUse: parsed.whenToUse,
             content: parsed.body,
             source: "bundled",
             filePath,

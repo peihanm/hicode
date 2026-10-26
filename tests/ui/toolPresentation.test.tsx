@@ -44,7 +44,7 @@ describe("phase-based tool presentation", () => {
         view.unmount();
     });
     test("Skill success is compact while expanded and restored views retain the complete result", () => {
-        const result = '<skill-source>\n{"source":"project","filePath":"/project/.hicode/skills/westock-data/SKILL.md","resourceRoot":"/project/.hicode/skills/westock-data"}\nResolve Skill-relative scripts/references/assets against resourceRoot.\n</skill-source>\n\nRead the stock data documentation.';
+        const result = '<skill-source>\n{"resourceRoot":"/project/.hicode/skills/westock-data"}\nResolve Skill-relative scripts/references/assets against resourceRoot.\n</skill-source>\n\nRead the stock data documentation.';
         const args = JSON.stringify({skill: "westock-data"});
         const live = completeTool([], {id: "skill-1", name: "skill", args: {skill: "westock-data"}, result});
         const restored = threadsFromHistory([

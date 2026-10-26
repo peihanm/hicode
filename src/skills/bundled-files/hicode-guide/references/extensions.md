@@ -34,8 +34,8 @@ For user-wide use, place the same directory under `~/.hicode/skills/`. Minimal `
 
 ```markdown
 ---
-description: Review database migration plans for rollback and data-loss risks.
-when_to_use: Use when the user asks for a migration review.
+name: migration-review
+description: Review database migration plans for rollback and data-loss risks. Use when the user asks for a migration review.
 ---
 
 # Migration review
@@ -44,7 +44,7 @@ Read the proposed migration and its callers. Report concrete risks and evidence.
 Read references/checklist.md only when the task needs that checklist.
 ```
 
-The directory supplies the Skill name. Frontmatter currently recognizes single-line `description` and `when_to_use`; it is not a general YAML configuration system. Do not promise support for another agent's `allowed-tools`, model override or automatic script injection fields.
+Frontmatter supports optional single-line `name` and required `description` (include when to use the Skill here). The declared name identifies the Skill; if omitted, its directory name is used. The directory locates its resources. Missing or invalid metadata is reported and not loaded; it is not a general YAML configuration system. Do not promise support for another agent's `allowed-tools`, model override or automatic script injection fields.
 
 Restart HiCode after editing/installing Skills, then use `/skills` to check the loaded name, origin and path. The list reflects the startup snapshot; it is not a reload command. A project Skill overrides a same-named user Skill; user/project definitions override bundled ones, and SDK Host inline definitions take precedence over file sources.
 

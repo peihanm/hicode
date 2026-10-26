@@ -26,7 +26,6 @@ export function SkillsDialog({issues = [], skills, projectDirectory, userDirecto
     const selected = skills[index];
     const detailText = selected ? [
         selected.description.trim() || "No description provided.",
-        ...(selected.whenToUse ? [`When to use\n${selected.whenToUse}`] : []),
         selected.source === "host"
             ? `Host ID\n${selected.id}\nInline Skill; no local file.`
             : `File\n${selected.filePath}`,
