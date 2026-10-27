@@ -58,7 +58,7 @@ test.each(["qwen", "deepseek", "qwen-token-plan", "ark-agent-plan"] as const)("%
             return response(calls++ === 0 ? longReasoning : "Reasoning before the final answer", calls === 1);
         }) as typeof fetch;
         const history: Message[] = [{role:"user", origin:"user", content:"Inspect the file"}];
-        const first = await call(history, tools, storage, cwd, model, "main");
+        const first = await call({messages: history, tools, storage, cwd, model, kind: "main"});
         if (first.message.role !== "assistant") throw new Error("Expected an assistant reply");
         expect(first.message.reasoning?.content).toBe(longReasoning);
         expect(first.message.reasoning?.scope).toMatch(/^[a-f0-9]{64}$/);
@@ -69,10 +69,10 @@ test.each(["qwen", "deepseek", "qwen-token-plan", "ark-agent-plan"] as const)("%
         const restored = loadSession(storage, cwd, "replay");
         expect(restored).not.toBeNull();
         const next = restored!.history;
-        const second = await call(next, tools, storage, cwd, model, "main");
+        const second = await call({messages: next, tools, storage, cwd, model, kind: "main"});
         expect(second.message).toMatchObject({reasoning:{content:"Reasoning before the final answer"}});
         next.push(second.message, {role:"user", origin:"user", content:"Now explain the result"});
-        await call(next, tools, storage, cwd, model, "main");
+        await call({messages: next, tools, storage, cwd, model, kind: "main"});
         expect(calls).toBe(3);
     });
 });
@@ -87,7 +87,7 @@ test.each([
         const selected = {...source, id};
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => response("original model reasoning", false)) as typeof fetch;
         const user: Message = {role:"user", origin:"user", content:"hello"};
-        const first = await createLLMCaller(selected)([user], tools, storage, cwd, model, "main");
+        const first = await createLLMCaller(selected)({messages: [user], tools, storage, cwd, model, kind: "main"});
         const history: Message[] = [user, first.message, {role:"user", origin:"user", content:"continue"}];
         for (const target of [
             {source:selected, model:"qwen3.8-max"},
@@ -103,14 +103,14 @@ test.each([
                 expect(request.messages[1]).toEqual({role:"assistant", content:"Complete"});
                 return response("another result", false);
             }) as typeof fetch;
-            await createLLMCaller(target.source)(history, tools, storage, cwd, target.model, "main");
+            await createLLMCaller(target.source)({messages: history, tools, storage, cwd, model: target.model, kind: "main"});
         }
         globalThis.fetch = (async (_input, init) => {
             const request = JSON.parse(String(init?.body));
             expect(request.messages[1].reasoning_content).toBe("original model reasoning");
             return response("continued", false);
         }) as typeof fetch;
-        await createLLMCaller(selected)(history, tools, storage, cwd, model, "main");
+        await createLLMCaller(selected)({messages: history, tools, storage, cwd, model, kind: "main"});
         expect(first.message).toMatchObject({reasoning:{content:"original model reasoning"}});
     });
 });
@@ -125,30 +125,26 @@ test("Token Plan DeepSeek keeps review reasoning selection separate from histori
             return response("keep the verified tool result", requests.length === 1);
         }) as typeof fetch;
         const history: Message[] = [{role:"user", origin:"user", content:"Inspect the file"}];
-        const first = await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", "main",
-            undefined, undefined, undefined, undefined, undefined, "max");
+        const first = await caller({messages: history, tools, storage, cwd, model: "deepseek-v4.1-flash", kind: "main", reasoning: "max"});
         history.push(first.message, {role:"tool", tool_call_id:"read-1", content:"verified contents"});
         const original = structuredClone(history);
         for (const kind of ["main", "task_review"] as const) {
-            const reply = await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", kind,
-                undefined, undefined, undefined, undefined, undefined, "off");
+            const reply = await caller({messages: history, tools, storage, cwd, model: "deepseek-v4.1-flash", kind, reasoning: "off"});
             expect(reply.message).not.toHaveProperty("reasoning");
             const request = requests.at(-1)!;
             expect(request.enable_thinking).toBe(false);
             expect(request).not.toHaveProperty("preserve_thinking");
             expect(request.messages).toEqual([
                 {role:"user", content:"Inspect the file"},
-                {role:"assistant", content:null, tool_calls:first.toolCalls},
+                {role:"assistant", content:null, tool_calls:(first.message.tool_calls ?? [])},
                 {role:"tool", tool_call_id:"read-1", content:"verified contents"},
             ]);
         }
-        const review = await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", "task_review",
-            undefined, undefined, undefined, undefined, undefined, "max");
+        const review = await caller({messages: history, tools, storage, cwd, model: "deepseek-v4.1-flash", kind: "task_review", reasoning: "max"});
         expect(requests.at(-1)).toMatchObject({enable_thinking:true, reasoning_effort:"max"});
         expect((requests.at(-1)!.messages as Record<string, unknown>[]).every(message => !("reasoning_content" in message))).toBe(true);
         expect(review.message).not.toHaveProperty("reasoning");
-        await caller(history, tools, storage, cwd, "deepseek-v4.1-flash", "main",
-            undefined, undefined, undefined, undefined, undefined, "max");
+        await caller({messages: history, tools, storage, cwd, model: "deepseek-v4.1-flash", kind: "main", reasoning: "max"});
         expect(requests.at(-1)).toMatchObject({enable_thinking:true, reasoning_effort:"max",
             messages:[{role:"user"}, {reasoning_content:"keep the verified tool result"}, {role:"tool"}]});
         expect(history).toEqual(original);

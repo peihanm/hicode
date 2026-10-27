@@ -53,7 +53,7 @@ for (const [sourceId, model] of [["qwen", "qwen3.8-flash"], ["qwen-token-plan", 
             const explicitEffort = capability.efforts.at(-1)!;
             for (const effort of capability.efforts) {
                 for (const kind of ["main", "task_review"] as const) {
-                    await caller(messages, [], storage, cwd, model, kind, undefined, undefined, undefined, undefined, undefined, effort);
+                    await caller({messages, tools: [], storage, cwd, model, kind, reasoning: effort});
                     const body = bodies.at(-1)!;
                     expect(body).not.toHaveProperty("thinking_budget");
                     if (capability.switch === "reasoning_effort" && effort === "off") expect(body.reasoning_effort).toBe("none");
@@ -72,7 +72,7 @@ for (const [sourceId, model] of [["qwen", "qwen3.8-flash"], ["qwen-token-plan", 
             expect(JSON.stringify(logs)).not.toContain("fixture-key");
             const unsupported = model.startsWith("qwen") ? "high" : "medium";
             const count = bodies.length;
-            await expect(caller(messages, [], storage, cwd, model, "main", undefined, undefined, undefined, undefined, undefined, unsupported)).rejects.toThrow("not supported");
+            await expect(caller({messages, tools: [], storage, cwd, model, kind: "main", reasoning: unsupported})).rejects.toThrow("not supported");
             expect(bodies).toHaveLength(count);
         });
     });
@@ -89,10 +89,10 @@ test("explicit DeepSeek max stays fixed across a provider stream retry; switchin
             return success();
         }) as typeof fetch;
         const caller = createLLMCaller(source), messages = [{role: "user" as const, origin: "user" as const, content: "test"}];
-        const reply = await caller(messages, [], storage, cwd, "deepseek-flash", "main", undefined, undefined, undefined, undefined, undefined, "max");
+        const reply = await caller({messages, tools: [], storage, cwd, model: "deepseek-flash", kind: "main", reasoning: "max"});
         expect(bodies).toHaveLength(2);
         for (const body of bodies) expect(body).toMatchObject({reasoning_effort: "max", thinking: {type: "enabled"}});
-        await caller([...messages, reply.message], [], storage, cwd, "deepseek-flash", "main", undefined, undefined, undefined, undefined, undefined, "off");
+        await caller({messages: [...messages, reply.message], tools: [], storage, cwd, model: "deepseek-flash", kind: "main", reasoning: "off"});
         expect(bodies.at(-1)!.messages).toEqual([{role: "user", content: "test"}, {role: "assistant", content: "done"}]);
         expect(reply.message.role === "assistant" && reply.message.reasoning).toBeTruthy();
     });

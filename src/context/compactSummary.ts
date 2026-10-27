@@ -45,9 +45,19 @@ async function generateCompactSummaryCore(input: {
     for (let attempt = 0; attempt < 2; attempt++) {
         throwIfTurnAborted(signal);
         // Transport failures are owned by the Provider; only local format failures get one correction.
-        const {message} = await callLLM(messages, [], storage, cwd, model, "compact", signal, undefined, undefined, undefined, input.trace, input.reasoning);
+        const {message} = await callLLM({
+            messages,
+            tools: [],
+            storage,
+            cwd,
+            model,
+            kind: "compact",
+            signal,
+            trace: input.trace,
+            reasoning: input.reasoning,
+        });
         throwIfTurnAborted(signal);
-        if (message.role !== "assistant" || message.tool_calls?.length) throw new Error("Task handoff must be assistant text without tool calls");
+        if (message.tool_calls?.length) throw new Error("Task handoff must be assistant text without tool calls");
         try {
             summary = typeof message.content === "string"
                 ? sources ? renderHandoff(message.content, sources) : parseCompactSummary(message.content) : "";

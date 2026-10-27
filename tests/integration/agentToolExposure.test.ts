@@ -41,7 +41,7 @@ test("同批工具暴露变化不能追认调用，下一次请求实际提供�
             {id: "early-write", type: "function", function: {name: "write_file", arguments: JSON.stringify({path: "early.txt", content: "bad"})}},
         ];
         const fake = createFakeLLM([
-            {message: {role: "assistant", content: null, tool_calls: calls}, toolCalls: calls,
+            {message: {role: "assistant", content: null, tool_calls: calls},
                 usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2}},
             assistantToolCall("write_file", {path: "later.txt", content: "ok"}, "later-write"),
             assistantText("已完成后续写入。"),

@@ -49,10 +49,14 @@ export function createMemoryConsolidatorFactory(callLLM: LLMCaller) {
 }
 function buildMemoryConsolidator(options: ConsolidatorOptions, caller: LLMCaller): MemoryConsolidator {
     let logRunId:string|undefined;
-    const callLLM: LLMCaller = (messages, tools, _storage, cwd, model, _kind, signal, onProgress, onText, readImage, trace, reasoning) => {
-        logRunId=trace?.runId;
-        return caller(messages,tools,options.storage,cwd,model,"memory",signal,onProgress,onText,readImage,
-            logRunId?{scope:"maintenance",ownerCwd:options.cwd,runId:logRunId}:undefined, reasoning);
+    const callLLM: LLMCaller = input => {
+        logRunId = input.trace?.runId;
+        return caller({
+            ...input,
+            storage: options.storage,
+            kind: "memory",
+            trace: logRunId ? {scope: "maintenance", ownerCwd: options.cwd, runId: logRunId} : undefined,
+        });
     };
     const runAgent = createAgentRunner({ callLLM, compactHistory: async () => { throw new Error("Memory consolidation exceeded its fixed input budget; recursive compaction is disabled"); } });
     const tools = createToolRuntime({ allowedToolNames: ["read_file", "bash", "write_file", "edit_file"] });

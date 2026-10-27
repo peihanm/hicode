@@ -60,7 +60,7 @@ test.each(["{}{}", '{"command":"private-argument"', "", " \n", '{"command":undef
     expect(bodies[1]).toBe(bodies[0]);
     expect(input.messages).toEqual(before);
     expect(result.message.content).toBe("recovered");
-    expect(result.toolCalls).toEqual([]);
+    expect((result.message.tool_calls ?? [])).toEqual([]);
     expect(result.usage.total_tokens).toBe(24);
     expect(result.contextUsage?.tokenCount).toBe(12);
     const directory = getPromptLogDirectory(storage, cwd);
@@ -112,7 +112,7 @@ test.each(["rate_limit_exceeded", "data_inspection_failed", "vendor_unknown"])("
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toBe(bodies[0]);
     expect(result.message.content).toBe("recovered");
-    expect(result.toolCalls).toEqual([]);
+    expect((result.message.tool_calls ?? [])).toEqual([]);
     expect(updates).toEqual([{type: "reset"}, {type: "delta", text: "discard this draft"}, {type: "reset"}, {type: "delta", text: "recovered"}]);
     const logs = await Promise.all((await listPromptLogs(getPromptLogDirectory(storage, cwd))).map(async file => JSON.parse(await readFile(join(getPromptLogDirectory(storage, cwd), file), "utf8"))));
     const failed = logs.find(log => log.response.error);
@@ -148,7 +148,7 @@ test("残缺工具响应只重试模型请求，重置草稿并累加已报告 u
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toBe(bodies[1]);
     expect(result.message.content).toBe("recovered");
-    expect(result.toolCalls).toEqual([]);
+    expect((result.message.tool_calls ?? [])).toEqual([]);
     expect(result.usage.total_tokens).toBe(24);
     expect(result.contextUsage?.tokenCount).toBe(12);
     expect(updates).toEqual([{type: "reset"}, {type: "delta", text: "discard this draft"}, {type: "reset"}, {type: "delta", text: "recovered"}]);
@@ -359,7 +359,7 @@ test.each(["identity", "disconnect", "json", "length", "arguments"] as const)("�
         if ((count === 2 || count === 3) && failure === "json") return response(payload + 'data: {"broken":\n\n');
         return response(payload);
     });
-    const callLLM: LLMCaller = (messages, tools, storage, cwd, model, kind, signal, onStreamProgress, onText) =>
+    const callLLM: LLMCaller = ({messages, tools, storage, cwd, model, kind, signal, onStreamProgress, onText}) =>
         caller({messages, tools, storage, cwd, model, kind, signal, onStreamProgress, onText}, endpoint);
     const history: Message[] = [{role: "system", content: "offline test"}];
     const events: AgentEvent[] = [];

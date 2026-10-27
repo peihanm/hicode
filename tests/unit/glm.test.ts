@@ -216,7 +216,7 @@ describe("GLM cancellation", () => {
 
       expect(requestBody).toMatchObject({ stream: true, tool_stream: true });
       expect(result.message.content).toBe("准备创建文件。");
-      expect(result.toolCalls).toEqual([
+      expect((result.message.tool_calls ?? [])).toEqual([
         {
           id: "call-1",
           type: "function",
@@ -319,7 +319,7 @@ describe("GLM cancellation", () => {
       });
 
       expect(fetchCalls).toBe(1);
-      expect(result.toolCalls).toEqual([
+      expect((result.message.tool_calls ?? [])).toEqual([
         {
           id: "call-without-done",
           type: "function",

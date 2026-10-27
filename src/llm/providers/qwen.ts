@@ -1,8 +1,6 @@
-import {reasoningRequestFields, validateReasoningEffort} from "../reasoningPolicy.js";
-import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
-import {supportsToolImages} from "../../images/request.js";
+import {reasoningRequestFields} from "../reasoningPolicy.js";
 import type {LLMProvider} from "../types.js";
-import {callOpenAICompatible} from "./openAICompatible.js";
+import {prepareOpenAICompatibleEndpoint, callOpenAICompatible} from "./openAICompatible.js";
 
 function supportsThinking(model: string): boolean {
     const normalized = model.toLowerCase();
@@ -27,16 +25,9 @@ export function createQwenRequestFields(
 }
 
 export const qwenProvider: LLMProvider = {
-    name: "qwen",
 
     async call(options, source) {
-        validateReasoningEffort(source.id, options.model, options.reasoning ?? "default");
-        const apiKey = process.env[source.apiKeyEnv];
-        if (!apiKey) {
-            throw new Error(
-                `Missing ${source.apiKeyEnv}; check the project .env or ~/.hicode/.env`
-            );
-        }
+        const endpoint = prepareOpenAICompatibleEndpoint(options, source);
 
         const review = options.kind === "task_review";
         const thinkingOff = options.reasoning === "off";
@@ -51,11 +42,8 @@ export const qwenProvider: LLMProvider = {
             } : {}),
         };
         return callOpenAICompatible(options, {
-            displayName: source.label,
-            toolImages: supportsToolImages(source, options.model),
+            ...endpoint,
             ...(replay ? {reasoningSource: source.id} : {}),
-            baseUrl: source.baseUrl || PROVIDER_BASE_URLS[source.id],
-            apiKey,
             requestFields,
         });
     },

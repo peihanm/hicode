@@ -249,25 +249,25 @@ async function runAgentCore(
             await onEvent({type: "model_stream_start"});
             let llmResult;
             try {
-                llmResult = await callLLMImpl(
-                    invokeMessages,
+                llmResult = await callLLMImpl({
+                    messages: invokeMessages,
                     tools,
-                    ctx.storage,
-                    ctx.cwd,
-                    ctx.model,
-                    options.callKind ?? "main",
-                    ctx.signal,
-                    progress => {
+                    storage: ctx.storage,
+                    cwd: ctx.cwd,
+                    model: ctx.model,
+                    kind: options.callKind ?? "main",
+                    signal: ctx.signal,
+                    onStreamProgress: progress => {
                         void onEvent({
                             type: "model_stream_progress",
                             ...progress,
                         });
                     },
-                    draft.update,
-                    reference => ctx.imageAccess!.read(reference),
-                    ctx.llmTrace ?? {scope: "session", ownerCwd: ctx.cwd, sessionId: ctx.sessionId, runId: ctx.turnId},
-                    ctx.reasoning
-                );
+                    onText: draft.update,
+                    readImage: reference => ctx.imageAccess!.read(reference),
+                    trace: ctx.llmTrace ?? {scope: "session", ownerCwd: ctx.cwd, sessionId: ctx.sessionId, runId: ctx.turnId},
+                    reasoning: ctx.reasoning,
+                });
             } catch (error) {
                 if (error instanceof ContextLengthError && !ctx.signal.aborted && !contextLengthRecoveryUsed && hasNextIteration && ctx.sessionCompaction) {
                     contextLengthRecoveryUsed = true;
@@ -279,7 +279,8 @@ async function runAgentCore(
             } finally {
                 await onEvent({type: "model_stream_end"});
             }
-            const {message, toolCalls, usage, contextUsage} = llmResult;
+            const {message, usage, contextUsage} = llmResult;
+            const toolCalls = message.tool_calls ?? [];
             throwIfTurnAborted(ctx.signal);
             ctx.fileState.commitVisible(invokeMessages);
             assertFreshToolCallIds(history, toolCalls);

@@ -54,9 +54,9 @@ test("Token Plan routes both models with its own key and never falls back to ord
         }) as typeof fetch;
         const messages = [{role: "user", origin: "user", content: "hi"}] as const;
         for (const model of ["qwen3.8-flash", "deepseek-v4.1-flash"]) {
-            await createLLMCaller(sources["qwen-token-plan"])([...messages], [], storage, cwd, model, "main");
+            await createLLMCaller(sources["qwen-token-plan"])({messages: [...messages], tools: [], storage, cwd, model, kind: "main"});
         }
-        await createLLMCaller(sources.qwen)([...messages], [], storage, cwd, "qwen3.8-flash", "main");
+        await createLLMCaller(sources.qwen)({messages: [...messages], tools: [], storage, cwd, model: "qwen3.8-flash", kind: "main"});
         expect(requests.map(request => [request.url, request.authorization])).toEqual([
             ["https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", "Bearer plan-fixture"],
             ["https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", "Bearer plan-fixture"],
@@ -66,7 +66,7 @@ test("Token Plan routes both models with its own key and never falls back to ord
         expect(requests[1]!.body).toMatchObject({model: "deepseek-v4.1-flash", enable_thinking: true});
         expect(requests[1]!.body).not.toHaveProperty("thinking");
         delete process.env.QWEN_TOKEN_PLAN_API_KEY;
-        await expect(createLLMCaller(sources["qwen-token-plan"])([...messages], [], storage, cwd, "qwen3.8-flash", "main"))
+        await expect(createLLMCaller(sources["qwen-token-plan"])({messages: [...messages], tools: [], storage, cwd, model: "qwen3.8-flash", kind: "main"}))
             .rejects.toThrow("Missing QWEN_TOKEN_PLAN_API_KEY");
         expect(requests).toHaveLength(3);
     });
@@ -160,7 +160,7 @@ describe("Qwen provider", () => {
                 stream_options: {include_usage: true},
             });
             expect(requestBody).not.toHaveProperty("tool_stream");
-            expect(result.toolCalls).toEqual([{
+            expect((result.message.tool_calls ?? [])).toEqual([{
                 id: "call-qwen-1",
                 type: "function",
                 function: {
@@ -322,13 +322,7 @@ describe("Qwen provider", () => {
         })).rejects.toThrow("Missing DASHSCOPE_API_KEY");
 
         const callQwen = createLLMCaller(QWEN_SOURCE);
-        await expect(callQwen(
-            [{role: "user", origin: "user" as const, content: "hello"}],
-            [],
-            createTestStorage(process.cwd()),
-            process.cwd(),
-            "glm-5.2",
-            "main"
+        await expect(callQwen({messages: [{role: "user", origin: "user" as const, content: "hello"}], tools: [], storage: createTestStorage(process.cwd()), cwd: process.cwd(), model: "glm-5.2", kind: "main"}
         )).rejects.toThrow("Missing DASHSCOPE_API_KEY");
     });
 });
@@ -344,7 +338,7 @@ test("declared-source alias reaches the chosen Qwen endpoint unchanged", async (
             model = body.model;
             return new Response('data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {headers: {"content-type": "text/event-stream"}});
         }) as typeof fetch;
-        const result = await createLLMCaller(QWEN_SOURCE)([{role: "user", origin: "user", content: "hi"}], [], storage, cwd, "vendor/custom-alias", "main");
+        const result = await createLLMCaller(QWEN_SOURCE)({messages: [{role: "user", origin: "user", content: "hi"}], tools: [], storage, cwd, model: "vendor/custom-alias", kind: "main"});
         expect(result.message.content).toBe("ok");
         expect(model).toBe("vendor/custom-alias");
         expect(url).toBe("https://qwen.test/v1/chat/completions");

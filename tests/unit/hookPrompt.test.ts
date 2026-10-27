@@ -18,12 +18,11 @@ const usage = {
 
 describe("Prompt Hook executor", () => {
     test("只向 fast caller 暴露私有提交工具并严格解析结构化决定", async () => {
-        const calls: Parameters<LLMCaller>[] = [];
-        const callLLM: LLMCaller = async (...args) => {
-            calls.push(args);
+        const calls: Parameters<LLMCaller>[0][] = [];
+        const callLLM: LLMCaller = async (options) => {
+            calls.push(options);
             return {
-                message: {role: "assistant", content: null},
-                toolCalls: [{
+                message: {role: "assistant", content: null, tool_calls: [{
                     id: "decision",
                     type: "function",
                     function: {
@@ -34,7 +33,7 @@ describe("Prompt Hook executor", () => {
                             additionalContext: "Use safe.ts instead.",
                         }),
                     },
-                }],
+                }]},
                 usage,
             };
         };
@@ -63,34 +62,31 @@ describe("Prompt Hook executor", () => {
             additionalContext: "Use safe.ts instead.",
         });
         expect(calls).toHaveLength(1);
-        expect(calls[0]?.[4]).toBe("fast-model");
-        expect(calls[0]?.[5]).toBe("hook");
-        expect(calls[0]?.[1].map((tool) => tool.function.name)).toEqual([
+        expect(calls[0]?.model).toBe("fast-model");
+        expect(calls[0]?.kind).toBe("hook");
+        expect(calls[0]?.tools.map((tool) => tool.function.name)).toEqual([
             "submit_hook_decision",
         ]);
-        expect(calls[0]?.[0][1]?.content).toContain('"tool_name":"edit_file"');
+        expect(calls[0]?.messages[1]?.content).toContain('"tool_name":"edit_file"');
     });
 
     test("拒绝普通正文、缺失提交或非法决定", async () => {
         const cases = [
             {
                 message: {role: "assistant" as const, content: "looks good"},
-                toolCalls: [],
             },
             {
                 message: {role: "assistant" as const, content: null},
-                toolCalls: [],
             },
             {
-                message: {role: "assistant" as const, content: null},
-                toolCalls: [{
+                message: {role: "assistant" as const, content: null, tool_calls: [{
                     id: "decision",
                     type: "function" as const,
                     function: {
                         name: "submit_hook_decision",
                         arguments: JSON.stringify({decision: "allow"}),
                     },
-                }],
+                }]},
             },
         ];
 
@@ -113,14 +109,7 @@ describe("Prompt Hook executor", () => {
     });
 
     test("内部期限报告 Prompt Hook timeout，父级取消保持取消原因", async () => {
-        const callLLM: LLMCaller = async (
-            _messages,
-            _tools,
-            _storage,
-            _cwd,
-            _model,
-            _kind,
-            signal
+        const callLLM: LLMCaller = async ({messages: _messages, tools: _tools, storage: _storage, cwd: _cwd, model: _model, kind: _kind, signal}
         ) => new Promise((_resolve, reject) => {
             signal?.addEventListener("abort", () => reject(signal.reason), {
                 once: true,

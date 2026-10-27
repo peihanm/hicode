@@ -25,7 +25,6 @@ const EMPTY_USAGE = {
 export function assistantText(content: string | null): LLMCallResult {
   return {
     message: { role: "assistant", content },
-    toolCalls: [],
     usage: EMPTY_USAGE,
   };
 }
@@ -50,7 +49,6 @@ export function assistantToolCall(
       content,
       tool_calls: [toolCall],
     },
-    toolCalls: [toolCall],
     usage: EMPTY_USAGE,
   };
 }
@@ -61,33 +59,11 @@ export function createFakeLLM(steps: FakeLLMStep[]): {
 } {
   const calls: LLMCallOptions[] = [];
 
-  const callLLM: LLMCaller = async (
-    messages,
-    tools,
-    storage,
-    cwd = process.cwd(),
-    model = "glm-test",
-    kind = "main",
-    signal,
-    onStreamProgress,
-    onText,
-    readImage,
-    trace,
-    reasoning
-  ) => {
+  const callLLM: LLMCaller = async input => {
     const options: LLMCallOptions = {
-      messages: structuredClone(messages),
-      tools: structuredClone(tools),
-      storage,
-      cwd,
-      model,
-      kind,
-      signal,
-      onStreamProgress,
-      onText,
-      readImage,
-      trace,
-      reasoning,
+      ...input,
+      messages: structuredClone(input.messages),
+      tools: structuredClone(input.tools),
     };
     const callIndex = calls.length;
     calls.push(options);

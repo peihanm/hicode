@@ -70,8 +70,8 @@ test("streamed tool arguments and exact reasoning fragments survive restore and 
         }) as typeof fetch;
         const caller = createLLMCaller(source);
         const user: Message = {role: "user", origin: "user", content: "Add 19 and 23"};
-        const first = await caller([user], tools, storage, cwd, model, "main");
-        expect(first.toolCalls[0]?.function.arguments).toBe('{"a":19,"b":23}');
+        const first = await caller({messages: [user], tools, storage, cwd, model, kind: "main"});
+        expect((first.message.tool_calls ?? [])[0]?.function.arguments).toBe('{"a":19,"b":23}');
         expect(first.usage.total_tokens).toBe(396);
         expect(first.message).toMatchObject({reasoning: {format: "openrouter", content: "先算加法", details}});
         expect(estimateMessageTokens(first.message)).toBeGreaterThan(100);
@@ -79,7 +79,7 @@ test("streamed tool arguments and exact reasoning fragments survive restore and 
         await createSessionPersistence(storage, cwd, "router").save({cwd, sessionId: "router", model, history, todos: [], permissionMode: "ask", });
         const restored = loadSession(storage, cwd, "router");
         expect(restored?.history.filter(message => message.role !== "system")).toEqual(history.filter(message => message.role !== "system"));
-        expect((await caller(restored!.history, tools, storage, cwd, model, "main")).message).toEqual({role: "assistant", content: "42"});
+        expect((await caller({messages: restored!.history, tools, storage, cwd, model, kind: "main"})).message).toEqual({role: "assistant", content: "42"});
         expect(requests).toBe(2);
         for (const target of [
             {source: {...source, baseUrl: "https://other.test/v1"}, model},
@@ -93,7 +93,7 @@ test("streamed tool arguments and exact reasoning fragments survive restore and 
                 expect(assistant).not.toHaveProperty("reasoning_content");
                 return sse([{choices: [{delta: {content: "done"}, finish_reason: "stop"}]}]);
             }) as typeof fetch;
-            await createLLMCaller(target.source)(history, tools, storage, cwd, target.model, "main");
+            await createLLMCaller(target.source)({messages: history, tools, storage, cwd, model: target.model, kind: "main"});
         }
         expect(first.message).toMatchObject({reasoning: {details}});
     });
@@ -105,18 +105,18 @@ test("details-only replies persist; malformed details fail and HTTP-200 provider
         const call = createLLMCaller(source);
         const user: Message = {role: "user", origin: "user", content: "Hi"};
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => sse([{choices: [{delta: {reasoning_details: [{type: "reasoning.encrypted", data: "opaque"}], content: "Hi"}, finish_reason: "stop"}]}])) as typeof fetch;
-        const reply = await call([user], [], storage, cwd, model, "main");
+        const reply = await call({messages: [user], tools: [], storage, cwd, model, kind: "main"});
         if (reply.message.role !== "assistant") throw new Error("Expected assistant");
         expect(decodeSessionContentBlock({kind: "message", value: reply.message})).toEqual({kind: "message", value: reply.message});
         let requests = 0;
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => {requests++; return sse([{error: {code: 429, message: "limited fixture-openrouter-secret"}, choices: [{finish_reason: "error"}]}]);}) as typeof fetch;
-        try { await call([user], [], storage, cwd, model, "main"); throw new Error("Expected rejection"); }
+        try { await call({messages: [user], tools: [], storage, cwd, model, kind: "main"}); throw new Error("Expected rejection"); }
         catch (error) {
             expect(String(error)).toContain("429");
             expect(String(error)).not.toContain("fixture-openrouter-secret");
         }
         expect(requests).toBe(3);
         globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => sse([{choices: [{delta: {reasoning_details: [{type: "reasoning.text", text: 12}]}}]}])) as typeof fetch;
-        await expect(call([user], [], storage, cwd, model, "main")).rejects.toThrow("Invalid stream reasoning_details");
+        await expect(call({messages: [user], tools: [], storage, cwd, model, kind: "main"})).rejects.toThrow("Invalid stream reasoning_details");
     });
 });

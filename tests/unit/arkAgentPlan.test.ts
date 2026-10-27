@@ -37,8 +37,8 @@ test("Ark's declared visual model sends verified image bytes and rejects undecla
             return success();
         }) as typeof fetch;
         const source = resolveHiCodeSettings([]).values.sources["ark-agent-plan"];
-        await createLLMCaller(source)([message], [], storage, cwd, "deepseek-v4.1-flash", "main", undefined, undefined, undefined, async () => prepared.data);
-        await expect(createLLMCaller({...source,models:[]})([message], [], storage, cwd, "deepseek-v4.1-flash", "main", undefined, undefined, undefined, async () => prepared.data)).rejects.toThrow("has no image capability");
+        await createLLMCaller(source)({messages: [message], tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main", readImage: async () => prepared.data});
+        await expect(createLLMCaller({...source,models:[]})({messages: [message], tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main", readImage: async () => prepared.data})).rejects.toThrow("has no image capability");
         expect(calls).toBe(1);
     });
 });
@@ -56,7 +56,7 @@ test("Ark uses its dedicated endpoint and key, keeps explicit effort on retry, a
         }) as typeof fetch;
         const source = resolveHiCodeSettings([]).values.sources["ark-agent-plan"];
         const caller = createLLMCaller(source);
-        const result = await caller([user], [], storage, cwd, "deepseek-v4.1-flash", "main", undefined, undefined, undefined, undefined, undefined, "max");
+        const result = await caller({messages: [user], tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main", reasoning: "max"});
         expect(requests).toHaveLength(2);
         for (const request of requests) {
             expect(request.url).toBe("https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions");
@@ -68,7 +68,7 @@ test("Ark uses its dedicated endpoint and key, keeps explicit effort on retry, a
         const directory = getPromptLogDirectory(storage, cwd);
         for (const file of await listPromptLogs(directory)) expect(await readFile(join(directory, file), "utf8")).not.toContain("ark-fixture-secret");
         delete process.env.ARK_AGENT_PLAN_API_KEY;
-        await expect(caller([user], [], storage, cwd, "deepseek-v4.1-flash", "main")).rejects.toThrow("Missing ARK_AGENT_PLAN_API_KEY");
+        await expect(caller({messages: [user], tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main"})).rejects.toThrow("Missing ARK_AGENT_PLAN_API_KEY");
         expect(requests).toHaveLength(2);
     });
 });
@@ -79,22 +79,22 @@ test("Ark explicit off encodes none in main and review requests without changing
         const caller = createLLMCaller(resolveHiCodeSettings([]).values.sources["ark-agent-plan"]);
         const bodies: Record<string, unknown>[] = [];
         globalThis.fetch = (async (_input, init) => {bodies.push(JSON.parse(String(init?.body))); return success();}) as typeof fetch;
-        const first = await caller([user], [], storage, cwd, "deepseek-v4.1-flash", "main");
+        const first = await caller({messages: [user], tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main"});
         expect(bodies[0]).not.toHaveProperty("reasoning_effort");
         const history: Message[] = [user, first.message];
         const original = structuredClone(history);
         for (const kind of ["main", "task_review"] as const) {
-            const reply = await caller(history, [], storage, cwd, "deepseek-v4.1-flash", kind, undefined, undefined, undefined, undefined, undefined, "off");
+            const reply = await caller({messages: history, tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind, reasoning: "off"});
             const body = bodies.at(-1)!;
             expect(body.reasoning_effort).toBe("none");
             expect(body.messages).toEqual([{role:"user",content:"inspect"},{role:"assistant",content:"done"}]);
             expect(reply.message).not.toHaveProperty("reasoning");
         }
         expect(history).toEqual(original);
-        await caller(history, [], storage, cwd, "deepseek-v4.1-flash", "main");
+        await caller({messages: history, tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main"});
         expect(bodies.at(-1)!.messages).toEqual([{role:"user",content:"inspect"},{role:"assistant",content:"done",reasoning_content:"review evidence"}]);
         const count = bodies.length;
-        await expect(caller([user], [], storage, cwd, "deepseek-v4.1-flash", "main", undefined, undefined, undefined, undefined, undefined, "medium")).rejects.toThrow("not supported");
+        await expect(caller({messages: [user], tools: [], storage, cwd, model: "deepseek-v4.1-flash", kind: "main", reasoning: "medium"})).rejects.toThrow("not supported");
         expect(bodies).toHaveLength(count);
     });
 });
@@ -112,19 +112,19 @@ test("Ark GLM Flash enforces thinking, replays tool reasoning, and keeps review 
             return bodies.length === 1 ? new Response('data: {"choices":[{"delta":{"reasoning_content":"inspect first","tool_calls":[{"index":0,"id":"read-1","type":"function","function":{"name":"read_file","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n') : success();
         }) as typeof fetch;
         const tools = [{type:"function" as const,function:{name:"read_file",description:"Read",parameters:{type:"object"}}}];
-        const first = await caller([user],tools,storage,cwd,"glm-5.3-flash","main");
+        const first = await caller({messages: [user], tools, storage, cwd, model: "glm-5.3-flash", kind: "main"});
         expect(bodies[0]).not.toHaveProperty("reasoning_effort");
         const history:Message[]=[user,first.message,{role:"tool",tool_call_id:"read-1",content:"file contents"}];
-        await caller(history,tools,storage,cwd,"glm-5.3-flash","main",undefined,undefined,undefined,undefined,undefined,"max");
+        await caller({messages: history, tools, storage, cwd, model: "glm-5.3-flash", kind: "main", reasoning: "max"});
         expect(bodies[1]?.reasoning_effort).toBe("max");
         expect(bodies[1]?.messages).toContainEqual(expect.objectContaining({role:"assistant",reasoning_content:"inspect first"}));
-        const review=await caller(history,tools,storage,cwd,"glm-5.3-flash","task_review",undefined,undefined,undefined,undefined,undefined,"max");
+        const review=await caller({messages: history, tools, storage, cwd, model: "glm-5.3-flash", kind: "task_review", reasoning: "max"});
         expect(bodies[2]).toMatchObject({reasoning_effort:"max"});
         expect(bodies[2]).not.toHaveProperty("max_tokens");
         expect((bodies[2]?.messages as Record<string,unknown>[]).every(message=>!('reasoning_content' in message))).toBe(true);
         expect(review.message).not.toHaveProperty("reasoning");
         const count=bodies.length;
-        await expect(caller([user],tools,storage,cwd,"glm-5.3-flash","main",undefined,undefined,undefined,undefined,undefined,"off")).rejects.toThrow("not supported");
+        await expect(caller({messages: [user], tools, storage, cwd, model: "glm-5.3-flash", kind: "main", reasoning: "off"})).rejects.toThrow("not supported");
         expect(bodies).toHaveLength(count);
     });
 });

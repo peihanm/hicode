@@ -14,9 +14,8 @@ for (const failureEvent of ["token_update", "assistant_text"] as const) {
     test(`failure in ${failureEvent} before the batch closes all calls and saves recoverable History`, async () => {
         await withTempProject(async (cwd, storage) => {
             const response = assistantToolCall("bash", {command: "printf executed > marker"}, "pending", "Starting");
-            const second = assistantToolCall("bash", {command: "printf second > marker"}, "pending-second").toolCalls[0]!;
-            response.toolCalls.push(second);
-            response.message = {role: "assistant", content: "Starting", tool_calls: response.toolCalls};
+            const second = assistantToolCall("bash", {command: "printf second > marker"}, "pending-second").message.tool_calls![0]!;
+            response.message.tool_calls!.push(second);
             const fake = createFakeLLM([response, assistantText("recovered")]);
             const fixture = continuityFixture(cwd, storage, fake.callLLM);
             const run = {resources: fixture.resources, session: fixture.session, host: continuityHost,

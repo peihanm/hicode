@@ -43,8 +43,8 @@ test("background worker exchanges bounded messages through tools; idle messages 
                 expect(JSON.stringify(options.messages)).toContain("restricted to read-only tools");
                 const send = assistantToolCall("agent_message", {action: "send", target: "parent", message: "Which interface?"}, "child-send");
                 const wait = assistantToolCall("agent_message", {action: "wait"}, "child-wait");
-                const calls = [...send.toolCalls, ...wait.toolCalls];
-                return {...send, message: {...send.message, tool_calls: calls}, toolCalls: calls};
+                const calls = [...(send.message.tool_calls ?? []), ...(wait.message.tool_calls ?? [])];
+                return {...send, message: {...send.message, tool_calls: calls}, };
             },
             options => {
                 expectPaired(options.messages);

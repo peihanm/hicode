@@ -39,7 +39,7 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
             signal: controller.signal, setTodos: next => {todos = next;},
         }), {
             getTodos: () => todos,
-            callLLM: async (_messages, _tools, _storage, _cwd, _model, _kind, _signal, _progress, onText) => {
+            callLLM: async ({onText}) => {
                 calls++;
                 if (mode === "revision" && (calls === 1 || calls === 3)) return assistantToolCall("todo_write", {
                     todos: [{content: "完成任务", activeForm: "正在完成任务", status: calls === 1 ? "in_progress" : "completed"}],

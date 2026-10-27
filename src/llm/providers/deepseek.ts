@@ -1,8 +1,6 @@
-import {reasoningRequestFields, validateReasoningEffort} from "../reasoningPolicy.js";
-import {supportsToolImages} from "../../images/request.js";
-import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
+import {reasoningRequestFields} from "../reasoningPolicy.js";
 import type {LLMProvider} from "../types.js";
-import {callOpenAICompatible} from "./openAICompatible.js";
+import {prepareOpenAICompatibleEndpoint, callOpenAICompatible} from "./openAICompatible.js";
 
 
 function createDeepSeekRequestFields(): Record<string, unknown> {
@@ -13,22 +11,12 @@ function createDeepSeekRequestFields(): Record<string, unknown> {
 }
 
 export const deepseekProvider: LLMProvider = {
-    name: "deepseek",
 
     async call(options, source) {
-        validateReasoningEffort(source.id, options.model, options.reasoning ?? "default");
-        const apiKey = process.env[source.apiKeyEnv];
-        if (!apiKey) {
-            throw new Error(
-                `Missing ${source.apiKeyEnv}; check the project .env or ~/.hicode/.env`
-            );
-        }
+        const endpoint = prepareOpenAICompatibleEndpoint(options, source);
 
         return callOpenAICompatible(options, {
-            displayName: source.label,
-            baseUrl: source.baseUrl || PROVIDER_BASE_URLS.deepseek,
-            apiKey,
-            toolImages: supportsToolImages(source, options.model),
+            ...endpoint,
             requestFields: {...createDeepSeekRequestFields(), ...reasoningRequestFields(source.id, options.model, options.reasoning)},
             ...(options.reasoning !== "off" && options.kind !== "task_review" ? {reasoningSource: source.id} : {}),
             disableThinkingOnFinalStallRetry: (options.reasoning ?? "default") === "default",

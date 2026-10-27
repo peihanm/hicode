@@ -21,7 +21,6 @@ function initialHistory(): Message[] {
 function assistantToolCalls(calls: ToolCall[]) {
   return {
     message: { role: "assistant" as const, content: null, tool_calls: calls },
-    toolCalls: calls,
     usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
   };
 }
@@ -168,7 +167,6 @@ describe("agent loop", () => {
         {
           callLLM: async () => ({
             message: { role: "assistant", content: "completed" },
-            toolCalls: [],
             usage: {
               prompt_tokens: 0,
               completion_tokens: 0,
@@ -195,7 +193,6 @@ describe("agent loop", () => {
         {
           callLLM: async () => ({
             message: {role: "assistant", content: "completed"},
-            toolCalls: [],
             usage: {
               prompt_tokens: 300,
               completion_tokens: 40,
@@ -231,15 +228,7 @@ describe("agent loop", () => {
     await withTempProject(async (cwd) => {
       const events: AgentEvent[] = [];
       const streamingCall: LLMCaller =
-        async (
-          _messages,
-          _tools,
-          _storage,
-          _cwd,
-          _model,
-          _kind,
-          _signal,
-          onStreamProgress
+        async ({messages: _messages, tools: _tools, storage: _storage, cwd: _cwd, model: _model, kind: _kind, signal: _signal, onStreamProgress}
         ) => {
           onStreamProgress?.({
             phase: "tool_input",
@@ -278,15 +267,7 @@ describe("agent loop", () => {
     await withTempProject(async (cwd) => {
       const events: AgentEvent[] = [];
       const failedCall: LLMCaller =
-        async (
-          _messages,
-          _tools,
-          _storage,
-          _cwd,
-          _model,
-          _kind,
-          _signal,
-          onStreamProgress
+        async ({messages: _messages, tools: _tools, storage: _storage, cwd: _cwd, model: _model, kind: _kind, signal: _signal, onStreamProgress}
         ) => {
           onStreamProgress?.({
             phase: "content",

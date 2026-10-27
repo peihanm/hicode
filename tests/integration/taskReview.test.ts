@@ -485,7 +485,7 @@ test("Qwen, Token Plan, DeepSeek and GLM keep default thinking for task reviews"
                 const model = id.startsWith("qwen") ? "qwen3.8-flash" : id === "deepseek" ? "deepseek-v4.1-flash" : "glm-5.2";
                 const offset = requests.length;
                 for (const kind of ["task_review", "main"] as const) {
-                    await call([{role: "user", origin: "user", content: "review"}], [], storage, cwd, model, kind);
+                    await call({messages: [{role: "user", origin: "user", content: "review"}], tools: [], storage, cwd, model, kind});
                 }
                 expect(requests[offset]).not.toHaveProperty("max_tokens");
                 expect(requests[offset + 1]).not.toHaveProperty("max_tokens");

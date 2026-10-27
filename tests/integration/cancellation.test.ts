@@ -89,7 +89,6 @@ describe("runtime cancellation", () => {
       const fake = createFakeLLM([
         {
           message: { role: "assistant", content: null, tool_calls: calls },
-          toolCalls: calls,
           usage: {
             prompt_tokens: 10,
             completion_tokens: 5,
@@ -148,7 +147,6 @@ describe("runtime cancellation", () => {
       const fake = createFakeLLM([
         {
           message: { role: "assistant", content: null, tool_calls: calls },
-          toolCalls: calls,
           usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
         },
       ]);
@@ -279,7 +277,6 @@ describe("runtime cancellation", () => {
       const fake = createFakeLLM([
         {
           message: { role: "assistant", content: null, tool_calls: calls },
-          toolCalls: calls,
           usage: {
             prompt_tokens: 10,
             completion_tokens: 5,

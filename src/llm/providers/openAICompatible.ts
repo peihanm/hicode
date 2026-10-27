@@ -1,7 +1,10 @@
 import {ProviderStreamError} from "./openAICompatibleStreamCodec.js";
 import {createHash, randomUUID} from "node:crypto";
 import {encodeImageMessages, ImageRequestError, projectMessageForWire, projectImagesForRequest} from "../../images/request.js";
+import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProviderName} from "../providerRegistry.js";
+import {validateReasoningEffort} from "../reasoningPolicy.js";
+import {supportsToolImages} from "../../images/request.js";
 import {ContextLengthError, isContextLengthResponse} from "../errors.js";
 import {imageReferences} from "../../images/content.js";
 import {
@@ -11,7 +14,7 @@ import {
     TurnInterruptedError,
 } from "../../runtime/abort.js";
 import {beginPromptLog, finishPromptLogRun} from "../promptLog.js";
-import type {LLMCallOptions, LLMCallResult, LLMRetryInfo, LLMStreamProgress, Message, PromptLogResponse, TokenUsage,} from "../types.js";
+import type {LLMCallOptions, LLMCallResult, LLMSourceConnection, LLMRetryInfo, LLMStreamProgress, Message, PromptLogResponse, TokenUsage,} from "../types.js";
 import {consumeOpenAICompatibleSSE, OpenAICompatibleProtocolError} from "./openAICompatibleStream.js";
 import {Buffer} from "node:buffer";
 import {reasoningStateSchema, type ReasoningState} from "../reasoning.js";
@@ -56,6 +59,22 @@ export interface OpenAICompatibleEndpoint {
     reasoningSource?: LLMProviderName;
     /** After two deep-reasoning stalls, disable thinking for the final request. */
     disableThinkingOnFinalStallRetry?: boolean;
+}
+
+/** Read credentials at the Provider boundary and resolve shared connection fields. */
+export function prepareOpenAICompatibleEndpoint(
+    options: LLMCallOptions,
+    source: LLMSourceConnection
+): Pick<OpenAICompatibleEndpoint, "displayName" | "baseUrl" | "apiKey" | "toolImages"> {
+    validateReasoningEffort(source.id, options.model, options.reasoning ?? "default");
+    const apiKey = process.env[source.apiKeyEnv];
+    if (!apiKey) throw new Error(`Missing ${source.apiKeyEnv}; check the project .env or ~/.hicode/.env`);
+    return {
+        displayName: source.label,
+        baseUrl: source.baseUrl || PROVIDER_BASE_URLS[source.id],
+        apiKey,
+        toolImages: supportsToolImages(source, options.model),
+    };
 }
 
 function toProviderMessages(
@@ -182,7 +201,7 @@ function createRequestBody(
     options: LLMCallOptions,
     requestFields: Record<string, unknown> | undefined,
     disableThinking: boolean,
-    reasoningScope: string | undefined
+    messages: unknown[]
 ): ChatCompletionsRequest {
     const effectiveRequestFields = {...requestFields};
     if (disableThinking) {
@@ -195,10 +214,7 @@ function createRequestBody(
     return {
         ...effectiveRequestFields,
         model: options.model,
-        messages: toProviderMessages(
-            options.messages,
-            reasoningScope
-        ).map(projectMessageForWire),
+        messages,
         ...(tools.length > 0 ? {tools} : {}),
         stream: true,
     };
@@ -327,14 +343,13 @@ async function callOpenAICompatibleCore(
         const disableThinking =
             endpoint.disableThinkingOnFinalStallRetry === true &&
             outputStallRetries >= STALLS_BEFORE_THINKING_FALLBACK;
+        const recoveryMessage = outputWasTruncated ? [{role: "system", content: "The previous response exceeded the output limit and was discarded; none of its tool calls were executed. Continue from the last completed history. Return a concise next step with at most one small tool call. Split large changes across subsequent calls rather than emitting a complete large file or a long explanation."}] : [];
         const requestBody = createRequestBody(
             options,
             endpoint.requestFields,
             disableThinking,
-            reasoningScope
+            [...wireMessages, ...recoveryMessage]
         );
-        const recoveryMessage = outputWasTruncated ? [{role: "system", content: "The previous response exceeded the output limit and was discarded; none of its tool calls were executed. Continue from the last completed history. Return a concise next step with at most one small tool call. Split large changes across subsequent calls rather than emitting a complete large file or a long explanation."}] : [];
-        requestBody.messages = [...wireMessages, ...recoveryMessage];
         const requestJson = JSON.stringify(requestBody);
         if (hasImages && Buffer.byteLength(requestJson) > 20 * 1024 * 1024) {
             const error = new ImageRequestError("Encoded multimodal request exceeds 20 MiB; request was not sent");
@@ -526,7 +541,6 @@ async function callOpenAICompatibleCore(
             });
             return {
                 message,
-                toolCalls: streamed.toolCalls,
                 usage: addUsage(completedRetryUsage, streamed.usage),
                 ...(streamed.usage.total_tokens > 0
                     ? {

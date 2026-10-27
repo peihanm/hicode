@@ -1,29 +1,15 @@
-import type {ReasoningEffort} from "./reasoningPolicy.js";
-import type {ImageReference} from "../images/content.js";
 import {deepseekProvider} from "./providers/deepseek.js";
 import {glmProvider} from "./providers/glm.js";
 import {qwenProvider} from "./providers/qwen.js";
 import {openrouterProvider} from "./providers/openrouter.js";
 import {arkAgentPlanProvider} from "./providers/arkAgentPlan.js";
 import type {LLMProviderName} from "./providerRegistry.js";
-import type {
-    LLMCaller,
-    LLMTrace,
-    LLMCallKind,
-    LLMCallResult,
-    LLMProvider,
-    LLMSourceConnection,
-    LLMStreamProgress,
-    LLMTextUpdate,
-    Message,
-    OpenAITool,
-} from "./types.js";
-import type {HiCodeStorageLayout} from "../persistence/index.js";
+import type {LLMCaller, LLMProvider, LLMSourceConnection} from "./types.js";
 
 const providers: Record<LLMProviderName, LLMProvider> = {
     glm: glmProvider,
     qwen: qwenProvider,
-    "qwen-token-plan": {name: "qwen-token-plan", call: qwenProvider.call},
+    "qwen-token-plan": qwenProvider,
     deepseek: deepseekProvider,
     openrouter: openrouterProvider,
     "ark-agent-plan": arkAgentPlanProvider,
@@ -37,33 +23,5 @@ export function createLLMCaller(
 ): LLMCaller {
     const provider = providers[source.id];
 
-    return async function callConfiguredLLM(
-        messages: Message[],
-        tools: OpenAITool[],
-        storage: HiCodeStorageLayout,
-        cwd: string,
-        model: string,
-        kind: LLMCallKind,
-        signal?: AbortSignal,
-        onStreamProgress?: (progress: LLMStreamProgress) => void,
-        onText?: (update: LLMTextUpdate) => void | Promise<void>,
-        readImage?: (reference: ImageReference) => Promise<Buffer>,
-        trace?: LLMTrace,
-        reasoning?: ReasoningEffort
-    ): Promise<LLMCallResult> {
-        return provider.call({
-            messages,
-            tools,
-            storage,
-            cwd,
-            model,
-            kind,
-            signal,
-            onStreamProgress,
-            onText,
-            readImage,
-            trace,
-            reasoning,
-        }, source);
-    };
+    return options => provider.call(options, source);
 }

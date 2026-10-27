@@ -28,7 +28,7 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结
         };
         const blind = () => assistantToolCall("write_file", {path: "a.txt", content: "BLIND"}, "blind");
         const fake = createFakeLLM(Array.from({length: 16}, () => async (options, index) => {
-            if (index === 0) return {message: {role: "assistant" as const, content: null, tool_calls: calls}, toolCalls: calls,
+            if (index === 0) return {message: {role: "assistant" as const, content: null, tool_calls: calls},
                 usage: {prompt_tokens: 10, completion_tokens: 10, total_tokens: 20}};
             const last = options.messages.filter(message => message.role === "tool").at(-1);
             if (index === 1) {

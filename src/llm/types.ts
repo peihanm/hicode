@@ -106,8 +106,7 @@ export interface LLMCallOptions {
 }
 
 export interface LLMCallResult {
-    message: Message;
-    toolCalls: ToolCall[];
+    message: Extract<Message, {role: "assistant"}>;
     usage: TokenUsage;
     contextUsage?: LLMContextUsage;
 }
@@ -120,24 +119,9 @@ export interface LLMSourceConnection {
     baseUrl?: string;
 }
 
-export type LLMCaller = (
-    messages: Message[],
-    tools: OpenAITool[],
-    storage: HiCodeStorageLayout,
-    cwd: string,
-    model: string,
-    kind: LLMCallKind,
-    signal?: AbortSignal,
-    onStreamProgress?: (progress: LLMStreamProgress) => void,
-    onText?: (update: LLMTextUpdate) => void | Promise<void>,
-    readImage?: (reference: ImageReference) => Promise<Buffer>,
-    trace?: LLMTrace,
-    reasoning?: ReasoningEffort
-) => Promise<LLMCallResult>;
+export type LLMCaller = (options: LLMCallOptions) => Promise<LLMCallResult>;
 
 export interface LLMProvider {
-    name: LLMProviderName;
-
     call(
         options: LLMCallOptions,
         source: LLMSourceConnection

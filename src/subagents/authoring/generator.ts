@@ -43,8 +43,8 @@ export function createAgentDefinitionGenerator(
                 if (normalized.length > 8_000) {
                     throw new Error("Agent creation request exceeds 8000 characters");
                 }
-                const result = await dependencies.callLLM(
-                    [{
+                const result = await dependencies.callLLM({
+                    messages: [{
                         role: "system",
                         content: createAgentAuthoringPrompt({
                             availableToolNames,
@@ -52,25 +52,25 @@ export function createAgentDefinitionGenerator(
                             instructions,
                         }),
                     }, {role: "user", origin: "runtime" as const, content: normalized}],
-                    [submitAgentDefinitionTool],
+                    tools: [submitAgentDefinitionTool],
                     storage,
                     cwd,
                     model,
-                    "agent_authoring",
-                    signal, undefined, undefined, undefined, undefined, reasoning
-                );
-                const text = result.message.role === "assistant"
-                    ? result.message.content?.trim()
-                    : undefined;
+                    kind: "agent_authoring",
+                    signal,
+                    reasoning,
+                });
+                const text = result.message.content?.trim();
                 if (text) {
                     throw new Error(
                         "The model also returned ordinary text; Agent candidates must be returned only through the submission tool"
                     );
                 }
-                if (result.toolCalls.length !== 1) {
+                const toolCalls = result.message.tool_calls ?? [];
+                if (toolCalls.length !== 1) {
                     throw new Error("The model did not submit exactly one Agent candidate");
                 }
-                const call = result.toolCalls[0]!;
+                const call = toolCalls[0]!;
                 if (call.function.name !== "submit_agent_definition") {
                     throw new Error(`The model called an unknown candidate submission tool: ${call.function.name}`);
                 }

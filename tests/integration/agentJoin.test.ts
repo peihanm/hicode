@@ -64,9 +64,9 @@ test("two authorized delegates join before final answer without UI delivery or a
         attachSubagentLauncher(ctx, async () => {throw new Error("Must run in background");}, () => history);
         const spawn = (index: number) => assistantToolCall("agent", {description: `part-${index}`, prompt: "implement"}, `spawn-${index}`);
         const first = spawn(0), second = spawn(1);
-        const calls = [...first.toolCalls, ...second.toolCalls];
+        const calls = [...(first.message.tool_calls ?? []), ...(second.message.tool_calls ?? [])];
         const fake = createFakeLLM([
-            {...first, message: {role: "assistant", content: null, tool_calls: calls}, toolCalls: calls},
+            {...first, message: {role: "assistant", content: null, tool_calls: calls}, },
             assistantText("I will wait and integrate later."),
             options => {expect(JSON.stringify(options.messages)).toContain("finished-0"); return assistantText("Waiting for the remaining worker.");},
             options => {expect(JSON.stringify(options.messages)).toContain("finished-1"); return assistantText("Integrated and verified both results.");},

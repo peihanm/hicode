@@ -32,10 +32,19 @@ export function createTaskReviewRunner({callLLM}: {callLLM: LLMCaller}): TaskRev
     return async ({storage, cwd, model, reasoning, trace, signal, evidence}) => {
         const messages = reviewMessages(evidence);
         try {
-            const result = await callLLM(messages, [], storage, cwd, model, "task_review", signal,
-                undefined, undefined, undefined, trace, reasoning);
+            const result = await callLLM({
+                messages,
+                tools: [],
+                storage,
+                cwd,
+                model,
+                kind: "task_review",
+                signal,
+                trace,
+                reasoning,
+            });
             if (signal?.aborted) throw new Error("Task review cancelled");
-            if (result.toolCalls.length || result.message.role !== "assistant" || result.message.tool_calls?.length) {
+            if (result.message.tool_calls?.length) {
                 throw new Error("Task review returned an unexpected tool call or message");
             }
             const text = result.message.content?.trim();

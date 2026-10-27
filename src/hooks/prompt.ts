@@ -111,25 +111,26 @@ export function createHookPromptExecutorFactory(
                 );
                 timer.unref?.();
                 try {
-                    const result = await dependencies.callLLM(
-                        promptMessages(input.prompt, input.envelope),
-                        [submitDecisionTool],
-                        options.storage,
-                        options.cwd,
-                        options.model,
-                        "hook",
-                        controller.signal, undefined, undefined, undefined, trace, options.reasoning
-                    );
-                    const text = result.message.role === "assistant"
-                        ? result.message.content?.trim()
-                        : undefined;
+                    const result = await dependencies.callLLM({
+                        messages: promptMessages(input.prompt, input.envelope),
+                        tools: [submitDecisionTool],
+                        storage: options.storage,
+                        cwd: options.cwd,
+                        model: options.model,
+                        kind: "hook",
+                        signal: controller.signal,
+                        trace,
+                        reasoning: options.reasoning,
+                    });
+                    const text = result.message.content?.trim();
                     if (text) {
                         throw new Error("Prompt Hook also returned ordinary text");
                     }
-                    if (result.toolCalls.length !== 1) {
+                    const toolCalls = result.message.tool_calls ?? [];
+                    if (toolCalls.length !== 1) {
                         throw new Error("Prompt Hook did not return exactly one structured decision");
                     }
-                    const call = result.toolCalls[0]!;
+                    const call = toolCalls[0]!;
                     if (call.function.name !== "submit_hook_decision") {
                         throw new Error(`Prompt Hook called an unknown tool: ${call.function.name}`);
                     }

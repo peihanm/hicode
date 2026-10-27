@@ -1,20 +1,11 @@
-import {validateReasoningEffort} from "../reasoningPolicy.js";
-import {supportsToolImages} from "../../images/request.js";
-import {PROVIDER_BASE_URLS} from "../providerRegistry.js";
 import type {LLMProvider} from "../types.js";
-import {callOpenAICompatible} from "./openAICompatible.js";
+import {prepareOpenAICompatibleEndpoint, callOpenAICompatible} from "./openAICompatible.js";
 
 export const openrouterProvider: LLMProvider = {
-    name: "openrouter",
     async call(options, source) {
-        validateReasoningEffort(source.id, options.model, options.reasoning ?? "default");
-        const apiKey = process.env[source.apiKeyEnv];
-        if (!apiKey) throw new Error(`Missing ${source.apiKeyEnv}; check the project .env or ~/.hicode/.env`);
+        const endpoint = prepareOpenAICompatibleEndpoint(options, source);
         return callOpenAICompatible(options, {
-            displayName: source.label,
-            baseUrl: source.baseUrl || PROVIDER_BASE_URLS.openrouter,
-            apiKey,
-            toolImages: supportsToolImages(source, options.model),
+            ...endpoint,
             reasoningSource: source.id,
             requestFields: {
                 provider: {require_parameters: true},

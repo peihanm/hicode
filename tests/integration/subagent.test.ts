@@ -190,10 +190,10 @@ describe("managed Agent and isolated child threads", () => {
         onEvent: (event) => {
           events.push(event);
         },
-        agentOptions: { callLLM: async (...args) => {
-          args[7]?.({phase:"content",outputCharacters:20,estimatedOutputTokens:5});
-          await args[8]?.({type:"delta",text:"transient-draft-not-for-log"});
-          return child.callLLM(...args);
+        agentOptions: { callLLM: async (options) => {
+          options.onStreamProgress?.({phase:"content",outputCharacters:20,estimatedOutputTokens:5});
+          await options.onText?.({type:"delta",text:"transient-draft-not-for-log"});
+          return child.callLLM(options);
         } },
         toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       }));
