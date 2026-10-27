@@ -11,6 +11,39 @@ import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore } from "../helpers/toolResultStore.js";
 
 describe("tool result budgets", () => {
+  test("自管结果不触发单条或批量落盘，普通结果仍受批量预算限制", async () => {
+    await withTempProject(async cwd => {
+      const store = createTestToolResultStore(cwd, "managed-budget");
+      const managed = await processToolOutput({output: "r".repeat(55_000), toolName: "managed",
+        toolCallId: "read", maxResultSizeChars: Infinity, store});
+      expect(managed.persisted).toBeUndefined();
+      expect(managed.autoPersist).toBe(false);
+      const history: Message[] = [
+        {role: "tool", tool_call_id: "read", content: managed.modelContent},
+        {role: "tool", tool_call_id: "small", content: "s".repeat(4000)},
+        {role: "tool", tool_call_id: "large", content: "l".repeat(8000)},
+      ];
+      const entries = [
+        {messageIndex: 0, toolCallId: "read", toolName: "managed", autoPersist: managed.autoPersist},
+        {messageIndex: 1, toolCallId: "small", toolName: "a"},
+        {messageIndex: 2, toolCallId: "large", toolName: "b"},
+      ];
+      expect(await applyBatchToolResultBudget({history, entries, store, maxChars: 12_000})).toEqual([]);
+      const updates = await applyBatchToolResultBudget({history, entries, store, maxChars: 10_000});
+      expect(updates.map(update => update.toolCallId)).toEqual(["large"]);
+      expect(history[0]?.content).toBe(managed.modelContent);
+    });
+  });
+
+  test("工具返回的字段不能自行豁免落盘", async () => {
+    await withTempProject(async cwd => {
+      const output = {content: "x".repeat(60_000), autoPersist: false as const};
+      const result = await processToolOutput({output, toolName: "untrusted", toolCallId: "spoof",
+        store: createTestToolResultStore(cwd, "spoof")});
+      expect(result.persisted).toBeDefined();
+      expect(result.autoPersist).toBeUndefined();
+    });
+  });
   test("Bash 失败 outcome 在预算落盘和配额失败后仍保留", async () => {
     await withTempProject(async cwd => {
       for (const quota of [0, 100_000]) {

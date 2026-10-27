@@ -15,10 +15,10 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结
     await withTempProject(async cwd => {
         const store = createTestToolResultStore(cwd, "evidence", mode === "save-failure" ? {maxSessionBytes: 0} : {});
         const ctx = createTestContext(cwd, {toolResultStore: store, model: "glm-5.2"});
-        for (const [name, width] of [["a", 110], ["b", 100], ["c", 100]] as const) {
+        for (const [name, width] of [["a", 110], ["b", 100], ["c", 100], ["d", 100], ["e", 100]] as const) {
             await writeFile(join(cwd, `${name}.txt`), Array.from({length: 900}, (_, n) => `${name}${n}:${"x".repeat(width)}`).join("\n"));
         }
-        const calls: ToolCall[] = ["a", "b", "c"].map(name => ({id: `read-${name}`, type: "function",
+        const calls: ToolCall[] = ["a", "b", "c", "d", "e"].map(name => ({id: `read-${name}`, type: "function",
             function: {name: "read_file", arguments: JSON.stringify({path: `${name}.txt`})}}));
         let nextLine = 1;
         const readSource = () => {
@@ -33,10 +33,14 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结
             const last = options.messages.filter(message => message.role === "tool").at(-1);
             if (index === 1) {
                 const large = options.messages.find(message => message.role === "tool" && message.tool_call_id === "read-a");
-                expect(large?.content).toContain("persisted-output");
-                expect(large?.content).not.toContain("a450:");
+                expect(large?.content).not.toContain("persisted-output");
+                expect(large?.content).toContain("a450:");
+                expect(large?.content).not.toContain("a899:");
+                const reads = options.messages.filter(message => message.role === "tool");
+                expect(reads.reduce((sum, message) => sum + message.content.length, 0)).toBeGreaterThan(200_000);
+                expect(reads.every(message => !String(message.content).includes("<persisted-output>"))).toBe(true);
                 if (mode === "save-failure") return blind();
-                const artifact = await store.persistText({toolCallId: "read-a", toolName: "read_file", content: "ignored"});
+                const artifact = await store.persistText({toolCallId: "read-a", toolName: "read_file", content: await readFile(join(cwd, "a.txt"), "utf8")});
                 if (mode === "tampered") {
                     const bytes = await readFile(artifact.path);
                     bytes[bytes.length - 1] = 121;
@@ -67,7 +71,7 @@ test.each(["pages", "partial", "stale-source", "tampered", "save-failure"])("结
             if (last?.tool_call_id === "known") expect(last.content).toContain(mode === "stale-source" ? "Write precondition failed" : "Wrote");
             return assistantText("证据验证结束");
         }));
-        await runAgentForTest("读三个文件，再修改 a", [], () => {}, ctx, {callLLM: fake.callLLM});
+        await runAgentForTest("读五个文件，再修改 a", [], () => {}, ctx, {callLLM: fake.callLLM});
         const content = await readFile(join(cwd, "a.txt"), "utf8");
         if (mode === "pages") expect(content).toBe("KNOWN");
         else if (mode === "stale-source") expect(content).toBe("external");

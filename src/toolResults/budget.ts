@@ -27,7 +27,8 @@ export async function processToolOutput(input: {
     const outcome = normalized.outcome ?? input.outcome ?? "ok";
     const uiData = outcome === "ok" || normalized.uiData?.type === "shell_result" ? normalized.uiData : undefined;
     const displayContent = normalized.displayContent ?? normalized.content;
-    const receipt = {...(normalized.completedTask ? {completedTask: normalized.completedTask} : {}),
+    const receipt = {...(input.maxResultSizeChars === Infinity ? {autoPersist: false as const} : {}),
+        ...(normalized.completedTask ? {completedTask: normalized.completedTask} : {}),
         ...(normalized.runningTask ? {runningTask: normalized.runningTask} : {})};
     if (normalized.persisted) {
         const reference = buildPersistedToolResultMessage(normalized.persisted);
@@ -85,6 +86,7 @@ export interface BatchToolResultEntry {
     toolCallId: string;
     toolName: string;
     persisted?: PersistedToolResult;
+    autoPersist?: false;
 }
 
 type BatchToolResultUpdate = {toolCallId: string} & (
@@ -98,12 +100,13 @@ export async function applyBatchToolResultBudget(input: {
     maxChars?: number;
 }): Promise<BatchToolResultUpdate[]> {
     const maxChars = input.maxChars ?? MAX_TOOL_RESULTS_PER_BATCH_CHARS;
-    const candidates = input.entries.flatMap((entry) => {
+    const entries = input.entries.filter(entry => entry.autoPersist !== false);
+    const candidates = entries.flatMap((entry) => {
         const message = input.history[entry.messageIndex];
         if (entry.persisted || message?.role !== "tool") return [];
         return [{...entry, content: contentText(message.content)}];
     });
-    let total = input.entries.reduce((sum, entry) => {
+    let total = entries.reduce((sum, entry) => {
         const message = input.history[entry.messageIndex];
         return sum + (message?.role === "tool" ? contentText(message.content).length : 0);
     }, 0);

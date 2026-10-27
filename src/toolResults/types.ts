@@ -56,6 +56,8 @@ export interface ToolExecutionResult {
     modelContent: MessageContent;
     displayContent: string;
     outcome: ToolOutcome;
+    // Set by the execution pipeline from the trusted tool definition, never by tool output.
+    autoPersist?: false;
     persisted?: PersistedToolResult;
     uiData?: ToolUIData;
     completedTask?: TaskResultReceipt;

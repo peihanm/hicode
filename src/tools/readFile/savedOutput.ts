@@ -1,6 +1,6 @@
 import {constants} from "node:fs";
 import {open} from "node:fs/promises";
-import {createPreview} from "../../toolResults/format.js";
+import {ReadWindow} from "./window.js";
 import type {PersistedToolResult} from "../../toolResults/types.js";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
 
@@ -15,34 +15,29 @@ export async function readSavedOutput(
         if (!before.isFile() || before.size !== BigInt(file.byteLength)) throw new Error("Result file changed");
         const buffer = Buffer.alloc(64 * 1024);
         const decoder = new TextDecoder("utf-8", {fatal: true, ignoreBOM: true});
-        const lines: string[] = [];
+        const window = new ReadWindow([
+            `${kind === "archive" ? "Session archive" : "Saved output"}: ${JSON.stringify(file.path)}`,
+            `Complete artifact: ${file.complete ? "yes" : "no (only the saved portion is available)"}`,
+            "Saved results are historical logs; use read_file on the source file before editing to confirm its current version.",
+        ].join("\n"), startLine, limit);
         let line = 1;
-        let sample = "";
-        let lineChars = 0;
-        let displayedChars = 0;
+        let pending = "";
         let position = 0;
         let more = false;
-        let shortened = false;
-        const append = (text: string) => {
-            if (line < startLine) return;
-            lineChars += text.length;
-            sample += text;
-            if (sample.length > 128_000) sample = sample.slice(0, 64_000) + sample.slice(-64_000);
+        const append = (text: string): boolean => {
+            if (line < startLine) return true;
+            if (pending.length + text.length > window.maxLineChars) {
+                window.rejectOverlongLine();
+                return false;
+            }
+            pending += text;
+            return true;
         };
         const finishLine = (): boolean => {
-            if (line >= startLine) {
-                const available = 60_000 - displayedChars - 20;
-                if (available < 64) return false;
-                const visible = createPreview(sample, available);
-                shortened ||= lineChars > visible.length;
-                const rendered = `${String(line).padStart(6, " ")}\t${visible}`;
-                displayedChars += rendered.length + 1;
-                lines.push(rendered);
-            }
+            if (line >= startLine && !window.append(pending)) return false;
             line++;
-            sample = "";
-            lineChars = 0;
-            return lines.length < limit;
+            pending = "";
+            return window.count < limit;
         };
         scan: while (position < file.byteLength) {
             throwIfTurnAborted(signal);
@@ -53,34 +48,21 @@ export async function readSavedOutput(
             let start = 0;
             for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", start)) {
                 throwIfTurnAborted(signal);
-                append(text.slice(start, index));
-                if (!finishLine()) { more = true; break scan; }
+                if (!append(text.slice(start, index)) || !finishLine()) { more = true; break scan; }
                 start = index + 1;
             }
-            append(text.slice(start));
+            if (!append(text.slice(start))) { more = true; break; }
         }
         if (!more) {
-            append(decoder.decode());
-            // As with ordinary read_file, a trailing newline has an empty final line.
-            if (line >= startLine) {
-                const lastLine = line;
-                finishLine();
-                more = line === lastLine;
-            }
+            if (!append(decoder.decode())) more = true;
+            // A trailing newline has an empty final line, matching source reads.
+            else if (line >= startLine && !window.append(pending)) more = true;
         }
         const after = await handle.stat({bigint: true});
         if (before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) {
             throw new Error("Result file changed while reading");
         }
-        return [
-            `${kind === "archive" ? "Session archive" : "Saved output"}: ${JSON.stringify(file.path)}`,
-            `Complete artifact: ${file.complete ? "yes" : "no (only the saved portion is available)"}`,
-            "Saved results are historical logs; use read_file on the source file before editing to confirm its current version.",
-            "",
-            lines.length ? lines.join("\n") : `offset=${startLine} is outside the saved content line range.`,
-            ...(shortened ? ["\nOverlong lines contain marked omissions; they are not shown in full."] : []),
-            ...(more ? [`\nContinue with read_file on the same path, offset=${line}(line number).`] : []),
-        ].join("\n");
+        return window.render(more).output;
     } finally {
         await handle.close();
     }

@@ -240,8 +240,8 @@ describe("tool registry contract", () => {
 
       expect(result).toContain("Line range: 2-3 / 4");
       expect(result).toContain("     2\tbeta");
-      expect(result).toContain("remaining lines omitted: 1");
-      expect(result).not.toContain("继续读取请用");
+      expect(result).toContain("Line limit reached");
+      expect(result).toContain("offset=4");
     });
   });
 

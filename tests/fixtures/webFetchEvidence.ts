@@ -40,7 +40,16 @@ await withTempProject(async cwd => {
             path: result.persisted.path, offset: 1,
         }), ctx, "read-tail");
         assert.equal(tail.outcome, "ok");
-        assert.match(contentText(tail.modelContent), /TAILAPICONTRACT/);
+        assert.match(contentText(tail.modelContent), /exceeds the single-read character budget and was not shown/);
+        assert.ok(tail.modelContent.length <= 60_000);
+        assert.equal(tail.persisted, undefined);
+        const quotedPath = "'" + result.persisted.path.replace(/'/g, "'\\''") + "'";
+        const extracted = await executeToolResult("bash", JSON.stringify({
+            command: `rg -o -e 'MIDDLEAPICONTRACT|TAILAPICONTRACT' ${quotedPath}`,
+        }), ctx, "extract-contract");
+        assert.equal(extracted.outcome, "ok");
+        assert.match(contentText(extracted.modelContent), /MIDDLEAPICONTRACT/);
+        assert.match(contentText(extracted.modelContent), /TAILAPICONTRACT/);
     }
     assert.equal(calls, 1);
 });

@@ -24,7 +24,7 @@ test("结果文件通过普通 Read 行分页，独立结果工具不再注册",
     });
 });
 
-test("超过普通 Read 大小上限的结果仍可按行读尾部，长行明确省略且输出有界", async () => {
+test("超过普通 Read 大小上限的结果仍可按行读尾部，超长行明确未展示且输出有界", async () => {
     await withTempProject(async cwd => {
         const ctx = createTestContext(cwd);
         const content = `${("你😀".repeat(300) + "\n").repeat(3000)}END`;
@@ -35,12 +35,15 @@ test("超过普通 Read 大小上限的结果仍可按行读尾部，长行明�
         expect(result.modelContent).toContain("3001\tEND");
         const long = await ctx.toolResultStore.persistText({toolCallId: "long-line", toolName: "test", content: `START${"😀".repeat(200_000)}END\nNEXT`});
         const read = await executeToolResult("read_file", JSON.stringify({path: long.path, limit: 1}), ctx, "long");
-        expect(read.modelContent.length).toBeLessThan(64_000);
-        expect(read.modelContent).toContain("START");
-        expect(read.modelContent).toContain("END");
-        expect(read.modelContent).toContain("[middle omitted]");
-        expect(read.modelContent).toContain("not shown in full");
+        expect(read.modelContent.length).toBeLessThanOrEqual(60_000);
+        expect(read.modelContent).not.toContain("START");
+        expect(read.modelContent).not.toContain("END");
+        expect(read.modelContent).not.toContain("[middle omitted]");
+        expect(read.modelContent).toContain("Line 1 exceeds");
+        expect(read.modelContent).toContain("was not shown");
         expect(read.modelContent).toContain("offset=2");
+        const next = await executeToolResult("read_file", JSON.stringify({path: long.path, offset: 2}), ctx, "after-long");
+        expect(next.modelContent).toContain("2\tNEXT");
         expect(Buffer.from(contentText(read.modelContent)).toString("utf8")).toBe(contentText(read.modelContent));
     });
 });

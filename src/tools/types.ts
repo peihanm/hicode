@@ -248,7 +248,8 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     ): DefaultApprovalScope | undefined;
 
     // Model-visible results above this character limit enter Tool Result Store.
-    // Infinity means the tool already bounds output; do not recursively persist it.
+    // Infinity means the tool bounds/manages its output; exempt from both single and batch
+    // auto-persistence. Model context budgets still include its full visible output.
     maxResultSizeChars?: number;
 
     // Execution occurs only after permission approval; no additional confirm call is needed.

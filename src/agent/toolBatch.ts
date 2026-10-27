@@ -224,6 +224,7 @@ export async function executeToolCallBatch({
                         messageIndex,
                         toolCallId: toolCall.id,
                         toolName: toolCall.function.name,
+                        ...(execution.autoPersist === false ? {autoPersist: false as const} : {}),
                         ...(execution.persisted ? {persisted: execution.persisted} : {}),
                     });
                 }

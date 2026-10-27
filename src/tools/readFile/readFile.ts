@@ -7,6 +7,7 @@ import type {Tool} from "../types.js";
 import {normalizeFileText} from "../shared/fileState.js";
 import {resolveToolPath} from "../shared/paths.js";
 import {readSavedOutput} from "./savedOutput.js";
+import {ReadWindow} from "./window.js";
 import {resolveSessionArchiveFile} from "../../session/archiveAccess.js";
 import {isMemoryStoragePath} from "../../memory/publicationAccess.js";
 
@@ -37,13 +38,9 @@ const inputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>;
 
-function formatLineNumber(lineNumber: number): string {
-    return String(lineNumber).padStart(6, " ");
-}
-
 export const readFileTool: Tool<typeof inputSchema> = {
     name: "read_file",
-    description: "Read a local file with line numbers. For a known ordinary file, omit offset/limit to read it in one call (up to 2000 lines); use ranges only for known locations or larger files. Line-number prefixes are not file content: exclude them from edit_file replacements. Saved tool-result/archive paths also accept line-based offset/limit, but reading a log does not establish the current source-file version. Binary assets or text over 5 MiB return metadata only, sufficient to identify a deletion target but not to authorize text editing; files over 20 MiB are rejected. Use view_image for pixels: a binary summary is not image understanding.",
+    description: "Read a local file with line numbers. For a known ordinary file, omit offset/limit to read it in one call (up to 2000 lines); use ranges only for known locations or larger files. Returns at most 60,000 characters including metadata, so a read may stop before the requested line count; follow the returned next-line offset. A line too long for a single read is not shown; use targeted search/extraction for that line. Line-number prefixes are not file content: exclude them from edit_file replacements. Saved tool-result/archive paths also accept line-based offset/limit, but reading a log does not establish the current source-file version. Binary assets or text over 5 MiB return metadata only, sufficient to identify a deletion target but not to authorize text editing; files over 20 MiB are rejected. Use view_image for pixels: a binary summary is not image understanding.",
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
@@ -80,28 +77,21 @@ export const readFileTool: Tool<typeof inputSchema> = {
         }
 
         const startIndex = startLine - 1;
-        const endIndex = Math.min(startIndex + lineLimit, lines.length);
-        const selected = lines.slice(startIndex, endIndex);
-        const body = selected
-            .map((line, index) => `${formatLineNumber(startLine + index)}\t${line}`)
-            .join("\n");
-
-        const header = [
+        const window = new ReadWindow([
             `File: ${path}`,
-            `Line range: ${startLine}-${endIndex} / ${lines.length}`,
             "Note: left-hand line numbers are not file content; exclude them from edit_file.edits[].old_string.",
-        ].join("\n");
-
-        const more =
-            endIndex < lines.length
-                ? `\n\n... (remaining lines omitted: ${lines.length - endIndex} )`
-                : "";
-
-        const output = `${header}\n\n${body}${more}`;
+        ].join("\n"), startLine, lineLimit);
+        for (let index = startIndex; index < lines.length && window.count < lineLimit; index++) {
+            if (!window.append(lines[index]!)) break;
+        }
+        const endIndex = startIndex + window.count;
+        const selected = lines.slice(startIndex, endIndex);
+        const {output, header} = window.render(endIndex < lines.length, lines.length);
+        if (window.count === 0) return output;
         let outputByte = Buffer.byteLength(`${header}\n\n`);
         let fileByte = Buffer.byteLength(lines.slice(0, startIndex).join("\n")) + (startIndex > 0 ? 1 : 0);
         const segments = selected.map((line, index): readonly [number, number, number] => {
-            const prefix = Buffer.byteLength(`${formatLineNumber(startLine + index)}\t`);
+            const prefix = Buffer.byteLength(`${String(startLine + index).padStart(6, " ")}\t`);
             const bytes = Buffer.byteLength(line) + (startIndex + index < lines.length - 1 ? 1 : 0);
             const segment = [outputByte + prefix, outputByte + prefix + bytes, fileByte] as const;
             outputByte += prefix + Buffer.byteLength(line) + 1;
