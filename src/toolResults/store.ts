@@ -4,8 +4,7 @@ import {createHash, randomUUID} from "node:crypto";
 import {storedImageSchema, imageReferenceSchema, type StoredImage, type ImageReference} from "../images/content.js";
 import {chmod, link, lstat, open, readdir, readFile, rm, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
-import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, createFileLocker} from "../persistence/index.js";
-import {getArtifactKey, getResultId, getToolResultSessionDir,} from "./paths.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, createFileLocker, getSessionStorageDirectory, hashProjectValue} from "../persistence/index.js";
 import {createPreview} from "./format.js";
 import {
     binaryOriginSchema,
@@ -27,6 +26,22 @@ import type {HiCodeStorageLayout} from "../persistence/index.js";
 
 const MAX_TOOL_RESULT_METADATA_BYTES = 64 * 1024;
 const MAX_TOOL_RESULT_DIRECTORY_ENTRIES = 20_000;
+
+function getToolResultSessionDir(
+    storage: HiCodeStorageLayout,
+    cwd: string,
+    sessionId: string
+): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "tool-results");
+}
+
+function getResultId(toolCallId: string): string {
+    return `tr_${toolCallId}`;
+}
+
+function getArtifactKey(sessionId: string, resultId: string): string {
+    return hashProjectValue(`${sessionId}:${resultId}`, 32);
+}
 
 function assertNonNegativeLimit(value: number, label: string): void {
     if (!Number.isSafeInteger(value) || value < 0) {

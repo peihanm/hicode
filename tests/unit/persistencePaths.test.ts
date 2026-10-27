@@ -4,7 +4,7 @@ import {join} from "node:path";
 import {createHiCodeStorageLayout, getProjectKey, getSessionStorageDirectory, hashProjectValue} from "../../src/persistence/index.js";
 import {getProjectStorageDirectory} from "../../src/persistence/layout.js";
 import {getProjectMemoryDirectory} from "../../src/persistence/layout.js";
-import {getToolResultSessionDir} from "../../src/toolResults/paths.js";
+import {createToolResultStore} from "../../src/toolResults/index.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 describe("persistence paths", () => {
@@ -42,11 +42,11 @@ describe("persistence paths", () => {
                 join(projectDirectory, "memory")
             );
 
-            expect(getToolResultSessionDir(
+            expect(createToolResultStore(
                 storage,
                 cwd,
                 sessionId
-            )).toBe(join(sessionDirectory, "tool-results"));
+            ).sessionDir).toBe(join(sessionDirectory, "tool-results"));
         });
     });
 });

@@ -9,11 +9,10 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
-import {getArtifactKey} from "../../src/toolResults/paths.js";
+import { basename, dirname, join } from "node:path";
 import { getProjectKey } from "../../src/persistence/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createTestToolResultStore } from "../helpers/toolResultStore.js";
+import { createTestToolResultStore, getArtifactKey } from "../helpers/toolResultStore.js";
 import {readSavedOutput} from "../../src/tools/readFile/savedOutput.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 
@@ -104,7 +103,10 @@ describe("ToolResultStore", () => {
       const other = join(cwd, "other");
       await mkdir(other);
       expect(getProjectKey(cwd)).not.toBe(getProjectKey(other));
-      expect(getArtifactKey("session", "../../escape")).toMatch(/^[a-f0-9]{32}$/);
+      const store = createTestToolResultStore(cwd, "session");
+      const result = await store.persistText({toolCallId: "../../escape", toolName: "test", content: "safe"});
+      expect(basename(result.path)).toMatch(/^[a-f0-9]{32}\.txt$/);
+      expect(dirname(result.path)).toBe(store.sessionDir);
 
       if (process.platform !== "win32") {
         const alias = join(cwd, "alias");

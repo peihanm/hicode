@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { access, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { listSessionIndex } from "../../src/session/index.js";
-import {getArtifactKey} from "../../src/toolResults/paths.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { createTestToolResultStore } from "../helpers/toolResultStore.js";
+import { createTestToolResultStore, getArtifactKey } from "../helpers/toolResultStore.js";
 import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
 import {createTestStorage} from "../helpers/tempProject.js";
 

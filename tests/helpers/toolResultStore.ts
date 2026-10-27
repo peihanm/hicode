@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {join} from "node:path";
 import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {ToolResultStore} from "../../src/toolResults/store.js";
@@ -32,4 +33,9 @@ export function createTestToolResultStore(
       previewChars: storeOptions.previewChars ?? DEFAULT_PREVIEW_CHARS,
     }
   );
+}
+
+// Expected disk key for corruption and concurrency fixtures, independent of Store internals.
+export function getArtifactKey(sessionId: string, resultId: string): string {
+  return createHash("sha256").update(`${sessionId}:${resultId}`).digest("hex").slice(0, 32);
 }

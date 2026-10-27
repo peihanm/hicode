@@ -1,16 +1,8 @@
 import {z} from "zod";
-import type {PersistedBinaryArtifact} from "./types.js";
+import type {PersistedBinaryArtifact, PersistedToolResult} from "./types.js";
 import {storedImageSchema} from "../images/content.js";
 
-export interface TextArtifactMetadata {
-    resultId: string;
-    toolCallId: string;
-    toolName: string;
-    byteLength: number;
-    originalByteLength: number;
-    complete: boolean;
-    encoding: "utf-8";
-}
+export type TextArtifactMetadata = Omit<PersistedToolResult, "path" | "preview">;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value && typeof value === "object" && !Array.isArray(value));
