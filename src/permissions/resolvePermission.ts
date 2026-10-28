@@ -1,4 +1,4 @@
-// Path/Host boundary -> deny -> tool checks -> read-only/Plan limits -> user questions.
+// Path/Host boundary -> deny -> tool checks -> read-only limits -> user questions.
 // Full Access preauthorizes ordinary access; other requests apply ask, explicit approval, workspace scope, allow and default intent.
 // requestApproval owns human availability and auto-review; resolution does not decide on behalf of the Host.
 
@@ -11,7 +11,8 @@ import {directoryOperationForTool} from "./directoryAccess.js";
 import {resolveToolPath} from "../tools/shared/paths.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
 import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
-import {createFilePermissionMatcher} from "./filePattern.js";
+import {createFilePermissionMatcher, resolveFilePermissionPath} from "./filePattern.js";
+import {resolve, sep} from "node:path";
 import {isBundledSkillFile} from "../skills/bundled.js";
 
 /** Match a rule using the tool's real permission matcher. Hook if shares matching semantics but only filters Hook execution; it never changes permission decisions. */
@@ -142,6 +143,19 @@ async function resolvePermissionInner(
         return toolResult;
     }
 
+    // A directory grant covers ordinary source edits, not executable configuration
+    // or credentials. Check aliases too; Full Access was handled above.
+    if (readsSource && archiveInputPath !== undefined) {
+        try {
+            const paths = [resolve(ctx.cwd, archiveInputPath), await resolveFilePermissionPath(ctx.cwd, archiveInputPath)];
+            if (paths.some(path => path.split(sep).some(part => part === ".git" || part === ".hicode" || part.startsWith(".env")))) {
+                return {behavior: "ask", allowPersistent: false, message: "Writing protected Git metadata, HiCode configuration or environment files requires approval"};
+            }
+        } catch (error) {
+            return {behavior: "deny", message: `Cannot validate protected file access: ${error instanceof Error ? error.message : String(error)}`};
+        }
+    }
+
     let workspaceAccess: boolean | undefined;
     if (defaultScope?.kind === "workspace") {
         try {
@@ -155,7 +169,7 @@ async function resolvePermissionInner(
     }
 
     // 8. Default approves only provable workspace or OS Sandbox side effects.
-    // Explicit ask, tool deny, required interaction and Plan were handled at higher priority.
+    // Explicit ask, tool deny, required interaction and read-only limits were handled at higher priority.
     if (mode === "ask" || mode === "auto-review") {
         if (defaultScope?.kind === "sandboxed") return {behavior: "allow"};
         if (defaultScope?.kind === "workspace" && workspaceAccess) {

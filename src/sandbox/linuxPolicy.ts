@@ -1,5 +1,5 @@
 import {lstat, opendir, realpath, stat} from "node:fs/promises";
-import {join} from "node:path";
+import {basename, join} from "node:path";
 import {tmpdir} from "node:os";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 import {isPathInside} from "../permissions/pathGuard.js";
@@ -63,7 +63,7 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
     const canonicalRoots = await protectedRoots(roots);
     const denied = new Set(config.filesystem.denyWrite);
     for (const root of canonicalRoots) {
-        for (const name of [".git", ".hicode", ".env"]) denied.add(join(root, name));
+        for (const name of [".hicode", ".env"]) denied.add(join(root, name));
     }
     const pending = [...canonicalRoots];
     const seen = new Set<string>();
@@ -75,6 +75,28 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
             throw new Error("Linux Sandbox protected-path discovery exceeded its limits; narrow the workspace");
         }
     };
+    const protectGit = async (root: string) => {
+        const addControls = (path: string, linked = false) => {
+            if (/[*?\[\]{}()!\\]/.test(path)) throw new Error(`Linux Sandbox cannot safely protect a path containing pattern characters: ${path}`);
+            // A missing commondir must remain absent: a mount placeholder would
+            // make Git interpret an ordinary checkout as a broken linked worktree.
+            for (const name of ["config", "config.lock", "config.worktree", "config.worktree.lock", "hooks", ...(linked ? ["commondir", "gitdir"] : [])]) denied.add(join(path, name));
+        };
+        addControls(root);
+        const worktrees = join(root, "worktrees");
+        const info = await lstat(worktrees).catch((error: unknown) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+            throw error;
+        });
+        if (!info) return;
+        if (!info.isDirectory()) {denied.add(worktrees); return;}
+        for await (const entry of await opendir(worktrees)) {
+            entries++; checkBudget();
+            const path = join(worktrees, entry.name);
+            if (entry.isDirectory()) addControls(path, true);
+            else denied.add(path);
+        }
+    };
     while (pending.length) {
         checkBudget();
         const directory = pending.pop();
@@ -83,11 +105,19 @@ export async function linuxFilesystemPolicy(config: SandboxRuntimeConfig, signal
         seen.add(directory);
         // Explicitly denied subtrees need no inspection and may be unreadable.
         if (config.filesystem.denyWrite.some(path => isPathInside(path, directory))) continue;
+        if (basename(directory) === ".git") {await protectGit(directory); continue;}
         for await (const entry of await opendir(directory)) {
             entries++;
             checkBudget();
             const path = join(directory, entry.name);
-            if (entry.name === ".git" || entry.name === ".hicode" || entry.name.startsWith(".env")) {
+            if (entry.name === ".git") {
+                if (/[*?\[\]{}()!\\]/.test(path)) throw new Error(`Linux Sandbox cannot safely protect a path containing pattern characters: ${path}`);
+                if (entry.isDirectory()) {
+                    await protectGit(path);
+                } else denied.add(path);
+                continue;
+            }
+            if (entry.name === ".hicode" || entry.name.startsWith(".env")) {
                 // The manager also filters globs in generated rules. Literal names
                 // containing pattern characters must not silently lose protection.
                 if (/[*?\[\]{}()!\\]/.test(path)) throw new Error(`Linux Sandbox cannot safely protect a path containing pattern characters: ${path}`);

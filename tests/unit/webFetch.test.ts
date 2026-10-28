@@ -34,7 +34,7 @@ describe("web_fetch boundaries", () => {
     failures.clear("https://example.com/search?q=private-one");
     expect(failures.record("https://other.example.com/search", 1)).toContain("service has 1 failed retrieval(s)");
   });
-  test.each(["reuse", "refresh", "permission", "query", "no-store", "expired", "evicted", "octet", "binary", "invalid-utf8", "failure", "http-error", "pinned-private", "pinned-http", "pinned-denied"])("session source reuse and recovery: %s", async mode => {
+  test.each(["open", "open-auto", "open-ask", "open-deny", "reuse", "refresh", "permission", "query", "no-store", "expired", "evicted", "octet", "binary", "invalid-utf8", "failure", "http-error", "pinned-private", "pinned-http", "pinned-denied"])("session source reuse and recovery: %s", async mode => {
     const child = Bun.spawn([process.execPath, fileURLToPath(new URL("../fixtures/webFetchReuse.ts", import.meta.url)), mode],
       {env: testChildEnvironment.base, stdout: "pipe", stderr: "pipe"});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);

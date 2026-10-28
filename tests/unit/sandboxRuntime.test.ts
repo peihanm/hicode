@@ -69,7 +69,8 @@ describe("Sandbox Runtime lease", () => {
             try {
                 await runtime.wrapCommand("test", project, new AbortController().signal, {writableRoots: [root]});
                 expect(configs[0]?.filesystem?.allowWrite).toContain(root);
-                expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, ".git"));
+                expect(configs[0]?.filesystem?.denyWrite).not.toContain(join(project, ".git"));
+                if (process.platform !== "linux") expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, ".git/config"));
                 expect(configs[0]?.filesystem?.denyWrite).toContain(join(project, "secret"));
                 expect(configs[0]?.filesystem?.denyRead).toContain(join(project, "secret"));
             } finally {await runtime.close();}

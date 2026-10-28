@@ -5,6 +5,9 @@ import {webFetchFailure} from "../../src/tools/webFetch/errors.js";
 import {contentText} from "../../src/images/content.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
+import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
+import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
+import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
 const mode = process.argv[2];
 let calls = 0;
@@ -18,6 +21,23 @@ mock.module("../../src/tools/webFetch/network.js", () => ({...network, fetchPubl
 }}));
 const {executeToolResult} = await import("../helpers/executeTool.js");
 await withTempProject(async cwd => {
+    if (mode?.startsWith("open")) {
+        let prompts = 0, reviews = 0;
+        const sandbox = {...createDisabledSandboxRuntime(), status: {kind: "ready" as const, platform: "macos" as const, networkMode: "open" as const, warnings: []}};
+        const ctx = createTestContext(cwd, {permissionMode: mode === "open-auto" ? "auto-review" : "ask",
+            shellRunner: createShellRunner(sandbox, testChildEnvironment),
+            canUseTool: async () => {prompts++; return {behavior: "deny", message: "fixture"};}});
+        ctx.approvalReviewer = async () => {reviews++; return {decision: "deny", risk: "low", reason: "fixture"};};
+        if (mode === "open-ask") ctx.permissionRules.ask.push({toolName: "web_fetch", source: "host"});
+        if (mode === "open-deny") ctx.permissionRules.deny.push({toolName: "web_fetch", source: "host"});
+        const result = await executeToolResult("web_fetch", JSON.stringify({url: "https://docs.example.com/source"}), ctx, "open-fetch");
+        const allowed = mode === "open" || mode === "open-auto";
+        assert.equal(result.outcome, allowed ? "ok" : "denied");
+        assert.equal(calls, allowed ? 1 : 0);
+        assert.equal(prompts, mode === "open-ask" ? 1 : 0);
+        assert.equal(reviews, 0);
+        return;
+    }
     const ctx = createTestContext(cwd);
     const url = "https://docs.example.com/source?version=1";
     const invoke = (args = {}, context = ctx) => executeToolResult("web_fetch", JSON.stringify({url, ...args}), context, `fetch-${calls}`);

@@ -5,7 +5,7 @@ import type {PermissionDecision} from "../../permissions/index.js";
 import {generateRuleForTool} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
-import {DialogIndicator, DialogItem} from "./DialogFrame.js";
+import {DialogIndicator, DialogItem, PermissionModeHint} from "./DialogFrame.js";
 
 interface ConfirmOption {
     label: string;
@@ -136,6 +136,7 @@ export function ConfirmDialog({
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>↑↓ select · Enter confirm · Esc cancel</Text>
             </Box>
+            <PermissionModeHint />
         </Box>
     );
 }

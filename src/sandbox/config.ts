@@ -15,7 +15,11 @@ export function linuxSandboxTools(directory: string | undefined): Pick<SandboxRu
 
 // Keep a final filename wildcard: ASRT strips a trailing /** before invoking
 // Seatbelt, which otherwise turns nested-directory protection into an exact match.
-const MANDATORY_DENY_WRITE = [".git", ".hicode", ".env", ".env*", "**/.git", "**/.git/**/*", "**/.hicode", "**/.hicode/**/*", "**/.env*"];
+const MANDATORY_DENY_WRITE = [
+    ...[".git", "**/.git", ".git/worktrees/*", "**/.git/worktrees/*"].flatMap(root =>
+        ["config", "config.lock", "config.worktree", "config.worktree.lock", "hooks", "hooks/**/*", "commondir", "gitdir"].map(name => `${root}/${name}`)),
+    ".hicode", ".env", ".env*", "**/.hicode", "**/.hicode/**/*", "**/.env*",
+];
 
 function resolveSandboxPath(cwd: string, configuredPath: string): string {
     if (configuredPath === "~") return homedir();
@@ -45,7 +49,7 @@ export function createSandboxRuntimeConfig(
                 ...settings.filesystem.denyRead,
                 // Linux mount masks accept literal paths, not Seatbelt-style globs.
                 // Existing nested protected paths are discovered before each command.
-                ...(process.platform === "linux" ? [".git", ".hicode", ".env"] : MANDATORY_DENY_WRITE),
+                ...(process.platform === "linux" ? [".hicode", ".env"] : MANDATORY_DENY_WRITE),
             ]),
         },
         network: {

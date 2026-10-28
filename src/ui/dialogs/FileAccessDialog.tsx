@@ -3,7 +3,7 @@ import SelectInput from "ink-select-input";
 import type {PermissionDecision} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
-import {DialogIndicator, DialogItem} from "./DialogFrame.js";
+import {DialogIndicator, DialogItem, PermissionModeHint} from "./DialogFrame.js";
 
 interface FileAccessOption {
     label: string;
@@ -40,11 +40,11 @@ export function FileAccessDialog({
             ? "Edit"
             : "Write";
     const options: FileAccessOption[] = [
-        {label: "1. Allow once", value: "once"},
         {
-            label: "2. Allow this directory for this session",
+            label: "1. Allow this directory for this session",
             value: "session",
         },
+        {label: "2. Allow once", value: "once"},
         {label: "3. Deny", value: "deny"},
     ];
 
@@ -79,6 +79,7 @@ export function FileAccessDialog({
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>↑↓ select · Enter confirm · Esc cancel</Text>
             </Box>
+            <PermissionModeHint />
         </Box>
     );
 }

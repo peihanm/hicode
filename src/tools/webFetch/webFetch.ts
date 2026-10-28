@@ -70,7 +70,7 @@ function permissionContent(url: string): string {
 
 export const webFetchTool: Tool<typeof inputSchema> = {
     name: "web_fetch",
-    description: "Fetch a supplied or reliably known public HTTP(S) page/document/text API using GET and convert HTML to readable text. This is not a search engine or browser. No login state, cookies, localhost/private networks or binary downloads. Interactive pages require an actually provided browser capability; do not invent one. Domain access follows runtime approval; cross-domain redirects require a separate request. Read long saved results with read_file using line-based offset/limit.",
+    description: "Fetch a supplied or reliably known public HTTP(S) page/document/text API using GET and convert HTML to readable text. This is not a search engine or browser. No login state, cookies, localhost/private networks or binary downloads. Interactive pages require an actually provided browser capability; do not invent one. Open sandbox network mode permits public GETs without domain approval; restricted or unavailable mode uses domain approval. Explicit ask/deny rules still apply. Cross-domain redirects require a separate request. Read long saved results with read_file using line-based offset/limit.",
     parameters: inputSchema,
     maxResultSizeChars: Infinity,
     isReadOnly: () => true,
@@ -79,6 +79,8 @@ export const webFetchTool: Tool<typeof inputSchema> = {
         try {
             const parsed = parsePublicWebUrl(ctx.webSources.resolveUrl(url));
             if (resolved_addresses) validatePinnedAddresses(parsed, resolved_addresses);
+            const sandbox = ctx.shellRunner.sandboxStatus;
+            if (sandbox.kind === "ready" && sandbox.networkMode === "open") return {behavior: "allow"};
             return {
                 behavior: "ask",
                 message: `Network access required to read public content from ${parsed.hostname} .`,

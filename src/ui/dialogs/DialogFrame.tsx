@@ -5,6 +5,10 @@ import {COLORS} from "../theme.js";
 
 type DialogTone = "accent" | "warning" | "error";
 
+export function PermissionModeHint() {
+    return <Text color={COLORS.dim}>Adjust approvals with /permissions after this dialog.{"\n"}Agent review: AI approval · Full Access: no access prompts</Text>;
+}
+
 function toneColor(tone: DialogTone): string {
     if (tone === "warning") return COLORS.warning;
     if (tone === "error") return COLORS.error;

@@ -7,7 +7,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import type {SandboxRuntimeConfig} from "@anthropic-ai/sandbox-runtime";
 
 function config(root: string): SandboxRuntimeConfig {
-    return {filesystem: {allowWrite: [root], denyRead: [], denyWrite: [join(root, ".git"), join(root, ".hicode"), join(root, ".env")]},
+    return {filesystem: {allowWrite: [root], denyRead: [], denyWrite: [join(root, ".hicode"), join(root, ".env")]},
         network: {allowedDomains: [], deniedDomains: []}};
 }
 
@@ -22,7 +22,7 @@ test("Linux protects all project grants without scanning cache or shared temp gr
         input.filesystem.allowWrite.push(extra, cache, tmpdir());
         const result = await linuxFilesystemPolicy(input, AbortSignal.timeout(5000), [root, extra, extra, tmpdir()]);
         expect(result.filesystem.denyWrite).toEqual(expect.arrayContaining([
-            join(extra, ".env.production"), join(extra, ".env"), join(extra, ".git"), join(extra, ".hicode"),
+            join(extra, ".env.production"), join(extra, ".env"), join(extra, ".hicode"),
         ]));
         expect(result.filesystem.denyWrite).not.toContain(join(cache, ".env*"));
         expect(result.filesystem.denyWrite).not.toContain(join(await realpath(tmpdir()), ".env"));
@@ -42,9 +42,9 @@ test("Linux discovers nested protected paths, hidden directories and aliases on 
         const base = config(root);
         const first = await linuxFilesystemPolicy(base, AbortSignal.timeout(5000), [root]);
         expect(first.filesystem.denyWrite).toEqual(expect.arrayContaining([
-            join(nested, ".git"), join(nested, ".hicode"), join(nested, ".env.production"),
+            join(nested, ".git/config"), join(nested, ".git/hooks"), join(nested, ".hicode"), join(nested, ".env.production"),
         ]));
-        expect(base.filesystem.denyWrite).toHaveLength(3);
+        expect(base.filesystem.denyWrite).toHaveLength(2);
         await writeFile(join(nested, ".env.next"), "new");
         const second = await linuxFilesystemPolicy(base, AbortSignal.timeout(5000), [root]);
         expect(second.filesystem.denyWrite).toContain(join(nested, ".env.next"));
@@ -84,5 +84,24 @@ test("Linux rejects configured glob denies and responds to cancellation", async 
         await expect(linuxFilesystemPolicy(config(root), AbortSignal.abort(), [root])).rejects.toThrow();
         await writeFile(join(root, ".env*"), "fixture");
         await expect(linuxFilesystemPolicy(config(root), AbortSignal.timeout(5000), [root])).rejects.toThrow("pattern characters");
+    });
+});
+
+test("Linux metadata grants keep Git controls protected without blocking index and objects", async () => {
+    await withTempProject(async root => {
+        const git = join(await realpath(root), ".git"), worktree = join(git, "worktrees", "linked");
+        await mkdir(worktree, {recursive: true});
+        const result = await linuxFilesystemPolicy(config(git), AbortSignal.timeout(5000), [git]);
+        expect(result.filesystem.denyWrite).toEqual(expect.arrayContaining([
+            join(git, "config"), join(git, "hooks"), join(worktree, "config.worktree"), join(worktree, "gitdir"), join(worktree, "commondir"),
+        ]));
+        expect(result.filesystem.denyWrite).not.toContain(git);
+        expect(result.filesystem.denyWrite).not.toContain(join(worktree, "index"));
+        expect(result.filesystem.denyWrite).not.toContain(join(git, "objects"));
+        const linked = join(await realpath(root), "linked"); await mkdir(linked);
+        await writeFile(join(linked, ".git"), `gitdir: ${worktree}\n`);
+        const pointerPolicy = await linuxFilesystemPolicy(config(linked), AbortSignal.timeout(5000), [linked]);
+        expect(pointerPolicy.filesystem.denyWrite).toContain(join(linked, ".git"));
+        expect(pointerPolicy.filesystem.allowWrite).toEqual([linked]);
     });
 });

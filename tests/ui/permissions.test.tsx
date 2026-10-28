@@ -63,6 +63,7 @@ describe("permission confirmation UI", () => {
     await flush();
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("◆ PERMISSION REQUIRED");
+    expect(frame).toContain("/permissions");
     expect(frame).toContain("REQUEST");
     expect(frame).toContain("ACTION");
     expect(frame).toContain("bash requires approval");
@@ -96,6 +97,7 @@ describe("permission confirmation UI", () => {
     await flush();
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("◆ NETWORK ACCESS");
+    expect(frame).toContain("/permissions");
     expect(frame).toContain("Connect to");
     expect(frame).toContain("registry.npmjs.org");
     expect(frame).not.toContain("脱离 OS Sandbox");
@@ -179,6 +181,7 @@ describe("permission confirmation UI", () => {
     await flush();
     const compact = instance.lastFrame() ?? "";
     expect(compact).toContain("◆ RUN OUTSIDE SANDBOX");
+    expect(compact).toContain("/permissions");
     expect(compact).toContain("PURPOSE");
     expect(compact).toContain("Verify local service");
     expect(compact).toContain("COMMAND");
@@ -389,8 +392,9 @@ describe("permission confirmation UI", () => {
   });
 
   for (const [selection, expected] of [
-    ["1", {behavior: "allow", directoryScope: "once"}],
-    ["2", {behavior: "allow", directoryScope: "session"}],
+    ["1", {behavior: "allow", directoryScope: "session"}],
+    ["\r", {behavior: "allow", directoryScope: "session"}],
+    ["2", {behavior: "allow", directoryScope: "once"}],
     ["3", {behavior: "deny", message: "User denied directory access"}],
   ] satisfies Array<[string, PermissionDecision]>) {
     test(`file access choice ${selection} resolves without a persistent grant`, async () => {
@@ -418,9 +422,10 @@ describe("permission confirmation UI", () => {
       await flush();
       const frame = instance.lastFrame() ?? "";
       expect(frame).toContain("◆ FILE ACCESS");
+      expect(frame).toContain("/permissions");
       expect(frame).toContain("/tmp/a.ts");
       expect(frame).toContain("DIRECTORY");
-      expect(frame).toContain("2. Allow this directory for this session");
+      expect(frame).toContain("1. Allow this directory for this session");
       expect(frame).toContain("3. Deny");
       expect(frame).not.toContain("for this project");
       expect(frame).not.toContain("4.");

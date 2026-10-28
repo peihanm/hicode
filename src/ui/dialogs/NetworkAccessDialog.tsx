@@ -1,6 +1,7 @@
 import {useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import type {ConfirmReq} from "../turn/types.js";
+import {PermissionModeHint} from "./DialogFrame.js";
 import {COLORS} from "../theme.js";
 import {usePanelLayout} from "../panelLayout.js";
 
@@ -80,6 +81,7 @@ export function NetworkAccessDialog({
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>↑↓ select · enter confirm · esc cancel</Text>
             </Box>
+            <PermissionModeHint />
         </Box>
     );
 }
