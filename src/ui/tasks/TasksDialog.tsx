@@ -1,4 +1,4 @@
-import {agentRunTiming} from "../../tasks/timing.js";
+import {agentRunTiming} from "../../tasks/format.js";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {Box, Text, useInput} from "ink";
 import type {TaskSessionLike, TaskSnapshot} from "../../tasks/types.js";

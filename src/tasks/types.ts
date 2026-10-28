@@ -1,5 +1,5 @@
 import type {ShellResultReceipt} from "../tools/bash/receipt.js";
-import type {ChildShellSession} from "./childAccess.js";
+import type {ChildShellSession} from "./session.js";
 import type {Todo} from "../session/todo.js";
 import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
@@ -203,8 +203,6 @@ export interface TaskSessionLike {
     followup(id: string, message: string): Promise<AgentFollowupResult>;
 
     interrupt(id: string): Promise<AgentTaskSnapshot>;
-
-    hasRunning(): boolean;
 
     getRunningSummary(): RunningTaskSummary;
 

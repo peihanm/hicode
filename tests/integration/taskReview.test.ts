@@ -2,7 +2,7 @@ import {createTaskJournal} from "../../src/tasks/journal.js";
 import {callOpenAICompatible} from "../../src/llm/providers/openAICompatible.js";
 import {createLLMCaller} from "../../src/llm/index.js";
 import {expect, test, spyOn} from "bun:test";
-import {createTaskReviewRunner, type TaskReviewRunner} from "../../src/tasks/review.js";
+import {createTaskReviewRunner, type TaskReviewRunner} from "../../src/tasks/review/task.js";
 import type {Message} from "../../src/llm/types.js";
 import type {StartTaskReviewInput, TaskReviewSnapshot} from "../../src/tasks/types.js";
 import {TaskReviewProgress} from "../../src/agent/taskReview.js";
@@ -90,9 +90,11 @@ test("the 90-second review deadline cancels only the reviewer and the main Agent
             const signal = await started.promise;
             expect(timeout).toHaveBeenCalledWith(90_000);
             expect(signal.aborted).toBe(false);
+            expect(runtime.hasRunning()).toBe(true);
             deadline.abort(new DOMException("Review deadline elapsed", "TimeoutError"));
             await published.promise;
             expect(signal.aborted).toBe(true);
+            expect(runtime.hasRunning()).toBe(false);
             expect(ctx.signal.aborted).toBe(false);
             expect((await session.list()).find(task => task.kind === "review")).toMatchObject({
                 status: "cancelled", outputIssue: expect.stringContaining("the main task continues"),

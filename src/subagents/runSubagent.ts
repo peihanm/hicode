@@ -3,7 +3,7 @@ import {createSessionPersistence} from "../session/storage.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {childTaskTool} from "../tools/task/task.js";
 import {createToolCatalog} from "../tools/catalog.js";
-import {isParentTaskSession} from "../tasks/childAccess.js";
+import {isParentTaskSession} from "../tasks/session.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
 import {ensureSessionIdentity} from "../persistence/projectState.js";
 import {finishPromptLogRun} from "../llm/promptLog.js";

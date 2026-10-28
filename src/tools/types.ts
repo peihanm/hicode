@@ -1,6 +1,6 @@
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import type {WebSources, WebFailures} from "./webFetch/state.js";
-import type {ChildTaskAccess} from "../tasks/childAccess.js";
+import type {ChildTaskAccess} from "../tasks/session.js";
 import type {TaskJoin} from "../tasks/taskJoin.js";
 import type {AgentMessaging} from "../runtime/agentMessaging.js";
 import type {ContextUsageTracker} from "../context/usage.js";

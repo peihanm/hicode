@@ -126,7 +126,7 @@ test("interrupt preserves child services for followup; permanent Agent stop clos
     const parent = createTestContext(cwd);
     const entered = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
     let runs = 0;
-    let childTasks: import("../../src/tasks/childAccess.js").ChildTaskAccess | undefined;
+    let childTasks: import("../../src/tasks/session.js").ChildTaskAccess | undefined;
     let serviceId = "";
     const runner: AgentRunner = async (_input, _history, _onEvent, ctx) => {
         if (!ctx.tasks) throw new Error("Missing child tasks");

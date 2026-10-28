@@ -1,11 +1,11 @@
-import {createTurnAbortController} from "../runtime/abort.js";
-import {RuntimeMessageQueue} from "../runtime/messageQueue.js";
-import type {AgentEvent} from "../agent/types.js";
-import type {CreateSubagentThread} from "../subagents/types.js";
-import type {SubagentRegistry} from "../subagents/registry.js";
-import type {ToolContext} from "../tools/types.js";
-import type {ManagedAgentTask} from "./managed.js";
-import type {StartAgentTaskInput, TaskSessionBinding, AgentTaskStatus,} from "./types.js";
+import {createTurnAbortController} from "../../runtime/abort.js";
+import {RuntimeMessageQueue} from "../../runtime/messageQueue.js";
+import type {AgentEvent} from "../../agent/types.js";
+import type {CreateSubagentThread} from "../../subagents/types.js";
+import type {SubagentRegistry} from "../../subagents/registry.js";
+import type {ToolContext} from "../../tools/types.js";
+import type {ManagedAgentTask} from "../managed.js";
+import type {StartAgentTaskInput, TaskSessionBinding, AgentTaskStatus,} from "../types.js";
 
 export function validateAgentTaskInput(
     input: StartAgentTaskInput,
@@ -57,6 +57,7 @@ export function createAgentTask(
     }, input.request);
     const startedAt = new Date().toISOString();
     task = {
+        kind: "agent",
         id,
         owner: {
             sessionId: binding.sessionId,

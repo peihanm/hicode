@@ -1,5 +1,5 @@
-import type {MemoryRuntimeLike} from "../memory/runtime.js";
-import type {ManagedMemoryTask} from "./managed.js";
+import type {MemoryRuntimeLike} from "../../memory/runtime.js";
+import type {ManagedMemoryTask} from "../managed.js";
 
 /** Execute an already registered maintenance task without acquiring Root ownership. */
 export async function runMemoryTask(

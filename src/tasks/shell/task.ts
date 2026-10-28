@@ -1,9 +1,10 @@
-import {noMatchSearch, shellOutcome} from "../tools/bash/result.js";
-import {createTurnAbortController, normalizeTurnAbortReason} from "../runtime/abort.js";
-import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
-import type {StartShellTaskInput, TaskSessionBinding, TaskStatus,} from "./types.js";
-import {type ManagedShellTask, readOutputPreview,} from "./managed.js";
-import {isExpectedShellShutdown} from "./notifications.js";
+import {noMatchSearch, shellOutcome} from "../../tools/bash/result.js";
+import {createTurnAbortController, normalizeTurnAbortReason} from "../../runtime/abort.js";
+import type {ShellRunnerLike} from "../../tools/bash/shellRunner.js";
+import type {StartShellTaskInput, TaskSessionBinding, TaskStatus,} from "../types.js";
+import type {ManagedShellTask} from "../managed.js";
+import {readOutputPreview} from "./output.js";
+import {isExpectedShellShutdown} from "../notifications.js";
 
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
@@ -14,6 +15,7 @@ export async function createShellTask(
 ): Promise<ManagedShellTask> {
     const outputPath = await binding.toolResultStore.createCapture();
     return {
+        kind: "shell",
         id,
         phase: "queued",
         createdTick: performance.now(),

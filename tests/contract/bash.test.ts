@@ -131,7 +131,7 @@ describe("bash tool contract", () => {
         const pending = executeToolResult("bash", JSON.stringify({command: "sleep 30", yield_time_ms: 1000}), {...ctx, signal: controller.signal}, "cancel-yield");
         await new Promise(resolve => setTimeout(resolve, 40)); controller.abort("user-cancel");
         expect((await pending).outcome).toBe("interrupted");
-        expect(tasks.hasRunning()).toBe(false);
+        expect(runtime.hasRunning()).toBe(false);
         const invalid = await executeToolResult("bash", JSON.stringify({command: "echo bad", run_in_background: true, yield_time_ms: 100}), ctx, "bad-yield");
         expect(invalid.outcome).toBe("failed");
       } finally {await runtime.close();}

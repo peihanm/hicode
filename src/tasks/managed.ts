@@ -1,15 +1,12 @@
 import type {Todo} from "../session/todo.js";
 import type {MemoryTaskSnapshot, TaskReviewSnapshot} from "./types.js";
-import {type FileHandle, open} from "node:fs/promises";
 import type {StopReason} from "../agent/types.js";
-import {selectUtf8Range} from "../toolResults/utf8.js";
+import {readOutputPreview} from "./shell/output.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {ShellExecutionResult, ShellTermination} from "../tools/bash/process.js";
 import type {SubagentThread} from "../subagents/types.js";
 import type {RuntimeMessageQueue} from "../runtime/messageQueue.js";
 import type {AgentTaskSnapshot, ShellTaskSnapshot, TaskSnapshot, TaskStatus, AgentTaskStatus,} from "./types.js";
-
-const OUTPUT_PREVIEW_BYTES = 20_000;
 
 interface ManagedTaskBase<Status extends string = TaskStatus> {
     id: string;
@@ -17,7 +14,6 @@ interface ManagedTaskBase<Status extends string = TaskStatus> {
     status: Status;
     startedAt: string;
     completedAt?: string;
-    store: ToolResultStore;
     controller: AbortController;
     outputIssue?: string;
     notificationPending: boolean;
@@ -26,6 +22,8 @@ interface ManagedTaskBase<Status extends string = TaskStatus> {
 }
 
 export interface ManagedShellTask extends ManagedTaskBase {
+    kind: "shell";
+    store: ToolResultStore;
     phase: ShellTaskSnapshot["phase"];
     createdTick: number;
     acquiredTick?: number;
@@ -45,6 +43,8 @@ export interface ManagedShellTask extends ManagedTaskBase {
 }
 
 export interface ManagedAgentTask extends ManagedTaskBase<AgentTaskStatus> {
+    kind: "agent";
+    store: ToolResultStore;
     interruptRequested: boolean;
     stopRequested: boolean;
     cwd: string;
@@ -79,7 +79,7 @@ export interface ManagedReviewTask extends Omit<ManagedTaskBase, "owner"> {
     resultPreview?: string;
 }
 export type ManagedTask = ManagedShellTask | ManagedAgentTask | ManagedMemoryTask | ManagedReviewTask;
-export function isReviewTask(task: ManagedTask): task is ManagedReviewTask {return "kind" in task && task.kind === "review";}
+export function isReviewTask(task: ManagedTask): task is ManagedReviewTask {return task.kind === "review";}
 export function snapshotReview(task: ManagedReviewTask): TaskReviewSnapshot {
     return {id: task.id, kind: "review", owner: task.owner, status: task.status, startedAt: task.startedAt,
         fromRound: task.fromRound, toRound: task.toRound,
@@ -87,59 +87,19 @@ export function snapshotReview(task: ManagedReviewTask): TaskReviewSnapshot {
         ...(task.resultPreview ? {resultPreview: task.resultPreview} : {}),
         ...(task.outputIssue ? {outputIssue: task.outputIssue} : {})};
 }
-export function isMemoryTask(task:ManagedTask):task is ManagedMemoryTask{return "kind" in task && task.kind==="memory";}
-export function isAgentTask(task:ManagedTask):task is ManagedAgentTask{return "thread" in task;}
+export function isMemoryTask(task:ManagedTask):task is ManagedMemoryTask{return task.kind === "memory";}
+export function isAgentTask(task:ManagedTask):task is ManagedAgentTask{return task.kind === "agent";}
 export function snapshotMemory(task:ManagedMemoryTask):MemoryTaskSnapshot {
  return {id:task.id,kind:"memory",owner:task.owner,status:task.status,startedAt:task.startedAt,...(task.completedAt?{completedAt:task.completedAt}:{}),...(task.outputIssue?{outputIssue:task.outputIssue}:{}),...(task.resultPreview?{resultPreview:task.resultPreview}:{})};
 }
 
 export function isShellTask(task: ManagedTask): task is ManagedShellTask {
-    return "command" in task;
+    return task.kind === "shell";
 }
 
 export function appendTaskIssue(task: ManagedTask, issue: string): void {
     if (task.outputIssue?.includes(issue)) return;
     task.outputIssue = [task.outputIssue, issue].filter(Boolean).join(";");
-}
-
-export async function readOutputPreview(path: string): Promise<string> {
-    let handle: FileHandle | undefined;
-    try {
-        handle = await open(path, "r");
-        const {size} = await handle.stat();
-        const start = Math.max(0, size - OUTPUT_PREVIEW_BYTES - 4);
-        const buffer = Buffer.alloc(size - start);
-        const {bytesRead} = await handle.read(buffer, 0, buffer.length, start);
-        const selected = selectUtf8Range(buffer.subarray(0, bytesRead), bytesRead);
-        const output = selected.content.toString("utf8");
-        return start > 0 ? `[First ${start} bytes omitted]\n ${output}` : output;
-    } catch {
-        return "";
-    } finally {
-        await handle?.close().catch(() => {});
-    }
-}
-
-export async function readShellOutputChunk(path: string, afterBytes: number): Promise<{nextOffset: number; content: string} | undefined> {
-    let handle: FileHandle | undefined;
-    try {
-        handle = await open(path, "r");
-        const {size} = await handle.stat();
-        if (afterBytes > size) throw new Error("Shell output capture shrank during wait");
-        const start = Math.max(afterBytes, size - OUTPUT_PREVIEW_BYTES);
-        const buffer = Buffer.alloc(size - start);
-        const {bytesRead} = await handle.read(buffer, 0, buffer.length, start);
-        const selected = selectUtf8Range(buffer.subarray(0, bytesRead), bytesRead);
-        const omitted = start + selected.startAdjustment - afterBytes;
-        return {
-            nextOffset: start + selected.startAdjustment + selected.content.length,
-            content: (omitted > 0 ? `[First ${omitted} new bytes omitted]\n` : "") + selected.content.toString("utf8"),
-        };
-    } catch (error) {
-        // Completion promotes and removes the live capture before publishing its final snapshot.
-        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
-        throw error;
-    } finally {await handle?.close().catch(() => {});}
 }
 
 export async function snapshotShell(

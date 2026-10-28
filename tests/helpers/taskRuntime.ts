@@ -1,4 +1,4 @@
-import type {TaskReviewRunner} from "../../src/tasks/review.js";
+import type {TaskReviewRunner} from "../../src/tasks/review/task.js";
 import type {MemoryRuntimeLike} from "../../src/memory/runtime.js";
 import {createTestMemoryRuntime} from "./memory.js";
 import type {TaskRuntimeLike} from "../../src/tasks/index.js";

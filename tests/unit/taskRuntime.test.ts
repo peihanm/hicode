@@ -438,7 +438,7 @@ test("close waits for a Shell startup and its cancellation cleanup", async () =>
     await executing; await Promise.resolve();
     expect(closed).toBe(false);
     finish(); await pending; await close;
-    expect(closed).toBe(true); expect(session.hasRunning()).toBe(false);
+    expect(closed).toBe(true); expect(runtime.hasRunning()).toBe(false);
 }));
 
 test("Shell history eviction preserves idle Agent threads and follow-up", async () => withTempProject(async cwd => {

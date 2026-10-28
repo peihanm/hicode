@@ -8,7 +8,7 @@ import {executeToolResult} from "../helpers/executeTool.js";
 import {createSubagentThreadForTest} from "../helpers/subagent.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import type {TaskSessionLike, TaskEventEnvelope} from "../../src/tasks/types.js";
-import {agentRunTiming} from "../../src/tasks/timing.js";
+import {agentRunTiming} from "../../src/tasks/format.js";
 import {decodeTaskJournalEntry} from "../../src/tasks/codec.js";
 import {describeToolCall} from "../../src/tools/presentation.js";
 

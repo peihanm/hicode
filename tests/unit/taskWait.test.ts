@@ -1,7 +1,7 @@
 import {expect, spyOn, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {readShellOutputChunk} from "../../src/tasks/managed.js";
+import {readOutputPreview, readShellOutputChunk} from "../../src/tasks/shell/output.js";
 import {waitForTaskActivity} from "../../src/tasks/wait.js";
 import type {ShellTaskSnapshot, TaskEventEnvelope} from "../../src/tasks/types.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -85,5 +85,22 @@ test("capture cursor distinguishes repeated output and preserves split UTF-8 wit
         expect(bounded?.nextOffset).toBe(50_000);
         await expect(readShellOutputChunk(path, 50_001)).rejects.toThrow("shrank");
         expect(await readShellOutputChunk(join(cwd, "missing"), 0)).toBeUndefined();
+    });
+});
+
+test("preview and incremental output preserve their own bounds and error semantics", async () => {
+    await withTempProject(async cwd => {
+        const path = join(cwd, "capture");
+        await writeFile(path, Buffer.concat([Buffer.from("你".repeat(10_000)), Buffer.from([0xe4])]));
+        expect(await readOutputPreview(path)).toBe("[First 9997 bytes omitted]\n " + "你".repeat(6667));
+        expect(await readShellOutputChunk(path, 0)).toEqual({
+            nextOffset: 30_000,
+            content: "[First 10002 new bytes omitted]\n" + "你".repeat(6666),
+        });
+        expect(await readOutputPreview(join(cwd, "missing"))).toBe("");
+        expect(await readShellOutputChunk(join(cwd, "missing"), 0)).toBeUndefined();
+        const invalidPath = join(path, "child");
+        expect(await readOutputPreview(invalidPath)).toBe("");
+        await expect(readShellOutputChunk(invalidPath, 0)).rejects.toMatchObject({code: "ENOTDIR"});
     });
 });

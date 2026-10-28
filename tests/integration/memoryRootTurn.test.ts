@@ -18,7 +18,7 @@ for(const mode of ["success","save-failed","host-no-background","ignore"] as con
   onEvent(){},onHookResult(){},onLifecycleIssue(){},getSnapshotState:()=>({todos:[],permissionMode:"ask",uiEvents:[]})});
  if(mode==="save-failed")await expect(run).rejects.toThrow("disk-failed");else await run;
  if(mode==="success"){
-  const deadline=Date.now()+2000;while(session.taskSession.hasRunning()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));
+  const deadline=Date.now()+2000;while((await session.taskSession.list()).some(task=>task.status==="running")&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));
   expect((await session.taskSession.list())[0]?.status).toBe("completed");expect(calls).toBe(1);expect(new MemoryPublicationStore(storage,cwd).snapshot().frames[0]?.status).toBe("no_output");
  }else{expect(calls).toBe(0);expect(await session.taskSession.list()).toHaveLength(0);}
  await resources.close();

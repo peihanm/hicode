@@ -15,7 +15,7 @@ import type {SubagentRegistry} from "../subagents/registry.js";
 import {createToolResultStore} from "../toolResults/index.js";
 import {createMemoryAwareAgentRunner, type MemoryRuntimeLike,} from "../memory/index.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
-import {createTaskReviewRunner, type TaskReviewRunner} from "../tasks/review.js";
+import {createTaskReviewRunner, type TaskReviewRunner} from "../tasks/review/task.js";
 
 export interface AgentRuntime {
     reviewApproval: ApprovalReviewer;

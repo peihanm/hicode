@@ -1,5 +1,5 @@
 import {shellResultUI} from "../bash/receipt.js";
-import {formatTaskHeader, formatTaskSummary, isTaskId} from "../../tasks/format.js";
+import {agentRunTiming, formatTaskHeader, formatTaskSummary, isTaskId} from "../../tasks/format.js";
 import {taskLookupFailure} from "./recovery.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import {z} from "zod";
@@ -7,9 +7,8 @@ import type {ShellTaskSnapshot, TaskSnapshot} from "../../tasks/index.js";
 import type {Tool} from "../types.js";
 import {checkTaskStopPermission} from "./stopPermission.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../agent/inputChannel.js";
-import {agentRunTiming} from "../../tasks/timing.js";
 import {DEFAULT_TASK_WAIT_MS, MAX_TASK_WAIT_MS, waitForTaskActivity} from "../../tasks/wait.js";
-import {isParentTaskSession} from "../../tasks/childAccess.js";
+import {isParentTaskSession} from "../../tasks/session.js";
 import {taskNotificationId} from "../../tasks/notifications.js";
 
 const inputSchema = z.object({

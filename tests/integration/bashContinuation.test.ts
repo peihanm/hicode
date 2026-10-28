@@ -318,7 +318,7 @@ test("explicit finite background work survives a normal reply and delivers its c
         const unsubscribe = session.taskSession.subscribe(event => {if (event.type === "task_finished") finished();});
         try {
             expect((await run("Start this build in the background; report its result later.")).reply).toContain("still running");
-            expect(session.taskSession.hasRunning()).toBe(true);
+            expect((await session.taskSession.list()).filter(task => task.status === "running")).toHaveLength(1);
             expect(fake.calls).toHaveLength(2);
             await writeFile(join(cwd, "release"), "go");
             await completion;
@@ -349,7 +349,7 @@ test("SDK finite continuation is available while services stay disabled; Thread.
             expect(pid).toBeGreaterThan(0);
             await thread.close();
             expect(() => process.kill(pid, 0)).toThrow();
-            expect(tasks.hasRunning()).toBe(false);
+            expect(resources.taskRuntime.hasRunning()).toBe(false);
         } finally {await thread.close(); await resources.close();}
     });
 });
@@ -407,7 +407,7 @@ test("failed handoff terminates its process instead of leaking a running Task", 
                 signal: ctx.signal, onHandoff() {throw new Error("fixture handoff failure");}})).rejects.toThrow("fixture handoff failure");
             const pid = Number(await readFile(join(cwd, "failed-pid"), "utf8"));
             expect(() => process.kill(pid, 0)).toThrow();
-            expect(tasks.hasRunning()).toBe(false);
+            expect(resources.taskRuntime.hasRunning()).toBe(false);
         } finally {await resources.close();}
     });
 });
@@ -424,7 +424,7 @@ test("failed Task publication cleans the process and exposes no unregistered tas
             const pid = Number(await readFile(join(cwd, "publication-pid"), "utf8"));
             expect(() => process.kill(pid, 0)).toThrow();
             expect(await tasks.list()).toEqual([]);
-            expect(tasks.hasRunning()).toBe(false);
+            expect(resources.taskRuntime.hasRunning()).toBe(false);
         } finally {await resources.close();}
     });
 });
@@ -450,7 +450,7 @@ test.each(["turn-cancel", "root-close"] as const)("%s before handoff terminates 
             const result = await operation;
             expect(result.kind).toBe("inline");
             if (result.kind === "inline") expect(result.result.termination).toMatchObject({kind: "aborted"});
-            expect(tasks.hasRunning()).toBe(false);
+            expect(runtime.hasRunning()).toBe(false);
         } finally {controller.abort("shutdown"); await operation; await runtime.close();}
     });
 });
