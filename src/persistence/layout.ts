@@ -1,6 +1,22 @@
 import {homedir} from "node:os";
-import {isAbsolute, join, resolve} from "node:path";
-import {getProjectKey, hashProjectValue} from "./project.js";
+import {basename, isAbsolute, join, resolve} from "node:path";
+import {createHash} from "node:crypto";
+import {realpathSync} from "node:fs";
+
+export function hashStorageKey(value: string, length: number): string {
+    return createHash("sha256").update(value).digest("hex").slice(0, length);
+}
+
+export function getProjectKey(cwd: string): string {
+    let canonical: string;
+    try {
+        canonical = realpathSync.native(cwd).normalize("NFC");
+    } catch {
+        canonical = resolve(cwd).normalize("NFC");
+    }
+    const safeName = basename(canonical).replace(/[^a-zA-Z0-9._-]/g, "_") || "project";
+    return `${safeName}-${hashStorageKey(canonical, 16)}`;
+}
 
 export interface HiCodeStorageLayout {
     readonly hicodeHome: string;
@@ -82,7 +98,7 @@ export function getSessionStorageDirectory(
 ): string {
     return join(
         getProjectSessionsDirectory(storage, cwd),
-        `session-${hashProjectValue(sessionId, 24)}`
+        `session-${hashStorageKey(sessionId, 24)}`
     );
 }
 
@@ -138,16 +154,22 @@ export function getSessionInputHistoryPath(storage: HiCodeStorageLayout, cwd: st
 }
 
 export function getPromptLogDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId?: string): string {
-    return join(sessionId ? getSessionStorageDirectory(storage,cwd,sessionId) : getProjectStorageDirectory(storage,cwd), "debug", "requests");
+    return join(sessionId ? getSessionStorageDirectory(storage, cwd, sessionId) : getProjectStorageDirectory(storage, cwd), "debug", "requests");
 }
 
 export function getSubagentStorageDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string, agentId: string): string {
-    return join(getSessionStorageDirectory(storage,cwd,sessionId), "subagents", hashProjectValue(agentId,32));
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "subagents", hashStorageKey(agentId, 32));
 }
 
-export function getProjectIdentityPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json");}
-export function getProjectIdentityLockPath(storage:HiCodeStorageLayout,cwd:string):string {return join(getProjectStorageDirectory(storage,cwd),"project.json.lock");}
-export function getSessionIdentityPath(storage:HiCodeStorageLayout,cwd:string,sessionId:string):string {return join(getSessionStorageDirectory(storage,cwd,sessionId),"identity.json");}
+export function getProjectIdentityPath(storage: HiCodeStorageLayout, cwd: string): string {
+    return join(getProjectStorageDirectory(storage, cwd), "project.json");
+}
+export function getProjectIdentityLockPath(storage: HiCodeStorageLayout, cwd: string): string {
+    return join(getProjectStorageDirectory(storage, cwd), "project.json.lock");
+}
+export function getSessionIdentityPath(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "identity.json");
+}
 
 export function getUserSettingsPath(storage: HiCodeStorageLayout): string {
     return join(storage.hicodeHome, "settings.json");

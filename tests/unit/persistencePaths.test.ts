@@ -1,7 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {homedir} from "node:os";
 import {join} from "node:path";
-import {createHiCodeStorageLayout, getProjectKey, getSessionStorageDirectory, hashProjectValue} from "../../src/persistence/index.js";
+import {createHiCodeStorageLayout, getProjectKey, getSessionStorageDirectory, hashStorageKey} from "../../src/persistence/index.js";
 import {getProjectStorageDirectory} from "../../src/persistence/layout.js";
 import {getProjectMemoryDirectory} from "../../src/persistence/layout.js";
 import {createToolResultStore} from "../../src/toolResults/index.js";
@@ -27,7 +27,7 @@ describe("persistence paths", () => {
             const sessionDirectory = join(
                 projectDirectory,
                 "sessions",
-                `session-${hashProjectValue(sessionId, 24)}`
+                `session-${hashStorageKey(sessionId, 24)}`
             );
 
             expect(getProjectStorageDirectory(storage, cwd)).toBe(

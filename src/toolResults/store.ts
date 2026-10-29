@@ -4,7 +4,7 @@ import {createHash, randomUUID} from "node:crypto";
 import {storedImageSchema, imageReferenceSchema, type StoredImage, type ImageReference} from "../images/content.js";
 import {chmod, link, lstat, open, readdir, readFile, rm, truncate, writeFile,} from "node:fs/promises";
 import {basename, dirname, isAbsolute, join, relative, resolve} from "node:path";
-import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, createFileLocker, getSessionStorageDirectory, hashProjectValue} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, createFileLocker, getSessionStorageDirectory, hashStorageKey} from "../persistence/index.js";
 import {createPreview} from "./format.js";
 import {
     binaryOriginSchema,
@@ -40,7 +40,7 @@ function getResultId(toolCallId: string): string {
 }
 
 function getArtifactKey(sessionId: string, resultId: string): string {
-    return hashProjectValue(`${sessionId}:${resultId}`, 32);
+    return hashStorageKey(`${sessionId}:${resultId}`, 32);
 }
 
 function assertNonNegativeLimit(value: number, label: string): void {

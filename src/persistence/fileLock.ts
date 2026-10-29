@@ -1,3 +1,4 @@
+import {hasFileSystemErrorCode} from "./errors.js";
 import {randomUUID} from "node:crypto";
 import {constants} from "node:fs";
 import {dirname, join} from "node:path";
@@ -9,14 +10,10 @@ const RETRY_MS = 20;
 const STALE_MS = 30_000;
 const OWNER = /^v1-([1-9][0-9]*)-([a-f0-9]{64})-([a-f0-9]{64})-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/;
 
-function isCode(error: unknown, code: string): boolean {
-    return !!error && typeof error === "object" && "code" in error && error.code === code;
-}
-
 async function removeEmptyDirectory(path: string): Promise<void> {
     try { await rmdir(path); }
     catch (error) {
-        if (!isCode(error, "ENOENT") && !isCode(error, "ENOTEMPTY") && !isCode(error, "EEXIST")) throw error;
+        if (!hasFileSystemErrorCode(error, "ENOENT") && !hasFileSystemErrorCode(error, "ENOTEMPTY") && !hasFileSystemErrorCode(error, "EEXIST")) throw error;
     }
 }
 
@@ -45,11 +42,11 @@ async function recoverAbandonedDirectory(path: string, local: Awaited<ReturnType
             // probe its PID. Do not rmdir a potentially new, unpublished lease.
             if (state === "alive") return;
             try { await unlink(join(path, entry.name)); }
-            catch (error) { if (isCode(error, "ENOENT")) return; throw error; }
+            catch (error) { if (hasFileSystemErrorCode(error, "ENOENT")) return; throw error; }
         }
         // A competing initializer that has published a marker prevents rmdir.
         await removeEmptyDirectory(path);
-    } catch (error) { if (!isCode(error, "ENOENT")) throw error; }
+    } catch (error) { if (!hasFileSystemErrorCode(error, "ENOENT")) throw error; }
 }
 
 /** Directory leases need no recovery guard that can itself be orphaned. */
@@ -75,7 +72,7 @@ async function lockWithIdentity<T>(path: string, action: () => Promise<T>, local
     while (true) {
         let created = false;
         try { await mkdir(path, {mode: 0o700}); created = true; }
-        catch (error) { if (!isCode(error, "EEXIST")) throw error; }
+        catch (error) { if (!hasFileSystemErrorCode(error, "EEXIST")) throw error; }
         if (created) {
             let published = false;
             try {
@@ -91,14 +88,14 @@ async function lockWithIdentity<T>(path: string, action: () => Promise<T>, local
                 } catch (error) {
                     // Retry only acquisition races, including a vanished published marker.
                     // macOS may report EINVAL during exclusive marker creation.
-                    if (!isCode(error, "ENOENT") && !(process.platform === "darwin" && !published && isCode(error, "EINVAL"))) throw error;
+                    if (!hasFileSystemErrorCode(error, "ENOENT") && !(process.platform === "darwin" && !published && hasFileSystemErrorCode(error, "EINVAL"))) throw error;
                 }
                 // Once entered, an action may have side effects; never replay its errors.
                 if (acquired) return await action();
             } finally {
                 if (published) {
                     try { await unlink(marker); }
-                    catch (error) { if (!isCode(error, "ENOENT")) throw error; }
+                    catch (error) { if (!hasFileSystemErrorCode(error, "ENOENT")) throw error; }
                 }
                 await removeEmptyDirectory(path);
             }

@@ -5,7 +5,7 @@ import {randomUUID} from "node:crypto";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createTestRuntimeResources, createTestSettings} from "../helpers/runtimeResources.js";
-import {ensureSessionIdentity} from "../../src/persistence/projectState.js";
+import {ensureSessionIdentity} from "../../src/persistence/storageIdentity.js";
 import {getPromptLogDirectory, getProjectSessionsDirectory} from "../../src/persistence/layout.js";
 
 for (const outcome of ["success", "invalid", "cancelled"] as const) {

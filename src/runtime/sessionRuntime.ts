@@ -1,5 +1,5 @@
 import {WebSources} from "../tools/webFetch/state.js";
-import {ensureSessionIdentity} from "../persistence/projectState.js";
+import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {ApprovalEpoch} from "../permissions/approval.js";
 import type {MessageContent} from "../images/content.js";

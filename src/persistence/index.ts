@@ -7,9 +7,7 @@ export {
 } from "./privateStorage.js";
 export {
     getProjectKey,
-    hashProjectValue,
-} from "./project.js";
-export {
+    hashStorageKey,
     createHiCodeStorageLayout,
     getProjectSessionsDirectory,
     getSessionStorageDirectory,

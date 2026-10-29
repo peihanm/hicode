@@ -1,3 +1,4 @@
+import {hasFileSystemErrorCode} from "./errors.js";
 import {readBoundedTextFile} from "./readTextFile.js";
 import {
     chmodSync,
@@ -46,7 +47,7 @@ export function ensurePrivateStorageDirectory(
         try {
             mkdirSync(current, {mode: 0o700});
         } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+            if (!hasFileSystemErrorCode(error, "EEXIST")) throw error;
         }
         assertDirectory(current);
         chmodSync(current, 0o700);
@@ -70,14 +71,14 @@ export function readPrivateStorageTextFile(
             assertDirectory(current);
         }
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        if (hasFileSystemErrorCode(error, "ENOENT")) return null;
         throw error;
     }
 
     try {
         return readBoundedTextFile(path, maxBytes);
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        if (hasFileSystemErrorCode(error, "ENOENT")) return null;
         throw error;
     }
 }

@@ -1,4 +1,4 @@
-import {ensureSessionIdentity} from "../persistence/projectState.js";
+import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
 import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
 import {createInitialHistory} from "../prompt/index.js";

@@ -1,6 +1,6 @@
 import {expect, test} from "bun:test";
 import {readFile, realpath, writeFile} from "node:fs/promises";
-import {ensureProjectIdentity} from "../../src/persistence/projectState.js";
+import {ensureProjectIdentity} from "../../src/persistence/storageIdentity.js";
 import {getProjectIdentityPath} from "../../src/persistence/layout.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

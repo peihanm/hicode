@@ -3,9 +3,8 @@ import {lstatSync, readdirSync, renameSync, rmSync, writeFileSync} from "node:fs
 import {randomUUID} from "node:crypto";
 import {join,isAbsolute} from "node:path";
 import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, type HiCodeStorageLayout} from "../persistence/index.js";
-import {getPromptLogDirectory} from "../persistence/layout.js";
+import {getPromptLogDirectory, hashStorageKey} from "../persistence/layout.js";
 import type {LLMCallKind, LLMTrace, PromptLogPendingResponse, PromptLogRequest, PromptLogResponse} from "./types.js";
-import {hashProjectValue} from "../persistence/project.js";
 
 const MAX_PROMPT_LOG_BYTES = 64 * 1024 * 1024;
 const MAX_PROMPT_LOG_FILES = 200;
@@ -78,7 +77,7 @@ function alive(pid:number):boolean {
     try{process.kill(pid,0);return true;}catch(error){return !(error&&typeof error==="object"&&"code" in error&&error.code==="ESRCH");}
 }
 function runDirectory(storage:HiCodeStorageLayout,trace:LLMTrace):string {
-    return join(getPromptLogDirectory(storage,trace.ownerCwd,trace.scope==="session"?trace.sessionId:undefined),`run-${hashProjectValue(trace.runId,32)}`);
+    return join(getPromptLogDirectory(storage,trace.ownerCwd,trace.scope==="session"?trace.sessionId:undefined),`run-${hashStorageKey(trace.runId,32)}`);
 }
 function atomic(path:string,text:string):void {
     const temporary=`${path}.${process.pid}.${randomUUID()}.tmp`;

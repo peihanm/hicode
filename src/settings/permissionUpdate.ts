@@ -7,10 +7,6 @@ import type {HiCodeSettingsFile} from "./types.js";
 
 const MAX_LOCAL_SETTINGS_BYTES = 4 * 1024 * 1024;
 
-function isMissing(error: unknown): boolean {
-    return hasFileSystemErrorCode(error, "ENOENT");
-}
-
 async function ensureSafeLocalSettingsPath(
     cwd: string,
     path: string
@@ -38,7 +34,7 @@ async function ensureSafeLocalSettingsPath(
             throw new Error("Cannot update settings larger than 4 MiB");
         }
     } catch (error) {
-        if (!isMissing(error)) throw error;
+        if (!hasFileSystemErrorCode(error, "ENOENT")) throw error;
     }
 }
 
@@ -47,7 +43,7 @@ async function readSettingsForUpdate(path: string): Promise<HiCodeSettingsFile> 
     try {
         content = await readFile(path, "utf8");
     } catch (error) {
-        if (isMissing(error)) return {};
+        if (hasFileSystemErrorCode(error, "ENOENT")) return {};
         throw error;
     }
 

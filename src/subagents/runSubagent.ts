@@ -5,7 +5,7 @@ import {childTaskTool} from "../tools/task/task.js";
 import {createToolCatalog} from "../tools/catalog.js";
 import {isParentTaskSession} from "../tasks/session.js";
 import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
-import {ensureSessionIdentity} from "../persistence/projectState.js";
+import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
 import {finishPromptLogRun} from "../llm/promptLog.js";
 import type {LLMTrace} from "../llm/types.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";

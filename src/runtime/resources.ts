@@ -1,6 +1,6 @@
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {createModelConfiguration, type ModelConfiguration} from "../settings/modelConfiguration.js";
-import {ensureProjectIdentity} from "../persistence/projectState.js";
+import {ensureProjectIdentity} from "../persistence/storageIdentity.js";
 import {loadHiCodeSettings} from "../settings/index.js";
 import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
 import {createMcpManager} from "../mcp/manager.js";
