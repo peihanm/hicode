@@ -52,10 +52,17 @@ The diagram describes file roles, not a supported schema for manually manufactur
         subagents/<agent-hash>/
           state.json                  # latest child history/result
           events.jsonl                # child run events and history increments
+        debug/approval-reviews/
+          .lock/                      # review initialization lease
+          <request-hash>/
+            request.json              # action, selected evidence, policy/model/trace
+            events.jsonl              # committed text, tool calls/results, lifecycle
+            result.json               # verdict/status, timing and log coverage
         debug/requests/run-<hash>/
           run.json                    # trace, owner, pending/end and log gaps
           <timestamp>_<uuid>.json      # recorded request and response
     debug/requests/run-<hash>/         # maintenance requests with no Session
+    debug/approval-reviews/            # reviews with no Session, same structure
 ```
 
 Other locks, such as `.env.lock/`, `settings.json.lock/`, input-history and tool-result store locks, coordinate atomic writes. Do not remove a lock just because it exists; determine whether its owner is active first.
@@ -68,6 +75,8 @@ Other locks, such as `.env.lock/`, `settings.json.lock/`, input-history and tool
 4. For task completion, inspect `tasks/events.jsonl` and the matching child's `state.json`/`events.jsonl`. For large output or images, follow the recorded result reference to its owning session.
 
 Project/session/agent hashes are safe storage identifiers, not reversible IDs. Different cwd roots can produce different projects even inside one Git repository.
+
+For automatic permission reviews, inspect `debug/approval-reviews/<request-hash>/` and follow its trace to raw model request logs. These records belong to the parent session, not ordinary child transcripts. Review directories are not automatically evicted. A missing result or `eventLogComplete=false` means evidence is incomplete; event logs have a 4 MiB per-review bound. Logs never authorize later actions.
 
 ## Which files may be edited?
 

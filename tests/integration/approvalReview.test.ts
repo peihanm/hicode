@@ -1,6 +1,7 @@
+import {captureApprovalEvidence} from "../../src/permissions/reviewer/evidence.js";
 import {describe, expect, test} from "bun:test";
 import {mkdir} from "node:fs/promises";
-import {createApprovalReviewer} from "../../src/permissions/reviewer.js";
+import {createApprovalReviewer} from "../../src/permissions/reviewer/index.js";
 import {requestApproval, type ApprovalEvent} from "../../src/permissions/approval.js";
 import {createDirectoryAccessRuntime} from "../../src/permissions/directoryAccess.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
@@ -71,8 +72,14 @@ test("background network review survives Turn cancellation but stops on Session 
             }};
         const controller = new AbortController();
         const ctx = createTestContext(cwd, {permissionMode: "auto-review", signal: controller.signal, shellRunner: runner});
+        const frozen = captureApprovalEvidence([{role: "user", origin: "user", content: "Inspect the authorized endpoint"}]);
+        let captures = 0;
+        ctx.approvalEvidence = () => {captures++; return frozen;};
         ctx.networkAccess = new NetworkAccessSession();
-        ctx.approvalReviewer = async (_request, _context, signal) => {reviewSignal = signal; entered(); return verdict;};
+        ctx.approvalReviewer = async (request, _context, signal) => {
+            expect(request.evidence).toBe(frozen);
+            reviewSignal = signal; entered(); return verdict;
+        };
         const tasks = createTaskRuntimeForTest(cwd, runner);
         ctx.tasks = tasks.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
         try {
@@ -85,6 +92,7 @@ test("background network review survives Turn cancellation but stops on Session 
             allow({decision: "allow", risk: "low", reason: "late approval"});
             await execution;
             expect(allowed).toBe(false);
+            expect(captures).toBe(1);
         } finally {broker.close(); await tasks.close();}
     });
 });
@@ -180,7 +188,7 @@ describe("automatic approval through the production tool chain", () => {
                 workspaceBoundary: root, directoryAccess: createDirectoryAccessRuntime({cwd, hardBoundary: root}),
                 canUseTool: async () => {throw new Error("must not call absent human");}});
             ctx.approvalReviewer = reviewer(fake);
-            ctx.approvalEvidence = () => [{role: "user", origin: "user", content: "Create ../result.txt with the approved result"}];
+            ctx.approvalEvidence = () => captureApprovalEvidence([{role: "user", origin: "user", content: "Create ../result.txt with the approved result"}]);
             ctx.onApprovalEvent = event => { events.push(event); };
             const result = await createToolRuntime().executeTool("write_file", JSON.stringify({path: "../result.txt", content: "result"}), ctx, "write");
             expect(result.outcome).toBe(decision === "allow" ? "ok" : "denied");
@@ -265,5 +273,27 @@ describe("automatic approval through the production tool chain", () => {
             expect(await Bun.file(`${cwd}/no`).exists()).toBe(false);
             expect(fake.calls).toHaveLength(3);
         });
+    });
+});
+
+test("reviewer sends the captured evidence unchanged; oversized latest user input never reaches a model", async () => {
+    await withTempProject(async cwd => {
+        const frozen = captureApprovalEvidence([
+            {role: "user", origin: "user", content: "Earlier request"},
+            {role: "user", origin: "compaction", content: "Derived summary"},
+            {role: "user", origin: "user", content: "Later restriction"},
+        ]);
+        const fake = createFakeLLM([options => {
+            const text = JSON.stringify(options.messages);
+            expect(text).toContain(JSON.stringify(frozen.text).slice(1, -1));
+            return assistantText('{"decision":"needs_user","risk":"medium","reason":"fixture"}');
+        }]);
+        const ctx = createTestContext(cwd, {permissionMode: "auto-review", permissionPromptPolicy: "never"});
+        ctx.approvalEvidence = () => frozen;
+        ctx.approvalReviewer = reviewer(fake);
+        expect((await requestApproval(ctx, "bash", {command: "true"}, "review", "first")).code).toBe("approval_required");
+        ctx.approvalEvidence = () => captureApprovalEvidence([{role: "user", origin: "user", content: "important restriction ".repeat(2000)}]);
+        expect((await requestApproval(ctx, "bash", {command: "true"}, "review", "second")).code).toBe("approval_required");
+        expect(fake.calls).toHaveLength(1);
     });
 });

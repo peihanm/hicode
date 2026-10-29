@@ -1,5 +1,5 @@
 import {supportsToolImages} from "../images/request.js";
-import {createApprovalReviewer} from "../permissions/reviewer.js";
+import {createApprovalReviewer} from "../permissions/reviewer/index.js";
 import type {ApprovalReviewer} from "../permissions/approval.js";
 import {type AgentRunner, createAgentRunner} from "../agent/index.js";
 import {type CompactHistoryRunner, createCompactHistoryRunner,} from "../context/compact.js";

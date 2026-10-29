@@ -27,7 +27,7 @@ import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js";
 import type {NetworkAccessSession} from "../permissions/networkAccess.js";
 import type {ApprovalBudget, ApprovalEpoch, ApprovalEvent, ApprovalReviewer} from "../permissions/approval.js";
-import type {Message} from "../llm/types.js";
+import type {ApprovalEvidence} from "../permissions/reviewer/evidence.js";
 import type {ContextSettings} from "../context/config.js";
 import type {ModelTargetSettings} from "../settings/types.js";
 
@@ -87,7 +87,7 @@ export interface ToolContext {
     readonly approvalBudget: ApprovalBudget;
     approvalReviewer?: ApprovalReviewer;
     reviewerModel?: ModelTargetSettings;
-    approvalEvidence?: () => readonly Message[];
+    approvalEvidence?: () => ApprovalEvidence;
     onApprovalEvent?: (event: ApprovalEvent) => void | Promise<void>;
 
     // A non-interactive Host narrows ask to deny; this is not a user permission profile.

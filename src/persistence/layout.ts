@@ -157,6 +157,10 @@ export function getPromptLogDirectory(storage: HiCodeStorageLayout, cwd: string,
     return join(sessionId ? getSessionStorageDirectory(storage, cwd, sessionId) : getProjectStorageDirectory(storage, cwd), "debug", "requests");
 }
 
+export function getApprovalReviewDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId?: string): string {
+    return join(sessionId ? getSessionStorageDirectory(storage, cwd, sessionId) : getProjectStorageDirectory(storage, cwd), "debug", "approval-reviews");
+}
+
 export function getSubagentStorageDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string, agentId: string): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "subagents", hashStorageKey(agentId, 32));
 }

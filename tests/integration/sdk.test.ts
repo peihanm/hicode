@@ -1,6 +1,6 @@
 import {RuntimeMessageQueue} from "../../src/runtime/messageQueue.js";
 import {contentText} from "../../src/images/content.js";
-import {createApprovalReviewer} from "../../src/permissions/reviewer.js";
+import {createApprovalReviewer} from "../../src/permissions/reviewer/index.js";
 import {describe, expect, test} from "bun:test";
 import {access, readFile, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";

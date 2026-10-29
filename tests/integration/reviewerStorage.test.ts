@@ -1,3 +1,4 @@
+import {captureApprovalEvidence} from "../../src/permissions/reviewer/evidence.js";
 import {expect, test} from "bun:test";
 import {readFile, readdir} from "node:fs/promises";
 import {join} from "node:path";
@@ -6,7 +7,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createTestRuntimeResources, createTestSettings} from "../helpers/runtimeResources.js";
 import {ensureSessionIdentity} from "../../src/persistence/storageIdentity.js";
-import {getPromptLogDirectory, getProjectSessionsDirectory} from "../../src/persistence/layout.js";
+import {getApprovalReviewDirectory, getPromptLogDirectory, getProjectSessionsDirectory, getSessionStorageDirectory} from "../../src/persistence/layout.js";
 
 for (const outcome of ["success", "invalid", "cancelled"] as const) {
     test(`reviewer ${outcome} logs belong to the parent and finish with completed request records`, async () => {
@@ -38,13 +39,33 @@ for (const outcome of ["success", "invalid", "cancelled"] as const) {
                 const operation = resources.agentRuntime.reviewApproval({id, kind: "tool", sessionId: parent.sessionId,
                         turnId: parent.turnId, toolCallId: "approval", toolName: "write_file", cwd,
                         input: {path: "file.txt", content: "x"}, reason: "test",
-                        evidence: [{role: "user", origin: "hook_rejected", content: "REJECTED_AUTHORIZATION"},
-                            {role: "user", origin: "user", content: "write file.txt"}]}, parent, controller.signal);
+                        evidence: captureApprovalEvidence([{role: "user", origin: "hook_rejected", content: "REJECTED_AUTHORIZATION"},
+                            {role: "user", origin: "user", content: "write file.txt"}])}, parent, controller.signal);
                 if (outcome === "success") expect((await operation).decision).toBe("allow");
                 else if (outcome === "invalid") await expect(operation).rejects.toThrow("Automatic review did not return a valid verdict");
                 else await expect(operation).rejects.toBe("user-cancel");
                 expect(requests).toBe(outcome === "invalid" ? 2 : 1);
                 expect(await readdir(getProjectSessionsDirectory(storage, cwd))).toHaveLength(1);
+                expect(await readdir(getSessionStorageDirectory(storage, cwd, parent.sessionId))).not.toContain("subagents");
+                const records = getApprovalReviewDirectory(storage, cwd, parent.sessionId);
+                const recordFiles = await readdir(records);
+                expect(recordFiles).toHaveLength(1);
+                const receipt = JSON.parse(await readFile(join(records, recordFiles[0]!, "result.json"), "utf8"));
+                expect(receipt).toMatchObject({requestId: id, modelInvoked: true,
+                    model: {source: "qwen", model: "qwen3.8-flash"},
+                    status: outcome === "success" ? "completed" : outcome === "invalid" ? "failed" : "cancelled",
+                    evidence: {excludedMessages: 1, includedMessages: 1}});
+                expect(receipt).not.toHaveProperty("history");
+                expect(receipt).not.toHaveProperty("input");
+                const captured = JSON.parse(await readFile(join(records, recordFiles[0]!, "request.json"), "utf8"));
+                expect(captured.action.input).toEqual({path: "file.txt", content: "x"});
+                expect(captured.evidence.items).toHaveLength(1);
+                expect(captured.evidence.items[0].content).toBe("write file.txt");
+                const events = await readFile(join(records, recordFiles[0]!, "events.jsonl"), "utf8");
+                expect(events).toContain("model_stream_start");
+                expect(receipt.eventLogComplete).toBe(true);
+                if (outcome === "success") expect(receipt.verdict.decision).toBe("allow");
+                else expect(receipt).not.toHaveProperty("verdict");
                 const directory = getPromptLogDirectory(storage, cwd, parent.sessionId);
                 const runs = await readdir(directory);
                 expect(runs).toHaveLength(1);

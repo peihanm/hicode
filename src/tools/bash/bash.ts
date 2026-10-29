@@ -1,5 +1,5 @@
 import {shellResultUI} from "./receipt.js";
-import {captureApprovalEvidence} from "../../permissions/evidence.js";
+import {captureApprovalEvidence} from "../../permissions/reviewer/evidence.js";
 import {noMatchSearch, shellOutcome} from "./result.js";
 import {formatTaskHeader} from "../../tasks/format.js";
 import {z} from "zod";
@@ -353,7 +353,7 @@ export const bashTool: Tool<typeof inputSchema> = {
             ? "require_escalated" as const : sandbox_permissions;
         const needsNetworkApproval = !!ctx.networkAccess && effectiveSandboxPermissions !== "require_escalated" &&
             ctx.shellRunner.sandboxStatus.kind === "ready" && ctx.shellRunner.sandboxStatus.networkMode === "restricted";
-        const networkEvidence = needsNetworkApproval ? captureApprovalEvidence(ctx.approvalEvidence?.() ?? []) : [];
+        const networkEvidence = needsNetworkApproval ? ctx.approvalEvidence?.() ?? captureApprovalEvidence([]) : undefined;
         const restrictedHuman = ctx.permissionMode === "ask" && effectiveSandboxPermissions !== "require_escalated" &&
             ctx.shellRunner.sandboxStatus.kind === "ready" && ctx.shellRunner.sandboxStatus.networkMode === "restricted";
         const canContinue = !!ctx.tasks?.shellContinuation && !workspace && !readAccess && (!restrictedHuman || yield_time_ms !== undefined);
@@ -372,7 +372,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 const networkContext: ToolContext = {...networkBase, signal: requestSignal,
                     canUseTool: (tool, message, input, options) => interaction?.canUseTool(tool, message, input, options) ??
                         Promise.resolve({behavior: "deny", message: "Task has no human interaction channel"}),
-                    approvalEvidence: () => networkEvidence,
+                    approvalEvidence: networkEvidence ? () => networkEvidence : undefined,
                     onApprovalEvent: event => interaction?.onApprovalEvent?.(event),
                     permissionPromptPolicy: interaction && !ctx.signal.aborted ? ctx.permissionPromptPolicy : "never"};
                 const resolution = await requestApproval(networkContext, "bash", {command, cwd: commandCwd,
