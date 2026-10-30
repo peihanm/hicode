@@ -1,4 +1,5 @@
 import {expect, test} from "bun:test";
+import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {contentText} from "../../src/images/content.js";
 import type {ShellRunnerLike} from "../../src/tools/bash/shellRunner.js";
@@ -77,7 +78,7 @@ test("wait recovery never suggests waiting for a review or exposes another Sessi
             expect(empty.modelContent).not.toContain("Inspect an existing task");
             const review = await session.startReview({parentContext: ctx, signal: ctx.signal,
                 evidence: {fromRound: 1, toRound: 10, requirements: "Task", activity: "Observed progress"}});
-            const other = runtime.forSession({sessionId: "foreign", toolResultStore: ctx.toolResultStore});
+            const other = runtime.forSession({sessionId: "foreign", toolResultStore: createTestToolResultStore(cwd, "foreign")});
             const hidden = await other.startShell({command: "true", cwd, toolCallId: "foreign-shell"});
             const result = await tools.executeTool("task", JSON.stringify({action: "wait", task_id: hidden.id}), ctx, "missing");
             expect(result.modelContent).toContain(review.id);

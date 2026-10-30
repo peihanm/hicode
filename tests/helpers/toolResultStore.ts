@@ -1,3 +1,4 @@
+import type {SessionStorageOwner} from "../../src/persistence/layout.js";
 import {createHash} from "node:crypto";
 import {join} from "node:path";
 import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
@@ -15,7 +16,7 @@ export interface TestToolResultStoreOptions extends Partial<ToolResultStoreLimit
 
 export function createTestToolResultStore(
   cwd: string,
-  sessionId: string,
+  sessionId: SessionStorageOwner,
   options: TestToolResultStoreOptions = {}
 ) {
   const {

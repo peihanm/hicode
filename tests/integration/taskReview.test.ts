@@ -513,7 +513,7 @@ test("many advisory reviews compact without retaining an undelivered-notificatio
         const journal = createTaskJournal(storage, cwd);
         const timestamp = new Date().toISOString();
         for (let sequence = 1; sequence <= 1030; sequence++) {
-            await journal.append({version: 8, type: "task_finished", sequence, sessionId: "review-owner", task: {
+            await journal.append("review-owner", {version: 8, type: "task_finished", sequence, sessionId: "review-owner", task: {
                 id: `t_${sequence.toString(16).padStart(12, "0")}`, kind: "review", owner: {sessionId: "review-owner", turnId: "turn"},
                 status: "completed", startedAt: timestamp, completedAt: timestamp, fromRound: 1, toRound: 10, resultPreview: "summary",
             }});

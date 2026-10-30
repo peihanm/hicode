@@ -1,3 +1,4 @@
+import type {SubagentRecordAccess} from "../subagents/recordAccess.js";
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import type {WebSources, WebFailures} from "./webFetch/state.js";
 import type {ChildTaskAccess} from "../tasks/session.js";
@@ -141,6 +142,7 @@ export interface ToolContext {
     webFailures: WebFailures;
     toolResultFiles: Pick<ToolResultStore, "resolveFile">;
     sessionArchives?: SessionArchiveAccess;
+    subagentRecords?: SubagentRecordAccess;
     sessionCompaction?: SessionCompaction;
     /** Root Session only: commit complete paired batches before the next model request. */
     commitToolBatch?: () => Promise<void>;

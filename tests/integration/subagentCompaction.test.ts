@@ -1,5 +1,6 @@
 import {expect, test} from "bun:test";
-import {mkdir} from "node:fs/promises";
+import {mkdir, readdir} from "node:fs/promises";
+import {getSubagentStorageDirectory, getProjectSessionsDirectory} from "../../src/persistence/layout.js";
 import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
@@ -64,7 +65,10 @@ test("child owns durable compaction and reads only inherited parent archives acr
   await thread.run({prompt:"KEEP_CHILD_DIRECTIVE",signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
   await thread.run({prompt:"continue",signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
   expect(listSessionIndex(storage,cwd).map(s=>s.sessionId)).toEqual([ctx.sessionId]);
-  expect(readLatestSessionSnapshot(storage,cwd,"subagent-compact-child")?.compactState?.compactCount).toBe(1);
+  expect(readLatestSessionSnapshot(storage,cwd,{parentSessionId:ctx.sessionId,agentId:"compact-child"})?.compactState?.compactCount).toBe(1);
+  expect(await readdir(getSubagentStorageDirectory(storage,cwd,ctx.sessionId,"compact-child")))
+    .toEqual(expect.arrayContaining(["identity.json","snapshot.json","content","archives","events.jsonl","state.json"]));
+  expect((await readdir(getProjectSessionsDirectory(storage,cwd))).filter(name=>name.startsWith("session-"))).toHaveLength(1);
   expect(loadSession(storage,cwd,"subagent-compact-child")).toBeNull();
   await expect(ctx.sessionArchives.resolve(childIndex)).rejects.toThrow("another Session");
  });

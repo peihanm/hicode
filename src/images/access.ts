@@ -20,7 +20,7 @@ export function createImageAccess(input: {
     const find = (imageId: string): ImageReference => {
         const live = input.history().flatMap(message => imageReferences(message.content)).find(ref => ref.imageId === imageId);
         if (live) return live;
-        const blocks = new SessionContentStore(input.storage, input.store.cwd, input.store.sessionId);
+        const blocks = new SessionContentStore(input.storage, input.store.cwd, input.store.owner);
         for (const record of input.state().archives ?? []) {
             const ref = readArchiveMessages(record, blocks).flatMap(message => imageReferences(message.content)).find(ref => ref.imageId === imageId);
             if (ref) return ref;

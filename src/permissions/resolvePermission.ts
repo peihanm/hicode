@@ -1,3 +1,4 @@
+import {checkSubagentRecordPath} from "../subagents/recordAccess.js";
 // Path/Host boundary -> deny -> tool checks -> read-only limits -> user questions.
 // Full Access preauthorizes ordinary access; other requests apply ask, explicit approval, workspace scope, allow and default intent.
 // requestApproval owns human availability and auto-review; resolution does not decide on behalf of the Host.
@@ -49,10 +50,18 @@ async function resolvePermissionInner(
         return {behavior: "deny", message: "This Host does not allow Full Access"};
     }
     let archiveRead = false;
+    let subagentRead = false;
     let memoryAccess = false;
     const archiveInputPath = toolPathInput(tool.name, input);
     if (archiveInputPath !== undefined) {
         const path = resolveToolPath(ctx.cwd, archiveInputPath);
+        try {
+            if (await checkSubagentRecordPath(ctx.storage, path)) {
+                if (tool.name !== "read_file" || !ctx.subagentRecords) return {behavior: "deny", message: "Subagent records require the owning parent's read_file capability"};
+                await ctx.subagentRecords.resolve(path);
+                subagentRead = true;
+            }
+        } catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
         try {
             if (await checkMemoryStoragePath(ctx.storage, path)) {
                 if (!ctx.memoryFiles) return {behavior: "deny", message: "This Agent has no Memory file capability"};
@@ -88,7 +97,7 @@ async function resolvePermissionInner(
                 ctx.cwd,
                 path
             );
-            if (!scoped.ok && !savedOutput && !archiveRead && !memoryAccess && !bundledRead) {
+            if (!scoped.ok && !savedOutput && !archiveRead && !subagentRead && !memoryAccess && !bundledRead) {
                 return {behavior: "deny", message: scoped.message};
             }
         }

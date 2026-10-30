@@ -1,3 +1,4 @@
+import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {dirname} from "node:path";
 import {
     ensurePrivateStorageDirectory, getProjectKey, readPrivateStorageTextFile,
@@ -14,10 +15,15 @@ const MAX_SESSION_LOG_BYTES = 16 * 1024 * 1024;
 const MAX_SESSION_ENTRY_BYTES = 72 * 1024 * 1024;
 type StoredEntry = Omit<SessionSnapshotEntry, "conversation" | "uiEvents"> & {conversation: string[]; uiEvents: string[]};
 
-export function withSessionPersistenceLock<T>(storage: HiCodeStorageLayout, cwd: string, sessionIds: string | readonly string[], action: () => Promise<T>): Promise<T> {
+export function withSessionPersistenceLock<T>(storage: HiCodeStorageLayout, cwd: string, sessionIds: SessionStorageOwner | readonly SessionStorageOwner[], action: () => Promise<T>): Promise<T> {
     ensureSessionsDirectory(storage, cwd);
-    const paths=[...new Set((typeof sessionIds === "string" ? [sessionIds] : sessionIds).map(id => getSessionPersistenceLockPath(storage,cwd,id)))].sort();
-    const acquire=(index:number):Promise<T> => index===paths.length ? action() : withFileLock(paths[index]!,()=>acquire(index+1));
+    const owners = typeof sessionIds === "string" || "parentSessionId" in sessionIds ? [sessionIds] : sessionIds;
+    const paths=[...new Set(owners.map(id => getSessionPersistenceLockPath(storage,cwd,id)))].sort();
+    const acquire=(index:number):Promise<T> => {
+        if (index === paths.length) return action();
+        ensurePrivateStorageDirectory(storage, dirname(paths[index]!));
+        return withFileLock(paths[index]!,()=>acquire(index+1));
+    };
     return acquire(0);
 }
 
@@ -37,7 +43,7 @@ function decodeReferenceEntry(value: unknown): StoredEntry {
     return {...metadata, conversation: value.conversation, uiEvents: value.uiEvents};
 }
 
-function readReferences(storage: HiCodeStorageLayout, cwd: string, sessionId: string): StoredEntry[] {
+function readReferences(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): StoredEntry[] {
     const path = getSessionSnapshotPath(storage, cwd, sessionId);
     const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_LOG_BYTES);
     if (content === null) return [];
@@ -45,7 +51,8 @@ function readReferences(storage: HiCodeStorageLayout, cwd: string, sessionId: st
     try { value = JSON.parse(content); }
     catch { throw new Error(`Invalid Session snapshot JSON: ${path}`); }
     const entry = decodeReferenceEntry(value);
-    if (entry.sessionId !== sessionId || getProjectKey(entry.cwd) !== getProjectKey(cwd)) throw new Error(`Session owner mismatch: ${path}`);
+    if (entry.sessionId !== sessionStorageId(sessionId) || getProjectKey(entry.cwd) !== getProjectKey(cwd) ||
+        (typeof sessionId !== "string" && entry.visibility !== "internal")) throw new Error(`Session owner mismatch: ${path}`);
     return [entry];
 }
 
@@ -71,11 +78,13 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
 }
 
 /** Called under the project persistence lock; one Session owns this committer. */
-export function createSessionSnapshotCommitter(storage: HiCodeStorageLayout, cwd: string, sessionId: string) {
+export function createSessionSnapshotCommitter(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner) {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     let lastCommit: string | undefined;
     let needsSweep = true;
     return async (entry: SessionEntry, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, preserveConversation: boolean): Promise<boolean> => {
+        if (entry.sessionId !== sessionStorageId(sessionId) || getProjectKey(entry.cwd) !== getProjectKey(cwd) ||
+            (typeof sessionId !== "string" && entry.visibility !== "internal")) throw new Error("Session writer owner mismatch");
         const normalized = decodeSessionEntry({...entry, conversation: [], uiEvents: []});
         if (!normalized || !hasCompleteToolPairs(entry.conversation) || entry.conversation.length > 20_000 || entry.uiEvents.length > 4_096) throw new Error("Refusing to persist invalid or oversized session entry");
         const previous = readReferences(storage, cwd, sessionId);
@@ -138,12 +147,12 @@ export function createSessionSnapshotCommitter(storage: HiCodeStorageLayout, cwd
     };
 }
 
-export function hasNewerSessionCompaction(storage: HiCodeStorageLayout, cwd: string, sessionId: string, count: number): boolean {
+export function hasNewerSessionCompaction(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, count: number): boolean {
     const previous = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
     return (previous?.compactState?.compactCount ?? 0) > count;
 }
 
-export function readLatestSessionSnapshot(storage: HiCodeStorageLayout, cwd: string, sessionId: string): SessionSnapshotEntry | null {
+export function readLatestSessionSnapshot(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): SessionSnapshotEntry | null {
     const entry = readReferences(storage, cwd, sessionId).at(-1);
     if (!entry) return null;
     const result = hydrate(entry, new SessionContentStore(storage, cwd, sessionId));

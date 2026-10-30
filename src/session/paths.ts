@@ -1,3 +1,4 @@
+import type {SessionStorageOwner} from "../persistence/layout.js";
 import {join} from "node:path";
 import {
     ensurePrivateStorageDirectory,
@@ -16,7 +17,7 @@ export function getSessionIndexPath(
 export function getSessionPersistenceLockPath(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string
+    sessionId: SessionStorageOwner
 ): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), ".persistence.lock");
 }
@@ -24,7 +25,7 @@ export function getSessionPersistenceLockPath(
 export function getSessionSnapshotPath(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string
+    sessionId: SessionStorageOwner
 ): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "snapshot.json");
 }

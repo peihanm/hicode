@@ -1,3 +1,4 @@
+import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {TaskSession, type ScopedTaskBinding} from "./session.js";
 import {runReviewTask, type TaskReviewRunner} from "./review/task.js";
 import {readShellOutputChunk} from "./shell/output.js";
@@ -86,7 +87,7 @@ class TaskRuntime implements TaskRuntimeLike {
 
     private readonly tasks = new Map<string, ManagedTask>();
     private readonly archived = new Map<string, TaskSnapshot>();
-    private readonly sessionLoads = new Map<string, Promise<void>>();
+    private readonly sessionLoads = new Map<string, {owner: SessionStorageOwner; loading: Promise<void>}>();
     private readonly listeners = new Map<
         string,
         Set<(event: TaskEventEnvelope) => void>
@@ -109,12 +110,23 @@ class TaskRuntime implements TaskRuntimeLike {
     ) {
     }
 
-    ensureSession(sessionId: string): Promise<void> {
-        let loading = this.sessionLoads.get(sessionId);
-        if (loading) return loading;
-        loading = this.restoreSession(sessionId);
-        this.sessionLoads.set(sessionId, loading);
+    ensureSession(owner: SessionStorageOwner): Promise<void> {
+        const sessionId = sessionStorageId(owner);
+        const existing = this.sessionLoads.get(sessionId);
+        const frozen = typeof owner === "string" ? owner : Object.freeze({parentSessionId: owner.parentSessionId, agentId: owner.agentId});
+        if (existing) {
+            if (JSON.stringify(existing.owner) !== JSON.stringify(frozen)) throw new Error("Task Session storage owner changed");
+            return existing.loading;
+        }
+        const loading = this.restoreSession(frozen);
+        this.sessionLoads.set(sessionId, {owner: frozen, loading});
         return loading;
+    }
+
+    private storageOwner(sessionId: string): SessionStorageOwner {
+        const session = this.sessionLoads.get(sessionId);
+        if (!session) throw new Error("Task Session storage is not bound");
+        return session.owner;
     }
 
     forSession(binding: TaskSessionBinding): TaskSessionLike {
@@ -570,7 +582,7 @@ class TaskRuntime implements TaskRuntimeLike {
         taskId: string,
         notificationId: string
     ): Promise<void> => {
-        await this.journal.markNotificationClaimed({
+        await this.journal.markNotificationClaimed(this.storageOwner(sessionId), {
             sequence: ++this.sequence,
             sessionId,
             taskId,
@@ -661,7 +673,7 @@ class TaskRuntime implements TaskRuntimeLike {
     ): Promise<void> {
         let event = this.createEvent(type, await snapshotTask(task));
         try {
-            await this.journal.append(event);
+            await this.journal.append(this.storageOwner(event.sessionId), event);
         } catch (error) {
             if (journalRequired) throw error;
             appendTaskIssue(task, `Task Journal write failed: ${
@@ -695,8 +707,8 @@ class TaskRuntime implements TaskRuntimeLike {
         }
     }
 
-    private async restoreSession(sessionId: string): Promise<void> {
-        const loaded = await this.journal.load(sessionId);
+    private async restoreSession(owner: SessionStorageOwner): Promise<void> {
+        const loaded = await this.journal.load(owner);
         this.sequence = Math.max(this.sequence, loaded.sequence);
         for (const snapshot of loaded.pendingRuns) {
             const current = loaded.tasks.find(task => task.id === snapshot.id);
@@ -736,7 +748,7 @@ class TaskRuntime implements TaskRuntimeLike {
                         "The previous HiCode process exited or crashed; tasks will not restart automatically",
                     ].filter(Boolean).join(";"),
                 };
-                await this.journal.append(
+                await this.journal.append(owner,
                     this.createEvent("task_finished", restored)
                 );
             }

@@ -1,3 +1,4 @@
+import type {SessionStorageOwner} from "../persistence/layout.js";
 import {createHash} from "node:crypto";
 import {lstatSync} from "node:fs";
 import {readdir, unlink} from "node:fs/promises";
@@ -37,7 +38,7 @@ export class SessionContentStore {
     private loadedBytes = 0;
     private readonly directory: string;
 
-    constructor(private readonly storage: HiCodeStorageLayout, cwd: string, sessionId: string) {
+    constructor(private readonly storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner) {
         this.directory = getSessionContentDirectory(storage, cwd, sessionId);
     }
 

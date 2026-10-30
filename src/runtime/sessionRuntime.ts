@@ -1,3 +1,4 @@
+import {createSubagentRecordAccess} from "../subagents/recordView.js";
 import {captureApprovalEvidence} from "../permissions/reviewer/evidence.js";
 import {WebSources} from "../tools/webFetch/state.js";
 import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
@@ -205,6 +206,7 @@ export function createRootSessionRuntime({
                 host,
             });
             ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
+            ctx.subagentRecords = createSubagentRecordAccess(resources.storage, resources.cwd, seed.sessionId);
             ctx.approvalEvidence = () => captureApprovalEvidence(history);
             const reviewer = resources.settings.models.reviewer;
             ctx.reviewerModel = reviewer ? {...reviewer, reasoning: resources.primaryModel.reasoningFor(reviewer.source, reviewer.model)} : undefined;

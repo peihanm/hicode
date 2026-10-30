@@ -42,7 +42,7 @@ test.each([false, true])("child Shell owns readable inline and background output
                 await expect(store.resolveFile(artifact.path)).rejects.toThrow("unauthorized session");
             }
             const journal = createTaskJournal(createHiCodeStorageLayout({hicodeHome}), cwd);
-            expect((await journal.load(ctx.sessionId)).tasks.map(task => task.id)).toContain(started.id);
+            expect((await journal.load(ctx.toolResultStore.owner)).tasks.map(task => task.id)).toContain(started.id);
             expect((await journal.load(parent.sessionId)).tasks).toHaveLength(0);
             return {reply: "verified", reason: "completed", iterations: 1};
         };
@@ -64,7 +64,7 @@ test("closing a parent Session closes descendant Shells without closing the shar
         const ctx = createTestContext(cwd);
         const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner);
         const parent = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
-        const child = parent.createChildShellSession(createTestToolResultStore(cwd, "child")).tasks;
+        const child = parent.createChildShellSession(createTestToolResultStore(cwd, {parentSessionId: ctx.sessionId, agentId: "child"})).tasks;
         const other = runtime.forSession({sessionId: "other", toolResultStore: createTestToolResultStore(cwd, "other")});
         try {
             const task = await child.startShell({command: "sleep 30", cwd, toolCallId: "service"});
@@ -84,7 +84,7 @@ test("Session close waits for a Shell still allocating its output capture and re
         const ctx = createTestContext(cwd);
         const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner);
         const parent = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
-        const store = createTestToolResultStore(cwd, "child");
+        const store = createTestToolResultStore(cwd, {parentSessionId: ctx.sessionId, agentId: "child"});
         const child = parent.createChildShellSession(store).tasks;
         let entered!: () => void, release!: () => void;
         const allocating = new Promise<void>(resolve => {entered = resolve;});
@@ -109,7 +109,7 @@ test("parent task cleanup errors do not skip descendant Shell cleanup", async ()
         const ctx = createTestContext(cwd);
         const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner);
         const parent = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
-        const child = parent.createChildShellSession(createTestToolResultStore(cwd, "child")).tasks;
+        const child = parent.createChildShellSession(createTestToolResultStore(cwd, {parentSessionId: ctx.sessionId, agentId: "child"})).tasks;
         try {
             await parent.startShell({command: "sleep 30", cwd, toolCallId: "parent"});
             const own = await child.startShell({command: "sleep 30", cwd, toolCallId: "child"});

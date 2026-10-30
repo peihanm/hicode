@@ -133,7 +133,7 @@ describe("fork subagent", () => {
                 sessionId: "fork-session",
                 toolResultStore: store,
             });
-            const ctx = createTestContext(cwd, {tasks, shellRunner});
+            const ctx = createTestContext(cwd, {sessionId: "fork-session", toolResultStore: store, tasks, shellRunner});
             attachSubagentLauncher(ctx, async () => {
                 throw new Error("Fork 必须走后台 Task runner");
             }, () => history);

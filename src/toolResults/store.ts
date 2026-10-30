@@ -1,3 +1,4 @@
+import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {imageAssetId} from "../images/persist.js";
 import {constants} from "node:fs";
 import {createHash, randomUUID} from "node:crypto";
@@ -30,7 +31,7 @@ const MAX_TOOL_RESULT_DIRECTORY_ENTRIES = 20_000;
 function getToolResultSessionDir(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string
+    sessionId: SessionStorageOwner
 ): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "tool-results");
 }
@@ -80,17 +81,19 @@ export class ToolResultStore {
     readonly maxSessionBytes: number;
     readonly previewChars: number;
     readonly sessionId: string;
+    readonly owner: SessionStorageOwner;
     private readonly projectsRoot: string;
 
     constructor(
         private readonly storage: HiCodeStorageLayout,
         readonly cwd: string,
-        sessionId: string,
+        owner: SessionStorageOwner,
         limits: ToolResultStoreLimits
     ) {
-        this.sessionId = sessionId;
+        this.sessionId = sessionStorageId(owner);
+        this.owner = typeof owner === "string" ? owner : Object.freeze({parentSessionId: owner.parentSessionId, agentId: owner.agentId});
         this.projectsRoot = storage.projectsRoot;
-        this.sessionDir = getToolResultSessionDir(storage, cwd, sessionId);
+        this.sessionDir = getToolResultSessionDir(storage, cwd, owner);
         this.maxArtifactBytes = limits.maxArtifactBytes;
         this.maxSessionBytes = limits.maxSessionBytes;
         this.previewChars = limits.previewChars;
@@ -102,7 +105,7 @@ export class ToolResultStore {
     static create(
         storage: HiCodeStorageLayout,
         cwd: string,
-        sessionId: string
+        sessionId: SessionStorageOwner
     ): ToolResultStore {
         return new ToolResultStore(storage, cwd, sessionId, {
             maxArtifactBytes: DEFAULT_MAX_ARTIFACT_BYTES,
@@ -538,7 +541,7 @@ export class ToolResultStore {
         const target = resolve(path);
         const storagePath = relative(this.projectsRoot, target);
         if (!isAbsolute(storagePath) && !storagePath.startsWith("..") &&
-            /(?:^|\/)sessions\/session-[^/]+\/tool-results(?:\/|$)/.test(storagePath) &&
+            /(?:^|\/)sessions\/session-[^/]+\/(?:subagents\/[^/]+\/)?tool-results(?:\/|$)/.test(storagePath) &&
             dirname(target) !== resolve(this.sessionDir)) {
             throw new ToolResultStoreError("Access denied to unauthorized session result files");
         }

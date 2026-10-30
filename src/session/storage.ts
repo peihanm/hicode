@@ -1,3 +1,4 @@
+import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
 import type {SessionArchiveDraft} from "./archive.js";
 import {randomUUID} from "node:crypto";
@@ -31,14 +32,15 @@ import {
 import {createSessionValueFreezer} from "./contentStore.js";
 
 /** Serial persistence belongs to the Session, shared by tools, compaction and every Host. */
-export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: string, sessionId: string, visibility: "listed" | "internal" = "listed") {
+export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, visibility: "listed" | "internal" = "listed") {
     const commit = createSessionSnapshotCommitter(storage, cwd, sessionId);
     const limitUIEvents = createSessionUIEventLimiter();
     const freezeSessionValue = createSessionValueFreezer();
     let pending = Promise.resolve();
     const issues = new Set<string>();
     const enqueue = (input: SaveSessionSnapshotInput, compaction?: {draft: SessionArchiveDraft; signal: AbortSignal}) => {
-        if (input.cwd !== cwd || input.sessionId !== sessionId) return Promise.reject(new Error("Session writer owner mismatch"));
+        if (typeof sessionId !== "string" && visibility !== "internal") return Promise.reject(new Error("Child storage requires internal visibility"));
+        if (input.cwd !== cwd || input.sessionId !== sessionStorageId(sessionId)) return Promise.reject(new Error("Session writer owner mismatch"));
         const preserveConversation = !hasCompleteToolPairs(stripSystemMessage(input.history));
         if (preserveConversation && compaction) return Promise.reject(new Error("Refusing unpaired Session compaction"));
         const snapshot: SaveSessionSnapshotInput = {
@@ -47,7 +49,7 @@ export function createSessionPersistence(storage: HiCodeStorageLayout, cwd: stri
             uiEvents: preserveConversation ? [] : input.uiEvents?.map(event => freezeSessionValue(event)),
             ...(preserveConversation ? {summaryHint: summarizeSessionHistory(input.history).summary ?? input.summaryHint} : {}),
         };
-        const operation = pending.then(() => saveSnapshot(storage, snapshot, commit, limitUIEvents, preserveConversation, message => {if (issues.size < 8) issues.add(message);}, compaction, visibility));
+        const operation = pending.then(() => saveSnapshot(storage, sessionId, snapshot, commit, limitUIEvents, preserveConversation, message => {if (issues.size < 8) issues.add(message);}, compaction, visibility));
         pending = operation.catch(() => undefined);
         return operation;
     };
@@ -63,7 +65,7 @@ export function createSessionId(): string {
     return randomUUID();
 }
 
-async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnapshotInput,
+async function saveSnapshot(storage: HiCodeStorageLayout, owner: SessionStorageOwner, input: SaveSessionSnapshotInput,
     commit: ReturnType<typeof createSessionSnapshotCommitter>, limitUIEvents: ReturnType<typeof createSessionUIEventLimiter>,
     preserveConversation: boolean, onIssue: (message: string) => void, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, visibility: "listed" | "internal"): Promise<void> {
     const conversation = stripSystemMessage(input.history);
@@ -76,11 +78,11 @@ async function saveSnapshot(storage: HiCodeStorageLayout, input: SaveSessionSnap
         : {summary: hint};
     if (!summary.summary && !input.allowEmpty && !compaction) return;
 
-    await withSessionPersistenceLock(storage, input.cwd, input.sessionId, async () => {
+    await withSessionPersistenceLock(storage, input.cwd, owner, async () => {
         // A queued pre-compaction UI snapshot must not undo a committed archive/History.
-        if (!compaction && hasNewerSessionCompaction(storage, input.cwd, input.sessionId,
+        if (!compaction && hasNewerSessionCompaction(storage, input.cwd, owner,
             input.compactState?.compactCount ?? 0)) return;
-        await ensureSessionIdentity(storage,input.cwd,input.sessionId);
+        await ensureSessionIdentity(storage,input.cwd,owner);
         const timestamp = new Date().toISOString();
         const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
         const entry: SessionSnapshotEntry = {

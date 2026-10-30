@@ -1,3 +1,4 @@
+import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {WebSources} from "../tools/webFetch/state.js";
 import {createSessionPersistence} from "../session/storage.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
@@ -42,7 +43,7 @@ interface SubagentThreadDependencies {
     fastRunAgent: AgentRunner;
     registry: SubagentRegistry;
 
-    createToolResultStore(cwd: string, sessionId: string): ToolResultStore;
+    createToolResultStore(cwd: string, owner: SessionStorageOwner): ToolResultStore;
 }
 
 async function emit(
@@ -111,24 +112,25 @@ export function createSubagentFactories(
         const childModel = useFastModel ? parentContext.fastModel : parentContext.model;
         const runChildAgent = useFastModel ? dependencies.fastRunAgent : dependencies.primaryRunAgent;
         const childProvider = useFastModel ? parentContext.fastProvider : parentContext.provider;
-        const childSessionId = `subagent-${agentId}`;
+        const childOwner = Object.freeze({parentSessionId: parentContext.sessionId, agentId});
+        const childSessionId = sessionStorageId(childOwner);
         const childHistory: Message[] = request.contextSnapshot !== undefined
             ? structuredClone(request.contextSnapshot.history)
             : [];
         const childCompactState = createCompactState();
         const storageCwd = options.storageCwd ?? parentContext.cwd;
-        const persistence = createSessionPersistence(parentContext.storage, storageCwd, childSessionId, "internal");
+        const persistence = createSessionPersistence(parentContext.storage, storageCwd, childOwner, "internal");
         const inheritedState = request.contextSnapshot ? structuredClone(parentContext.compactState) : undefined;
         const inheritedArchives = inheritedState ? createSessionArchiveAccess(parentContext.storage, storageCwd,
             parentContext.sessionId, () => inheritedState) : undefined;
-        const archiveAccess = createSessionArchiveAccess(parentContext.storage, storageCwd, childSessionId,
+        const archiveAccess = createSessionArchiveAccess(parentContext.storage, storageCwd, childOwner,
             () => childCompactState, inheritedArchives);
         const childContextUsage = new ContextUsageTracker();
         const webSources = new WebSources();
         const childFileState = createFileStateTracker();
         const childToolResultStore = dependencies.createToolResultStore(
             options.storageCwd ?? parentContext.cwd,
-            childSessionId
+            childOwner
         );
         const childTasks = parentContext.tasks && isParentTaskSession(parentContext.tasks)
             ? parentContext.tasks.createChildShellSession(childToolResultStore) : undefined;
@@ -196,7 +198,7 @@ export function createSubagentFactories(
                             copied.add(ref.imageId);
                         }
                     }
-                    try {await ensureSessionIdentity(parentContext.storage, options.storageCwd ?? parentContext.cwd, childSessionId);}
+                    try {await ensureSessionIdentity(parentContext.storage, options.storageCwd ?? parentContext.cwd, childOwner);}
                     catch {transcriptIssue = "Subagent storage identity could not be recorded; task execution continues.";}
                     const firstRun = runCount === 0;
                     runCount += 1;
@@ -255,7 +257,7 @@ export function createSubagentFactories(
                     });
                     childContext.sessionArchives = archiveAccess;
                     childContext.sessionCompaction = {
-                        prepare: history => prepareSessionArchive(parentContext.storage, storageCwd, childSessionId, history),
+                        prepare: history => prepareSessionArchive(parentContext.storage, storageCwd, childOwner, history),
                         commit: (history, state, draft) => persistence.compact(snapshot(history, state), draft, input.signal),
                     };
                     childContext.commitToolBatch = async () => {

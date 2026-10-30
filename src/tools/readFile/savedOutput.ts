@@ -7,7 +7,7 @@ import {throwIfTurnAborted} from "../../runtime/abort.js";
 /** Read log lines without loading a potentially 64 MiB artifact into memory. */
 export async function readSavedOutput(
     file: Pick<PersistedToolResult, "path" | "byteLength" | "complete">, startLine: number, limit: number, signal: AbortSignal,
-    kind: "tool" | "archive" = "tool"
+    kind: "tool" | "archive" | "record" = "tool"
 ): Promise<string> {
     const handle = await open(file.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
@@ -16,7 +16,7 @@ export async function readSavedOutput(
         const buffer = Buffer.alloc(64 * 1024);
         const decoder = new TextDecoder("utf-8", {fatal: true, ignoreBOM: true});
         const window = new ReadWindow([
-            `${kind === "archive" ? "Session archive" : "Saved output"}: ${JSON.stringify(file.path)}`,
+            `${kind === "archive" ? "Session archive" : kind === "record" ? "Subagent record" : "Saved output"}: ${JSON.stringify(file.path)}`,
             `Complete artifact: ${file.complete ? "yes" : "no (only the saved portion is available)"}`,
             "Saved results are historical logs; use read_file on the source file before editing to confirm its current version.",
         ].join("\n"), startLine, limit);

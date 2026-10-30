@@ -18,6 +18,9 @@ import {prepareImage} from "../../src/images/prepare.js";
 import type {Message} from "../../src/llm/types.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
 import {loadSession} from "../../src/session/storage.js";
+import {createSessionPersistence} from "../../src/session/storage.js";
+import {prepareSessionArchive} from "../../src/session/archive.js";
+import {sessionStorageId} from "../../src/persistence/layout.js";
 
 function fixture(cwd: string) {
     const ctx = createTestContext(cwd, {toolResultStore: createToolResultStore(createTestStorage(cwd), cwd, "test-session")});
@@ -34,6 +37,36 @@ function fixture(cwd: string) {
         return result;
     }};
 }
+
+test("a compacted child resolves archived image IDs from its nested content and asset stores", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const owner = {parentSessionId: "parent", agentId: "image-archive"};
+        const store = createToolResultStore(storage, cwd, owner);
+        const ctx = createTestContext(cwd, {sessionId: sessionStorageId(owner), toolResultStore: store});
+        ctx.imageModelSupported = true;
+        ctx.imageAccess = createImageAccess({storage, store, history: () => [], state: () => ctx.compactState});
+        const path = join(cwd, "source.png");
+        await writeFile(path, await sharp({create: {width: 16, height: 16, channels: 3, background: "green"}}).png().toBuffer());
+        const result = await createToolRuntime().executeTool("view_image", JSON.stringify({path}), ctx, "view");
+        expect(result.outcome).toBe("ok");
+        const reference = imageReferences(result.modelContent)[0]!;
+        const history: Message[] = [
+            {role: "assistant", content: null, tool_calls: [{id: "view", type: "function", function: {name: "view_image", arguments: JSON.stringify({path})}}]},
+            {role: "tool", tool_call_id: "view", content: result.modelContent},
+        ];
+        const draft = prepareSessionArchive(storage, cwd, owner, history);
+        const state = {...ctx.compactState, compactCount: 1, archives: [draft.record]};
+        await createSessionPersistence(storage, cwd, owner, "internal").compact({cwd, sessionId: ctx.sessionId, model: ctx.model,
+            history: [{role: "user", origin: "compaction", content: "image inspected"}], compactState: state, todos: [], permissionMode: "ask"}, draft, ctx.signal);
+        await unlink(path);
+        const access = createImageAccess({storage, store, history: () => [], state: () => state});
+        expect(access.find(reference.imageId)).toEqual(reference);
+        expect(await access.read(reference)).toBeInstanceOf(Buffer);
+        expect(await access.readSource(reference)).toBeInstanceOf(Buffer);
+        const sibling = createImageAccess({storage, store: createToolResultStore(storage, cwd, {parentSessionId: "parent", agentId: "other"}), history: () => [], state: () => state});
+        expect(() => sibling.find(reference.imageId)).toThrow();
+    });
+});
 
 test("long image detail comes from immutable original pixels, including cropping a crop in original coordinates", async () => {
     await withTempProject(async cwd => {
@@ -106,7 +139,7 @@ test("child Fork receives independent original and view assets through the paren
         const child = createFakeLLM([async () => {
             await unlink(f.ctx.toolResultStore.imagePath(ref.imageId));
             await unlink(f.ctx.toolResultStore.imagePath(imageAssetId(ref.image.source)));
-            const childStore = createTestToolResultStore(cwd, "subagent-image-child", {hicodeHome: f.ctx.storage.hicodeHome});
+            const childStore = createTestToolResultStore(cwd, {parentSessionId: f.ctx.sessionId, agentId: "image-child"}, {hicodeHome: f.ctx.storage.hicodeHome});
             expect(await childStore.readImageSource(ref)).toEqual(source);
             expect(await childStore.readImage(ref)).toBeInstanceOf(Buffer);
             return assistantText("图片副本确认");

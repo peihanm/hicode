@@ -1,3 +1,4 @@
+import type {SessionStorageOwner} from "../persistence/layout.js";
 import {contentText} from "../images/content.js";
 import {createHash} from "node:crypto";
 import {lstat, readdir, unlink} from "node:fs/promises";
@@ -26,7 +27,7 @@ function recordId(record: Omit<SessionArchiveRecord, "id">): string {
     return createHash("sha256").update(JSON.stringify(record)).digest("hex");
 }
 
-export function prepareSessionArchive(storage: HiCodeStorageLayout, cwd: string, sessionId: string, history: readonly Message[]): SessionArchiveDraft {
+export function prepareSessionArchive(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, history: readonly Message[]): SessionArchiveDraft {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     const messages = history.flatMap<Exclude<Message, {role: "system"}>>(message => {
         if (message.role === "system") return [];
@@ -76,7 +77,7 @@ function renderParts(record: SessionArchiveRecord, blocks: SessionContentStore):
     return parts;
 }
 
-export async function collectArchiveViews(storage: HiCodeStorageLayout, cwd: string, sessionId: string, retained: ReadonlySet<string>): Promise<void> {
+export async function collectArchiveViews(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, retained: ReadonlySet<string>): Promise<void> {
     const directory = getSessionArchiveDirectory(storage, cwd, sessionId);
     ensurePrivateStorageDirectory(storage, directory);
     for (const file of await readdir(directory, {withFileTypes: true})) {
@@ -88,7 +89,7 @@ export async function collectArchiveViews(storage: HiCodeStorageLayout, cwd: str
 }
 
 /** A derived view grants access only while its record belongs to this Session's active state. */
-export function createSessionArchiveAccess(storage: HiCodeStorageLayout, cwd: string, sessionId: string, getState: () => CompactState, inherited?: SessionArchiveAccess): SessionArchiveAccess {
+export function createSessionArchiveAccess(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, getState: () => CompactState, inherited?: SessionArchiveAccess): SessionArchiveAccess {
     const directory = getSessionArchiveDirectory(storage, cwd, sessionId);
     return {async resolve(path) {
         path = resolve(path);

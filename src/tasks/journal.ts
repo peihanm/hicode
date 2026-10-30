@@ -1,5 +1,7 @@
+import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
+import {ensurePrivateStorageDirectory} from "../persistence/privateStorage.js";
 import {existsSync} from "node:fs";
-import {appendFile, chmod, lstat, mkdir, readFile} from "node:fs/promises";
+import {appendFile, chmod, lstat, readFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {
     getSessionStorageDirectory,
@@ -29,20 +31,20 @@ interface LoadedTaskJournal {
 }
 
 export interface TaskJournalLike {
-    append(event: TaskEventEnvelope): Promise<void>;
-    markNotificationClaimed(input: {
+    append(owner: SessionStorageOwner, event: TaskEventEnvelope): Promise<void>;
+    markNotificationClaimed(owner: SessionStorageOwner, input: {
         sequence: number;
         sessionId: string;
         taskId: string;
         notificationId: string;
     }): Promise<void>;
-    load(sessionId: string): Promise<LoadedTaskJournal>;
+    load(owner: SessionStorageOwner): Promise<LoadedTaskJournal>;
 }
 
 function journalPath(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string
+    sessionId: SessionStorageOwner
 ): string {
     return join(
         getSessionStorageDirectory(storage, cwd, sessionId),
@@ -183,26 +185,27 @@ class TaskJournal implements TaskJournalLike {
         private readonly cwd: string,
     ) {}
 
-    async append(event: TaskEventEnvelope): Promise<void> {
-        await this.appendEntry(event);
+    async append(owner: SessionStorageOwner, event: TaskEventEnvelope): Promise<void> {
+        await this.appendEntry(owner, event);
     }
 
-    async markNotificationClaimed(input: {
+    async markNotificationClaimed(owner: SessionStorageOwner, input: {
         sequence: number;
         sessionId: string;
         taskId: string;
         notificationId: string;
     }): Promise<void> {
-        await this.appendEntry({
+        await this.appendEntry(owner, {
             version: 8,
             type: "task_notification_claimed",
             ...input,
         });
     }
 
-    async load(sessionId: string): Promise<LoadedTaskJournal> {
-        const path = journalPath(this.storage, this.cwd, sessionId);
-        await mkdir(dirname(path), {recursive: true, mode: 0o700});
+    async load(owner: SessionStorageOwner): Promise<LoadedTaskJournal> {
+        const sessionId = sessionStorageId(owner);
+        const path = journalPath(this.storage, this.cwd, owner);
+        ensurePrivateStorageDirectory(this.storage, dirname(path));
         return this.lock(`${path}.lock`, async () => {
             const current = await this.readCurrent(path, sessionId);
             return loadedJournal(current.entries);
@@ -249,17 +252,19 @@ class TaskJournal implements TaskJournalLike {
         }
     }
 
-    private async appendEntry(entry: TaskJournalEntry): Promise<void> {
+    private async appendEntry(owner: SessionStorageOwner, entry: TaskJournalEntry): Promise<void> {
+        if (entry.sessionId !== sessionStorageId(owner)) throw new Error("Task Journal owner mismatch");
         const append = this.appendTail
             .catch(() => undefined)
             .then(async () => {
-                const path = journalPath(this.storage, this.cwd, entry.sessionId);
+                const path = journalPath(this.storage, this.cwd, owner);
                 const line = `${serializeTaskJournalEntry(entry)}\n`;
                 if (Buffer.byteLength(line, "utf8") > MAX_TASK_JOURNAL_LINE_BYTES) {
                     throw new Error(`Task Journal line exceeds the size limit: ${path}`);
                 }
+                ensurePrivateStorageDirectory(this.storage, dirname(path));
                 await this.lock(`${path}.lock`, async () => {
-                    await mkdir(dirname(path), {recursive: true, mode: 0o700});
+                    ensurePrivateStorageDirectory(this.storage, dirname(path));
                     await chmod(dirname(path), 0o700);
                     const current = await this.readCurrent(path, entry.sessionId);
                     const shouldCompact = current.requiresRewrite ||

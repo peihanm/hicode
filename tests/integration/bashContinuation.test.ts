@@ -60,7 +60,7 @@ test("task mistakes return accessible IDs without rerunning work or exposing ano
             }
             const interrupted = await executeToolResult("task", JSON.stringify({action: "interrupt", task_id: task.id}), ctx, "wrong-action");
             expect(interrupted.modelContent).toContain("Use stop");
-            const foreign = resources.taskRuntime.forSession({sessionId: "another", toolResultStore: ctx.toolResultStore});
+            const foreign = resources.taskRuntime.forSession({sessionId: "another", toolResultStore: createTestToolResultStore(cwd, "another")});
             const hidden = await executeToolResult("task", JSON.stringify({action: "status", task_id: task.id}), {...ctx, tasks: foreign}, "foreign");
             expect(hidden.modelContent).toContain("No accessible tasks");
             expect(hidden.modelContent).not.toContain(task.id);
@@ -341,7 +341,7 @@ test("SDK finite continuation is available while services stay disabled; Thread.
             compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: Number.MAX_SAFE_INTEGER})});
         const thread = await createSDKThread({resources, seed: {sessionId: "sdk-shell", history: [{role: "system", content: "fixture"}], compactState: createCompactState()},
             state: {todos: [], permissionMode: "full-access",  uiEvents: []}, resumed: false, onClose() {}});
-        const tasks = resources.taskRuntime.forSession({sessionId: thread.id, toolResultStore: createTestContext(cwd).toolResultStore});
+        const tasks = resources.taskRuntime.forSession({sessionId: thread.id, toolResultStore: createTestToolResultStore(cwd, thread.id, {hicodeHome: storage.hicodeHome})});
         try {
             expect((await thread.run("run", {maxIterations: 2})).stopReason).toBe("max_turns");
             expect((await tasks.list()).filter(task => task.status === "running")).toHaveLength(1);
@@ -357,7 +357,7 @@ test("SDK finite continuation is available while services stay disabled; Thread.
 test("child default continuation cannot wait for or stop parent Shells", async () => {
     await withTempProject(async cwd => {
         const {resources, tasks, ctx} = fixture(cwd);
-        const child = tasks.createChildShellSession(createTestToolResultStore(cwd, "child")).tasks;
+        const child = tasks.createChildShellSession(createTestToolResultStore(cwd, {parentSessionId: ctx.sessionId, agentId: "child"})).tasks;
         try {
             const parent = await tasks.startShell({command: "sleep 30", cwd, toolCallId: "parent"});
             const own = await child.runShell({command: "sleep 0.3; printf child", cwd, toolCallId: "child", waitMs: 100,

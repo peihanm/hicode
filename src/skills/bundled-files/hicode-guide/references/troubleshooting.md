@@ -27,10 +27,12 @@ Within that session:
 | `debug/requests/run-<hash>/run.json` | Model-run trace, pending/finished status and logging gaps. |
 | JSON files beside `run.json` | Recorded model requests/responses, possibly including returned reasoning. |
 | `tasks/events.jsonl` | Background task lifecycle/notifications. |
-| `subagents/<agent-hash>/state.json` and `events.jsonl` | Child history and execution state. Not a restartable live thread. |
+| `subagents/<agent-hash>/state.json` and `events.jsonl` | Latest child report/record paths, and execution/history evidence. Not a restartable live thread. |
+| `subagents/<agent-hash>/conversation.txt` | Current persisted conversation, generated on demand by the owning parent's read_file capability. Check snapshot time; earlier evidence remains in events.jsonl. |
+| `subagents/<agent-hash>/{snapshot.json,content/,archives/,tool-results/,tasks/}` | Child persisted conversation, archive views, assets and Shell tasks. |
 | `tool-results/` | Stored large tool outputs and image artifacts referenced by history. |
 
-Child model requests are traced under the parent session's `debug/requests/`; use agent/run IDs to distinguish them. Child tool artifacts may use an independent child session; follow the recorded reference. Do not guess a different project from the child's cwd.
+Child model requests are traced under the parent session's `debug/requests/`; use agent/run IDs to distinguish them. Child tool artifacts and Shell task journals live in `subagents/<agent-hash>/` with the child's snapshot and content. Follow recorded references; do not guess a different project from the child's cwd.
 
 Reasoning text exists only when the provider actually returned it and logging captured it. Lack of a recorded reasoning body does not prove the model did no internal reasoning. Logs can contain source code and user/model content; inspect only relevant records and redact before sharing.
 

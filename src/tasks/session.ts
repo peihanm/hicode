@@ -73,7 +73,8 @@ export class TaskSession implements TaskSessionLike {
     ) {
         this.binding = {...binding, signal: this.controller.signal};
         this.sessionId = binding.sessionId;
-        this.ready = runtime.ensureSession(binding.sessionId);
+        if (binding.sessionId !== binding.toolResultStore.sessionId) throw new Error("Task Session and result store owner mismatch");
+        this.ready = runtime.ensureSession(binding.toolResultStore.owner);
         if (binding.messageQueue) this.messaging = {
             send: async (target, message) => {
                 await this.ready;
@@ -86,6 +87,9 @@ export class TaskSession implements TaskSessionLike {
     createChildShellSession(store: TaskSessionBinding["toolResultStore"]): ChildShellSession {
         this.assertOpen();
         if (store.sessionId === this.sessionId) throw new Error("Child Shell requires an independent Session");
+        if (typeof store.owner === "string" || store.owner.parentSessionId !== this.sessionId) {
+            throw new Error("Child Shell storage must belong to this parent Session");
+        }
         const child = new TaskSession(this.runtime, {
             sessionId: store.sessionId, toolResultStore: store,
             allowBackgroundTasks: this.binding.allowBackgroundTasks,

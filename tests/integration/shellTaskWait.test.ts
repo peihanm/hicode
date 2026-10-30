@@ -53,7 +53,7 @@ test("a running wait reports only new capture bytes and keeps Session/child owne
         }};
         const runtime = createTaskRuntimeForTest(cwd, runner);
         const tasks = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore});
-        const child = tasks.createChildShellSession(createTestToolResultStore(cwd, "wait-child"));
+        const child = tasks.createChildShellSession(createTestToolResultStore(cwd, {parentSessionId: base.sessionId, agentId: "wait-child"}));
         const read = tasks.readShellOutput.bind(tasks);
         const captured = spyOn(tasks, "readShellOutput").mockImplementation(async (id, offset) => {
             const chunk = await read(id, offset);
@@ -173,7 +173,7 @@ test("child wait exposes only its owned Shell task", async () => {
         const base = createTestContext(cwd);
         const runtime = createTaskRuntimeForTest(cwd, base.shellRunner);
         const parent = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore});
-        const child = parent.createChildShellSession(createTestToolResultStore(cwd, "child")).tasks;
+        const child = parent.createChildShellSession(createTestToolResultStore(cwd, {parentSessionId: base.sessionId, agentId: "child"})).tasks;
         const ctx = createTestContext(cwd);
         ctx.tasks = child;
         try {

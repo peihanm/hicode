@@ -85,6 +85,7 @@ export function notificationFor(task: TaskSnapshot): TaskNotification {
     const output = resultId
         ? `; full output saved at ${JSON.stringify(result?.path)}; read with read_file`
         : "";
+    const records = task.kind === "agent" && task.transcriptPath ? `; inspect conversation and execution records with task status (task_id: ${task.id})` : "";
     const summary = notificationSummary(task);
     const message = shellCommandExitMessage(task, messageLabel, output) ??
         `${formatTaskHeader(task)}\n${compactLine(messageLabel)} is ${
@@ -95,7 +96,7 @@ export function notificationFor(task: TaskSnapshot): TaskNotification {
                     : task.status === "cancelled"
                     ? "cancelled"
                     : "failed"
-        }: ${summary}${output}.`;
+        }: ${summary}${output}${records}.`;
     return {
         notificationId: taskNotificationId(task.id, task.kind === "agent" ? task.progress.runCount : 1),
         taskId: task.id,

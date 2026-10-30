@@ -34,7 +34,8 @@ test("无 Git 的指定目录可以读取当前文件、修改、Bash 验证，�
         await writeFile(join(target, "shared.txt"), "uncommitted");
         const child = createFakeLLM([
             options => {
-                expect(JSON.stringify(options.messages)).toContain("INTERMEDIATE_PROJECT_RULE");
+                // Without a Git root, instruction discovery is limited to the child cwd.
+                expect(JSON.stringify(options.messages)).not.toContain("INTERMEDIATE_PROJECT_RULE");
                 expect(JSON.stringify(options.messages)).toContain("CHILD_PROJECT_RULE");
                 expect(options.tools.map(tool => tool.function.name)).toContain("bash");
                 return assistantToolCall("read_file", {path: "shared.txt"}, "read-first");

@@ -59,7 +59,7 @@ describe("TaskJournal", () => {
         await withTempProject(async (cwd) => {
             const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
-            await expect(journal.append(shellEvent({
+            await expect(journal.append("session-a", shellEvent({
                 sequence: 1,
                 ownerSessionId: "other-session",
             }))).rejects.toThrow("Refusing to persist invalid");
@@ -75,7 +75,7 @@ describe("TaskJournal", () => {
                 error: new Error("spawn failed"),
             };
             event.task.status = "failed";
-            await journal.append(event);
+            await journal.append("session-a", event);
 
             const restored = await createTaskJournal(storage, cwd).load("session-a");
             const task = restored.tasks[0];
@@ -92,9 +92,9 @@ describe("TaskJournal", () => {
         await withTempProject(async (cwd) => {
             const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
-            await journal.append(shellEvent({sequence: 1, taskId: "task-a"}));
+            await journal.append("session-a", shellEvent({sequence: 1, taskId: "task-a"}));
             await appendFile(pathFor(storage, cwd), "{\"partial\"");
-            await journal.append(shellEvent({sequence: 2, taskId: "task-b"}));
+            await journal.append("session-a", shellEvent({sequence: 2, taskId: "task-b"}));
 
             const content = await readFile(pathFor(storage, cwd), "utf8");
             expect(content).not.toContain("partial");
@@ -106,11 +106,11 @@ describe("TaskJournal", () => {
         await withTempProject(async (cwd) => {
             const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
-            await journal.append(shellEvent({sequence: 1}));
+            await journal.append("session-a", shellEvent({sequence: 1}));
             await appendFile(pathFor(storage, cwd), "{bad-json}\n");
 
             await expect(journal.load("session-a")).rejects.toThrow("corrupt records");
-            await expect(journal.append(shellEvent({sequence: 2})))
+            await expect(journal.append("session-a", shellEvent({sequence: 2})))
                 .rejects.toThrow("corrupt records");
             expect(await readFile(pathFor(storage, cwd), "utf8"))
                 .not.toContain('"sequence":2');
@@ -121,12 +121,12 @@ describe("TaskJournal", () => {
         await withTempProject(async (cwd) => {
             const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
-            await journal.append(shellEvent({
+            await journal.append("session-a", shellEvent({
                 sequence: 1,
                 type: "task_started",
             }));
             for (let sequence = 2; sequence <= 1_024; sequence++) {
-                await journal.append(shellEvent({sequence}));
+                await journal.append("session-a", shellEvent({sequence}));
             }
 
             const lines = (await readFile(pathFor(storage, cwd), "utf8"))
@@ -143,19 +143,19 @@ describe("TaskJournal", () => {
             const storage = createHiCodeStorageLayout({hicodeHome: join(cwd, "store")});
             const journal = createTaskJournal(storage, cwd);
             for (const runCount of [1, 2]) {
-                await journal.append({version: 8, type: "task_finished", sequence: runCount, sessionId: "session-a",
+                await journal.append("session-a", {version: 8, type: "task_finished", sequence: runCount, sessionId: "session-a",
                     task: {id: "agent-a", kind: "agent", cwd, owner: {sessionId: "session-a", toolCallId: "call"},
                         agentType: "Explore", description: "test", status: "completed", startedAt: "2026-09-05T00:00:00.000Z",
                         completedAt: "2026-09-05T00:00:01.000Z", resultPreview: `run ${runCount}`,
                         progress: {runCount, runStartedAt: "2026-09-05T00:00:00.000Z", previousDurationMs: 0, todosUpdated: false, iterations: 1, toolUseCount: 0, pendingMessages: 0}}});
             }
-            await journal.markNotificationClaimed({sequence: 3, sessionId: "session-a", taskId: "agent-a",
+            await journal.markNotificationClaimed("session-a", {sequence: 3, sessionId: "session-a", taskId: "agent-a",
                 notificationId: taskNotificationId("agent-a", 2)});
-            for (let sequence = 4; sequence <= 1_024; sequence++) await journal.append(shellEvent({sequence}));
+            for (let sequence = 4; sequence <= 1_024; sequence++) await journal.append("session-a", shellEvent({sequence}));
             const loaded = await createTaskJournal(storage, cwd).load("session-a");
             expect(loaded.tasks.find(task => task.id === "agent-a")).toMatchObject({progress: {runCount: 2}});
             expect(loaded.pendingRuns).toEqual([expect.objectContaining({resultPreview: "run 1"})]);
-            await journal.markNotificationClaimed({sequence: 1_025, sessionId: "session-a", taskId: "agent-a",
+            await journal.markNotificationClaimed("session-a", {sequence: 1_025, sessionId: "session-a", taskId: "agent-a",
                 notificationId: taskNotificationId("agent-a", 1)});
             expect((await journal.load("session-a")).pendingRuns).toEqual([]);
         });
@@ -194,7 +194,7 @@ test("compaction retains old running tasks beyond the completed-history budget",
         const path = pathFor(storage, cwd);
         await mkdir(dirname(path), {recursive: true});
         await writeFile(path, entries.join("\n") + "\n");
-        await createTaskJournal(storage, cwd).append(shellEvent({sequence: ++sequence, taskId: "new-running"}));
+        await createTaskJournal(storage, cwd).append("session-a", shellEvent({sequence: ++sequence, taskId: "new-running"}));
         const loaded = await createTaskJournal(storage, cwd).load("session-a");
         expect(loaded.tasks.find(task => task.id === "old-running")?.status).toBe("running");
         expect(loaded.tasks.find(task => task.id === "new-running")?.status).toBe("running");

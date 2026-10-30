@@ -1,3 +1,4 @@
+import {checkSubagentRecordPath} from "../../subagents/recordAccess.js";
 import {dirname, resolve} from "node:path";
 import {realpath, lstat} from "node:fs/promises";
 import {analyzeReadCommand, type ReadCommand} from "../../permissions/shellRead.js";
@@ -55,7 +56,11 @@ export async function prepareCommandReadAccess(command: string, cwd: string, ctx
         const path = resolve(cwd, input);
         let managed = false;
         let memoryDirectory = false;
-        if (await checkMemoryStoragePath(ctx.storage, path)) {
+        if (await checkSubagentRecordPath(ctx.storage, path)) {
+            if (!ctx.subagentRecords) throw new Error("This Agent has no child-record read capability");
+            await ctx.subagentRecords.resolve(path);
+            managed = true;
+        } else if (await checkMemoryStoragePath(ctx.storage, path)) {
             if (!ctx.memoryFiles) throw new Error("This Agent has no Memory file capability");
             memoryDirectory = !!await ctx.memoryFiles.shellDirectory(path);
             if (!memoryDirectory) await ctx.memoryFiles.prepare(path, "read_file");

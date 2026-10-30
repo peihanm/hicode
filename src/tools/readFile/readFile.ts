@@ -1,3 +1,4 @@
+import {checkSubagentRecordPath} from "../../subagents/recordAccess.js";
 import {fileReadReceiptSchema} from "./receipt.js";
 import {z} from "zod";
 import {isUtf8} from "node:buffer";
@@ -47,6 +48,11 @@ export const readFileTool: Tool<typeof inputSchema> = {
     isConcurrencySafe: () => true,
     execute: async ({path, offset, limit}: Input, ctx, invocation) => {
         const absPath = resolveToolPath(ctx.cwd, path);
+        if (await checkSubagentRecordPath(ctx.storage, absPath)) {
+            if (!ctx.subagentRecords) throw new Error("This Agent has no child-record read capability");
+            const record = await ctx.subagentRecords.resolve(absPath);
+            return readSavedOutput(record, offset ?? 1, limit ?? DEFAULT_LIMIT, ctx.signal, "record");
+        }
         if (isMemoryStoragePath(ctx.storage, absPath)) {
             if (!ctx.memoryFiles) throw new Error("This Agent has no Memory file capability");
             await ctx.memoryFiles.prepare(absPath, "read_file");

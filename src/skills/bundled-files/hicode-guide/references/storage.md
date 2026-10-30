@@ -50,7 +50,16 @@ The diagram describes file roles, not a supported schema for manually manufactur
         tasks/events.jsonl            # Shell/Agent/Memory task lifecycle
         tasks/events.jsonl.lock/
         subagents/<agent-hash>/
-          state.json                  # latest child history/result
+          identity.json               # independent logical child Session ID
+          snapshot.json               # internal child snapshot; not Root-resumable
+          .persistence.lock/
+          content/                    # child snapshot/archive bodies
+          archives/                   # child compaction views
+          tool-results/               # child images, tool outputs and Shell captures
+          tasks/events.jsonl          # child-owned Shell tasks and notifications
+          tasks/events.jsonl.lock/
+          state.json                  # v2 latest result, identity and record paths; no duplicate history
+          conversation.txt            # on-demand current conversation view from the validated snapshot
           events.jsonl                # child run events and history increments
         debug/approval-reviews/
           .lock/                      # review initialization lease
@@ -72,9 +81,13 @@ Other locks, such as `.env.lock/`, `settings.json.lock/`, input-history and tool
 1. Inspect `projects/<project-key>/project.json` to confirm the canonical cwd; do not guess from a folder name.
 2. In that project's `sessions/`, use index metadata and `identity.json` to find the session.
 3. For model behavior, read the relevant `debug/requests/run-<hash>/run.json` first, then selected request/response records. Trace agentId/runId identifies child requests in the parent's request directory.
-4. For task completion, inspect `tasks/events.jsonl` and the matching child's `state.json`/`events.jsonl`. For large output or images, follow the recorded result reference to its owning session.
+4. For task completion, inspect `tasks/events.jsonl`. `task status/wait` exposes the owning parent's child-record paths: `conversation.txt` for current persisted messages, `state.json` for the latest report, and `events.jsonl` for execution/history evidence. Use `read_file` pagination; the conversation view is generated on demand. For large output or images, follow their authorized result references.
 
 Project/session/agent hashes are safe storage identifiers, not reversible IDs. Different cwd roots can produce different projects even inside one Git repository.
+
+Child data is nested under its parent but retains an independent logical Session ID, quota and access scope. Root resume excludes children. Child model requests remain in the parent's debug/requests directory. Old sibling child-Session directories are not migrated, read as a fallback or automatically removed.
+
+The child conversation view shows its snapshot time, excludes system/provider reasoning and may include compaction summaries. It can differ from the latest completed report; inspect execution records for earlier runs. Child record access does not grant access to arbitrary private files, sibling assets or other sessions, and explicit ask/deny still applies. State v2 omits duplicate History; execution logs retain history deltas. The view is a rebuildable cache (80 MiB maximum), never a fallback for a corrupt snapshot.
 
 For automatic permission reviews, inspect `debug/approval-reviews/<request-hash>/` and follow its trace to raw model request logs. These records belong to the parent session, not ordinary child transcripts. Review directories are not automatically evicted. A missing result or `eventLogComplete=false` means evidence is incomplete; event logs have a 4 MiB per-review bound. Logs never authorize later actions.
 

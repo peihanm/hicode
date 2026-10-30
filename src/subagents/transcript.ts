@@ -1,8 +1,8 @@
 import {constants} from "node:fs";
 import {open} from "node:fs/promises";
-import {dirname,join} from "node:path";
+import {dirname} from "node:path";
 import {ensurePrivateStorageDirectory,readPrivateStorageTextFile,writeFileAtomically,type HiCodeStorageLayout} from "../persistence/index.js";
-import {getSubagentStorageDirectory} from "../persistence/layout.js";
+import {getSubagentRecordPaths} from "../persistence/layout.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {Message} from "../llm/types.js";
 import type {AgentType,SubagentResult} from "./types.js";
@@ -37,9 +37,10 @@ export class SubagentTranscriptWriter {
     private pending:Promise<void>=Promise.resolve();
     private previous:string[]=[];
     private readonly statePath:string;
-    constructor(private readonly storage:HiCodeStorageLayout,cwd:string,parentSessionId:string,agentId:string){
-        const directory=getSubagentStorageDirectory(storage,cwd,parentSessionId,agentId);
-        this.path=join(directory,"events.jsonl");this.statePath=join(directory,"state.json");
+    private readonly conversationPath:string;
+    constructor(private readonly storage:HiCodeStorageLayout,cwd:string,private readonly parentSessionId:string,private readonly agentId:string){
+        const paths=getSubagentRecordPaths(storage,cwd,parentSessionId,agentId);
+        this.path=paths.events;this.statePath=paths.state;this.conversationPath=paths.conversation;
     }
     append(entry:SubagentTranscriptEntry):Promise<void>{
         const operation=this.pending.then(()=>this.appendOne(entry));this.pending=operation.catch(()=>{});return operation;
@@ -48,14 +49,16 @@ export class SubagentTranscriptWriter {
         ensurePrivateStorageDirectory(this.storage,dirname(this.path));
         let value:unknown=entry;
         let next:string[]|undefined;
+        let state:string|undefined;
         if(entry.type==="snapshot"){
+            if(entry.result.agentId!==this.agentId)throw new Error("Subagent result owner mismatch");
             next=entry.history.map(message=>JSON.stringify(message));
             let retained=0;
             while(retained<Math.min(next.length,this.previous.length)&&next[retained]===this.previous[retained])retained++;
-            const state=JSON.stringify({version:1,timestamp:entry.timestamp,history:entry.history,result:entry.result})+"\n";
+            state=JSON.stringify({version:2,timestamp:entry.timestamp,parentSessionId:this.parentSessionId,agentId:this.agentId,
+                conversationPath:this.conversationPath,transcriptPath:this.path,result:entry.result},null,2)+"\n";
             if(Buffer.byteLength(state)>MAX_TRANSCRIPT_ENTRY_BYTES)throw new Error("Latest subagent state exceeds 32 MiB; prior record retained");
             readPrivateStorageTextFile(this.storage,this.statePath,MAX_TRANSCRIPT_ENTRY_BYTES);
-            await writeFileAtomically(this.statePath,state,0o600);
             value={type:"snapshot",timestamp:entry.timestamp,historyDelta:{retained,appended:entry.history.slice(retained)},result:entry.result,statePath:this.statePath};
         }
         const line=Buffer.from(JSON.stringify(value)+"\n");
@@ -64,9 +67,10 @@ export class SubagentTranscriptWriter {
         try{
             const info=await handle.stat();
             if(!info.isFile())throw new Error("Subagent transcript must be a regular file");
-            if(info.size+line.length>MAX_TRANSCRIPT_BYTES)throw new Error("Subagent event log reached 64 MiB; latest state was retained");
+            if(info.size+line.length>MAX_TRANSCRIPT_BYTES)throw new Error("Subagent event log reached 64 MiB; prior state was retained");
             await handle.chmod(0o600);await handle.writeFile(line);
             if(next)this.previous=next;
         }finally{await handle.close();}
+        if(state!==undefined)await writeFileAtomically(this.statePath,state,0o600);
     }
 }

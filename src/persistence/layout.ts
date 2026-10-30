@@ -23,6 +23,19 @@ export interface HiCodeStorageLayout {
     readonly projectsRoot: string;
 }
 
+/** Root IDs and explicitly owned children share persistence without sharing authority. */
+export type SessionStorageOwner = string | Readonly<{parentSessionId: string; agentId: string}>;
+
+export function sessionStorageId(owner: SessionStorageOwner): string {
+    if (typeof owner === "string") {
+        if (!owner.trim()) throw new Error("Empty Session storage ID");
+        return owner;
+    }
+    if (!owner || typeof owner.parentSessionId !== "string" || !owner.parentSessionId.trim() ||
+        typeof owner.agentId !== "string" || !owner.agentId.trim()) throw new Error("Invalid child storage owner");
+    return `subagent-${owner.agentId}`;
+}
+
 interface CreateHiCodeStorageLayoutOptions {
     hicodeHome?: string;
 }
@@ -94,19 +107,23 @@ export function getProjectSessionsDirectory(
 export function getSessionStorageDirectory(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string
+    sessionId: SessionStorageOwner
 ): string {
+    sessionStorageId(sessionId);
+    if (typeof sessionId !== "string") {
+        return getSubagentStorageDirectory(storage, cwd, sessionId.parentSessionId, sessionId.agentId);
+    }
     return join(
         getProjectSessionsDirectory(storage, cwd),
         `session-${hashStorageKey(sessionId, 24)}`
     );
 }
 
-export function getSessionContentDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
+export function getSessionContentDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "content");
 }
 
-export function getSessionArchiveDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
+export function getSessionArchiveDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "archives");
 }
 
@@ -165,13 +182,19 @@ export function getSubagentStorageDirectory(storage: HiCodeStorageLayout, cwd: s
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "subagents", hashStorageKey(agentId, 32));
 }
 
+export function getSubagentRecordPaths(storage: HiCodeStorageLayout, cwd: string, parentSessionId: string, agentId: string) {
+    const directory = getSubagentStorageDirectory(storage, cwd, parentSessionId, agentId);
+    return {events: join(directory, "events.jsonl"), state: join(directory, "state.json"),
+        conversation: join(directory, "conversation.txt")};
+}
+
 export function getProjectIdentityPath(storage: HiCodeStorageLayout, cwd: string): string {
     return join(getProjectStorageDirectory(storage, cwd), "project.json");
 }
 export function getProjectIdentityLockPath(storage: HiCodeStorageLayout, cwd: string): string {
     return join(getProjectStorageDirectory(storage, cwd), "project.json.lock");
 }
-export function getSessionIdentityPath(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string {
+export function getSessionIdentityPath(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "identity.json");
 }
 

@@ -1,7 +1,7 @@
 import type {Message} from "../../src/llm/types.js";
 import type {SubagentResult} from "../../src/subagents/types.js";
 import { describe, expect, test } from "bun:test";
-import {mkdir, readFile, symlink, writeFile, stat} from "node:fs/promises";
+import {mkdir, readFile, symlink, writeFile, stat, truncate} from "node:fs/promises";
 import {dirname, relative, join} from "node:path";
 import {SubagentTranscriptWriter} from "../../src/subagents/transcript.js";
 import { withTempProject } from "../helpers/tempProject.js";
@@ -51,7 +51,7 @@ describe("subagent transcript", () => {
   });
 });
 
-test("subagent followups append deltas and expose a standalone latest state",async()=>{
+test("subagent followups preserve history deltas while latest state contains only report metadata and record paths",async()=>{
  await withTempProject(async(cwd,storage)=>{
   const writer=new SubagentTranscriptWriter(storage,cwd,"parent","agent");
   const history:Message[]=[{role:"user",origin:"user",content:"x".repeat(100_000)}];
@@ -62,8 +62,30 @@ test("subagent followups append deltas and expose a standalone latest state",asy
   }
   expect((await stat(writer.path)).size).toBeLessThan(130_000);
   const state=JSON.parse(await readFile(join(dirname(writer.path),"state.json"),"utf8"));
-  expect(state.history).toHaveLength(11);
+  expect(state.version).toBe(2);
+  expect(state).not.toHaveProperty("history");
+  expect(state.result).toEqual(result);
+  expect(state.conversationPath).toBe(join(dirname(writer.path),"conversation.txt"));
+  expect((await stat(join(dirname(writer.path),"state.json"))).size).toBeLessThan(3000);
   const events=(await readFile(writer.path,"utf8")).trim().split("\n").map(line=>JSON.parse(line));
   expect(events[1].historyDelta.retained).toBe(2);expect(events[1].historyDelta.appended).toHaveLength(1);
+  let restored:Message[]=[];
+  for(const event of events)restored=[...restored.slice(0,event.historyDelta.retained),...event.historyDelta.appended];
+  expect(restored).toEqual(history);
  });
+});
+
+test("failed history append does not publish a newer report state", async () => {
+  await withTempProject(async (cwd, storage) => {
+    const writer = new SubagentTranscriptWriter(storage, cwd, "parent", "agent");
+    const result: SubagentResult = {agentId: "agent", agentType: "Explore", description: "test", reply: "first",
+      reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
+    await writer.append({type: "snapshot", timestamp: new Date().toISOString(), history: [{role: "assistant", content: "first"}], result});
+    const path = join(dirname(writer.path), "state.json");
+    const previous = await readFile(path, "utf8");
+    await truncate(writer.path, 64 * 1024 * 1024);
+    await expect(writer.append({type: "snapshot", timestamp: new Date().toISOString(), history: [{role: "assistant", content: "second"}],
+      result: {...result, reply: "second"}})).rejects.toThrow("prior state was retained");
+    expect(await readFile(path, "utf8")).toBe(previous);
+  });
 });

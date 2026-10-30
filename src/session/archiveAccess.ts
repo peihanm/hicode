@@ -1,3 +1,4 @@
+import type {SessionStorageOwner} from "../persistence/layout.js";
 import {basename, dirname, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
 import {getSessionArchiveDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
@@ -8,7 +9,7 @@ export interface SessionArchiveAccess {
 
 export function isSessionArchivePath(storage: HiCodeStorageLayout, path: string): boolean {
     const rel = relative(storage.projectsRoot, resolve(path));
-    return !rel.startsWith("..") && /(?:^|\/)sessions\/session-[^/]+\/archives(?:\/|$)/.test(rel);
+    return !rel.startsWith("..") && /(?:^|\/)sessions\/session-[^/]+\/(?:subagents\/[^/]+\/)?archives(?:\/|$)/.test(rel);
 }
 
 export async function checkSessionArchivePath(storage: HiCodeStorageLayout, path: string): Promise<boolean> {
@@ -18,10 +19,10 @@ export async function checkSessionArchivePath(storage: HiCodeStorageLayout, path
     for (;;) {
         try {
             const canonical = resolve(await realpath(probe), ...missing);
-            if (!/\/sessions\/session-[^/]+\/archives(?:\/|$)/.test(canonical)) return false;
+            if (!/\/sessions\/session-[^/]+\/(?:subagents\/[^/]+\/)?archives(?:\/|$)/.test(canonical)) return false;
             const root = await realpath(storage.projectsRoot);
             const rel = relative(root, canonical);
-            if (!rel.startsWith("..") && !rel.startsWith("/") && /(?:^|\/)sessions\/session-[^/]+\/archives(?:\/|$)/.test(rel)) {
+            if (!rel.startsWith("..") && !rel.startsWith("/") && /(?:^|\/)sessions\/session-[^/]+\/(?:subagents\/[^/]+\/)?archives(?:\/|$)/.test(rel)) {
                 throw new Error("Compaction archives cannot be accessed through path aliases; use the original framework-provided path");
             }
             return false;
@@ -43,6 +44,6 @@ export async function resolveSessionArchiveFile(storage: HiCodeStorageLayout, ac
     return file;
 }
 
-export function archiveIndexPath(storage: HiCodeStorageLayout, cwd: string, sessionId: string, id: string): string {
+export function archiveIndexPath(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, id: string): string {
     return resolve(getSessionArchiveDirectory(storage, cwd, sessionId), `${id}-index.txt`);
 }

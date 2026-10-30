@@ -142,7 +142,7 @@ test("child cannot message siblings, and root cannot address another session's a
             (options, input) => createSubagentThreadForTest({...options, agentOptions: {callLLM: child.callLLM}}, input));
         const inbox = new RuntimeMessageQueue();
         const tasks = runtime.forSession({sessionId: parent.sessionId, toolResultStore: parent.toolResultStore, messageQueue: inbox});
-        const other = runtime.forSession({sessionId: "other-session", toolResultStore: parent.toolResultStore, messageQueue: new RuntimeMessageQueue()});
+        const other = runtime.forSession({sessionId: "other-session", toolResultStore: createTestContext(cwd, {sessionId: "other-session"}).toolResultStore, messageQueue: new RuntimeMessageQueue()});
         try {
             const done = finished(tasks);
             const started = await tasks.startAgent({request, parentContext: parent});

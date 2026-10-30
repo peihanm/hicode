@@ -1,3 +1,4 @@
+import {sessionStorageId, type SessionStorageOwner} from "./layout.js";
 import {z} from "zod";
 import {basename, dirname} from "node:path";
 import {realpath} from "node:fs/promises";
@@ -26,20 +27,20 @@ const sessionIdentitySchema = z.object({
 export async function ensureSessionIdentity(
     storage: HiCodeStorageLayout,
     cwd: string,
-    sessionId: string
+    sessionId: SessionStorageOwner
 ): Promise<void> {
     const path = getSessionIdentityPath(storage, cwd, sessionId);
     ensurePrivateStorageDirectory(storage, dirname(path));
     const previous = readPrivateStorageTextFile(storage, path, MAX_IDENTITY_BYTES);
     if (previous !== null) {
         const stored = sessionIdentitySchema.parse(JSON.parse(previous));
-        if (stored.sessionId !== sessionId || stored.cwd !== cwd) {
+        if (stored.sessionId !== sessionStorageId(sessionId) || stored.cwd !== cwd) {
             throw new Error("Session identity changed");
         }
         return;
     }
     await writeFileAtomically(path, JSON.stringify({
-        version: 1, cwd, sessionId, createdAt: new Date().toISOString(),
+        version: 1, cwd, sessionId: sessionStorageId(sessionId), createdAt: new Date().toISOString(),
     }, null, 2), 0o600);
 }
 
