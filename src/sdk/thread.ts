@@ -79,7 +79,7 @@ export function createSDKThreadFactory(
         if (options.state.permissionMode === "full-access" && !options.resources.allowFullAccess) throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         const session = createRootSessionRuntime({
             resources: options.resources,
-            seed: options.seed,
+            seed: {...options.seed, permissionMode: options.state.permissionMode},
             allowBackgroundTasks: false,
             shellContinuation: options.shellContinuation ?? true,
         });
@@ -138,7 +138,7 @@ class SDKThreadImpl implements SessionThread {
             cwd: this.options.resources.cwd,
             model: this.options.resources.model,
             provider: this.options.resources.provider,
-            permissionMode: this.options.state.permissionMode,
+            permissionMode: this.options.session.permissions.getMode(),
             sandbox: this.options.resources.sandbox.status,
             mcpServers:
                 this.options.resources.mcpManager?.getSnapshots() ?? [],
@@ -183,7 +183,7 @@ class SDKThreadImpl implements SessionThread {
 
     private validateOptions(options: TurnOptions): void {
         validateTurnOptions(options);
-        if ((options.permissionMode ?? this.options.state.permissionMode) === "full-access" && !this.options.resources.allowFullAccess) {
+        if ((options.permissionMode ?? this.options.session.permissions.getMode()) === "full-access" && !this.options.resources.allowFullAccess) {
             throw new HiCodeSDKError("permission_mode_not_allowed", "This Host does not allow Full Access");
         }
     }
@@ -301,9 +301,8 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
-        if (turnOptions.permissionMode !== undefined) this.options.session.invalidateApprovals();
         if (turnOptions.permissionMode !== undefined) {
-            this.options.state.permissionMode = turnOptions.permissionMode;
+            this.options.session.permissions.setMode(turnOptions.permissionMode);
         }
 
         try {
@@ -330,7 +329,7 @@ class SDKThreadImpl implements SessionThread {
                 },
                 getSnapshotState: () => ({
                     todos: this.options.state.todos,
-                    permissionMode: this.options.state.permissionMode,
+                    permissionMode: this.options.session.permissions.getMode(),
                     uiEvents: limitPersistedUIEvents([
                         ...this.options.state.uiEvents,
                         ...adapter.getPersistedUIEvents(),
@@ -414,8 +413,8 @@ class SDKThreadImpl implements SessionThread {
                 return toPermissionDecision(response);
             },
             getPermissionRules: () =>
-                this.options.resources.settings.permissions.rules,
-            getPermissionMode: () => this.options.state.permissionMode,
+                this.options.session.permissions.getRules(),
+            getPermissionMode: () => this.options.session.permissions.getMode(),
             getPermissionPromptPolicy: () =>
                 this.options.host?.onInteraction ? "onRequest" : "never",
             setTodos: async (todos) => {
@@ -514,7 +513,7 @@ class SDKThreadImpl implements SessionThread {
             await this.options.session.saveSnapshot(
                 this.options.session.createSnapshot({
                     todos: this.options.state.todos,
-                    permissionMode: this.options.state.permissionMode,
+                    permissionMode: this.options.session.permissions.getMode(),
                     uiEvents: this.options.state.uiEvents,
                 })
             );

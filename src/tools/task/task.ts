@@ -92,7 +92,7 @@ ${task.resultPreview ?? task.outputIssue ?? "Reviewing frozen evidence"}`;
         task.progress.todos?.length ? `Tasks:\n${task.progress.todos.map(todo => `- ${todo.status}: ${todo.content}`).join("\n")}` : undefined,
         task.resultPreview ? `Result preview:\n${task.resultPreview}` : undefined,
         task.transcriptPath ? `Execution transcript: ${task.transcriptPath}` : undefined,
-        records ? `Conversation: ${records.conversation} (read_file; current persisted messages)` : undefined,
+        records ? `Conversation: ${records.conversation} (generated on demand by read_file; use that tool directly, not an existence check)` : undefined,
         records ? `Latest report metadata: ${records.state}` : undefined,
     ].filter(Boolean).join("\n") + result + issue;
 }

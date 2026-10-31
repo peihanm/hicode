@@ -1,3 +1,5 @@
+import {SessionPermissionPolicy} from "../permissions/sessionPolicy.js";
+import {PermissionRequests} from "../permissions/requests.js";
 import {createSubagentRecordAccess} from "../subagents/recordView.js";
 import {captureApprovalEvidence} from "../permissions/reviewer/evidence.js";
 import {WebSources} from "../tools/webFetch/state.js";
@@ -34,6 +36,7 @@ import {NetworkAccessSession} from "../permissions/networkAccess.js";
 import {hasCompleteToolPairs} from "../session/codec.js";
 
 export interface RootSessionSeed {
+    permissionMode?: PermissionMode;
     sessionId: string;
     history: Message[];
     compactState: CompactState;
@@ -61,6 +64,8 @@ export interface RootSessionRuntime {
     readonly taskSession: TaskSessionLike;
     readonly messageQueue: RuntimeMessageQueue;
     readonly directoryAccess: DirectoryAccessRuntimeLike;
+    readonly permissionRequests: PermissionRequests;
+    readonly permissions: SessionPermissionPolicy;
 
     initialize(): Promise<void>;
 
@@ -128,6 +133,8 @@ export function createRootSessionRuntime({
     });
     const hookSession = createHookSessionRuntime();
     const networkAccess = new NetworkAccessSession();
+    const permissions = new SessionPermissionPolicy(seed.permissionMode ?? resources.settings.permissions.defaultMode, resources.settings.permissions.rules, approvalEpoch, resources.allowFullAccess);
+    const permissionRequests = new PermissionRequests();
     const directoryAccess = createDirectoryAccessRuntime({
         cwd: resources.cwd,
         hardBoundary: resources.workspaceBoundary,
@@ -135,6 +142,7 @@ export function createRootSessionRuntime({
         persistDirectory: (directory) =>
             appendLocalPermissionDirectory(resources.cwd, directory),
     });
+    const unsubscribeDirectoryGrants = directoryAccess.subscribe(() => {void permissionRequests.reconsider();});
     let initializePromise: Promise<void> | undefined;
     let turnActive = false;
 
@@ -169,6 +177,8 @@ export function createRootSessionRuntime({
         taskSession,
         messageQueue,
         directoryAccess,
+        permissionRequests,
+        permissions,
         initialize() {
             initializePromise ??= (async () => {
                 // Task Session restoration starts at construction. Drain every initializer even when another initializer fails.
@@ -274,6 +284,8 @@ export function createRootSessionRuntime({
             }, signal, {session: hookSession, store: toolResultStore, onEvent});
         },
         async runSessionEnd(reason, onEvent) {
+            unsubscribeDirectoryGrants();
+            permissionRequests.dispose();
             const controller = new AbortController();
             const timer = setTimeout(
                 () => controller.abort("session-end-timeout"),

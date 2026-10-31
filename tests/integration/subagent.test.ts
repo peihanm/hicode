@@ -112,7 +112,7 @@ describe("managed Agent and isolated child threads", () => {
       });
       const result = await runner({
         agentType: "FixtureWriter", description: "验证文件观察隔离",
-        prompt: "验证当前文本局部修改与完整覆盖的边界", parentToolCallId: "parent-observation", workspaceWriteApproved: true,
+        prompt: "验证当前文本局部修改与完整覆盖的边界", parentToolCallId: "parent-observation",
       });
       expect(result.reply).toContain("仅完成局部修改");
       expect(child.calls).toHaveLength(4);
@@ -269,7 +269,7 @@ describe("managed Agent and isolated child threads", () => {
     });
   });
 
-  test("父 ask 规则在非交互 child 中收窄为拒绝且不改变父状态", async () => {
+  test("父 ask 规则在无交互 Host 的 child 中返回拒绝且不改变父状态", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/guarded.ts`, "export const guarded = true;\n");
       const child = createFakeLLM([
@@ -283,7 +283,7 @@ describe("managed Agent and isolated child threads", () => {
           return assistantText("读取被父规则收窄");
         },
       ]);
-      const ctx = createTestContext(cwd);
+      const ctx = createTestContext(cwd, {permissionPromptPolicy: "never"});
       ctx.permissionRules.ask.push({
         toolName: "read_file",
         source: "project",

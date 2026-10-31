@@ -30,6 +30,7 @@ export interface SandboxedCommand {
 
 export interface SandboxCommandOptions {
     writableRoots?: readonly string[];
+    deniedReadRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
     readOnlyAccess?: ReadOnlyAccess;
     fileWorkspace?: {root: string; writable: boolean};

@@ -42,7 +42,7 @@ export function AppForTest({
     [resources, runAgentImpl]
   );
   const turnSession = useMemo(
-    () => createUITurnSessionRuntime(testResources, initialSession),
+    () => createUITurnSessionRuntime(testResources, initialSession, initialPermissionMode),
     [initialSession, testResources]
   );
   return (
@@ -51,7 +51,6 @@ export function AppForTest({
         resources={testResources}
         rootSession={turnSession.rootSession}
         resumedDraft={turnSession.resumedDraft}
-        initialPermissionMode={initialPermissionMode}
         initialSession={initialSession}
         requestSessionSwitch={requestSessionSwitch}
       />

@@ -1,3 +1,4 @@
+import type {PermissionMode} from "../../permissions/index.js";
 import type {MessageContent, ContentPart} from "../../images/content.js";
 import {createCompactState} from "../../context/index.js";
 import {createInitialHistory} from "../../prompt/index.js";
@@ -13,7 +14,8 @@ export interface UITurnSessionRuntime {
 /** Compose Session-owned resources outside the interactive App render path. */
 export function createUITurnSessionRuntime(
     resources: RootRuntimeResources,
-    initialSession?: LoadedSession
+    initialSession?: LoadedSession,
+    initialPermissionMode?: PermissionMode
 ): UITurnSessionRuntime {
     const queuedInputs = initialSession?.queuedInputs ?? [];
     const userInputs = queuedInputs.filter(
@@ -22,6 +24,7 @@ export function createUITurnSessionRuntime(
     const rootSession = createRootSessionRuntime({
         resources,
         seed: {
+            permissionMode: initialPermissionMode ?? initialSession?.permissionMode,
             sessionId: initialSession?.sessionId ?? createSessionId(),
             history:
                 initialSession?.history ??

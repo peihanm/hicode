@@ -10,6 +10,7 @@ import {runShellArgv, runShellCommand, type ShellCommandOptions, type ShellExecu
 interface ShellRunnerRequest extends ShellCommandOptions {
     sandboxPermissions?: SandboxExecutionPreference;
     writableRoots?: readonly string[];
+    deniedReadRoots?: readonly string[];
     networkAccess?: NetworkAccessExecution;
     readAccess?: CommandReadAccess;
     fileWorkspace?: {root: string; writable: boolean};
@@ -59,6 +60,7 @@ export function createShellRunner(
             const {
                 sandboxPermissions = "use_default",
                 writableRoots,
+                deniedReadRoots,
                 networkAccess,
                 readAccess,
                 fileWorkspace,
@@ -66,7 +68,7 @@ export function createShellRunner(
                 env,
                 ...processOptions
             } = request;
-            if ((readAccess || fileWorkspace) && sandboxPermissions === "require_escalated") {
+            if ((readAccess || fileWorkspace || deniedReadRoots?.length) && sandboxPermissions === "require_escalated") {
                 return sandboxFailure(request.signal, new Error("Read-only command execution cannot leave the Sandbox"));
             }
             if (
@@ -95,7 +97,7 @@ export function createShellRunner(
                     prepared?.command ?? command,
                     request.cwd,
                     request.signal,
-                    prepared ? {readOnlyAccess: prepared.access} : {writableRoots, networkAccess, fileWorkspace}
+                    prepared ? {readOnlyAccess: prepared.access} : {writableRoots, deniedReadRoots, networkAccess, fileWorkspace}
                 );
             } catch (error) {
                 return sandboxFailure(request.signal, error);

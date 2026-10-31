@@ -51,7 +51,6 @@ test("two authorized delegates join before final answer without UI delivery or a
         const base = createTestContext(cwd);
         const runtime = createTaskRuntimeForTest(cwd, base.shellRunner, (options, request) => {
             const index = childIndex++;
-            expect(request.workspaceWriteApproved).toBe(true);
             return {agentId: options.agentId, async close() {}, async run() {
                 await gates[index]!.promise;
                 return {agentId: options.agentId, agentType: request.agentType, description: request.description,

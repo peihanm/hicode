@@ -9,7 +9,6 @@ import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
 import {useRef, useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
 import {Box, Text, useApp} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
-import type {PermissionMode} from "../permissions/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {MessageList} from "./conversation/MessageList.js";
 import {ScrollbackTranscript} from "./conversation/ScrollbackTranscript.js";
@@ -76,7 +75,6 @@ function runningActivityLabel(
 export function App({
                             resources,
                             runtimeApproval,
-                            initialPermissionMode,
         initialImages,
                             initialSession,
                             rootSession,
@@ -86,7 +84,6 @@ export function App({
                         }: {
         resources: RootRuntimeResources;
         runtimeApproval?: ReactNode;
-        initialPermissionMode?: PermissionMode;
     initialImages?: readonly string[];
         initialSession?: LoadedSession;
         rootSession: RootSessionRuntime;
@@ -121,7 +118,6 @@ export function App({
         const openTasks = useCallback(() => setActivePanel("tasks"), []);
         const turn = useTurnController({
             resources,
-            initialPermissionMode,
             initialSession,
             rootSession,
             resumedDraft,
@@ -183,6 +179,11 @@ export function App({
             if (activePanel !== undefined) return;
             if ((key.escape || input === "\u001B") && !turn.confirmRequest && inputEscapeRef.current?.()) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
+            if (turn.confirmRequest?.actor && isCancel) {
+                turn.confirmRequest.resolve({behavior: "deny", message: "User denied background Agent permission"});
+                turn.clearConfirmRequest(turn.confirmRequest);
+                return;
+            }
             if (
                 (turn.busy || turn.attachmentState.preparing) &&
                 isCancel

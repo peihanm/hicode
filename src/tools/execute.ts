@@ -1,5 +1,6 @@
 import {toolFileChanges} from "../toolResults/uiData.js";
 import {requestApproval, type ApprovalResolution} from "../permissions/approval.js";
+import {commitDirectoryApproval} from "../permissions/delegation.js";
 import {appendContentText, contentText} from "../images/content.js";
 import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type ToolHookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
@@ -224,10 +225,7 @@ export async function executeRegisteredTool(
             const scope = decision.directoryScope ?? "once";
             if (scope !== "once") {
                 try {
-                    await ctx.directoryAccess.grantDirectory(
-                        permission.presentation.suggestedDirectory,
-                        scope
-                    );
+                    await (ctx.commitDirectoryApproval ?? ((request, approved) => commitDirectoryApproval(ctx, request, approved)))(permission.presentation, resolution);
                 } catch (error) {
                     return hookDecoratedResult(
                         inlineToolResult(

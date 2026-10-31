@@ -1,3 +1,4 @@
+import {PermissionActorLabel} from "./DialogFrame.js";
 import {Box, Text} from "ink";
 import {DialogSelect} from "./DialogSelect.js";
 import type {PermissionDecision} from "../../permissions/index.js";
@@ -38,13 +39,13 @@ export function FileAccessDialog({
         ? "Delete"
         : operation === "edit"
             ? "Edit"
-            : "Write";
+            : operation === "write_directory" ? "Command write access" : "Write";
     const options: FileAccessOption[] = [
         {
             label: "1. Allow this directory for this session",
             value: "session",
         },
-        {label: "2. Allow once", value: "once"},
+        {label: operation === "write_directory" ? "2. Allow this command only" : "2. Allow once", value: "once"},
         {label: "3. Deny", value: "deny"},
     ];
 
@@ -59,6 +60,7 @@ export function FileAccessDialog({
     return (
         <Box flexDirection="column" paddingLeft={2}>
             <Text color={COLORS.warning} bold>◆ FILE ACCESS</Text>
+            <PermissionActorLabel actor={req.actor}/>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>{action.toUpperCase()}</Text>
                 <Text>{targetPath}</Text>

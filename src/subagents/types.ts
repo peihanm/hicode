@@ -46,7 +46,6 @@ interface SubagentWorkspace {
 }
 
 export interface SubagentRequest extends SubagentWorkspace {
-    workspaceWriteApproved?: true;
     agentType: AgentName;
     name?: string;
     description: string;

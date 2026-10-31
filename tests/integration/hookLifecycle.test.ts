@@ -361,7 +361,7 @@ test("delegated tools enforce approved policies and keep independent once state 
             options=>{expect(JSON.stringify(options.messages)).toContain("project policy");return assistantText("blocked as required");},
         ]);
         const worker=createSubagentThreadForTest({parentContext:ctx,onEvent:()=>{},agentId:"policy-worker",agentOptions:{callLLM:workerModel.callLLM}},
-            {agentType:"Worker",cwd:childCwd,workspaceWriteApproved:true,description:"worker",prompt:"read",parentToolCallId:"spawn"});
+            {agentType:"Worker",cwd:childCwd,description:"worker",prompt:"read",parentToolCallId:"spawn"});
         for(const prompt of ["read","read again","try blocked write"])await worker.run({prompt,signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
         const explorerModel=createFakeLLM([assistantToolCall("read_file",{path:"allowed.txt"},"explore-read"),assistantText("done")]);
         const explorer=createSubagentThreadForTest({parentContext:ctx,onEvent:()=>{},agentId:"policy-explore",agentOptions:{callLLM:explorerModel.callLLM}},

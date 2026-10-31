@@ -1,3 +1,4 @@
+import {resolveSubagentDirectory} from "../../subagents/workspace.js";
 import {taskLookupFailure} from "../task/recovery.js";
 import {formatTaskHeader, isTaskId} from "../../tasks/format.js";
 import {createAgentReceipt} from "../agent/receipt.js";
@@ -23,9 +24,11 @@ export const agentFollowupTool: Tool<typeof inputSchema> = {
         if (!isTaskId(task_id)) return {behavior: "deny", message: await taskLookupFailure(ctx, task_id, "agent_followup")};
         const task = await ctx.tasks.get(task_id);
         if (!task) return {behavior: "deny", message: await taskLookupFailure(ctx, task_id, "agent_followup")};
-        if (task.kind !== "agent" || !await ctx.directoryAccess.canAccess(task.cwd)) {
-            return {behavior: "deny", message: "The target must be an Agent in this Session within authorized directories"};
+        if (task.kind !== "agent") {
+            return {behavior: "deny", message: "The target must be an Agent in this Session"};
         }
+        try {await resolveSubagentDirectory(ctx, task.cwd);}
+        catch (error) {return {behavior: "deny", message: String(error)};}
         return {behavior: "allow"};
     },
     async execute({task_id, message}, ctx) {

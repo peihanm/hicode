@@ -1,3 +1,4 @@
+import {PermissionActorLabel} from "./DialogFrame.js";
 import {useTerminalInput} from "../input/terminalInput.js";
 import {useRef, useState} from "react";
 import {Box, Text} from "ink";
@@ -119,6 +120,7 @@ export function ElevatedBashDialog({
     return (
         <Box flexDirection="column" paddingX={padding} width={width}>
             <Text color={COLORS.warning} bold>◆ RUN OUTSIDE SANDBOX</Text>
+            <PermissionActorLabel actor={req.actor}/>
             <Box marginTop={1} flexDirection="column" width={contentWidth}>
                 <Text color={COLORS.dim} bold>PURPOSE</Text>
                 <Text>{elevatedAction.purpose}</Text>

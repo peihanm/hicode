@@ -139,7 +139,7 @@ test("a read-only custom role cannot gain writes from a writable launch", async 
                 return assistantText("Cannot modify files in this role.");
             },
         ]);
-        const thread = createSubagentThreadForTest({agentId: "read-only", parentContext: parent, onEvent() {}, registry: restricted, agentOptions: {callLLM: fake.callLLM}}, {...assignment, workspaceWriteApproved: true});
+        const thread = createSubagentThreadForTest({agentId: "read-only", parentContext: parent, onEvent() {}, registry: restricted, agentOptions: {callLLM: fake.callLLM}}, {...assignment});
         await thread.run({prompt: "work", signal: parent.signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(await Bun.file(`${cwd}/forbidden.txt`).exists()).toBe(false);
     });

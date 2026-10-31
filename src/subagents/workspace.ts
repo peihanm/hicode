@@ -1,20 +1,21 @@
+import {isPrivateSessionPath} from "./recordAccess.js";
 import {realpath, stat} from "node:fs/promises";
 import {isAbsolute, resolve} from "node:path";
-import {isPathInside} from "../permissions/pathGuard.js";
+import {isPathInside, validateWorkspacePath} from "../permissions/pathGuard.js";
 import type {PermissionRules} from "../permissions/types.js";
 import {createProjectInstructionLoader, type ProjectInstructions} from "../prompt/instructions.js";
 import type {ToolContext} from "../tools/types.js";
 
-/** cwd selects an existing granted directory; it never creates a new grant. */
+/** Selecting a readable cwd never grants write access. */
 export async function resolveSubagentDirectory(parent: ToolContext, path = parent.cwd): Promise<string> {
+    await parent.directoryAccess.initialize();
     const target = resolve(parent.cwd, path);
-    if (!await parent.directoryAccess.canAccess(target)) throw new Error(`Child Agent cwd is outside parent-authorized directories: ${path}`);
     const canonical = await realpath(target);
-    if (!await parent.directoryAccess.canAccess(canonical)) throw new Error(`Child Agent cwd escaped the authorized directory during validation: ${path}`);
+    const boundary = await realpath(parent.workspaceBoundary ?? parent.directoryAccess.hardBoundary);
+    const scope = await validateWorkspacePath(boundary, parent.cwd, canonical);
+    if (!scope.ok) throw new Error(scope.message);
+    if (await isPrivateSessionPath(parent.storage, canonical)) throw new Error("Child Agent cwd cannot be private session storage");
     if (!(await stat(canonical)).isDirectory()) throw new Error(`Child Agent cwd is not a directory: ${path}`);
-    if (parent.workspaceBoundary && !isPathInside(await realpath(parent.workspaceBoundary), canonical)) {
-        throw new Error(`Child Agent cwd escaped the parent workspace boundary: ${path}`);
-    }
     return canonical;
 }
 
@@ -33,8 +34,7 @@ export async function subagentInstructions(parent: ToolContext, cwd: string): Pr
     const parentCwd = await realpath(parent.cwd);
     const inherited = parent.instructions.files.filter(file =>
         file.scope === "host" || file.scope === "user" || isPathInside(parentCwd, cwd));
-    const boundary = parent.directoryAccess.listDirectories().filter(directory => isPathInside(directory, cwd))
-        .sort((a, b) => b.length - a.length)[0] ?? cwd;
+    const boundary = await realpath(parent.workspaceBoundary ?? parent.directoryAccess.hardBoundary);
 
     const loaded = await createProjectInstructionLoader({sources: ["project", "local"],
         maxTotalChars: Math.max(0, 120_000 - inherited.reduce((total, file) => total + file.content.length, 0)),

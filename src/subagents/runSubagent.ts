@@ -1,3 +1,5 @@
+import {realpath} from "node:fs/promises";
+import {commitDirectoryApproval} from "../permissions/delegation.js";
 import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {WebSources} from "../tools/webFetch/state.js";
 import {createSessionPersistence} from "../session/storage.js";
@@ -71,9 +73,8 @@ export function createSubagentFactories(
             );
         }
         const {definition} = registration;
-        const writable = request.workspaceWriteApproved === true && request.readOnly !== true && !definition.readOnly &&
+        const writable = request.readOnly !== true && !definition.readOnly &&
             !parentContext.readOnlyTools;
-        const permissionRules = subagentPermissionRules(parentContext);
         const canMessageParent = options.agentMessaging !== undefined && parentContext.toolNames.includes("agent_message");
         const tools = parentContext.availableTools.filter(tool =>
             parentContext.toolNames.includes(tool.name) && !CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool.name) &&
@@ -209,7 +210,8 @@ export function createSubagentFactories(
                         // Construct fields explicitly so future Root capabilities cannot leak into children automatically.
                         resources: {
                             storage: parentContext.storage, shellRunner: parentContext.shellRunner, readOnlyTools: !writable,
-                            cwd, workspaceBoundary: cwd, instructions, toolNames: runtime.toolNames, availableTools: runtime.getTools(),
+                            cwd, workspaceBoundary: await realpath(parentContext.workspaceBoundary ?? parentContext.directoryAccess.hardBoundary), instructions,
+                            allowFullAccess: parentContext.allowFullAccess, approvalReviewer: parentContext.approvalReviewer, reviewerModel: parentContext.reviewerModel, toolNames: runtime.toolNames, availableTools: runtime.getTools(),
                             skills: childSkills,
                             tasks: childTasks?.tasks,
                             fileCommits: parentContext.fileCommits,
@@ -225,6 +227,16 @@ export function createSubagentFactories(
                         },
                         session: {
                             webSources,
+                            approvalEpoch: parentContext.approvalEpoch,
+                            directoryAccess: {
+                                get hardBoundary() {return parentContext.directoryAccess.hardBoundary;},
+                                initialize: () => parentContext.directoryAccess.initialize(),
+                                canAccess: path => parentContext.directoryAccess.canAccess(path),
+                                createRequest: (path, operation) => parentContext.directoryAccess.createRequest(path, operation),
+                                listDirectories: () => parentContext.directoryAccess.listDirectories(),
+                                subscribe: listener => parentContext.directoryAccess.subscribe(listener),
+                                grantDirectory: async () => {throw new Error("Children cannot grant directory access");},
+                            },
                             fileState: childFileState,
                             hookSession,
                             sessionId: childSessionId,
@@ -234,14 +246,10 @@ export function createSubagentFactories(
                             toolResultFiles: childToolResultFiles ?? childToolResultStore,
                         },
                         host: {
-                            canUseTool: async () => ({
-                                behavior: "deny",
-                                message: "Child Agents cannot request interactive permission approval",
-                            }),
-                            getPermissionRules: () => permissionRules,
-                            getPermissionMode: () => "ask",
-                            getPermissionPromptPolicy: () =>
-                                "never",
+                            canUseTool: (tool, message, args, options) => parentContext.canUseTool(tool, message, args, options),
+                            getPermissionRules: () => subagentPermissionRules(parentContext),
+                            getPermissionMode: () => parentContext.permissionMode,
+                            getPermissionPromptPolicy: () => parentContext.permissionPromptPolicy,
                             async setTodos(todos) {
                                 todosUpdatedThisRun = true;
                                 childTodos = structuredClone(todos);
@@ -250,9 +258,13 @@ export function createSubagentFactories(
                             },
                         },
                     });
+                    childContext.permissionActor = {agentId, name: request.name ?? definition.agentType};
+                    childContext.approvalEvidence = parentContext.approvalEvidence;
+                    childContext.onApprovalEvent = event => recordChildEvent(event);
+                    childContext.commitDirectoryApproval = (directory, resolution) => commitDirectoryApproval(parentContext, directory, resolution);
                     const snapshot = (history = childHistory, compactState = childCompactState) => ({
                         cwd: storageCwd, sessionId: childSessionId, model: childModel, history, compactState,
-                        todos: childTodos, permissionMode: "ask" as const, allowEmpty: true,
+                        todos: childTodos, permissionMode: childContext.permissionMode, allowEmpty: true,
                         toolDiscovery: runtime.getToolDiscoverySnapshot(),
                     });
                     childContext.sessionArchives = archiveAccess;

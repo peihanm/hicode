@@ -1,4 +1,6 @@
 import type {SubagentRecordAccess} from "../subagents/recordAccess.js";
+import type {PermissionActor} from "../permissions/delegation.js";
+import type {commitDirectoryApproval} from "../permissions/delegation.js";
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import type {WebSources, WebFailures} from "./webFetch/state.js";
 import type {ChildTaskAccess} from "../tasks/session.js";
@@ -74,6 +76,8 @@ export interface ToolContext {
             allowPersistent?: boolean;
             presentation?: PermissionPromptPresentation;
             signal?: AbortSignal;
+            actor?: PermissionActor;
+            revalidate?: () => Promise<boolean>;
         }
     ) => Promise<PermissionDecision>;
 
@@ -89,6 +93,8 @@ export interface ToolContext {
     approvalReviewer?: ApprovalReviewer;
     reviewerModel?: ModelTargetSettings;
     approvalEvidence?: () => ApprovalEvidence;
+    permissionActor?: PermissionActor;
+    commitDirectoryApproval?: (request: Parameters<typeof commitDirectoryApproval>[1], resolution: Parameters<typeof commitDirectoryApproval>[2]) => Promise<void>;
     onApprovalEvent?: (event: ApprovalEvent) => void | Promise<void>;
 
     // A non-interactive Host narrows ask to deny; this is not a user permission profile.

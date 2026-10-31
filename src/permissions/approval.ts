@@ -2,6 +2,7 @@ import {captureApprovalEvidence, type ApprovalEvidence} from "./reviewer/evidenc
 import {randomUUID} from "node:crypto";
 import type {ToolContext} from "../tools/types.js";
 import type {PermissionDecision, PermissionPromptPresentation} from "./types.js";
+import type {PermissionActor} from "./delegation.js";
 
 export interface ApprovalRequest {
     id: string;
@@ -15,6 +16,7 @@ export interface ApprovalRequest {
     reason: string;
     presentation?: PermissionPromptPresentation;
     evidence: ApprovalEvidence;
+    actor?: PermissionActor;
 }
 
 export interface ReviewVerdict {
@@ -140,7 +142,10 @@ export async function requestApproval(
         };
         await emit("start");
         try {
-            const decision = await withAbort(ctx.canUseTool(toolName, message, structuredClone(input), {...options, signal}), signal);
+            const directory = options.presentation?.kind === "filesystem_access" ? options.presentation.suggestedDirectory : undefined;
+            const decision = await withAbort(ctx.canUseTool(toolName, message, structuredClone(input), {...options, signal, actor: ctx.permissionActor,
+                ...(directory ? {revalidate: async () => !signal.aborted && await ctx.directoryAccess.canAccess(directory)} : {}),
+            }), signal);
             signal.throwIfAborted();
             if (decision.behavior === "allow") ctx.approvalBudget.record(false);
             await emit("end", decision.behavior === "allow" ? "allow" : "deny");
@@ -150,12 +155,13 @@ export async function requestApproval(
     };
     if (toolName === "ask_user") return human("approval_required", reason);
     if (mode === "full-access" && ctx.allowFullAccess) return {source: "preauthorized", decision: {behavior: "allow"}};
-    if (mode !== "auto-review") return human("approval_required", reason);
+    if (mode !== "auto-review" || (options.presentation?.kind === "filesystem_access" && options.presentation.operation === "write_directory")) return human("approval_required", reason);
     const request: ApprovalRequest = {
         id: requestId, kind: options.presentation?.kind === "network_access" ? "network"
             : toolName === "bash" ? "exec" : options.presentation?.kind === "filesystem_access" ? "file" : "tool",
         sessionId: ctx.sessionId, turnId: ctx.turnId, toolCallId, toolName, cwd: ctx.cwd,
         input: structuredClone(input), reason, presentation: options.presentation,
+        actor: ctx.permissionActor,
         evidence: ctx.approvalEvidence?.() ?? captureApprovalEvidence([]),
     };
     const emit = async (event: Omit<ApprovalEvent, "type" | "requestId" | "turnId" | "toolCallId" | "source">) => {
@@ -176,7 +182,10 @@ export async function requestApproval(
         await emit({phase: "end", outcome: verdict.decision, reason: verdict.reason,
             ...(verdict.decision === "deny" ? {code: "policy_denied" as const} : verdict.decision === "needs_user" ? {code: "approval_required" as const} : {})});
     } catch (error) {
-        if (signal.aborted) throw error;
+        if (signal.aborted) {
+            await emit({phase: "end", outcome: "error", reason: "Approval cancelled or policy changed"});
+            throw error;
+        }
         ctx.approvalBudget.recordFailure();
         const message = `Automatic review did not complete: ${error instanceof Error ? error.message : String(error)}`;
         await emit({phase: "end", outcome: "error", reason: message, code: "review_failed"});

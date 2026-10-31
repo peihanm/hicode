@@ -35,7 +35,7 @@ const agentInputSchema = z.object({
         .regex(/^[a-z0-9][a-z0-9-]*$/)
         .optional()
         .describe("Optional task name, e.g. frontend."),
-    cwd: z.string().trim().min(1).optional().describe("Existing working directory, default current directory; must be within parent-authorized directories. Does not create or authorize a directory."),
+    cwd: z.string().trim().min(1).optional().describe("Existing working directory, default current directory; must be readable within the Host boundary. Does not authorize writes."),
     read_only: z.boolean().default(false).describe("Read-only investigation when true; prohibits writes and commands with side effects. Explore is always read-only."),
 }).strict();
 
@@ -71,8 +71,8 @@ function formatAgentToolDescription(
     });
     return [
         "Delegate only a concrete independent subtask that can run alongside useful Root work, or a bounded investigation that materially reduces context noise. Complexity or many files alone do not justify delegation. Keep immediate blocking work local and do not duplicate delegated work.",
-        "Choose a role and context independently: Worker for implementation, Explore for read-only investigation, or a registered specialist. fresh needs a complete briefing; inherit copies parent background with a worker system prompt. Assign disjoint file ownership, shared interfaces and module-level verification. Root runs full integration checks after dependencies are ready; workers report unfinished sibling dependencies instead of repeatedly checking or editing them. Preserve others' changes. read_only narrows access. cwd must already exist and be authorized; directory creation and integration use ordinary tools.",
-        "Every Agent starts asynchronously and returns a Task ID. Continue independent work; completion automatically delivers a notification with that ID, a summary and the saved report path. Use task wait with the exact task_id when its result blocks progress; wait_ms bounds only the wait and never stops the Agent. agent_message coordinates with an active child; agent_followup assigns more work on the same thread. interrupt ends the current run; stop closes the thread. Children cannot expand permissions. Read and integrate delegated results before the final answer; do not duplicate their work or poll repeatedly.",
+        "Choose a role and context independently: Worker for implementation, Explore for read-only investigation, or a registered specialist. fresh needs a complete briefing; inherit copies parent background with a worker system prompt. Assign disjoint file ownership, shared interfaces and module-level verification. Root runs full integration checks after dependencies are ready; workers report unfinished sibling dependencies instead of repeatedly checking or editing them. Preserve others' changes. read_only narrows access. cwd must already exist and be readable; actual writes require their own permissions.",
+        "Every Agent starts asynchronously and returns a Task ID. Continue independent work; completion automatically delivers a notification with that ID, a summary and the saved report path. Use task wait with the exact task_id when its result blocks progress; wait_ms bounds only the wait and never stops the Agent. agent_message coordinates with an active child; agent_followup assigns more work on the same thread. interrupt ends the current run; stop closes the thread. Children cannot grant themselves permissions; an operation waiting for Host approval resumes automatically when approved, without followup. Read and integrate delegated results before the final answer; do not duplicate their work or poll repeatedly.",
         "Available agents:",
         ...agents,
     ].join("\n");
@@ -93,21 +93,17 @@ export function createAgentTool(
         isReadOnly: input => !writes(input),
         isConcurrencySafe: input => !writes(input) &&
             registry.get(input.subagent_type)?.concurrencySafe === true,
-        getDefaultApprovalScope: (input, ctx) => ({kind: "workspace", path: input.cwd ?? ctx.cwd}),
         checkPermissions: async (input, ctx) => {
             try {await resolveSubagentDirectory(ctx, input.cwd);}
             catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
-            return {behavior: "passthrough"};
+            return {behavior: "allow"};
         },
         async execute(input, ctx, invocation) {
             if (!ctx.subagentLauncher) return {content: "No subagent launcher is configured for this entry point", outcome: "failed"};
-            const workspaceWriteApproved = writes(input) &&
-                (invocation.permissionApproved || (ctx.permissionMode === "full-access" && ctx.allowFullAccess));
             const common = {
                 description: input.description, prompt: input.prompt,
                 parentToolCallId: invocation.toolCallId,
                 cwd: input.cwd, readOnly: input.read_only,
-                ...(workspaceWriteApproved ? {workspaceWriteApproved: true as const} : {}),
             };
             if (!registry.has(input.subagent_type)) {
                 return {content: `Unknown Agent type: ${input.subagent_type}`, outcome: "failed"};

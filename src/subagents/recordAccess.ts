@@ -1,3 +1,5 @@
+import {isPathInside} from "../permissions/pathGuard.js";
+import {resolveFilePermissionPath} from "../permissions/filePattern.js";
 import {basename, dirname, isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
 import type {HiCodeStorageLayout} from "../persistence/layout.js";
@@ -40,4 +42,12 @@ export async function checkSubagentRecordPath(storage: HiCodeStorageLayout, path
             probe = parent;
         }
     }
+}
+
+/** Internal session data is not part of delegated ordinary filesystem access. */
+export async function isPrivateSessionPath(storage: HiCodeStorageLayout, path: string): Promise<boolean> {
+    const root = storage.projectsRoot;
+    return isPathInside(root, resolve(path)) || isPathInside(
+        resolve(await resolveFilePermissionPath(root, storage.hicodeHome), relative(storage.hicodeHome, root)),
+        await resolveFilePermissionPath(root, path));
 }

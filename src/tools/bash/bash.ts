@@ -1,3 +1,4 @@
+import {approveWriteDirectories, validateWriteDirectories} from "./writeAccess.js";
 import {shellResultUI} from "./receipt.js";
 import {captureApprovalEvidence} from "../../permissions/reviewer/evidence.js";
 import {noMatchSearch, shellOutcome} from "./result.js";
@@ -34,6 +35,7 @@ const inputSchema = z.object({
         .min(1)
         .optional()
         .describe("Existing working directory, relative to the current project or an absolute path permitted by runtime policy. To create a directory, run mkdir from an existing parent first. Each call is independent; previous cd state is not retained."),
+    additional_write_directories: z.array(z.string().min(1)).max(8).optional().describe("Existing extra directories this command needs to write, relative to the Agent cwd or absolute. Request before running builds/installers outside authorized write roots. Approval applies to this process tree, or the Session if explicitly selected. A cwd alone grants no write access. Failed commands are not automatically retried."),
     run_in_background: z
         .boolean()
         .optional()
@@ -53,21 +55,21 @@ type CommandCwdResult =
 async function resolveCommandCwd(
     projectCwd: string,
     requestedCwd: string | undefined,
-    fullAccess = false
+    boundary: string
 ): Promise<CommandCwdResult> {
     const candidate = resolve(projectCwd, requestedCwd ?? ".");
     try {
         const [projectRealPath, candidateRealPath, candidateStat] =
             await Promise.all([
-                realpath(projectCwd),
+                realpath(boundary),
                 realpath(candidate),
                 stat(candidate),
             ]);
-        if (!fullAccess && !isPathInside(projectRealPath, candidateRealPath)) {
+        if (!isPathInside(projectRealPath, candidateRealPath)) {
             return {
                 ok: false,
                 outcome: "denied",
-                message: `Bash cwd must be inside the current project: ${requestedCwd}`,
+                message: `Bash cwd is outside the Host boundary: ${requestedCwd}`,
             };
         }
         if (!candidateStat.isDirectory()) {
@@ -243,9 +245,11 @@ export const bashTool: Tool<typeof inputSchema> = {
             ctx.shellRunner.sandboxStatus.kind === "ready"
             ? {kind: "sandboxed"}
             : undefined,
-    async checkPermissions({command, cwd, sandbox_permissions, run_in_background, yield_time_ms}, ctx) {
+    async checkPermissions({command, cwd, sandbox_permissions, run_in_background, yield_time_ms, additional_write_directories}, ctx) {
         const syntaxIssue = commandSyntaxIssue(command);
         if (syntaxIssue) throw new ToolInputError(syntaxIssue);
+        try {await validateWriteDirectories(additional_write_directories ?? [], ctx);}
+        catch (error) {return {behavior: "deny", message: String(error)};}
         let workspace;
         try {workspace = await commandWorkspace(ctx, cwd);} catch (error) {
             if (error instanceof Error && "code" in error && error.code === "ENOTDIR") {
@@ -255,13 +259,13 @@ export const bashTool: Tool<typeof inputSchema> = {
         }
         if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {behavior: "deny", message: "Read-only Memory commands cannot modify files or execute arbitrary programs"};
         if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {behavior: "deny", message: "Memory file commands must run in the foreground inside their Sandbox"};
-        const commandCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, !workspace && ctx.permissionMode === "full-access" && ctx.allowFullAccess);
+        const commandCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, workspace?.root ?? ctx.workspaceBoundary ?? ctx.directoryAccess.hardBoundary);
         if (!commandCwd.ok) {
             if (commandCwd.outcome === "failed") throw new ToolInputError(commandCwd.message);
             return {behavior: "deny", message: commandCwd.message};
         }
-        if ((ctx.readOnlyTools) && sandbox_permissions === "require_escalated") {
-            return {behavior: "deny", message: "Read-only command execution cannot leave the Sandbox"};
+        if ((ctx.readOnlyTools || ctx.permissionActor) && sandbox_permissions === "require_escalated") {
+            return {behavior: "deny", message: "Child Agent or read-only command execution cannot leave the Sandbox"};
         }
         if (sandbox_permissions !== "require_escalated") {
             try {await prepareCommandReadAccess(command, workspace ? resolve(workspace.root, cwd ?? ".") : commandCwd.path, ctx);}
@@ -332,6 +336,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                         run_in_background,
                         yield_time_ms,
                         sandbox_permissions,
+                        additional_write_directories,
                     }, ctx, invocation) => {
         if (run_in_background && yield_time_ms !== undefined) return {content: "yield_time_ms and run_in_background=true cannot be combined", outcome: "failed" as const};
         const syntaxIssue = commandSyntaxIssue(command);
@@ -339,17 +344,22 @@ export const bashTool: Tool<typeof inputSchema> = {
         const workspace = await commandWorkspace(ctx, cwd);
         if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {content: "Read-only Memory commands cannot modify files or execute arbitrary programs", outcome: "failed" as const};
         if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {content: "Memory file commands must run in the foreground inside their Sandbox", outcome: "failed" as const};
-        const resolvedCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, !workspace && ctx.permissionMode === "full-access" && ctx.allowFullAccess);
+        const resolvedCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, workspace?.root ?? ctx.workspaceBoundary ?? ctx.directoryAccess.hardBoundary);
         if (!resolvedCwd.ok) {
             return {content: resolvedCwd.message, outcome: resolvedCwd.outcome};
         }
+        let additionalWrites: string[];
+        try {
+            additionalWrites = await approveWriteDirectories(additional_write_directories ?? [],
+                {command, cwd, run_in_background, yield_time_ms, sandbox_permissions, additional_write_directories}, ctx, invocation.toolCallId);
+        } catch (error) {return {content: `Directory approval failed: ${String(error)}`, outcome: ctx.signal.aborted ? "interrupted" as const : "denied" as const};}
         const commandCwd = workspace ? resolve(workspace.root, cwd ?? ".") : resolvedCwd.path;
         const readAccess = sandbox_permissions !== "require_escalated"
             ? await prepareCommandReadAccess(command, commandCwd, ctx) : undefined;
         if (readAccess && (run_in_background || yield_time_ms !== undefined)) {
             return {content: "Read-only searches must finish in the foreground; do not yield or start them as background tasks.", outcome: "failed" as const};
         }
-        const effectiveSandboxPermissions = readAccess || workspace ? "use_default" as const : ctx.permissionMode === "full-access" && ctx.allowFullAccess
+        const effectiveSandboxPermissions = readAccess || workspace ? "use_default" as const : ctx.permissionMode === "full-access" && ctx.allowFullAccess && !ctx.permissionActor
             ? "require_escalated" as const : sandbox_permissions;
         const needsNetworkApproval = !!ctx.networkAccess && effectiveSandboxPermissions !== "require_escalated" &&
             ctx.shellRunner.sandboxStatus.kind === "ready" && ctx.shellRunner.sandboxStatus.networkMode === "restricted";
@@ -419,7 +429,8 @@ export const bashTool: Tool<typeof inputSchema> = {
                     toolCallId: invocation.toolCallId,
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                     sandboxPermissions: effectiveSandboxPermissions,
-                    writableRoots: ctx.directoryAccess.listDirectories(),
+                    writableRoots: [...ctx.directoryAccess.listDirectories(), ...additionalWrites],
+                    deniedReadRoots: ctx.permissionActor ? [ctx.storage.projectsRoot] : undefined,
                     networkAccess,
                 };
                 const started = run_in_background ? {kind: "task" as const, task: await ctx.tasks.startShell(taskInput)}
@@ -479,7 +490,8 @@ export const bashTool: Tool<typeof inputSchema> = {
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
                     previewChars: 30_000,
                     sandboxPermissions: effectiveSandboxPermissions,
-                    writableRoots: ctx.directoryAccess.listDirectories(),
+                    writableRoots: [...ctx.directoryAccess.listDirectories(), ...additionalWrites],
+                    deniedReadRoots: ctx.permissionActor ? [ctx.storage.projectsRoot] : undefined,
                     networkAccess,
                     ...(readAccess ? {readAccess} : {}),
                     ...(workspace ? {fileWorkspace: workspace} : {}),

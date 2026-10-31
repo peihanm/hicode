@@ -136,7 +136,7 @@ export function createRuntimeBootstrap(
                     return;
                 }
                 const initialSession = session;
-                const turnSession = createUITurnSessionRuntime(resources, initialSession);
+                const turnSession = createUITurnSessionRuntime(resources, initialSession, initialPermissionMode);
                 await turnSession.rootSession.initialize();
                 if (disposed) {
                     await closeResources(resources);
@@ -234,7 +234,6 @@ export function createRuntimeBootstrap(
                 }}/> : undefined)}
                 rootSession={ready.session.rootSession}
                 resumedDraft={ready.session.resumedDraft}
-                initialPermissionMode={initialPermissionMode}
                 initialImages={sessionKey === initialImageSession.current ? initialImages : undefined}
                 initialSession={ready.initialSession}
                 registerSessionShutdown={(shutdown) => {

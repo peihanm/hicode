@@ -84,6 +84,7 @@ export function createAgentTask(
         iterations: 0,
         toolUseCount: 0,
         lastPublishedTokenCount: 0,
+        pendingApprovals: new Set(),
         notificationPending: false,
         suppressTerminalNotification: false,
         completion: Promise.resolve(),
@@ -143,6 +144,7 @@ export async function runAgentTask(
         task.outputIssue = error instanceof Error ? error.message : String(error);
     } finally {
         if (task.controller.signal.aborted) finalStatus = task.interruptRequested ? "interrupted" : "cancelled";
+        task.pendingApprovals.clear();
         task.status = finalStatus;
         task.completedAt = new Date().toISOString();
         task.notificationPending = !task.suppressTerminalNotification;
@@ -177,7 +179,11 @@ async function recordAgentProgress(
     publish: (task: ManagedAgentTask) => Promise<void>
 ): Promise<void> {
     let shouldPublish = false;
-    if (event.type === "subagent_progress" && event.event.type === "todos") {
+    if (event.type === "approval_review") {
+        if (event.phase === "start") task.pendingApprovals.add(event.requestId);
+        else task.pendingApprovals.delete(event.requestId);
+        shouldPublish = true;
+    } else if (event.type === "subagent_progress" && event.event.type === "todos") {
         task.todosUpdated = true;
         task.todos = event.event.todos.slice(0, 100).map(todo => ({...todo, content: todo.content.slice(0, 1024), activeForm: todo.activeForm.slice(0, 1024)}));
         shouldPublish = true;

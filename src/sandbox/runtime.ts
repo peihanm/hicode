@@ -112,6 +112,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                 paths: [], artifacts: [], artifactDirectories: [], deniedPaths: [], privateRoot: this.hicodeHome, executables,
             }, this.baseConfig.filesystem.denyRead, cwd, {root, writable: options.fileWorkspace.writable, deniedWrites: this.configuredDenyWrite}, this.baseConfig.bwrapPath), env: {}};
         }
+        const deniedReadRoots = options?.deniedReadRoots ?? [];
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
             .map((path) => resolve(path));
@@ -121,17 +122,18 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
         ])];
         if (
             this.status.platform === "windows" &&
-            writableRoots.some((path) => !baseWritableRoots.includes(path))
+            (deniedReadRoots.length > 0 || writableRoots.some((path) => !baseWritableRoots.includes(path)))
         ) {
-            throw new Error("Windows Sandbox does not support adding writable roots dynamically within a Session");
+            throw new Error("Windows Sandbox does not support changing filesystem roots dynamically within a Session");
         }
-        const customConfig = writableRoots.length === 0
+        const customConfig = writableRoots.length === 0 && deniedReadRoots.length === 0
             ? undefined
             : {
                 ...this.baseConfig,
                 filesystem: {
                     ...this.baseConfig.filesystem,
                     allowWrite: writableRoots,
+                    denyRead: [...this.baseConfig.filesystem.denyRead, ...deniedReadRoots],
                 },
             };
         // The private store cannot become writable through a broad workspace grant.
@@ -158,7 +160,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             const openOptions = {
                 command: bashCommand(preparedCommand), binShell: shell,
                 needsNetworkRestriction: false,
-                readConfig: {denyOnly: this.baseConfig.filesystem.denyRead},
+                readConfig: {denyOnly: openConfig.filesystem.denyRead},
                 writeConfig: {
                     allowOnly: [...getDefaultWritePaths(), ...writableRoots],
                     denyWithinAllow: openConfig.filesystem.denyWrite,

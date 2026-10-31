@@ -60,6 +60,7 @@ export async function runShellTask(
                 onStarted: () => {task.phase = "running"; task.processStartedAt = new Date().toISOString(); task.processStartedTick = performance.now(); execution.onPhaseChanged();},
                 sandboxPermissions: input.sandboxPermissions,
                 writableRoots: input.writableRoots,
+                deniedReadRoots: input.deniedReadRoots,
                 networkAccess: input.networkAccess,
             });
         };

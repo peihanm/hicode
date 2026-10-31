@@ -5,7 +5,7 @@ import {isPathInside} from "./pathGuard.js";
 export type DirectoryGrantScope = "session" | "project";
 
 export interface DirectoryAccessRequest {
-    operation: "write" | "edit" | "delete";
+    operation: "write" | "edit" | "delete" | "write_directory";
     targetPath: string;
     suggestedDirectory: string;
 }
@@ -25,6 +25,7 @@ export interface DirectoryAccessRuntimeLike {
     grantDirectory(directory: string, scope: DirectoryGrantScope): Promise<string>;
 
     listDirectories(): readonly string[];
+    subscribe(listener: () => void): () => void;
 }
 
 interface CreateDirectoryAccessRuntimeOptions {
@@ -100,6 +101,7 @@ export function createDirectoryAccessRuntime(
     const cwd = resolve(options.cwd);
     let hardBoundary = resolve(options.hardBoundary);
     const directories = new Set<string>([cwd]);
+    const listeners = new Set<() => void>();
     const initialDirectories = options.initialDirectories ?? [];
     const allowGrants = options.allowGrants ?? true;
     let initialized = false;
@@ -168,11 +170,13 @@ export function createDirectoryAccessRuntime(
                 await options.persistDirectory(normalized);
             }
             directories.add(normalized);
+            for (const listener of listeners) listener();
             return normalized;
         },
         listDirectories() {
             return [...directories];
         },
+        subscribe(listener) {listeners.add(listener); return () => {listeners.delete(listener);};},
     };
 }
 

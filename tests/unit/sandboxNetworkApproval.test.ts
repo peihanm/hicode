@@ -1,7 +1,7 @@
 import {describe, expect, test} from "bun:test";
 import {SandboxNetworkApproval} from "../../src/sandbox/networkApproval.js";
 import {NetworkAccessSession, type NetworkAccessExecution} from "../../src/permissions/networkAccess.js";
-import {UIPermissionRequests} from "../../src/ui/turn/permissionRequests.js";
+import {PermissionRequests} from "../../src/permissions/requests.js";
 
 const target = {host: "registry.example.test", port: 443};
 const signal = () => new AbortController().signal;
@@ -98,7 +98,7 @@ describe("Sandbox network approvals", () => {
     test("取消与执行集合变化会撤掉弹窗，迟到的 allow 不会写入授权", async () => {
         for (const stop of ["abort", "release", "new-owner", "close"] as const) {
             const broker = new SandboxNetworkApproval();
-            const requests = new UIPermissionRequests();
+            const requests = new PermissionRequests();
             let shown!: () => void;
             const visible = new Promise<void>((resolve) => { shown = resolve; });
             const owner = access((...args) => { const result = requests.request(...args); shown(); return result; });

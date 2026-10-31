@@ -130,6 +130,7 @@ export interface StartShellTaskInput {
     maxOutputBytes?: number;
     sandboxPermissions?: SandboxExecutionPreference;
     writableRoots?: readonly string[];
+    deniedReadRoots?: readonly string[];
 }
 
 export interface RunShellTaskInput extends StartShellTaskInput {

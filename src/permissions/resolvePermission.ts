@@ -1,4 +1,4 @@
-import {checkSubagentRecordPath} from "../subagents/recordAccess.js";
+import {checkSubagentRecordPath, isPrivateSessionPath} from "../subagents/recordAccess.js";
 // Path/Host boundary -> deny -> tool checks -> read-only limits -> user questions.
 // Full Access preauthorizes ordinary access; other requests apply ask, explicit approval, workspace scope, allow and default intent.
 // requestApproval owns human availability and auto-review; resolution does not decide on behalf of the Host.
@@ -77,6 +77,16 @@ async function resolvePermissionInner(
             try {archiveRead = !!await resolveSessionArchiveFile(ctx.storage, ctx.sessionArchives, path);}
             catch (error) {return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};}
         }
+    }
+
+    if (ctx.permissionActor && archiveInputPath !== undefined) {
+        const path = resolveToolPath(ctx.cwd, archiveInputPath);
+        try {
+            if (await isPrivateSessionPath(ctx.storage, path) && !archiveRead &&
+                !(tool.name === "read_file" && await ctx.toolResultFiles.resolveFile(path))) {
+                return {behavior: "deny", message: "Private session storage requires an exact owned artifact or archive capability"};
+            }
+        } catch (error) {return {behavior: "deny", message: String(error)};}
     }
 
     if (ctx.workspaceBoundary) {
@@ -168,7 +178,7 @@ async function resolvePermissionInner(
     let workspaceAccess: boolean | undefined;
     if (defaultScope?.kind === "workspace") {
         try {
-            workspaceAccess = await ctx.directoryAccess.canAccess(defaultScope.path);
+            workspaceAccess = await ctx.directoryAccess.canAccess(resolveToolPath(ctx.cwd, defaultScope.path));
         } catch (error) {
             return {
                 behavior: "deny",
@@ -209,7 +219,7 @@ async function resolvePermissionInner(
                 let request;
                 try {
                     request = await ctx.directoryAccess.createRequest(
-                        defaultScope.path,
+                        resolveToolPath(ctx.cwd, defaultScope.path),
                         operation
                     );
                 } catch (error) {

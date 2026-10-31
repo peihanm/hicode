@@ -1,3 +1,4 @@
+import {PermissionActorLabel} from "./DialogFrame.js";
 import {useRef, useState} from "react";
 import {Box, Text} from "ink";
 import {DialogSelect} from "./DialogSelect.js";
@@ -101,6 +102,7 @@ export function ConfirmDialog({
     return (
         <Box flexDirection="column" paddingLeft={2}>
             <Text color={COLORS.warning} bold>◆ PERMISSION REQUIRED</Text>
+            <PermissionActorLabel actor={req.actor}/>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>REQUEST</Text>
                 <Text>{req.question}</Text>

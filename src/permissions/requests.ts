@@ -1,17 +1,29 @@
 import type {
     PermissionDecision,
     PermissionPromptPresentation,
-} from "../../permissions/index.js";
-import type {ConfirmReq} from "./types.js";
+} from "./types.js";
+import type {PermissionActor} from "./delegation.js";
+
+export interface PermissionRequest {
+    id: number;
+    question: string;
+    toolName: string;
+    input: unknown;
+    actor?: PermissionActor;
+    allowAddToAllowList?: boolean;
+    presentation?: PermissionPromptPresentation;
+    resolve(decision: PermissionDecision): void;
+}
 
 type Listener = () => void;
 
-export class UIPermissionRequests {
+export class PermissionRequests {
     private readonly listeners = new Set<Listener>();
-    private current: ConfirmReq | null = null;
-    private queue: ConfirmReq[] = [];
+    private current: PermissionRequest | null = null;
+    private queue: PermissionRequest[] = [];
     private disposed = false;
     private nextId = 0;
+    private readonly rechecks = new Map<PermissionRequest, () => Promise<boolean>>();
 
     request(
         toolName: string,
@@ -21,6 +33,8 @@ export class UIPermissionRequests {
             allowPersistent?: boolean;
             presentation?: PermissionPromptPresentation;
             signal?: AbortSignal;
+            actor?: PermissionActor;
+            revalidate?: () => Promise<boolean>;
         }
     ): Promise<PermissionDecision> {
         if (this.disposed || options?.signal?.aborted) {
@@ -29,11 +43,12 @@ export class UIPermissionRequests {
 
         return new Promise<PermissionDecision>((resolve) => {
             let settled = false;
-            const request: ConfirmReq = {
+            const request: PermissionRequest = {
                 id: ++this.nextId,
                 question,
                 toolName,
                 input,
+                actor: options?.actor,
                 allowAddToAllowList:
                     options?.allowPersistent !== false &&
                     toolName !== "write_file" &&
@@ -50,6 +65,7 @@ export class UIPermissionRequests {
                 resolve: (decision) => {
                     if (settled) return;
                     settled = true;
+                    this.rechecks.delete(request);
                     options?.signal?.removeEventListener("abort", abort);
                     resolve(decision);
                 },
@@ -61,24 +77,37 @@ export class UIPermissionRequests {
                 }
             };
             options?.signal?.addEventListener("abort", abort, {once: true});
+            if (options?.revalidate) this.rechecks.set(request, options.revalidate);
             if (this.current) this.queue.push(request);
             else this.current = request;
             this.notify();
         });
     }
 
-    clear(request: ConfirmReq | null): boolean {
+    clear(request: PermissionRequest | null): boolean {
         if (!request || this.current !== request) return false;
         this.current = this.queue.shift() ?? null;
         this.notify();
         return true;
     }
 
-    denyPending(message: string): boolean {
-        const requests = [...(this.current ? [this.current] : []), ...this.queue];
+    /** Reuse new Session grants without turning an explicit ask rule into an automatic allow. */
+    async reconsider(): Promise<void> {
+        for (const [request, recheck] of [...this.rechecks]) {
+            let allowed = false;
+            try {allowed = await recheck();} catch {continue;}
+            if (!allowed || !this.rechecks.has(request)) continue;
+            request.resolve({behavior: "allow"});
+            if (!this.clear(request)) this.queue = this.queue.filter(entry => entry !== request);
+        }
+    }
+
+    denyPending(message: string, scope?: "root"): boolean {
+        const requests = [...(this.current ? [this.current] : []), ...this.queue].filter(request => scope !== "root" || !request.actor);
         if (requests.length === 0) return false;
-        this.current = null;
-        this.queue = [];
+        if (this.current && requests.includes(this.current)) this.current = null;
+        this.queue = this.queue.filter(request => !requests.includes(request));
+        this.current ??= this.queue.shift() ?? null;
         for (const request of requests) request.resolve({behavior: "deny", message});
         this.notify();
         return true;
@@ -95,7 +124,7 @@ export class UIPermissionRequests {
         return () => this.listeners.delete(listener);
     };
 
-    getSnapshot = (): ConfirmReq | null => this.current;
+    getSnapshot = (): PermissionRequest | null => this.current;
 
     private notify(): void {
         for (const listener of this.listeners) {

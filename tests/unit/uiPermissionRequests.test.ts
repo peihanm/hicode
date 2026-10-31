@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { UIPermissionRequests } from "../../src/ui/turn/permissionRequests.js";
+import { PermissionRequests } from "../../src/permissions/requests.js";
 
-describe("UIPermissionRequests", () => {
+describe("PermissionRequests", () => {
   test("暴露 request、返回 decision，并用 identity 清理", async () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     const decision = requests.request("bash", "requires approval", { command: "pwd" });
     const current = requests.getSnapshot();
     expect(current).not.toBeNull();
@@ -16,7 +16,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("脱离 Sandbox 的确认不展示永久允许", () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     void requests.request("bash", "elevated", {
       command: "npm install",
       sandbox_permissions: "require_escalated",
@@ -26,7 +26,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("单次 Sandbox 网络授权不展示永久允许", () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     void requests.request(
       "bash",
       "allow registry network",
@@ -50,7 +50,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("取消只 resolve 一次，旧 request 不能清掉新 request", async () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     const firstDecision = requests.request("bash", "first", {});
     const first = requests.getSnapshot();
     expect(requests.denyPending("Task cancelled")).toBe(true);
@@ -70,7 +70,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("并发 pending request 排队，避免后台网络权限覆盖前台弹窗", async () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     const first = requests.request("bash", "first", {});
     const firstRequest = requests.getSnapshot();
     const second = requests.request("write_file", "second", {});
@@ -84,7 +84,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("dispose 用 shutdown 文案解决 pending request", async () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     const decision = requests.request("bash", "pending", {});
     requests.dispose();
     expect(await decision).toEqual({
@@ -95,7 +95,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("subscriber 异常不会卡住权限请求", async () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     requests.subscribe(() => {
       throw new Error("render failed");
     });
@@ -105,7 +105,7 @@ describe("UIPermissionRequests", () => {
   });
 
   test("队列内取消不会清除当前弹窗；当前取消后继续下一项", async () => {
-    const requests = new UIPermissionRequests();
+    const requests = new PermissionRequests();
     const current = new AbortController();
     const queued = new AbortController();
     const first = requests.request("bash", "first", {}, {signal: current.signal});

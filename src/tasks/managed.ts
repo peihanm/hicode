@@ -61,6 +61,7 @@ export interface ManagedAgentTask extends ManagedTaskBase<AgentTaskStatus> {
     toolUseCount: number;
     tokenCount?: number;
     lastPublishedTokenCount: number;
+    pendingApprovals: Set<string>;
     lastActivity?: string;
     lastMessage?: string;
     todos?: Todo[];
@@ -148,7 +149,7 @@ export function snapshotAgent(task: ManagedAgentTask): AgentTaskSnapshot {
             ...(task.tokenCount !== undefined
                 ? {tokenCount: task.tokenCount}
                 : {}),
-            ...(task.lastActivity ? {lastActivity: task.lastActivity} : {}),
+            ...(task.pendingApprovals.size ? {lastActivity: `Waiting for permission (${task.pendingApprovals.size})`} : task.lastActivity ? {lastActivity: task.lastActivity} : {}),
             ...(task.lastMessage ? {lastMessage: task.lastMessage} : {}),
             ...(task.todos ? {todos: structuredClone(task.todos)} : {}),
         },

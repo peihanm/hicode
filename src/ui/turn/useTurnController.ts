@@ -11,14 +11,14 @@ import {
     type SaveSessionSnapshotInput,
 } from "../../session/index.js";
 import type {PermissionDecision} from "../../permissions/index.js";
-import {addToAllowList, type PermissionMode, type PermissionRules,} from "../../permissions/index.js";
+import {addToAllowList, type PermissionMode,} from "../../permissions/index.js";
 import type {RootRuntimeResources} from "../../runtime/resources.js";
 import type {Todo} from "../../session/todo.js";
 import type {UIThread} from "../conversation/types.js";
 import type {ConfirmReq} from "./types.js";
 import {UITurnController} from "./controller.js";
 import {UITurnEventStore} from "./eventStore.js";
-import {UIPermissionRequests} from "./permissionRequests.js";
+import type {PermissionRequests} from "../../permissions/requests.js";
 import {createTaskNotificationDelivery} from "../../runtime/taskNotificationDelivery.js";
 import {estimateRestoredTokenInfo} from "./tokenInfo.js";
 import {formatAgentLoadWarning} from "../../subagents/diagnostics.js";
@@ -30,7 +30,6 @@ import {formatModelTarget} from "../../llm/modelCatalog.js";
 
 interface UseTurnControllerOptions {
     resources: RootRuntimeResources;
-    initialPermissionMode?: PermissionMode;
     initialSession?: LoadedSession;
     rootSession: RootSessionRuntime;
     resumedDraft?: MessageContent;
@@ -60,7 +59,6 @@ export function selectLiveThreads(
 
 export function useTurnController({
                                           resources,
-                                          initialPermissionMode,
                                           initialSession,
                                           rootSession,
                                           resumedDraft,
@@ -88,21 +86,10 @@ export function useTurnController({
             return sessionInitializationRef.current;
         }, [rootSession]);
 
-        const permissionRulesRef = useRef<PermissionRules | null>(null);
-        if (permissionRulesRef.current === null) {
-            permissionRulesRef.current = resources.settings.permissions.rules;
-        }
-
-        const [permissionMode, setPermissionModeState] = useState<PermissionMode>(
-            () =>
-                initialPermissionMode ??
-                initialSession?.permissionMode ??
-                resources.settings.permissions.defaultMode
-        );
+        const permissionMode = useSyncExternalStore(rootSession.permissions.subscribe, rootSession.permissions.getMode, rootSession.permissions.getMode);
         const [primaryModel, setPrimaryModelState] = useState<ModelTargetSettings>(
             () => resources.primaryModel.target
         );
-        const permissionModeRef = useRef<PermissionMode>(permissionMode);
         const [todos, setTodosState] = useState<Todo[]>(
             () => initialSession?.todos ?? []
         );
@@ -185,11 +172,7 @@ export function useTurnController({
             return sessionStartPromiseRef.current;
         };
 
-        const permissionRequestsRef = useRef<UIPermissionRequests | null>(null);
-        if (permissionRequestsRef.current === null) {
-            permissionRequestsRef.current = new UIPermissionRequests();
-        }
-        const permissionRequests = permissionRequestsRef.current;
+        const permissionRequests = rootSession.permissionRequests;
 
         const lastSaveError = useRef<string | undefined>(undefined);
         const saveSnapshot = useCallback(async (snapshot: SaveSessionSnapshotInput) => {
@@ -212,7 +195,7 @@ export function useTurnController({
             }): SaveSessionSnapshotInput => rootSession.createSnapshot({
                 todos: [...(overrides?.todos ?? todosRef.current)],
                 permissionMode:
-                    overrides?.permissionMode ?? permissionModeRef.current,
+                    overrides?.permissionMode ?? rootSession.permissions.getMode(),
                 uiEvents: eventStore.getPersistedUIEvents(),
                 allowEmpty: overrides?.allowEmpty,
                 summaryHint: overrides?.summaryHint,
@@ -256,9 +239,7 @@ export function useTurnController({
         const setPermissionMode = useCallback(
             (mode: PermissionMode) => {
                 if (mode === "full-access" && !resources.allowFullAccess) return;
-                rootSession.invalidateApprovals();
-                permissionModeRef.current = mode;
-                setPermissionModeState(mode);
+                rootSession.permissions.setMode(mode);
                 void persistSnapshot({permissionMode: mode});
             },
             [persistSnapshot]
@@ -279,7 +260,7 @@ export function useTurnController({
                 toolName: string,
                 message: string,
                 input: unknown,
-                options?: Parameters<UIPermissionRequests["request"]>[3]
+                options?: Parameters<PermissionRequests["request"]>[3]
             ): Promise<PermissionDecision> =>
                 permissionRequests.request(toolName, message, input, options),
             [permissionRequests]
@@ -290,7 +271,7 @@ export function useTurnController({
             signal, onEvent: () => {},
             host: {
                 canUseTool: async () => ({behavior: "deny", message: "File suggestions cannot request additional permissions; type a path directly"}),
-                getPermissionRules: () => permissionRulesRef.current!,
+                getPermissionRules: () => rootSession.permissions.getRules(),
                 getPermissionMode: () => "ask", getPermissionPromptPolicy: () => "never", setTodos() {},
             },
             getSnapshotState: () => ({...createSnapshot(), uiEvents: eventStore.getPersistedUIEvents()}),
@@ -301,8 +282,8 @@ export function useTurnController({
         if (turnControllerRef.current === null) {
             const toolContextHost = {
                 canUseTool,
-                getPermissionRules: () => permissionRulesRef.current!,
-                getPermissionMode: () => permissionModeRef.current,
+                getPermissionRules: () => rootSession.permissions.getRules(),
+                getPermissionMode: () => rootSession.permissions.getMode(),
                 getPermissionPromptPolicy: () => "onRequest" as const,
                 setTodos,
             };
@@ -318,7 +299,7 @@ export function useTurnController({
                 onEvent: handleEvent,
                 onUnexpectedError: (error) => eventStore.appendError(error),
                 denyPendingPermission: (message) => {
-                    permissionRequests.denyPending(message);
+                    permissionRequests.denyPending(message, "root");
                 },
                 initialize: initializeSession,
                 slashCommands: createSlashCommandProcessor({
@@ -371,7 +352,7 @@ export function useTurnController({
                         },
                         getSnapshotState: () => ({
                             todos: todosRef.current,
-                            permissionMode: permissionModeRef.current,
+                            permissionMode: rootSession.permissions.getMode(),
                             uiEvents: eventStore.getPersistedUIEvents(),
                         }),
                         sessionStartContextBlocks:
@@ -501,15 +482,15 @@ export function useTurnController({
             async (rule: string): Promise<void> => {
                 const nextRules = await addToAllowList(
                     rule,
-                    permissionRulesRef.current!,
+                    rootSession.permissions.getRules(),
                     cwd
                 );
-                permissionRulesRef.current = nextRules;
+                rootSession.permissions.setRules(nextRules);
             },
             [cwd]
         );
 
-        const getPermissionRules = useCallback(() => permissionRulesRef.current!, []);
+        const getPermissionRules = useCallback(() => rootSession.permissions.getRules(), []);
         const saveMcpToolPolicy = useCallback(async (name: string, configHash: string, policy: McpToolPolicy) => {
             if (!resources.mcpManager) throw new Error("No MCP Manager available");
             await resources.mcpManager.setToolPolicy(name, configHash, policy);

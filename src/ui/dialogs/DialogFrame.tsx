@@ -1,3 +1,4 @@
+import type {PermissionActor} from "../../permissions/delegation.js";
 import type {ReactNode} from "react";
 import {Box, Text} from "ink";
 import {COLORS} from "../theme.js";
@@ -69,4 +70,8 @@ export function DialogItem({isSelected, label}: {isSelected: boolean; label: str
             {label}
         </Text>
     );
+}
+
+export function PermissionActorLabel({actor}: {actor?: PermissionActor}) {
+    return actor ? <Text color={COLORS.dim}>Agent: {actor.name} · {actor.agentId}</Text> : null;
 }

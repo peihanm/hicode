@@ -391,7 +391,7 @@ describe("bash tool contract", () => {
         "outside-cwd"
       );
       expect(result.outcome).toBe("denied");
-      expect(result.modelContent).toContain("Bash cwd must be inside the current project");
+      expect(result.modelContent).toContain("Bash cwd is outside the Host boundary");
     });
   });
 

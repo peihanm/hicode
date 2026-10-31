@@ -109,14 +109,14 @@ test.each(["file-deny", "shell-deny", "read-only", "elevated", "tool-scope"])("�
         ]);
         const thread = createSubagentThreadForTest({parentContext: parent, agentId: "bounded", onEvent() {}, agentOptions: {callLLM: child.callLLM}},
             {agentType: "Worker", name: "worker", description: "bounded", prompt: "test", parentToolCallId: "spawn",
-                cwd: target, workspaceWriteApproved: true, contextSnapshot: {history: [{role: "system", content: "parent"}]}});
+                cwd: target, contextSnapshot: {history: [{role: "system", content: "parent"}]}});
         await thread.run({prompt: "test", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(child.calls).toHaveLength(2);
         expect(await readdir(target)).not.toContain("blocked.txt");
     });
 });
 
-test("cwd 外部目录需已有授权，继续前拒绝 Symlink 换向，不改父 cwd", async () => {
+test("可读的外部 cwd 无需写授权，继续前拒绝 Symlink 换向，不改父 cwd", async () => {
     await withTempProject(async root => {
         const main = join(root, "main"), other = join(root, "other");
         await mkdir(main); await mkdir(other);
@@ -127,9 +127,7 @@ test("cwd 外部目录需已有授权，继续前拒绝 Symlink 换向，不改�
             parentToolCallId: "spawn", cwd: other, readOnly: true, contextSnapshot: {history: [{role: "system" as const, content: "parent"}]}};
         const create = () => createSubagentThreadForTest({parentContext: parent, agentId: "cwd-check", onEvent() {}, agentOptions: {callLLM: child.callLLM}}, request);
         const run = {prompt: "run", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL};
-        await expect(create().run(run)).rejects.toThrow("authorized director");
-        expect(child.calls).toHaveLength(0);
-        await directoryAccess.grantDirectory(other, "session");
+        expect(await directoryAccess.canAccess(other)).toBe(false);
         const thread = create(); await thread.run(run);
         await rename(other, join(root, "moved")); await symlink(main, other);
         await expect(thread.run(run)).rejects.toThrow("working directory changed before continuation");
@@ -155,7 +153,7 @@ test("模型生成期间工作目录被换向时，旧工具调用不能写入�
         ]);
         const thread = createSubagentThreadForTest({parentContext: createTestContext(root), agentId: "swap", onEvent() {}, agentOptions: {callLLM: child.callLLM}},
             {agentType: "Worker", name: "worker", description: "swap", prompt: "write", parentToolCallId: "spawn",
-                cwd: target, workspaceWriteApproved: true, contextSnapshot: {history: [{role: "system", content: "parent"}]}});
+                cwd: target, contextSnapshot: {history: [{role: "system", content: "parent"}]}});
         await thread.run({prompt: "write", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});
         expect(child.calls).toHaveLength(2);
         expect(await readdir(other)).toHaveLength(0);
