@@ -1,9 +1,10 @@
+import {useTerminalInput} from "./terminalInput.js";
 import {basename, dirname} from "node:path";
 import stringWidth from "string-width";
 import {useFileSuggestions} from "./useFileSuggestions.js";
 import type {FileSuggestions} from "../../runtime/fileSuggestions.js";
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {getSlashCommandSuggestions} from "../../slash/index.js";
 import {MultilineTextInput, type InputBoundaryReplacement, type InputBoundaryState,} from "./MultilineTextInput.js";
@@ -12,6 +13,7 @@ import {useTerminalWidth} from "../terminalSize.js";
 import {pastedImagePath} from "./pastedImage.js";
 import {
     collapsePromptText,
+    insertPasteCapsule,
     EMPTY_PASTE_CAPSULE_STATE,
     expandPasteCapsuleCursor,
     expandPasteCapsules,
@@ -328,7 +330,7 @@ export function createInputBox(
             setSelectedSuggestion(0);
         }, [value]);
 
-        useInput(
+        useTerminalInput(
             (_input, key) => {
                 if (!showSuggestions || files.active) return;
                 if (key.upArrow) {
@@ -406,19 +408,16 @@ export function createInputBox(
                                 )
                             );
                         }}
-                        onInsertText={(text, state) => {
+                        onInsertText={(text, state, source) => {
                             const path = text.length > 1 && !state.value.trimStart().startsWith("/")
                                 ? pastedImagePath(text) : undefined;
                             if (path && onPasteImage?.(path, text)) {
                                 pasteInput.reset();
                                 return state;
                             }
-                            const insertion = pasteInput.insert(
-                                state.value,
-                                state.cursorOffset,
-                                text,
-                                pasteCapsulesRef.current
-                            );
+                            const insertion = source === "paste"
+                                ? insertPasteCapsule(state.value, state.cursorOffset, text, pasteCapsulesRef.current)
+                                : pasteInput.insert(state.value, state.cursorOffset, text, pasteCapsulesRef.current);
                             if (insertion.collapsed) {
                                 replacePasteCapsules(insertion.state);
                             }

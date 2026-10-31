@@ -1,11 +1,12 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useMemo, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {SessionIndexEntry} from "../../session/index.js";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {ResumePicker} from "./ResumePicker.js";
 
 function EmptyResumeState({onClose, message}: {onClose: () => void; message?: string}) {
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (key.escape) onClose();
     });
     return (

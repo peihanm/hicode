@@ -1,6 +1,7 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {agentRunTiming} from "../../tasks/format.js";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {TaskSessionLike, TaskSnapshot} from "../../tasks/types.js";
 import {PanelViewport} from "../dialogs/PanelViewport.js";
 import {COLORS} from "../theme.js";
@@ -83,7 +84,7 @@ export function TasksDialog({tasks, stopTask, onClose}: {
         " ", ...outputRows,
     ] : outputRows;
     const start = Math.min(offset, Math.max(0, rows.length - visibleLines));
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if (key.escape) {if (detailId.current) {detailId.current = undefined; setDetail(undefined); setOffset(0);} else onClose(); return;}
         if (busy) return;
         if (input === "r") {setError(undefined); void refresh(); return;}

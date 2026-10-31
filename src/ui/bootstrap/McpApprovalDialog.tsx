@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {McpApprovalDecision, McpApprovalRequest} from "../../mcp/index.js";
 import {COLORS} from "../theme.js";
 import {usePanelLayout} from "../panelLayout.js";
@@ -46,7 +47,7 @@ export function McpApprovalDialog({
         completed.current = true;
         onDecision(decision);
     };
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if (completed.current) return;
         if (key.escape) finish("skip");
         else if (key.upArrow || key.downArrow) {

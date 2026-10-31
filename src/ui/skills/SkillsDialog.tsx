@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useMemo, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import {stripVTControlCharacters} from "node:util";
 import type {LoadedSkill} from "../../skills/types.js";
 import {layoutTerminalMarkdown} from "../conversation/TerminalMarkdown.js";
@@ -35,7 +36,7 @@ export function SkillsDialog({issues = [], skills, projectDirectory, userDirecto
     const rows = useMemo(() => layoutTerminalMarkdown(clean(issuesOpen ? issues.map(issue => `${issue.path}\n${issue.message}`).join("\n\n") : detailText), columns, false), [detailText, columns, issuesOpen, issues]);
     const start = Math.min(offset, Math.max(0, rows.length - visibleLines));
     const showingText = issuesOpen || detail || !skills.length;
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if (input === "i" && issues.length) {setIssuesOpen(value => !value); setOffset(0); return;}
         if (key.escape) {
             if (issuesOpen) {setIssuesOpen(false); setOffset(0); return;}

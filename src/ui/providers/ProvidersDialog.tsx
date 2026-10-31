@@ -1,6 +1,7 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useEffect, useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
-import TextInput from "ink-text-input";
+import {Box, Text} from "ink";
+import {TextInput} from "../input/TextInput.js";
 import {LLM_PROVIDER_NAMES, PROVIDER_BASE_URLS, type LLMProviderName} from "../../llm/providerRegistry.js";
 import type {PrimaryModelRuntime} from "../../runtime/primaryModel.js";
 import type {ModelConfiguration} from "../../settings/modelConfiguration.js";
@@ -75,7 +76,7 @@ export function ProvidersDialog({runtime, configuration, onSelect, onClose}: {
         } finally {if (mounted.current) setBusy(false);}
     };
 
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (busy) return;
         if (key.escape) {
             if (!runtime.isConfigured || page.kind === "list") onClose();

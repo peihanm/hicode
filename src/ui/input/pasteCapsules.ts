@@ -34,6 +34,7 @@ export const EMPTY_PASTE_CAPSULE_STATE: PasteCapsuleState = {
 
 function normalizePastedText(value: string): string {
     return stripVTControlCharacters(value)
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
         .replace(/\r\n?/g, "\n")
         .replaceAll("\t", "    ");
 }
@@ -98,7 +99,7 @@ export function collapsePromptText(value: string): PasteCapsuleInsertion {
     );
 }
 
-/** Ink exposes chunks, not paste boundaries. Only join an uninterrupted short burst. */
+/** Fallback for terminals without bracketed paste: join only an uninterrupted short burst. */
 export class PasteInputBurst {
     private pending: {
         at: number;

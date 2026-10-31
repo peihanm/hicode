@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import {getPermissionModeDescription, getPermissionModeShortLabel, type PermissionMode} from "../../permissions/index.js";
 import {COLORS} from "../theme.js";
 import {PanelViewport} from "./PanelViewport.js";
@@ -27,7 +28,7 @@ export function PermissionsDialog({
     const [confirmIndex, setConfirmIndex] = useState(1);
     const {width, height, padding, contentWidth} = usePanelLayout();
 
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (confirmFullAccess) {
             if (key.escape) {
                 setConfirmFullAccess(false);

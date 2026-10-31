@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import {panelWindow, wrapPanelText} from "../panelLayout.js";
 import {COLORS} from "../theme.js";
 import {PanelViewport} from "./PanelViewport.js";
@@ -26,7 +27,7 @@ export function PanelSelect<T extends Item>({items, width, rows, onSelect}: {
     ]);
     const window = panelWindow(rendered.map(lines => lines.length), index, budget);
     const lines = rendered.slice(window.start, window.end).flatMap((lines, i) => lines.map(line => ({...line, selected: window.start + i === index})));
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if (!items.length) return;
         if (key.upArrow || key.downArrow || input === "j" || input === "k") {
             const next = (index + (key.upArrow || input === "k" ? -1 : 1) + items.length) % items.length;

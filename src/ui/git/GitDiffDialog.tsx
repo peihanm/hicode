@@ -1,6 +1,7 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {basename} from "node:path";
 import {useEffect, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {GitDiffFile, GitDiffSnapshotResult,} from "../../git/index.js";
 import type {DiffHunk} from "../../fileChanges/index.js";
 import {StructuredDiff} from "../fileChanges/StructuredDiff.js";
@@ -104,7 +105,7 @@ export function GitDiffDialog({
     const selectedFile = view.status === "ready"
         ? Math.max(0, view.files.findIndex(file => file.path === selection.path)) : 0;
 
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if (key.escape) {
             if (viewMode === "detail") {
                 setSelection(current => ({...current, mode: "list"}));

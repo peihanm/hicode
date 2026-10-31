@@ -1,5 +1,6 @@
+import {useTerminalInput} from "./input/terminalInput.js";
 import {useEffect, useState} from "react";
-import {Box, Text, useApp, useInput} from "ink";
+import {Box, Text, useApp} from "ink";
 import {ResumePicker} from "./resume/ResumePicker.js";
 import {
     listSessionIndex,
@@ -87,7 +88,7 @@ export function Root({
         };
     }, [cwd, resumeMode, storage]);
 
-    useInput(
+    useTerminalInput(
         (input, key) => {
             if ((key.ctrl && input === "c") || input === "\x03") exit();
         },

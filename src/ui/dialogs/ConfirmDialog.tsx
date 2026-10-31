@@ -1,11 +1,11 @@
 import {useRef, useState} from "react";
 import {Box, Text} from "ink";
-import SelectInput from "ink-select-input";
+import {DialogSelect} from "./DialogSelect.js";
 import type {PermissionDecision} from "../../permissions/index.js";
 import {generateRuleForTool} from "../../permissions/index.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
-import {DialogIndicator, DialogItem, PermissionModeHint} from "./DialogFrame.js";
+import {PermissionModeHint} from "./DialogFrame.js";
 
 interface ConfirmOption {
     label: string;
@@ -110,12 +110,10 @@ export function ConfirmDialog({
             </Box>
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim} bold>ACTION</Text>
-                <SelectInput
+                <DialogSelect
                     items={options}
                     onSelect={handleSelect}
                     isFocused={!saving}
-                    indicatorComponent={DialogIndicator}
-                    itemComponent={DialogItem}
                 />
             </Box>
             {saving && (

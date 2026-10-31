@@ -1,4 +1,5 @@
-import {Box, Text, useInput} from "ink";
+import {useTerminalInput} from "../input/terminalInput.js";
+import {Box, Text} from "ink";
 import {PanelSelect} from "../dialogs/PanelSelect.js";
 import type {SessionIndexEntry} from "../../session/index.js";
 import {COLORS} from "../theme.js";
@@ -51,7 +52,7 @@ export function ResumePicker({
         };
     });
 
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (key.escape) onCancel();
     });
 

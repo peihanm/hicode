@@ -1,6 +1,5 @@
 import type {ReactNode} from "react";
 import {Box, Text} from "ink";
-import type {IndicatorProps, ItemProps} from "ink-select-input";
 import {COLORS} from "../theme.js";
 
 type DialogTone = "accent" | "warning" | "error";
@@ -56,7 +55,7 @@ export function DialogFrame({
     );
 }
 
-export function DialogIndicator({isSelected}: IndicatorProps) {
+export function DialogIndicator({isSelected}: {isSelected: boolean}) {
     return (
         <Text color={isSelected ? COLORS.accent : COLORS.dim}>
             {isSelected ? "❯ " : "  "}
@@ -64,7 +63,7 @@ export function DialogIndicator({isSelected}: IndicatorProps) {
     );
 }
 
-export function DialogItem({isSelected, label}: ItemProps) {
+export function DialogItem({isSelected, label}: {isSelected: boolean; label: string}) {
     return (
         <Text color={isSelected ? COLORS.accent : undefined} bold={isSelected}>
             {label}

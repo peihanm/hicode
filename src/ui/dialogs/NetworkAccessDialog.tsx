@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {ConfirmReq} from "../turn/types.js";
 import {PermissionModeHint} from "./DialogFrame.js";
 import {COLORS} from "../theme.js";
@@ -36,7 +37,7 @@ export function NetworkAccessDialog({
         onDone();
     };
 
-    useInput((value, key) => {
+    useTerminalInput((value, key) => {
         if (completedRef.current) return;
         if (key.escape) finish(undefined);
         else if (key.upArrow || key.downArrow) {

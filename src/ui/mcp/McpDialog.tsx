@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useEffect, useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import {stripVTControlCharacters} from "node:util";
 import type {McpManagerLike, McpServerSnapshot, McpToolPolicy} from "../../mcp/types.js";
 import type {PermissionRules} from "../../permissions/types.js";
@@ -54,7 +55,7 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
         catch (error) {setError(clean(error instanceof Error ? error.message : String(error)).slice(0, 200));}
         finally {busyRef.current = false; setBusy(false);}
     };
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if ((key.ctrl && input === "c") || input === "\x03") {onClose(); return;}
         if (busyRef.current) return;
         if (key.escape) {

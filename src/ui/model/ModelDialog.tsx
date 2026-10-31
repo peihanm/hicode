@@ -1,6 +1,7 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {reasoningCapability, type ReasoningEffort} from "../../llm/reasoningPolicy.js";
 import {useMemo, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {ModelTargetSettings} from "../../settings/types.js";
 import {formatModelTarget} from "../../llm/modelCatalog.js";
 import {PanelViewport} from "../dialogs/PanelViewport.js";
@@ -71,7 +72,7 @@ export function ModelDialog({
             .catch(reason => setError(reason instanceof Error ? reason.message : "Could not save model selection"))
             .finally(() => setSaving(false));
     };
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         if (saving) return;
         if (key.escape || (key.ctrl && input === "c") || input === "\x03") {
             if (choosingReasoning) setChoosingReasoning(false); else onClose();

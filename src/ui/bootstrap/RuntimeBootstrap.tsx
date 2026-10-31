@@ -1,6 +1,7 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import type {InteractiveShutdown} from "../../cli/interactiveShutdown.js";
 import {useEffect, useRef, useState} from "react";
-import {Box, Text, useApp, useInput} from "ink";
+import {Box, Text, useApp} from "ink";
 import type {PermissionMode} from "../../permissions/index.js";
 import {loadSession, type LoadedSession} from "../../session/index.js";
 import {
@@ -87,7 +88,7 @@ export function createRuntimeBootstrap(
             await closing;
         };
 
-        useInput((input, key) => {
+        useTerminalInput((input, key) => {
             if ((key.ctrl && input === "c") || input === "\x03") {
                 void shutdown.close();
                 exit();

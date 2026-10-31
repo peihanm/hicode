@@ -18,8 +18,8 @@ export function formatTerminalCursorWrite(
     data: string,
     restorePreviousAnchor: boolean
 ): { output: string; anchored: boolean } {
-    // Cursor visibility/style writes do not move the cursor. Keep the existing anchor.
-    if (/^(?:\u001B\[\?25[hl]|\u001B\[[\d;]*m)*$/.test(data)) {
+    // Cursor style and terminal input modes do not move the cursor.
+    if (/^(?:\u001B\[\?(?:25|2004)[hl]|\u001B\[[\d;]*m)*$/.test(data)) {
         return {output: data, anchored: restorePreviousAnchor};
     }
     const markerIndex = data.lastIndexOf(TERMINAL_CURSOR_ANCHOR_MARKER);
@@ -80,7 +80,7 @@ export function createTerminalCursorOutput(
         if (data.startsWith(inkClear)) {
             frame = inkClear + scrollback + data.slice(inkClear.length);
             recoverAfterOverflow = true;
-        } else if (recoverAfterOverflow && !/^(?:\u001B\[\?25[hl]|\u001B\[[\d;]*m)+$/.test(data)) {
+        } else if (recoverAfterOverflow && !/^(?:\u001B\[\?(?:25|2004)[hl]|\u001B\[[\d;]*m)+$/.test(data)) {
             // Ink's overflow branch bypasses log-update, leaving its previous line
             // count stale. A later erase cannot remove live rows already scrolled
             // offscreen. Rebuild once from retained history before resuming deltas.

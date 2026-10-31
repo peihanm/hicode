@@ -1,3 +1,4 @@
+import {useTerminalInput} from "./input/terminalInput.js";
 import {McpDialog} from "./mcp/McpDialog.js";
 import {McpStatus} from "./mcp/McpStatus.js";
 import {DraftLayoutProvider} from "./conversation/draftLayout.js";
@@ -6,7 +7,7 @@ import {ProvidersDialog} from "./providers/ProvidersDialog.js";
 import type {MessageContent} from "../images/content.js";
 import {AssistantDraftView} from "./conversation/AssistantDraftView.js";
 import {useRef, useCallback, useEffect, useMemo, useState, type ReactNode} from "react";
-import {Box, Text, useApp, useInput} from "ink";
+import {Box, Text, useApp} from "ink";
 import {listSessionIndex, type LoadedSession, type SessionIndexEntry,} from "../session/index.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
@@ -176,7 +177,7 @@ export function App({
             [requestExit, turn]
         );
 
-        useInput((input, key) => {
+        useTerminalInput((input, key) => {
             if (runtimeApproval) return;
             const isCtrlC = (key.ctrl && input === "c") || input === "\x03";
             if (activePanel !== undefined) return;

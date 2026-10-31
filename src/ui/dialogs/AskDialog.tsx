@@ -1,6 +1,7 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useState} from "react";
-import {Box, Text, useInput} from "ink";
-import TextInput from "ink-text-input";
+import {Box, Text} from "ink";
+import {TextInput} from "../input/TextInput.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
 
@@ -89,7 +90,7 @@ export function AskDialog({
         setFocus("input");
     };
 
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         // Text-entry mode.
         if (isTyping) {
             if (focus === "input") {

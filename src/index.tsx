@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import {TerminalInputProvider} from "./ui/input/terminalInput.js";
 import {render} from "ink";
 import {InteractiveEvents} from "./ui/interactiveEvents.js";
 import {createInteractiveEventLog} from "./cli/interactiveEventLog.js";
@@ -113,19 +114,21 @@ if (cliOptions.printPrompt !== undefined) {
             try {unmount?.();} catch {}
         });
         const app = render(
-            <InteractiveEvents.Provider value={eventLog ? {emit: eventLog.emit} : undefined}>
-            <TerminalSizeProvider>
-                <TerminalCursorAnchorProvider enabled>
-                    <Root
-                        shutdown={shutdown}
-                        configuration={configuration}
-                        initialImages={cliOptions.images}
-                        initialPermissionMode={cliOptions.permissionMode}
-                        resumeMode={cliOptions.resumeMode}
-                    />
-                </TerminalCursorAnchorProvider>
-            </TerminalSizeProvider>
-            </InteractiveEvents.Provider>,
+            <TerminalInputProvider>
+                <InteractiveEvents.Provider value={eventLog ? {emit: eventLog.emit} : undefined}>
+                    <TerminalSizeProvider>
+                        <TerminalCursorAnchorProvider enabled>
+                            <Root
+                                shutdown={shutdown}
+                                configuration={configuration}
+                                initialImages={cliOptions.images}
+                                initialPermissionMode={cliOptions.permissionMode}
+                                resumeMode={cliOptions.resumeMode}
+                            />
+                        </TerminalCursorAnchorProvider>
+                    </TerminalSizeProvider>
+                </InteractiveEvents.Provider>
+            </TerminalInputProvider>,
             {patchConsole: false, exitOnCtrlC: false, stdout}
         );
         unmount = app.unmount;

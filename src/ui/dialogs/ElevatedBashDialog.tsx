@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import stringWidth from "string-width";
 import type {ConfirmReq} from "../turn/types.js";
 import {PermissionModeHint} from "./DialogFrame.js";
@@ -95,7 +96,7 @@ export function ElevatedBashDialog({
         onDone();
     };
 
-    useInput((value, key) => {
+    useTerminalInput((value, key) => {
         if (completedRef.current) return;
         if (key.upArrow || key.downArrow) {
             setSelectedIndex((index) => (index + 1) % OPTIONS.length);

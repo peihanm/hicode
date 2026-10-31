@@ -1,5 +1,6 @@
+import {useTerminalInput} from "./terminalInput.js";
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, Transform, useInput, type Key} from "ink";
+import {Box, Text, Transform, type Key} from "ink";
 import stringWidth from "string-width";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {useTerminalCursorTransform} from "./terminalCursorContext.js";
@@ -161,7 +162,8 @@ export function MultilineTextInput({
     onAtomicRangeDelete?: (range: InputAtomicRange) => void;
     onInsertText?: (
         text: string,
-        state: InputBoundaryState
+        state: InputBoundaryState,
+        source: "input" | "paste"
     ) => InputBoundaryReplacement | undefined;
     onInputBoundary?: () => void;
     onEditStateChange?: (state: InputBoundaryState) => void;
@@ -211,14 +213,14 @@ export function MultilineTextInput({
         moveCursor(nextCursor);
     };
 
-    const insert = (text: string) => {
+    const insert = (text: string, source: "input" | "paste" = "input") => {
         const value = expectedValueRef.current;
         const safeCursor = Math.min(cursorRef.current, value.length);
         const normalized = normalizeInsertedText(text);
         const replacement = onInsertText?.(text, {
             value,
             cursorOffset: safeCursor,
-        });
+        }, source);
         if (replacement) {
             applyReplacement(replacement);
             return;
@@ -231,7 +233,7 @@ export function MultilineTextInput({
         });
     };
 
-    useInput((input, key) => {
+    useTerminalInput((input, key) => {
         // Multiple stdin chunks can arrive before React commits the previous insertion.
         const value = expectedValueRef.current;
         const safeCursor = Math.min(cursorRef.current, value.length);
@@ -332,7 +334,7 @@ export function MultilineTextInput({
             return;
         }
         insert(input);
-    });
+    }, {onPaste: text => {onInputBoundary?.(); insert(text, "paste"); onInputBoundary?.();}});
 
     return (
         <Box flexDirection="column">

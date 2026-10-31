@@ -1,9 +1,10 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useState} from "react";
-import {Box, Text, useInput} from "ink";
-import SelectInput from "ink-select-input";
+import {Box, Text} from "ink";
+import {DialogSelect} from "../dialogs/DialogSelect.js";
 import type {HookTrustDecision, HookTrustRequest} from "../../hooks/index.js";
 import {COLORS} from "../theme.js";
-import {DialogFrame, DialogIndicator, DialogItem} from "../dialogs/DialogFrame.js";
+import {DialogFrame} from "../dialogs/DialogFrame.js";
 
 const OPTIONS: Array<{label: string; value: HookTrustDecision}> = [
     {label: "1. Allow for this run", value: "once"},
@@ -25,7 +26,7 @@ export function HookApprovalDialog({
 }) {
     const [page, setPage] = useState(0);
     const pages = Math.max(1, Math.ceil(request.hooks.length / 8));
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (key.escape) onDecision("deny");
         if (key.leftArrow) setPage(value => Math.max(0, value - 1));
         if (key.rightArrow) setPage(value => Math.min(pages - 1, value + 1));
@@ -70,11 +71,9 @@ export function HookApprovalDialog({
                 </Text>
             </Box>
             <Box marginTop={1}>
-                <SelectInput
+                <DialogSelect
                     items={OPTIONS}
                     onSelect={(item) => onDecision(item.value)}
-                    indicatorComponent={DialogIndicator}
-                    itemComponent={DialogItem}
                 />
             </Box>
         </DialogFrame>

@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import type {SandboxStatus} from "../../sandbox/types.js";
 import {COLORS} from "../theme.js";
 import {usePanelLayout} from "../panelLayout.js";
@@ -33,7 +34,7 @@ export function SandboxDialog({status, configured, fullAccess, onSave, onClose}:
         catch (err) {setError((err instanceof Error ? err.message : String(err)).replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 250));}
         finally {busy.current = false; setSaving(false);}
     };
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (busy.current) return;
         if (key.escape) onClose();
         else if (key.upArrow || key.downArrow) setSelected(i => 1 - i);

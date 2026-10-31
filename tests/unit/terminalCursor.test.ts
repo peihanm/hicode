@@ -114,8 +114,8 @@ describe("terminal IME cursor anchor", () => {
 });
 
 
-test("不移动光标的可见性和样式控制序列保持当前锚点", () => {
-    for (const data of ["", "\u001B[?25l", "\u001B[?25h", "\u001B[0m"]) {
+test("不移动光标的可见性、样式和粘贴模式控制序列保持当前锚点", () => {
+    for (const data of ["", "\u001B[?25l", "\u001B[?25h", "\u001B[0m", "\u001B[?2004h", "\u001B[?2004l"]) {
         expect(formatTerminalCursorWrite(data, true)).toEqual({output: data, anchored: true});
         expect(formatTerminalCursorWrite(data, false)).toEqual({output: data, anchored: false});
     }

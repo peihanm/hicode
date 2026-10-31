@@ -1,5 +1,6 @@
+import {useTerminalInput} from "../input/terminalInput.js";
 import {useEffect, useMemo, useRef, useState} from "react";
-import {Box, Text, useInput} from "ink";
+import {Box, Text} from "ink";
 import {PanelSelect} from "../dialogs/PanelSelect.js";
 import type {
     AgentAuthoringRuntime,
@@ -147,7 +148,7 @@ export function AgentsDialog({
         {label: "Close", value: "close"},
     ], [definitions, catalog.revision, catalog.issues.length]);
 
-    useInput((_input, key) => {
+    useTerminalInput((_input, key) => {
         if (!key.escape || stage === "busy") return;
         if (stage === "generating") {
             generationControllerRef.current?.abort("user-cancel");
