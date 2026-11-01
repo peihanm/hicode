@@ -1,6 +1,6 @@
 import type {SubagentRecordAccess} from "../subagents/recordAccess.js";
-import type {PermissionActor} from "../permissions/delegation.js";
-import type {commitDirectoryApproval} from "../permissions/delegation.js";
+import type {PermissionActor} from "../permissions/types.js";
+import type {commitDirectoryApproval} from "../permissions/directoryAccess.js";
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import type {WebSources, WebFailures} from "./webFetch/state.js";
 import type {ChildTaskAccess} from "../tasks/session.js";

@@ -1,4 +1,4 @@
-import {resolveFilePermissionPath} from "../permissions/filePattern.js";
+import {resolveFilePermissionPath} from "../permissions/pathGuard.js";
 import {isAbsolute, resolve} from "node:path";
 import {linuxFileScopeArgv} from "./linuxFileScope.js";
 

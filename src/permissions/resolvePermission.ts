@@ -5,14 +5,13 @@ import {checkSubagentRecordPath, isPrivateSessionPath} from "../subagents/record
 
 import type {PermissionMatcher, PermissionRuleBehavior, Tool, ToolContext} from "../tools/types.js";
 import type {PermissionResult} from "./types.js";
-import {matchPattern} from "./matchPattern.js";
-import {toolPathInput, validateWorkspacePath} from "./pathGuard.js";
-import {parsePermissionRule} from "./rules.js";
+import {toolPathInput, validateWorkspacePath, resolveFilePermissionPath} from "./pathGuard.js";
+import {matchPattern, parsePermissionRule} from "./rules.js";
 import {directoryOperationForTool} from "./directoryAccess.js";
 import {resolveToolPath} from "../tools/shared/paths.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
 import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
-import {createFilePermissionMatcher, resolveFilePermissionPath} from "./filePattern.js";
+import {createFilePermissionMatcher} from "./filePattern.js";
 import {resolve, sep} from "node:path";
 import {isBundledSkillFile} from "../skills/bundled.js";
 
@@ -32,14 +31,6 @@ export async function matchesToolPermissionRule(
 }
 
 export async function resolvePermission(
-    tool: Tool,
-    input: unknown,
-    ctx: ToolContext
-): Promise<PermissionResult> {
-    return resolvePermissionInner(tool, input, ctx);
-}
-
-async function resolvePermissionInner(
     tool: Tool,
     input: unknown,
     ctx: ToolContext

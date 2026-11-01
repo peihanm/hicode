@@ -24,6 +24,13 @@ async function nearestExisting(path: string): Promise<string> {
     }
 }
 
+/** Missing targets inherit the real parent; an existing broken symlink is not a missing target. */
+export async function resolveFilePermissionPath(cwd: string, path: string): Promise<string> {
+    const target = resolve(cwd, path);
+    const existing = await nearestExisting(target);
+    return resolve(await realpath(existing), relative(existing, target));
+}
+
 export async function validateWorkspacePath(
     boundary: string,
     cwd: string,
@@ -38,9 +45,8 @@ export async function validateWorkspacePath(
     }
     try {
         const root = await realpath(lexicalRoot);
-        const existing = await nearestExisting(target);
-        const resolvedExisting = await realpath(existing);
-        if (!isPathInside(root, resolvedExisting)) {
+        const canonical = await resolveFilePermissionPath(cwd, target);
+        if (!isPathInside(root, canonical)) {
             return {ok: false, message: `Workspace path escapes through a symlink: ${inputPath}`};
         }
     } catch (error) {

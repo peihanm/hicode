@@ -14,3 +14,18 @@ export function parsePermissionRule(rule: string): {
     }
     return {toolName: toolName!, content};
 }
+
+/** Generic matching: prefix:* respects a word boundary; otherwise only * is special. */
+export function matchPattern(pattern: string, input: string): boolean {
+    const prefixMatch = pattern.match(/^(.+):\*$/);
+    if (prefixMatch) {
+        const prefix = prefixMatch[1];
+        return input === prefix || input.startsWith(prefix + " ");
+    }
+
+    const placeholder = "\u0000";
+    const escaped = pattern.replace(/\*/g, placeholder)
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = escaped.replace(new RegExp(placeholder, "g"), ".*");
+    return new RegExp(`^${regex}$`, "s").test(input);
+}

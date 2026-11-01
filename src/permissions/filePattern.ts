@@ -1,7 +1,7 @@
-import {realpath} from "node:fs/promises";
-import {dirname, isAbsolute, posix, relative, resolve} from "node:path";
+import {isAbsolute, posix, relative, resolve} from "node:path";
 import picomatch from "picomatch";
 import type {PermissionMatcher} from "../tools/types.js";
+import {resolveFilePermissionPath} from "./pathGuard.js";
 
 export function isFilePermissionTool(name: string): boolean {
     return ["read_file", "write_file", "edit_file", "view_image"].includes(name);
@@ -13,19 +13,6 @@ export function validateFilePattern(pattern: string): boolean {
         picomatch(pattern.replaceAll("\\", "/"), {dot: true, nonegate: true, strictBrackets: true});
         return true;
     } catch { return false; }
-}
-
-/** Missing write targets inherit the canonical identity of their existing parent. */
-export async function resolveFilePermissionPath(cwd: string, path: string): Promise<string> {
-    const target = resolve(cwd, path);
-    let existing = target;
-    while (true) {
-        try { return resolve(await realpath(existing), relative(existing, target)); }
-        catch (error) {
-            if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT" || dirname(existing) === existing) throw error;
-            existing = dirname(existing);
-        }
-    }
 }
 
 async function patternMatcher(cwd: string, pattern: string): Promise<(path: string) => boolean> {
@@ -49,19 +36,13 @@ async function patternMatcher(cwd: string, pattern: string): Promise<(path: stri
     });
 }
 
-async function prepareFileMatcher(cwd: string, patterns: readonly string[]) {
+export async function createFilePermissionMatcher(cwd: string, path: string, patterns: readonly string[]): Promise<PermissionMatcher> {
     const compiled = new Map(await Promise.all([...new Set(patterns)].map(async pattern =>
         [pattern, await patternMatcher(cwd, pattern)] as const)));
-    return async (path: string): Promise<PermissionMatcher> => {
-        const paths = [...new Set([resolve(cwd, path), await resolveFilePermissionPath(cwd, path)])];
-        return (pattern, behavior) => {
-            const match = compiled.get(pattern);
-            if (!match) throw new Error("File rule was not prepared for permission matching");
-            return behavior === "allow" ? paths.every(match) : paths.some(match);
-        };
+    const paths = [...new Set([resolve(cwd, path), await resolveFilePermissionPath(cwd, path)])];
+    return (pattern, behavior) => {
+        const match = compiled.get(pattern);
+        if (!match) throw new Error("File rule was not prepared for permission matching");
+        return behavior === "allow" ? paths.every(match) : paths.some(match);
     };
-}
-
-export async function createFilePermissionMatcher(cwd: string, path: string, patterns: readonly string[]): Promise<PermissionMatcher> {
-    return (await prepareFileMatcher(cwd, patterns))(path);
 }

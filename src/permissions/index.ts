@@ -10,7 +10,7 @@ export type {
     PermissionRules,
 } from "./types.js";
 
-export {matchPattern} from "./matchPattern.js";
+export {matchPattern} from "./rules.js";
 export {
     matchesToolPermissionRule,
     resolvePermission,

@@ -1,6 +1,6 @@
 import {toolFileChanges} from "../toolResults/uiData.js";
 import {requestApproval, type ApprovalResolution} from "../permissions/approval.js";
-import {commitDirectoryApproval} from "../permissions/delegation.js";
+import {commitDirectoryApproval} from "../permissions/directoryAccess.js";
 import {appendContentText, contentText} from "../images/content.js";
 import {HookControlError,  formatHookContext, getHookExecutionIssues, type HookBatchResult, type ToolHookRuntime,} from "../hooks/index.js";
 import {matchesToolPermissionRule, resolvePermission, type PermissionDecision,} from "../permissions/index.js";
@@ -13,8 +13,7 @@ import {
     type ToolOutcome,
 } from "../toolResults/index.js";
 import {ToolInputError, type Tool, type ToolContext} from "./types.js";
-import {resolveFilePermissionPath} from "../permissions/filePattern.js";
-import {toolPathInput} from "../permissions/pathGuard.js";
+import {resolveFilePermissionPath, toolPathInput} from "../permissions/pathGuard.js";
 
 export function formatInterruptedToolResult(signal: AbortSignal): string {
     return `Tool call cancelled (${normalizeTurnAbortReason(signal.reason)})`;
@@ -136,8 +135,18 @@ export async function executeRegisteredTool(
     const executionMode = ctx.permissionMode;
     let authorizedPath: string | undefined;
     const inputPath = toolPathInput(name, input);
+    if (inputPath !== undefined) {
+        try {
+            authorizedPath = await resolveFilePermissionPath(ctx.cwd, inputPath);
+        } catch (error) {
+            if (isTurnInterruptedError(error, ctx.signal)) return interruptedToolResult(ctx.signal);
+            return hookDecoratedResult(
+                inlineToolResult(`Permission denied: Cannot safely resolve file target: ${error instanceof Error ? error.message : String(error)}`, "denied"),
+                "PreToolUse", preHookResult
+            );
+        }
+    }
     try {
-        if (inputPath !== undefined) authorizedPath = await resolveFilePermissionPath(ctx.cwd, inputPath);
         permission = await resolvePermission(tool, input, ctx);
     } catch (error) {
         if (isTurnInterruptedError(error, ctx.signal)) {
@@ -225,7 +234,7 @@ export async function executeRegisteredTool(
             const scope = decision.directoryScope ?? "once";
             if (scope !== "once") {
                 try {
-                    await (ctx.commitDirectoryApproval ?? ((request, approved) => commitDirectoryApproval(ctx, request, approved)))(permission.presentation, resolution);
+                    await (ctx.commitDirectoryApproval ?? ((request, approved) => commitDirectoryApproval(ctx.directoryAccess, request, approved)))(permission.presentation, resolution);
                 } catch (error) {
                     return hookDecoratedResult(
                         inlineToolResult(

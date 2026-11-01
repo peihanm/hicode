@@ -1,7 +1,7 @@
 import {realpath, stat} from "node:fs/promises";
 import {dirname, isAbsolute, join} from "node:path";
 import {getApplySeccompBinaryPath} from "@anthropic-ai/sandbox-runtime/dist/sandbox/generate-seccomp-filter.js";
-import {resolveFilePermissionPath} from "../permissions/filePattern.js";
+import {resolveFilePermissionPath} from "../permissions/pathGuard.js";
 import {isPathInside} from "../permissions/pathGuard.js";
 import type {ReadOnlyAccess} from "./readOnly.js";
 

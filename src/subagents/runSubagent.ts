@@ -1,5 +1,5 @@
 import {realpath} from "node:fs/promises";
-import {commitDirectoryApproval} from "../permissions/delegation.js";
+import {commitDirectoryApproval} from "../permissions/directoryAccess.js";
 import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {WebSources} from "../tools/webFetch/state.js";
 import {createSessionPersistence} from "../session/storage.js";
@@ -261,7 +261,7 @@ export function createSubagentFactories(
                     childContext.permissionActor = {agentId, name: request.name ?? definition.agentType};
                     childContext.approvalEvidence = parentContext.approvalEvidence;
                     childContext.onApprovalEvent = event => recordChildEvent(event);
-                    childContext.commitDirectoryApproval = (directory, resolution) => commitDirectoryApproval(parentContext, directory, resolution);
+                    childContext.commitDirectoryApproval = (directory, resolution) => commitDirectoryApproval(parentContext.directoryAccess, directory, resolution);
                     const snapshot = (history = childHistory, compactState = childCompactState) => ({
                         cwd: storageCwd, sessionId: childSessionId, model: childModel, history, compactState,
                         todos: childTodos, permissionMode: childContext.permissionMode, allowEmpty: true,

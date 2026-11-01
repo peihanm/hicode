@@ -4,6 +4,11 @@
 // executeTool uses that intent to request approval, execute directly or deny.
 import type {DirectoryAccessRequest, DirectoryGrantScope} from "./directoryAccess.js";
 
+export interface PermissionActor {
+    agentId: string;
+    name: string;
+}
+
 export type PermissionPromptPresentation =
     | {
         kind: "network_access";

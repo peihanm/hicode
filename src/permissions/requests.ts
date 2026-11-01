@@ -1,8 +1,8 @@
 import type {
+    PermissionActor,
     PermissionDecision,
     PermissionPromptPresentation,
 } from "./types.js";
-import type {PermissionActor} from "./delegation.js";
 
 export interface PermissionRequest {
     id: number;

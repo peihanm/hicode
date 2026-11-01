@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { matchPattern } from "../../src/permissions/matchPattern.js";
+import { matchPattern } from "../../src/permissions/rules.js";
 
 describe("matchPattern", () => {
   test("支持 prefix:* 旧语法", () => {

@@ -1,4 +1,4 @@
-import type {PermissionActor} from "../../permissions/delegation.js";
+import type {PermissionActor} from "../../permissions/types.js";
 import type {ReactNode} from "react";
 import {Box, Text} from "ink";
 import {COLORS} from "../theme.js";

@@ -5,7 +5,7 @@ import {ToolInputError} from "../types.js";
 import {validateWorkspacePath} from "../../permissions/pathGuard.js";
 import {isPrivateSessionPath} from "../../subagents/recordAccess.js";
 import {requestApproval} from "../../permissions/approval.js";
-import {commitDirectoryApproval} from "../../permissions/delegation.js";
+import {commitDirectoryApproval} from "../../permissions/directoryAccess.js";
 
 export async function validateWriteDirectories(paths: readonly string[], ctx: ToolContext): Promise<string[]> {
     if (paths.length && ctx.readOnlyTools) throw new Error("Read-only Agents cannot request writable directories");
@@ -40,7 +40,7 @@ export async function approveWriteDirectories(paths: readonly string[], input: u
         }
         ctx.signal.throwIfAborted();
         epoch.throwIfAborted();
-        await (ctx.commitDirectoryApproval ?? ((request, approved) => commitDirectoryApproval(ctx, request, approved)))(presentation, resolution);
+        await (ctx.commitDirectoryApproval ?? ((request, approved) => commitDirectoryApproval(ctx.directoryAccess, request, approved)))(presentation, resolution);
     }
     ctx.signal.throwIfAborted();
     epoch.throwIfAborted();

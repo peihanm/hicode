@@ -1,8 +1,7 @@
 import {captureApprovalEvidence, type ApprovalEvidence} from "./reviewer/evidence.js";
 import {randomUUID} from "node:crypto";
 import type {ToolContext} from "../tools/types.js";
-import type {PermissionDecision, PermissionPromptPresentation} from "./types.js";
-import type {PermissionActor} from "./delegation.js";
+import type {PermissionActor, PermissionDecision, PermissionPromptPresentation} from "./types.js";
 
 export interface ApprovalRequest {
     id: string;

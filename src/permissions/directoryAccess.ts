@@ -1,6 +1,7 @@
 import {lstat, realpath} from "node:fs/promises";
-import {dirname, isAbsolute, relative, resolve} from "node:path";
-import {isPathInside} from "./pathGuard.js";
+import {dirname, resolve} from "node:path";
+import {isPathInside, resolveFilePermissionPath} from "./pathGuard.js";
+import type {ApprovalResolution} from "./approval.js";
 
 export type DirectoryGrantScope = "session" | "project";
 
@@ -36,10 +37,6 @@ interface CreateDirectoryAccessRuntimeOptions {
     allowGrants?: boolean;
 }
 
-function absolutePath(cwd: string, path: string): string {
-    return isAbsolute(path) ? resolve(path) : resolve(cwd, path);
-}
-
 async function requireDirectory(path: string): Promise<string> {
     const info = await lstat(path);
     if (!info.isDirectory() || info.isSymbolicLink()) {
@@ -71,30 +68,6 @@ async function nearestExistingDirectory(path: string): Promise<string> {
     }
 }
 
-async function canonicalTarget(path: string): Promise<string> {
-    let existing = path;
-    while (true) {
-        try {
-            await lstat(existing);
-            break;
-        } catch (error) {
-            if (
-                !error ||
-                typeof error !== "object" ||
-                !("code" in error) ||
-                (error as {code?: string}).code !== "ENOENT"
-            ) {
-                throw error;
-            }
-        }
-        const parent = dirname(existing);
-        if (parent === existing) break;
-        existing = parent;
-    }
-    const canonicalExisting = await realpath(existing);
-    return resolve(canonicalExisting, relative(existing, path));
-}
-
 export function createDirectoryAccessRuntime(
     options: CreateDirectoryAccessRuntimeOptions
 ): DirectoryAccessRuntimeLike {
@@ -107,7 +80,7 @@ export function createDirectoryAccessRuntime(
     let initialized = false;
 
     const validateWithinBoundary = async (path: string): Promise<string> => {
-        const candidate = await canonicalTarget(absolutePath(cwd, path));
+        const candidate = await resolveFilePermissionPath(cwd, path);
         if (!isPathInside(hardBoundary, candidate)) {
             throw new Error(`Path crosses the Host boundary: ${path}`);
         }
@@ -115,7 +88,7 @@ export function createDirectoryAccessRuntime(
     };
 
     const normalizeDirectory = async (path: string): Promise<string> => {
-        const candidate = absolutePath(cwd, path);
+        const candidate = resolve(cwd, path);
         const normalized = await requireDirectory(candidate);
         if (!isPathInside(hardBoundary, normalized)) {
             throw new Error(`Path crosses the Host boundary: ${path}`);
@@ -140,7 +113,7 @@ export function createDirectoryAccessRuntime(
         },
         async canAccess(path) {
             await this.initialize();
-            const candidate = await canonicalTarget(absolutePath(cwd, path));
+            const candidate = await resolveFilePermissionPath(cwd, path);
             if (!isPathInside(hardBoundary, candidate)) return false;
             for (const directory of directories) {
                 if (isPathInside(directory, candidate)) return true;
@@ -149,9 +122,7 @@ export function createDirectoryAccessRuntime(
         },
         async createRequest(path, operation) {
             await this.initialize();
-            const targetPath = await validateWithinBoundary(
-                absolutePath(cwd, path)
-            );
+            const targetPath = await validateWithinBoundary(path);
             const suggestedDirectory = await nearestExistingDirectory(
                 dirname(targetPath)
             );
@@ -178,6 +149,18 @@ export function createDirectoryAccessRuntime(
         },
         subscribe(listener) {listeners.add(listener); return () => {listeners.delete(listener);};},
     };
+}
+
+/** Only a user decision can expand the directory owner's reusable grants. */
+export async function commitDirectoryApproval(
+    directoryAccess: DirectoryAccessRuntimeLike,
+    request: DirectoryAccessRequest,
+    resolution: ApprovalResolution
+): Promise<void> {
+    const decision = resolution.decision;
+    if (decision.behavior !== "allow" || !decision.directoryScope || decision.directoryScope === "once") return;
+    if (resolution.source !== "user") throw new Error("Only an explicit user decision can expand directory access");
+    await directoryAccess.grantDirectory(request.suggestedDirectory, decision.directoryScope);
 }
 
 export function directoryOperationForTool(

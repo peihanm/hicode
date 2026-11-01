@@ -1,5 +1,5 @@
 import {isPathInside} from "../permissions/pathGuard.js";
-import {resolveFilePermissionPath} from "../permissions/filePattern.js";
+import {resolveFilePermissionPath} from "../permissions/pathGuard.js";
 import {basename, dirname, isAbsolute, relative, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
 import type {HiCodeStorageLayout} from "../persistence/layout.js";
