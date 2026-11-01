@@ -1,20 +1,28 @@
 import {describe, expect, test} from "bun:test";
-import {formatSandboxStatus, sandboxCommand} from "../../src/slash/commands/sandbox.js";
+import {processSlashCommand} from "../helpers/slash.js";
+import {withTempProject} from "../helpers/tempProject.js";
+import type {SandboxStatus} from "../../src/sandbox/index.js";
 import {getSlashCommandSuggestions} from "../../src/slash/registry.js";
 import {createTestContext} from "../helpers/testContext.js";
 
 describe("/sandbox", () => {
-    test("格式化 ready 和 unavailable 状态", () => {
-        expect(formatSandboxStatus({
-            kind: "ready",
-            networkMode: "restricted", platform: "macos",
-            warnings: [],
-        })).toContain("Platform: macos");
-        expect(formatSandboxStatus({
-            kind: "unavailable",
-            reason: "socket denied",
-            warnings: ["nested sandbox"],
-        })).toContain("socket denied");
+    test.each([
+        {status: {kind: "ready", networkMode: "restricted", platform: "macos", warnings: []}, expected: "Platform: macos"},
+        {status: {kind: "unavailable", reason: "socket denied", warnings: ["nested sandbox"]}, expected: "socket denied"},
+    ] satisfies {status: SandboxStatus; expected: string}[])("reports runner status: $expected", async ({status, expected}) => {
+        await withTempProject(async cwd => {
+            const output: string[] = [];
+            await processSlashCommand("/sandbox", {
+                history: [],
+                ctx: createTestContext(cwd, {shellRunner: {
+                    sandboxStatus: status,
+                    async run() {throw new Error("Status queries must not execute commands");},
+                }}),
+                onEvent(event) {if (event.type === "assistant_text") output.push(event.content);},
+            });
+            expect(output.join("\n")).toContain(expected);
+            for (const warning of status.warnings) expect(output.join("\n")).toContain(warning);
+        });
     });
 
     test("注册到 slash suggestions 并读取当前 Runner 状态", async () => {
@@ -26,24 +34,11 @@ describe("/sandbox", () => {
             },
         ]);
         const events: string[] = [];
-        await sandboxCommand.execute("", {
+        await processSlashCommand("/sandbox", {
             history: [],
             ctx: createTestContext("/tmp/project"),
             onEvent(event) {
                 if (event.type === "assistant_text") events.push(event.content);
-            },
-            compactHistory: async () => ({
-                history: [],
-                compacted: false,
-                preTokenCount: 0,
-                threshold: 0,
-            }),
-            getToolSchemas: () => [],
-            subagents: {
-                issues: [],
-                has: () => false,
-                get: () => undefined,
-                listDefinitions: () => [],
             },
         });
         expect(events).toEqual([

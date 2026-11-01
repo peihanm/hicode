@@ -32,7 +32,6 @@ export type SlashCommandHostContext = Omit<
 
 export interface SlashCommand {
     name: string;
-    aliases?: string[];
     description: string;
     argumentHint?: string;
     busyBehavior: "defer" | "immediate";

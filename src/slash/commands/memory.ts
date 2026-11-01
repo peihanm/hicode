@@ -20,7 +20,7 @@ export const memoryCommand: SlashCommand = {
             return;
         }
         const [action = "status", value, ...rest] = args.trim().split(/\s+/).filter(Boolean);
-        if (rest.length > 0) {
+        if (rest.length > 0 || ((action === "status" || action === "maintain") && value !== undefined)) {
             await context.onEvent({
                 type: "assistant_text",
                 content: "Usage: /memory [list [type] | show <key> | maintain]",

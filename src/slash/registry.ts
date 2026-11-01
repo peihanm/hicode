@@ -1,16 +1,12 @@
-import {providersCommand} from "./commands/providers.js";
+import {modelCommand, providersCommand, permissionsCommand, resumeCommand, diffCommand} from "./commands/panels.js";
 import {hooksCommand} from "./commands/hooks.js";
 import {compactCommand} from "./commands/compact.js";
-import {permissionsCommand} from "./commands/permissions.js";
 import {mcpCommand} from "./commands/mcp.js";
 import {skillsCommand} from "./commands/skills.js";
 import {agentsCommand} from "./commands/agents.js";
 import {memoryCommand} from "./commands/memory.js";
 import {sandboxCommand} from "./commands/sandbox.js";
 import {tasksCommand} from "./commands/tasks.js";
-import {diffCommand} from "./commands/diff.js";
-import {modelCommand} from "./commands/model.js";
-import {resumeCommand} from "./commands/resume.js";
 import {addDirCommand} from "./commands/addDir.js";
 import type {SlashCommand} from "./types.js";
 
@@ -68,6 +64,6 @@ export function getSlashCommandSuggestions(input: string): SlashCommandSuggestio
 
 export function findSlashCommand(name: string): SlashCommand | undefined {
     return COMMANDS.find(
-        (cmd) => cmd.name === name || cmd.aliases?.includes(name)
+        (cmd) => cmd.name === name
     );
 }

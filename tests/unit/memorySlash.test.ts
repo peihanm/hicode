@@ -6,6 +6,32 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {createTestMemoryRuntime, remember} from "../helpers/memory.js";
 
 describe("/memory slash command", () => {
+    test("invalid arguments do not read Memory or start maintenance", async () => {
+        await withTempProject(async cwd => {
+            const memory = createTestMemoryRuntime(cwd);
+            memory.status = async () => {throw new Error("Unexpected status read");};
+            memory.list = async () => {throw new Error("Unexpected list read");};
+            memory.read = async () => {throw new Error("Unexpected topic read");};
+            const ctx = createTestContext(cwd);
+            Object.defineProperty(ctx, "tasks", {get() {throw new Error("Unexpected maintenance access");}});
+            const processor = createSlashCommandProcessor({
+                compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: 1000}),
+                getToolSchemas: () => [], subagents: BUILTIN_SUBAGENT_REGISTRY, memory,
+            });
+            try {
+                for (const args of ["status extra", "maintain extra", "list user extra", "show key extra", "show"]) {
+                    const output: string[] = [];
+                    expect(await processor.process(`/memory ${args}`, {
+                        history: [], ctx,
+                        onEvent(event) {if (event.type === "assistant_text") output.push(event.content);},
+                    })).toBe(true);
+                    expect(output).toHaveLength(1);
+                    expect(output[0]).toStartWith("Usage: /memory");
+                }
+            } finally {await memory.close();}
+        });
+    });
+
     test("显示状态和读取文件；删除不再提供专用 Slash", async () => {
         await withTempProject(async (cwd) => {
             const memory = createTestMemoryRuntime(cwd);

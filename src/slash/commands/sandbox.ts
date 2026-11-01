@@ -1,7 +1,7 @@
 import type {SandboxStatus} from "../../sandbox/index.js";
 import type {SlashCommand} from "../types.js";
 
-export function formatSandboxStatus(status: SandboxStatus): string {
+function formatSandboxStatus(status: SandboxStatus): string {
     if (status.kind === "unavailable") {
         const lines = [
             "Bash Sandbox: unavailable",
