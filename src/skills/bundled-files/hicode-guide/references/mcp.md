@@ -44,35 +44,27 @@ Provider keys and sensitive environment names are filtered from child processes;
 
 Project and Host server declarations need authorization before spawning a process or contacting an HTTP endpoint. HTTP approval displays the endpoint with query values hidden. Selected user-level declarations are treated as explicit user configuration. Do not move a project server into user configuration merely to evade review.
 
-Startup offers Connect for this session, Always connect and allow tools, Always connect; keep tool approvals, and Block this server. Allow tools explicitly permits current and future tools by default, including code execution. Keep tool approvals remembers the connection while retaining tool checks. Esc skips without changing stored decisions.
+Startup offers Enable and Cancel. Enable remembers the server for this project and configuration, and current/future tools run automatically. Cancel or Esc leaves the server unapproved and does not start it. Use `/mcp` to require approval or block individual tools.
 
 Connection progress appears above the prompt, not inside its placeholder. Successful connections clear the temporary status; failures keep a `/mcp` notice until recovery. The prompt becomes active after runtime initialization.
 
-Use `/mcp` → Enter on a server to manage permissions. Space changes the Default row between Allow tools and Ask when needed. On a tool row, Space cycles Default / Ask every time / Blocked / Allowed. Enter saves the policy and exceptions together. Esc goes back one level; Ctrl+C closes the panel and returns to the prompt without exiting HiCode. Unsaved changes are discarded; closing does not undo a save or reconnect already in progress. Settings deny/ask rules cannot be overridden here. An existing exact tool allow in Settings is shown; select an Ask exception to require approval instead. Ask when needed preserves read-only defaults and existing precise grants.
+Use `/mcp` → Enter on a server to manage individual tools. Space cycles Allowed / Ask every time / Blocked; Enter saves. Allowed is the default and removes a stored restriction. There is no service-default selector. Esc goes back one level; Ctrl+C closes the panel without exiting HiCode. Unsaved changes are discarded; closing does not undo a save or reconnect already in progress. Settings deny/ask rules cannot be overridden here.
 
-Policies and connection approvals live in `~/.hicode/mcp-approvals.json`, bound to canonical project, server name and configuration fingerprint. Old connection-only records do not imply server trust. Changing command, arguments, environment, HTTP URL or effective timeouts invalidates the old service policy. Omitting an explicit default does not change the fingerprint. Saving updates the connected runtime without a restart. Existing child tool-name scopes do not expand; within that scope they use refreshed definitions and policy. Definitions changing during review require reopening the page.
+Enablement and tool restrictions live in the version 2 `~/.hicode/mcp-approvals.json`, bound to canonical project, server name and configuration fingerprint. Changing command, arguments, environment, HTTP URL or effective timeouts requires fresh enablement for project/Host servers. Unknown/old formats fail closed and are not migrated. Saving tool restrictions updates the connected runtime immediately. Existing child tool-name scopes do not expand; within that scope they use refreshed definitions and restrictions. Definitions changing during review require reopening the page.
 
 Press r in the server list, or use `/mcp reconnect <name>`, to re-read configuration and review/reconnect a known server. Restart after adding/removing servers. Connections do not automatically replay failed calls. HiCode closes stdio children and HTTP streams at shutdown, and attempts bounded HTTP session termination. It does not stop the independent HTTP server.
 
 ## Tool discovery and permissions
 
-The model sees tool names such as `mcp__local_tools__lookup`. It uses `tool_search` to discover a relevant tool and load its full schema for Function Calling. This does not start an unconfigured server or grant access. The loaded tool set has a bounded working set; an unused schema can later be unloaded and rediscovered.
+The model receives a compact scoped server directory in runtime context. Use `tool_search` with `query` (optional `limit`, default 5, max 10) or `names` (up to 10 exact names) to read full tool descriptions and input schemas. Call `mcp_call` with `{tool: "mcp__local_tools__lookup", arguments: {...}}`. Search does not install tools or grant access. Specific MCP definitions never enter the model's tools array; known current names can be called without another search. Permissions, hooks and parameter validation apply to the real target. Large search results use the normal saved-output/read_file path. There is no loaded-tool list or LRU state.
 
-Without service trust, a connected server's read-only tool is allowed by default only when `readOnlyHint=true` and `destructiveHint` is not true. Missing/conflicting annotations or write/destructive tools use ordinary approval policy. Settings deny/ask rules still apply. The independent Agent can review requests; Full Access preauthorizes ordinary asks but does not bypass denies or server-start approval. Plan and read-only children do not gain write tools.
+Enabled servers allow tool calls by default, regardless of annotations. Explicit per-tool Ask/Blocked and Settings rules are handled by the normal permission pipeline. Ask mode requests user approval; Auto-review uses the reviewer; Full Access preauthorizes ordinary asks but does not bypass denies or server enablement.
 
-For a deliberately trusted operation, use the offered persistent approval or an exact actual tool name in project-local rules. For example, replace the placeholder in this fragment with the name exposed by the connected server:
-
-```json
-{
-  "permissions": {"allow": ["mcp__local_tools__lookup"]}
-}
-```
-
-An allow for a tool name covers its ordinary calls, not just one current argument value. Only change service trust or exceptions when the user requests that scope. Do not manufacture read-only annotations.
+Annotations only determine read-only eligibility and concurrency: `readOnlyHint=true` with `destructiveHint!=true` permits a tool in read-only scopes and concurrent batches. Missing/conflicting annotations and write tools stay unavailable to read-only children and execute serially. Do not manufacture annotations. Only change tool restrictions when the user requests that scope.
 
 ## Troubleshooting
 
-- **Pending/denied:** resolve the startup approval, not the model prompt.
+- **Pending:** resolve the startup enablement, not the model prompt.
 - **Executable missing:** check the command on the PATH used to launch HiCode and required server files.
 - **HTTP endpoint/authentication:** use a Streamable HTTP MCP endpoint, not an ordinary web page or legacy SSE URL. HTTP 401/403 indicates a server-side access requirement; this version has no custom-header or OAuth configuration. Do not put passwords in URLs as a workaround.
 - **Connection timeout:** check startup/dependency failure and protocol output before increasing timeout.

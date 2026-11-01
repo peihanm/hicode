@@ -6,11 +6,10 @@ import type {ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 
 export type McpConfigSource = "user" | "project";
 export type McpSource = McpConfigSource | "host";
-export type McpApprovalDecision = "once" | "always" | "trust-tools" | "deny" | "skip";
+export type McpApprovalDecision = "enable" | "cancel";
 
 export interface McpToolPolicy {
-    default: "ask" | "allow";
-    exceptions: Partial<Record<string, "allow" | "ask" | "deny">>;
+    exceptions: Partial<Record<string, "ask" | "deny">>;
 }
 
 interface McpServerOptions {
@@ -59,7 +58,6 @@ export interface LoadedMcpConfig {
 
 type McpServerStatus =
     | "pending-approval"
-    | "denied"
     | "connecting"
     | "connected"
     | "refreshing"

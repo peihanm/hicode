@@ -303,7 +303,7 @@ describe("TypeScript SDK", () => {
                         expect(context.signal.aborted).toBe(false);
                         expect(context.threadId).toBeUndefined();
                         interactionKinds.push(request.kind);
-                        if (interactionKinds.length === 4) {awaitingRoot(); return new Promise<never>(() => {});}
+                        if (interactionKinds.length === 3) {awaitingRoot(); return new Promise<never>(() => {});}
                         return {behavior: "allow", persistence: "once"};
                     },
                 },
@@ -323,13 +323,16 @@ describe("TypeScript SDK", () => {
                 expect(interactionSignals.every(signal => signal.aborted)).toBe(true);
                 await hicode.reconnectMcpServer("sdk_fixture");
                 expect(hicode.getMcpServers()[0]?.status).toBe("connected");
-                expect(interactionKinds).toEqual(["mcp_approval", "hook_trust", "mcp_approval"]);
+                expect(interactionKinds).toEqual(["mcp_approval", "hook_trust"]);
                 await thread.close();
+                await writeFile(join(cwd, ".mcp.json"), JSON.stringify({mcpServers: {sdk_fixture: {
+                    command: process.execPath, args: [fixture, "changed"],
+                }}}));
                 const reconnect = hicode.reconnectMcpServer("sdk_fixture");
                 await rootWaiting;
                 await hicode.close();
                 await reconnect;
-                expect(interactionSignals[3]?.aborted).toBe(true);
+                expect(interactionSignals[2]?.aborted).toBe(true);
                 expect(hicode.getMcpServers()[0]?.status).toBe("closed");
             } finally {
                 await hicode.close();
@@ -548,7 +551,6 @@ describe("TypeScript SDK", () => {
                     compactState:
                         loaded!.compactState ?? createCompactState(),
                     queuedInputs: loaded!.queuedInputs,
-                    toolDiscovery: loaded!.toolDiscovery,
                 },
                 state: {
                     todos: loaded!.todos,

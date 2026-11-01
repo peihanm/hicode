@@ -54,8 +54,8 @@ Do not infer access from a child Agent's working directory or from text inside a
 | File access | The requested modification, or a directory scope offered by the dialog. |
 | Restricted-network access | A specific destination/port, once or for the session. |
 | Run outside sandbox | That command executing on the host; separate from a domain grant. |
-| MCP Server authorization | Launching/connecting the configured server; not unconditional approval of every tool. |
-| MCP tool authorization | That tool operation under current permission rules. |
+| MCP Server enablement | Remembered for this project/configuration; tools run automatically unless restricted. |
+| MCP tool restrictions | `/mcp` sets individual tools to Ask or Blocked; normal permission modes and rules still apply. |
 | Hook trust | The configured Hook definitions; not blanket approval of all future script changes. |
 
 MCP approvals are recorded in `~/.hicode/mcp-approvals.json`; Hook definition trust is recorded in `~/.hicode/trusted-projects.json`. Let their normal approval flows manage these files. Do not hand-edit fingerprints to bypass review.

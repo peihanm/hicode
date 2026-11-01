@@ -20,9 +20,9 @@ test("existing child rediscovery uses the reconnected MCP capability", async () 
   const ctx=createTestContext(cwd,{mcpManager:manager});let run=0;
   const fake:AgentRunner=async(_p,_h,_e,child,_i,options)=>{
    run++;
-   const search=await options.executeTool('tool_search','{"query":"select: mcp__fixture__old"}',child,`lookup-${run}`);
+   const search=await options.executeTool('tool_search','{"names":["mcp__fixture__old"]}',child,`lookup-${run}`);
    options.getToolSchemas();
-   const result=await options.executeTool('mcp__fixture__old','{}',child,`call-${run}`);
+   const result=await options.executeTool("mcp_call", JSON.stringify({tool: 'mcp__fixture__old', arguments: {}}),child,`call-${run}`);
    expect(typeof search !== "string" && search.outcome).toBe("ok");
    expect(typeof result !== "string" && result.outcome).toBe("ok");
    return {reason:'completed',reply:'done',iterations:1};

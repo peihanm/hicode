@@ -114,7 +114,7 @@ test.each([true, false])("HTTP MCP JSON=%s approval, session, discovery, calls a
                 requestApproval: async request => {
                     expect(fixture.requests).toHaveLength(0);
                     approval = request;
-                    return "trust-tools";
+                    return "enable";
                 }});
             try {
                 await manager.initialize();
@@ -123,9 +123,9 @@ test.each([true, false])("HTTP MCP JSON=%s approval, session, discovery, calls a
                 const runtime = createToolRuntime({getAdditionalTools: () => manager.getTools()});
                 const ctx = createTestContext(cwd, {mcpManager: manager});
                 runtime.getToolSchemas();
-                await runtime.executeTool("tool_search", '{"query":"select:mcp__remote__echo"}', ctx, "discover");
+                await runtime.executeTool("tool_search", '{"names":["mcp__remote__echo"]}', ctx, "discover");
                 runtime.getToolSchemas();
-                const result = await runtime.executeTool("mcp__remote__echo", "{}", ctx, "call");
+                const result = await runtime.executeTool("mcp_call", JSON.stringify({tool: "mcp__remote__echo", arguments: {}}), ctx, "call");
                 expect(result.outcome).toBe("ok");
                 expect(JSON.stringify(result)).toContain("HTTP fixture result");
                 const prior = manager.getTools()[0];
@@ -149,15 +149,15 @@ test.each(["cancel", "timeout", "shutdown"])("HTTP pending tool %s settles and c
         await withTempProject(async (cwd, storage) => {
             const controller = new AbortController();
             const manager = createMcpManager({cwd, storage, childEnvironment: testChildEnvironment,
-                hostServers: [{name: "remote", url: fixture.url, toolTimeoutMs: 1000}], requestApproval: async () => "trust-tools"});
+                hostServers: [{name: "remote", url: fixture.url, toolTimeoutMs: 1000}], requestApproval: async () => "enable"});
             try {
                 await manager.initialize();
                 const runtime = createToolRuntime({getAdditionalTools: () => manager.getTools()});
                 const ctx = createTestContext(cwd, {signal: controller.signal, mcpManager: manager});
                 runtime.getToolSchemas();
-                await runtime.executeTool("tool_search", '{"query":"select:mcp__remote__echo"}', ctx, "discover");
+                await runtime.executeTool("tool_search", '{"names":["mcp__remote__echo"]}', ctx, "discover");
                 runtime.getToolSchemas();
-                const pending = runtime.executeTool("mcp__remote__echo", '{"wait":true}', ctx, "pending");
+                const pending = runtime.executeTool("mcp_call", JSON.stringify({tool: "mcp__remote__echo", arguments: {"wait":true}}), ctx, "pending");
                 await until(() => fixture.calls === 1);
                 if (action === "cancel") controller.abort();
                 if (action === "shutdown") await manager.closeAll();
@@ -165,7 +165,7 @@ test.each(["cancel", "timeout", "shutdown"])("HTTP pending tool %s settles and c
                 if (action !== "shutdown") {
                     await until(() => fixture.cancellations === 1);
                     expect(manager.getSnapshots()[0]?.status).toBe("connected");
-                    expect((await runtime.executeTool("mcp__remote__echo", "{}", createTestContext(cwd, {mcpManager: manager}), "after-cancel")).outcome).toBe("ok");
+                    expect((await runtime.executeTool("mcp_call", JSON.stringify({tool: "mcp__remote__echo", arguments: {}}), createTestContext(cwd, {mcpManager: manager}), "after-cancel")).outcome).toBe("ok");
                 }
             } finally {await manager.closeAll();}
         });
@@ -177,7 +177,7 @@ test("HTTP notification stream outlives startup timeout and disconnect revokes t
     try {
         await withTempProject(async (cwd, storage) => {
             const manager = createMcpManager({cwd, storage, childEnvironment: testChildEnvironment,
-                hostServers: [{name: "remote", url: fixture.url, timeoutMs: 1000}], requestApproval: async () => "once"});
+                hostServers: [{name: "remote", url: fixture.url, timeoutMs: 1000}], requestApproval: async () => "enable"});
             try {
                 await manager.initialize();
                 await Bun.sleep(1100);
@@ -199,7 +199,7 @@ test("HTTP skip sends no traffic and approval hides query values", async () => {
                 hostServers: [{name: "remote", url: `${fixture.url}?key=private-value`}], requestApproval: async request => {
                     expect(JSON.stringify(request)).not.toContain("private-value");
                     expect(request).toMatchObject({type: "http"});
-                    return "skip";
+                    return "cancel";
                 }});
             try {
                 await manager.initialize();
@@ -220,7 +220,7 @@ test.each([401, 500, 302])("HTTP %s does not expose response bodies or follow re
         await withTempProject(async (cwd, storage) => {
             const manager = createMcpManager({cwd, storage, childEnvironment: testChildEnvironment,
                 hostServers: [{name: "remote", url: `http://127.0.0.1:${server.port}/mcp?key=private-query-secret`}],
-                requestApproval: async () => "once"});
+                requestApproval: async () => "enable"});
             try {
                 await manager.initialize();
                 expect(manager.getSnapshots()[0]?.status).toBe("failed");
@@ -243,7 +243,7 @@ test("HTTP initialization timeout also aborts the pending network request", asyn
         await withTempProject(async (cwd, storage) => {
             const manager = createMcpManager({cwd, storage, childEnvironment: testChildEnvironment,
                 hostServers: [{name: "remote", url: `http://127.0.0.1:${server.port}/mcp`, timeoutMs: 1000}],
-                requestApproval: async () => "once"});
+                requestApproval: async () => "enable"});
             const start = Date.now();
             try {
                 await manager.initialize();

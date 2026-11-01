@@ -12,7 +12,7 @@ test("healthy/disabled servers have no transient row; failures coexist with conn
   view.rerender(<McpStatus servers={[server("ok", "connected"), server("loading", "connecting"), server("broken", "failed")]}/>);
   expect(view.lastFrame()).toContain("Connecting MCP · 1/3 ready · loading");
   expect(view.lastFrame()).toContain("MCP failed · broken");
-  view.rerender(<McpStatus servers={[server("denied", "denied"), server("skipped", "pending-approval")]}/>);
+  view.rerender(<McpStatus servers={[server("skipped", "pending-approval")]}/>);
   expect(view.lastFrame()).not.toContain("Connecting"); expect(view.lastFrame()).not.toContain("MCP failed");
   expect(view.lastFrame()).toContain("MCP not connected");
 });

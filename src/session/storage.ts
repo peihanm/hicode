@@ -11,7 +11,6 @@ import {
     limitSessionUIEvents,
     createSessionUIEventLimiter,
     normalizeSessionSummaryHint,
-    normalizeToolDiscoverySnapshot,
     stripSystemMessage,
     summarizeSessionHistory,
 } from "./codec.js";
@@ -84,7 +83,6 @@ async function saveSnapshot(storage: HiCodeStorageLayout, owner: SessionStorageO
             input.compactState?.compactCount ?? 0)) return;
         await ensureSessionIdentity(storage,input.cwd,owner);
         const timestamp = new Date().toISOString();
-        const toolDiscovery = normalizeToolDiscoverySnapshot(input.toolDiscovery);
         const entry: SessionSnapshotEntry = {
             type: "snapshot",
             ...(visibility === "internal" ? {visibility} : {}),
@@ -102,7 +100,6 @@ async function saveSnapshot(storage: HiCodeStorageLayout, owner: SessionStorageO
             ...(input.queuedInputs && input.queuedInputs.length > 0
                 ? {queuedInputs: input.queuedInputs.map((message) => ({...message}))}
                 : {}),
-            ...(toolDiscovery ? {toolDiscovery} : {}),
         };
 
         if (!await commit(entry, compaction, preserveConversation) || visibility === "internal") return;
@@ -159,7 +156,6 @@ export function loadSession(
         uiEvents: limitSessionUIEvents(snapshot.uiEvents),
         queuedInputs: snapshot.queuedInputs ?? [],
         taskNotificationReceipts: snapshot.taskNotificationReceipts ?? [],
-        toolDiscovery: normalizeToolDiscoverySnapshot(snapshot.toolDiscovery),
         index,
     };
 }

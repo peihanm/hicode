@@ -144,12 +144,12 @@ test("多个 patternProperties 分别执行，本地 Pointer 转义与 JSON 保�
     expect(adaptMcpTools(server).issues[0]).toContain("__proto__");
 });
 
-test("service allow preserves deny/ask, Plan and read-only boundaries; exceptions override old allows", async () => withTempProject(async cwd => {
+test("default tool access preserves explicit deny/ask and read-only boundaries", async () => withTempProject(async cwd => {
     const {resolvePermission} = await import("../../src/permissions/resolvePermission.js");
     const {server} = fixture({type: "object", properties: {}});
     const name = "mcp__fixture__validate";
     const ctx = createTestContext(cwd);
-    const tool = adaptMcpTools(server, {default: "allow", exceptions: {}}).tools[0]!;
+    const tool = adaptMcpTools(server).tools[0]!;
     expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("allow");
     expect(tool.isReadOnly?.({})).toBe(false); expect(tool.isConcurrencySafe?.({})).toBe(false);
     Object.assign(ctx, {readOnlyTools: true}); expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("deny");
@@ -159,11 +159,11 @@ test("service allow preserves deny/ask, Plan and read-only boundaries; exception
     expect((await resolvePermission(tool, {}, ctx)).behavior).toBe("ask");
     ctx.permissionRules.ask.length = 0;
     ctx.permissionRules.allow.push({source: "local", toolName: name});
-    const ask = adaptMcpTools(server, {default: "allow", exceptions: {[name]: "ask"}}).tools[0]!;
+    const ask = adaptMcpTools(server, {exceptions: {[name]: "ask"}}).tools[0]!;
     expect(await resolvePermission(ask, {}, ctx)).toMatchObject({behavior: "ask", allowPersistent: false});
-    const denied = adaptMcpTools(server, {default: "allow", exceptions: {[name]: "deny"}}).tools[0]!;
+    const denied = adaptMcpTools(server, {exceptions: {[name]: "deny"}}).tools[0]!;
     ctx.setPermissionMode("full-access"); expect((await resolvePermission(denied, {}, ctx)).behavior).toBe("deny");
     ctx.setPermissionMode("ask");
     server.tools[0]!.annotations = {readOnlyHint: true};
-    expect((await resolvePermission(adaptMcpTools(server, {default: "allow", exceptions: {[name]: "ask"}}).tools[0]!, {}, ctx)).behavior).toBe("ask");
+    expect((await resolvePermission(adaptMcpTools(server, {exceptions: {[name]: "ask"}}).tools[0]!, {}, ctx)).behavior).toBe("ask");
 }));

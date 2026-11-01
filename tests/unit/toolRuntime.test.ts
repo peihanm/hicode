@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
+import {readFile} from "node:fs/promises";
 import { join } from "node:path";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import { z } from "zod";
@@ -41,7 +42,7 @@ describe("scoped tool runtime", () => {
       .toThrow("unknown tool");
   });
 
-  test("内置 web_fetch 直接暴露，无 deferred 工具时不提供 tool_search", async () => {
+  test("内置 web_fetch 直接暴露，无 MCP 工具时不提供 tool_search", async () => {
     await withTempProject(async (cwd) => {
       const runtime = createToolRuntime();
       const initialNames = runtime.getToolSchemas().map(
@@ -62,326 +63,132 @@ describe("scoped tool runtime", () => {
     });
   });
 
-  test("deferred 工具必须搜索并经过下一次 schema 请求后才能调用", async () => {
-    await withTempProject(async (cwd) => {
-      const runtime = createToolRuntime({
-        additionalTools: [{
-          name: "deferred_echo",
-          description: "Echo a deferred message",
-          parameters: z.object({ message: z.string() }),
-          exposure: "deferred",
-          searchHint: "echo delayed message",
-          isReadOnly: () => true,
-          isConcurrencySafe: () => true,
-          execute: async ({ message }) => `echo:${message}`,
-        }],
-      });
+});
 
-      expect(runtime.getToolSchemas().map((tool) => tool.function.name))
-        .toContain("tool_search");
-      expect(runtime.getToolSchemas().map((tool) => tool.function.name))
-        .not.toContain("deferred_echo");
+function mcpTool(name = "mcp__fixture__echo", description = "Echo a message") {
+  return {
+    name, description, mcp: {serverName: "fixture"},
+    parameters: z.object({message: z.string()}).strict(),
+    isReadOnly: () => true, isConcurrencySafe: () => true,
+    execute: async ({message}: {message: string}) => `echo:${message}`,
+  };
+}
+const envelope = (tool: string, args: unknown = {message: "hi"}) => JSON.stringify({tool, arguments: args});
 
-      const hidden = await runtime.executeTool(
-        "deferred_echo",
-        JSON.stringify({ message: "early" }),
-        createTestContext(cwd),
-        "early"
-      );
-      expect(hidden.outcome).toBe("failed");
-      expect(hidden.modelContent).toContain("is not loaded");
-
-      const search = await runtime.executeTool(
-        "tool_search",
-        JSON.stringify({ query: "select:deferred_echo" }),
-        createTestContext(cwd),
-        "search"
-      );
-      expect(search.outcome).toBe("ok");
-      expect(search.modelContent).toContain("available next request");
-
-      const sameRequest = await runtime.executeTool(
-        "deferred_echo",
-        JSON.stringify({ message: "same" }),
-        createTestContext(cwd),
-        "same-request"
-      );
-      expect(sameRequest.outcome).toBe("failed");
-
-      expect(runtime.getToolSchemas().map((tool) => tool.function.name))
-        .toContain("deferred_echo");
-      const loaded = await runtime.executeTool(
-        "deferred_echo",
-        JSON.stringify({ message: "later" }),
-        createTestContext(cwd),
-        "later"
-      );
-      expect(loaded).toMatchObject({ outcome: "ok", modelContent: "echo:later" });
-    });
-  });
-
-  test("discovery snapshot 只恢复当前 runtime 中仍存在的 deferred 工具", async () => {
-    const deferredTool = {
-      name: "deferred_lookup",
-      description: "Lookup deferred data",
-      parameters: z.object({}),
-      exposure: "deferred" as const,
-      isReadOnly: () => true,
-      execute: async () => "ok",
-    };
-    const first = createToolRuntime({ additionalTools: [deferredTool] });
-    first.getToolSchemas();
-    await first.executeTool(
-      "tool_search",
-      JSON.stringify({ query: "select:deferred_lookup" }),
-      createTestContext(process.cwd()),
-      "discover"
-    );
-    const snapshot = first.getToolDiscoverySnapshot();
-    expect(snapshot).toEqual({ version: 2, loadedNames: ["deferred_lookup"] });
-
-    const restored = createToolRuntime({ additionalTools: [deferredTool] });
-    restored.restoreToolDiscovery({
-      version: 2,
-      loadedNames: ["missing_tool", ...snapshot.loadedNames],
-    });
-    expect(restored.getToolSchemas().map((tool) => tool.function.name))
-      .toContain("deferred_lookup");
-    expect(restored.getToolDiscoverySnapshot().loadedNames)
-      .toEqual(["deferred_lookup"]);
-
-    const isolated = createToolRuntime({additionalTools: [deferredTool]});
-    expect(isolated.getToolSchemas().map((tool) => tool.function.name))
-      .not.toContain("deferred_lookup");
-  });
-
-  test("并发搜索合并 discovery set 且 schema 不重复", async () => {
-    await withTempProject(async (cwd) => {
-      const deferredTools = ["deferred_alpha", "deferred_beta"].map((name) => ({
-        name,
-        description: `Lookup ${name}`,
-        parameters: z.object({}),
-        exposure: "deferred" as const,
-        isReadOnly: () => true,
-        execute: async () => name,
-      }));
-      const runtime = createToolRuntime({additionalTools: deferredTools});
-      runtime.getToolSchemas();
-      await Promise.all(deferredTools.map((tool, index) =>
-        runtime.executeTool(
-          "tool_search",
-          JSON.stringify({query: `select:${tool.name}`}),
-          createTestContext(cwd),
-          `parallel-search-${index}`
-        )
-      ));
-
-      const names = runtime.getToolSchemas().map((tool) => tool.function.name);
-      expect(names.filter((name) => name === "deferred_alpha")).toHaveLength(1);
-      expect(names.filter((name) => name === "deferred_beta")).toHaveLength(1);
-      expect(runtime.getToolDiscoverySnapshot()).toEqual({
-        version: 2,
-        loadedNames: ["deferred_alpha", "deferred_beta"],
-      });
-    });
-  });
-
-  test("无匹配搜索返回普通结果且不改变 discovery", async () => {
-    await withTempProject(async (cwd) => {
-      const runtime = createToolRuntime({
-        additionalTools: [{
-          name: "deferred_echo",
-          description: "Echo a message",
-          parameters: z.object({}),
-          exposure: "deferred",
-          isReadOnly: () => true,
-          execute: async () => "ok",
-        }],
-      });
-      runtime.getToolSchemas();
-      const result = await runtime.executeTool(
-        "tool_search",
-        JSON.stringify({query: "database migration"}),
-        createTestContext(cwd),
-        "no-match"
-      );
-      expect(result.outcome).toBe("ok");
-      expect(result.modelContent).toContain("cannot install tools");
-      expect(runtime.getToolDiscoverySnapshot().loadedNames).toEqual([]);
-    });
-  });
-
-  test("tool_search 在 schema 描述中按来源列出准确的 deferred 工具名", () => {
-    const runtime = createToolRuntime({
-      additionalTools: [
-        {
-          name: "mcp__github__search_issues",
-          description: "Search issue bodies",
-          parameters: z.object({query: z.string()}),
-          exposure: "deferred",
-          searchSource: {name: "GitHub", description: "Repository tools"},
-          isReadOnly: () => true,
-          execute: async () => "ok",
-        },
-        {
-          name: "mcp__browser__navigate",
-          description: "Navigate a page",
-          parameters: z.object({url: z.string()}),
-          exposure: "deferred",
-          searchSource: {name: "Browser"},
-          isReadOnly: () => true,
-          execute: async () => "ok",
-        },
-      ],
-    });
-
-    const searchSchema = runtime.getToolSchemas().find(
-      (tool) => tool.function.name === "tool_search"
-    );
-    expect(searchSchema?.function.description).toContain(
-      "mcp__github__search_issues"
-    );
-    expect(searchSchema?.function.description).toContain(
-      "mcp__browser__navigate"
-    );
-    expect(searchSchema?.function.description).toContain("GitHub (1 tool)");
-  });
-
-  test("tool_search 名称清单保持有界并标明省略项", () => {
-    const runtime = createToolRuntime({
-      additionalTools: Array.from({length: 300}, (_, index) => ({
-        name: `mcp__large_catalog__tool_${String(index).padStart(4, "0")}_${"x".repeat(48)}`,
-        description: `Remote tool ${index}`,
-        parameters: z.object({value: z.string()}),
-        exposure: "deferred" as const,
-        searchSource: {name: "Large catalog"},
-        isReadOnly: () => true,
-        execute: async () => "ok",
-      })),
-    });
-    const description = runtime.getToolSchemas().find(
-      (tool) => tool.function.name === "tool_search"
-    )?.function.description ?? "";
-
-    expect(description.length).toBeLessThan(17_000);
-    expect(description).toContain("Large catalog (300 tools)");
-    expect(description).toContain("more");
-  });
-
-  test("loaded deferred tools 使用有界 LRU 工作集", async () => {
-    await withTempProject(async (cwd) => {
-      const names = Array.from({length: 25}, (_, index) =>
-        `deferred_${String(index + 1).padStart(2, "0")}`
-      );
-      const runtime = createToolRuntime({
-        additionalTools: names.map((name) => ({
-          name,
-          description: `Deferred tool ${name}`,
-          parameters: z.object({}),
-          exposure: "deferred" as const,
-          isReadOnly: () => true,
-          execute: async () => name,
-        })),
-      });
-      runtime.getToolSchemas();
-      for (let offset = 0; offset < 24; offset += 10) {
-        await runtime.executeTool(
-          "tool_search",
-          JSON.stringify({query: `select:${names.slice(offset, Math.min(offset + 10, 24)).join(",")}`}),
-          createTestContext(cwd),
-          `load-${offset}`
-        );
-      }
-      runtime.getToolSchemas();
-      const touched = await runtime.executeTool(
-        "deferred_01",
-        "{}",
-        createTestContext(cwd),
-        "touch-oldest"
-      );
-      expect(touched.outcome).toBe("ok");
-      await runtime.executeTool(
-        "tool_search",
-        JSON.stringify({query: "select:deferred_25"}),
-        createTestContext(cwd),
-        "load-25"
-      );
-
-      const snapshot = runtime.getToolDiscoverySnapshot();
-      expect(snapshot.version).toBe(2);
-      expect(snapshot.loadedNames).toHaveLength(24);
-      expect(snapshot.loadedNames).toContain("deferred_01");
-      expect(snapshot.loadedNames).not.toContain("deferred_02");
-      expect(snapshot.loadedNames).toContain("deferred_25");
-      const visible = runtime.getToolSchemas().map((tool) => tool.function.name);
-      expect(visible).toContain("deferred_01");
-      expect(visible).not.toContain("deferred_02");
-      expect(visible).toContain("deferred_25");
-      expect(runtime.getToolSchemas().find(tool => tool.function.name === "tool_search")?.function.description)
-        .toContain("budget eviction (not server removal): deferred_02");
-    });
-  });
-
-  test("单次搜索不会声明加载超过 schema 字符预算的工具", async () => {
-    await withTempProject(async (cwd) => {
-      const names = ["deferred_large_1", "deferred_large_2", "deferred_large_3"];
-      const runtime = createToolRuntime({
-        additionalTools: names.map((name) => ({
-          name,
-          description: name,
-          parameters: z.object({}),
-          inputJsonSchema: {
-            type: "object",
-            properties: {
-              value: {type: "string", description: "x".repeat(60_000)},
-            },
-          },
-          exposure: "deferred" as const,
-          isReadOnly: () => true,
-          execute: async () => name,
-        })),
-      });
-      runtime.getToolSchemas();
-      const result = await runtime.executeTool(
-        "tool_search",
-        JSON.stringify({query: `select:${names.join(",")}`}),
-        createTestContext(cwd),
-        "load-large"
-      );
-
-      expect(result.outcome).toBe("ok");
-      expect(result.modelContent).toContain(
-        "deferred_large_3 — not loaded: working-set budget reached"
-      );
-      expect(runtime.getToolDiscoverySnapshot().loadedNames).toEqual(
-        names.slice(0, 2)
-      );
-    });
+test("MCP 查询返回完整定义，查询与调用都不改变 tools，已知名称可直接调用", async () => {
+  await withTempProject(async cwd => {
+    const tool = mcpTool();
+    const runtime = createToolRuntime({additionalTools: [tool]});
+    const ctx = createTestContext(cwd);
+    const schemas = runtime.getToolSchemas();
+    expect(schemas.map(t => t.function.name)).toEqual(expect.arrayContaining(["mcp_call", "tool_search"]));
+    expect(schemas.map(t => t.function.name)).not.toContain(tool.name);
+    expect(schemas.find(t => t.function.name === "tool_search")?.function.description).not.toContain(tool.name);
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), ctx, "direct")).modelContent).toBe("echo:hi");
+    const result = await runtime.executeTool("tool_search", JSON.stringify({names: [tool.name]}), ctx, "lookup");
+    expect(JSON.parse(String(result.modelContent))).toMatchObject({tools: [{name: tool.name, description: tool.description,
+      inputSchema: {type: "object", required: ["message"]}}]});
+    expect(runtime.getToolSchemas()).toEqual(schemas);
+    expect((await runtime.executeTool(tool.name, '{"message":"bypass"}', ctx, "raw")).outcome).toBe("failed");
+    expect(runtime.isConcurrencySafe("mcp_call", envelope(tool.name))).toBe(true);
+    expect(runtime.isConcurrencySafe("mcp_call", envelope(tool.name, {}))).toBe(false);
   });
 });
 
-
-test("search batches protect all promised definitions until the next request", async () => {
+test("MCP 网关拒绝原生工具、套娃、未授权目标和非法参数", async () => {
   await withTempProject(async cwd => {
-    const names = Array.from({length: 30}, (_, i) => `batch_${i}`);
-    const runtime = createToolRuntime({additionalTools: names.map(name => ({
-      name, description: name, parameters: z.object({}), exposure: "deferred" as const,
-      isReadOnly: () => true, execute: async () => name,
-    }))});
+    const tool = mcpTool();
+    const hidden = mcpTool("mcp__private__echo");
+    const runtime = createToolRuntime({additionalTools: [tool, hidden], allowedToolNames: [tool.name]});
     const ctx = createTestContext(cwd);
-    runtime.getToolSchemas();
-    for (let i = 0; i < 30; i += 10) {
-      const result = await runtime.executeTool("tool_search", JSON.stringify({query: `select:${names.slice(i, i + 10).join(",")}`}), ctx, `batch-${i}`);
-      expect(result.outcome).toBe("ok");
-      if (i === 20) expect(result.modelContent).toContain("batch_24 — not loaded: working-set budget reached");
+    for (const input of [envelope("write_file"), envelope("mcp_call"), envelope(hidden.name), envelope(tool.name, []),
+      envelope(tool.name, {}), '{"tool":"mcp__fixture__echo"}', "not json", envelope(tool.name, {message: 1})]) {
+      expect((await runtime.executeTool("mcp_call", input, ctx, "invalid")).outcome).toBe("failed");
     }
-    expect(runtime.getToolDiscoverySnapshot().loadedNames).toEqual(names.slice(0, 24));
-    expect(runtime.getToolSchemas().filter(t => t.function.name.startsWith("batch_")).map(t => t.function.name)).toEqual(names.slice(0, 24));
-    // Once a request has seen the promised set, normal LRU admission resumes.
-    await runtime.executeTool("tool_search", JSON.stringify({query: "select:batch_24"}), ctx, "later");
-    expect((await runtime.executeTool("batch_0", "{}", ctx, "current-request-tool")).outcome).toBe("ok");
-    const visible = runtime.getToolSchemas().map(t => t.function.name);
-    expect(visible).not.toContain("batch_0");
-    expect(visible).toContain("batch_24");
+    const lookup = await runtime.executeTool("tool_search", JSON.stringify({names: [hidden.name]}), ctx, "private");
+    expect(JSON.parse(String(lookup.modelContent))).toMatchObject({tools: [], missingNames: [hidden.name]});
+    const empty = createToolRuntime({additionalTools: [tool], allowedToolNames: ["read_file"]});
+    expect(empty.getToolSchemas().map(t => t.function.name)).toEqual(["read_file"]);
+    for (const name of ["tool_search", "mcp_call"]) {
+      expect(() => createToolRuntime({additionalTools: [{...tool, name}]})).toThrow("reserved");
+    }
+  });
+});
+
+test("搜索 query/names 互斥、默认五个，最多十个，缺失可诊断", async () => {
+  await withTempProject(async cwd => {
+    const tools = Array.from({length: 15}, (_, i) => mcpTool(`mcp__fixture__echo_${i}`));
+    const runtime = createToolRuntime({additionalTools: tools});
+    const ctx = createTestContext(cwd);
+    const search = (args: unknown) => runtime.executeTool("tool_search", JSON.stringify(args), ctx, "search");
+    expect(JSON.parse(String((await search({query: "echo"})).modelContent)).tools).toHaveLength(5);
+    expect(JSON.parse(String((await search({query: "echo", limit: 10})).modelContent)).tools).toHaveLength(10);
+    for (const args of [{}, {names: []}, {query: "echo", names: [tools[0]!.name]}, {names: [tools[0]!.name], limit: 1},
+      {query: "echo", limit: 11}, {names: tools.map(t => t.name)}]) expect((await search(args)).outcome).toBe("failed");
+    expect(JSON.parse(String((await search({query: "unrelatedunavailable"})).modelContent)).tools).toEqual([]);
+  });
+});
+
+test("目标权限与 Hook 只执行一次，Hook 改写后按真实 Schema 复核", async () => {
+  await withTempProject(async cwd => {
+    const tool = mcpTool();
+    const events: string[] = [];
+    let approve = 0, execute = 0;
+    const runtime = createToolRuntime({additionalTools: [{...tool,
+      requiresExplicitApproval: () => true,
+      checkPermissions: async () => ({behavior: "ask" as const, message: "fixture"}),
+      execute: async () => {execute++; return "done";},
+    }], hooks: {enabled: true, hasToolHooks: name => name === tool.name,
+      async execute(event) {
+        events.push(event.hook_event_name);
+        if ("tool_name" in event) expect(event.tool_name).toBe(tool.name);
+        return {blocked: false, additionalContexts: [], executions: []};
+      }}});
+    const ctx = createTestContext(cwd, {permissionMode: "ask", canUseTool: async name => {
+      expect(name).toBe(tool.name); approve++; return {behavior: "allow"};
+    }});
+    expect(runtime.isConcurrencySafe("mcp_call", envelope(tool.name))).toBe(false);
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), ctx, "approved")).outcome).toBe("ok");
+    expect(approve).toBe(1); expect(execute).toBe(1);
+    expect(events).toEqual(["PreToolUse", "PostToolUse"]);
+    const invalid = createToolRuntime({additionalTools: [tool], hooks: {enabled: true, hasToolHooks: () => true,
+      async execute() {return {blocked: false, additionalContexts: [], executions: [], updatedInput: {message: 4}};}}});
+    expect((await invalid.executeTool("mcp_call", envelope(tool.name), ctx, "rewrite")).outcome).toBe("failed");
+    const denied = {...ctx, permissionRules: {allow: [], ask: [], deny: [{toolName: tool.name, source: "host" as const}]}};
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), denied, "blocked")).outcome).toBe("denied");
+    expect(execute).toBe(1);
+  });
+});
+
+test("网关保持只读边界、取消边界和当前 Catalog 校验", async () => {
+  await withTempProject(async cwd => {
+    const tool = mcpTool();
+    let tools = [tool];
+    const runtime = createToolRuntime({getAdditionalTools: () => tools});
+    const ctx = createTestContext(cwd);
+    const schemas = runtime.getToolSchemas();
+    tools = [{...tool, parameters: z.object({message: z.string().min(8)}).strict()}];
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), ctx, "changed")).outcome).toBe("failed");
+    expect(runtime.getToolSchemas()).toEqual(schemas);
+    tools = [{...tool, isReadOnly: () => false}];
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), createTestContext(cwd, {readOnlyTools: true}), "readonly")).outcome).toBe("denied");
+    const abort = new AbortController(); abort.abort();
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), createTestContext(cwd, {signal: abort.signal}), "cancel")).outcome).toBe("interrupted");
+    tools = [];
+    expect((await runtime.executeTool("mcp_call", envelope(tool.name), ctx, "removed")).outcome).toBe("failed");
+    expect(runtime.getToolSchemas().map(t => t.function.name)).not.toContain("mcp_call");
+  });
+});
+
+test("超大搜索结果自动落盘，完整 Schema 保留且 tools 不膨胀", async () => {
+  await withTempProject(async cwd => {
+    const tool = mcpTool(undefined, "Long description ".repeat(4000));
+    const runtime = createToolRuntime({additionalTools: [tool]});
+    const ctx = createTestContext(cwd);
+    const result = await runtime.executeTool("tool_search", JSON.stringify({names: [tool.name]}), ctx, "large");
+    expect(result.outcome).toBe("ok"); expect(result.persisted).toBeDefined();
+    expect(result.modelContent).toContain("persisted-output");
+    expect(JSON.parse(await readFile(result.persisted!.path, "utf8")).tools[0].description).toBe(tool.description);
+    expect(runtime.getToolSchemas().map(t => t.function.name)).not.toContain(tool.name);
   });
 });

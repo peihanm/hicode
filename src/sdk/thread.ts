@@ -638,7 +638,6 @@ export function prepareThreadSession(resources: RootRuntimeResources, loaded?: L
             compactState: loaded?.compactState ?? createCompactState(),
             queuedInputs: loaded?.queuedInputs,
             taskNotificationReceipts: loaded?.taskNotificationReceipts,
-            toolDiscovery: loaded?.toolDiscovery,
         },
         state: {
             todos: loaded?.todos ?? [],

@@ -1,3 +1,4 @@
+import {toolCallTarget} from "../tools/mcpCall.js";
 import {contentText} from "../images/content.js";
 import {toolFileChanges} from "../toolResults/uiData.js";
 import {randomUUID} from "node:crypto";
@@ -102,13 +103,14 @@ export async function executeToolCallBatch({
     };
 
     const emitStart = async (toolCall: ToolCall): Promise<void> => {
+        const target = toolCallTarget(toolCall.function.name, toolCall.function.arguments);
         startedToolCallIds.add(toolCall.id);
         await notify({
             type: "tool_call_start",
             turnId,
             toolCallId: toolCall.id,
-            name: toolCall.function.name,
-            args: toolCall.function.arguments,
+            name: target.name,
+            args: target.argsJson,
         });
     };
 
@@ -126,12 +128,13 @@ export async function executeToolCallBatch({
                     message.role === "tool" && message.tool_call_id === toolCall.id
             );
             if (alreadyPaired) continue;
+            const target = toolCallTarget(toolCall.function.name, toolCall.function.arguments);
             if (!startedToolCallIds.has(toolCall.id)) {
                 await emitStart(toolCall);
             }
             history.push({role: "tool", content, tool_call_id: toolCall.id});
-            outcomes.push({toolCallId: toolCall.id, name: toolCall.function.name,
-                argsJson: toolCall.function.arguments, outcome, result: content});
+            outcomes.push({toolCallId: toolCall.id, name: target.name,
+                argsJson: target.argsJson, outcome, result: content});
             await notify({
                 type: "tool_call_end",
                 turnId,
@@ -189,6 +192,7 @@ export async function executeToolCallBatch({
             for (let index = 0; index < group.calls.length; index++) {
                 const toolCall = group.calls[index]!;
                 const execution = executions[index]!;
+                const target = toolCallTarget(toolCall.function.name, toolCall.function.arguments);
                 if (history.some(message => message.role === "tool" && message.tool_call_id === toolCall.id)) {
                     nextToolIndex++;
                     continue;
@@ -211,8 +215,8 @@ export async function executeToolCallBatch({
                 }
                 outcomes.push({
                     toolCallId: toolCall.id,
-                    name: toolCall.function.name,
-                    argsJson: toolCall.function.arguments,
+                    name: target.name,
+                    argsJson: target.argsJson,
                     outcome: interrupted ? "interrupted" : execution.outcome,
                     result: interruptedContent ?? contentText(execution.modelContent),
                     ...(!interrupted && execution.uiData
@@ -223,7 +227,7 @@ export async function executeToolCallBatch({
                     budgetEntries.push({
                         messageIndex,
                         toolCallId: toolCall.id,
-                        toolName: toolCall.function.name,
+                        toolName: target.name,
                         ...(execution.autoPersist === false ? {autoPersist: false as const} : {}),
                         ...(execution.persisted ? {persisted: execution.persisted} : {}),
                     });

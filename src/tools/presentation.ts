@@ -125,8 +125,8 @@ export function describeToolPhase(
             return {
                 kind: "inspect",
                 label: "Inspecting project",
-                activity: "Loading tools",
-                success: "Tools loaded",
+                activity: "Searching tools",
+                success: "Tools found",
                 hidden: true,
             };
         case "read_file":
@@ -189,7 +189,7 @@ export function describeToolCall(
         case "tool_search":
             return {
                 label: "Tool search",
-                detail: stringArg(args, "query") ?? "",
+                detail: stringArg(args, "query") ?? (Array.isArray(args.names) ? args.names.filter((name): name is string => typeof name === "string").join(", ") : ""),
             };
         case "bash": {
             const raw = stringArg(args, "command") ?? "";

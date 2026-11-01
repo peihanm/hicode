@@ -78,8 +78,8 @@ describe("phase-based tool presentation", () => {
         threads = completeTool(threads, {
             id: "search-tool",
             name: "tool_search",
-            args: {query: "select:glob"},
-            result: "Loaded glob",
+            args: {names: ["mcp__files__glob"]},
+            result: "Found glob",
         });
         threads = completeTool(threads, {
             id: "list",
@@ -457,4 +457,19 @@ test("MCP headers reflow across terminal widths without code-driven hanging inde
         expect(frame).not.toContain("mathutils"); expect(frame).not.toMatch(/^ {10,}\S/m);
         expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
     }
+});
+
+test("MCP gateway restored rows show the actual service/tool and search names", () => {
+    const restored = threadsFromHistory([
+        {role: "assistant", content: null, tool_calls: [{id: "multiply", type: "function", function: {name: "mcp_call",
+            arguments: JSON.stringify({tool: "mcp__playground__calculate", arguments: {a: 18, b: 7}})}}]},
+        {role: "tool", tool_call_id: "multiply", content: "126"},
+    ]);
+    const frame = render(<MessageList threads={restored} transcript/>).lastFrame() ?? "";
+    expect(frame).toContain("MCP playground · calculate");
+    expect(frame).toContain("126");
+    expect(frame).not.toContain("mcp_call");
+    const search = completeTool([], {id: "lookup", name: "tool_search", args: {names: ["mcp__playground__calculate"]}, result: "found"});
+    const lookup = render(<MessageList threads={search} transcript/>).lastFrame() ?? "";
+    expect(lookup).toContain("mcp__playground__calculate");
 });

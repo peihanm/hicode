@@ -1,5 +1,5 @@
 import type {HookTrustRequest} from "../hooks/index.js";
-import type {McpApprovalRequest} from "../mcp/index.js";
+import type {McpApprovalRequest, McpApprovalDecision} from "../mcp/index.js";
 import {isPermissionMode} from "../permissions/index.js";
 import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime/resources.js";
 import {isHiCodeRootConfiguration} from "../runtime/rootConfiguration.js";
@@ -44,7 +44,7 @@ export class HiCode {
                 kind: "mcp_approval",
                 request,
             }
-        );
+        ).then<McpApprovalDecision>(decision => decision === "deny" ? "cancel" : "enable");
         const requestTrust = (
             request: HookTrustRequest
         ) => requestRootApproval(

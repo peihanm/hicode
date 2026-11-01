@@ -18,22 +18,76 @@ import {testChildEnvironment} from "../helpers/childEnvironment.js";
 const png = () => sharp({create: {width: 30, height: 20, channels: 4, background: "#17aacc"}}).png().toBuffer();
 const origin = {kind: "tool" as const, toolCallId: "mcp-image-test", toolName: "mcp__fixture__screenshot"};
 
+test("MCP success and error results share text formatting; errors never save binary artifacts", async () => {
+    await withTempProject(async cwd => {
+        const ctx = createTestContext(cwd);
+        const input = {store: ctx.toolResultStore, origin, imageModelSupported: true, signal: ctx.signal};
+        const content = [
+            {type: "text", text: "before"},
+            {type: "resource", resource: {uri: "file:///note", text: "resource text"}},
+            {type: "resource_link", name: "note", uri: "file:///note"},
+            {type: "unknown"},
+        ];
+        const text = "before\n[Resource file:///note]\nresource text\n[Resource link: note file:///note]\n[Unsupported MCP content: unknown]";
+        const structuredContent = {z: 2, a: 1};
+        expect(await normalizeMcpResultWithArtifacts({content, structuredContent}, input)).toBe(`${text}\n{"a":1,"z":2}`);
+        await expect(normalizeMcpResultWithArtifacts({isError: true, content, structuredContent}, input))
+            .rejects.toThrow(`${text}\n{"a":1,"z":2}`);
+
+        const data = Buffer.from("binary data").toString("base64");
+        const error = {isError: true, content: [...content,
+            {type: "audio", data, mimeType: "audio/wav"},
+            {type: "resource", resource: {uri: "file:///binary", blob: data, mimeType: "application/octet-stream"}},
+        ]};
+        await expect(normalizeMcpResultWithArtifacts(error, input)).rejects.toThrow("audio content omitted");
+        expect((await readdir(ctx.toolResultStore.sessionDir).catch(() => [])).filter(name => name.endsWith(".bin"))).toEqual([]);
+
+        const saved = await normalizeMcpResultWithArtifacts({...error, isError: false}, input);
+        expect(typeof saved).toBe("string");
+        expect(String(saved)).toStartWith(text);
+        expect(String(saved)).not.toContain(data);
+        const paths = [...String(saved).matchAll(/saved to ([^;]+);/g)].map(match => match[1]!);
+        expect(paths).toHaveLength(2);
+        for (const path of paths) expect(await readFile(path, "utf8")).toBe("binary data");
+    });
+});
+
+test("MCP text formatting retains truncation notices and content block limits", async () => {
+    await withTempProject(async cwd => {
+        const ctx = createTestContext(cwd);
+        const input = {store: ctx.toolResultStore, origin, imageModelSupported: false, signal: ctx.signal};
+        const limit = 16 * 1024 * 1024;
+        const content = [
+            {type: "text", text: "a".repeat(limit) + "hidden"},
+            {type: "resource", resource: {uri: "file:///large", text: "b".repeat(limit) + "hidden"}},
+        ];
+        const output = await normalizeMcpResultWithArtifacts({content}, input);
+        expect(typeof output).toBe("string");
+        expect(String(output)).not.toContain("hidden");
+        expect(String(output).slice(limit)).toStartWith("\n[MCP text block truncated at safe limit]\n[Resource file:///large]\n");
+        expect(String(output)).toEndWith("\n[MCP resource text truncated at safe limit]");
+        const blocks = Array.from({length: 257}, () => ({type: "text", text: "line"}));
+        const bounded = await normalizeMcpResultWithArtifacts({content: blocks}, input);
+        expect(bounded).toBe(Array.from({length: 256}, () => "line").join("\n") + "\n[1 MCP content blocks omitted]");
+    });
+});
+
 test("real stdio MCP delivers ordered tool pixels, structured text and immutable artifact metadata", async () => {
     await withTempProject(async (cwd, storage) => {
         const path = join(cwd, "fixture.png"), bytes = await png();
         await writeFile(path, bytes);
         const manager = createMcpManager({cwd, storage, childEnvironment: testChildEnvironment, sources: [],
             hostServers: [{name: "fixture", command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/imageServer.ts"), path]}],
-            requestApproval: async () => "once"});
+            requestApproval: async () => "enable"});
         try {
             await manager.initialize();
             expect(manager.getSnapshots()[0]?.status).toBe("connected");
             const runtime = createToolRuntime({additionalTools: manager.getTools()});
             const ctx = createTestContext(cwd); ctx.imageModelSupported = true;
             runtime.getToolSchemas();
-            expect((await runtime.executeTool("tool_search", JSON.stringify({query: `select:${origin.toolName}`}), ctx, "discover")).outcome).toBe("ok");
+            expect((await runtime.executeTool("tool_search", JSON.stringify({names: [origin.toolName]}), ctx, "discover")).outcome).toBe("ok");
             runtime.getToolSchemas();
-            const result = await runtime.executeTool(origin.toolName, "{}", ctx, origin.toolCallId);
+            const result = await runtime.executeTool("mcp_call", JSON.stringify({tool: origin.toolName, arguments: {}}), ctx, origin.toolCallId);
             expect(result).toMatchObject({outcome: "ok"});
             expect(Array.isArray(result.modelContent) && result.modelContent.map(part => part.type)).toEqual(["text", "image", "text"]);
             expect(contentText(result.modelContent)).toContain("user-provided-fixture");
@@ -47,7 +101,7 @@ test("real stdio MCP delivers ordered tool pixels, structured text and immutable
             const meta = JSON.parse(await readFile(ctx.toolResultStore.imagePath(refs[0]!.imageId).replace(/\.bin$/, ".binary.json"), "utf8"));
             expect(meta.origin).toEqual(origin); expect(meta.complete).toBe(true);
             ctx.imageModelSupported = false;
-            const unsupported = await runtime.executeTool(origin.toolName, "{}", ctx, "unsupported");
+            const unsupported = await runtime.executeTool("mcp_call", JSON.stringify({tool: origin.toolName, arguments: {}}), ctx, "unsupported");
             expect(unsupported.outcome).toBe("failed"); expect(contentText(unsupported.modelContent)).toContain("does not support MCP images");
         } finally {await manager.closeAll();}
     });
@@ -106,7 +160,7 @@ test("public SDK consumes MCP images through production Provider, preserves Hist
         globalThis.fetch = (async (_url, init) => {
             const body = JSON.parse(String(init?.body));
             calls++;
-            const name = calls === 1 ? "tool_search" : origin.toolName;
+            const name = calls === 1 ? "tool_search" : "mcp_call";
             if (calls === 3) {
                 const result = body.messages.findLast((message: {role: string}) => message.role === "tool");
                 expect(result.content.map((part: {type: string}) => part.type)).toEqual(["text", "image_url", "text"]);
@@ -115,7 +169,7 @@ test("public SDK consumes MCP images through production Provider, preserves Hist
             }
             if (calls > 3) throw new Error("Unexpected repeated model request");
             const delta = calls === 3 ? {content: "已看到蓝色矩形图片"} : {tool_calls: [{index: 0, id: `call-${calls}`, type: "function", function: {
-                name, arguments: calls === 1 ? JSON.stringify({query: `select:${origin.toolName}`}) : "{}",
+                name, arguments: calls === 1 ? JSON.stringify({names: [origin.toolName]}) : JSON.stringify({tool: origin.toolName, arguments: {}}),
             }}]};
             return new Response(`data: ${JSON.stringify({choices: [{index: 0, delta, finish_reason: calls === 3 ? "stop" : "tool_calls"}]})}\n\ndata: [DONE]\n\n`, {headers: {"content-type": "text/event-stream"}});
         }) as typeof fetch;

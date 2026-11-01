@@ -10,13 +10,11 @@ test("Session 串行捕获输入数组，不被后续 Host 更新改变；保存
         const writer = createSessionPersistence(storage, cwd, "queue");
         const input: SaveSessionSnapshotInput = {cwd, sessionId: "queue", model: "glm-test",
             history: [{role: "user", origin: "user", content: "original"}], todos: [], permissionMode: "ask",
-            toolDiscovery: {version: 2, loadedNames: ["first"]}};
+        };
         const first = writer.save(input);
         input.history[0] = {role: "user", origin: "user", content: "next"};
-        input.toolDiscovery!.loadedNames[0] = "second";
         await first;
         expect(loadSession(storage, cwd, "queue")?.history.at(-1)?.content).toBe("original");
-        expect(loadSession(storage, cwd, "queue")?.toolDiscovery?.loadedNames).toEqual(["first"]);
         await writeFile(getSessionIndexPath(storage, cwd), "invalid index");
         await writer.save(input);
         expect(writer.takeIssues()[0]).toContain("content was saved");

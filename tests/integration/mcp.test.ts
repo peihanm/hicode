@@ -80,7 +80,7 @@ async function createMultiFixtureManager(cwd: string) {
   return manager;
 }
 
-async function exposeDeferredTools(
+async function lookupTools(
   runtime: ToolRuntime,
   cwd: string,
   ...names: string[]
@@ -88,12 +88,12 @@ async function exposeDeferredTools(
   runtime.getToolSchemas();
   const result = await runtime.executeTool(
     "tool_search",
-    JSON.stringify({query: `select:${names.join(",")}`}),
+    JSON.stringify({names}),
     createTestContext(cwd),
     `search-${names.join("-")}`
   );
   expect(result.outcome).toBe("ok");
-  return runtime.getToolSchemas();
+  return JSON.parse(contentText(result.modelContent)).tools as Array<{name: string; inputSchema: Record<string, unknown>}>;
 }
 
 describe("MCP stdio integration", () => {
@@ -106,25 +106,25 @@ describe("MCP stdio integration", () => {
         const runtime = createToolRuntime({additionalTools: manager.getTools()});
         const name = "mcp__fixture__validated";
         const stats = "mcp__fixture__stats";
-        await exposeDeferredTools(runtime, cwd, name, stats);
+        await lookupTools(runtime, cwd, name, stats);
         const ctx = createTestContext(cwd);
         for (const args of [{}, {payload: {}}, {payload: {count: "1", mode: "safe"}}, {payload: {count: 1, mode: "unsafe"}}, {payload: {count: 1, mode: "safe", extra: true}}]) {
-          expect((await runtime.executeTool(name, JSON.stringify(args), ctx, "invalid")).outcome).toBe("failed");
+          expect((await runtime.executeTool("mcp_call", JSON.stringify({tool: name, arguments: args}), ctx, "invalid")).outcome).toBe("failed");
         }
-        expect((await runtime.executeTool(stats, "{}", ctx, "stats-before")).modelContent).toContain("calls:0");
+        expect((await runtime.executeTool("mcp_call", JSON.stringify({tool: stats, arguments: {}}), ctx, "stats-before")).modelContent).toContain("calls:0");
         const hookRuntime = createToolRuntime({additionalTools: manager.getTools(), hooks: {enabled: true, hasToolHooks: () => true, async execute(event) {
           return {blocked: false, additionalContexts: [], executions: [], ...(event.hook_event_name === "PreToolUse" && event.tool_name === name ? {updatedInput: {payload: {count: 0, mode: "safe"}}} : {})};
         }}});
-        await exposeDeferredTools(hookRuntime, cwd, name);
+        await lookupTools(hookRuntime, cwd, name);
         const valid = {payload: {count: 2, mode: "safe"}};
-        expect((await hookRuntime.executeTool(name, JSON.stringify(valid), ctx, "hook")).outcome).toBe("failed");
-        expect((await runtime.executeTool(stats, "{}", ctx, "stats-hook")).modelContent).toContain("calls:0");
-        expect((await runtime.executeTool(name, JSON.stringify(valid), ctx, "valid")).modelContent).toContain(JSON.stringify(valid));
-        expect((await runtime.executeTool(stats, "{}", ctx, "stats-after")).modelContent).toContain("calls:1");
+        expect((await hookRuntime.executeTool("mcp_call", JSON.stringify({tool: name, arguments: valid}), ctx, "hook")).outcome).toBe("failed");
+        expect((await runtime.executeTool("mcp_call", JSON.stringify({tool: stats, arguments: {}}), ctx, "stats-hook")).modelContent).toContain("calls:0");
+        expect((await runtime.executeTool("mcp_call", JSON.stringify({tool: name, arguments: valid}), ctx, "valid")).modelContent).toContain(JSON.stringify(valid));
+        expect((await runtime.executeTool("mcp_call", JSON.stringify({tool: stats, arguments: {}}), ctx, "stats-after")).modelContent).toContain("calls:1");
       } finally {await manager.closeAll();}
     });
   });
-  test("多个大型 MCP 来源共享名称目录并分别按需加载和调用", async () => {
+  test("多个大型 MCP 来源共享固定入口并分别查询和调用", async () => {
     await withTempProject(async (cwd) => {
       const manager = await createMultiFixtureManager(cwd);
       try {
@@ -149,34 +149,32 @@ describe("MCP stdio integration", () => {
         const searchDescription = initialSchemas.find(
           (tool) => tool.function.name === "tool_search"
         )?.function.description ?? "";
-        expect(searchDescription).toContain("mega_catalog (100 tools)");
-        expect(searchDescription).toContain("collaboration_hub (60 tools)");
-        expect(searchDescription).toContain("mcp__mega_catalog__github_001");
-        expect(searchDescription).toContain("mcp__collaboration_hub__slack_000");
+        expect(searchDescription).not.toContain("mega_catalog (100 tools)");
+        expect(searchDescription).not.toContain("collaboration_hub (60 tools)");
+        expect(searchDescription).not.toContain("mcp__mega_catalog__github_001");
+        expect(searchDescription).not.toContain("mcp__collaboration_hub__slack_000");
 
         const githubName = "mcp__mega_catalog__github_001";
         const slackName = "mcp__collaboration_hub__slack_000";
-        const schemas = await exposeDeferredTools(
+        const schemas = await lookupTools(
           runtime,
           cwd,
           githubName,
           slackName
         );
-        expect(schemas.map((tool) => tool.function.name)).toEqual(
+        expect(schemas.map((tool) => tool.name)).toEqual(
           expect.arrayContaining([githubName, slackName])
         );
 
         const ctx = createTestContext(cwd);
         const [githubResult, slackResult] = await Promise.all([
           runtime.executeTool(
-            githubName,
-            JSON.stringify({query: "open pull requests", limit: 2}),
+            "mcp_call", JSON.stringify({tool: githubName, arguments: {query: "open pull requests", limit: 2}}),
             ctx,
             "multi-github"
           ),
           runtime.executeTool(
-            slackName,
-            JSON.stringify({query: "release blocker", limit: 3}),
+            "mcp_call", JSON.stringify({tool: slackName, arguments: {query: "release blocker", limit: 3}}),
             ctx,
             "multi-slack"
           ),
@@ -194,7 +192,7 @@ describe("MCP stdio integration", () => {
     });
   });
 
-  test("大型 MCP Catalog 只暴露名称并按需加载真实 Schema", async () => {
+  test("大型 MCP Catalog 查询完整 Schema 且 tools 保持固定", async () => {
     await withTempProject(async (cwd) => {
       const manager = await createFixtureManager(cwd, manyToolsFixture);
       try {
@@ -209,8 +207,8 @@ describe("MCP stdio integration", () => {
         const searchDescription = initialSchemas.find(
           (tool) => tool.function.name === "tool_search"
         )?.function.description ?? "";
-        expect(searchDescription).toContain("fixture (100 tools)");
-        expect(searchDescription).toContain("mcp__fixture__browser_000");
+        expect(searchDescription).not.toContain("fixture (100 tools)");
+        expect(searchDescription).not.toContain("mcp__fixture__browser_000");
         expect(searchDescription.length).toBeLessThan(17_000);
 
         const ctx = createTestContext(cwd);
@@ -229,18 +227,15 @@ describe("MCP stdio integration", () => {
             `many-${category}`
           );
           expect(result.outcome).toBe("ok");
-          expect(contentText(result.modelContent).split("\n")[1]).toContain(
+          expect(contentText(result.modelContent)).toContain(
             `mcp__fixture__${category}_`
           );
           runtime.getToolSchemas();
         }
 
-        const snapshot = runtime.getToolDiscoverySnapshot();
-        expect(snapshot.loadedNames).toHaveLength(24);
-        const callableName = snapshot.loadedNames.at(-1)!;
+        const callableName = "mcp__fixture__browser_000";
         const called = await runtime.executeTool(
-          callableName,
-          JSON.stringify({query: "probe", limit: 3}),
+          "mcp_call", JSON.stringify({tool: callableName, arguments: {query: "probe", limit: 3}}),
           ctx,
           "many-call"
         );
@@ -248,11 +243,10 @@ describe("MCP stdio integration", () => {
         expect(called.modelContent).toContain('"query":"probe"');
 
         const resumed = createToolRuntime({additionalTools: manager.getTools()});
-        resumed.restoreToolDiscovery(snapshot);
-        expect(resumed.getToolDiscoverySnapshot()).toEqual(snapshot);
+        expect(resumed.getToolSchemas()).toEqual(initialSchemas);
         expect(resumed.getToolSchemas().filter(
           (tool) => tool.function.name.startsWith("mcp__")
-        )).toHaveLength(24);
+        )).toHaveLength(0);
       } finally {
         await manager.closeAll();
       }
@@ -273,14 +267,13 @@ describe("MCP stdio integration", () => {
         expect(initialNames).not.toContain(name);
         expect(runtime.getToolSchemas().find(
           (item) => item.function.name === "tool_search"
-        )?.function.description).toContain(name);
-        const schemas = await exposeDeferredTools(runtime, cwd, name);
-        expect(schemas.find((item) => item.function.name === name)?.function.parameters)
+        )?.function.description).not.toContain(name);
+        const schemas = await lookupTools(runtime, cwd, name);
+        expect(schemas.find((item) => item.name === name)?.inputSchema)
           .toMatchObject({ type: "object", required: ["message"] });
-        expect(runtime.isConcurrencySafe(name, JSON.stringify({ message: "hi" }))).toBe(true);
+        expect(runtime.isConcurrencySafe("mcp_call", JSON.stringify({tool: name, arguments: { message: "hi" }}))).toBe(true);
         const result = await runtime.executeTool(
-          name,
-          JSON.stringify({ message: "hello" }),
+          "mcp_call", JSON.stringify({tool: name, arguments: { message: "hello" }}),
           createTestContext(cwd),
           "mcp-echo"
         );
@@ -320,17 +313,15 @@ describe("MCP stdio integration", () => {
       await manager.initialize();
       try {
         const runtime = createToolRuntime({additionalTools: manager.getTools()});
-        await exposeDeferredTools(runtime, cwd, "mcp__fixture__environment");
+        await lookupTools(runtime, cwd, "mcp__fixture__environment");
         const ctx = createTestContext(cwd, {permissionMode: "full-access"});
         const secret = await runtime.executeTool(
-          "mcp__fixture__environment",
-          JSON.stringify({name: "HICODE_TEST_PROVIDER_API_KEY"}),
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__environment", arguments: {name: "HICODE_TEST_PROVIDER_API_KEY"}}),
           ctx,
           "mcp-secret-env"
         );
         const safe = await runtime.executeTool(
-          "mcp__fixture__environment",
-          JSON.stringify({name: "HICODE_TEST_SAFE_VALUE"}),
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__environment", arguments: {name: "HICODE_TEST_SAFE_VALUE"}}),
           ctx,
           "mcp-safe-env"
         );
@@ -342,7 +333,7 @@ describe("MCP stdio integration", () => {
     });
   });
 
-  test("只读 Annotation 自动放行，破坏性 Tool 询问且单个 Spawn 失败不影响健康 Server", async () => {
+  test("启用服务后工具默认放行，Annotation 仍控制并发且 Spawn 失败隔离", async () => {
     await withTempProject(async (cwd, storage) => {
       const userConfigPath = join(storage.hicodeHome, "mcp.json");
       await mkdir(storage.hicodeHome, {recursive: true});
@@ -374,28 +365,26 @@ describe("MCP stdio integration", () => {
             return { behavior: "allow" };
           },
         });
-        await exposeDeferredTools(
+        await lookupTools(
           runtime,
           cwd,
           "mcp__fixture__echo",
           "mcp__fixture__mutate"
         );
         const result = await runtime.executeTool(
-          "mcp__fixture__echo",
-          JSON.stringify({ message: "permission" }),
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__echo", arguments: { message: "permission" }}),
           ctx,
           "mcp-permission"
         );
         expect(confirmations).toBe(0);
-        expect(runtime.isConcurrencySafe("mcp__fixture__mutate", JSON.stringify({ value: "x" })))
+        expect(runtime.isConcurrencySafe("mcp_call", JSON.stringify({tool: "mcp__fixture__mutate", arguments: { value: "x" }})))
           .toBe(false);
         const mutation = await runtime.executeTool(
-          "mcp__fixture__mutate",
-          JSON.stringify({ value: "permission" }),
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__mutate", arguments: { value: "permission" }}),
           ctx,
           "mcp-mutate-permission"
         );
-        expect(confirmations).toBe(1);
+        expect(confirmations).toBe(0);
         expect(result.modelContent).toBe("echo:permission");
         expect(mutation.modelContent).toBe("mutated:permission");
       } finally {
@@ -410,18 +399,17 @@ describe("MCP stdio integration", () => {
       try {
         const runtime = createToolRuntime({ additionalTools: manager.getTools() });
         const ctx = createTestContext(cwd);
-        await exposeDeferredTools(
+        await lookupTools(
           runtime,
           cwd,
           "mcp__fixture__fail",
           "mcp__fixture__large_text"
         );
-        const failed = await runtime.executeTool("mcp__fixture__fail", "{}", ctx, "mcp-fail");
+        const failed = await runtime.executeTool("mcp_call", JSON.stringify({tool: "mcp__fixture__fail", arguments: {}}), ctx, "mcp-fail");
         expect(failed.outcome).toBe("failed");
         expect(failed.modelContent).toContain("fixture failure");
         const large = await runtime.executeTool(
-          "mcp__fixture__large_text",
-          JSON.stringify({ size: 60_000 }),
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__large_text", arguments: { size: 60_000 }}),
           ctx,
           "mcp-large"
         );
@@ -439,10 +427,9 @@ describe("MCP stdio integration", () => {
       const manager = await createFixtureManager(cwd);
       try {
         const runtime = createToolRuntime({ additionalTools: manager.getTools() });
-        await exposeDeferredTools(runtime, cwd, "mcp__fixture__binary");
+        await lookupTools(runtime, cwd, "mcp__fixture__binary");
         const result = await runtime.executeTool(
-          "mcp__fixture__binary",
-          "{}",
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__binary", arguments: {}}),
           createTestContext(cwd),
           "mcp-binary"
         );
@@ -462,11 +449,10 @@ describe("MCP stdio integration", () => {
       const manager = await createFixtureManager(cwd);
       try {
         const runtime = createToolRuntime({ additionalTools: manager.getTools() });
-        await exposeDeferredTools(runtime, cwd, "mcp__fixture__slow");
+        await lookupTools(runtime, cwd, "mcp__fixture__slow");
         const controller = new AbortController();
         const promise = runtime.executeTool(
-          "mcp__fixture__slow",
-          JSON.stringify({ delayMs: 5_000 }),
+          "mcp_call", JSON.stringify({tool: "mcp__fixture__slow", arguments: { delayMs: 5_000 }}),
           createTestContext(cwd, { signal: controller.signal }),
           "mcp-slow"
         );
@@ -489,21 +475,20 @@ describe("MCP stdio integration", () => {
             .not.toContain("mcp__fixture__echo");
           expect(call.tools.find(
             (tool) => tool.function.name === "tool_search"
-          )?.function.description).toContain("mcp__fixture__echo");
+          )?.function.description).toContain("mcp_call");
           return assistantToolCall(
             "tool_search",
-            {query: "select:mcp__fixture__echo"},
+            {names: ["mcp__fixture__echo"]},
             "headless-search"
           );
         },
         (call) => {
           expect(call.tools.map((tool) => tool.function.name))
-            .toContain("mcp__fixture__echo");
+            .toContain("mcp_call");
           expect(call.messages.find((item) => item.role === "tool")?.content)
-            .toContain("available next request");
+            .toContain("inputSchema");
           return assistantToolCall(
-            "mcp__fixture__echo",
-            { message: "headless" },
+            "mcp_call", {tool: "mcp__fixture__echo", arguments: { message: "headless" }},
             "headless-mcp"
           );
         },
@@ -537,7 +522,7 @@ describe("MCP stdio integration", () => {
       const resumedFake = createFakeLLM([
         (call) => {
           expect(call.tools.map((tool) => tool.function.name))
-            .toContain("mcp__fixture__echo");
+            .toContain("mcp_call");
           return assistantText("MCP resumed");
         },
       ]);
@@ -584,7 +569,7 @@ describe("MCP stdio integration", () => {
         childEnvironment: testChildEnvironment,
         requestApproval: async () => {
           requests++;
-          return "once";
+          return "enable";
         },
       });
       await allowed.initialize();
@@ -630,7 +615,7 @@ describe("MCP stdio integration", () => {
         hostServers,
         requestApproval: async () => {
           approvals += 1;
-          return "once";
+          return "enable";
         },
       });
       await allowed.initialize();

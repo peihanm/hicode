@@ -43,15 +43,9 @@ export type PermissionMatcher = (
     behavior: PermissionRuleBehavior
 ) => boolean;
 
-export type ToolExposure = "direct" | "deferred";
 type DefaultApprovalScope =
     | {kind: "workspace"; path: string}
     | {kind: "sandboxed"};
-
-interface ToolSearchSource {
-    name: string;
-    description?: string;
-}
 
 // Tool runtime context injects permission decisions, rules, modes and other dependencies.
 // Tools do not depend directly on UI or configuration loading.
@@ -204,13 +198,11 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     getDescription?(): string;
     parameters: T; // Zod schema
 
-    // Whether full Schema appears in the first model request; defaults to direct.
-    // Deferred loading affects visibility only, not permissions, concurrency or execution capabilities.
-    exposure?: ToolExposure;
-
-    // Additional search terms and source summary. External text is for discovery, never permission decisions.
-    searchHint?: string;
-    searchSource?: ToolSearchSource;
+    /** Trusted adapter metadata. Only these targets can be called through mcp_call. */
+    mcp?: {
+        serverName: string;
+        annotations?: {readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean};
+    };
 
     // External tools, currently MCP, may provide JSON Schema directly.
     // Built-ins omit this field and derive JSON Schema from Zod.

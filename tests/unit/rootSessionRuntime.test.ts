@@ -32,10 +32,6 @@ describe("RootSessionRuntime", () => {
           sessionId: "session-runtime-test",
           history: [{role: "system", content: "system"}],
           compactState: initialCompactState,
-          toolDiscovery: {
-            version: 2,
-            loadedNames: ["missing_tool"],
-          },
           queuedInputs: [{
             id: "queued-1",
             type: "user_input",
@@ -89,7 +85,7 @@ describe("RootSessionRuntime", () => {
       expect(snapshot.history.at(-1)?.content).toBe("new turn");
       expect(snapshot.compactState).toEqual(nextCompactState);
       expect(snapshot.queuedInputs).toHaveLength(1);
-      expect(snapshot.toolDiscovery?.loadedNames).toEqual([]);
+      expect(snapshot).not.toHaveProperty("toolDiscovery");
 
       const signal = new AbortController().signal;
       await runtime.runSessionStart("resume", signal);

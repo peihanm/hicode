@@ -1,3 +1,4 @@
+import {toolCallTarget} from "../../tools/mcpCall.js";
 import {contentText, type MessageContent} from "../../images/content.js";
 import {userContentText} from "./userContent.js";
 import {toolFileChanges} from "../../toolResults/uiData.js";
@@ -75,12 +76,13 @@ export function threadsFromHistory(
                 threads.push(createAssistantThread(message.content, createId));
             }
             for (const toolCall of message.tool_calls ?? []) {
+                const target = toolCallTarget(toolCall.function.name, toolCall.function.arguments);
                 threads.push({
                     id: createId(),
                     role: "tool_call",
                     toolCallId: toolCall.id,
-                    name: toolCall.function.name,
-                    args: toolCall.function.arguments,
+                    name: target.name,
+                    args: target.argsJson,
                     status: "done",
                 });
             }

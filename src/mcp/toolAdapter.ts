@@ -78,19 +78,19 @@ export function adaptMcpTools(server: McpConnectedServer, policy?: McpToolPolicy
         const tool: Tool = {
             name: qualifiedName,
             description: `[MCP: ${server.config.name}] ${description || originalName}`,
-            exposure: "deferred",
-            searchHint: `${server.config.name} ${originalName} ${description}`,
-            searchSource: {name: server.config.name},
+            mcp: {serverName: server.config.name, ...(remote.annotations ? {annotations: {
+                readOnlyHint: remote.annotations.readOnlyHint,
+                destructiveHint: remote.annotations.destructiveHint,
+                idempotentHint: remote.annotations.idempotentHint,
+                openWorldHint: remote.annotations.openWorldHint,
+            }} : {})},
             parameters: compiled.parameters,
             inputJsonSchema: compiled.schema,
             requiresExplicitApproval: () => exception === "ask",
             async checkPermissions() {
                 if (exception === "deny") return {behavior: "deny", message: `MCP tool ${qualifiedName} is blocked by the server policy`};
                 if (exception === "ask") return {behavior: "ask", allowPersistent: false, message: `MCP tool ${qualifiedName} requires approval by the server policy; change this exception with /mcp`};
-                if (exception === "allow" || policy?.default === "allow") return {behavior: "allow"};
-                return annotationReadOnly
-                    ? {behavior: "passthrough"}
-                    : {behavior: "ask", message: `MCP tool ${qualifiedName} requires approval`};
+                return {behavior: "allow"};
             },
             isReadOnly: () => annotationReadOnly,
             isConcurrencySafe: () => annotationReadOnly,

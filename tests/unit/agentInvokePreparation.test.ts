@@ -374,22 +374,30 @@ test("实际请求准备使用配置阈值，DeepSeek 默认不会在 95k 压缩
   });
 });
 
-test("MCP refresh diagnostics are bounded request context, not duplicated History", async () => {
+test("MCP scoped directory is bounded, refreshed after compaction and never appended to History", async () => {
   await withTempProject(async cwd => {
     const messages = history();
     const before = structuredClone(messages);
-    const ctx = createTestContext(cwd, {mcpManager: {
-      initialize: async () => {},  closeAll: async () => {}, reconnect: async () => {}, setToolPolicy: async () => {},
-      subscribe: () => () => {}, getTools: () => [],
-      getSnapshots: () => [{name: "fixture", source: "project", status: "connected", toolCount: 25,
-        catalog: {notifications: 1, revision: 1, added: [], changed: [], removed: [], unchanged: 25}}],
-    }});
-    const prepared = await prepareAgentInvoke({history: messages, ctx, onEvent: () => {},
-      getToolSchemas: () => [], compactHistory: async ({preTokenCount}) => noCompactResult(preTokenCount)});
-    const input = JSON.stringify(prepared.invokeMessages);
-    expect(input).toContain("MCP runtime catalog state");
-    expect(input).toContain('\\"notifications\\":1');
-    expect(input).toContain('\\"unchanged\\":25');
+    const base = createTestContext(cwd);
+    let tools = Array.from({length: 30}, (_, i) => ({...base.availableTools[0]!, name: `mcp__visible__lookup_${i}`, mcp: {serverName: "visible"}}));
+    const ctx = {...base, get availableTools() {return tools;}};
+    const prepare = (forceCompact = false) => prepareAgentInvoke({history: messages, ctx, onEvent: () => {},
+      forceCompact, getToolSchemas: () => [], compactHistory: async ({preTokenCount}) => {
+        tools = [{...tools[0]!, name: "mcp__refreshed__lookup", mcp: {serverName: "refreshed"}}];
+        return {compacted: true, preTokenCount, postTokenCount: 1, threshold: 1};
+      }});
+    for (let i = 0; i < 2; i++) {
+      const input = JSON.stringify((await prepare()).invokeMessages);
+      expect(input).toContain("Available MCP servers");
+      expect(input).toContain('\\"toolCount\\":30');
+      expect(input).toContain("mcp__visible__lookup_2");
+      expect(input).not.toContain("mcp__visible__lookup_3");
+    }
+    const compacted = JSON.stringify((await prepare(true)).invokeMessages);
+    expect(compacted).toContain("mcp__refreshed__lookup");
+    expect(compacted).not.toContain("mcp__visible__lookup");
     expect(messages).toEqual(before);
+    tools = [];
+    expect(JSON.stringify((await prepare()).invokeMessages)).not.toContain("Available MCP servers");
   });
 });

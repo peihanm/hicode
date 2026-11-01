@@ -5,7 +5,7 @@ import { withTempProject } from "../helpers/tempProject.js";
 import type {SlashCommandHostContext} from "../../src/slash/types.js";
 
 describe("/mcp slash command", () => {
-  test.each(["denied", "pending-approval"] as const)("%s 提供重新授权入口，显式命令才触发重连", async status => {
+  test.each(["pending-approval"] as const)("%s 提供重新授权入口，显式命令才触发重连", async status => {
     await withTempProject(async cwd => {
       const ctx = createTestContext(cwd);
       const reconnected: string[] = [];
@@ -23,7 +23,7 @@ describe("/mcp slash command", () => {
       await processSlashCommand("/mcp", context);
       expect(reconnected).toEqual([]);
       expect(messages[0]).toContain(`fixture  ${status}  0 tools  project`);
-      expect(messages[0]).toContain("Review authorization: /mcp reconnect fixture");
+      expect(messages[0]).toContain("Enable: /mcp reconnect fixture");
       await processSlashCommand("/mcp reconnect fixture", context);
       expect(reconnected).toEqual(["fixture"]);
     });

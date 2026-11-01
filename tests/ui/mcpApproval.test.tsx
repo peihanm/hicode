@@ -45,16 +45,16 @@ describe("MCP approval UI", () => {
     expect(view.lastFrame()).not.toContain("hidden-hash");
     expect(view.lastFrame()).not.toContain("private-key");
     expect(view.lastFrame()).toContain("[REDACTED]");
-    expect(view.lastFrame()).toContain("◆ MCP CONNECTION");
+    expect(view.lastFrame()).toContain("◆ Enable MCP");
     expect(view.lastFrame()).toContain("Command");
     expect(view.lastFrame()).toContain("Project");
-    expect(view.lastFrame()).toContain("❯ 1. Connect for this session");
-    expect(view.lastFrame()).toContain("Use existing tool approvals; ask to connect again next launch.");
+    expect(view.lastFrame()).toContain("❯ 1. Enable");
+    expect(view.lastFrame()).toContain("Use /mcp to require approval or block individual tools.");
     expect(view.lastFrame()).not.toContain("│");
   });
 
   test.each([
-    ["1", "once"], ["2", "trust-tools"], ["3", "always"], ["4", "deny"], ["\u001b", "skip"],
+    ["1", "enable"], ["2", "cancel"], ["\r", "enable"], ["\u001b", "cancel"],
   ] as const)("快捷键 %j 返回 %s，重复输入不重复提交", async (key, expected) => {
     const decisions: McpApprovalDecision[] = [];
     const view = render(<McpApprovalDialog request={request} onDecision={value => decisions.push(value)}/>);
@@ -66,25 +66,18 @@ describe("MCP approval UI", () => {
     expect(decisions).toEqual([expected]);
   });
 
-  test("方向键切换授权范围说明，Enter 确认当前选项", async () => {
+  test("方向键选择取消，Enter 只提交当前选项", async () => {
     const decisions: McpApprovalDecision[] = [];
     const view = render(<McpApprovalDialog request={request} onDecision={value => decisions.push(value)}/>);
     await flush();
     view.stdin.write("\u001b[A");
     await flush();
-    expect(view.lastFrame()).toContain("❯ 4. Block this server");
-    view.stdin.write("\u001b[A");
-    await flush();
-    expect(view.lastFrame()).toContain("❯ 3. Always connect; keep tool approvals");
-    expect(view.lastFrame()?.replace(/\s+/g, " ")).toContain("Connect automatically; ask before tools that are not already allowed.");
+    expect(view.lastFrame()).toContain("❯ 2. Cancel");
+    expect(view.lastFrame()).toContain("Tools run automatically.");
     expect(decisions).toEqual([]);
-    view.stdin.write("\u001b[B");
-    await flush();
-    view.stdin.write("\u001b[A");
-    await flush();
     view.stdin.write("\r");
     await flush();
-    expect(decisions).toEqual(["always"]);
+    expect(decisions).toEqual(["cancel"]);
   });
 
   test("长路径和命令随 resize 换行，保持选中项且空闲不刷新", async () => {
@@ -103,7 +96,7 @@ describe("MCP approval UI", () => {
       expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
       expect(frame.replace(/\s/g, "")).toContain(projectPath);
       expect(frame.replace(/\s/g, "")).toContain("npx-y@playwright/mcp@latest--browserchrome");
-      expect(frame.replace(/\s/g, "")).toContain("❯2.Alwaysconnectandallowtools");
+      expect(frame.replace(/\s/g, "")).toContain("❯2.Cancel");
     }
     const frameCount = view.frames.length;
     await new Promise(resolve => setTimeout(resolve, 150));

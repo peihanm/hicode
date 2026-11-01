@@ -30,7 +30,7 @@ export function McpStatus({servers, initializing = false}: {
     const active = servers.filter(server => server.status === "connecting" || server.status === "refreshing" ||
         (initializing && server.status === "pending-approval"));
     const failed = servers.filter(server => server.status === "failed" || server.status === "closed");
-    const blocked = servers.filter(server => server.status === "denied" || (!initializing && server.status === "pending-approval"));
+    const blocked = servers.filter(server => !initializing && server.status === "pending-approval");
     if (!active.length && !failed.length && !blocked.length) return null;
     const ready = servers.filter(server => server.status === "connected").length;
     const total = servers.filter(server => server.status !== "disabled").length;

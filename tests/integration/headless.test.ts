@@ -50,7 +50,7 @@ describe("headless integration", () => {
           closeCount += 1;
         },
       });
-      resources.toolRuntime.restoreToolDiscovery = () => {
+      resources.taskRuntime.forSession = () => {
         throw new Error("session construction failed");
       };
 

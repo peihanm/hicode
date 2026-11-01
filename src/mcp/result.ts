@@ -19,6 +19,40 @@ class McpToolResultError extends Error {
     }
 }
 
+function formatMcpContentBlock(block: Record<string, unknown>): string | undefined {
+    if (block.type === "text" && typeof block.text === "string") {
+        const text = block.text.slice(0, MAX_TEXT_BLOCK_CHARS);
+        return block.text.length > MAX_TEXT_BLOCK_CHARS
+            ? `${text}\n[MCP text block truncated at safe limit]`
+            : text;
+    }
+    if (block.type === "resource" && block.resource && typeof block.resource === "object") {
+        const resource = block.resource as Record<string, unknown>;
+        const uri = typeof resource.uri === "string"
+            ? resource.uri.slice(0, MAX_METADATA_CHARS)
+            : "unknown";
+        if (typeof resource.text === "string") {
+            return `[Resource ${uri}]\n${resource.text.slice(0, MAX_TEXT_BLOCK_CHARS)}` +
+                (resource.text.length > MAX_TEXT_BLOCK_CHARS
+                    ? "\n[MCP resource text truncated at safe limit]"
+                    : "");
+        }
+        if (typeof resource.blob === "string") {
+            const bytes = Math.floor(resource.blob.length * 3 / 4);
+            return `[Binary resource omitted: ${uri}, ${String(resource.mimeType ?? "application/octet-stream")}, ${bytes} bytes]`;
+        }
+        return undefined;
+    }
+    if (block.type === "resource_link") {
+        return `[Resource link: ${String(block.name ?? "resource")} ${String(block.uri ?? "")}]`;
+    }
+    if ((block.type === "image" || block.type === "audio") && typeof block.data === "string") {
+        const bytes = Math.floor(block.data.length * 3 / 4);
+        return `[${block.type} content omitted: ${String(block.mimeType ?? "application/octet-stream")}, ${bytes} bytes]`;
+    }
+    return `[Unsupported MCP content: ${String(block.type ?? "unknown")}]`;
+}
+
 function normalizeMcpResult(result: unknown): string {
     if (!result || typeof result !== "object") return String(result ?? "");
     const record = result as Record<string, unknown>;
@@ -29,47 +63,17 @@ function normalizeMcpResult(result: unknown): string {
         for (const raw of record.content.slice(0, MAX_CONTENT_BLOCKS)) {
             if (!raw || typeof raw !== "object") continue;
             const block = raw as Record<string, unknown>;
-            if (block.type === "text" && typeof block.text === "string") {
-                const text = block.text.slice(0, MAX_TEXT_BLOCK_CHARS);
-                totalTextChars += text.length;
+            const sourceText = block.type === "text" ? block.text
+                : block.type === "resource" && block.resource && typeof block.resource === "object"
+                    ? (block.resource as Record<string, unknown>).text : undefined;
+            if (typeof sourceText === "string") {
+                totalTextChars += Math.min(sourceText.length, MAX_TEXT_BLOCK_CHARS);
                 if (totalTextChars > MAX_TOTAL_TEXT_CHARS) {
                     throw new McpToolResultError("MCP text result exceeds the safety limit");
                 }
-                blocks.push(
-                    block.text.length > MAX_TEXT_BLOCK_CHARS
-                        ? `${text}\n[MCP text block truncated at safe limit]`
-                        : text
-                );
-            } else if (block.type === "resource" && block.resource && typeof block.resource === "object") {
-                const resource = block.resource as Record<string, unknown>;
-                const uri = typeof resource.uri === "string"
-                    ? resource.uri.slice(0, MAX_METADATA_CHARS)
-                    : "unknown";
-                if (typeof resource.text === "string") {
-                    const text = resource.text.slice(0, MAX_TEXT_BLOCK_CHARS);
-                    totalTextChars += text.length;
-                    if (totalTextChars > MAX_TOTAL_TEXT_CHARS) {
-                        throw new McpToolResultError("MCP text result exceeds the safety limit");
-                    }
-                    blocks.push(
-                        `[Resource ${uri}]\n${text}` +
-                        (resource.text.length > MAX_TEXT_BLOCK_CHARS
-                            ? "\n[MCP resource text truncated at safe limit]"
-                            : "")
-                    );
-                }
-                else if (typeof resource.blob === "string") {
-                    const bytes = Math.floor(resource.blob.length * 3 / 4);
-                    blocks.push(`[Binary resource omitted: ${uri}, ${String(resource.mimeType ?? "application/octet-stream")}, ${bytes} bytes]`);
-                }
-            } else if (block.type === "resource_link") {
-                blocks.push(`[Resource link: ${String(block.name ?? "resource")} ${String(block.uri ?? "")}]`);
-            } else if ((block.type === "image" || block.type === "audio") && typeof block.data === "string") {
-                const bytes = Math.floor(block.data.length * 3 / 4);
-                blocks.push(`[${block.type} content omitted: ${String(block.mimeType ?? "application/octet-stream")}, ${bytes} bytes]`);
-            } else {
-                blocks.push(`[Unsupported MCP content: ${String(block.type ?? "unknown")}]`);
             }
+            const text = formatMcpContentBlock(block);
+            if (text !== undefined) blocks.push(text);
         }
         if (record.content.length > MAX_CONTENT_BLOCKS) {
             blocks.push(
@@ -152,7 +156,7 @@ export async function normalizeMcpResultWithArtifacts(
             }
         }
         if (data === undefined) {
-            appendText(normalizeMcpResult({content: [raw]}));
+            appendText(formatMcpContentBlock(block) || "(MCP tool returned an empty result)");
             continue;
         }
         mimeType = mimeType.slice(0, MAX_METADATA_CHARS);

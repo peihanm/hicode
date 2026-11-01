@@ -114,7 +114,7 @@ export function createRuntimeBootstrap(
                         if (!disposed && !controller.signal.aborted) setMcpStartup(servers);
                     },
                     requestMcpApproval: (request) => {
-                        if (disposed || controller.signal.aborted) return Promise.resolve("skip");
+                        if (disposed || controller.signal.aborted) return Promise.resolve("cancel");
                         return new Promise<McpApprovalDecision>((resolve) => {
                             const value = {request, resolve};
                             pendingRef.current = value;
@@ -163,7 +163,7 @@ export function createRuntimeBootstrap(
                 disposed = true;
                 shutdown.signal.removeEventListener("abort", abortInitialization);
                 controller.abort("shutdown");
-                pendingRef.current?.resolve("skip");
+                pendingRef.current?.resolve("cancel");
                 pendingRef.current = null;
                 pendingHookRef.current?.resolve("deny");
                 pendingHookRef.current = null;

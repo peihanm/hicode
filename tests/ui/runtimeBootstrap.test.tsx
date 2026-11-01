@@ -72,10 +72,10 @@ describe("RuntimeBootstrap lifecycle", () => {
       const instance = render(<RuntimeBootstrap shutdown={shutdown}
         configuration={createTestRootConfiguration(cwd, createTestSettings(), storage)}/>);
       await new Promise(resolve => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
+      expect(instance.lastFrame()).toContain("◆ Enable MCP");
       if (action === "ctrl-c") instance.stdin.write("\u0003");
       else instance.unmount();
-      expect(await decision).toEqual({decision: "skip", aborted: true});
+      expect(await decision).toEqual({decision: "cancel", aborted: true});
       await shutdown.close();
     });
   });
@@ -98,12 +98,12 @@ describe("RuntimeBootstrap lifecycle", () => {
       await new Promise(resolve => setTimeout(resolve, 40));
       const approval = requestApproval({projectPath: cwd, serverName: "fixture", type: "stdio", command: "bun", args: [], configHash: "review"});
       await new Promise(resolve => setTimeout(resolve, 40));
-      expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
+      expect(instance.lastFrame()).toContain("◆ Enable MCP");
       expect(sessionEnds).toBe(0);
       instance.stdin.write("\u001b");
-      expect(await approval).toBe("skip");
+      expect(await approval).toBe("cancel");
       await new Promise(resolve => setTimeout(resolve, 40));
-      expect(instance.lastFrame()).not.toContain("◆ MCP CONNECTION");
+      expect(instance.lastFrame()).not.toContain("◆ Enable MCP");
       expect(sessionEnds).toBe(0);
       instance.unmount();
     });
@@ -165,11 +165,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("◆ MCP CONNECTION");
+      expect(instance.lastFrame()).toContain("◆ Enable MCP");
       expect(instance.lastFrame()).toContain("fixture");
       instance.stdin.write("1");
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(decision).toBe("once");
+      expect(decision).toBe("enable");
       expect(instance.lastFrame()).toContain("❯");
     });
   });
@@ -194,11 +194,11 @@ describe("RuntimeBootstrap lifecycle", () => {
       instance.stdin.write("\r");
       await new Promise(resolve => setTimeout(resolve, 30));
       expect(instance.lastFrame()).toContain("second-server");
-      expect(instance.lastFrame()).toContain("❯ 1. Connect for this session");
+      expect(instance.lastFrame()).toContain("❯ 1. Enable");
       instance.stdin.write("\r");
       await new Promise(resolve => setTimeout(resolve, 30));
-      expect(decisions).toEqual(["trust-tools", "once"]);
-      expect(instance.lastFrame()).not.toContain("◆ MCP CONNECTION");
+      expect(decisions).toEqual(["cancel", "enable"]);
+      expect(instance.lastFrame()).not.toContain("◆ Enable MCP");
     });
   });
 

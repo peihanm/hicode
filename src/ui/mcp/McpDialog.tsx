@@ -11,8 +11,8 @@ import {PanelViewport} from "../dialogs/PanelViewport.js";
 import {COLORS} from "../theme.js";
 
 const clean = (value: string) => stripVTControlCharacters(value).replace(/[\x00-\x1f\x7f]/g, " ");
-const choices = ["inherit", "ask", "deny", "allow"] as const;
-const labels = {inherit: "Default", ask: "Ask every time", deny: "Blocked", allow: "Allowed"};
+const choices = ["allow", "ask", "deny"] as const;
+const labels = {ask: "Ask every time", deny: "Blocked", allow: "Allowed"};
 interface Review {server: McpServerSnapshot; tools: readonly Tool[]; policy: McpToolPolicy}
 function restriction(tool: Tool, rules: PermissionRules): string | undefined {
     if (rules.deny.some(rule => rule.toolName === tool.name)) return "Deny rule in settings";
@@ -43,11 +43,11 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
     const current = review && servers.find(server => server.name === review.server.name);
     const stale = review && (!current || current.status !== "connected" || current.configHash !== review.server.configHash ||
         JSON.stringify(current.toolPolicy) !== JSON.stringify(review.server.toolPolicy) ||
-        review.tools.some(tool => !currentTools.includes(tool)) || currentTools.filter(tool => tool.searchSource?.name === review.server.name).length !== review.tools.length);
-    const focusedTool = review?.tools[row - 1];
+        review.tools.some(tool => !currentTools.includes(tool)) || currentTools.filter(tool => tool.mcp?.serverName === review.server.name).length !== review.tools.length);
+    const focusedTool = review?.tools[row];
     const open = (server: McpServerSnapshot) => {
-        setReview({server, tools: (manager?.getTools() ?? []).filter(tool => tool.searchSource?.name === server.name),
-            policy: structuredClone(server.toolPolicy ?? {default: "ask", exceptions: {}})});
+        setReview({server, tools: (manager?.getTools() ?? []).filter(tool => tool.mcp?.serverName === server.name),
+            policy: structuredClone(server.toolPolicy ?? {exceptions: {}})});
     };
     const run = async (action: () => Promise<void>) => {
         busyRef.current = true; setBusy(true); setError(""); setNotice("");
@@ -65,7 +65,7 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
         }
         if (key.upArrow || key.downArrow) {
             const delta = key.upArrow ? -1 : 1;
-            if (review) setRow(value => Math.max(0, Math.min(value + delta, review.tools.length)));
+            if (review) setRow(value => Math.max(0, Math.min(value + delta, review.tools.length - 1)));
             else setIndex(value => Math.max(0, Math.min(value + delta, servers.length - 1)));
             return;
         }
@@ -75,11 +75,10 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
             open(server); setRow(0); setError(""); setNotice("");
         } else if (review && !stale && input === " ") {
             const policy = structuredClone(review.policy);
-            if (row === 0) policy.default = policy.default === "allow" ? "ask" : "allow";
-            else if (focusedTool && !restriction(focusedTool, rules)) {
-                const value = policy.exceptions[focusedTool.name] ?? "inherit";
+            if (focusedTool && !restriction(focusedTool, rules)) {
+                const value = policy.exceptions[focusedTool.name] ?? "allow";
                 const next = choices[(choices.indexOf(value) + 1) % choices.length]!;
-                if (next === "inherit") delete policy.exceptions[focusedTool.name];
+                if (next === "allow") delete policy.exceptions[focusedTool.name];
                 else policy.exceptions[focusedTool.name] = next;
             }
             setReview({...review, policy}); setNotice("");
@@ -93,12 +92,11 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
         }
     });
     const toolName = (tool: Tool) => clean(tool.name.split("__").slice(2).join("__") || tool.name);
-    const serverSummary = (item: McpServerSnapshot) => `  ${item.status} · ${item.toolCount} tools · ${item.toolPolicy?.default === "allow" ? "Allow by default" : "Ask when needed"}`;
+    const serverSummary = (item: McpServerSnapshot) => `  ${item.status} · ${item.toolCount} tools`;
     const toolRows = (review?.tools ?? []).map((tool, index) => {
-        const value = review!.policy.exceptions[tool.name] ?? "inherit";
-        const settingsAllow = value === "inherit" && rules.allow.some(rule => rule.toolName === tool.name && rule.content === undefined);
-        const policyLabel = restriction(tool, rules) ?? (settingsAllow ? "Allowed by settings" : labels[value]);
-        const selected = index + 1 === row;
+        const value = review!.policy.exceptions[tool.name] ?? "allow";
+        const policyLabel = restriction(tool, rules) ?? labels[value];
+        const selected = index === row;
         const nameRows = wrapPanelText(`${selected ? "❯ " : "  "}${toolName(tool)}`, columns >= 64 ? columns - 27 : columns);
         return columns >= 64 ? nameRows.map((text, i) => <Text key={`${tool.name}-${i}`}>
             <Text color={selected ? COLORS.accent : undefined}>{text}</Text>
@@ -113,22 +111,21 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
             .map((text, i) => <Text key={`name-${i}`} bold={position === index} color={position === index ? COLORS.accent : undefined}>{text}</Text>),
         ...wrapPanelText(serverSummary(item), columns).map((text, i) => <Text key={`summary-${i}`} color={COLORS.dim}>{text}</Text>), " ",
     ]);
-    const bodyHeight = Math.max(2, height - (review ? 17 : 10));
+    const bodyHeight = Math.max(2, height - (review ? 15 : 10));
     const bodyRows = review ? toolRows : serverRows;
-    const {start, end} = panelWindow(bodyRows.map(rows => rows.length), review ? Math.max(0, row - 1) : index, bodyHeight);
+    const {start, end} = panelWindow(bodyRows.map(rows => rows.length), review ? row : index, bodyHeight);
     return <Box flexDirection="column" paddingX={padding} width={width}>
         <Box width={columns} flexDirection="column">
             <Text bold color={COLORS.accent}>◆ MCP <Text bold={false} color={COLORS.dim}>· {review ? clean(review.server.name) : `${servers.length} servers`}</Text></Text>
             {review ? <>
-                <Box marginTop={1}><Text color={row === 0 ? COLORS.accent : undefined}>{row === 0 ? "❯ " : "  "}Default: {review.policy.default === "allow" ? "Allow tools" : "Ask when needed"}</Text></Box>
-                <Text color={COLORS.dim}>{review.policy.default === "allow" ? "Applies to current and future tools, including code execution." : "Read-only tools stay allowed; other tools require approval."}</Text>
+                <Box marginTop={1}><Text color={COLORS.dim}>Tools run automatically unless restricted below.</Text></Box>
                 <Box marginTop={1} flexDirection="column">
-                    <Box marginBottom={1}><Text bold>Tool exceptions <Text bold={false} color={COLORS.dim}>· Default follows the policy above</Text></Text></Box>
+                    <Box marginBottom={1}><Text bold>Tool permissions</Text></Box>
                     {review.tools.length === 0 && <Text>No tools available. Go back and reconnect this server.</Text>}
                     <PanelViewport width={columns} height={bodyHeight} resetKey={`${review.server.name}:${row}`}
                         lines={toolRows.slice(start, end).flat()}/>
                 </Box>
-                {(start > 0 || end < review.tools.length) && <Text color={COLORS.dim}>{Math.max(1, row)} / {review.tools.length}</Text>}
+                {(start > 0 || end < review.tools.length) && <Text color={COLORS.dim}>{row + 1} / {review.tools.length}</Text>}
                 {stale && <Text color={COLORS.warning}>Connection or tools changed. Esc to reopen and review.</Text>}
             </> : <Box marginTop={1} flexDirection="column">
                 {!servers.length && <Text>No MCP servers configured. Add them in .hicode/mcp.json.</Text>}
@@ -140,7 +137,7 @@ export function McpDialog({manager, getRules, onSave, onClose}: {
             {error && <Box marginTop={1}><Text color={COLORS.error}>{error}</Text></Box>}
             <Box marginTop={1} flexDirection="column">
                 <Text color={COLORS.dim}>{busy ? "Saving or reconnecting…" : review
-                    ? "↑↓ select · Space change · Enter save"
+                    ? "↑↓ select · Space: Allowed → Ask → Blocked · Enter save"
                     : "↑↓ select · Enter permissions · r reconnect"}</Text>
                 <Text color={COLORS.dim}>{review ? "Esc back · Ctrl+C close" : "Esc / Ctrl+C close"}</Text>
             </Box>

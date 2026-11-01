@@ -1,10 +1,11 @@
 import {z} from "zod";
 import {createHash} from "node:crypto";
-import {constants} from "node:fs";
-import {lstat, mkdir, open, realpath} from "node:fs/promises";
+import {lstat, mkdir, realpath} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
 import {withFileLock, writeFileAtomically} from "../persistence/index.js";
-import type {LoadedMcpServerConfig, McpApprovalDecision, McpToolPolicy} from "./types.js";
+import {hasFileSystemErrorCode} from "../persistence/errors.js";
+import {readBoundedTextFile} from "../persistence/readTextFile.js";
+import type {LoadedMcpServerConfig, McpToolPolicy} from "./types.js";
 import {stableJson} from "./json.js";
 
 const MAX_APPROVAL_FILE_BYTES = 4 * 1024 * 1024;
@@ -12,8 +13,7 @@ const MAX_APPROVAL_RECORDS = 10_000;
 const MAX_TEXT_CHARS = 16_384;
 
 export const mcpToolPolicySchema = z.object({
-    default: z.enum(["ask", "allow"]),
-    exceptions: z.record(z.string().regex(/^mcp__[A-Za-z0-9_]{1,59}$/), z.enum(["allow", "ask", "deny"]))
+    exceptions: z.record(z.string().regex(/^mcp__[A-Za-z0-9_]{1,59}$/), z.enum(["ask", "deny"]))
         .refine(value => Object.keys(value).length <= 100, "Too many MCP tool exceptions"),
 }).strict();
 
@@ -22,36 +22,28 @@ interface ApprovalRecord {
     projectPath: string;
     serverName: string;
     configHash: string;
-    decision: "allow" | "deny";
     decidedAt: string;
 }
 
 interface ApprovalDocument {
-    version: 1;
+    version: 2;
     approvals: ApprovalRecord[];
-}
-
-function isMissing(error: unknown): boolean {
-    return Boolean(
-        error && typeof error === "object" && "code" in error &&
-        (error as {code?: string}).code === "ENOENT"
-    );
 }
 
 function parseApprovalDocument(value: unknown): ApprovalDocument {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw new Error("Invalid MCP approval document format");
+        throw new Error("Invalid MCP approval document format (expected version 2)");
     }
     const document = value as Partial<ApprovalDocument>;
     if (
         Object.keys(document).some((key) =>
             key !== "version" && key !== "approvals"
         ) ||
-        document.version !== 1 ||
+        document.version !== 2 ||
         !Array.isArray(document.approvals) ||
         document.approvals.length > MAX_APPROVAL_RECORDS
     ) {
-        throw new Error("Invalid MCP approval document format");
+        throw new Error("Invalid MCP approval document format (expected version 2)");
     }
     const approvals: ApprovalRecord[] = [];
     const seen = new Set<string>();
@@ -67,7 +59,6 @@ function parseApprovalDocument(value: unknown): ApprovalDocument {
                 "projectPath",
                 "serverName",
                 "configHash",
-                "decision",
                 "decidedAt",
                 "toolPolicy",
             ].includes(key)) ||
@@ -79,55 +70,26 @@ function parseApprovalDocument(value: unknown): ApprovalDocument {
             item.serverName.length > 64 ||
             typeof item.configHash !== "string" ||
             !/^[a-f0-9]{64}$/.test(item.configHash) ||
-            (item.decision !== "allow" && item.decision !== "deny") ||
             typeof item.decidedAt !== "string" ||
             !Number.isFinite(Date.parse(item.decidedAt)) ||
             seen.has(identity) ||
-            (item.toolPolicy !== undefined && (item.decision !== "allow" || !mcpToolPolicySchema.safeParse(item.toolPolicy).success))
+            (item.toolPolicy !== undefined && !mcpToolPolicySchema.safeParse(item.toolPolicy).success)
         ) {
             throw new Error("MCP approval document contains invalid or duplicate records");
         }
         seen.add(identity);
         approvals.push(item as ApprovalRecord);
     }
-    return {version: 1, approvals};
+    return {version: 2, approvals};
 }
 
-async function readDocument(path: string): Promise<ApprovalDocument> {
-    let handle;
+function readDocument(path: string): ApprovalDocument {
     try {
-        handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-        const metadata = await handle.stat();
-        if (!metadata.isFile()) {
-            throw new Error("MCP approval document is not a safe regular file");
-        }
-        if (metadata.size > MAX_APPROVAL_FILE_BYTES) {
-            throw new Error("MCP approval document exceeds the size limit");
-        }
-        const buffer = Buffer.alloc(metadata.size + 1);
-        let offset = 0;
-        while (offset < buffer.length) {
-            const {bytesRead} = await handle.read(
-                buffer,
-                offset,
-                buffer.length - offset,
-                offset
-            );
-            if (bytesRead === 0) break;
-            offset += bytesRead;
-        }
-        if (offset > MAX_APPROVAL_FILE_BYTES) {
-            throw new Error("MCP approval document exceeds the size limit");
-        }
-        const text = new TextDecoder("utf-8", {fatal: true}).decode(
-            buffer.subarray(0, offset)
-        );
+        const text = readBoundedTextFile(path, MAX_APPROVAL_FILE_BYTES);
         return parseApprovalDocument(JSON.parse(text));
     } catch (error) {
-        if (isMissing(error)) return {version: 1, approvals: []};
+        if (hasFileSystemErrorCode(error, "ENOENT")) return {version: 2, approvals: []};
         throw error;
-    } finally {
-        await handle?.close();
     }
 }
 
@@ -178,25 +140,24 @@ export async function getMcpApproval(
     path: string,
     identity: {projectPath: string; configHash: string},
     serverName: string
-): Promise<{decision: "allow" | "deny" | "pending"; toolPolicy?: McpToolPolicy}> {
-    const match = (await readDocument(path)).approvals.find(
+): Promise<{decision: "allow" | "pending"; toolPolicy?: McpToolPolicy}> {
+    const match = readDocument(path).approvals.find(
         (item) => item.projectPath === identity.projectPath &&
             item.serverName === serverName &&
             item.configHash === identity.configHash
     );
-    return {decision: match?.decision ?? "pending", ...(match?.toolPolicy ? {toolPolicy: match.toolPolicy} : {})};
+    return {decision: match ? "allow" : "pending", ...(match?.toolPolicy ? {toolPolicy: match.toolPolicy} : {})};
 }
 
 export async function saveMcpApproval(
     path: string,
     identity: {projectPath: string; configHash: string},
     serverName: string,
-    decision: Extract<McpApprovalDecision, "always" | "deny">,
     toolPolicy?: McpToolPolicy
 ): Promise<void> {
     await ensureSafeParent(path);
     await withFileLock(`${path}.lock`, async () => {
-        const document = await readDocument(path);
+        const document = readDocument(path);
         const approvals = document.approvals.filter(
             (item) => !(item.projectPath === identity.projectPath &&
                 item.serverName === serverName)
@@ -205,11 +166,10 @@ export async function saveMcpApproval(
             projectPath: identity.projectPath,
             serverName,
             configHash: identity.configHash,
-            decision: decision === "always" ? "allow" : "deny",
             decidedAt: new Date().toISOString(),
             ...(toolPolicy ? {toolPolicy: mcpToolPolicySchema.parse(toolPolicy)} : {}),
         });
-        const updated = parseApprovalDocument({version: 1, approvals});
+        const updated = parseApprovalDocument({version: 2, approvals});
         const content = `${JSON.stringify(updated, null, 2)}\n`;
         if (Buffer.byteLength(content, "utf8") > MAX_APPROVAL_FILE_BYTES) {
             throw new Error("MCP approval document exceeds the size limit");

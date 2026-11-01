@@ -13,14 +13,13 @@ function documentFor(
     name: string,
     description: string,
     parameterDescription: string,
-    searchHint?: string
+    serverName?: string
 ) {
-    const tool: Tool<any> = {
+    const tool: Tool = {
         name,
         description,
         parameters: z.object({value: z.string()}),
-        exposure: "deferred",
-        ...(searchHint ? {searchHint} : {}),
+        ...(serverName ? {mcp: {serverName}} : {}),
         isReadOnly: () => true,
         execute: async () => "ok",
     };
@@ -58,7 +57,7 @@ describe("tool search", () => {
             ]));
     });
 
-    test("BM25 会检索名称、hint 和参数描述并保持稳定排序", () => {
+    test("BM25 会检索名称、Server 和参数描述并保持稳定排序", () => {
         const index = createToolSearchIndex([
             documentFor(
                 "mcp__files__allowed_directories",
@@ -91,16 +90,16 @@ describe("tool search", () => {
             .toBe("mcp__calendar__list_events");
     });
 
-    test("select 精确路径大小写不敏感、去重并报告缺失名称", () => {
+    test("names 精确匹配、去重并报告缺失名称", () => {
         const index = createToolSearchIndex([
-            documentFor("Deferred_Echo", "Echo", "message"),
+            documentFor("mcp__fixture__echo", "Echo", "message"),
         ]);
         const selection = selectToolSearchDocuments(
             index,
-            "select:deferred_echo,Deferred_Echo,missing"
+            {names: ["mcp__fixture__echo", "mcp__fixture__echo", "missing"]}
         );
         expect(selection.matches.map((item) => item.name)).toEqual([
-            "Deferred_Echo",
+            "mcp__fixture__echo",
         ]);
         expect(selection.missingNames).toEqual(["missing"]);
     });

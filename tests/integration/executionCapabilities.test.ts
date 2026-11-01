@@ -93,7 +93,7 @@ describe("effective execution capabilities", () => {
         await withTempProject(async cwd => {
             let writes = 0;
             const tool: Tool = {name: toolName, description: "fixture", parameters: z.object({}),
-                exposure: "direct", isReadOnly: () => false, async execute() { writes++; return "mutated"; }};
+                isReadOnly: () => false, async execute() { writes++; return "mutated"; }};
             const registry = createSubagentRegistry({issues: [], definitions: [{
                 source: "host", id: "fixture", agentType: "IndirectWriter", whenToUse: "fixture", systemPrompt: "fixture",
                 allowedTools: [toolName],

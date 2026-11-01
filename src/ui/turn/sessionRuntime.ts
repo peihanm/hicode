@@ -31,7 +31,6 @@ export function createUITurnSessionRuntime(
                 createInitialHistory(resources.cwd),
             compactState:
                 initialSession?.compactState ?? createCompactState(),
-            toolDiscovery: initialSession?.toolDiscovery,
             taskNotificationReceipts: initialSession?.taskNotificationReceipts,
             queuedInputs: queuedInputs.filter(
                 (message) => message.type !== "user_input"

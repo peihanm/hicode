@@ -17,9 +17,10 @@ await withTempProject(async (cwd, storage) => {
     const save = approval.saveMcpApproval;
     const entered = Promise.withResolvers<void>();
     const gate = Promise.withResolvers<void>();
-    let written = false;
+    let written = false, holdSave = false;
     mock.module("../../../src/mcp/approval.js", () => ({...approval,
         saveMcpApproval: async (...args: Parameters<typeof save>) => {
+            if (!holdSave) return save(...args);
             entered.resolve(); await gate.promise; await save(...args); written = true;
         },
     }));
@@ -28,12 +29,13 @@ await withTempProject(async (cwd, storage) => {
     })}));
     const {createMcpManager} = await import("../../../src/mcp/manager.js");
     const manager = createMcpManager({storage, cwd, childEnvironment: testChildEnvironment, sources: [],
-        hostServers: [{name: "fixture", command: process.execPath, args: []}], requestApproval: async () => "once"});
+        hostServers: [{name: "fixture", command: process.execPath, args: []}], requestApproval: async () => "enable"});
     try {
         await manager.initialize();
+        holdSave = true;
         const snapshot = manager.getSnapshots()[0]!;
         expect(snapshot.status).toBe("connected");
-        const saving = manager.setToolPolicy("fixture", snapshot.configHash!, {default: "allow", exceptions: {}});
+        const saving = manager.setToolPolicy("fixture", snapshot.configHash!, {exceptions: {}});
         await entered.promise;
         let closed = false;
         const closing = manager.closeAll().then(() => {closed = true;});
@@ -45,7 +47,7 @@ await withTempProject(async (cwd, storage) => {
         await closing;
         expect(written).toBe(true);
         const disk: unknown = JSON.parse(await readFile(join(storage.hicodeHome, "mcp-approvals.json"), "utf8"));
-        expect(disk).toMatchObject({approvals: [{toolPolicy: {default: "allow", exceptions: {}}}]});
+        expect(disk).toMatchObject({approvals: [{toolPolicy: {exceptions: {}}}]});
         expect(manager.getSnapshots()[0]?.status).toBe("closed");
         expect(manager.getTools()).toEqual([]);
     } finally {gate.resolve(); await manager.closeAll();}

@@ -41,3 +41,17 @@ describe("Function parameter JSON Schema", () => {
         expect(validate({value: 0.5, note: 1})).toBe(false);
     });
 });
+
+test("MCP fixed gateway/search schemas are object schemas accepted by the API", async () => {
+    const {createToolRuntime} = await import("../../src/tools/runtime.js");
+    const runtime = createToolRuntime({additionalTools: [{name: "mcp__fixture__echo", mcp: {serverName: "fixture"},
+        description: "Echo", parameters: z.object({value: z.string()}), execute: async () => "ok"}]});
+    const ajv = new Ajv({strict: false});
+    for (const name of ["tool_search", "mcp_call"]) {
+        const schema = runtime.getToolSchemas().find(tool => tool.function.name === name)!.function.parameters;
+        expect(schema.type).toBe("object"); expect(ajv.validateSchema(schema)).toBe(true);
+        const validate = ajv.compile(schema);
+        expect(validate(name === "mcp_call" ? {tool: "mcp__fixture__echo", arguments: {value: "x"}} : {names: ["mcp__fixture__echo"]})).toBe(true);
+        expect(validate(name === "mcp_call" ? {tool: "mcp__fixture__echo", arguments: []} : {names: []})).toBe(false);
+    }
+});

@@ -5,11 +5,9 @@ import type {McpApprovalDecision, McpApprovalRequest} from "../../mcp/index.js";
 import {COLORS} from "../theme.js";
 import {usePanelLayout} from "../panelLayout.js";
 
-const OPTIONS: Array<{label: string; value: McpApprovalDecision; description: string}> = [
-    {label: "Connect for this session", value: "once", description: "Use existing tool approvals; ask to connect again next launch."},
-    {label: "Always connect and allow tools", value: "trust-tools", description: "Current and future tools run automatically, except your permission rules."},
-    {label: "Always connect; keep tool approvals", value: "always", description: "Connect automatically; ask before tools that are not already allowed."},
-    {label: "Block this server", value: "deny", description: "Do not connect in this project. Change later with /mcp."},
+const OPTIONS: Array<{label: string; value: McpApprovalDecision}> = [
+    {label: "Enable", value: "enable"},
+    {label: "Cancel", value: "cancel"},
 ];
 
 function formatArgs(args: string[]): string {
@@ -49,10 +47,10 @@ export function McpApprovalDialog({
     };
     useTerminalInput((input, key) => {
         if (completed.current) return;
-        if (key.escape) finish("skip");
+        if (key.escape) finish("cancel");
         else if (key.upArrow || key.downArrow) {
             setSelectedIndex(index => (index + (key.upArrow ? -1 : 1) + OPTIONS.length) % OPTIONS.length);
-        } else if (key.return || /^[1-4]$/.test(input)) {
+        } else if (key.return || /^[1-2]$/.test(input)) {
             const option = OPTIONS[key.return ? selectedIndex : Number(input) - 1];
             if (option) finish(option.value);
         }
@@ -61,8 +59,7 @@ export function McpApprovalDialog({
     return (
         <Box flexDirection="column" paddingX={padding} width={terminalWidth}>
             <Box flexDirection="column" width={width}>
-                <Text color={COLORS.accent} bold>◆ MCP CONNECTION · {request.serverName}</Text>
-                <Text color={COLORS.dim}>Choose connection and tool permissions for this project.</Text>
+                <Text color={COLORS.accent} bold>◆ Enable MCP · {request.serverName}</Text>
                 <Box marginTop={1} flexDirection="column">
                     <Text color={COLORS.dim}>Project  {request.projectPath.slice(0, 1000)}</Text>
                     <Text color={COLORS.dim}>{request.type === "http"
@@ -70,17 +67,20 @@ export function McpApprovalDialog({
                         : `Command  ${[request.command.slice(0, 512), formatArgs(request.args)].filter(Boolean).join(" ")}`}</Text>
                 </Box>
                 <Box marginTop={1} flexDirection="column">
+                    <Text color={COLORS.dim}>Tools run automatically.</Text>
+                    <Text color={COLORS.dim}>Use /mcp to require approval or block individual tools.</Text>
+                </Box>
+                <Box marginTop={1} flexDirection="column">
                     {OPTIONS.map((option, index) => (
                         <Box key={option.value} flexDirection="column" marginBottom={index < OPTIONS.length - 1 ? 1 : 0}>
                             <Text color={index === selectedIndex ? COLORS.accent : undefined} bold={index === selectedIndex}>
                                 {index === selectedIndex ? "❯" : " "} {index + 1}. {option.label}
                             </Text>
-                            <Box paddingLeft={5}><Text color={COLORS.dim}>{option.description}</Text></Box>
                         </Box>
                     ))}
                 </Box>
                 <Box marginTop={1}>
-                    <Text color={COLORS.dim}>↑↓ select · 1–4 choose · Enter confirm · Esc skip once</Text>
+                    <Text color={COLORS.dim}>↑↓ select · Enter confirm · Esc cancel</Text>
                 </Box>
             </Box>
         </Box>

@@ -14,6 +14,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     if (mode === "slow") await new Promise(resolve => setTimeout(resolve, 200));
     if (mode === "storm") await server.notification({method: "notifications/tools/list_changed"});
     const tools = [tool("control"), tool(["initial", "same", "slow", "paused", "changed"].includes(mode) ? "old" : "new")];
+    if (process.argv.includes("--colliding-tools")) {
+        tools.push(tool("read.item"));
+        if (lists === 1) tools.push({...tool("read-item"), annotations: {readOnlyHint: false}});
+    }
     if (mode === "changed") tools[1] = {...tool("old"), annotations: {readOnlyHint: false}};
     if (mode === "new-write") tools[1] = {...tool("new"), annotations: {readOnlyHint: false}};
     if (mode === "invalid") tools.push({name: "bad", inputSchema: {type: "object", properties: {action: {type: "not-a-type"}}}, annotations: {readOnlyHint: true}});

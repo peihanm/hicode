@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {mkdir, symlink, writeFile} from "node:fs/promises";
+import {mkdir, readFile, symlink, writeFile} from "node:fs/promises";
 import { join } from "node:path";
 import {
   createMcpApprovalIdentity,
@@ -181,19 +181,38 @@ describe("MCP config and normalization", () => {
     });
   });
 
-  test("损坏的审批文档 fail closed，不能被 mutation 覆盖", async () => {
+  test.each(["json", "utf8", "oversized"])("无效审批文档 %s fail closed，不能被 mutation 覆盖", async kind => {
     await withTempProject(async (cwd, storage) => {
       await mkdir(storage.hicodeHome, {recursive: true});
       const path = join(storage.hicodeHome, "mcp-approvals.json");
-      await writeFile(path, "{broken", "utf8");
+      const content = kind === "json" ? Buffer.from("{broken")
+        : kind === "utf8" ? Buffer.from([0xff]) : Buffer.alloc(4 * 1024 * 1024 + 1, 32);
+      await writeFile(path, content);
       const identity = {
         projectPath: cwd,
         configHash: "a".repeat(64),
       };
       await expect(getMcpApproval(path, identity, "fixture")).rejects.toThrow();
       await expect(
-        saveMcpApproval(path, identity, "fixture", "always")
+        saveMcpApproval(path, identity, "fixture")
       ).rejects.toThrow();
+      expect(await readFile(path)).toEqual(content);
+    });
+  });
+
+  test("缺失审批返回 pending，但符号链接和非目录父路径不能作为缺失处理", async () => {
+    await withTempProject(async cwd => {
+      const identity = {projectPath: cwd, configHash: "a".repeat(64)};
+      const target = join(cwd, "approvals.json");
+      expect(await getMcpApproval(target, identity, "fixture")).toEqual({decision: "pending"});
+      await saveMcpApproval(target, identity, "fixture");
+      const before = await readFile(target);
+      const link = join(cwd, "approvals-link.json");
+      await symlink(target, link);
+      await expect(getMcpApproval(link, identity, "fixture")).rejects.toThrow();
+      await expect(saveMcpApproval(link, identity, "fixture")).rejects.toThrow();
+      expect(await readFile(target)).toEqual(before);
+      await expect(getMcpApproval(join(target, "child.json"), identity, "fixture")).rejects.toThrow();
     });
   });
 });

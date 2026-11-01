@@ -20,43 +20,43 @@ test("trusted service retains policy across restart and catalog additions; chang
     const path = join(cwd, ".mcp.json");
     const config = {command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000};
     await writeFile(path, JSON.stringify({mcpServers: {fixture: config}}));
-    let approvals = 0, decision: McpApprovalDecision = "trust-tools";
+    let approvals = 0;
     const make = () => createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment,
-        requestApproval: async () => {approvals++; return decision;}});
+        requestApproval: async () => {approvals++; return "enable";}});
     const ctx = createTestContext(cwd);
     const find = (manager: McpManagerLike, suffix: string) => manager.getTools().find(tool => tool.name === `mcp__fixture__${suffix}`)!;
     let manager = make();
     try {
         await manager.initialize(); expect(approvals).toBe(1);
         const hash = manager.getSnapshots()[0]!.configHash!;
-        expect(manager.getSnapshots()[0]!.toolPolicy).toEqual({default: "allow", exceptions: {}});
+        expect(manager.getSnapshots()[0]!.toolPolicy).toBeUndefined();
         await find(manager, "control").execute({action: "changed"}, ctx, {toolCallId: "change"});
         await until(() => find(manager, "old")?.isReadOnly?.({}) === false);
         const oldTool = find(manager, "old");
         expect((await resolvePermission(oldTool, {}, ctx)).behavior).toBe("allow");
-        await manager.setToolPolicy("fixture", hash, {default: "allow", exceptions: {[oldTool.name]: "ask"}});
+        await manager.setToolPolicy("fixture", hash, {exceptions: {[oldTool.name]: "ask"}});
         expect(await resolvePermission(find(manager, "old"), {}, ctx)).toMatchObject({behavior: "ask", allowPersistent: false});
         await expect(oldTool.execute({}, ctx, {toolCallId: "stale"})).rejects.toThrow("definition changed");
-        await expect(manager.setToolPolicy("fixture", "bad-hash", {default: "allow", exceptions: {}})).rejects.toThrow("connection changed");
-        await expect(manager.setToolPolicy("fixture", hash, {default: "allow", exceptions: {mcp__other__tool: "allow"}})).rejects.toThrow("Unknown MCP");
+        await expect(manager.setToolPolicy("fixture", "bad-hash", {exceptions: {}})).rejects.toThrow("connection changed");
+        await expect(manager.setToolPolicy("fixture", hash, {exceptions: {mcp__other__tool: "ask"}})).rejects.toThrow("Unknown MCP");
         await manager.closeAll(); manager = make(); await manager.initialize(); expect(approvals).toBe(1);
         expect((await resolvePermission(find(manager, "old"), {}, ctx)).behavior).toBe("ask");
         await find(manager, "control").execute({action: "new-write"}, ctx, {toolCallId: "refresh"});
         await until(() => Boolean(find(manager, "new")));
         expect(find(manager, "new").isReadOnly?.({})).toBe(false);
-        expect(manager.getSnapshots()[0]!.toolPolicy?.default).toBe("allow");
+        expect(manager.getSnapshots()[0]!.toolPolicy?.exceptions[oldTool.name]).toBe("ask");
         expect((await resolvePermission(find(manager, "new"), {}, ctx)).behavior).toBe("allow");
-        await manager.setToolPolicy("fixture", hash, {default: "ask", exceptions: {}});
+        await manager.setToolPolicy("fixture", hash, {exceptions: {[oldTool.name]: "deny"}});
         await find(manager, "control").execute({action: "changed"}, ctx, {toolCallId: "write"});
         await until(() => find(manager, "old")?.isReadOnly?.({}) === false);
-        expect((await resolvePermission(find(manager, "old"), {}, ctx)).behavior).toBe("ask");
-        await manager.setToolPolicy("fixture", hash, {default: "allow", exceptions: {}});
+        expect((await resolvePermission(find(manager, "old"), {}, ctx)).behavior).toBe("deny");
+        await manager.setToolPolicy("fixture", hash, {exceptions: {}});
         await writeFile(path, JSON.stringify({mcpServers: {fixture: {...config, args: [...config.args, "changed"]}}}));
-        decision = "always"; await manager.reconnect("fixture"); expect(approvals).toBe(2);
+        await manager.reconnect("fixture"); expect(approvals).toBe(2);
         expect(manager.getSnapshots()[0]!.toolPolicy).toBeUndefined();
         await find(manager, "control").execute({action: "changed"}, ctx, {toolCallId: "write-again"});
         await until(() => find(manager, "old")?.isReadOnly?.({}) === false);
-        expect((await resolvePermission(find(manager, "old"), {}, ctx)).behavior).toBe("ask");
+        expect((await resolvePermission(find(manager, "old"), {}, ctx)).behavior).toBe("allow");
     } finally {await manager.closeAll();}
 }));
 
@@ -64,11 +64,11 @@ test("policy persistence failure leaves running service permissions unchanged", 
     await writeFile(join(cwd, ".mcp.json"), JSON.stringify({mcpServers: {fixture: {
         command: process.execPath, args: [resolve(import.meta.dir, "../fixtures/mcp/lifecycleServer.ts")], timeoutMs: 2000,
     }}}));
-    const manager = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment, requestApproval: async () => "always"});
+    const manager = createMcpManager({cwd, storage, sources: ["project"], childEnvironment: testChildEnvironment, requestApproval: async () => "enable"});
     try {
         await manager.initialize(); const snapshot = manager.getSnapshots()[0]!; const tools = manager.getTools();
         await writeFile(join(storage.hicodeHome, "mcp-approvals.json"), "corrupt");
-        await expect(manager.setToolPolicy("fixture", snapshot.configHash!, {default: "allow", exceptions: {}})).rejects.toThrow();
+        await expect(manager.setToolPolicy("fixture", snapshot.configHash!, {exceptions: {}})).rejects.toThrow();
         expect(manager.getSnapshots()[0]?.toolPolicy).toBeUndefined(); expect(manager.getTools()).toEqual(tools);
     } finally {await manager.closeAll();}
 }));
@@ -86,5 +86,5 @@ test("close cancels a pending human approval without waiting for the UI", async 
         await initializing;
         expect(manager.getTools()).toEqual([]);
         expect(manager.getSnapshots()[0]?.status).toBe("closed");
-    } finally {answer.resolve("skip"); await manager.closeAll();}
+    } finally {answer.resolve("cancel"); await manager.closeAll();}
 }));

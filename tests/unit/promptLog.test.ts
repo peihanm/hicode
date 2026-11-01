@@ -147,13 +147,9 @@ describe("prompt log lifecycle", () => {
         });
     });
 
-    test("单独保留有界 tool_search 描述用于诊断 Deferred Catalog", async () => {
+    test("工具定义不重复保存在日志，能力目录由请求 messages 留证", async () => {
         await withTempProject(async (cwd, storage) => {
-            const manifest = [
-                "Registered deferred tools (exact names):",
-                "- mega_catalog (2 tools)",
-                "  mcp__mega__browser, mcp__mega__github",
-            ].join("\n");
+            const description = "Search available MCP tools and their full schemas.";
             const handle = beginPromptLog(
                 storage,
                 cwd,
@@ -174,7 +170,7 @@ describe("prompt log lifecycle", () => {
                             type: "function",
                             function: {
                                 name: "tool_search",
-                                description: manifest,
+                                description,
                                 parameters: {type: "object"},
                             },
                         },
@@ -194,7 +190,7 @@ describe("prompt log lifecycle", () => {
                 "read_file",
                 "tool_search",
             ]);
-            expect(logged.request.toolSearchDescription).toBe(manifest);
+            expect(logged.request.toolSearchDescription).toBeUndefined();
             expect(content).not.toContain("普通工具说明不应进入日志");
             expect(logged.request.tools).toBeUndefined();
         });

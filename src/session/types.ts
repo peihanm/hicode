@@ -4,10 +4,9 @@ import type {Message} from "../llm/types.js";
 import type {PermissionMode} from "../permissions/index.js";
 import type {RuntimeQueuedMessage} from "../runtime/messageQueue.js";
 import type {Todo} from "./todo.js";
-import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 
 export const SESSION_INDEX_VERSION = 2;
-export const SESSION_ENTRY_VERSION = 9;
+export const SESSION_ENTRY_VERSION = 10;
 
 export interface SessionIndexEntry {
     sessionId: string;
@@ -39,7 +38,6 @@ export interface SessionSnapshotEntry {
     uiEvents: PersistedUIEvent[];
     queuedInputs?: RuntimeQueuedMessage[];
     taskNotificationReceipts?: string[];
-    toolDiscovery?: ToolDiscoverySnapshot;
 }
 
 
@@ -56,7 +54,6 @@ export interface LoadedSession {
     uiEvents: PersistedUIEvent[];
     queuedInputs: RuntimeQueuedMessage[];
     taskNotificationReceipts: string[];
-    toolDiscovery?: ToolDiscoverySnapshot;
     index?: SessionIndexEntry;
 }
 
@@ -71,7 +68,6 @@ export interface SaveSessionSnapshotInput {
     uiEvents?: PersistedUIEvent[];
     queuedInputs?: readonly RuntimeQueuedMessage[];
     taskNotificationReceipts?: readonly string[];
-    toolDiscovery?: ToolDiscoverySnapshot;
     /** Allow saving a session before any complete response exists. */
     allowEmpty?: boolean;
     /** Session index title for an empty conversation. */

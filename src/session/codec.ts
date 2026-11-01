@@ -10,10 +10,6 @@ import type {Message} from "../llm/types.js";
 import {isPermissionMode} from "../permissions/index.js";
 import {getProjectKey} from "../persistence/index.js";
 import {normalizeRuntimeQueuedMessages} from "../runtime/messageQueue.js";
-import {
-    MAX_LOADED_DEFERRED_TOOLS,
-    type ToolDiscoverySnapshot,
-} from "../tools/discoveryState.js";
 import {limitPersistedUIEvents, type PersistedUIEvent,} from "./uiEvents.js";
 import {
     SESSION_ENTRY_VERSION,
@@ -213,7 +209,6 @@ const sessionEntryBase = {
     permissionMode: permissionModeSchema,
     compactState: compactStateSchema.optional(),
     uiEvents: z.array(persistedUIEventSchema).max(MAX_UI_EVENTS),
-    toolDiscovery: z.unknown().optional(),
 };
 
 const sessionSnapshotSchema = z.object({
@@ -232,32 +227,6 @@ const sessionIndexEntrySchema = z.object({
     messageCount: nonNegativeIntegerSchema,
     summary: z.string().max(MAX_SUMMARY_CHARS).optional(),
 }).strict();
-
-export function normalizeToolDiscoverySnapshot(
-    value: unknown
-): ToolDiscoverySnapshot | undefined {
-    if (!value || typeof value !== "object") return undefined;
-    const snapshot = value as Partial<ToolDiscoverySnapshot>;
-    if (snapshot.version !== 2 || !Array.isArray(snapshot.loadedNames)) {
-        return undefined;
-    }
-    const seen = new Set<string>();
-    const loadedNames: string[] = [];
-    for (const value of snapshot.loadedNames.slice(
-        0,
-        MAX_LOADED_DEFERRED_TOOLS
-    )) {
-        if (
-            typeof value !== "string" ||
-            value.length === 0 ||
-            value.length > MAX_PERSISTED_TOOL_NAME_CHARS ||
-            seen.has(value)
-        ) continue;
-        seen.add(value);
-        loadedNames.push(value);
-    }
-    return {version: 2, loadedNames};
-}
 
 export function limitSessionUIEvents(
     events: readonly PersistedUIEvent[] | undefined
@@ -291,14 +260,10 @@ export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
         if (snapshot.data.queuedInputs !== undefined && !queuedInputs) {
             return undefined;
         }
-        const toolDiscovery = snapshot.data.toolDiscovery === undefined
-            ? undefined
-            : normalizeToolDiscoverySnapshot(snapshot.data.toolDiscovery);
         return {
             ...snapshot.data,
             ...(queuedInputs === undefined ? {} : {queuedInputs}),
             ...(snapshot.data.taskNotificationReceipts ? {taskNotificationReceipts: snapshot.data.taskNotificationReceipts} : {}),
-            ...(toolDiscovery === undefined ? {} : {toolDiscovery}),
         } as SessionSnapshotEntry;
     }
 

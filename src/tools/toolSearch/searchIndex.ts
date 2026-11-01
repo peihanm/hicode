@@ -2,7 +2,6 @@ import type {OpenAITool} from "../../llm/types.js";
 import type {Tool} from "../types.js";
 
 const MAX_SEARCH_TEXT_CHARS = 16_384;
-const MAX_RESULT_DESCRIPTION_CHARS = 1_000;
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 
@@ -14,9 +13,8 @@ interface WeightedSearchToken {
 export interface ToolSearchDocument {
     name: string;
     normalizedName: string;
-    description: string;
-    source?: {name: string; description?: string};
     schema: OpenAITool;
+    annotations?: NonNullable<Tool["mcp"]>["annotations"];
     weightedTokens: readonly WeightedSearchToken[];
     nameTokens: readonly string[];
     sourceTokens: readonly string[];
@@ -104,20 +102,11 @@ export function buildToolSearchDocument(
 ): ToolSearchDocument {
     const schemaParts: string[] = [];
     collectSchemaSearchText(schema.function.parameters, schemaParts);
-    const source = tool.searchSource
-        ? {
-            name: tool.searchSource.name.trim(),
-            ...(tool.searchSource.description?.trim()
-                ? {description: tool.searchSource.description.trim()}
-                : {}),
-        }
-        : undefined;
+    const source = tool.mcp ? {name: tool.mcp.serverName} : undefined;
     const weightedParts: Array<{text: string; weight: number}> = [
         {text: `${tool.name} ${identifierText(tool.name)}`, weight: 8},
         {text: source?.name ?? "", weight: 6},
-        {text: tool.searchHint ?? "", weight: 5},
         {text: tool.description, weight: 3},
-        {text: source?.description ?? "", weight: 3},
         {text: schemaParts.join(" "), weight: 1},
     ];
     let remainingChars = MAX_SEARCH_TEXT_CHARS;
@@ -133,12 +122,8 @@ export function buildToolSearchDocument(
     return {
         name: tool.name,
         normalizedName: tool.name.normalize("NFKC").toLocaleLowerCase("en-US"),
-        description: tool.description
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, MAX_RESULT_DESCRIPTION_CHARS),
-        ...(source?.name ? {source} : {}),
         schema,
+        ...(tool.mcp?.annotations ? {annotations: tool.mcp.annotations} : {}),
         weightedTokens,
         nameTokens: tokenizeToolSearchText(tool.name),
         sourceTokens: tokenizeToolSearchText(source?.name ?? ""),

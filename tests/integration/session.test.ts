@@ -86,10 +86,6 @@ describe("session persistence", () => {
         permissionMode: "ask",
 
         compactState: createCompactState(),
-        toolDiscovery: {
-          version: 2,
-          loadedNames: ["mcp__fixture__echo"],
-        },
       });
 
       const index = listSessionIndex(storage, cwd);
@@ -105,17 +101,13 @@ describe("session persistence", () => {
       expect(loaded?.history[0]?.role).toBe("system");
       expect(loaded?.history.filter((message) => message.role === "system")).toHaveLength(1);
       expect(loaded?.history.slice(-2)).toEqual(history.slice(-2));
-      expect(loaded?.toolDiscovery).toEqual({
-        version: 2,
-        loadedNames: ["mcp__fixture__echo"],
-      });
       const snapshot = JSON.parse(
         await readFile(
           getSessionSnapshotPath(storage, cwd, "session-1"),
           "utf8"
         )
       );
-      expect(snapshot.version).toBe(9);
+      expect(snapshot.version).toBe(10);
       expect(snapshot).not.toHaveProperty("collaborationMode");
       expect((await stat(getSessionIndexPath(storage, cwd))).mode & 0o777).toBe(0o600);
       expect((await stat(getSessionSnapshotPath(storage, cwd, "session-1"))).mode & 0o777)
@@ -124,39 +116,6 @@ describe("session persistence", () => {
         getSessionSnapshotPath(storage, cwd, "session-1")
       ))).mode & 0o777).toBe(0o700);
       expect(loadLatestSession(storage, cwd)?.sessionId).toBe("session-1");
-    });
-  });
-
-  test("旧 Tool Discovery 状态被丢弃但不会阻止恢复对话", async () => {
-    await withTempProject(async (cwd, storage) => {
-      await saveSessionSnapshot(storage, {
-        cwd,
-        model: "glm-test",
-        sessionId: "legacy-tool-discovery",
-        history: [
-          {role: "system", content: "system"},
-          {role: "user", origin: "user" as const, content: "继续之前的对话"},
-          {role: "assistant", content: "可以继续"},
-        ],
-        todos: [],
-        permissionMode: "ask",
-
-      });
-      const path = getSessionSnapshotPath(storage, cwd, "legacy-tool-discovery");
-      const snapshot = JSON.parse(await readFile(path, "utf8"));
-      snapshot.toolDiscovery = {
-        version: 1,
-        discoveredNames: ["mcp__legacy__tool"],
-      };
-      await writeFile(path, `${JSON.stringify(snapshot)}\n`, "utf8");
-
-      const loaded = loadSession(
-        storage,
-        cwd,
-        "legacy-tool-discovery"
-      );
-      expect(loaded?.history.at(-1)?.content).toBe("可以继续");
-      expect(loaded?.toolDiscovery).toBeUndefined();
     });
   });
 

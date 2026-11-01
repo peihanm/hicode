@@ -1,3 +1,4 @@
+import {toolCallTarget} from "../tools/mcpCall.js";
 import {TaskReviewProgress} from "./taskReview.js";
 import {contentText, type MessageContent} from "../images/content.js";
 import {createImageAccess} from "../images/access.js";
@@ -241,7 +242,7 @@ async function runAgentCore(
             });
             forceCompact = false;
             completionNudge = undefined;
-            // This request's exposure is immutable even if discovery changes during the batch.
+            // This request's exposure is immutable even if the catalog changes during the batch.
             const offeredToolNames = new Set(tools.map(tool => tool.function.name));
 
             // Call the LLM with invokeMessages, not raw History.
@@ -475,7 +476,7 @@ async function runAgentCore(
                 executeTool: (name, args, context, callId) => offeredToolNames.has(name)
                     ? executeToolImpl(name, args, context, callId)
                     : Promise.resolve(inlineToolResult(
-                        "Tool " + name + " was not provided in this model request and was not executed. Use only the tools provided in this request. For an MCP/deferred tool removed by a catalog update or budget eviction, call tool_search to rediscover its current definition before retrying. If the server is unavailable, report the blocker.",
+                        "Tool " + name + " was not provided in this model request and was not executed. Use only the tools provided in this request. For MCP tools, look up the current definition with tool_search and invoke it using mcp_call. If the server is unavailable, report the blocker.",
                         "denied",
                     )),
                 isToolConcurrencySafe: (name, args) => offeredToolNames.has(name) && isToolConcurrencySafeImpl(name, args),
@@ -535,8 +536,9 @@ async function runAgentCore(
             : `Tool was not executed because the turn failed: ${error instanceof Error ? error.message : String(error)}`;
         for (const call of unpaired) history.push({role: "tool", content, tool_call_id: call.id});
         for (const call of unpaired) {
+            const target = toolCallTarget(call.function.name, call.function.arguments);
             for (const event of [
-                {type: "tool_call_start" as const, turnId, toolCallId: call.id, name: call.function.name, args: call.function.arguments},
+                {type: "tool_call_start" as const, turnId, toolCallId: call.id, name: target.name, args: target.argsJson},
                 {type: "tool_call_end" as const, turnId, toolCallId: call.id, result: content, outcome},
             ]) {
                 try {await onEvent(event);} catch { /* Keep the original failure after closing History. */ }

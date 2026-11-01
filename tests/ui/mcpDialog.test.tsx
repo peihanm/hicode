@@ -18,7 +18,7 @@ const name = (suffix: string) => `mcp__fixture__${suffix}`;
 const empty = (): PermissionRules => ({allow: [], ask: [], deny: []});
 function fixture(suffixes: string[]) {
     let tools: readonly Tool[] = suffixes.map(suffix => ({name: name(suffix), description: `Execute ${suffix}`,
-        parameters: z.object({}), searchSource: {name: "fixture"},
+        parameters: z.object({}), mcp: {serverName: "fixture"},
         isReadOnly: () => suffix === "read", async execute() {return "ok";}}));
     const listeners = new Set<() => void>();
     let reconnects = 0, policy: McpToolPolicy | undefined;
@@ -38,21 +38,25 @@ function fixture(suffixes: string[]) {
     }};
 }
 
-test("service default and exceptions save together; stronger settings are retained", async () => {
+test("individual tool restrictions save together; stronger settings are retained", async () => {
     const f = fixture(["execute", "read", "blocked"]), rules = empty();
     rules.deny = [{source: "local", toolName: name("blocked")}];
     let closed = 0;
     const view = render(<McpDialog manager={f.manager} getRules={() => rules} onSave={f.manager.setToolPolicy} onClose={() => closed++}/>);
     const key = async (input: string) => {view.stdin.write(input); await tick();};
     await tick(); await key("\r"); expect(f.saved).toEqual([]);
-    await key(" "); expect(view.lastFrame()).toContain("Default: Allow tools");
-    await key("\u001b[B"); await key(" "); // execute -> ask
+    expect(view.lastFrame()).toContain("Tools run automatically");
+    await key(" "); // execute -> ask
     await key("\u001b[B"); await key(" "); await key(" "); // readonly -> deny
     await key("\u001b[B"); await key(" "); // locked settings deny
     expect(f.saved).toEqual([]); await key("\r");
-    expect(f.saved).toEqual([{default: "allow", exceptions: {[name("execute")]: "ask", [name("read")]: "deny"}}]);
+    expect(f.saved).toEqual([{exceptions: {[name("execute")]: "ask", [name("read")]: "deny"}}]);
     expect(view.lastFrame()).toContain("Saved for this project");
     expect(view.lastFrame()).not.toContain("changed. Esc");
+    await key("\u001b[A"); await key("\u001b[A");
+    await key(" "); await key(" "); // execute: ask -> blocked -> allowed
+    await key("\r");
+    expect(f.saved[1]).toEqual({exceptions: {[name("read")]: "deny"}});
     await key("\u001b"); expect(closed).toBe(0); await key("r"); expect(f.reconnects).toBe(1);
     await key("\u001b"); expect(closed).toBe(1);
 });
@@ -62,7 +66,7 @@ test("save failures preserve draft and catalog changes prevent stale grants", as
     const view = render(<McpDialog manager={f.manager} getRules={empty} onSave={async () => {saves++; throw Error("disk unavailable");}} onClose={() => {}}/>);
     await tick(); view.stdin.write("\r"); await tick(); view.stdin.write(" "); await tick(); view.stdin.write("\r"); await tick();
     expect(saves).toBe(1); expect(view.lastFrame()).toContain("disk unavailable");
-    expect(view.lastFrame()).toContain("Default: Allow tools"); expect(view.lastFrame()).not.toContain("Saved for");
+    expect(view.lastFrame()).toContain("Ask every time"); expect(view.lastFrame()).not.toContain("Saved for");
     f.replace(); await tick(); expect(view.lastFrame()).toContain("Connection or tools changed");
     view.stdin.write("\r"); await tick(); expect(saves).toBe(1);
 });
@@ -86,7 +90,7 @@ test("tool names use wide space and keep unsaved policy changes through repeated
     const f = fixture(["first", long]);
     const view = render(<McpDialog manager={f.manager} getRules={empty} onSave={f.manager.setToolPolicy} onClose={() => {}}/>);
     await tick(); view.stdin.write("\r"); await tick();
-    view.stdin.write("\x1b[B"); await tick(); view.stdin.write("\x1b[B"); await tick();
+    view.stdin.write("\x1b[B"); await tick();
     view.stdin.write(" "); await tick();
     for (const width of [40, 160, 40]) {
         Object.defineProperties(view.stdout, {columns: {configurable: true, value: width}, rows: {configurable: true, value: 40}});
@@ -99,7 +103,7 @@ test("tool names use wide space and keep unsaved policy changes through repeated
         expect(f.saved).toEqual([]);
     }
     view.stdin.write("\r"); await tick();
-    expect(f.saved).toEqual([{default: "ask", exceptions: {[name(long)]: "ask"}}]);
+    expect(f.saved).toEqual([{exceptions: {[name(long)]: "ask"}}]);
 });
 
 test("/mcp opens and saves policy locally without model work", async () => withTempProject(async cwd => {
@@ -112,7 +116,7 @@ test("/mcp opens and saves policy locally without model work", async () => withT
         await tick(); view.stdin.write("/mcp"); await tick(); view.stdin.write("\r"); await tick();
         expect(view.lastFrame()).toContain("◆ MCP"); expect(view.lastFrame()).not.toContain("Worked for");
         view.stdin.write("\r"); await tick(); view.stdin.write(" "); await tick(); view.stdin.write("\r"); await tick();
-        expect(f.saved).toEqual([{default: "allow", exceptions: {}}]);
+        expect(f.saved).toEqual([{exceptions: {[name("execute")]: "ask"}}]);
         view.stdin.write("\u001b"); await tick(); view.stdin.write("\u001b"); await tick();
         expect(view.lastFrame()).toContain("Ask HiCode"); expect(calls).toBe(0);
     } finally {view.unmount(); await resources.close();}
@@ -137,7 +141,7 @@ test("Ctrl+C closes /mcp from details without saving or exiting the conversation
     const key = async (value: string) => {view.stdin.write(value); await tick();};
     try {
         await tick(); await key("/mcp"); await key("\r"); await key("\r"); await key(" ");
-        expect(view.lastFrame()).toContain("Default: Allow tools");
+        expect(view.lastFrame()).toContain("Ask every time");
         expect(view.lastFrame()).toContain("Ctrl+C close");
         expect(view.lastFrame()?.split("◆ MCP").at(-1)).not.toContain("shift+tab");
         expect(view.lastFrame()).not.toContain("mcp__fixture__execute");

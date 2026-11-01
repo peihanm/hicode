@@ -85,7 +85,7 @@ export function createSubagentFactories(
             .map(tool => tool.name === "task" ? childTaskTool(tool) : tool);
         const builtinNames = new Set(createToolCatalog({}).tools.map(tool => tool.name));
         const allowedNames = new Set(tools.map(tool => tool.name));
-        const inheritedMcpNames = new Set(tools.filter(tool => tool.name.startsWith("mcp__")).map(tool => tool.name));
+        const inheritedMcpNames = new Set(tools.filter(tool => tool.mcp).map(tool => tool.name));
         const fixedAdditional = tools.filter(tool => !builtinNames.has(tool.name) && !inheritedMcpNames.has(tool.name));
         const runtime = createToolRuntime({
             hooks: parentContext.toolHooks ? {
@@ -211,7 +211,7 @@ export function createSubagentFactories(
                         resources: {
                             storage: parentContext.storage, shellRunner: parentContext.shellRunner, readOnlyTools: !writable,
                             cwd, workspaceBoundary: await realpath(parentContext.workspaceBoundary ?? parentContext.directoryAccess.hardBoundary), instructions,
-                            allowFullAccess: parentContext.allowFullAccess, approvalReviewer: parentContext.approvalReviewer, reviewerModel: parentContext.reviewerModel, toolNames: runtime.toolNames, availableTools: runtime.getTools(),
+                            allowFullAccess: parentContext.allowFullAccess, approvalReviewer: parentContext.approvalReviewer, reviewerModel: parentContext.reviewerModel, get toolNames() { return runtime.toolNames; }, get availableTools() { return runtime.getTools(); },
                             skills: childSkills,
                             tasks: childTasks?.tasks,
                             fileCommits: parentContext.fileCommits,
@@ -265,7 +265,6 @@ export function createSubagentFactories(
                     const snapshot = (history = childHistory, compactState = childCompactState) => ({
                         cwd: storageCwd, sessionId: childSessionId, model: childModel, history, compactState,
                         todos: childTodos, permissionMode: childContext.permissionMode, allowEmpty: true,
-                        toolDiscovery: runtime.getToolDiscoverySnapshot(),
                     });
                     childContext.sessionArchives = archiveAccess;
                     childContext.sessionCompaction = {

@@ -12,14 +12,14 @@ import {readFileTool} from "./readFile/readFile.js";
 import {skillTool} from "./skill/skill.js";
 import {taskTool} from "./task/task.js";
 import {todoWriteTool} from "./todoWrite/todoWrite.js";
+import {MCP_CALL_NAME} from "./mcpCall.js";
 import {TOOL_SEARCH_NAME} from "./toolSearch/toolSearch.js";
-import type {Tool, ToolExposure} from "./types.js";
+import type {Tool} from "./types.js";
 import {webFetchTool} from "./webFetch/webFetch.js";
 import {writeFileTool} from "./writeFile/writeFile.js";
 
 export interface ToolRegistration {
     tool: Tool;
-    exposure: ToolExposure;
     schema: () => OpenAITool;
 }
 
@@ -103,8 +103,8 @@ export function createToolCatalog(
     const combinedTools = builtins.map((tool) => overrides.get(tool.name) ?? tool);
     const names = new Set(combinedTools.map((tool) => tool.name));
     for (const tool of options.additionalTools ?? []) {
-        if (tool.name === TOOL_SEARCH_NAME) {
-            throw new Error(`Tool name ${TOOL_SEARCH_NAME} is reserved by the Runtime`);
+        if (tool.name === TOOL_SEARCH_NAME || tool.name === MCP_CALL_NAME) {
+            throw new Error(`Tool name ${tool.name} is reserved by the Runtime`);
         }
         if (names.has(tool.name)) {
             throw new Error(`Duplicate tool name: ${tool.name}`);
@@ -130,7 +130,6 @@ export function createToolCatalog(
         tools: scopedTools,
         registrations: scopedTools.map((tool) => ({
             tool,
-            exposure: tool.exposure ?? "direct",
             schema: schemaSourceForTool(tool),
         })),
     };

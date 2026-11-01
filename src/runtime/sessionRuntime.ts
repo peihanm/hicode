@@ -26,7 +26,6 @@ import {createSubagentLauncher} from "../subagents/launcher.js";
 import type {TaskSessionLike} from "../tasks/index.js";
 import type {Todo} from "../session/todo.js";
 import {createToolResultStore, type ToolResultStore} from "../toolResults/index.js";
-import type {ToolDiscoverySnapshot} from "../tools/registry.js";
 import type {ToolContext} from "../tools/types.js";
 import type {RuntimeQueuedMessage} from "./messageQueue.js";
 import {RuntimeMessageQueue} from "./messageQueue.js";
@@ -40,7 +39,6 @@ export interface RootSessionSeed {
     sessionId: string;
     history: Message[];
     compactState: CompactState;
-    toolDiscovery?: ToolDiscoverySnapshot;
     queuedInputs?: readonly RuntimeQueuedMessage[];
     taskNotificationReceipts?: readonly string[];
 }
@@ -123,7 +121,6 @@ export function createRootSessionRuntime({
         resources.cwd,
         seed.sessionId
     );
-    resources.toolRuntime.restoreToolDiscovery(seed.toolDiscovery);
     const messageQueue = new RuntimeMessageQueue({
         messages: seed.queuedInputs,
         taskReceipts: seed.taskNotificationReceipts,
@@ -159,7 +156,6 @@ export function createRootSessionRuntime({
         uiEvents: [...state.uiEvents],
         queuedInputs: messageQueue.list(),
         taskNotificationReceipts: messageQueue.getTaskReceipts(),
-        toolDiscovery: resources.toolRuntime.getToolDiscoverySnapshot(),
         ...(state.allowEmpty ? {allowEmpty: true} : {}),
         ...(state.summaryHint ? {summaryHint: state.summaryHint} : {}),
     });
@@ -199,7 +195,7 @@ export function createRootSessionRuntime({
         createContext({signal, host, onEvent, turnId, getSnapshotState}) {
             const ctx = createToolContext({
                 signal, turnId,
-                resources: {...resources, availableTools: resources.toolRuntime.getTools(), toolNames: resources.toolRuntime.toolNames, contextSettings: resources.settings.context, taskReviewEnabled: resources.settings.taskReview.enabled, tasks: taskSession, agentMessaging: taskSession.messaging},
+                resources: {...resources, get availableTools() { return resources.toolRuntime.getTools(); }, get toolNames() { return resources.toolRuntime.toolNames; }, contextSettings: resources.settings.context, taskReviewEnabled: resources.settings.taskReview.enabled, tasks: taskSession, agentMessaging: taskSession.messaging},
                 session: {
                     webSources,
                     approvalEpoch,

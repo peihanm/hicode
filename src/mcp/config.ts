@@ -1,4 +1,5 @@
 import {readBoundedTextFile} from "../persistence/readTextFile.js";
+import {hasFileSystemErrorCode} from "../persistence/errors.js";
 import {lstat, realpath} from "node:fs/promises";
 import {dirname, join, resolve} from "node:path";
 import {z} from "zod";
@@ -60,11 +61,7 @@ export const hostMcpServerContributionSchema = z.union([
 ]);
 
 function isMissing(error: unknown): boolean {
-    return Boolean(
-        error && typeof error === "object" && "code" in error &&
-        ((error as {code?: string}).code === "ENOENT" ||
-            (error as {code?: string}).code === "ENOTDIR")
-    );
+    return hasFileSystemErrorCode(error, "ENOENT") || hasFileSystemErrorCode(error, "ENOTDIR");
 }
 
 function readBoundedRegularFile(path: string): string | undefined {
