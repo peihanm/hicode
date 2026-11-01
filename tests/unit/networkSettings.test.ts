@@ -15,7 +15,7 @@ test("network mode persists locally, preserves other settings and rejects corrup
         await saveLocalNetworkMode(cwd, "restricted");
         expect(JSON.parse(await readFile(path, "utf8")).sandbox.network.mode).toBe("restricted");
         await writeFile(path, "broken-json");
-        await expect(saveLocalNetworkMode(cwd, "open")).rejects.toThrow("corrupt");
+        await expect(saveLocalNetworkMode(cwd, "open")).rejects.toThrow("Invalid settings file");
         expect(await readFile(path, "utf8")).toBe("broken-json");
         const other = join(cwd, "other"); await mkdir(other);
         await symlink(join(cwd, ".hicode"), join(other, ".hicode"));

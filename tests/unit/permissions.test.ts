@@ -351,7 +351,7 @@ describe("permission rule persistence", () => {
 
       await expect(
         addToAllowList("write_file", emptyRules, cwd)
-      ).rejects.toThrow("Cannot update corrupt settings");
+      ).rejects.toThrow("Invalid settings file");
       expect(await readFile(settingsPath, "utf8")).toBe("{corrupt-settings");
       expect(emptyRules.allow).toEqual([]);
     });

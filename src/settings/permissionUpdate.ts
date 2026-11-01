@@ -1,130 +1,24 @@
-import {lstat, mkdir, readFile, realpath} from "node:fs/promises";
-import {dirname, join} from "node:path";
-import {hasFileSystemErrorCode, withFileLock, writeFileAtomically,} from "../persistence/index.js";
-import {getSettingsPath} from "./document.js";
-import {hicodeSettingsFileSchema} from "./schema.js";
-import type {HiCodeSettingsFile} from "./types.js";
+import {updateSettings} from "./store.js";
 
-const MAX_LOCAL_SETTINGS_BYTES = 4 * 1024 * 1024;
-
-async function ensureSafeLocalSettingsPath(
-    cwd: string,
-    path: string
-): Promise<void> {
-    const directory = dirname(path);
-    await mkdir(directory, {recursive: true, mode: 0o700});
-    const [cwdPath, directoryPath, directoryInfo] = await Promise.all([
-        realpath(cwd),
-        realpath(directory),
-        lstat(directory),
-    ]);
-    if (
-        directoryInfo.isSymbolicLink() ||
-        !directoryInfo.isDirectory() ||
-        directoryPath !== join(cwdPath, ".hicode")
-    ) {
-        throw new Error("Cannot update settings through an unsafe .hicode directory");
-    }
-    try {
-        const info = await lstat(path);
-        if (info.isSymbolicLink() || !info.isFile()) {
-            throw new Error("Cannot update settings through a non-regular file");
-        }
-        if (info.size > MAX_LOCAL_SETTINGS_BYTES) {
-            throw new Error("Cannot update settings larger than 4 MiB");
-        }
-    } catch (error) {
-        if (!hasFileSystemErrorCode(error, "ENOENT")) throw error;
-    }
-}
-
-async function readSettingsForUpdate(path: string): Promise<HiCodeSettingsFile> {
-    let content: string;
-    try {
-        content = await readFile(path, "utf8");
-    } catch (error) {
-        if (hasFileSystemErrorCode(error, "ENOENT")) return {};
-        throw error;
-    }
-
-    let raw: unknown;
-    try {
-        raw = content.trim() ? JSON.parse(content) : {};
-    } catch (error) {
-        throw new Error(`Cannot update corrupt settings: ${path}`, {cause: error});
-    }
-
-    const parsed = hicodeSettingsFileSchema.safeParse(raw);
-    if (!parsed.success) {
-        throw new Error(`Cannot update invalid settings: ${path}`, {
-            cause: parsed.error,
-        });
-    }
-    return parsed.data;
-}
-
-export async function appendLocalPermissionAllowRule(
-    cwd: string,
-    rule: string
-): Promise<void> {
-    const path = getSettingsPath(cwd, "local");
-    await ensureSafeLocalSettingsPath(cwd, path);
-    await withFileLock(`${path}.lock`, async () => {
-        await ensureSafeLocalSettingsPath(cwd, path);
-        const settings = await readSettingsForUpdate(path);
-        const permissions = settings.permissions ?? {};
-        const allow = permissions.allow ?? [];
-        if (allow.includes(rule)) return;
-
-        settings.permissions = {
-            ...permissions,
-            allow: [...allow, rule],
-        };
-        const content = `${JSON.stringify(settings, null, 2)}\n`;
-        if (Buffer.byteLength(content, "utf8") > MAX_LOCAL_SETTINGS_BYTES) {
-            throw new Error("Cannot update settings larger than 4 MiB");
-        }
-        await writeFileAtomically(path, content, 0o600);
+export async function appendLocalPermissionAllowRule(cwd: string, rule: string): Promise<void> {
+    await updateSettings({source: "local", cwd}, settings => {
+        const permissions = settings.permissions ??= {};
+        const allow = permissions.allow ??= [];
+        if (!allow.includes(rule)) allow.push(rule);
     });
 }
 
-export async function appendLocalPermissionDirectory(
-    cwd: string,
-    directory: string
-): Promise<void> {
-    const path = getSettingsPath(cwd, "local");
-    await ensureSafeLocalSettingsPath(cwd, path);
-    await withFileLock(`${path}.lock`, async () => {
-        await ensureSafeLocalSettingsPath(cwd, path);
-        const settings = await readSettingsForUpdate(path);
-        const permissions = settings.permissions ?? {};
-        const additionalDirectories =
-            permissions.additionalDirectories ?? [];
-        if (additionalDirectories.includes(directory)) return;
-
-        settings.permissions = {
-            ...permissions,
-            additionalDirectories: [...additionalDirectories, directory],
-        };
-        const content = `${JSON.stringify(settings, null, 2)}\n`;
-        if (Buffer.byteLength(content, "utf8") > MAX_LOCAL_SETTINGS_BYTES) {
-            throw new Error("Cannot update settings larger than 4 MiB");
-        }
-        await writeFileAtomically(path, content, 0o600);
+export async function appendLocalPermissionDirectory(cwd: string, directory: string): Promise<void> {
+    await updateSettings({source: "local", cwd}, settings => {
+        const permissions = settings.permissions ??= {};
+        const directories = permissions.additionalDirectories ??= [];
+        if (!directories.includes(directory)) directories.push(directory);
     });
 }
-
 
 /** Only an explicit local UI action calls this; running Roots retain their startup policy. */
 export async function saveLocalNetworkMode(cwd: string, mode: "restricted" | "open"): Promise<void> {
-    const path = getSettingsPath(cwd, "local");
-    await ensureSafeLocalSettingsPath(cwd, path);
-    await withFileLock(`${path}.lock`, async () => {
-        await ensureSafeLocalSettingsPath(cwd, path);
-        const settings = await readSettingsForUpdate(path);
+    await updateSettings({source: "local", cwd}, settings => {
         settings.sandbox = {...settings.sandbox, network: {...settings.sandbox?.network, mode}};
-        const content = `${JSON.stringify(settings, null, 2)}\n`;
-        if (Buffer.byteLength(content, "utf8") > MAX_LOCAL_SETTINGS_BYTES) throw new Error("Cannot update settings larger than 4 MiB");
-        await writeFileAtomically(path, content, 0o600);
     });
 }

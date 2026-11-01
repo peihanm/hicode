@@ -1,14 +1,13 @@
 import {validateReasoningEffort, type ReasoningPreference} from "../llm/reasoningPolicy.js";
 import {readBoundedTextFile} from "../persistence/readTextFile.js";
-import {lstat, mkdir, realpath} from "node:fs/promises";
-import {dirname, join} from "node:path";
+import {lstat} from "node:fs/promises";
+import {join} from "node:path";
 import {parse as parseEnv} from "dotenv";
 import {ensurePrivateStorageDirectory, hasFileSystemErrorCode, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
-import {getUserCredentialsPath, getUserSettingsPath} from "../persistence/layout.js";
+import {getUserCredentialsPath} from "../persistence/layout.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PrimaryModelRuntime} from "../runtime/primaryModel.js";
-import {hicodeSettingsFileSchema} from "./schema.js";
-import {getSettingsPath} from "./document.js";
+import {getSettingsPath, readSettings, updateSettings} from "./store.js";
 import {resolveHiCodeSettings, resolveModelSources, resolveReasoningPreferences} from "./resolve.js";
 import type {HiCodeSettingsFile, ModelTargetSettings, LoadedSettingsDocument} from "./types.js";
 
@@ -24,32 +23,28 @@ export interface ModelConfiguration {
 
 /** Trusted configuration UI only; never exposed in ToolContext or model events. */
 export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: string, runtime: PrimaryModelRuntime, fixedTargets: readonly ModelTargetSettings[] = []): ModelConfiguration {
-    const userPath = getUserSettingsPath(storage);
-    const projectPath = getSettingsPath(cwd, "project");
-    const localPath = getSettingsPath(cwd, "local");
+    const user = {source: "user", storage} as const;
+    const projectSettings = {source: "project", cwd} as const;
+    const localSettings = {source: "local", cwd} as const;
+    const userPath = getSettingsPath(user);
+    const projectPath = getSettingsPath(projectSettings);
+    const localPath = getSettingsPath(localSettings);
     const projectEnv = join(cwd, ".env");
     const userEnv = getUserCredentialsPath(storage);
 
-    async function ensureParent(path: string, create = true): Promise<void> {
-        if (path === userPath || path === userEnv) {
+    async function ensureCredentialParent(path: string, create = true): Promise<void> {
+        if (path === userEnv) {
             if (create) ensurePrivateStorageDirectory(storage, storage.hicodeHome);
             else {
                 const info = await lstat(storage.hicodeHome);
                 if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Unsafe user configuration directory");
             }
-        } else if (path === localPath || path === projectPath) {
-            const directory = dirname(path);
-            if (create) await mkdir(directory, {recursive: true, mode: 0o700});
-            const info = await lstat(directory);
-            if (info.isSymbolicLink() || !info.isDirectory() || await realpath(directory) !== join(await realpath(cwd), ".hicode")) {
-                throw new Error("Unsafe project configuration directory");
-            }
         } else if (path !== projectEnv) throw new Error("Unknown configuration path");
     }
 
-    async function read(path: string): Promise<string> {
+    async function readCredential(path: string): Promise<string> {
         try {
-            await ensureParent(path, false);
+            await ensureCredentialParent(path, false);
             return readBoundedTextFile(path, MAX_BYTES);
         } catch (error) {
             if (hasFileSystemErrorCode(error, "ENOENT")) return "";
@@ -57,34 +52,13 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
         }
     }
 
-    function decode(text: string): HiCodeSettingsFile {
-        try {return hicodeSettingsFileSchema.parse(text.trim() ? JSON.parse(text) : {});}
-        catch {throw new Error("Invalid settings file; existing contents were not overwritten");}
-    }
-
-    async function update(path: string, modify: (settings: HiCodeSettingsFile) => void | Promise<void>): Promise<HiCodeSettingsFile> {
-        await ensureParent(path);
-        return withFileLock(`${path}.lock`, async () => {
-            const before = await read(path);
-            const settings = decode(before);
-            await modify(settings);
-            const normalized = decode(JSON.stringify(settings));
-            if (path === userPath && normalized.sources) resolveModelSources([{source: "user", path: userPath, value: {sources: normalized.sources}}]);
-            const text = `${JSON.stringify(normalized, null, 2)}\n`;
-            if (Buffer.byteLength(text) > MAX_BYTES) throw new Error("Configuration exceeds 4 MiB");
-            if (await read(path) !== before) throw new Error("Configuration changed while saving; retry after reviewing it");
-            await writeFileAtomically(path, text, 0o600);
-            return normalized;
-        });
-    }
-
     async function refresh(settings: HiCodeSettingsFile): Promise<void> {
         // Refresh model configuration only; permissions and other Root resources stay with their owner.
         const sources = resolveModelSources([{source: "user", path: userPath, value: {sources: settings.sources}}]);
         const documents: LoadedSettingsDocument[] = [
             {source: "user", path: userPath, value: settings},
-            {source: "project", path: projectPath, value: decode(await read(projectPath))},
-            {source: "local", path: localPath, value: decode(await read(localPath))},
+            {source: "project", path: projectPath, value: await readSettings(projectSettings)},
+            {source: "local", path: localPath, value: await readSettings(localSettings)},
         ];
         const preferences = resolveReasoningPreferences(documents, sources);
         runtime.updateSources(sources);
@@ -97,11 +71,11 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
             if (!key || key.length > 8192 || /[\s'"\\\x00-\x1f\x7f]/.test(key)) throw new Error("Enter a single-line API key without quotes or spaces");
             const name = runtime.sources[source].apiKeyEnv;
             if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || /^(PATH|HOME|SHELL|NODE_OPTIONS|BUN_OPTIONS|LD_PRELOAD|DYLD_INSERT_LIBRARIES)$/i.test(name)) throw new Error("Unsafe credential variable name");
-            const project = parseEnv(await read(projectEnv));
+            const project = parseEnv(await readCredential(projectEnv));
             const path = Object.hasOwn(project, name) ? projectEnv : userEnv;
-            await ensureParent(path);
+            await ensureCredentialParent(path);
             await withFileLock(`${path}.lock`, async () => {
-                const before = await read(path);
+                const before = await readCredential(path);
                 const parsedBefore = parseEnv(before);
                 const previous = parsedBefore[name];
                 if (previous && /[\r\n]/.test(previous)) throw new Error("Existing credential spans multiple lines; edit that entry manually");
@@ -112,7 +86,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                 const parsedNext = parseEnv(next);
                 if (Object.entries(parsedBefore).some(([field, value]) => field !== name && parsedNext[field] !== value)) throw new Error("Cannot update the credential without changing another variable; edit that entry manually");
                 if (Buffer.byteLength(next) > MAX_BYTES || parsedNext[name] !== key) throw new Error("Cannot encode this credential safely");
-                if (await read(path) !== before) throw new Error("Credential file changed while saving; retry");
+                if (await readCredential(path) !== before) throw new Error("Credential file changed while saving; retry");
                 await writeFileAtomically(path, next, 0o600);
             });
             process.env[name] = key;
@@ -125,7 +99,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                 try {url = new URL(baseUrl);} catch {throw new Error("Enter a valid API base URL");}
                 if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error("Use an HTTP(S) base URL without credentials, query or fragment");
             }
-            const settings = await update(userPath, settings => {
+            const settings = await updateSettings(user, settings => {
                 settings.sources ??= {};
                 const connection = {...settings.sources[source]};
                 if (baseUrl) connection.baseUrl = baseUrl; else delete connection.baseUrl;
@@ -136,7 +110,7 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
         async addModel(source, rawId, rawLabel, imageInput = false) {
             const id = rawId.trim(), label = rawLabel.trim() || id;
             if (!id || id.length > 200 || label.length > 200 || /[\x00-\x1f\x7f]/.test(id + label)) throw new Error("Model ID is required; ID and display name must be at most 200 characters");
-            const settings = await update(userPath, settings => {
+            const settings = await updateSettings(user, settings => {
                 settings.sources ??= {};
                 const connection = {...settings.sources[source]};
                 const models = connection.models ?? runtime.sources[source].models;
@@ -152,14 +126,14 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
                 if ([runtime.target, ...fixedTargets].some(matches)) throw new Error("This model is in use. Switch the main model with /model, or change the explicit fast/reviewer setting and restart first.");
             };
             assertNotSelected();
-            const settings = await update(userPath, async settings => {
+            const settings = await updateSettings(user, async settings => {
                 const documents: LoadedSettingsDocument[] = [{source: "user", path: userPath, value: settings}];
                 const models = resolveModelSources(documents)[source].models;
                 if (!models.some(model => model.id === id)) throw new Error("Model not found; reopen the model list");
                 for (const scope of ["user", "project", "local"] as const) {
                     if (scope !== "user") {
                         const path = scope === "project" ? projectPath : localPath;
-                        documents.push({source: scope, path, value: decode(await read(path))});
+                        documents.push({source: scope, path, value: await readSettings({source: scope, cwd})});
                     }
                     const targets = resolveHiCodeSettings(documents).values.models;
                     for (const slot of ["primary", "fast", "reviewer"] as const) {
@@ -176,18 +150,19 @@ export function createModelConfiguration(storage: HiCodeStorageLayout, cwd: stri
         },
         async saveSelection(target) {
             if (!runtime.available.some(item => item.source === target.source && item.model === target.model)) throw new Error("Model is not available; configure its API key first");
-            const project = decode(await read(projectPath));
-            const local = decode(await read(localPath));
+            const project = await readSettings(projectSettings);
+            const local = await readSettings(localSettings);
             const effort = target.reasoning ?? runtime.reasoningFor(target.source, target.model) ?? "default";
             validateReasoningEffort(target.source, target.model, effort);
             const overridden = [project, local].some(settings => settings.models?.primary?.source !== undefined || settings.models?.primary?.model !== undefined || settings.models?.reasoning?.some(item => item.source === target.source && item.model === target.model));
-            const path = overridden ? localPath : userPath;
+            const destination = overridden ? localSettings : user;
+            const path = getSettingsPath(destination);
             let preferences: ReasoningPreference[] = [];
-            await update(path, async settings => {
+            await updateSettings(destination, async settings => {
                 const reasoning = (settings.models?.reasoning ?? []).filter(item => item.source !== target.source || item.model !== target.model);
                 settings.models = {...settings.models, primary: {source: target.source, model: target.model}, reasoning: [...reasoning, {source: target.source, model: target.model, effort}]};
                 const documents: LoadedSettingsDocument[] = [
-                    {source: "user", path: userPath, value: path === userPath ? settings : decode(await read(userPath))},
+                    {source: "user", path: userPath, value: path === userPath ? settings : await readSettings(user)},
                     {source: "project", path: projectPath, value: project},
                     {source: "local", path: localPath, value: path === localPath ? settings : local},
                 ];

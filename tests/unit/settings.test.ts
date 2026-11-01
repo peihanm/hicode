@@ -500,3 +500,31 @@ test("background task review is enabled by default and can be disabled with ordi
     expect(resolveHiCodeSettings([document("user", {taskReview: {enabled: false}})]).values.taskReview.enabled).toBe(false);
     expect(resolveHiCodeSettings([document("project", {taskReview: {enabled: false}}), document("local", {taskReview: {enabled: true}})]).values.taskReview.enabled).toBe(true);
 });
+
+test("known taskReview configuration produces no warning and unknown nested fields come from the same schema", async () => {
+    await withTempProject(async (cwd, storage) => {
+        await mkdir(storage.hicodeHome, {recursive: true});
+        const path = join(storage.hicodeHome, "settings.json");
+        await writeFile(path, JSON.stringify({taskReview: {enabled: false}}));
+        const valid = loadHiCodeSettings({cwd, storage});
+        expect(valid.issues).toEqual([]);
+        expect(valid.values.taskReview.enabled).toBe(false);
+        const settings = {
+            taskReview: {enabled: false}, custom: {retained: true},
+            sources: {qwen: {models: [{id: "qwen3.8-flash", label: "Qwen", futureOption: true}]}},
+            models: {primary: {model: "qwen3.8-flash", futureChoice: "keep"}},
+            sandbox: {network: {mode: "open" as const, futureNetwork: "keep"}},
+        };
+        await writeFile(path, JSON.stringify(settings));
+        const loaded = loadHiCodeSettings({cwd, storage});
+        expect(loaded.issues.map(issue => issue.field).sort()).toEqual([
+            "custom", "models.primary.futureChoice", "sandbox.network.futureNetwork", "sources.qwen.models.0.futureOption",
+        ]);
+        expect(loaded.issues.every(issue => issue.severity === "warning")).toBe(true);
+        expect(loaded.documents[0]?.value).toEqual(settings);
+        expect(loaded.values.taskReview.enabled).toBe(false);
+        expect(() => loadHiCodeSettings({cwd, storage, sources: [], hostSettings: settings})).toThrow("Invalid Settings");
+        await writeFile(path, JSON.stringify({taskReview: {enabled: false, typo: true}}));
+        expect(() => loadHiCodeSettings({cwd, storage})).toThrow("taskReview");
+    });
+});
