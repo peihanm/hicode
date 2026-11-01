@@ -1,3 +1,4 @@
+import {createHookRuntimeFactory} from "../helpers/hooks.js";
 import {listPromptLogs} from "../helpers/promptLogs.js";
 import {saveSessionSnapshot, saveSessionCompaction} from "../helpers/sessionStorage.js";
 import {expect, test} from "bun:test";
@@ -26,7 +27,7 @@ import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
 import {getProjectStorageDirectory} from "../../src/persistence/layout.js";
 import {createOpenAICompatibleCaller} from "../../src/llm/providers/openAICompatible.js";
-import {createHookRuntimeFactory, type HookEnvelope} from "../../src/hooks/index.js";
+import {type HookEnvelope} from "../../src/hooks/index.js";
 import {resolvedHooks} from "../helpers/hooks.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
 
@@ -339,7 +340,7 @@ test("Hook receives text projection and appends context after the original image
     await withTempProject(async (cwd, storage) => {
         const f = fixture(cwd); await writeFile(join(cwd, "s.png"), await png());
         const observed: string[] = [];
-        const hooks = await createHookRuntimeFactory({getTrust: async () => "allow", executeCommand: async ({stdin}) => {
+        const hooks = await createHookRuntimeFactory({readTrust: async () => () => "allow", executeCommand: async ({stdin}) => {
             observed.push(stdin);
             expect((JSON.parse(stdin) as HookEnvelope).event.hook_event_name).toBe("PostToolUse");
             return {stdout: JSON.stringify({additionalContext: "image-hook-note"}), stderr: "", termination: {kind: "exit", code: 0}};

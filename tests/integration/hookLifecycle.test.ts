@@ -1,3 +1,4 @@
+import {createHookRuntimeFactory} from "../helpers/hooks.js";
 import {expect, test} from "bun:test";
 import {mkdir, writeFile, realpath} from "node:fs/promises";
 import {join} from "node:path";
@@ -5,7 +6,7 @@ import {createAgentRunner, EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inde
 import type {AgentEvent} from "../../src/agent/types.js";
 import {createCompactState} from "../../src/context/index.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
-import {createHookRuntimeFactory, type HookEnvelope, type HookInput, type ResolvedHookSettings} from "../../src/hooks/index.js";
+import {type HookEnvelope, type HookInput, type ResolvedHookSettings} from "../../src/hooks/index.js";
 import type {RootRuntimeResources} from "../../src/runtime/resources.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import {runRootTurn, createRootTurnRunnerFactory} from "../../src/runtime/turnRuntime.js";
@@ -40,7 +41,7 @@ function sessionFor(resources: RootRuntimeResources) {
 async function resourcesFor(cwd: string, storage: HiCodeStorageLayout, hooks: ResolvedHookSettings,
     handler: (input: HookInput) => unknown) {
     return createRootRuntimeResourcesFactoryForTest({createHookRuntime: createHookRuntimeFactory({
-        getTrust: async () => "allow", executeCommand: async ({stdin}) => ({stdout: JSON.stringify(handler((JSON.parse(stdin) as HookEnvelope).event)),
+        readTrust: async () => () => "allow", executeCommand: async ({stdin}) => ({stdout: JSON.stringify(handler((JSON.parse(stdin) as HookEnvelope).event)),
             stderr: "", termination: {kind: "exit", code: 0}}),
     })})({configuration: createTestRootConfiguration(cwd, createTestSettings({hooks}), storage, sources)});
 }
@@ -340,7 +341,7 @@ test("delegated tools enforce approved policies and keep independent once state 
     const hooks = {...resolvedHooks("PreToolUse", [{type:"command",purpose:"control",command:"policy"}]),
         PostToolUse: resolvedHooks("PostToolUse", [{type:"command",purpose:"observe",command:"audit",once:true}]).PostToolUse};
     const resources = await createRootRuntimeResourcesFactoryForTest({createHookRuntime:createHookRuntimeFactory({
-        getTrust:async()=>"allow",executeCommand:async({stdin})=>{
+        readTrust: async () => () => "allow",executeCommand:async({stdin})=>{
             const envelope:HookEnvelope=JSON.parse(stdin);envelopes.push(envelope);
             const event=envelope.event;
             const blocked=event.hook_event_name==="PreToolUse"&&String(event.tool_input.path).includes("blocked");

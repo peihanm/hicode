@@ -1,6 +1,7 @@
-import {chmod, lstat, mkdir, readFile, realpath} from "node:fs/promises";
+import {readBoundedTextFile} from "../persistence/readTextFile.js";
+import {chmod, lstat, mkdir} from "node:fs/promises";
 import {dirname} from "node:path";
-import {withFileLock, writeFileAtomically} from "../persistence/index.js";
+import {hasFileSystemErrorCode, withFileLock, writeFileAtomically} from "../persistence/index.js";
 
 import type {HookTrustDecision} from "./types.js";
 
@@ -18,15 +19,6 @@ interface HookTrustRecord {
 interface HookTrustDocument {
     version: 2;
     projects: HookTrustRecord[];
-}
-
-function isErrorCode(error: unknown, code: string): boolean {
-    return Boolean(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as {code?: string}).code === code
-    );
 }
 
 function parseDocument(value: unknown): HookTrustDocument {
@@ -65,16 +57,9 @@ function parseDocument(value: unknown): HookTrustDocument {
 
 async function readDocument(path: string): Promise<HookTrustDocument> {
     try {
-        const info = await lstat(path);
-        if (!info.isFile() || info.isSymbolicLink()) {
-            throw new Error("Hook trust document is not a safe regular file");
-        }
-        if (info.size > MAX_HOOK_TRUST_FILE_BYTES) {
-            throw new Error("Hook trust document exceeds the size limit");
-        }
-        return parseDocument(JSON.parse(await readFile(path, "utf8")));
+        return parseDocument(JSON.parse(readBoundedTextFile(path, MAX_HOOK_TRUST_FILE_BYTES)));
     } catch (error) {
-        if (isErrorCode(error, "ENOENT")) {
+        if (hasFileSystemErrorCode(error, "ENOENT")) {
             return {version: 2, projects: []};
         }
         throw error;
@@ -91,38 +76,34 @@ async function ensureSafeParent(path: string): Promise<void> {
     await chmod(directory, 0o700);
 }
 
-export async function canonicalHookProjectPath(cwd: string): Promise<string> {
-    return realpath(cwd);
-}
-
-export async function getHookTrust(
+/** One validated snapshot for the entire project's definition approval pass. */
+export async function readHookTrust(
     path: string,
-    projectPath: string,
-    hookId: string
-): Promise<"allow" | "deny" | "pending"> {
-    const record = (await readDocument(path)).projects.find(
-        (item) => item.projectPath === projectPath && item.hookId === hookId
-    );
-    return record?.decision ?? "pending";
+    projectPath: string
+): Promise<(hookId: string) => "allow" | "deny" | "pending"> {
+    const records = new Map((await readDocument(path)).projects
+        .filter(item => item.projectPath === projectPath)
+        .map(item => [item.hookId, item.decision]));
+    return hookId => records.get(hookId) ?? "pending";
 }
 
 export async function saveHookTrust(
     path: string,
     projectPath: string,
-    hookId: string,
+    hookIds: readonly string[],
     decision: Exclude<HookTrustDecision, "once">
 ): Promise<void> {
+    if (!hookIds.length) return;
+    const ids = new Set(hookIds);
     await ensureSafeParent(path);
     await withFileLock(`${path}.lock`, async () => {
         const document = await readDocument(path);
         const projects = document.projects.filter(
-            (item) => item.projectPath !== projectPath || item.hookId !== hookId
+            (item) => item.projectPath !== projectPath || !ids.has(item.hookId)
         );
-        projects.push({
-            projectPath,
-            hookId,
-            decision: decision === "always" ? "allow" : "deny",
-            decidedAt: new Date().toISOString(),
+        const decidedAt = new Date().toISOString();
+        for (const hookId of ids) projects.push({
+            projectPath, hookId, decision: decision === "always" ? "allow" : "deny", decidedAt,
         });
         const updated = parseDocument({version: 2, projects});
         const content = `${JSON.stringify(updated, null, 2)}\n`;

@@ -1,28 +1,26 @@
+import {realpath} from "node:fs/promises";
 import {randomUUID} from "node:crypto";
-import {hooksSettingsFileSchema} from "./schema.js";
-import {executePromptHook, type HookPromptExecutor} from "./prompt.js";
+import {hooksSettingsFileSchema, boundedHookMessage} from "./schema.js";
 import {defaultExecuteHookCommand, executeCommandHook, type ExecuteHookCommand} from "./command.js";
-import {boundedHookMessage, type HookHandlerResult} from "./handler.js";
-import {hookDefinition, hookDefinitions, hookHandler} from "./identity.js";
-import {matchesHookMatcher} from "./matcher.js";
-import {canonicalHookProjectPath, getHookTrust, saveHookTrust} from "./approval.js";
+import type {HookHandlerResult} from "./types.js";
+import {hookDefinition, hookDefinitions, hookHandler, matchesHookMatcher} from "./definition.js";
+import {readHookTrust, saveHookTrust} from "./approval.js";
 import {getHookTrustPath, type HiCodeStorageLayout} from "../persistence/layout.js";
 import {mergeChildProcessEnvironment, type ChildProcessEnvironment} from "../runtime/childEnvironment.js";
 import {HOOK_EVENTS, type HookBatchResult, type HookExecution,
     type HookExecutionContext, type HookInput, type HookRuntime, type HookRuntimeIssue,
      type HookTrustRequest, type HookTrustSummary, type ResolvedHookSettings,
-    type HookEnvelope, type HookLifecycleEvent} from "./types.js";
+    type HookSessionRuntime, type HookEnvelope, type HookLifecycleEvent} from "./types.js";
 
 interface HookRuntimeDependencies {
     executeCommand: ExecuteHookCommand;
     canonicalProjectPath(cwd: string): Promise<string>;
-    getTrust?(projectPath: string, hookId: string): Promise<"allow" | "deny" | "pending">;
-    saveTrust?(projectPath: string, hookId: string, decision: "always" | "deny"): Promise<void>;
+    readTrust: typeof readHookTrust;
+    saveTrust: typeof saveHookTrust;
 }
 export interface CreateHookRuntimeOptions {
     storage: HiCodeStorageLayout; cwd: string; hooks: ResolvedHookSettings;
     childEnvironment: ChildProcessEnvironment; headless?: boolean; signal?: AbortSignal;
-    promptExecutor?: HookPromptExecutor;
     requestTrust?: (request: HookTrustRequest) => Promise<"once" | "always" | "deny">;
 }
 export class HookControlError extends Error {
@@ -90,12 +88,18 @@ class ConfiguredHookRuntime implements HookRuntime {
             if (definitions.length) {
                 const project = await this.dependencies.canonicalProjectPath(this.options.cwd);
                 const path = getHookTrustPath(this.options.storage);
-                for (const definition of definitions) {
-                    if (this.approved.has(definition.hookId)) {approved.add(definition.hookId); continue;}
-                    const decision = await (this.dependencies.getTrust?.(project, definition.hookId)
-                        ?? getHookTrust(path, project, definition.hookId));
-                    if (decision === "allow") approved.add(definition.hookId);
-                    else if (decision === "pending") pending.push(definition);
+                const unresolved = definitions.filter(definition => {
+                    if (!this.approved.has(definition.hookId)) return true;
+                    approved.add(definition.hookId);
+                    return false;
+                });
+                if (unresolved.length) {
+                    const trust = await this.dependencies.readTrust(path, project);
+                    for (const definition of unresolved) {
+                        const decision = trust(definition.hookId);
+                        if (decision === "allow") approved.add(definition.hookId);
+                        else if (decision === "pending") pending.push(definition);
+                    }
                 }
                 if (signal.aborted) throw new Error("Hook configuration approval cancelled");
                 if (this.options.headless && definitions.some(item => !approved.has(item.hookId)))
@@ -103,11 +107,11 @@ class ConfiguredHookRuntime implements HookRuntime {
                 if (pending.length && this.options.requestTrust) {
                     const decision = await this.options.requestTrust({projectPath: project, hooks: pending});
                     if (signal.aborted) throw new Error("Hook configuration approval cancelled");
-                    for (const item of pending) {
-                        if (decision !== "deny") approved.add(item.hookId);
-                        if (decision !== "once") await (this.dependencies.saveTrust?.(project, item.hookId, decision)
-                            ?? saveHookTrust(path, project, item.hookId, decision));
+                    if (decision !== "once") {
+                        await this.dependencies.saveTrust(path, project, pending.map(item => item.hookId), decision);
                     }
+                    if (signal.aborted) throw new Error("Hook configuration approval cancelled");
+                    if (decision !== "deny") for (const item of pending) approved.add(item.hookId);
                 }
                 for (const item of definitions) if (!approved.has(item.hookId)) {
                     if (item.purpose === "control") throw new HookControlError(`Control Hook not approved: ${item.event} ${item.hookId.slice(0, 12)}`);
@@ -198,10 +202,10 @@ class ConfiguredHookRuntime implements HookRuntime {
                     event: effectiveInput};
                 const serialized = JSON.stringify(envelope);
                 const bytes = Buffer.byteLength(serialized);
-                const inputLimit = hook.type === "command" && hook.purpose === "control" ? 16 * 1024 * 1024 : 65536;
+                const inputLimit = hook.purpose === "control" ? 16 * 1024 * 1024 : 65536;
                 if (bytes + 1 > inputLimit) {
                     if (hook.purpose === "control") {
-                        await fail(`${hook.type === "command" ? "Command" : "Prompt"} Control Hook [${hookHandler(hook).slice(0, 120)}] Complete input of ${bytes} bytes exceeds ${inputLimit} bytes; input was not truncated and no decision was executed`);
+                        await fail(`Command Control Hook [${hookHandler(hook).slice(0, 120)}] Complete input of ${bytes} bytes exceeds ${inputLimit} bytes; input was not truncated and no decision was executed`);
                         return result;
                     }
                     envelope = {...envelope, event: summarize(effectiveInput), truncated: true, original_bytes: bytes};
@@ -219,10 +223,9 @@ class ConfiguredHookRuntime implements HookRuntime {
                 await emit({type: "hook_started", execution: identity});
                 if (expired()) {await fail(signal.aborted ? "Hook cancelled" : "Hook dispatch deadline exhausted"); continue;}
                 const timeoutMs = Math.max(1, Math.min(hook.timeoutMs ?? 10000, deadline - performance.now()));
-                const handled = hook.type === "command" ? await executeCommandHook({hook, envelope,
+                const handled = await executeCommandHook({hook, envelope,
                     signal: controller.signal, timeoutMs, executeCommand: this.dependencies.executeCommand,
-                    environment: mergeChildProcessEnvironment(this.options.childEnvironment, {HICODE_PROJECT_DIR: this.options.cwd})})
-                    : await executePromptHook({hook, envelope, signal: controller.signal, timeoutMs, executor: this.options.promptExecutor});
+                    environment: mergeChildProcessEnvironment(this.options.childEnvironment, {HICODE_PROJECT_DIR: this.options.cwd})});
                 const output = await finish(handled);
                 if (result.error || signal.aborted) return result;
                 if (!output) continue;
@@ -239,21 +242,39 @@ class ConfiguredHookRuntime implements HookRuntime {
         } finally {clearTimeout(timer); signal.removeEventListener("abort", onAbort);}
     }
 }
-export function createHookRuntimeFactory(overrides: Partial<HookRuntimeDependencies> = {}) {
-    const dependencies = {executeCommand: overrides.executeCommand ?? defaultExecuteHookCommand,
-        canonicalProjectPath: overrides.canonicalProjectPath ?? canonicalHookProjectPath,
-        getTrust: overrides.getTrust, saveTrust: overrides.saveTrust};
+export function createHookRuntimeFactory(dependencies: HookRuntimeDependencies) {
     return async (options: CreateHookRuntimeOptions): Promise<HookRuntime> => {
         const runtime = new ConfiguredHookRuntime(options, dependencies);
         await runtime.reload(options.hooks, options.signal ?? new AbortController().signal);
         return runtime;
     };
 }
-export const createHookRuntime = createHookRuntimeFactory();
+export const createHookRuntime = createHookRuntimeFactory({
+    executeCommand: defaultExecuteHookCommand, canonicalProjectPath: realpath,
+    readTrust: readHookTrust, saveTrust: saveHookTrust,
+});
 export function getHookExecutionIssues(result: HookBatchResult): string[] {
     return result.executions.filter(item => item.outcome === "error" || item.outcome === "skipped_budget")
         .map(item => `${item.event} ${item.type} Hook [${item.handler.replace(/\s+/g, " ").slice(0, 180)}] ${item.outcome}: ${boundedHookMessage(item.message ?? "")}`);
 }
 export function formatHookContext(event: HookInput["hook_event_name"], contexts: readonly string[]): string[] {
     return contexts.map(context => `<system-reminder>\nHook ${event} provided the following additional context:\n${context}\n</system-reminder>`);
+}
+
+export function createHookSessionRuntime(): HookSessionRuntime {
+    const claimed = new Set<string>();
+    const executions: ReturnType<HookSessionRuntime["recent"]>[number][] = [];
+    return {
+        claimOnce(key) {if (claimed.has(key)) return false; claimed.add(key); return true;},
+        wasClaimed: key => claimed.has(key),
+        record(event) {
+            const index = executions.findIndex(item => item.executionId === event.execution.executionId);
+            const value = event.type === "hook_started"
+                ? {...event.execution, outcome: "running" as const} : event.execution;
+            if (index >= 0) executions[index] = value;
+            else executions.push(value);
+            if (executions.length > 100) executions.splice(0, executions.length - 100);
+        },
+        recent: () => executions.map(item => ({...item})),
+    };
 }

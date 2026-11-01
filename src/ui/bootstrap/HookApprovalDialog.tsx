@@ -35,7 +35,7 @@ export function HookApprovalDialog({
         <DialogFrame
             title="Hook definition request"
             subtitle={
-                <Text>This project configures Hooks that execute commands or call models</Text>
+                <Text>This project configures Hooks that execute commands</Text>
             }
             footer="↑↓ select · ←→ view definition · Enter confirm · Esc deny"
         >
@@ -44,9 +44,7 @@ export function HookApprovalDialog({
                     <Box key={`${hook.event}-${index}`} flexDirection="column">
                         <Text>
                             {hook.event} · {hook.type}: {boundedHandler(
-                                hook.type === "command"
-                                    ? hook.command ?? JSON.stringify([hook.executable, ...(hook.args ?? [])])
-                                    : hook.prompt ?? ""
+                                hook.command ?? JSON.stringify([hook.executable, ...(hook.args ?? [])])
                             )}
                         </Text>
                         <Text color={COLORS.dim}>

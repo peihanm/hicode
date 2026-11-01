@@ -58,8 +58,7 @@ export type LLMCallKind =
     | "compact"
     | "memory"
     | "task_review"
-    | "agent_authoring"
-    | "hook";
+    | "agent_authoring";
 
 type LLMStreamPhase =
     | "reasoning"

@@ -15,7 +15,7 @@ import {throwIfTurnAborted} from "../runtime/abort.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import {persistPreparedImage} from "../images/persist.js";
 import {imageReferences} from "../images/content.js";
-import {createHookSessionRuntime, type HookInput} from "../hooks/types.js";
+import {createHookSessionRuntime, type HookInput} from "../hooks/index.js";
 import type {Todo} from "../session/todo.js";
 import type {AgentRunner} from "../agent/runner.js";
 import {createCompactState} from "../context/state.js";

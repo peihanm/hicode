@@ -1,18 +1,16 @@
+import {createHookRuntimeFactory as createProductionHookRuntimeFactory} from "../helpers/hooks.js";
+import type {CreateHookRuntimeOptions} from "../../src/hooks/runtime.js";
+import {matchesHookMatcher} from "../../src/hooks/definition.js";
+import {hooksSettingsFileSchema} from "../../src/hooks/schema.js";
+import {readHookTrust, saveHookTrust} from "../../src/hooks/approval.js";
 import {describe, expect, test} from "bun:test";
 import {readFile, symlink, writeFile} from "node:fs/promises";
 import {z} from "zod";
 import {join} from "node:path";
 import {
     createHookSessionRuntime,
-    createHookRuntimeFactory as createProductionHookRuntimeFactory,
-    getHookTrust,
-    hooksSettingsFileSchema,
-    matchesHookMatcher,
-    saveHookTrust,
-    type HookInput,
     type HookEnvelope,
     type HookRuntime,
-    type CreateHookRuntimeOptions,
     type ResolvedHookSettings,
 } from "../../src/hooks/index.js";
 import {createEmptyResolvedHookSettings} from "../helpers/hooks.js";
@@ -61,28 +59,6 @@ function settingsWith(
     };
 }
 
-function promptSettingsWith(
-    event: keyof ResolvedHookSettings,
-    hooks: Array<{
-        prompt: string;
-        if?: string;
-        once?: boolean;
-        timeoutMs?: number;
-    }>,
-    matcher?: string
-): ResolvedHookSettings {
-    const settings = createEmptyResolvedHookSettings();
-    return {
-        ...settings,
-        [event]: [{
-            ...(matcher ? {matcher} : {}),
-            hooks: hooks.map((hook) => ({type: "prompt" as const, purpose: (event === "PreToolUse" || event === "UserPromptSubmit" || event === "Stop" ? "control" : "observe") as "control" | "observe", ...hook})),
-            source: "project" as const,
-            path: "/project/.hicode/settings.json",
-        }],
-    };
-}
-
 describe("Hooks", () => {
     test("空配置和非 Tool Hook 不影响读取并发，候选查询不执行处理器", async () => {
         await withTempProject(async (cwd) => {
@@ -90,7 +66,7 @@ describe("Hooks", () => {
             let trustReads = 0;
             const factory = createHookRuntimeFactory({
                 canonicalProjectPath: async (path) => path,
-                getTrust: async () => { trustReads += 1; return "allow"; },
+                readTrust: async () => { trustReads += 1; return () => "allow"; },
                 executeCommand: async () => {
                     executions += 1;
                     throw new Error("candidate queries must not run hooks");
@@ -155,16 +131,6 @@ describe("Hooks", () => {
                 }],
             }],
         }).success).toBe(true);
-        expect(hooksSettingsFileSchema.safeParse({
-            UserPromptSubmit: [{
-                hooks: [{
-                    type: "prompt", purpose: "control",
-                    prompt: "Block prompts that request production secrets.",
-                    once: true,
-                    timeoutMs: 30_000,
-                }],
-            }],
-        }).success).toBe(true);
     });
 
     test("if 按 updatedInput 顺序过滤 Tool Hook，未命中时不启动命令", async () => {
@@ -172,7 +138,7 @@ describe("Hooks", () => {
         const conditions: Array<[string, Record<string, unknown>]> = [];
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
+            readTrust: async () => () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => {
                 commands.push(command ?? "argv");
@@ -230,7 +196,7 @@ describe("Hooks", () => {
         const commands: string[] = [];
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
+            readTrust: async () => () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => {
                 commands.push(command ?? "argv");
@@ -276,7 +242,7 @@ describe("Hooks", () => {
         let matches = false;
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
+            readTrust: async () => () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => {
                 commands.push(command ?? "argv");
@@ -329,7 +295,7 @@ describe("Hooks", () => {
         const shells: Array<string | undefined> = [];
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/project",
-            getTrust: async () => "pending",
+            readTrust: async () => () => "pending",
             saveTrust: async () => {},
             executeCommand: async ({shell}) => {
                 shells.push(shell);
@@ -370,7 +336,7 @@ describe("Hooks", () => {
         const seenInputs: Array<Record<string, unknown>> = [];
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
+            readTrust: async () => () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command, stdin}) => {
                 const input = (JSON.parse(stdin) as HookEnvelope).event;
@@ -424,98 +390,10 @@ describe("Hooks", () => {
         expect(result.blockReason).toBe("policy blocked");
     });
 
-    test("Prompt Hook 复用统一调度语义，并接收前序 Hook 更新后的输入", async () => {
-        const seenInputs: HookInput[] = [];
-        const createRuntime = createHookRuntimeFactory({
-            canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
-            saveTrust: async () => {},
-            executeCommand: async () => ({
-                stdout: "",
-                stderr: "",
-                termination: {kind: "exit" as const, code: 0},
-            }),
-        });
-        const runtime = await createRuntime({
-            cwd: "/project",
-            childEnvironment: testChildEnvironment,
-            hooks: promptSettingsWith("PreToolUse", [{
-                prompt: "Reject generated files",
-            }], "edit_file"),
-            promptExecutor: {
-                async execute({envelope}) {
-                    seenInputs.push(envelope.event);
-                    return {
-                        decision: "block",
-                        reason: "generated file",
-                        additionalContext: "Use the generator instead.",
-                    };
-                },
-            },
-        });
-        const result = await runtime.execute({
-            hook_event_name: "PreToolUse",
-            session_id: "session",
-            permission_mode: "default",
-            tool_name: "edit_file",
-            tool_input: {path: "generated.ts"},
-            tool_call_id: "call",
-        }, new AbortController().signal);
-        expect(result.executions.some((execution) => execution.commandInvoked))
-            .toBe(false);
-
-        expect(seenInputs).toEqual([{
-            hook_event_name: "PreToolUse",
-            session_id: "session",
-            permission_mode: "default",
-            tool_name: "edit_file",
-            tool_input: {path: "generated.ts"},
-            tool_call_id: "call",
-        }]);
-        expect(result.blocked).toBe(true);
-        expect(result.blockReason).toBe("generated file");
-        expect(result.additionalContexts).toEqual(["Use the generator instead."]);
-        expect(result.executions[0]).toMatchObject({
-            type: "prompt",
-            outcome: "blocking",
-        });
-    });
-
-    test("Prompt Hook 缺少 Executor 时产生错误诊断，不伪造决定", async () => {
-        const createRuntime = createHookRuntimeFactory({
-            canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
-            saveTrust: async () => {},
-            executeCommand: async () => {
-                throw new Error("command executor should not run");
-            },
-        });
-        const runtime = await createRuntime({
-            cwd: "/project",
-            childEnvironment: testChildEnvironment,
-            hooks: promptSettingsWith("UserPromptSubmit", [{
-                prompt: "Review the prompt",
-            }]),
-        });
-        const result = await runtime.execute({
-            hook_event_name: "UserPromptSubmit",
-            session_id: "session",
-            permission_mode: "default",
-            prompt: "hello",
-        }, new AbortController().signal);
-
-        expect(result.blocked).toBe(false);
-        expect(result.executions[0]).toMatchObject({
-            type: "prompt",
-            outcome: "error",
-            message: "Prompt Hook execution failed: Prompt Hook Executor is not configured",
-        });
-    });
-
     test("格式错误和普通非零退出只记录错误，exit 2 仅能阻止前置事件", async () => {
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/project",
-            getTrust: async () => "allow",
+            readTrust: async () => () => "allow",
             saveTrust: async () => {},
             executeCommand: async ({command}) => command === "bad-json"
                 ? {
@@ -558,8 +436,8 @@ describe("Hooks", () => {
         const saved: Array<[string, "always" | "deny"]> = [];
         const createRuntime = createHookRuntimeFactory({
             canonicalProjectPath: async () => "/canonical/project",
-            getTrust: async () => "pending",
-            saveTrust: async (projectPath, _hookId, decision) => {
+            readTrust: async () => () => "pending",
+            saveTrust: async (_path, projectPath, _hookIds, decision) => {
                 saved.push([projectPath, decision]);
             },
             executeCommand: async () => ({
@@ -595,7 +473,7 @@ describe("Hooks", () => {
         await withTempProject(async (cwd) => {
             const createRuntime = createHookRuntimeFactory({
                 canonicalProjectPath: async () => cwd,
-                getTrust: async () => "allow",
+                readTrust: async () => () => "allow",
                 saveTrust: async () => {},
             });
             const command = [
@@ -628,7 +506,7 @@ describe("Hooks", () => {
         await withTempProject(async (cwd) => {
             const createRuntime = createHookRuntimeFactory({
                 canonicalProjectPath: async () => cwd,
-                getTrust: async () => "allow",
+                readTrust: async () => () => "allow",
                 saveTrust: async () => {},
             });
             const childEnvironment = createChildProcessEnvironment({
@@ -658,14 +536,14 @@ describe("Hooks", () => {
         await withTempProject(async (cwd) => {
             const path = join(cwd, "trusted-projects.json");
             await Promise.all([
-                saveHookTrust(path, "/project-a", "a".repeat(64), "always"),
-                saveHookTrust(path, "/project-b", "a".repeat(64), "always"),
+                saveHookTrust(path, "/project-a", ["a".repeat(64)], "always"),
+                saveHookTrust(path, "/project-b", ["a".repeat(64)], "always"),
             ]);
-            expect(await getHookTrust(path, "/project-a", "a".repeat(64))).toBe("allow");
-            expect(await getHookTrust(path, "/project-b", "a".repeat(64))).toBe("allow");
-            await saveHookTrust(path, "/project-a", "a".repeat(64), "deny");
-            expect(await getHookTrust(path, "/project-a", "a".repeat(64))).toBe("deny");
-            expect(await getHookTrust(path, "/missing", "a".repeat(64))).toBe("pending");
+            expect((await readHookTrust(path, "/project-a"))("a".repeat(64))).toBe("allow");
+            expect((await readHookTrust(path, "/project-b"))("a".repeat(64))).toBe("allow");
+            await saveHookTrust(path, "/project-a", ["a".repeat(64)], "deny");
+            expect((await readHookTrust(path, "/project-a"))("a".repeat(64))).toBe("deny");
+            expect((await readHookTrust(path, "/missing"))("a".repeat(64))).toBe("pending");
         });
     });
 
@@ -710,8 +588,8 @@ describe("Hooks", () => {
             const path = join(cwd, "trusted-projects.json");
             await writeFile(path, "{broken", "utf8");
 
-            await expect(getHookTrust(path, "/project", "a".repeat(64))).rejects.toThrow();
-            await expect(saveHookTrust(path, "/project", "a".repeat(64), "always"))
+            await expect(readHookTrust(path, "/project")).rejects.toThrow();
+            await expect(saveHookTrust(path, "/project", ["a".repeat(64)], "always"))
                 .rejects.toThrow();
             expect(await readFile(path, "utf8")).toBe("{broken");
         });
@@ -726,11 +604,9 @@ describe("Hooks", () => {
                 await writeFile(target, '{"version":1,"projects":[]}\n', "utf8");
                 await symlink(target, path);
 
-                await expect(getHookTrust(path, "/project", "a".repeat(64))).rejects.toThrow(
-                    "regular file"
-                );
-                await expect(saveHookTrust(path, "/project", "a".repeat(64), "always"))
-                    .rejects.toThrow("regular file");
+                await expect(readHookTrust(path, "/project")).rejects.toThrow();
+                await expect(saveHookTrust(path, "/project", ["a".repeat(64)], "always"))
+                    .rejects.toThrow();
             });
         }
     );

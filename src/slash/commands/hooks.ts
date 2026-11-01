@@ -12,7 +12,7 @@ export const hooksCommand: SlashCommand = {
                 const definitions = ctx.hookControl.inspect();
                 const lines = definitions.map(item => {
                     const origin = item.source === "host" ? `host:${item.id}` : `${item.source}:${item.path}`;
-                    const handler = item.command ?? (item.executable ? JSON.stringify([item.executable, ...(item.args ?? [])]) : `prompt: ${item.prompt}`);
+                    const handler = item.command ?? JSON.stringify([item.executable, ...(item.args ?? [])]);
                     return `- ${item.event} · ${item.purpose} · ${item.approved ? "approved" : "disabled"} · ${item.hookId.slice(0, 12)}\n` +
                         `  ${origin}\n  ${handler?.slice(0, 300)}\n` +
                         `  matcher=${item.matcher ?? "*"}${item.condition ? ` · if=${item.condition}` : ""}` +

@@ -31,7 +31,7 @@ import {createAgentTool} from "../tools/agent/agent.js";
 import type {CreateSubagentThread} from "../subagents/types.js";
 import type {AgentFileSource} from "../subagents/types.js";
 import type {HostAgentContribution} from "./rootContributions.js";
-import {createHookPromptExecutor, createHookRuntime, type HookRuntime, type HookTrustRequest,} from "../hooks/index.js";
+import {createHookRuntime, type HookRuntime, type HookTrustRequest,} from "../hooks/index.js";
 import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/index.js";
 import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
@@ -260,11 +260,6 @@ export function createRootRuntimeResourcesFactory(
                 childEnvironment,
                 headless: options.headless,
                 signal: options.signal,
-                promptExecutor: {execute(input) {
-                    const target = settings.models.fast ?? primaryModel.target;
-                    return createHookPromptExecutor({storage, cwd, model: target.model,
-                        reasoning: primaryModel.reasoningFor(target.source, target.model), source: primaryModel.sources[target.source]}).execute(input);
-                }},
                 requestTrust: options.requestHookTrust,
             });
             const catalogToolNames = () => createToolCatalog({

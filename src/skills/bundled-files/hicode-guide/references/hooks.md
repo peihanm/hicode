@@ -35,8 +35,9 @@ Group fields: optional `matcher`, optional `timeoutMs` and required nonempty `ho
 Every handler requires `purpose: observe|control` and one of:
 
 - `type: command` with `command` and optional `shell: bash|powershell`;
-- `type: command` with `executable` and `args` (direct argv, no shell expansion);
-- `type: prompt` with `prompt` (an independent model-based decision, not a script).
+- `type: command` with `executable` and `args` (direct argv, no shell expansion).
+
+Only command handlers are supported. Hooks do not have a built-in model evaluator.
 
 Optional handler fields: `timeoutMs`, `once`, and tool-event-only `if`. `if` uses the tool permission matcher, e.g. `bash(git push:*)`; it selects calls, not authorization. `once` is consumed before the first matched execution attempt, including failures; it is scoped to the current session runtime, not a durable “run only once forever” flag.
 
@@ -56,7 +57,7 @@ Optional handler fields: `timeoutMs`, `once`, and tool-event-only `if`. `if` use
 | `SubagentStart`, `SubagentStop` | Agent type | observe |
 | `SessionEnd` | End reason | observe |
 
-TurnEnd and SessionEnd do not allow Prompt handlers. Cancelled/aborted paths can record interrupted/skipped handlers rather than executing scripts; do not treat an observation Hook as guaranteed external delivery. Slash commands do not trigger UserPromptSubmit. Tool refusals before execution are not PostToolUseFailure events.
+Cancelled/aborted paths can record interrupted/skipped handlers rather than executing scripts; do not treat an observation Hook as guaranteed external delivery. Slash commands do not trigger UserPromptSubmit. Tool refusals before execution are not PostToolUseFailure events.
 
 ## Input and output
 
@@ -86,6 +87,6 @@ process.stdin.on('end', () => {
 });
 ```
 
-Prompt Hooks use the effective fast model, have no project tools and can incur API cost. Do not add a Prompt Hook for simple deterministic checks that a command can perform, or install any Hook merely to explain this feature.
+Do not install a Hook merely to explain this feature. Scripts may integrate external services when explicitly configured; HiCode supplies no model connection or provider credentials to Hook commands.
 
 Approved tool hooks also apply to Worker, Explore and custom subagents. Each child thread has independent `once` state retained across follow-up runs. Tool events carry child session/turn IDs; `actor` identifies the child and its working directory. Hook commands still run in the approved root project directory; resolve relative tool paths against `actor.cwd` when present. Root-only scripts can skip events with an `actor`. Children cannot approve, reload or manage hook configuration.

@@ -1,3 +1,4 @@
+import type {HookJSONOutput} from "./schema.js";
 import type {ToolOutcome} from "../toolResults/types.js";
 import type {PersistedToolResult, ToolResultStore} from "../toolResults/index.js";
 
@@ -21,10 +22,7 @@ interface HandlerSettings {
 export type HookCommand =
     | {command: string; shell?: "bash" | "powershell"; executable?: never; args?: never}
     | {executable: string; args: string[]; command?: never; shell?: never};
-export type HookSettings = HandlerSettings & (
-    | ({type: "command"} & HookCommand)
-    | {type: "prompt"; prompt: string}
-);
+export type HookSettings = HandlerSettings & {type: "command"} & HookCommand;
 interface HookMatcherSettings {
     matcher?: string;
     /** Total dispatch deadline for matching groups, at most 30 seconds and shorter for cleanup events. */
@@ -46,7 +44,6 @@ export type HookTrustSummary = {
     command?: string;
     executable?: string;
     args?: string[];
-    prompt?: string;
     timeoutMs?: number;
     dispatchTimeoutMs?: number;
 } & HookConfigurationOrigin;
@@ -167,20 +164,10 @@ export interface HookSessionRuntime {
     record(event: HookLifecycleEvent): void;
     recent(): readonly (Omit<HookExecution, "outcome" | "durationMs"> & {outcome: HookExecution["outcome"] | "running"; durationMs?: number})[];
 }
-export function createHookSessionRuntime(): HookSessionRuntime {
-    const claimed = new Set<string>();
-    const executions: ReturnType<HookSessionRuntime["recent"]>[number][] = [];
-    return {
-        claimOnce(key) {if (claimed.has(key)) return false; claimed.add(key); return true;},
-        wasClaimed: key => claimed.has(key),
-        record(event) {
-            const index = executions.findIndex(item => item.executionId === event.execution.executionId);
-            const value = event.type === "hook_started"
-                ? {...event.execution, outcome: "running" as const} : event.execution;
-            if (index >= 0) executions[index] = value;
-            else executions.push(value);
-            if (executions.length > 100) executions.splice(0, executions.length - 100);
-        },
-        recent: () => executions.map(item => ({...item})),
-    };
+
+export interface HookHandlerResult {
+    execution: HookHandlerExecution;
+    output?: HookJSONOutput;
+    diagnostic?: string;
+    interrupted?: boolean;
 }

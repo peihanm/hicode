@@ -1,6 +1,6 @@
 import {z} from "zod";
 import {HOOK_EVENTS, type HookEvent, type HookPurpose, type HooksSettingsFile} from "./types.js";
-import {isValidHookMatcher} from "./matcher.js";
+import {isValidHookMatcher} from "./definition.js";
 
 const handlerFields = {
     purpose: z.enum(["control", "observe"]),
@@ -15,7 +15,6 @@ const hookSettingsSchema = z.union([
     z.object({...handlerFields, type: z.literal("command"),
         executable: z.string().min(1).max(16_384).refine(value => !value.includes("\0")),
         args: z.array(z.string().max(20_000).refine(value => !value.includes("\0"))).max(100)}).strict(),
-    z.object({...handlerFields, type: z.literal("prompt"), prompt: z.string().trim().min(1).max(20_000)}).strict(),
 ]);
 const hookMatcherSettingsSchema = z.object({
     matcher: z.string().trim().min(1).max(200).refine(isValidHookMatcher,
@@ -30,7 +29,6 @@ export const hooksSettingsFileSchema: z.ZodType<HooksSettingsFile> = z.object(sh
         if (["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(event) && matcher.matcher?.split("|").some(name => ["list_files", "glob", "grep"].includes(name.replace(/^\^|\$$/g, "")))) {
             ctx.addIssue({code: "custom", path: [event, mi, "matcher"], message: "Search tools were removed; search commands now emit Bash events. Update this Hook matcher explicitly."});
         }
-        const cleanup = event === "TurnEnd" || event === "SessionEnd";
         if (matcher.timeoutMs && matcher.timeoutMs > (event === "TurnEnd" ? 5000 : event === "SessionEnd" ? 1500 : 30000)) {
             ctx.addIssue({code: "custom", path: [event, mi, "timeoutMs"], message: "Event deadline exceeds the limit allowed for this lifecycle"});
         }
@@ -40,8 +38,6 @@ export const hooksSettingsFileSchema: z.ZodType<HooksSettingsFile> = z.object(sh
                 ctx.addIssue({code: "custom", path: [...path, "if"], message: "if is only allowed for Tool events"});
             if (hook.purpose === "control" && !["PreToolUse", "UserPromptSubmit", "Stop"].includes(event))
                 ctx.addIssue({code: "custom", path: [...path, "purpose"], message: `${event} only allows observe`});
-            if (cleanup && hook.type === "prompt")
-                ctx.addIssue({code: "custom", path: [...path, "type"], message: `${event} does not allow Prompt handlers`});
         });
     });
 });
@@ -56,7 +52,7 @@ export interface HookJSONOutput {
 const common = {userMessage: z.string().max(2000).optional()};
 const contextual = {...common, additionalContext: z.string().max(10000).optional()};
 const reason = z.string().trim().min(1).max(2000);
-/** The same event-specific schema validates Command JSON and defines the Prompt tool. */
+/** Validate command output against the control powers allowed for this event. */
 export function hookOutputSchema(event: HookEvent, purpose: HookPurpose): z.ZodType<HookJSONOutput> {
     if (purpose === "observe") return z.object(
         ["TurnEnd", "SessionEnd", "Stop", "SubagentStart", "SubagentStop"].includes(event) ? common : contextual
@@ -72,4 +68,12 @@ export function hookOutputSchema(event: HookEvent, purpose: HookPurpose): z.ZodT
     ]);
     if (event === "UserPromptSubmit") return z.discriminatedUnion("decision", [pass, block]);
     return z.never();
+}
+
+const MAX_HOOK_MESSAGE_LENGTH = 2_000;
+
+export function boundedHookMessage(message: string): string {
+    return message.length <= MAX_HOOK_MESSAGE_LENGTH
+        ? message
+        : `${message.slice(0, MAX_HOOK_MESSAGE_LENGTH - 1)}…`;
 }

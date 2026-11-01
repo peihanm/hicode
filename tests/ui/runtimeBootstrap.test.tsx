@@ -244,8 +244,8 @@ describe("RuntimeBootstrap lifecycle", () => {
               },
               {
                 event: "UserPromptSubmit", hookId: "b".repeat(64), purpose: "control",
-                type: "prompt",
-                prompt: "Reject requests for production secrets",
+                type: "command",
+                executable: "node", args: ["./hooks/check-request.mjs"],
                 source: "project",
                 path: `${cwd}/.hicode/settings.json`,
               },
@@ -265,10 +265,10 @@ describe("RuntimeBootstrap lifecycle", () => {
       );
 
       await new Promise((resolve) => setTimeout(resolve, 30));
-      expect(instance.lastFrame()).toContain("Hooks that execute commands or call models");
+      expect(instance.lastFrame()).toContain("Hooks that execute commands");
       expect(instance.lastFrame()).toContain("PreToolUse · command: ./hooks/check.sh");
       expect(instance.lastFrame()).toContain(
-        "UserPromptSubmit · prompt: Reject requests for production secrets"
+        'UserPromptSubmit · command: ["node","./hooks/check-request.mjs"]'
       );
       instance.stdin.write("2");
       await new Promise((resolve) => setTimeout(resolve, 30));

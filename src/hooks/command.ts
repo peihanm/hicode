@@ -1,7 +1,7 @@
 import {runShellArgv, runShellCommand} from "../tools/bash/process.js";
-import {hookOutputSchema} from "./schema.js";
-import {boundedHookMessage, type HookHandlerResult} from "./handler.js";
-import {hookHandler} from "./identity.js";
+import {hookOutputSchema, boundedHookMessage} from "./schema.js";
+import type {HookHandlerResult} from "./types.js";
+import {hookHandler} from "./definition.js";
 import type {HookCommand, HookEnvelope, HookSettings} from "./types.js";
 
 interface HookCommandRunResult {
@@ -27,7 +27,7 @@ export async function defaultExecuteHookCommand(input: ExecuteHookCommandInput):
             ? {kind: "spawn_error", message: termination.error.message} : termination};
 }
 export async function executeCommandHook(options: {
-    hook: Extract<HookSettings, {type: "command"}>;
+    hook: HookSettings;
     envelope: HookEnvelope;
     signal: AbortSignal;
     timeoutMs: number;
