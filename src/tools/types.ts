@@ -201,6 +201,7 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     /** Trusted adapter metadata. Only these targets can be called through mcp_call. */
     mcp?: {
         serverName: string;
+        serverDescription?: string;
         annotations?: {readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean};
     };
 

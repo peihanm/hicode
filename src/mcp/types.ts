@@ -95,6 +95,7 @@ export type McpApprovalRequest = {
 export interface McpConnectedServer {
     config: LoadedMcpServerConfig;
     client: Client;
+    description?: string;
     tools: McpSdkTool[];
     stderr: string;
 

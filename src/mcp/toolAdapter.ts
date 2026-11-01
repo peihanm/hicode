@@ -78,7 +78,7 @@ export function adaptMcpTools(server: McpConnectedServer, policy?: McpToolPolicy
         const tool: Tool = {
             name: qualifiedName,
             description: `[MCP: ${server.config.name}] ${description || originalName}`,
-            mcp: {serverName: server.config.name, ...(remote.annotations ? {annotations: {
+            mcp: {serverName: server.config.name, ...(server.description ? {serverDescription: server.description} : {}), ...(remote.annotations ? {annotations: {
                 readOnlyHint: remote.annotations.readOnlyHint,
                 destructiveHint: remote.annotations.destructiveHint,
                 idempotentHint: remote.annotations.idempotentHint,

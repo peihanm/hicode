@@ -470,6 +470,10 @@ describe("MCP stdio integration", () => {
       const manager = await createFixtureManager(cwd);
       const fake = createFakeLLM([
         (call) => {
+          const context = call.messages.map(message => contentText(message.content)).join("\n");
+          expect(context).toContain("<available-mcp-tools>");
+          expect(context).toContain("Server: fixture\nDescription: Local echo and structured data fixtures.");
+          expect(context).not.toContain("DO_NOT_INJECT_SERVER_INSTRUCTIONS");
           expect(call.tools.map((tool) => tool.function.name)).toContain("tool_search");
           expect(call.tools.map((tool) => tool.function.name))
             .not.toContain("mcp__fixture__echo");

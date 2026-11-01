@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const server = new McpServer({ name: "hicode-test-mcp", version: "1.0.0" });
+const server = new McpServer({ name: "hicode-test-mcp", version: "1.0.0", description: "Local echo and structured data fixtures." }, {instructions: "DO_NOT_INJECT_SERVER_INSTRUCTIONS"});
 
 server.registerTool("echo", {
   description: "Echo a message",

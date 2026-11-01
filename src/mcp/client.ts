@@ -172,6 +172,7 @@ export async function connectMcpServer(
         connected = {
             config: server,
             client,
+            description: client.getServerVersion()?.description,
             tools,
             get stderr() {
                 return stderr;

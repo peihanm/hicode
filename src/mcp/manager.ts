@@ -257,7 +257,7 @@ class McpManager implements McpManagerLike {
         for (const tool of adapted.tools) {
             const remote = remoteByName.get(tool.name);
             if (!remote) throw new Error("MCP tool has no matching remote definition");
-            const fingerprint = stableJson({remote, policy: connection.snapshot.toolPolicy ?? null});
+            const fingerprint = stableJson({remote, description: connected.description ?? null, policy: connection.snapshot.toolPolicy ?? null});
             const prior = connection.definitions.get(tool.name);
             const existing = previous.get(tool.name);
             const same = existing && prior?.fingerprint === fingerprint;
