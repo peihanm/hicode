@@ -7,7 +7,7 @@ import {createFilePermissionMatcher} from "../permissions/filePattern.js";
 import {isPathInside, resolveFilePermissionPath} from "../permissions/pathGuard.js";
 import {createReadOnlyBashTool} from "../tools/bash/bash.js";
 import {prepareCommandReadAccess} from "../tools/bash/readAccess.js";
-import {createFileStateTracker} from "../tools/shared/fileState.js";
+import {createFileStateTracker} from "../tools/files/state.js";
 import {createToolRuntime} from "../tools/runtime.js";
 import type {ToolContext} from "../tools/types.js";
 

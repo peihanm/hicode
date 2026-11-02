@@ -7,7 +7,7 @@ import {executeToolResult} from "../helpers/executeTool.js";
 import {createDirectoryAccessRuntime} from "../../src/permissions/directoryAccess.js";
 import {resolvePermission} from "../../src/permissions/resolvePermission.js";
 import {webFetchTool} from "../../src/tools/webFetch/webFetch.js";
-import {writeFileTool} from "../../src/tools/writeFile/writeFile.js";
+import {writeFileTool} from "../../src/tools/files/write.js";
 import {bashTool} from "../../src/tools/bash/bash.js";
 import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";

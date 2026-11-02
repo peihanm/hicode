@@ -18,7 +18,7 @@ import {
 } from "../../permissions/shellCommand.js";
 import type {ShellExecutionResult} from "./process.js";
 import type {ShellTaskSnapshot} from "../../tasks/index.js";
-import {displayToolPath} from "../shared/paths.js";
+import {displayToolPath} from "../files/paths.js";
 import {selectUtf8Range} from "../../toolResults/utf8.js";
 import {prepareCommandReadAccess} from "./readAccess.js";
 import {checkMemoryStoragePath} from "../../memory/publicationAccess.js";

@@ -2,7 +2,7 @@ import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {createModelConfiguration, type ModelConfiguration} from "../settings/modelConfiguration.js";
 import {ensureProjectIdentity} from "../persistence/storageIdentity.js";
 import {loadHiCodeSettings} from "../settings/index.js";
-import {FileCommitCoordinator} from "../tools/shared/fileCommit.js";
+import {FileCommitCoordinator} from "../tools/files/io.js";
 import {createMcpManager} from "../mcp/manager.js";
 import type {McpManagerLike, McpManagerOptions, McpServerSnapshot} from "../mcp/types.js";
 import {loadSkills} from "../skills/loader.js";
@@ -27,7 +27,7 @@ import {
     type SubagentCatalog,
     validateCustomAgentTools,
 } from "../subagents/index.js";
-import {createAgentTool} from "../tools/agent/agent.js";
+import {createAgentTool} from "../tools/agent/tools.js";
 import type {CreateSubagentThread} from "../subagents/types.js";
 import type {AgentFileSource} from "../subagents/types.js";
 import type {HostAgentContribution} from "./rootContributions.js";

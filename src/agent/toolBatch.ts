@@ -1,4 +1,4 @@
-import {toolCallTarget} from "../tools/mcpCall.js";
+import {toolCallTarget} from "../tools/mcp/call.js";
 import {contentText} from "../images/content.js";
 import {toolFileChanges} from "../toolResults/uiData.js";
 import {randomUUID} from "node:crypto";

@@ -9,7 +9,7 @@ import {ApprovalEpoch} from "../permissions/approval.js";
 import type {MessageContent} from "../images/content.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {createSessionPersistence} from "../session/storage.js";
-import {createFileStateTracker} from "../tools/shared/fileState.js";
+import {createFileStateTracker} from "../tools/files/state.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";

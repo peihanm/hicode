@@ -1,5 +1,5 @@
 import {shellResultReceiptSchema} from "../tools/bash/receipt.js";
-import {fileReadReceiptSchema} from "../tools/readFile/receipt.js";
+import {fileReadReceiptSchema} from "../tools/files/receipt.js";
 import {agentReceiptSchema} from "../tools/agent/receipt.js";
 import {contentText, imageReferenceSchema} from "../images/content.js";
 import {z} from "zod";

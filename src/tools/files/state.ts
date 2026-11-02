@@ -103,7 +103,6 @@ export class FileStateTracker {
         this.states.set(key, {hash: hash(input.content), size, ranges: merge(ranges)});
     }
 
-    clear(): void { this.states.clear(); this.pending.clear(); }
 }
 
 export function createFileStateTracker(): FileStateTracker { return new FileStateTracker(); }

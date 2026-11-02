@@ -4,7 +4,7 @@ import {
     type AgentDefinition,
     type LoadedCustomAgents,
 } from "../../src/subagents/index.js";
-import {createAgentTool} from "../../src/tools/agent/agent.js";
+import {createAgentTool} from "../../src/tools/agent/tools.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 
 function definition(name: string, description = `use ${name}`): AgentDefinition {

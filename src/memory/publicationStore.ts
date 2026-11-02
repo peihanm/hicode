@@ -1,6 +1,6 @@
 import {parseMemoryTopic, serializeMemoryTopic} from "./topic.js";
 import {readdirSync, lstatSync} from "node:fs";
-import {prepareFileCommit} from "../tools/shared/fileCommit.js";
+import {prepareFileCommit} from "../tools/files/io.js";
 import {realpath} from "node:fs/promises";
 import type { ExtractedMemoryFact } from "./sourceExtractor.js";
 import { memoryFrameSchema, type MemoryFrame } from "./publicationSchema.js";

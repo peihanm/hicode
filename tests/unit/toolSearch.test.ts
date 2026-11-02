@@ -6,7 +6,9 @@ import {
     createToolSearchIndex,
     tokenizeToolSearchText,
 } from "../../src/tools/toolSearch/searchIndex.js";
-import {selectToolSearchDocuments} from "../../src/tools/toolSearch/toolSearch.js";
+import {createToolSearchTool} from "../../src/tools/toolSearch/toolSearch.js";
+import {createTestContext} from "../helpers/testContext.js";
+import {withTempProject} from "../helpers/tempProject.js";
 import type {Tool} from "../../src/tools/types.js";
 
 function documentFor(
@@ -90,17 +92,19 @@ describe("tool search", () => {
             .toBe("mcp__calendar__list_events");
     });
 
-    test("names 精确匹配、去重并报告缺失名称", () => {
-        const index = createToolSearchIndex([
-            documentFor("mcp__fixture__echo", "Echo", "message"),
-        ]);
-        const selection = selectToolSearchDocuments(
-            index,
-            {names: ["mcp__fixture__echo", "mcp__fixture__echo", "missing"]}
-        );
-        expect(selection.matches.map((item) => item.name)).toEqual([
-            "mcp__fixture__echo",
-        ]);
-        expect(selection.missingNames).toEqual(["missing"]);
+    test("names lookup preserves exact matching, deduplication and missing names", async () => {
+        await withTempProject(async cwd => {
+            const tool = createToolSearchTool(createToolSearchIndex([
+                documentFor("mcp__fixture__echo", "Echo", "message"),
+            ]));
+            const output = await tool.execute({names: ["mcp__fixture__echo", "mcp__fixture__echo", "missing"]},
+                createTestContext(cwd), {toolCallId: "search"});
+            expect(typeof output).toBe("string");
+            if (typeof output !== "string") throw new Error("Expected JSON text");
+            const result = JSON.parse(output);
+            expect(result.tools).toHaveLength(1);
+            expect(result.tools[0].name).toBe("mcp__fixture__echo");
+            expect(result.missingNames).toEqual(["missing"]);
+        });
     });
 });

@@ -1,11 +1,43 @@
 import {randomUUID} from "node:crypto";
-import {closeSync, constants, fstatSync, linkSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync} from "node:fs";
+import {closeSync, constants, fstatSync, linkSync, openSync, readSync, realpathSync, renameSync, unlinkSync} from "node:fs";
+import type {BigIntStats} from "node:fs";
 import {mkdir, open, unlink} from "node:fs/promises";
 import {dirname, join, relative, resolve} from "node:path";
 import {throwIfTurnAborted} from "../../runtime/abort.js";
+import {hasFileSystemErrorCode} from "../../persistence/errors.js";
 
-function missing(error: unknown): boolean {
-    return error instanceof Error && "code" in error && error.code === "ENOENT";
+const MAX_FILE_SNAPSHOT_BYTES = 20 * 1024 * 1024;
+
+function identity(info: BigIntStats): string {
+    return [info.dev, info.ino, info.size, info.mode, info.mtimeNs, info.ctimeNs].join(":");
+}
+
+function allocateSnapshot(info: BigIntStats): Buffer {
+    if (!info.isFile()) throw new Error("Only regular files are supported, not directories, symlinks or special files");
+    if (info.size > BigInt(MAX_FILE_SNAPSHOT_BYTES)) throw new Error(`File exceeds the ${MAX_FILE_SNAPSHOT_BYTES} byte safe-read limit`);
+    return Buffer.alloc(Number(info.size));
+}
+
+/** Bounded bytes from one regular-file descriptor; verify identity before returning. */
+export async function readFileSnapshot(path: string, signal: AbortSignal): Promise<{content: Buffer}> {
+    signal.throwIfAborted();
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+        signal.throwIfAborted();
+        const before = await handle.stat({bigint: true});
+        const content = allocateSnapshot(before);
+        let position = 0;
+        while (position < content.length) {
+            signal.throwIfAborted();
+            const {bytesRead} = await handle.read(content, position, content.length - position, position);
+            if (!bytesRead) break;
+            position += bytesRead;
+        }
+        const after = await handle.stat({bigint: true});
+        signal.throwIfAborted();
+        if (position !== content.length || identity(before) !== identity(after)) throw new Error("File changed while reading; use read_file again");
+        return {content};
+    } finally { await handle.close(); }
 }
 
 function canonicalPath(path: string): string {
@@ -13,7 +45,7 @@ function canonicalPath(path: string): string {
     while (true) {
         try { return resolve(realpathSync(parent), relative(parent, path)); }
         catch (error) {
-            if (!missing(error) || dirname(parent) === parent) throw error;
+            if (!hasFileSystemErrorCode(error, "ENOENT") || dirname(parent) === parent) throw error;
             parent = dirname(parent);
         }
     }
@@ -26,21 +58,24 @@ interface FileVersion {
 }
 
 function readVersion(path: string): FileVersion {
+    let fd: number;
     try {
-        const entry = lstatSync(path);
-        if (!entry.isFile()) throw new Error(`File commits require regular files; symlinks are not allowed: ${path}`);
+        fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     } catch (error) {
-        if (missing(error)) return {content: null, identity: "missing"};
+        if (hasFileSystemErrorCode(error, "ENOENT")) return {content: null, identity: "missing"};
         throw error;
     }
-    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
         const before = fstatSync(fd, {bigint: true});
-        if (!before.isFile()) throw new Error(`File commit target is not a regular file: ${path}`);
-        const content = readFileSync(fd);
+        const content = allocateSnapshot(before);
+        let position = 0;
+        while (position < content.length) {
+            const bytesRead = readSync(fd, content, position, content.length - position, position);
+            if (!bytesRead) break;
+            position += bytesRead;
+        }
         const after = fstatSync(fd, {bigint: true});
-        const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.size, stat.mode, stat.mtimeNs, stat.ctimeNs].join(":");
-        if (identity(before) !== identity(after)) throw new Error(`File changed while reading; use read_file again: ${path}`);
+        if (position !== content.length || identity(before) !== identity(after)) throw new Error(`File changed while reading; use read_file again: ${path}`);
         return {content, identity: identity(after), mode: Number(after.mode) & 0o7777};
     } finally { closeSync(fd); }
 }
@@ -120,4 +155,18 @@ export function prepareFileCommit(path: string, canonical: string, expected: str
             if (temporary) await unlink(temporary).catch(() => undefined);
         }
     };
+}
+
+/** File tools share the Root commit boundary without persisting file history. */
+export async function commitFileWrite(input: {
+    coordinator: FileCommitCoordinator;
+    signal: AbortSignal;
+    path: string;
+    beforeContent: string | Buffer | null;
+    afterContent: string | Buffer | null;
+}): Promise<void> {
+    return input.coordinator.run(input.path, input.signal, async canonical => {
+        const commit = prepareFileCommit(input.path, canonical, input.beforeContent);
+        await commit(input.afterContent, input.signal);
+    });
 }

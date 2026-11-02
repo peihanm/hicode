@@ -3,7 +3,7 @@ import type {OpenAITool} from "../llm/types.js";
 import type {ToolExecutionResult} from "../toolResults/index.js";
 import {createToolCatalog, schemaForTool} from "./catalog.js";
 import {executeRegisteredTool, formatInterruptedToolResult, inlineToolResult, isToolConcurrencySafe} from "./execute.js";
-import {MCP_CALL_NAME, mcpCallParameters, mcpCallSchema} from "./mcpCall.js";
+import {MCP_CALL_NAME, mcpCallParameters, mcpCallSchema} from "./mcp/call.js";
 import {createToolSearchTool} from "./toolSearch/toolSearch.js";
 import {buildToolSearchDocument, createToolSearchIndex} from "./toolSearch/searchIndex.js";
 import type {Tool, ToolContext} from "./types.js";

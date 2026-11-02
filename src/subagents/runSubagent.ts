@@ -37,7 +37,7 @@ import type {
 } from "./types.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
 import {usesFastSubagentModel} from "./model.js";
-import {createFileStateTracker} from "../tools/shared/fileState.js";
+import {createFileStateTracker} from "../tools/files/state.js";
 import {resolveSubagentDirectory, subagentInstructions, subagentPermissionRules} from "./workspace.js";
 
 interface SubagentThreadDependencies {

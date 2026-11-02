@@ -5,7 +5,7 @@ import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLL
 import {createSubagentRunnerForTest} from "../helpers/subagent.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import {createAgentTool} from "../../src/tools/agent/agent.js";
+import {createAgentTool} from "../../src/tools/agent/tools.js";
 import {createToolRuntime} from "../../src/tools/registry.js";
 import {runAgentForTest} from "../helpers/agent.js";
 import type {Message} from "../../src/llm/types.js";

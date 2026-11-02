@@ -1,4 +1,4 @@
-import {readFileSnapshot} from "../tools/shared/fileSnapshot.js";
+import {readFileSnapshot} from "../tools/files/io.js";
 import {isPathInside} from "../permissions/pathGuard.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {requestApproval} from "../permissions/approval.js";
@@ -6,7 +6,7 @@ import {basename, resolve} from "node:path";
 import {realpath} from "node:fs/promises";
 import {viewImageTool} from "../tools/viewImage/viewImage.js";
 import {resolvePermission} from "../permissions/index.js";
-import {resolveToolPath} from "../tools/shared/paths.js";
+import {resolveToolPath} from "../tools/files/paths.js";
 import {importUserInput} from "./turnInput.js";
 import {supportsToolImages} from "../images/request.js";
 import {IMAGE_MAX_COUNT, type ImageReference} from "../images/content.js";

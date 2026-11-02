@@ -1,4 +1,4 @@
-import {toolCallTarget} from "../tools/mcpCall.js";
+import {toolCallTarget} from "../tools/mcp/call.js";
 import {TaskReviewProgress} from "./taskReview.js";
 import {contentText, type MessageContent} from "../images/content.js";
 import {createImageAccess} from "../images/access.js";

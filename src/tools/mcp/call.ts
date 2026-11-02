@@ -1,6 +1,6 @@
 import {z} from "zod";
 import {zodToJsonSchema} from "zod-to-json-schema";
-import type {OpenAITool} from "../llm/types.js";
+import type {OpenAITool} from "../../llm/types.js";
 
 export const MCP_CALL_NAME = "mcp_call";
 

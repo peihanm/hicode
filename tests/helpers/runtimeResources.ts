@@ -1,6 +1,6 @@
 import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
 import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
-import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
+import {FileCommitCoordinator} from "../../src/tools/files/io.js";
 import type { RootRuntimeResources } from "../../src/runtime/resources.js";
 import { createToolRuntime } from "../../src/tools/registry.js";
 import {createTaskRuntime, type TaskRuntimeLike} from "../../src/tasks/index.js";

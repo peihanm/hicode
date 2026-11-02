@@ -2,7 +2,7 @@ import {expect, test} from "bun:test";
 import {readFile, readdir, symlink, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {createToolRuntime} from "../../src/tools/runtime.js";
-import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
+import {FileCommitCoordinator} from "../../src/tools/files/io.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {executeDeliveredTool} from "../helpers/executeTool.js";

@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {chmod, mkdir, open, readFile, readdir, realpath, rename, stat, symlink, writeFile} from "node:fs/promises";
 import {join} from "node:path";
-import {FileCommitCoordinator, prepareFileCommit} from "../../src/tools/shared/fileCommit.js";
+import {FileCommitCoordinator, prepareFileCommit} from "../../src/tools/files/io.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
@@ -67,6 +67,22 @@ const calls = [
     {name: "edit_file", input: {path: "file.txt", edits: [{old_string: "before", new_string: "after"}]}},
     {name: "write_file", input: {path: "file.txt", content: "after"}},
 ] as const;
+
+test("commit rereads reject a target that grew beyond the read budget and clean staged output", async () => {
+    await withTempProject(async cwd => {
+        const path = join(cwd, "growing.txt");
+        await writeFile(path, "before");
+        const canonical = await realpath(path);
+        const commit = prepareFileCommit(path, canonical, "before");
+        const oversized = 20 * 1024 * 1024 + 1;
+        const file = await open(path, "r+");
+        try {await file.truncate(oversized);} finally {await file.close();}
+        expect(() => prepareFileCommit(path, canonical, "before")).toThrow("safe-read limit");
+        await expect(commit("after", new AbortController().signal)).rejects.toThrow("safe-read limit");
+        expect((await stat(path)).size).toBe(oversized);
+        expect((await readdir(cwd)).filter(name => name.startsWith(".hicode-write-"))).toEqual([]);
+    });
+});
 
 test("取消排队的写入不会阻塞后续提交", async () => {
     const coordinator = new FileCommitCoordinator();

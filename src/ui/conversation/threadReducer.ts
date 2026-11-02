@@ -1,4 +1,4 @@
-import {toolCallTarget} from "../../tools/mcpCall.js";
+import {toolCallTarget} from "../../tools/mcp/call.js";
 import {contentText, type MessageContent} from "../../images/content.js";
 import {userContentText} from "./userContent.js";
 import {toolFileChanges} from "../../toolResults/uiData.js";

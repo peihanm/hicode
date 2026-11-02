@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
-import {createAgentTool} from "../../src/tools/agent/agent.js";
+import {createAgentTool} from "../../src/tools/agent/tools.js";
 
 describe("agent definitions", () => {
   test("内置 Agent 各自使用收窄工具集", () => {

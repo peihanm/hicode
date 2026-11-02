@@ -1,8 +1,8 @@
 import {WebSources} from "../../src/tools/webFetch/state.js";
 import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
-import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
-import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
+import {createFileStateTracker} from "../../src/tools/files/state.js";
+import {FileCommitCoordinator} from "../../src/tools/files/io.js";
 import { describe, expect, test } from "bun:test";
 import { createCompactState } from "../../src/context/index.js";
 import type {

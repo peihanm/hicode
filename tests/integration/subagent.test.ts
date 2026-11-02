@@ -1,7 +1,7 @@
 import {waitForTaskCompletion} from "../../src/tasks/wait.js";
 import {createWriterRegistry} from "../helpers/writerAgent.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
-import {createAgentTool} from "../../src/tools/agent/agent.js";
+import {createAgentTool} from "../../src/tools/agent/tools.js";
 import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";

@@ -1,22 +1,20 @@
-import {agentFollowupTool} from "./agentFollowup/agentFollowup.js";
-import {agentMessageTool} from "./agentMessage/agentMessage.js";
+import {createAgentTool, agentFollowupTool, agentMessageTool} from "./agent/tools.js";
 import {viewImageTool} from "./viewImage/viewImage.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import type {OpenAITool} from "../llm/types.js";
 import {BUILTIN_SUBAGENT_REGISTRY} from "../subagents/registry.js";
-import {createAgentTool} from "./agent/agent.js";
 import {askUserTool} from "./askUser/askUser.js";
 import {bashTool} from "./bash/bash.js";
-import {editFileTool} from "./editFile/editFile.js";
-import {readFileTool} from "./readFile/readFile.js";
+import {editFileTool} from "./files/edit.js";
+import {readFileTool} from "./files/read.js";
 import {skillTool} from "./skill/skill.js";
 import {taskTool} from "./task/task.js";
 import {todoWriteTool} from "./todoWrite/todoWrite.js";
-import {MCP_CALL_NAME} from "./mcpCall.js";
+import {MCP_CALL_NAME} from "./mcp/call.js";
 import {TOOL_SEARCH_NAME} from "./toolSearch/toolSearch.js";
 import type {Tool} from "./types.js";
 import {webFetchTool} from "./webFetch/webFetch.js";
-import {writeFileTool} from "./writeFile/writeFile.js";
+import {writeFileTool} from "./files/write.js";
 
 export interface ToolRegistration {
     tool: Tool;

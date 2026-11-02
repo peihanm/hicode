@@ -5,7 +5,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {matchesToolPermissionRule} from "../../src/permissions/resolvePermission.js";
-import {readFileTool} from "../../src/tools/readFile/readFile.js";
+import {readFileTool} from "../../src/tools/files/read.js";
 import {hicodeSettingsFileSchema} from "../../src/settings/schema.js";
 import {loadHiCodeSettings} from "../../src/settings/load.js";
 

@@ -8,7 +8,7 @@ import type {PermissionResult} from "./types.js";
 import {toolPathInput, validateWorkspacePath, resolveFilePermissionPath} from "./pathGuard.js";
 import {matchPattern, parsePermissionRule} from "./rules.js";
 import {directoryOperationForTool} from "./directoryAccess.js";
-import {resolveToolPath} from "../tools/shared/paths.js";
+import {resolveToolPath} from "../tools/files/paths.js";
 import {checkSessionArchivePath, resolveSessionArchiveFile} from "../session/archiveAccess.js";
 import {checkMemoryStoragePath} from "../memory/publicationAccess.js";
 import {createFilePermissionMatcher} from "./filePattern.js";

@@ -13,7 +13,7 @@ import { basename, dirname, join } from "node:path";
 import { getProjectKey } from "../../src/persistence/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTestToolResultStore, getArtifactKey } from "../helpers/toolResultStore.js";
-import {readSavedOutput} from "../../src/tools/readFile/savedOutput.js";
+import {readSavedOutput} from "../../src/tools/files/savedOutput.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";
 
 describe("ToolResultStore", () => {

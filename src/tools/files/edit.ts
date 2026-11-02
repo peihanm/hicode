@@ -1,11 +1,9 @@
 import {z} from "zod";
 import type {Tool, ToolContext} from "../types.js";
-import {displayToolPath, resolveToolPath} from "../shared/paths.js";
-import {findMatches, type MatchSpan} from "./strMatch.js";
-import {normalizeFileText} from "../shared/fileState.js";
+import {displayToolPath, resolveToolPath} from "./paths.js";
+import {normalizeFileText} from "./state.js";
 import {createFileChange} from "../../fileChanges/index.js";
-import {commitFileWrite} from "../shared/fileWrite.js";
-import {readFileSnapshot} from "../shared/fileSnapshot.js";
+import {commitFileWrite, readFileSnapshot} from "./io.js";
 
 const editSchema = z.object({
     old_string: z.string().min(1).describe("Exact text to replace in the current file. Include enough context to identify one location."),
@@ -224,4 +222,28 @@ function formatDiff(oldStr: string, newStr: string): string {
 function truncate(s: string, max: number): string {
     if (s.length <= max) return JSON.stringify(s);
     return JSON.stringify(s.slice(0, max)) + "...";
+}
+
+interface MatchSpan {
+    start: number;
+    end: number;
+}
+
+function normalizeQuotes(value: string): string {
+    return value.replace(/[\u201C\u201D]/g, '\"').replace(/[\u2018\u2019]/g, "'");
+}
+
+/** Exact matches take precedence; normalization preserves UTF-16 offsets. */
+function findMatches(content: string, target: string): MatchSpan[] {
+    if (!target) return [];
+    const exact = content.includes(target);
+    const haystack = exact ? content : normalizeQuotes(content);
+    const needle = exact ? target : normalizeQuotes(target);
+    const spans: MatchSpan[] = [];
+    let start = haystack.indexOf(needle);
+    while (start >= 0) {
+        spans.push({start, end: start + needle.length});
+        start = haystack.indexOf(needle, start + 1);
+    }
+    return spans;
 }

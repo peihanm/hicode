@@ -2,7 +2,7 @@ import {WebSources} from "../../src/tools/webFetch/state.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../src/context/config.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
-import {FileCommitCoordinator} from "../../src/tools/shared/fileCommit.js";
+import {FileCommitCoordinator} from "../../src/tools/files/io.js";
 import { createCompactState } from "../../src/context/index.js";
 import type { PermissionDecision, PermissionMode } from "../../src/permissions/index.js";
 import type {PermissionPromptPolicy} from "../../src/permissions/index.js";
@@ -16,7 +16,7 @@ import type { McpManagerLike } from "../../src/mcp/types.js";
 import {
   createFileStateTracker,
   type FileStateTracker,
-} from "../../src/tools/shared/fileState.js";
+} from "../../src/tools/files/state.js";
 import {
   EMPTY_PROJECT_INSTRUCTIONS,
   type ProjectInstructions,

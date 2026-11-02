@@ -6,7 +6,7 @@ import {createTestContext} from "../helpers/testContext.js";
 import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {runShellCommand} from "../../src/tools/bash/process.js";
-import {createFileStateTracker} from "../../src/tools/shared/fileState.js";
+import {createFileStateTracker} from "../../src/tools/files/state.js";
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 

@@ -3,7 +3,7 @@ import {bashTool} from "../../src/tools/bash/bash.js";
 import {describe, expect, test} from "bun:test";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {executeToolCallBatch} from "../../src/agent/toolBatch.js";
-import {createAgentTool} from "../../src/tools/agent/agent.js";
+import {createAgentTool} from "../../src/tools/agent/tools.js";
 import {createSubagentRegistry} from "../../src/subagents/registry.js";
 import type {Message, ToolCall} from "../../src/llm/types.js";
 import {withTempProject} from "../helpers/tempProject.js";

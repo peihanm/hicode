@@ -1,17 +1,17 @@
 import {z} from "zod";
+import {hasFileSystemErrorCode} from "../../persistence/errors.js";
 import {lstat} from "node:fs/promises";
 import type {Tool} from "../types.js";
-import {displayToolPath, resolveToolPath} from "../shared/paths.js";
+import {displayToolPath, resolveToolPath} from "./paths.js";
 import {createFileChange} from "../../fileChanges/index.js";
-import {commitFileWrite} from "../shared/fileWrite.js";
-import {readFileSnapshot} from "../shared/fileSnapshot.js";
+import {commitFileWrite, readFileSnapshot} from "./io.js";
 
 async function fileExists(path: string): Promise<boolean> {
     try {
         await lstat(path);
         return true;
     } catch (error) {
-        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return false;
+        if (hasFileSystemErrorCode(error, "ENOENT")) return false;
         throw error;
     }
 }
