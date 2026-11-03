@@ -1,5 +1,5 @@
 import type {MessageContent} from "../images/content.js";
-type AgentInputSource = "user_input" | "task_notification" | "agent_message";
+type AgentInputSource = "user_input" | "user_answer" | "task_notification" | "agent_message" | "runtime_message";
 
 export interface QueuedAgentInput {
     id: string;

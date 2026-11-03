@@ -172,7 +172,7 @@ function decodeCommon(value: Record<string, unknown>): {
 function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | undefined {
     if (!hasOnlyKeys(value, [
         "id", "kind", "owner", "command", "cwd", "status", "startedAt",
-        "completedAt", "output", "outputResult", "outputIssue", "termination", "executionMode", "phase", "timing", "processStartedAt",
+        "completedAt", "output", "outputResult", "outputIssue", "termination", "executionMode", "acceptsInput", "phase", "timing", "processStartedAt",
     ])) return undefined;
     const common = decodeCommon(value);
     const outputResult = value.outputResult === undefined
@@ -188,6 +188,7 @@ function decodeShellTask(value: Record<string, unknown>): ShellTaskSnapshot | un
         !isRecord(value.timing) || !hasOnlyKeys(value.timing, ["queuedMs", "runningMs"]) || !safeCount(value.timing.queuedMs) || !safeCount(value.timing.runningMs) ||
         (value.processStartedAt !== undefined && !isoDate(value.processStartedAt)) ||
         value.kind !== "shell" || !common || common.status === "interrupted" ||
+        (value.acceptsInput !== undefined && typeof value.acceptsInput !== "boolean") ||
         (value.executionMode !== "sandbox" && value.executionMode !== "host") ||
         !boundedString(value.command, MAX_COMMAND_CHARACTERS) ||
         !boundedString(value.cwd, MAX_PATH_CHARACTERS) ||

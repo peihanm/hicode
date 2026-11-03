@@ -62,11 +62,14 @@ export interface ToolContext {
     // Called when tool checkPermissions returns ask.
     // Returns allow/deny; the caller owns the dialog.
     // toolName and input generate allow rules for "don't ask again".
+    userQuestions?: {ask(input: import("../runtime/userQuestions.js").UserQuestionInput, requestId: string): string};
+
     canUseTool: (
         tool: string,
         message: string,
         input: unknown,
         options?: {
+            questionDelivery?: "async";
             allowPersistent?: boolean;
             presentation?: PermissionPromptPresentation;
             signal?: AbortSignal;
@@ -186,7 +189,7 @@ export interface ToolContext {
 interface ToolInvocation {
     permissionApproved?: true;
     toolCallId: string;
-    userAnswers?: Readonly<Record<string, string>>;
+    userAnswers?: Readonly<Record<string, string | string[]>>;
 }
 
 // Tool contract: name, description, Zod input schema, permission declaration and execution.

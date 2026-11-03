@@ -33,6 +33,7 @@ export interface ManagedShellTask extends ManagedTaskBase {
     published: boolean;
     publication: Promise<void>;
     inlineResult?: ShellExecutionResult;
+    writeInput?: (text: string) => number;
     executionMode: "sandbox" | "host";
     command: string;
     cwd: string;
@@ -109,6 +110,7 @@ export async function snapshotShell(
     return {
         id: task.id,
         kind: "shell",
+        ...(task.writeInput && task.status === "running" ? {acceptsInput: true} : {}),
         executionMode: task.executionMode,
         phase: task.phase,
         timing: {queuedMs: Math.max(0, Math.round((task.acquiredTick ?? task.finishedTick ?? performance.now()) - task.createdTick)),

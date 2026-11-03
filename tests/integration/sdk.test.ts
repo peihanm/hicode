@@ -989,3 +989,42 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
     try {await expect(thread.runStreamed("hello", {permissionMode: "full-access"})).rejects.toMatchObject({code: "permission_mode_not_allowed"});}
     finally {await thread.close(); await resources.close();}
 }));
+
+test("SDK async question lets the turn finish, accepts a late Host answer and consumes it on a later run", async () => {
+    await withTempProject(async (cwd, storage) => {
+        let answer: ((value: import("../../src/sdk/protocol.js").InteractionResponse) => void) | undefined;
+        let hostSignal: AbortSignal | undefined;
+        let sawAnswer = false;
+        const fake = createFakeLLM([
+            assistantToolCall("ask_user", {delivery: "async", questions: [{question: "Address?"}]}, "async-sdk-question"),
+            assistantText("Independent work complete; waiting for your answer."),
+            call => {
+                sawAnswer = call.messages.some(m => m.role === "user" && m.origin === "user" && contentText(m.content).includes('"Address?"="localhost"'));
+                return assistantText("Received answer.");
+            },
+        ]);
+        const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: createFakeAgentRuntime(fake)});
+        const thread = await createSDKThread({resources,
+            seed: {sessionId: createSessionId(), history: createInitialHistory(cwd), compactState: createCompactState()},
+            state: {todos: [], uiEvents: [], permissionMode: "ask"}, resumed: false,
+            signal: new AbortController().signal,
+            host: {onInteraction(request, context) {
+                expect(request.kind).toBe("question");
+                if (request.kind === "question") expect(request.delivery).toBe("async");
+                hostSignal = context.signal;
+                return new Promise(resolve => {answer = resolve;});
+            }}, onClose() {},
+        });
+        try {
+            const first = await thread.run("Ask me asynchronously.");
+            expect(first.finalResponse).toContain("Independent work complete");
+            expect(hostSignal?.aborted).toBe(false);
+            answer!({behavior: "allow", answers: {"Address?": "localhost"}});
+            await Bun.sleep(30);
+            expect(hostSignal?.aborted).toBe(true);
+            const second = await thread.run("Continue.");
+            expect(second.finalResponse).toBe("Received answer.");
+            expect(sawAnswer).toBe(true);
+        } finally {await thread.close(); await resources.close();}
+    });
+});

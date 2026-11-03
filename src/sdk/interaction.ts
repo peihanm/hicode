@@ -1,3 +1,4 @@
+import {validUserAnswer} from "../runtime/userQuestions.js";
 import type {InteractionResponse} from "./protocol.js";
 
 export function normalizeInteractionResponse(value: unknown): InteractionResponse {
@@ -12,19 +13,19 @@ export function normalizeInteractionResponse(value: unknown): InteractionRespons
             return {behavior: "deny", message: "SDK Host returned unknown interaction response fields"};
         }
         const rawAnswers = "answers" in value ? value.answers : undefined;
-        let answers: Record<string, string> | undefined;
+        let answers: Record<string, string | string[]> | undefined;
         if (rawAnswers !== undefined) {
             if (typeof rawAnswers !== "object" || rawAnswers === null || Array.isArray(rawAnswers)) {
                 return {behavior: "deny", message: "SDK Host returned invalid answers"};
             }
             const entries = Object.entries(rawAnswers);
             if (entries.length < 1 || entries.length > 4 || entries.some(([key, answer]) =>
-                !key.trim() || typeof answer !== "string" || !answer.trim() || answer.length > 16_384)) {
+                !key.trim() || !validUserAnswer(answer))) {
                 return {behavior: "deny", message: "SDK Host returned invalid answers"};
             }
             answers = {};
             for (const [key, answer] of entries) {
-                if (typeof answer === "string") Object.defineProperty(answers, key, {value: answer, enumerable: true});
+                if (validUserAnswer(answer)) Object.defineProperty(answers, key, {value: answer, enumerable: true});
             }
         }
         const persistence = "persistence" in value

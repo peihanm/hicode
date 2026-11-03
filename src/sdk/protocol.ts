@@ -77,6 +77,7 @@ export type InteractionRequest =
     })
     | (InteractionRequestBase & {
         kind: "question";
+        delivery: "sync" | "async";
         toolName: "ask_user";
         message: string;
         input: unknown;
@@ -96,7 +97,7 @@ export type InteractionResponse =
         persistence?: "once" | "always";
         directoryScope?: "once" | "session" | "project";
         networkScope?: "once" | "session";
-        answers?: Record<string, string>;
+        answers?: Record<string, string | string[]>;
     }
     | {behavior: "deny"; message: string};
 

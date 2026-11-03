@@ -359,7 +359,7 @@ export function useTurnController({
                             sessionStartContextsRef.current,
                         inputChannel: messageQueue.createAgentInputChannel(
                             (message) => {
-                                if (message.type === "user_input") {
+                                if (message.type === "user_input" || message.type === "user_answer") {
                                     eventStore.appendUser(message.content);
                                 }
                             }
@@ -408,6 +408,11 @@ export function useTurnController({
             messageQueue.getSnapshot,
             messageQueue.getSnapshot
         );
+
+        useEffect(() => {
+            if (turnStatus.busy) return;
+            turnController.resumeQueuedInput();
+        }, [messageQueueSnapshot, turnStatus.busy, messageQueue, turnController]);
 
         useEffect(() => {
             observe?.({type: "state", sessionId: rootSession.sessionId,

@@ -9,6 +9,7 @@ export interface PermissionRequest {
     question: string;
     toolName: string;
     input: unknown;
+    questionDelivery?: "async";
     actor?: PermissionActor;
     allowAddToAllowList?: boolean;
     presentation?: PermissionPromptPresentation;
@@ -30,6 +31,7 @@ export class PermissionRequests {
         question: string,
         input: unknown,
         options?: {
+            questionDelivery?: "async";
             allowPersistent?: boolean;
             presentation?: PermissionPromptPresentation;
             signal?: AbortSignal;
@@ -49,6 +51,7 @@ export class PermissionRequests {
                 toolName,
                 input,
                 actor: options?.actor,
+                questionDelivery: options?.questionDelivery,
                 allowAddToAllowList:
                     options?.allowPersistent !== false &&
                     toolName !== "write_file" &&

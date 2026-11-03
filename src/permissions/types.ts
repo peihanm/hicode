@@ -34,7 +34,7 @@ export type PermissionResult =
 export type PermissionDecision =
     | {
         behavior: "allow";
-        answers?: Record<string, string>;
+        answers?: Record<string, string | string[]>;
         directoryScope?: "once" | DirectoryGrantScope;
         networkScope?: "once" | "session";
     } // User approved; may include answers to the original questions.

@@ -25,6 +25,7 @@ interface TaskOwner {
 }
 
 export interface ShellTaskSnapshot {
+    acceptsInput?: boolean;
     phase: "queued" | "starting" | "running" | "finished";
     timing: {queuedMs: number; runningMs: number};
     processStartedAt?: string;
@@ -123,6 +124,7 @@ export interface RunningTaskSummary {
 }
 
 export interface StartShellTaskInput {
+    tty?: boolean;
     networkAccess?: NetworkAccessExecution;
     command: string;
     cwd: string;
@@ -195,6 +197,7 @@ export interface TaskSessionLike {
     get(id: string): Promise<TaskSnapshot | undefined>;
 
     /** Bounded capture read for an owned live Shell; the cursor is local to one wait invocation. */
+    writeShellInput(id: string, text: string, signal: AbortSignal): Promise<number>;
     readShellOutput(id: string, afterBytes: number): Promise<{nextOffset: number; content: string} | undefined>;
 
     list(): Promise<readonly TaskSnapshot[]>;

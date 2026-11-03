@@ -179,6 +179,11 @@ export function App({
             if (activePanel !== undefined) return;
             if ((key.escape || input === "\u001B") && !turn.confirmRequest && inputEscapeRef.current?.()) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
+            if (turn.confirmRequest?.questionDelivery === "async" && isCancel) {
+                turn.confirmRequest.resolve({behavior: "deny", message: "User dismissed the asynchronous question"});
+                turn.clearConfirmRequest(turn.confirmRequest);
+                return;
+            }
             if (turn.confirmRequest?.actor && isCancel) {
                 turn.confirmRequest.resolve({behavior: "deny", message: "User denied background Agent permission"});
                 turn.clearConfirmRequest(turn.confirmRequest);

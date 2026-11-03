@@ -10,8 +10,8 @@ function alive(pid: number): boolean {
 }
 const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
-for (const inherited of [false, true]) {
-    test.skipIf(process.platform === "win32")(`normal Shell exit reaps descendants (inherited pipes=${inherited}) and preserves output/status`, async () => {
+for (const tty of [false, true]) for (const inherited of [false, true]) {
+    test.skipIf(process.platform === "win32")(`normal Shell exit reaps descendants (PTY=${tty}, inherited pipes=${inherited}) and preserves output/status`, async () => {
         await withTempProject(async cwd => {
             const pidFile = join(cwd, "pid"), script = join(cwd, "launch.mjs");
             await writeFile(script, `import {spawn} from 'node:child_process';import {writeFileSync} from 'node:fs';
@@ -21,7 +21,7 @@ for (const inherited of [false, true]) {
             let pid: number | undefined;
             try {
                 const result = await runShellCommand({command: `${quote(process.execPath)} ${quote(script)}`, cwd,
-                    signal: AbortSignal.timeout(5000), timeoutMs: 4000});
+                    tty, signal: AbortSignal.timeout(5000), timeoutMs: 4000});
                 pid = Number(await readFile(pidFile, "utf8"));
                 expect(result.termination).toMatchObject({kind: "exit", code: 7});
                 expect(result.stdout).toBe("x".repeat(65536) + "FINAL_OUTPUT");

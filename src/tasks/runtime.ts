@@ -429,6 +429,17 @@ class TaskRuntime implements TaskRuntimeLike {
         return archived;
     }
 
+    async writeShellInput(sessionId: string, id: string, text: string, signal: AbortSignal): Promise<number> {
+        if (signal.aborted) throw new Error("Input cancelled");
+        if (!text || Buffer.byteLength(text) > 65_536) throw new Error("Input must contain 1-65536 UTF-8 bytes");
+        const task = this.ownedTask(sessionId, id);
+        if (!task || !isShellTask(task) || !task.published || task.status !== "running" || task.controller.signal.aborted || !task.writeInput) {
+            throw new Error("No owned running interactive process accepts input for this task");
+        }
+        // No await between ownership/lifecycle checks and writing to the original process.
+        return task.writeInput(text);
+    }
+
     async readShellOutput(sessionId: string, id: string, afterBytes: number): ReturnType<TaskSessionLike["readShellOutput"]> {
         if (!Number.isSafeInteger(afterBytes) || afterBytes < 0) throw new Error("Invalid Shell output cursor");
         const task = this.ownedTask(sessionId, id);

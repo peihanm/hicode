@@ -1,3 +1,4 @@
+import {formatUserAnswers} from "./userQuestions.js";
 import {SessionPermissionPolicy} from "../permissions/sessionPolicy.js";
 import {PermissionRequests} from "../permissions/requests.js";
 import {createSubagentRecordAccess} from "../subagents/recordView.js";
@@ -142,6 +143,10 @@ export function createRootSessionRuntime({
     const unsubscribeDirectoryGrants = directoryAccess.subscribe(() => {void permissionRequests.reconsider();});
     let initializePromise: Promise<void> | undefined;
     let turnActive = false;
+    const questionController = new AbortController();
+    const pendingQuestions = new Set<string>();
+    const questionIssues: string[] = [];
+    let currentSnapshotState: (() => RootSessionSnapshotState) | undefined;
 
     const snapshot = (
         state: RootSessionSnapshotState
@@ -193,6 +198,7 @@ export function createRootSessionRuntime({
             compactState = nextCompactState;
         },
         createContext({signal, host, onEvent, turnId, getSnapshotState}) {
+            currentSnapshotState = getSnapshotState;
             const ctx = createToolContext({
                 signal, turnId,
                 resources: {...resources, get availableTools() { return resources.toolRuntime.getTools(); }, get toolNames() { return resources.toolRuntime.toolNames; }, contextSettings: resources.settings.context, taskReviewEnabled: resources.settings.taskReview.enabled, tasks: taskSession, agentMessaging: taskSession.messaging},
@@ -211,6 +217,41 @@ export function createRootSessionRuntime({
                 },
                 host,
             });
+            if (host.getPermissionPromptPolicy() === "onRequest") ctx.userQuestions = {
+                ask(input, requestId) {
+                    if (signal.aborted || questionController.signal.aborted) throw new Error("Question request cancelled");
+                    if (pendingQuestions.size >= 4 || pendingQuestions.has(requestId)) throw new Error("Too many pending questions or duplicate request ID");
+                    const frozen = structuredClone(input);
+                    pendingQuestions.add(requestId);
+                    const questionSignal = AbortSignal.any([signal, questionController.signal]);
+                    // Session owns outstanding questions; a normal turn end must not erase them.
+                    void Promise.resolve().then(() => {
+                        questionSignal.throwIfAborted();
+                        return host.canUseTool("ask_user", frozen.questions[0]!.question, structuredClone(frozen), {
+                            signal: questionSignal, allowPersistent: false, questionDelivery: "async",
+                        });
+                    }).then(async decision => {
+                        if (questionSignal.aborted) return;
+                        if (decision.behavior !== "allow") {
+                            messageQueue.enqueueRuntime(`Question request ${requestId} was declined or unavailable: ${decision.message}. No answer or authorization was supplied.`);
+                            if (!turnActive) await persistence.save(snapshot(currentSnapshotState!()));
+                            return;
+                        }
+                        const answer = formatUserAnswers(frozen.questions, decision.answers);
+                        if (!answer || decision.directoryScope || decision.networkScope) throw new Error("Invalid asynchronous user answers");
+                        messageQueue.enqueueUserAnswer(`Response to question request ${requestId}:\n${answer}`);
+                        if (!turnActive) await persistence.save(snapshot(currentSnapshotState!()));
+                    }).catch(error => {
+                        if (!questionSignal.aborted) {
+                            const issue = `Question ${requestId}: ${String(error)}`;
+                            questionIssues.push(issue);
+                            if (questionIssues.length > 32) questionIssues.shift();
+                            try {messageQueue.enqueueRuntime(issue);} catch { /* Storage diagnostics retain undeliverable failures. */ }
+                        }
+                    }).finally(() => pendingQuestions.delete(requestId));
+                    return requestId;
+                },
+            };
             ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
             ctx.subagentRecords = createSubagentRecordAccess(resources.storage, resources.cwd, seed.sessionId);
             ctx.approvalEvidence = () => captureApprovalEvidence(history);
@@ -260,7 +301,7 @@ export function createRootSessionRuntime({
         createSnapshot: snapshot,
         saveSnapshot: persistence.save,
         flushSnapshots: persistence.drain,
-        takeStorageIssues: persistence.takeIssues,
+        takeStorageIssues: () => [...persistence.takeIssues(), ...questionIssues.splice(0)],
         async beginTurn(prompt, state) {
             await this.initialize();
             if (turnActive) throw new Error("This Session is already running");
@@ -280,6 +321,8 @@ export function createRootSessionRuntime({
             }, signal, {session: hookSession, store: toolResultStore, onEvent});
         },
         async runSessionEnd(reason, onEvent) {
+            questionController.abort("session-ended");
+            pendingQuestions.clear();
             unsubscribeDirectoryGrants();
             permissionRequests.dispose();
             const controller = new AbortController();

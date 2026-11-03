@@ -82,3 +82,22 @@ describe("ask_user answer provenance", () => {
         });
     });
 });
+
+test("ask_user supports free text and multiple answers without permitting forged or mistyped answers", async () => {
+    await withTempProject(async cwd => {
+        const runtime = createToolRuntime();
+        const questions = [{question: "Address?"}, {question: "Platforms?", options: [{label: "Linux"}, {label: "macOS"}], multi_select: true}];
+        const answers = {"Address?": "localhost", "Platforms?": ["Linux", "macOS"]};
+        const ctx = createTestContext(cwd, {canUseTool: async () => ({behavior: "allow", answers})});
+        const result = await runtime.executeTool("ask_user", JSON.stringify({questions}), ctx, "answers");
+        expect(result.outcome).toBe("ok");
+        expect(result.modelContent).toContain('["Linux","macOS"]');
+        for (const input of [
+            {questions: [{question: "Q", multi_select: true}]},
+            {questions: [{question: "Q", options: []}]},
+        ]) expect((await runtime.executeTool("ask_user", JSON.stringify(input), ctx, "bad")).outcome).toBe("failed");
+        const invalid = createTestContext(cwd, {canUseTool: async () => ({behavior: "allow", answers: {"Q": ["A", "B"]}})});
+        expect((await runtime.executeTool("ask_user", JSON.stringify({questions: [{question: "Q"}]}), invalid, "bad-single")).outcome).toBe("failed");
+        expect((await runtime.executeTool("ask_user", JSON.stringify({delivery: "async", questions}), ctx, "no-host")).outcome).toBe("denied");
+    });
+});

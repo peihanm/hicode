@@ -75,7 +75,7 @@ export async function executeRegisteredTool(
         return inlineToolResult(`Argument validation failed: ${parsed.error.message}`, "failed");
     }
     let input = parsed.data;
-    let userAnswers: Readonly<Record<string, string>> | undefined;
+    let userAnswers: Readonly<Record<string, string | string[]>> | undefined;
     let permissionApproved: true | undefined;
     let preHookResult: HookBatchResult | undefined;
 

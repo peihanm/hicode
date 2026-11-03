@@ -301,6 +301,7 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
+        let adapterCommitted = false;
         if (turnOptions.permissionMode !== undefined) {
             this.options.session.permissions.setMode(turnOptions.permissionMode);
         }
@@ -332,7 +333,7 @@ class SDKThreadImpl implements SessionThread {
                     permissionMode: this.options.session.permissions.getMode(),
                     uiEvents: limitPersistedUIEvents([
                         ...this.options.state.uiEvents,
-                        ...adapter.getPersistedUIEvents(),
+                        ...(adapterCommitted ? [] : adapter.getPersistedUIEvents()),
                     ]),
                 }),
                 sessionStartContextBlocks:
@@ -341,6 +342,7 @@ class SDKThreadImpl implements SessionThread {
             });
             await adapter.finish(result.reason);
             this.commitUIEvents(adapter);
+            adapterCommitted = true;
             this.lastEndReason = result.reason;
             await emit({
                 type: "turn.completed",
@@ -359,6 +361,7 @@ class SDKThreadImpl implements SessionThread {
             this.lastEndReason = interrupted ? "interrupted" : "error";
             await adapter.finish(interrupted ? "interrupted" : "max_turns");
             this.commitUIEvents(adapter);
+            adapterCommitted = true;
             const info = toSDKErrorInfo(error, controller.signal);
             await emit({type: "turn.failed", turnId, error: info});
         }
@@ -373,13 +376,15 @@ class SDKThreadImpl implements SessionThread {
             canUseTool: async (toolName, message, input, options) => {
                 const network = options?.presentation?.kind === "network_access"
                     ? options.presentation : undefined;
-                const signal = options?.signal
+                const asyncQuestion = toolName === "ask_user" && options?.questionDelivery === "async";
+                const signal = asyncQuestion && options?.signal ? options.signal : options?.signal
                     ? AbortSignal.any([ownerSignal, options.signal])
                     : ownerSignal;
                 const request: InteractionRequest = toolName === "ask_user"
                     ? {
                         requestId: randomUUID(),
                         kind: "question",
+                        delivery: asyncQuestion ? "async" : "sync",
                         toolName,
                         message,
                         input,
@@ -392,7 +397,7 @@ class SDKThreadImpl implements SessionThread {
                         input,
                         ...(network ? {networkAccess: {host: network.host, port: network.port}} : {}),
                     };
-                await adapter?.emitInteractionStart(request);
+                if (!asyncQuestion) await adapter?.emitInteractionStart(request);
                 let response = await this.requestInteraction(
                     request,
                     turnId,
@@ -409,7 +414,7 @@ class SDKThreadImpl implements SessionThread {
                     : response.behavior === "deny"
                         ? "denied"
                         : "completed";
-                await adapter?.emitInteractionEnd(request, response, status);
+                if (!asyncQuestion) await adapter?.emitInteractionEnd(request, response, status);
                 return toPermissionDecision(response);
             },
             getPermissionRules: () =>

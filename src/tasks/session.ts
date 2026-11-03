@@ -22,7 +22,7 @@ import type {
 } from "./types.js";
 
 /** A child can manage only Shell tasks it created. Root retains resource ownership. */
-export type ChildTaskAccess = Pick<TaskSessionLike, "sessionId" | "shellContinuation" | "startShell" | "runShell" | "get" | "readShellOutput" | "list" | "stop" | "subscribe" | "acknowledgeNotification">;
+export type ChildTaskAccess = Pick<TaskSessionLike, "sessionId" | "shellContinuation" | "startShell" | "runShell" | "get" | "readShellOutput" | "writeShellInput" | "list" | "stop" | "subscribe" | "acknowledgeNotification">;
 
 export function isParentTaskSession(tasks: TaskSessionLike | ChildTaskAccess): tasks is TaskSessionLike {
     return "startAgent" in tasks;
@@ -102,6 +102,7 @@ export class TaskSession implements TaskSessionLike {
             startShell: input => child.startShell(input),
             runShell: input => child.runShell(input),
             get: id => child.get(id),
+            writeShellInput: (id, text, signal) => child.writeShellInput(id, text, signal),
             readShellOutput: (id, afterBytes) => child.readShellOutput(id, afterBytes),
             list: () => child.list(),
             stop: id => child.stop(id),
@@ -162,6 +163,12 @@ export class TaskSession implements TaskSessionLike {
     async get(id: string): Promise<TaskSnapshot | undefined> {
         await this.ready;
         return this.runtime.get(this.binding, id);
+    }
+
+    async writeShellInput(id: string, text: string, signal: AbortSignal): Promise<number> {
+        await this.ready;
+        this.assertOpen();
+        return this.runtime.writeShellInput(this.sessionId, id, text, AbortSignal.any([signal, this.controller.signal]));
     }
 
     async readShellOutput(id: string, afterBytes: number): ReturnType<TaskSessionLike["readShellOutput"]> {

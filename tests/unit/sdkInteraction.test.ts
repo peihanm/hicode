@@ -76,3 +76,11 @@ test("等待中取消通知 Host，迟到批准不能完成请求", async () => 
     await expect(pending).rejects.toThrow("cancelled");
     expect(closed).toBe(1);
 });
+
+test("SDK accepts structured multiple answers and rejects invalid arrays", () => {
+    const response = {behavior: "allow" as const, answers: {Platforms: ["Linux", "macOS"]}};
+    expect(normalizeInteractionResponse(response)).toEqual(response);
+    for (const answer of [[], ["A", "A"], [" "], [1], ["A", "B", "C", "D", "E", "F"]]) {
+        expect(normalizeInteractionResponse({behavior: "allow", answers: {Platforms: answer}}).behavior).toBe("deny");
+    }
+});

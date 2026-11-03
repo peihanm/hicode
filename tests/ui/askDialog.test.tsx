@@ -113,3 +113,44 @@ test("AskDialog 自由输入的中文提示、返回选项和提交行为一致"
     await flush();
     expect(decisions).toEqual([{behavior: "allow", answers: {"页面是什么样的？": "只有标题，没有网格"}}]);
 });
+
+test("AskDialog free-text questions open the input immediately and preserve Chinese/emoji across resize", async () => {
+    const decisions: PermissionDecision[] = [];
+    const instance = render(<AskDialog req={{id: 30, question: "地址？", toolName: "ask_user", questionDelivery: "async",
+        input: {questions: [{question: "地址？"}]}, resolve: decision => decisions.push(decision),
+    }} onDone={() => {}}/>);
+    await flush();
+    expect(instance.lastFrame()).toContain("Answer when ready");
+    expect(instance.lastFrame()).toContain("Enter your answer");
+    instance.stdin.write("本地🙂");
+    await flush();
+    let columns = 30;
+    Object.defineProperty(instance.stdout, "columns", {configurable: true, get: () => columns});
+    for (const width of [30, 80, 30]) {
+        columns = width; instance.stdout.emit("resize"); await flush();
+        expect(instance.lastFrame()).toContain("本地🙂");
+        expect(decisions).toHaveLength(0);
+    }
+    instance.stdin.write("\r"); await flush();
+    instance.stdin.write("\r"); await flush();
+    expect(decisions).toEqual([{behavior: "allow", answers: {"地址？": "本地🙂"}}]);
+});
+
+test("AskDialog multi-select requires an explicit selection and returns an array", async () => {
+    const decisions: PermissionDecision[] = [];
+    const instance = render(<AskDialog req={{id: 31, question: "平台？", toolName: "ask_user",
+        input: {questions: [{question: "平台？", multi_select: true, options: [{label: "Linux"}, {label: "macOS"}]}]},
+        resolve: decision => decisions.push(decision),
+    }} onDone={() => {}}/>);
+    await flush();
+    instance.stdin.write(" "); await flush();
+    instance.stdin.write("\u001b[B"); await flush();
+    instance.stdin.write(" "); await flush();
+    expect(instance.lastFrame()).toContain("[x] Linux");
+    expect(instance.lastFrame()).toContain("[x] macOS");
+    expect(decisions).toHaveLength(0);
+    instance.stdin.write("\u001b[B"); await flush();
+    instance.stdin.write("\u001b[B"); await flush();
+    instance.stdin.write("\r"); await flush();
+    expect(decisions).toEqual([{behavior: "allow", answers: {"平台？": ["Linux", "macOS"]}}]);
+});

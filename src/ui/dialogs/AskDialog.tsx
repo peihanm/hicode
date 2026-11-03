@@ -5,30 +5,7 @@ import {TextInput} from "../input/TextInput.js";
 import type {ConfirmReq} from "../turn/types.js";
 import {COLORS} from "../theme.js";
 
-// Multiple-choice dialog shown when the LLM calls ask_user.
-//
-// - Supports 1-4 questions, displayed individually.
-// - Choosing an option advances automatically.
-// - Type something opens text entry with a Submit button.
-// - After the last answer, show a review screen with Submit/Cancel.
-// - For a single question, submit immediately without the review screen.
-//
-// Questions are single-choice and advance forward without tab navigation.
-//
-// Data flow:
-// LLM calls ask_user({questions: [...]})
-// -> checkPermissions returns ask
-// -> canUseTool opens the dialog (App.tsx dispatches to AskDialog by toolName)
-// -> the user answers each question
-//     → resolve({ behavior: 'allow', answers: {Q: A} })
-// -> executeTool supplies answers through invocation without replacing the questions
-// -> tool.execute returns "User answers: ..."
-
-type Option = { label: string; description?: string };
-type Question = {
-    question: string;
-    options: Option[];
-};
+import type {UserQuestion, UserAnswers} from "../../runtime/userQuestions.js";
 
 const MAX_CUSTOM_ANSWER_CHARS = 16_384;
 
@@ -39,14 +16,14 @@ export function AskDialog({
     req: ConfirmReq;
     onDone: () => void;
 }) {
-    const askInput = req.input as { questions: Question[] };
+    const askInput = req.input as { questions: UserQuestion[] };
     const questions = askInput.questions;
     const totalQuestions = questions.length;
 
     // Question index: 0..totalQuestions-1; totalQuestions selects the Submit screen.
     const [currentIndex, setCurrentIndex] = useState(0);
     // Submitted answers: Record<question_text, answer>.
-    const [answers, setAnswers] = useState<Record<string, string>>({});
+    const [answers, setAnswers] = useState<UserAnswers>({});
 
     // State for Type something text entry.
     const [isTyping, setIsTyping] = useState(false);
@@ -56,9 +33,12 @@ export function AskDialog({
 
     // Each question starts at selection index 0; the key change triggers useReset.
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [selected, setSelected] = useState<number[]>([]);
+    const typing = isTyping || (currentIndex < totalQuestions && !questions[currentIndex]!.options);
+
 
     // Submit all answers to executeTool.
-    const submitAll = (finalAnswers: Record<string, string>) => {
+    const submitAll = (finalAnswers: UserAnswers) => {
         req.resolve({
             behavior: "allow",
             answers: finalAnswers,
@@ -67,7 +47,7 @@ export function AskDialog({
     };
 
     // Record the current answer and advance.
-    const recordAnswerAndAdvance = (answer: string) => {
+    const recordAnswerAndAdvance = (answer: string | string[]) => {
         const currentQ = questions[currentIndex];
         const newAnswers = {...answers, [currentQ.question]: answer};
 
@@ -81,6 +61,10 @@ export function AskDialog({
         setCurrentIndex((i) => i + 1);
         // Reset selection so each new question starts at its first option.
         setSelectedIndex(0);
+        setSelected([]);
+        setTypedValue("");
+        setFocus("input");
+        setIsTyping(false);
     };
 
     // Text entry after selecting Type something.
@@ -92,7 +76,7 @@ export function AskDialog({
 
     useTerminalInput((_input, key) => {
         // Text-entry mode.
-        if (isTyping) {
+        if (typing) {
             if (focus === "input") {
                 if (key.downArrow || key.tab) {
                     setFocus("submit");
@@ -115,7 +99,8 @@ export function AskDialog({
                     setIsTyping(false);
                     setTypedValue("");
                     setFocus("input");
-                    recordAnswerAndAdvance(trimmed);
+                    recordAnswerAndAdvance(questions[currentIndex]!.multi_select
+                        ? [...selected.map(i => questions[currentIndex]!.options![i]!.label), trimmed].filter((v, i, a) => a.indexOf(v) === i) : trimmed);
                 }
                 return;
             }
@@ -146,21 +131,27 @@ export function AskDialog({
         }
 
         const currentQ = questions[currentIndex];
-        const typeSomethingIndex = currentQ.options.length;
-        const totalOptions = typeSomethingIndex + 1;
+        const typeSomethingIndex = (currentQ.options?.length ?? 0);
+        const totalOptions = typeSomethingIndex + (currentQ.multi_select ? 2 : 1);
 
         if (key.upArrow) {
             setSelectedIndex((i) => (i - 1 + totalOptions) % totalOptions);
         } else if (key.downArrow) {
             setSelectedIndex((i) => (i + 1) % totalOptions);
+        } else if (_input === " " && currentQ.multi_select && selectedIndex < typeSomethingIndex) {
+            setSelected(values => values.includes(selectedIndex) ? values.filter(i => i !== selectedIndex) : [...values, selectedIndex].sort((a, b) => a - b));
         } else if (key.return) {
-            if (selectedIndex === typeSomethingIndex) {
+            if (currentQ.multi_select && selectedIndex === typeSomethingIndex + 1) {
+                if (selected.length) recordAnswerAndAdvance(selected.map(i => currentQ.options![i]!.label));
+            } else if (selectedIndex === typeSomethingIndex) {
                 // Type something was selected; enter text-entry mode.
                 setIsTyping(true);
                 setFocus("input");
             } else {
                 // Record the preset answer and advance.
-                recordAnswerAndAdvance(currentQ.options[selectedIndex].label);
+                if (currentQ.multi_select) {
+                    setSelected(values => values.includes(selectedIndex) ? values.filter(i => i !== selectedIndex) : [...values, selectedIndex].sort((a, b) => a - b));
+                } else recordAnswerAndAdvance(currentQ.options![selectedIndex]!.label);
             }
         }
     });
@@ -181,7 +172,7 @@ export function AskDialog({
                             </Text>
                             <Box marginLeft={2}>
                                 <Text color={COLORS.dim}>→ </Text>
-                                <Text>{answers[q.question] ?? "(unanswered)"}</Text>
+                                <Text>{[answers[q.question]].flat().join(", ") || "(unanswered)"}</Text>
                             </Box>
                         </Box>
                     ))}
@@ -200,14 +191,14 @@ export function AskDialog({
 
     // Current question screen.
     const currentQ = questions[currentIndex];
-    const typeSomethingIndex = currentQ.options.length;
+    const typeSomethingIndex = (currentQ.options?.length ?? 0);
 
     // Shortcut hints depend on the current state.
-    const hint = isTyping
+    const hint = typing
         ? focus === "input"
-            ? "Enter/↓ next · Esc back to options"
-            : "↑ edit · Enter confirm · Esc back to options"
-        : "↑↓ select · Enter confirm · Esc cancel";
+            ? currentQ.options ? "Enter/↓ next · Esc back to options" : "Enter/↓ next · Esc cancel"
+            : currentQ.options ? "↑ edit · Enter confirm · Esc back to options" : "↑ edit · Enter confirm · Esc cancel"
+        : currentQ.multi_select ? "↑↓ move · Space toggle · Select Confirm choices · Esc cancel" : "↑↓ select · Enter confirm · Esc cancel";
 
     // Show question progress for multiple questions.
     const progress =
@@ -217,13 +208,13 @@ export function AskDialog({
 
     return (
         <Box flexDirection="column" paddingLeft={2} paddingRight={1}>
-            <Text color={COLORS.dim}>Confirmation needed{progress ? ` · ${progress}` : ""}</Text>
+            <Text color={COLORS.dim}>{req.questionDelivery === "async" ? "Question · Answer when ready" : "Confirmation needed"}{progress ? ` · ${progress}` : ""}</Text>
             <Box marginTop={1}>
                 <Text bold>{currentQ.question}</Text>
             </Box>
             <Box marginTop={1} flexDirection="column">
-                {currentQ.options.map((opt, i) => {
-                    const isSelected = i === selectedIndex && !isTyping;
+                {(currentQ.options ?? []).map((opt, i) => {
+                    const isSelected = i === selectedIndex && !typing;
                     return (
                         <Box key={i} marginTop={i > 0 ? 1 : 0}>
                             <Box width={5} flexShrink={0}>
@@ -233,7 +224,7 @@ export function AskDialog({
                             </Box>
                             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
                                 <Text color={isSelected ? COLORS.accent : undefined} bold={isSelected}>
-                                    {opt.label}
+                                    {currentQ.multi_select ? `${selected.includes(i) ? "[x]" : "[ ]"} ${opt.label}` : opt.label}
                                 </Text>
                                 {opt.description && <Text color={COLORS.dim}>{opt.description}</Text>}
                             </Box>
@@ -242,10 +233,10 @@ export function AskDialog({
                 })}
 
                 <Box
-                    marginTop={currentQ.options.length > 0 ? 1 : 0}
+                    marginTop={(currentQ.options?.length ?? 0) > 0 ? 1 : 0}
                     flexDirection="column"
                 >
-                    {isTyping ? (
+                    {typing ? (
                         <>
                             <Box>
                                 <Text color={COLORS.dim}>{"  "}</Text>
@@ -305,6 +296,11 @@ export function AskDialog({
                         </Box>
                     )}
                 </Box>
+                {currentQ.multi_select && !typing && <Box marginTop={1}>
+                    <Text color={selectedIndex === typeSomethingIndex + 1 ? COLORS.accent : COLORS.dim}>
+                        {selectedIndex === typeSomethingIndex + 1 ? "❯ " : "  "}Confirm choices ({selected.length})
+                    </Text>
+                </Box>}
             </Box>
             <Box marginTop={1}>
                 <Text color={COLORS.dim}>{hint}</Text>

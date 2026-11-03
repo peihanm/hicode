@@ -68,6 +68,7 @@ export function createShellRunner(
                 env,
                 ...processOptions
             } = request;
+            if (request.tty && (readAccess || fileWorkspace)) return sandboxFailure(request.signal, new Error("Scoped file commands cannot open an interactive terminal"));
             if ((readAccess || fileWorkspace || deniedReadRoots?.length) && sandboxPermissions === "require_escalated") {
                 return sandboxFailure(request.signal, new Error("Read-only command execution cannot leave the Sandbox"));
             }

@@ -142,3 +142,13 @@ test("agent messages retain validated routing on restore, cannot be edited as us
     expect(() => queue.enqueueAgent("x".repeat(32769), route)).toThrow("must not exceed");
     expect(() => queue.enqueueAgent("spoof", {...route, sender: "user"})).toThrow("Invalid agent message route");
 });
+
+test("runtime question failures retain runtime provenance after snapshot restoration", () => {
+    const queue = new RuntimeMessageQueue();
+    queue.enqueueRuntime("Question q was dismissed; no answer was supplied.");
+    const restored = new RuntimeMessageQueue({messages: queue.list()});
+    const inputs = restored.createAgentInputChannel(() => {}).drainInitial();
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]!.source).toBe("runtime_message");
+    expect(restored.list()).toHaveLength(0);
+});

@@ -25,6 +25,8 @@ export interface ShellCommandOptions {
     cwd: string;
     signal: AbortSignal;
     stdin?: string;
+    tty?: boolean;
+    onInputReady?: (write: (text: string) => number) => void;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number | null;
     maxBuffer?: number;
@@ -56,7 +58,7 @@ export function createProcessTreeKiller(
     const spawnProcess = overrides.spawnProcess ?? spawn;
     const taskkillTimeoutMs = overrides.taskkillTimeoutMs ?? 1_000;
 
-    return function killProcessTree(child: ChildProcess): Promise<void> {
+    return function killProcessTree(child: Pick<ChildProcess, "pid" | "kill">): Promise<void> {
         const pid = child.pid;
         if (!pid) return Promise.resolve();
 
@@ -139,6 +141,8 @@ function runProcess({
                         cwd,
                         signal,
                         stdin,
+                        tty,
+                        onInputReady,
                         env,
                         timeoutMs = 30_000,
                         maxBuffer = 1024 * 1024,
@@ -189,7 +193,14 @@ function runProcess({
             }
         }
 
-        let child: ChildProcess;
+        let child: ChildProcess | undefined;
+        let terminal: Bun.Terminal | undefined;
+        let pty: Bun.Subprocess | undefined;
+        let ptyClosed = false;
+        let ptyTermination: ShellTermination | undefined;
+        let exited = false;
+        const kill = () => child ? killProcessTree(child) : pty
+            ? killProcessTree({pid: pty.pid, kill: sig => {pty!.kill(sig); return true;}}) : Promise.resolve();
         try {
             const spawnOptions: SpawnOptions = {
                 cwd,
@@ -202,7 +213,17 @@ function runProcess({
                 ],
                 ...(env ? {env} : {}),
             };
-            if (launch.kind === "shell") {
+            if (tty) {
+                if (process.platform === "win32" || typeof Bun.Terminal !== "function") throw new Error("Interactive terminals require Bun with PTY support on macOS or Linux");
+                if (stdin !== undefined) throw new Error("PTY and fixed stdin cannot be combined");
+                terminal = new Bun.Terminal({cols: 100, rows: 30, name: "xterm-256color",
+                    data: (_term, data) => append("stdout", Buffer.from(data)),
+                    exit: () => {ptyClosed = true; if (ptyTermination) finish(ptyTermination);},
+                });
+                const argv = launch.kind === "shell"
+                    ? [bashExecutable(), "--noprofile", "--norc", "-c", bashCommand(launch.command)] : launch.argv;
+                pty = Bun.spawn(argv, {cwd, env, detached: true, terminal});
+            } else if (launch.kind === "shell") {
                 child = spawn(bashExecutable(), ["--noprofile", "--norc", "-c", bashCommand(launch.command)], {
                     ...spawnOptions,
                     shell: false,
@@ -216,6 +237,7 @@ function runProcess({
                 });
             }
         } catch (error) {
+            terminal?.close();
             if (outputFd !== undefined) {
                 try {
                     closeSync(outputFd);
@@ -241,12 +263,13 @@ function runProcess({
             if (timeout !== undefined) clearTimeout(timeout);
             if (killFallback !== undefined) clearTimeout(killFallback);
             signal.removeEventListener("abort", onAbort);
-            child.stdout?.removeAllListeners("data");
-            child.stderr?.removeAllListeners("data");
-            child.stdin?.removeAllListeners("error");
-            child.removeAllListeners("error");
-            child.removeAllListeners("close");
-            child.removeAllListeners("exit");
+            child?.stdout?.removeAllListeners("data");
+            child?.stderr?.removeAllListeners("data");
+            child?.stdin?.removeAllListeners("error");
+            child?.removeAllListeners("error");
+            child?.removeAllListeners("close");
+            child?.removeAllListeners("exit");
+            terminal?.close();
             if (outputFd !== undefined) {
                 try {
                     closeSync(outputFd);
@@ -275,7 +298,7 @@ function runProcess({
         ) => {
             if (settled || forcedTermination) return;
             forcedTermination = termination;
-            void killProcessTree(child);
+            void kill();
             // Bound cancellation even if a child never emits close.
             killFallback = setTimeout(() => finish(termination), 1_000);
             killFallback.unref?.();
@@ -288,6 +311,7 @@ function runProcess({
             });
 
         const append = (target: "stdout" | "stderr", chunk: Buffer | string) => {
+            if (settled) return;
             const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
             const text = target === "stdout"
                 ? stdoutDecoder.write(buffer)
@@ -328,21 +352,21 @@ function runProcess({
             }
         };
 
-        child.stdout?.on("data", (chunk) => append("stdout", chunk));
-        child.stderr?.on("data", (chunk) => append("stderr", chunk));
+        child?.stdout?.on("data", (chunk) => append("stdout", chunk));
+        child?.stderr?.on("data", (chunk) => append("stderr", chunk));
         if (stdin !== undefined) {
             // Short commands such as Hooks can exit before stdin is fully written. Ignore EPIPE;
             // close/exit expresses the command result and prevents unhandled stream errors.
-            child.stdin?.on("error", () => undefined);
-            child.stdin?.end(stdin, "utf8");
+            child?.stdin?.on("error", () => undefined);
+            child?.stdin?.end(stdin, "utf8");
         }
-        child.once("error", (error) =>
+        child?.once("error", (error) =>
             finish({kind: "spawn_error", error})
         );
         // The command owns its process group even when its leader exits normally.
         // Reap descendants holding pipes open; close still drains the final output.
-        child.once("exit", () => {void killProcessTree(child);});
-        child.once("close", (code, closeSignal) => {
+        child?.once("exit", () => {exited = true; void kill();});
+        child?.once("close", (code, closeSignal) => {
             finish(
                 forcedTermination ?? {
                     kind: "exit",
@@ -351,6 +375,19 @@ function runProcess({
                 }
             );
         });
+        if (pty) {
+            const process = pty;
+            void process.exited.then(code => {
+                exited = true;
+                void kill();
+                ptyTermination = forcedTermination ?? {kind: "exit", code, signal: process.signalCode};
+                if (ptyClosed) finish(ptyTermination);
+                else if (!settled && !killFallback) killFallback = setTimeout(() => {
+                    outputComplete = false;
+                    finish(ptyTermination!);
+                }, 1_000);
+            }, error => finish({kind: "spawn_error", error: error instanceof Error ? error : new Error(String(error))}));
+        }
         signal.addEventListener("abort", onAbort, {once: true});
 
         if (timeoutMs !== null) {
@@ -361,8 +398,14 @@ function runProcess({
             timeout.unref?.();
         }
         if (signal.aborted) onAbort();
-        if (child.pid !== undefined && !signal.aborted) {
-            try {onStarted?.();}
+        if ((child?.pid !== undefined || pty) && !signal.aborted) {
+            try {
+                if (terminal) onInputReady?.(text => {
+                    if (settled || exited || forcedTermination || signal.aborted || terminal!.closed || pty?.exitCode !== null) throw new Error("Process is no longer accepting input");
+                    return terminal!.write(text);
+                });
+                onStarted?.();
+            }
             catch (error) {terminate({kind: "spawn_error", error: error instanceof Error ? error : new Error(String(error))});}
         }
     });

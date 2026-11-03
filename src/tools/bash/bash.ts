@@ -36,6 +36,7 @@ const inputSchema = z.object({
         .optional()
         .describe("Existing working directory, relative to the current project or an absolute path permitted by runtime policy. To create a directory, run mkdir from an existing parent first. Each call is independent; previous cd state is not retained."),
     additional_write_directories: z.array(z.string().min(1)).max(8).optional().describe("Existing extra directories this command needs to write, relative to the Agent cwd or absolute. Request before running builds/installers outside authorized write roots. Approval applies to this process tree, or the Session if explicitly selected. A cwd alone grants no write access. Failed commands are not automatically retried."),
+    tty: z.boolean().optional().describe("Allocate an interactive terminal and keep input open. Use task action=input with the returned task_id to send text (include \n to press Enter). The same process must still be running. Requires a continuable Host; unavailable for read-only/protected file commands. In restricted Ask, uses existing Session network grants and cannot request new human network approval."),
     run_in_background: z
         .boolean()
         .optional()
@@ -233,11 +234,11 @@ export const bashTool: Tool<typeof inputSchema> = {
 - Git: inspect status/diff/log. User-authorized local staging and commits use the sandbox without a separate access-approval question. Push requires user authorization; reuse explicit authorization already given for that push rather than asking again. Force-push, remote branch deletion, reset --hard, clean and discarding local work require authorization covering those effects; check staged, unstaged and untracked changes before committing. Stage exact paths with git add -- <paths>. Do not use git add . or git add -A, skip hooks, change Git config, auto-stash/reset/clean or amend without authorization. Check branch, remote and outgoing commits before pushing; verify actual results.`,
     parameters: inputSchema,
     maxResultSizeChars: 30_000,
-    isReadOnly: ({command, sandbox_permissions}) =>
-        sandbox_permissions !== "require_escalated" &&
+    isReadOnly: ({command, sandbox_permissions, tty}) =>
+        !tty && sandbox_permissions !== "require_escalated" &&
         (!!analyzeReadCommand(command) || isShellCommandReadOnly(command)),
-    isConcurrencySafe: ({command, sandbox_permissions}) =>
-        sandbox_permissions !== "require_escalated" &&
+    isConcurrencySafe: ({command, sandbox_permissions, tty}) =>
+        !tty && sandbox_permissions !== "require_escalated" &&
         (!!analyzeReadCommand(command) || isShellCommandReadOnly(command)),
     requiresExplicitApproval: ({sandbox_permissions}) => sandbox_permissions === "require_escalated",
     getDefaultApprovalScope: ({sandbox_permissions}, ctx) =>
@@ -245,7 +246,8 @@ export const bashTool: Tool<typeof inputSchema> = {
             ctx.shellRunner.sandboxStatus.kind === "ready"
             ? {kind: "sandboxed"}
             : undefined,
-    async checkPermissions({command, cwd, sandbox_permissions, run_in_background, yield_time_ms, additional_write_directories}, ctx) {
+    async checkPermissions({command, cwd, sandbox_permissions, run_in_background, yield_time_ms, additional_write_directories, tty}, ctx) {
+        if (tty && (ctx.readOnlyTools || !ctx.tasks?.shellContinuation)) return {behavior: "deny", message: "Interactive terminals require a writable Agent and a continuable Host"};
         const syntaxIssue = commandSyntaxIssue(command);
         if (syntaxIssue) throw new ToolInputError(syntaxIssue);
         try {await validateWriteDirectories(additional_write_directories ?? [], ctx);}
@@ -258,7 +260,7 @@ export const bashTool: Tool<typeof inputSchema> = {
             return {behavior: "deny", message: error instanceof Error ? error.message : String(error)};
         }
         if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {behavior: "deny", message: "Read-only Memory commands cannot modify files or execute arbitrary programs"};
-        if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {behavior: "deny", message: "Memory file commands must run in the foreground inside their Sandbox"};
+        if (workspace && (tty || sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {behavior: "deny", message: "Memory file commands must run in the foreground inside their Sandbox"};
         const commandCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, workspace?.root ?? ctx.workspaceBoundary ?? ctx.directoryAccess.hardBoundary);
         if (!commandCwd.ok) {
             if (commandCwd.outcome === "failed") throw new ToolInputError(commandCwd.message);
@@ -332,18 +334,20 @@ export const bashTool: Tool<typeof inputSchema> = {
     },
     execute: async ({
                         command,
+                        tty,
                         cwd,
                         run_in_background,
                         yield_time_ms,
                         sandbox_permissions,
                         additional_write_directories,
                     }, ctx, invocation) => {
+        if (tty && (ctx.readOnlyTools || !ctx.tasks?.shellContinuation)) return {content: "Interactive terminals require a writable Agent and a continuable Host", outcome: "denied" as const};
         if (run_in_background && yield_time_ms !== undefined) return {content: "yield_time_ms and run_in_background=true cannot be combined", outcome: "failed" as const};
         const syntaxIssue = commandSyntaxIssue(command);
         if (syntaxIssue) return {content: syntaxIssue, outcome: "failed" as const};
         const workspace = await commandWorkspace(ctx, cwd);
         if (workspace && !workspace.writable && !analyzeReadCommand(command)) return {content: "Read-only Memory commands cannot modify files or execute arbitrary programs", outcome: "failed" as const};
-        if (workspace && (sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {content: "Memory file commands must run in the foreground inside their Sandbox", outcome: "failed" as const};
+        if (workspace && (tty || sandbox_permissions === "require_escalated" || run_in_background || yield_time_ms !== undefined)) return {content: "Memory file commands must run in the foreground inside their Sandbox", outcome: "failed" as const};
         const resolvedCwd = await resolveCommandCwd(workspace?.root ?? ctx.cwd, cwd, workspace?.root ?? ctx.workspaceBoundary ?? ctx.directoryAccess.hardBoundary);
         if (!resolvedCwd.ok) {
             return {content: resolvedCwd.message, outcome: resolvedCwd.outcome};
@@ -356,7 +360,7 @@ export const bashTool: Tool<typeof inputSchema> = {
         const commandCwd = workspace ? resolve(workspace.root, cwd ?? ".") : resolvedCwd.path;
         const readAccess = sandbox_permissions !== "require_escalated"
             ? await prepareCommandReadAccess(command, commandCwd, ctx) : undefined;
-        if (readAccess && (run_in_background || yield_time_ms !== undefined)) {
+        if (readAccess && (tty || run_in_background || yield_time_ms !== undefined)) {
             return {content: "Read-only searches must finish in the foreground; do not yield or start them as background tasks.", outcome: "failed" as const};
         }
         const effectiveSandboxPermissions = readAccess || workspace ? "use_default" as const : ctx.permissionMode === "full-access" && ctx.allowFullAccess && !ctx.permissionActor
@@ -366,11 +370,11 @@ export const bashTool: Tool<typeof inputSchema> = {
         const networkEvidence = needsNetworkApproval ? ctx.approvalEvidence?.() ?? captureApprovalEvidence([]) : undefined;
         const restrictedHuman = ctx.permissionMode === "ask" && effectiveSandboxPermissions !== "require_escalated" &&
             ctx.shellRunner.sandboxStatus.kind === "ready" && ctx.shellRunner.sandboxStatus.networkMode === "restricted";
-        const canContinue = !!ctx.tasks?.shellContinuation && !workspace && !readAccess && (!restrictedHuman || yield_time_ms !== undefined);
+        const canContinue = !!ctx.tasks?.shellContinuation && !workspace && !readAccess && (!restrictedHuman || yield_time_ms !== undefined || tty === true);
         if (yield_time_ms !== undefined && !canContinue) return {content:
             "This command requires foreground execution (one-shot Host or protected file access). Omit yield_time_ms; it will wait for completion or cancellation without an implicit 30-second limit.", outcome: "failed" as const};
         const managed = run_in_background === true || canContinue;
-        let interaction: Pick<ToolContext, "canUseTool" | "onApprovalEvent"> | undefined = run_in_background || (restrictedHuman && yield_time_ms !== undefined)
+        let interaction: Pick<ToolContext, "canUseTool" | "onApprovalEvent"> | undefined = run_in_background || (restrictedHuman && (yield_time_ms !== undefined || tty))
             ? undefined : {canUseTool: ctx.canUseTool, onApprovalEvent: ctx.onApprovalEvent};
         const networkBudget = new ApprovalBudget();
         const networkBase: ToolContext = {...ctx, canUseTool: async () => ({behavior: "deny", message: "Task has no human interaction channel"}),
@@ -425,6 +429,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                 }
                 const taskInput = {
                     command,
+                    tty,
                     cwd: commandCwd,
                     toolCallId: invocation.toolCallId,
                     maxOutputBytes: ctx.toolResultStore.maxArtifactBytes,
@@ -434,7 +439,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                     networkAccess,
                 };
                 const started = run_in_background ? {kind: "task" as const, task: await ctx.tasks.startShell(taskInput)}
-                    : await ctx.tasks.runShell({...taskInput, waitMs: yield_time_ms ?? 10_000,
+                    : await ctx.tasks.runShell({...taskInput, waitMs: yield_time_ms ?? (tty ? 1_000 : 10_000),
                         signal: ctx.signal, onHandoff: () => {interaction = undefined;}});
                 if (started.kind === "inline") {
                     const status = started.outputIssue ? `\nOutput delivery failed: ${started.outputIssue}` : "";
@@ -467,7 +472,7 @@ export const bashTool: Tool<typeof inputSchema> = {
                         "Lifecycle: managed by the current HiCode Runtime; terminates when HiCode exits.",
                         `Cwd: ${displayToolPath(ctx.cwd, commandCwd) || "."}`,
                         runningOutput(task, run_in_background === true),
-                        "Use task to inspect output, completion status or stop the task.",
+                        tty ? "Use task action=input with task_id and text to send input (include a newline for Enter); status/wait inspect output, stop terminates it." : "Use task to inspect output, completion status or stop the task.",
                     ].join("\n"),
                     outcome: "ok" as const,
                 };
@@ -541,7 +546,7 @@ export const bashTool: Tool<typeof inputSchema> = {
 export function createReadOnlyBashTool(): Tool<typeof inputSchema> {
     return {...bashTool,
         async checkPermissions(input, ctx) {
-            if (input.run_in_background || input.yield_time_ms !== undefined) return {behavior: "deny", message: "Restricted searches must finish in the current invocation"};
+            if (input.tty || input.run_in_background || input.yield_time_ms !== undefined) return {behavior: "deny", message: "Restricted searches must finish in the current invocation"};
             return bashTool.checkPermissions!(input, {...ctx, readOnlyTools: true});
         },
         execute(input, ctx, invocation) {

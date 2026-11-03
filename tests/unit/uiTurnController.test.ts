@@ -643,3 +643,25 @@ test("unhandled slash input still times the Agent turn it starts", async () => {
     await harness.controller.submit("/unhandled");
     expect(harness.controller.getSnapshot()).toEqual({busy: false, stopping: false, elapsedMs: 3000});
 });
+
+test("late queued answers start one idle turn without consuming a fresh composer draft", async () => {
+    const harness = createHarness();
+    harness.messageQueue.enqueueUserAnswer("Response to question request q: localhost");
+    harness.controller.resumeQueuedInput();
+    harness.controller.resumeQueuedInput();
+    await harness.controller.waitForSettled();
+    expect(harness.users).toEqual(["Response to question request q: localhost"]);
+    expect(harness.agentCalls).toBe(1);
+    expect(harness.messageQueue.list()).toHaveLength(0);
+    expect(harness.errors).toEqual([]);
+    harness.controller.dispose();
+});
+
+test("answer wakeup does not auto-submit ordinary queued or restored user input", async () => {
+    const harness = createHarness();
+    harness.messageQueue.enqueueUser("restored unsent input", "later");
+    harness.controller.resumeQueuedInput();
+    expect(harness.users).toHaveLength(0);
+    expect(harness.messageQueue.list()).toHaveLength(1);
+    harness.controller.dispose();
+});

@@ -254,6 +254,12 @@ export class UITurnController {
         }
     }
 
+    resumeQueuedInput(): void {
+        if (this.disposed || this.snapshot.busy || this.active) return;
+        const next = this.dependencies.messageQueue.dequeueDeferredTurnInput("user_answer");
+        if (next) void this.submitPrepared(next.content);
+    }
+
     enqueue(input: string): boolean {
         if (this.disposed || !this.snapshot.busy) return false;
         const trimmed = input.trim();

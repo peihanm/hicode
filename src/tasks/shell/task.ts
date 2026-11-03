@@ -51,6 +51,8 @@ export async function runShellTask(
             execution.onPhaseChanged();
             return shellRunner.run({
                 command: input.command,
+                tty: input.tty,
+                onInputReady: write => {task.writeInput = write;},
                 cwd: input.cwd,
                 signal: task.controller.signal,
                 timeoutMs: null,
@@ -98,6 +100,7 @@ export async function runShellTask(
             ? {kind: "aborted", reason: normalizeTurnAbortReason(task.controller.signal.reason)}
             : {kind: "spawn_error", error: error instanceof Error ? error : new Error(String(error))}};
     } finally {
+        task.writeInput = undefined;
         task.status = finalStatus;
         task.phase = "finished";
         task.finishedTick = performance.now();

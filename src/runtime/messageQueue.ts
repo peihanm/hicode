@@ -16,6 +16,8 @@ interface RuntimeQueuedMessageBase {
 
 export type RuntimeQueuedMessage = RuntimeQueuedMessageBase & (
     | {type: "user_input"}
+    | {type: "user_answer"}
+    | {type: "runtime_message"}
     | {type: "agent_message"; route: AgentMessageRoute}
     | {type: "task_notification"; taskId: string}
 );
@@ -57,7 +59,7 @@ export function normalizeRuntimeQueuedMessages(
             message.id.length > MAX_ID_CHARS ||
             ids.has(message.id) ||
             (message.type !== "user_input" &&
-                message.type !== "task_notification" && message.type !== "agent_message") ||
+                message.type !== "task_notification" && message.type !== "agent_message" && message.type !== "runtime_message" && message.type !== "user_answer") ||
             (message.priority !== "next" && message.priority !== "later") ||
             !messageContentSchema.safeParse(message.content).success ||
             contentText(messageContentSchema.parse(message.content)).trim().length === 0 ||
@@ -164,6 +166,14 @@ export class RuntimeMessageQueue {
         return this.enqueue({type: "user_input", content, priority});
     }
 
+    enqueueUserAnswer(content: string): RuntimeQueuedMessage {
+        return this.enqueue({type: "user_answer", content, priority: "next"});
+    }
+
+    enqueueRuntime(content: string): RuntimeQueuedMessage {
+        return this.enqueue({type: "runtime_message", content, priority: "next"});
+    }
+
     enqueueAgent(content: string, route: AgentMessageRoute): RuntimeQueuedMessage {
         const valid = parseRoute(route);
         if (!valid) throw new Error("Invalid agent message route");
@@ -221,7 +231,7 @@ export class RuntimeMessageQueue {
                 });
             },
             drainInitial: () => consume(
-                (message) => message.type === "task_notification" || message.type === "agent_message"
+                (message) => message.type === "task_notification" || message.type === "agent_message" || message.type === "runtime_message" || message.type === "user_answer"
             ),
             drainSafeBoundary: () => consume(
                 (message) => message.priority === "next"
@@ -229,10 +239,10 @@ export class RuntimeMessageQueue {
         };
     }
 
-    dequeueDeferredTurnInput(): RuntimeQueuedMessage | undefined {
+    dequeueDeferredTurnInput(source?: "user_answer"): RuntimeQueuedMessage | undefined {
         const index = this.messages.findIndex(
             (message) =>
-                message.type === "user_input" && message.priority === "later"
+                (message.type === "user_answer" || (!source && message.type === "user_input" && message.priority === "later"))
         );
         if (index < 0) return undefined;
         const [message] = this.messages.splice(index, 1);
@@ -275,7 +285,7 @@ export class RuntimeMessageQueue {
     getSnapshot = (): RuntimeMessageQueueSnapshot => this.snapshot;
 
     private enqueue(input: {
-        type: "user_input";
+        type: "user_input" | "runtime_message" | "user_answer";
         priority: MessagePriority;
         content: MessageContent;
     } | {

@@ -181,8 +181,8 @@ async function runAgentCore(
     const appendQueuedInputs = async (inputs: readonly QueuedAgentInput[]) => {
         const accepted = inputs.filter(input => !ctx.taskJoin || ctx.taskJoin.accepts(input));
         for (const input of accepted) {
-            if (input.source === "user_input") taskReview.steer();
-            history.push({role: "user", origin: input.source === "user_input" ? "user" : input.source === "agent_message" ? (options.inputOrigin === "assignment" ? "assignment" : "agent") : "task_notification", content: input.content});
+            if (input.source === "user_input" || input.source === "user_answer") taskReview.steer();
+            history.push({role: "user", origin: input.source === "runtime_message" ? "runtime" : (input.source === "user_input" || input.source === "user_answer") ? "user" : input.source === "agent_message" ? (options.inputOrigin === "assignment" ? "assignment" : "agent") : "task_notification", content: input.content});
         }
         for (const input of accepted) {
             await ctx.taskJoin?.consume(input);
