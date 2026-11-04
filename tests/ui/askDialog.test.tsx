@@ -2,155 +2,95 @@ import {afterEach, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import stringWidth from "string-width";
 import {AskDialog} from "../../src/ui/dialogs/AskDialog.js";
+import {TerminalInputProvider} from "../../src/ui/input/terminalInput.js";
+import {TerminalSizeProvider} from "../../src/ui/terminalSize.js";
 import type {PermissionDecision} from "../../src/permissions/index.js";
 
 afterEach(cleanup);
-const flush = () => new Promise(resolve => setTimeout(resolve, 20));
+const flush = () => new Promise(resolve => setTimeout(resolve, 25));
 
-test("AskDialog 多题收集完毕后才回流完整答案", async () => {
+test("question input has no choice numbering or confirmation step; Enter submits once", async () => {
     const decisions: PermissionDecision[] = [];
-    const instance = render(<AskDialog req={{id: 3, question: "选择方案", toolName: "ask_user",
-        input: {questions: [
-            {question: "选择方案", options: [{label: "A"}, {label: "B"}]},
-            {question: "选择环境", options: [{label: "C"}, {label: "D"}]},
-        ]}, resolve: decision => decisions.push(decision),
-    }} onDone={() => {}}/>);
+    const req = {id: 1, question: "昵称？", toolName: "ask_user", input: {questions: [{question: "昵称？"}]},
+        resolve: (value: PermissionDecision) => decisions.push(value)};
+    const view = render(<AskDialog req={req} onDone={() => {}}/>);
     await flush();
-    expect(instance.lastFrame()).toContain("Confirmation needed · Question 1/2");
-    expect(instance.lastFrame()).not.toContain("│");
-    instance.stdin.write("\r");
-    await flush();
-    expect(instance.lastFrame()).toContain("Confirmation needed · Question 2/2");
+    expect(view.lastFrame()).toContain("Type your answer");
+    expect(view.lastFrame()).not.toContain("1.");
+    expect(view.lastFrame()).not.toContain("Confirm input");
+    view.stdin.write("小明🙂"); await flush();
+    view.stdin.write("\r"); await flush();
+    expect(decisions).toEqual([{behavior: "allow", answers: {"昵称？": "小明🙂"}}]);
+});
+
+test("multiple questions advance on Enter and submit only after the last answer", async () => {
+    const decisions: PermissionDecision[] = [];
+    const view = render(<AskDialog req={{id: 2, question: "方案？", toolName: "ask_user",
+        input: {questions: [{question: "方案？", options: [{label: "A"}, {label: "B"}]}, {question: "环境？"}]},
+        resolve: d => decisions.push(d)}} onDone={() => {}}/>);
+    await flush(); expect(view.lastFrame()).toContain("Question 1 of 2");
+    view.stdin.write("\r"); await flush();
+    expect(view.lastFrame()).toContain("Question 2 of 2");
     expect(decisions).toEqual([]);
-    instance.stdin.write("\r");
-    await flush();
-    expect(instance.lastFrame()).toContain("Confirm answers · 2/2 answered");
-    expect(instance.lastFrame()).toContain("Submit answers");
-    expect(instance.lastFrame()).not.toContain("│");
-    expect(decisions).toEqual([]);
-    instance.stdin.write("\r");
-    await flush();
-    expect(decisions).toEqual([{behavior: "allow", answers: {"选择方案": "A", "选择环境": "C"}}]);
+    view.stdin.write("local"); await flush();
+    view.stdin.write("\r"); await flush();
+    expect(decisions).toEqual([{behavior: "allow", answers: {"方案？": "A", "环境？": "local"}}]);
 });
 
-test("AskDialog 回流独立 answers，不替换提问参数", async () => {
+test("custom choices submit their text directly and multiple choices use Space then Enter", async () => {
     const decisions: PermissionDecision[] = [];
-    const instance = render(<AskDialog req={{id: 1, question: "选择方案", toolName: "ask_user",
-        input: {questions: [{question: "选择方案", options: [{label: "A"}, {label: "B"}]}]},
-        resolve: decision => decisions.push(decision),
-    }} onDone={() => {}}/>);
-    await flush();
-    expect(instance.lastFrame()).toContain("选择方案");
-    instance.stdin.write("\r");
-    await flush();
-    expect(decisions).toEqual([{behavior: "allow", answers: {"选择方案": "A"}}]);
-});
-
-test("AskDialog 将 Esc 取消交给 App，不自行提交部分答案", async () => {
-    const decisions: PermissionDecision[] = [];
-    const instance = render(<AskDialog req={{id: 2, question: "选择方案", toolName: "ask_user",
-        input: {questions: [{question: "选择方案", options: [{label: "A"}, {label: "B"}]}]},
-        resolve: decision => decisions.push(decision),
-    }} onDone={() => {}}/>);
-    await flush();
-    instance.stdin.write("\u001b");
-    await flush();
-    expect(decisions).toEqual([]);
-});
-
-test("AskDialog 无边框且长中文说明随终端宽度换行", async () => {
-    const description = "标题、右侧状态栏和操作按钮都不见了，页面只剩背景，窗口缩小后说明也应完整显示。";
-    const instance = render(<AskDialog req={{id: 4, question: "页面空白", toolName: "ask_user",
-        input: {questions: [{question: "打开页面时「啥也没有」具体是哪种情况？", options: [
-            {label: "整页全白", description},
-            {label: "只有棋盘空白", description: "标题和按钮都在，只有中间棋盘区域为空。"},
-        ]}]}, resolve: () => {},
-    }} onDone={() => {}}/>);
-    let columns = 40;
-    Object.defineProperty(instance.stdout, "columns", {configurable: true, get: () => columns});
-    for (const width of [40, 80]) {
-        columns = width;
-        instance.stdout.emit("resize");
-        await flush();
-        const frame = instance.lastFrame() ?? "";
-        expect(frame).not.toContain("│");
-        expect(frame).not.toContain("HiCode needs your input");
-        expect(frame).not.toContain("Type something");
-        expect(frame).toContain("❯ 1. 整页全白");
-        expect(frame).toContain("Enter your own answer…");
-        expect(frame.replace(/\s/g, "")).toContain(description);
-        expect(frame.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
-    }
-});
-
-test("AskDialog 自由输入的中文提示、返回选项和提交行为一致", async () => {
-    const decisions: PermissionDecision[] = [];
-    const instance = render(<AskDialog req={{id: 5, question: "页面空白", toolName: "ask_user",
-        input: {questions: [{question: "页面是什么样的？", options: [{label: "整页全白"}]}]},
-        resolve: decision => decisions.push(decision),
-    }} onDone={() => {}}/>);
-    await flush();
-    instance.stdin.write("\u001b[B");
-    await flush();
-    instance.stdin.write("\r");
-    await flush();
-    expect(instance.lastFrame()).toContain("Enter your answer…");
-    expect(instance.lastFrame()).toContain("Esc back to options");
-    expect(instance.lastFrame()).not.toContain("│");
-    instance.stdin.write("\u001b");
-    await flush();
-    expect(instance.lastFrame()).toContain("Enter your own answer…");
-    expect(decisions).toEqual([]);
-    instance.stdin.write("\r");
-    await flush();
-    instance.stdin.write("只有标题，没有网格");
-    await flush();
-    instance.stdin.write("\r");
-    await flush();
-    expect(decisions).toEqual([]);
-    expect(instance.lastFrame()).toContain("❯ Confirm input");
-    instance.stdin.write("\r");
-    await flush();
-    expect(decisions).toEqual([{behavior: "allow", answers: {"页面是什么样的？": "只有标题，没有网格"}}]);
-});
-
-test("AskDialog free-text questions open the input immediately and preserve Chinese/emoji across resize", async () => {
-    const decisions: PermissionDecision[] = [];
-    const instance = render(<AskDialog req={{id: 30, question: "地址？", toolName: "ask_user", questionDelivery: "async",
-        input: {questions: [{question: "地址？"}]}, resolve: decision => decisions.push(decision),
-    }} onDone={() => {}}/>);
-    await flush();
-    expect(instance.lastFrame()).toContain("Answer when ready");
-    expect(instance.lastFrame()).toContain("Enter your answer");
-    instance.stdin.write("本地🙂");
-    await flush();
-    let columns = 30;
-    Object.defineProperty(instance.stdout, "columns", {configurable: true, get: () => columns});
-    for (const width of [30, 80, 30]) {
-        columns = width; instance.stdout.emit("resize"); await flush();
-        expect(instance.lastFrame()).toContain("本地🙂");
-        expect(decisions).toHaveLength(0);
-    }
-    instance.stdin.write("\r"); await flush();
-    instance.stdin.write("\r"); await flush();
-    expect(decisions).toEqual([{behavior: "allow", answers: {"地址？": "本地🙂"}}]);
-});
-
-test("AskDialog multi-select requires an explicit selection and returns an array", async () => {
-    const decisions: PermissionDecision[] = [];
-    const instance = render(<AskDialog req={{id: 31, question: "平台？", toolName: "ask_user",
+    const view = render(<AskDialog req={{id: 3, question: "平台？", toolName: "ask_user",
         input: {questions: [{question: "平台？", multi_select: true, options: [{label: "Linux"}, {label: "macOS"}]}]},
-        resolve: decision => decisions.push(decision),
-    }} onDone={() => {}}/>);
-    await flush();
-    instance.stdin.write(" "); await flush();
-    instance.stdin.write("\u001b[B"); await flush();
-    instance.stdin.write(" "); await flush();
-    expect(instance.lastFrame()).toContain("[x] Linux");
-    expect(instance.lastFrame()).toContain("[x] macOS");
+        resolve: d => decisions.push(d)}} onDone={() => {}}/>);
+    await flush(); view.stdin.write("\r"); await flush();
     expect(decisions).toHaveLength(0);
-    instance.stdin.write("\u001b[B"); await flush();
-    instance.stdin.write("\u001b[B"); await flush();
-    instance.stdin.write("\r"); await flush();
+    view.stdin.write(" "); await flush();
+    view.stdin.write("\u001b[B"); await flush();
+    view.stdin.write(" "); await flush();
+    expect(view.lastFrame()).toContain("[x] Linux");
+    expect(view.lastFrame()).toContain("[x] macOS");
+    view.stdin.write("\r"); await flush();
     expect(decisions).toEqual([{behavior: "allow", answers: {"平台？": ["Linux", "macOS"]}}]);
+    const custom = render(<AskDialog req={{id: 4, question: "方案？", toolName: "ask_user",
+        input: {questions: [{question: "方案？", options: [{label: "A"}]}]}, resolve: d => decisions.push(d)}} onDone={() => {}}/>);
+    await flush(); custom.stdin.write("\u001b[B"); await flush(); custom.stdin.write("\r"); await flush();
+    custom.stdin.write("自己的方案"); await flush(); custom.stdin.write("\r"); await flush();
+    expect(decisions.at(-1)).toEqual({behavior: "allow", answers: {"方案？": "自己的方案"}});
+});
+
+test("hidden async editor ignores input and preserves its draft through collapse, resize and focus return", async () => {
+    const decisions: PermissionDecision[] = [];
+    let backs = 0;
+    const req = {id: 5, question: "昵称？", toolName: "ask_user", input: {questions: [{question: "昵称？"}]},
+        resolve: (d: PermissionDecision) => decisions.push(d)};
+    const panel = (active: boolean) => <AskDialog req={req} active={active} onBack={() => backs++} onDone={() => {}}/>;
+    const view = render(panel(true));
+    await flush(); view.stdin.write("草稿🙂"); await flush();
+    view.stdin.write("\u001b[1;2C"); await flush(); expect(backs).toBe(1);
+    view.rerender(panel(false)); await flush();
+    view.stdin.write("ignored"); view.stdin.write("\r"); await flush();
+    expect(decisions).toEqual([]);
+    view.rerender(panel(true)); await flush();
+    expect(view.lastFrame()).toContain("草稿🙂");
+    expect(view.lastFrame()).not.toContain("ignored");
+    view.stdin.write("\r"); await flush();
+    expect(decisions).toEqual([{behavior: "allow", answers: {"昵称？": "草稿🙂"}}]);
+});
+
+test("Chinese and emoji reflow narrow-wide-narrow; bracketed paste cannot activate question shortcuts", async () => {
+    const decisions: PermissionDecision[] = [];
+    let backs = 0;
+    const req = {id: 6, question: "中文问题", toolName: "ask_user", input: {questions: [{question: "长中文问题🙂请写下你想使用的测试昵称，然后按回车即可。"}]},
+        resolve: (d: PermissionDecision) => decisions.push(d)};
+    const view = render(<TerminalInputProvider><TerminalSizeProvider><AskDialog req={req} onBack={() => backs++} onDone={() => {}}/></TerminalSizeProvider></TerminalInputProvider>);
+    let columns = 30;
+    Object.defineProperty(view.stdout, "columns", {configurable: true, get: () => columns});
+    for (const width of [30, 90, 30]) {
+        columns = width; view.stdout.emit("resize"); await new Promise(resolve => setTimeout(resolve, 100));
+        expect((view.lastFrame() ?? "").split("\n").every(line => stringWidth(line) <= width)).toBe(true);
+    }
+    view.stdin.write("\u001b[200~中文🙂\n\u001b[1;2C\u001b[201~"); await flush();
+    expect(backs).toBe(0); expect(decisions).toEqual([]);
+    view.stdin.write("\r"); await flush();
+    expect(decisions).toHaveLength(1);
 });

@@ -132,6 +132,8 @@ export function App({
             openProviders: resources.modelConfiguration ? openProviders : undefined,
             openPermissions,
         });
+        const [expandedQuestionId, setExpandedQuestionId] = useState<number | null>(null);
+        const questionExpanded = turn.pendingQuestion?.id === expandedQuestionId;
         const initialImagesLoaded = useRef(false);
         useEffect(() => {
             if (initialImagesLoaded.current || !initialImages?.length) return;
@@ -179,11 +181,7 @@ export function App({
             if (activePanel !== undefined) return;
             if ((key.escape || input === "\u001B") && !turn.confirmRequest && inputEscapeRef.current?.()) return;
             const isCancel = key.escape || input === "\u001B" || isCtrlC;
-            if (turn.confirmRequest?.questionDelivery === "async" && isCancel) {
-                turn.confirmRequest.resolve({behavior: "deny", message: "User dismissed the asynchronous question"});
-                turn.clearConfirmRequest(turn.confirmRequest);
-                return;
-            }
+            if (questionExpanded && !turn.confirmRequest && key.escape) return;
             if (turn.confirmRequest?.actor && isCancel) {
                 turn.confirmRequest.resolve({behavior: "deny", message: "User denied background Agent permission"});
                 turn.clearConfirmRequest(turn.confirmRequest);
@@ -366,13 +364,15 @@ export function App({
                     )
                 ) : (
                     <Box marginTop={1} flexDirection="column">
+                        {turn.pendingQuestion && !questionExpanded && <Text color={COLORS.accent}>• Question pending · Shift+← / Alt+↑ answer</Text>}
                         {turn.sessionInitializationError && (
                             <Text color={COLORS.error}>
                                 Session initialization failed: {turn.sessionInitializationError}
                             </Text>
                         )}
                         <QueuedInputPreview messages={turn.queuedMessages}/>
-                        <InputBox
+                        <Box display={questionExpanded ? "none" : "flex"} flexDirection="column"><InputBox
+                            onOpenQuestion={turn.pendingQuestion ? () => setExpandedQuestionId(turn.pendingQuestion!.id) : undefined}
                             fileSuggestions={turn.fileSuggestions}
                             onEscapeHandlerChange={setInputEscapeHandler}
                             persistentHistory={resources.inputHistory}
@@ -381,7 +381,7 @@ export function App({
                             imageCount={turn.attachmentState.images.length}
                             imagePreparing={turn.attachmentState.preparing}
                             onRemoveImage={() => turn.removeAttachment("last")}
-                            disabled={turn.stopping || turn.attachmentState.preparing}
+                            disabled={turn.stopping || turn.attachmentState.preparing || questionExpanded}
                             allowEmpty={turn.attachmentState.images.length > 0}
                             cwd={resources.cwd}
                             sessionId={turn.sessionId}
@@ -395,9 +395,13 @@ export function App({
                                     state.value,
                                     state.cursorOffset
                                 )}
-                        />
+                        /></Box>
                     </Box>
                 )}
+                {turn.pendingQuestion && <AskDialog key={turn.pendingQuestion.id} req={turn.pendingQuestion}
+                    active={questionExpanded && !turn.confirmRequest && activePanel === undefined}
+                    onBack={() => setExpandedQuestionId(null)}
+                    onDone={() => {turn.clearConfirmRequest(turn.pendingQuestion); setExpandedQuestionId(null);}}/>}
 
                 <StatusBar
                     showShortcuts={(activePanel !== "diff") && (activePanel !== "skills") && (activePanel !== "sandbox") && (activePanel !== "mcp")}

@@ -26,7 +26,7 @@ test("async question returns before the Host answers; late answers keep their re
             expect(result.outcome).toBe("ok");
             expect(result.modelContent).toContain("question-1");
             expect(session.messageQueue.list()).toHaveLength(0);
-            const pending = requests.getSnapshot()!;
+            const pending = requests.getQuestionSnapshot()!;
             expect(pending.questionDelivery).toBe("async");
             session.endTurn();
             pending.resolve({behavior: "allow", answers: {"Address?": "localhost"}});
@@ -43,18 +43,18 @@ test("async question returns before the Host answers; late answers keep their re
             expect(session.takeStorageIssues()).toEqual([]);
 
             await resources.toolRuntime.executeTool("ask_user", input, ctx, "question-2");
-            const declined = requests.getSnapshot()!;
+            const declined = requests.getQuestionSnapshot()!;
             declined.resolve({behavior: "deny", message: "Dismissed"}); requests.clear(declined);
             await new Promise(resolve => setTimeout(resolve, 30));
             expect(session.messageQueue.list()[1]!.type).toBe("runtime_message");
             expect(session.messageQueue.list()[1]!.content).toContain("No answer or authorization");
 
             await resources.toolRuntime.executeTool("ask_user", input, ctx, "question-3");
-            const cancelled = requests.getSnapshot()!;
+            const cancelled = requests.getQuestionSnapshot()!;
             controller.abort("user-cancel");
             cancelled.resolve({behavior: "allow", answers: {"Address?": "late"}});
             await new Promise(resolve => setTimeout(resolve, 10));
-            expect(requests.getSnapshot()).toBeNull();
+            expect(requests.getQuestionSnapshot()).toBeNull();
             expect(session.messageQueue.list()).toHaveLength(2);
         } finally {requests.dispose(); await session.runSessionEnd("test"); await resources.close();}
     });
@@ -74,12 +74,12 @@ test("async requests are bounded and Session close cancels outstanding Host requ
             for (let i = 0; i < 4; i++) {
                 expect((await resources.toolRuntime.executeTool("ask_user", input, ctx, `q-${i}`)).outcome).toBe("ok");
             }
-            const pending = requests.getSnapshot()!;
+            const pending = requests.getQuestionSnapshot()!;
             expect(pending).not.toBeNull();
             expect((await resources.toolRuntime.executeTool("ask_user", input, ctx, "q-5")).outcome).toBe("failed");
             expect(session.messageQueue.list()).toHaveLength(0);
             await session.runSessionEnd("test");
-            expect(requests.getSnapshot()).toBeNull();
+            expect(requests.getQuestionSnapshot()).toBeNull();
             pending.resolve({behavior: "allow", answers: {"Address?": "late"}});
             await Bun.sleep(10);
             expect(session.messageQueue.list()).toHaveLength(0);

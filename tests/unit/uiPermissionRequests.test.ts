@@ -124,3 +124,29 @@ describe("PermissionRequests", () => {
     expect((await requests.request("bash", "after close", {})).behavior).toBe("deny");
   });
 });
+
+test("async questions do not block approvals, and answering a queued question preserves the active approval", async () => {
+  const requests = new PermissionRequests();
+  const answer = requests.request("ask_user", "nickname", {}, {questionDelivery: "async"});
+  const question = requests.getQuestionSnapshot()!;
+  expect(requests.getSnapshot()).toBeNull();
+  const approval = requests.request("bash", "approve command", {});
+  const current = requests.getSnapshot()!;
+  expect(current.toolName).toBe("bash");
+  expect(requests.getQuestionSnapshot()).toBe(question);
+  question.resolve({behavior: "allow", answers: {nickname: "hello"}});
+  expect(requests.clear(question)).toBe(true);
+  expect(requests.getSnapshot()).toBe(current);
+  expect(requests.getQuestionSnapshot()).toBeNull();
+  current.resolve({behavior: "allow"}); requests.clear(current);
+  expect((await answer).behavior).toBe("allow");
+  expect((await approval).behavior).toBe("allow");
+});
+
+test("ordinary permission requests cannot be hidden by an async-question marker", () => {
+  const requests = new PermissionRequests();
+  void requests.request("bash", "must remain visible", {}, {questionDelivery: "async"});
+  expect(requests.getSnapshot()?.toolName).toBe("bash");
+  expect(requests.getQuestionSnapshot()).toBeNull();
+  requests.dispose();
+});

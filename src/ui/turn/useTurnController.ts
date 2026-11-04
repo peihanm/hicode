@@ -403,6 +403,11 @@ export function useTurnController({
             permissionRequests.getSnapshot,
             permissionRequests.getSnapshot
         );
+        const pendingQuestion = useSyncExternalStore(
+            permissionRequests.subscribe,
+            permissionRequests.getQuestionSnapshot,
+            permissionRequests.getQuestionSnapshot
+        );
         const messageQueueSnapshot = useSyncExternalStore(
             messageQueue.subscribe,
             messageQueue.getSnapshot,
@@ -554,6 +559,7 @@ export function useTurnController({
             primaryModel,
             availableModels: resources.primaryModel.available,
             confirmRequest,
+            pendingQuestion,
             attachmentState,
             stopTask: turnController.stopTask.bind(turnController),
             addImages: turnController.addImages.bind(turnController),

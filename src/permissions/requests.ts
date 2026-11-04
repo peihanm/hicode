@@ -51,7 +51,7 @@ export class PermissionRequests {
                 toolName,
                 input,
                 actor: options?.actor,
-                questionDelivery: options?.questionDelivery,
+                questionDelivery: toolName === "ask_user" ? options?.questionDelivery : undefined,
                 allowAddToAllowList:
                     options?.allowPersistent !== false &&
                     toolName !== "write_file" &&
@@ -81,15 +81,23 @@ export class PermissionRequests {
             };
             options?.signal?.addEventListener("abort", abort, {once: true});
             if (options?.revalidate) this.rechecks.set(request, options.revalidate);
-            if (this.current) this.queue.push(request);
+            if (this.current?.questionDelivery === "async" && request.questionDelivery !== "async") {
+                this.queue.unshift(this.current);
+                this.current = request;
+            } else if (this.current) this.queue.push(request);
             else this.current = request;
             this.notify();
         });
     }
 
     clear(request: PermissionRequest | null): boolean {
-        if (!request || this.current !== request) return false;
-        this.current = this.queue.shift() ?? null;
+        if (!request) return false;
+        if (this.current === request) this.current = this.takeNext();
+        else {
+            const index = this.queue.indexOf(request);
+            if (index < 0) return false;
+            this.queue.splice(index, 1);
+        }
         this.notify();
         return true;
     }
@@ -110,7 +118,7 @@ export class PermissionRequests {
         if (requests.length === 0) return false;
         if (this.current && requests.includes(this.current)) this.current = null;
         this.queue = this.queue.filter(request => !requests.includes(request));
-        this.current ??= this.queue.shift() ?? null;
+        this.current ??= this.takeNext();
         for (const request of requests) request.resolve({behavior: "deny", message});
         this.notify();
         return true;
@@ -127,7 +135,15 @@ export class PermissionRequests {
         return () => this.listeners.delete(listener);
     };
 
-    getSnapshot = (): PermissionRequest | null => this.current;
+    getSnapshot = (): PermissionRequest | null => this.current?.questionDelivery === "async" ? null : this.current;
+
+    getQuestionSnapshot = (): PermissionRequest | null => this.current?.questionDelivery === "async"
+        ? this.current : this.queue.find(request => request.questionDelivery === "async") ?? null;
+
+    private takeNext(): PermissionRequest | null {
+        const index = this.queue.findIndex(request => request.questionDelivery !== "async");
+        return this.queue.splice(index < 0 ? 0 : index, 1)[0] ?? null;
+    }
 
     private notify(): void {
         for (const listener of this.listeners) {

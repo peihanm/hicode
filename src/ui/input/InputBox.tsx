@@ -96,6 +96,7 @@ export function createInputBox(
                                  imagePreparing = false,
                                  onRemoveImage,
                                  disabled,
+                                 onOpenQuestion,
                                  allowEmpty = false,
                                  terminalWidth,
                                  cwd,
@@ -118,6 +119,7 @@ export function createInputBox(
         imagePreparing?: boolean;
         onRemoveImage?: () => void;
         disabled: boolean;
+        onOpenQuestion?: () => void;
         allowEmpty?: boolean;
         terminalWidth?: number;
         cwd?: string;
@@ -384,7 +386,13 @@ export function createInputBox(
                         onBackspaceAtStart={onRemoveImage}
                         handleVerticalNavigation={!showSuggestions && !files.active}
                         onEditStateChange={files.onEdit}
-                        onKey={files.onKey}
+                        onKey={(input, key, state) => {
+                            if (onOpenQuestion && ((key.shift && key.leftArrow) || (key.meta && key.upArrow))) {
+                                onOpenQuestion();
+                                return true;
+                            }
+                            return files.onKey(input, key, state);
+                        }}
                         onVerticalBoundary={(direction, state) =>
                             navigateHistory(direction, {
                                 value: expandPasteCapsules(

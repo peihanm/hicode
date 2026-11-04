@@ -170,3 +170,36 @@ test("Ctrl+T 不隐藏 Todo，也不改变输入草稿", async () => {
     } finally {instance.unmount(); await resources.close();}
   });
 });
+
+test("async questions open by shortcut without stealing composer focus or losing either draft", async () => {
+  await withTempProject(async cwd => {
+    const resources = createTestRuntimeResources(cwd);
+    let runs = 0;
+    resources.agentRuntime.runAgent = async (_prompt, _history, _onEvent, ctx) => {
+      if (++runs === 1) await resources.toolRuntime.executeTool("ask_user", JSON.stringify({delivery: "async", questions: [{question: "测试昵称？"}]}), ctx, "ui-question");
+      return {reply: "done", reason: "completed", iterations: 1};
+    };
+    const view = render(<App resources={resources}/>);
+    const flush = () => new Promise(resolve => setTimeout(resolve, 80));
+    try {
+      await flush(); view.stdin.write("start"); await flush(); view.stdin.write("\r"); await flush();
+      expect(view.lastFrame()).toContain("Question pending");
+      expect(view.lastFrame()).not.toContain("Type your answer");
+      view.stdin.write("main draft"); await flush();
+      view.stdin.write("\u001b[1;2D"); await flush();
+      expect(view.lastFrame()).toContain("测试昵称？");
+      expect(view.lastFrame()).toContain("Type your answer");
+      view.stdin.write("小明🙂"); await flush();
+      view.stdin.write("\u001b[1;2C"); await flush();
+      expect(view.lastFrame()).toContain("main draft");
+      expect(view.lastFrame()).not.toContain("Type your answer");
+      expect(runs).toBe(1);
+      view.stdin.write("\u001b[1;3A"); await flush();
+      expect(view.lastFrame()).toContain("小明🙂");
+      view.stdin.write("\r"); await flush();
+      expect(runs).toBe(2);
+      expect(view.lastFrame()).toContain("main draft");
+      expect(view.lastFrame()).not.toContain("Question pending");
+    } finally {view.unmount(); await flush(); await resources.close();}
+  });
+});
