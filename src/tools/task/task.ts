@@ -7,7 +7,7 @@ import {taskLookupFailure} from "./recovery.js";
 import {zodToJsonSchema} from "zod-to-json-schema";
 import {z} from "zod";
 import type {ShellTaskSnapshot, TaskSnapshot} from "../../tasks/index.js";
-import type {Tool, ToolContext} from "../types.js";
+import {ToolInputError, type Tool, type ToolContext} from "../types.js";
 import {checkTaskStopPermission} from "./stopPermission.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../agent/inputChannel.js";
 import {DEFAULT_TASK_WAIT_MS, MAX_TASK_WAIT_MS, waitForTaskActivity} from "../../tasks/wait.js";
@@ -113,7 +113,14 @@ export const taskTool: Tool<typeof inputSchema> = {
         if (action === "input") {
             if (ctx.readOnlyTools) return {behavior: "deny", message: "Read-only Agents cannot send terminal input"};
             const task = task_id ? (await ctx.tasks?.list())?.find(t => t.id === task_id && t.owner.sessionId === ctx.tasks?.sessionId) : undefined;
-            if (task?.kind !== "shell" || task.status !== "running" || !task.acceptsInput) return {behavior: "deny", message: "Task has no owned running interactive process"};
+            if (!task) return {behavior: "deny", message: "Task not found in this Session's accessible tasks. No input was sent."};
+            if (task.kind !== "shell") throw new ToolInputError(`Task ${task.id} is not a Shell task and cannot receive terminal input. Use task status to inspect it.`);
+            if (task.status !== "running") {
+                const termination = formatTermination(task);
+                throw new ToolInputError(`Task ${task.id} has already ended (${task.status}${termination ? `; ${termination}` : ""}). No input was sent. Use task status or wait to read its result. This task cannot be resumed; start a new command only if more work is needed.`);
+            }
+            if (task.phase === "queued" || task.phase === "starting") throw new ToolInputError(`Task ${task.id} is ${task.phase}; its process is not ready for input. No input was sent. Wait for startup, then retry the same Task ID.`);
+            if (!task.acceptsInput) throw new ToolInputError(`Task ${task.id} has no open interactive terminal. No input was sent. Only Bash tasks started with tty=true accept terminal input; the existing process was not restarted.`);
             const permission = await resolvePermission(bashTool, {command: task.command, cwd: task.cwd, tty: true,
                 sandbox_permissions: task.executionMode === "host" ? "require_escalated" : "use_default"}, ctx);
             return permission.behavior === "ask" ? {...permission, allowPersistent: false,

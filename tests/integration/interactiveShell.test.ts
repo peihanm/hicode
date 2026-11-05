@@ -53,7 +53,12 @@ test("interactive Bash/task input uses ownership and current permissions, never 
             const done = await executeToolResult("task", JSON.stringify({action: "wait", task_id: target.id, wait_ms: 2_000}), ctx, "wait");
             expect(done.outcome).toBe("ok");
             expect(done.modelContent).toContain("RESULT:task-ok");
-            expect((await executeToolResult("task", request, ctx, "late")).outcome).toBe("denied");
+            const late = await executeToolResult("task", request, ctx, "late");
+            expect(late.outcome).toBe("failed");
+            expect(late.modelContent).toContain("already ended (completed; exit code 0)");
+            expect(late.modelContent).toContain("No input was sent");
+            expect(late.modelContent).not.toContain("Permission denied");
+            await expect(tasks.writeShellInput(target.id, "late\n", ctx.signal)).rejects.toThrow("already ended");
             expect((await tasks.get(target.id))?.status).toBe("completed");
             expect((await executeToolResult("bash", JSON.stringify({command: "read -r x", tty: true}), {...ctx, readOnlyTools: true}, "readonly-start")).outcome).toBe("denied");
         } finally {await runtime.close();}
@@ -81,5 +86,32 @@ test.skipIf(process.env.HICODE_RUN_SANDBOX_INTEGRATION !== "1")("real Sandbox pr
             expect(await readFile(join(cwd, "inside"), "utf8")).toBe("sandbox-ok");
             expect(await readFile(outside, "utf8")).toBe("original");
         } finally {await sandbox.close();}
+    });
+});
+
+test("input reports a missing terminal as state failure, keeps ownership denials private and never asks for approval", async () => {
+    await withTempProject(async cwd => {
+        let approvals = 0;
+        const base = createTestContext(cwd, {canUseTool: async () => {approvals++; return {behavior: "allow"};}});
+        const runtime = createTaskRuntimeForTest(cwd, base.shellRunner);
+        const tasks = runtime.forSession({sessionId: base.sessionId, toolResultStore: base.toolResultStore});
+        const ctx = {...base, tasks};
+        try {
+            const target = await tasks.startShell({command: "sleep 30", cwd, toolCallId: "non-interactive"});
+            const input = JSON.stringify({action: "input", task_id: target.id, text: "hello\n"});
+            const result = await executeToolResult("task", input, ctx, "no-tty");
+            expect(result.outcome).toBe("failed");
+            expect(result.modelContent).toContain("no open interactive terminal");
+            expect(result.modelContent).toContain("tty=true");
+            expect(result.modelContent).not.toContain("Permission denied");
+            expect((await tasks.get(target.id))?.status).toBe("running");
+            const other = runtime.forSession({sessionId: "foreign", toolResultStore: createTestToolResultStore(cwd, "foreign")});
+            const denied = await executeToolResult("task", input, {...ctx, tasks: other}, "foreign-input");
+            expect(denied.outcome).toBe("denied");
+            expect(denied.modelContent).toContain("not found in this Session");
+            expect(denied.modelContent).not.toContain("sleep 30");
+            expect(denied.modelContent).not.toContain("no open interactive terminal");
+            expect(approvals).toBe(0);
+        } finally {await runtime.close();}
     });
 });

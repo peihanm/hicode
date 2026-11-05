@@ -433,9 +433,11 @@ class TaskRuntime implements TaskRuntimeLike {
         if (signal.aborted) throw new Error("Input cancelled");
         if (!text || Buffer.byteLength(text) > 65_536) throw new Error("Input must contain 1-65536 UTF-8 bytes");
         const task = this.ownedTask(sessionId, id);
-        if (!task || !isShellTask(task) || !task.published || task.status !== "running" || task.controller.signal.aborted || !task.writeInput) {
-            throw new Error("No owned running interactive process accepts input for this task");
-        }
+        if (!task || (isShellTask(task) && !task.published)) throw new Error("No owned task is accessible for terminal input");
+        if (!isShellTask(task)) throw new Error(`Task ${id} is not a Shell task; no input was sent`);
+        if (task.status !== "running") throw new Error(`Task ${id} has already ended (${task.status}); no input was sent. Inspect its result with task status or wait`);
+        if (task.controller.signal.aborted) throw new Error(`Task ${id} is stopping; no input was sent`);
+        if (!task.writeInput) throw new Error(`Task ${id} has no open interactive terminal; no input was sent. Check task status; only live Bash tasks started with tty=true accept input`);
         // No await between ownership/lifecycle checks and writing to the original process.
         return task.writeInput(text);
     }
