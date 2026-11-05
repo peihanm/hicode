@@ -37,18 +37,29 @@ test("multiple questions advance on Enter and submit only after the last answer"
     expect(decisions).toEqual([{behavior: "allow", answers: {"方案？": "A", "环境？": "local"}}]);
 });
 
-test("custom choices submit their text directly and multiple choices use Space then Enter", async () => {
+test("custom text submits directly; multi-select supports both Enter and Space with explicit submission", async () => {
     const decisions: PermissionDecision[] = [];
     const view = render(<AskDialog req={{id: 3, question: "平台？", toolName: "ask_user",
         input: {questions: [{question: "平台？", multi_select: true, options: [{label: "Linux"}, {label: "macOS"}]}]},
         resolve: d => decisions.push(d)}} onDone={() => {}}/>);
-    await flush(); view.stdin.write("\r"); await flush();
+    await flush();
+    view.stdin.write("\u001b[A"); await flush(); // Wrap to Submit selections, with no selection.
+    view.stdin.write("\r"); await flush();
+    expect(decisions).toHaveLength(0);
+    view.stdin.write("\u001b[B"); await flush();
+    view.stdin.write("\r"); await flush();
+    expect(view.lastFrame()).toContain("[x] Linux");
     expect(decisions).toHaveLength(0);
     view.stdin.write(" "); await flush();
+    expect(view.lastFrame()).toContain("[ ] Linux");
+    view.stdin.write("\r"); await flush();
     view.stdin.write("\u001b[B"); await flush();
-    view.stdin.write(" "); await flush();
+    view.stdin.write("\r"); await flush();
     expect(view.lastFrame()).toContain("[x] Linux");
     expect(view.lastFrame()).toContain("[x] macOS");
+    expect(decisions).toHaveLength(0);
+    view.stdin.write("\u001b[B"); await flush();
+    view.stdin.write("\u001b[B"); await flush();
     view.stdin.write("\r"); await flush();
     expect(decisions).toEqual([{behavior: "allow", answers: {"平台？": ["Linux", "macOS"]}}]);
     const custom = render(<AskDialog req={{id: 4, question: "方案？", toolName: "ask_user",

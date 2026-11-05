@@ -27,6 +27,7 @@ export function AskDialog({req, onDone, active = true, onBack}: {
     const question = questions[index]!;
     const options = question.options ?? [];
     const typing = !question.options || isTyping;
+    const choiceCount = options.length + (question.multi_select ? 2 : 1);
 
     const submit = (answer: string | string[]) => {
         const next = {...answers, [question.question]: answer};
@@ -59,12 +60,14 @@ export function AskDialog({req, onDone, active = true, onBack}: {
             return;
         }
         if (typing) return; // TextInput owns text, paste and Enter.
-        if (key.upArrow) setSelectedIndex(i => (i - 1 + options.length + 1) % (options.length + 1));
-        else if (key.downArrow) setSelectedIndex(i => (i + 1) % (options.length + 1));
+        if (key.upArrow) setSelectedIndex(i => (i - 1 + choiceCount) % choiceCount);
+        else if (key.downArrow) setSelectedIndex(i => (i + 1) % choiceCount);
         else if (input === " " && question.multi_select && selectedIndex < options.length) toggle();
         else if (key.return) {
-            if (selectedIndex === options.length) setIsTyping(true);
-            else if (question.multi_select) {if (selected.length) submit(selectedLabels());}
+            if (question.multi_select && selectedIndex === options.length + 1) {
+                if (selected.length) submit(selectedLabels());
+            } else if (selectedIndex === options.length) setIsTyping(true);
+            else if (question.multi_select) toggle();
             else submit(options[selectedIndex]!.label);
         }
     }, {isActive: active});
@@ -72,7 +75,10 @@ export function AskDialog({req, onDone, active = true, onBack}: {
     if (!active) return null;
     const rows = (text: string, color?: string) => wrapPanelText(text, contentWidth).map((line, i) =>
         <Text key={i} color={color}>{line}</Text>);
-    const hint = `${question.multi_select && !typing ? "↑↓ move · Space select · " : options.length && !typing ? "↑↓ select · " : ""}Enter ${index === questions.length - 1 ? "submit" : "next"} · ${onBack ? "Shift+→ / Esc back" : "Esc cancel"}`;
+    const actionHint = question.multi_select && !typing
+        ? "↑↓ move · Enter/Space toggle · Submit selections to finish"
+        : `${options.length && !typing ? "↑↓ select · " : ""}Enter ${index === questions.length - 1 ? "submit" : "next"}`;
+    const hint = `${actionHint} · ${onBack ? "Shift+→ / Esc back" : "Esc cancel"}`;
     return <Box flexDirection="column" paddingX={padding}>
         <Text color={COLORS.dim}>{questions.length > 1 ? `Question ${index + 1} of ${questions.length}` : "Question"}</Text>
         <Box marginTop={1} flexDirection="column">{rows(question.question)}</Box>
@@ -90,6 +96,8 @@ export function AskDialog({req, onDone, active = true, onBack}: {
                 </Box>
             </Box> : rows(`${selectedIndex === options.length ? "›" : " "} ${options.length + 1}. ${draft || "Type your own answer"}`,
                 selectedIndex === options.length ? COLORS.accent : COLORS.dim)}
+            {question.multi_select && !typing && rows(`${selectedIndex === options.length + 1 ? "›" : " "} Submit selections (${selected.length})`,
+                selectedIndex === options.length + 1 && selected.length > 0 ? COLORS.accent : COLORS.dim)}
         </Box>
         <Box marginTop={1} flexDirection="column">{rows(hint, COLORS.dim)}</Box>
     </Box>;
