@@ -11,8 +11,8 @@ const input = JSON.stringify({delivery: "async", questions: [{question: "Address
 test("async question returns before the Host answers; late answers keep their request identity and user provenance", async () => {
     await withTempProject(async cwd => {
         const resources = createTestRuntimeResources(cwd);
-        // SDK also disables background tasks; questions remain available when Host supports interaction.
-        const session = createRootSessionRuntime({resources, allowBackgroundTasks: false,
+        // Questions remain available even when the Host disables background Shells.
+        const session = createRootSessionRuntime({resources, allowBackgroundShell: false,
             seed: {sessionId: "async-questions", history: [{role: "system", content: "test"}], compactState: createCompactState()}});
         const requests = new PermissionRequests();
         const controller = new AbortController();

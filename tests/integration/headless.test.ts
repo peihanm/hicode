@@ -5,7 +5,7 @@ import type {HeadlessRunSummary} from "../../src/headless/types.js";
 import { assistantText, assistantToolCall, createFakeLLM } from "../helpers/fakeLLM.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { join } from "node:path";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import {
   abortableDelay,
   createTurnAbortController,
@@ -212,6 +212,23 @@ describe("headless integration", () => {
         name: "agent",
         outcome: "failed",
       });
+    });
+  });
+
+  test("Headless keeps background Shell disabled when SDK Threads enable it", async () => {
+    await withTempProject(async cwd => {
+      const fake = createFakeLLM([
+        assistantToolCall("bash", {command: "printf unexpected > must-not-run", run_in_background: true}, "background"),
+        call => {
+          const result = call.messages.find(message => message.role === "tool" && message.tool_call_id === "background");
+          expect(result?.content).toContain("does not support background tasks");
+          return assistantText("Background unavailable");
+        },
+      ]);
+      const result = await runHeadless(options(cwd), {mcpManager: false, agent: {callLLM: fake.callLLM},
+        toolResultStoreOptions: {hicodeHome: join(cwd, "tool-results")}, writeOutput: ignoreOutput});
+      expect(result.finalResponse).toBe("Background unavailable");
+      await expect(readFile(join(cwd, "must-not-run"))).rejects.toThrow();
     });
   });
 

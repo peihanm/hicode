@@ -1,4 +1,4 @@
-import {cp, mkdir, readFile, rm, writeFile} from "node:fs/promises";
+import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {dirname, relative, resolve} from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..", "..");
@@ -48,28 +48,30 @@ function readRuntimeDependencies(value: unknown): Record<string, string> {
 }
 
 async function runDeclarationBundler(output: string): Promise<void> {
-    const executable = resolve(
-        repositoryRoot,
-        "node_modules",
-        ".bin",
-        "dts-bundle-generator"
-    );
-    const child = Bun.spawn([
-        executable,
-        "--no-banner",
-        "--project",
-        resolve(repositoryRoot, "tsconfig.sdk.json"),
-        "-o",
-        output,
-        resolve(repositoryRoot, "src", "sdk", "index.ts"),
-    ], {
-        cwd: repositoryRoot,
-        stdout: "inherit",
-        stderr: "inherit",
-    });
-    const exitCode = await child.exited;
-    if (exitCode !== 0) {
-        throw new Error(`SDK 声明打包失败，exit code ${exitCode}`);
+    // Compile implementations with Bun types, then bundle only the portable public declarations.
+    const temporary = await mkdtemp(resolve(repositoryRoot, "dist", "sdk-types-"));
+    try {
+        const declarations = resolve(temporary, "declarations");
+        const entry = resolve(declarations, "sdk", "index.d.ts");
+        const project = resolve(temporary, "tsconfig.json");
+        await writeFile(project, JSON.stringify({
+            extends: resolve(repositoryRoot, "tsconfig.sdk.json"),
+            compilerOptions: {types: ["node"]},
+            include: [entry],
+        }));
+        for (const command of [
+            [process.execPath, resolve(repositoryRoot, "node_modules/typescript/bin/tsc"),
+                "--project", resolve(repositoryRoot, "tsconfig.sdk.json"),
+                "--rootDir", resolve(repositoryRoot, "src"), "--outDir", declarations],
+            [resolve(repositoryRoot, "node_modules/.bin/dts-bundle-generator"),
+                "--no-banner", "--project", project, "-o", output, entry],
+        ]) {
+            const child = Bun.spawn(command, {cwd: repositoryRoot, stdout: "inherit", stderr: "inherit"});
+            const exitCode = await child.exited;
+            if (exitCode !== 0) throw new Error(`SDK 声明打包失败，exit code ${exitCode}`);
+        }
+    } finally {
+        await rm(temporary, {recursive: true, force: true});
     }
 }
 
@@ -118,14 +120,14 @@ async function main(): Promise<void> {
     );
 
     const javascript = await readFile(javascriptPath, "utf8");
-    if (/\bBun\./.test(javascript) || /import\.meta\.(?:dir|path)/.test(javascript)) {
-        throw new Error("SDK 构建产物仍包含 Bun-only 运行时 API");
+    if (/import\.meta\.(?:dir|path)/.test(javascript)) {
+        throw new Error("SDK 构建产物仍包含 Bun-only 入口路径 API");
     }
     const declaration = await readFile(declarationPath, "utf8");
     const imports = declaration.match(/^\s*import\b.*$/gm) ?? [];
     if (
         imports.some((line) => !/\bfrom\s+["']zod["'];?\s*$/.test(line)) ||
-        /\bfrom\s+["'](?:\.|\/)/.test(declaration)
+        /\bfrom\s+["'](?:\.|\/)/.test(declaration) || /\bBun\b|reference types=["']bun/.test(declaration)
     ) {
         throw new Error("SDK 声明文件包含非公开或内部类型依赖");
     }

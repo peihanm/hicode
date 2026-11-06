@@ -214,7 +214,7 @@ function runProcess({
                 ...(env ? {env} : {}),
             };
             if (tty) {
-                if (process.platform === "win32" || typeof Bun.Terminal !== "function") throw new Error("Interactive terminals require Bun with PTY support on macOS or Linux");
+                if (process.platform === "win32" || typeof Bun === "undefined" || typeof Bun.Terminal !== "function") throw new Error("Interactive terminals require Bun with PTY support on macOS or Linux");
                 if (stdin !== undefined) throw new Error("PTY and fixed stdin cannot be combined");
                 terminal = new Bun.Terminal({cols: 100, rows: 30, name: "xterm-256color",
                     data: (_term, data) => append("stdout", Buffer.from(data)),

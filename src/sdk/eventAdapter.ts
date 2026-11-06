@@ -16,6 +16,8 @@ import type {
     TodoListItem,
     ToolCallItem,
 } from "./protocol.js";
+import {agentRunTiming} from "../tasks/format.js";
+import type {TaskSnapshot} from "../tasks/types.js";
 import type {Todo} from "../session/todo.js";
 
 const ITEM_TEXT_LIMIT = 10_000;
@@ -71,6 +73,8 @@ export class SDKEventAdapter {
     private readonly activeHooks = new Set<string>();
     private readonly fileChanges = new Map<string, FileChangeItem[]>();
     private readonly subagents = new Map<string, SubagentItem>();
+    private readonly completedSubagentRuns = new Set<string>();
+    private readonly interactions = new Map<string, InteractionItem>();
     private activeCompact: CompactItem | undefined;
     private itemSequence = 0;
     private lastProgress:
@@ -273,55 +277,6 @@ export class SDKEventAdapter {
                 await this.emitItem("item.completed", item);
                 break;
             }
-            case "subagent_start": {
-                const item: SubagentItem = {
-                    id: `subagent:${event.agentId}`,
-                    type: "subagent",
-                    status: "in_progress",
-                    agentId: event.agentId,
-                    agentType: event.agentType,
-                    agentName: event.agentName,
-                    description: event.description,
-                    parentToolCallId: event.parentToolCallId,
-                };
-                this.subagents.set(event.agentId, item);
-                await this.emitItem("item.started", item);
-                break;
-            }
-            case "subagent_end": {
-                const current = this.subagents.get(event.agentId);
-                if (!current) break;
-                const item: SubagentItem = {
-                    ...current,
-                    status: event.reason === "interrupted"
-                        ? "interrupted"
-                        : event.reason === "completed" ||
-                          event.reason === "no_tool_calls"
-                            ? "completed"
-                            : "failed",
-                    reason: event.reason,
-                    iterations: event.iterations,
-                    toolUseCount: event.toolUseCount,
-                    durationMs: event.durationMs,
-                    reportPreview: boundedText(event.report),
-                    transcriptPath: event.transcriptPath,
-                };
-                this.subagents.delete(event.agentId);
-                await this.emitItem("item.completed", item);
-                break;
-            }
-            case "subagent_error": {
-                const current = this.subagents.get(event.agentId);
-                if (!current) break;
-                const item: SubagentItem = {
-                    ...current,
-                    status: "failed",
-                    error: boundedText(event.message),
-                };
-                this.subagents.delete(event.agentId);
-                await this.emitItem("item.completed", item);
-                break;
-            }
             case "memory_update": {
                 const item: MemoryChangeItem = {
                     id: this.nextId("memory"),
@@ -345,6 +300,7 @@ export class SDKEventAdapter {
             status: "in_progress",
             request,
         };
+        this.interactions.set(request.requestId, item);
         await this.emitItem("item.started", item);
     }
 
@@ -353,6 +309,7 @@ export class SDKEventAdapter {
         response: InteractionResponse,
         status: InteractionItem["status"]
     ): Promise<void> {
+        if (!this.interactions.delete(request.requestId)) return;
         const item: InteractionItem = {
             id: `interaction:${request.requestId}`,
             type: "interaction",
@@ -391,6 +348,42 @@ export class SDKEventAdapter {
         await this.emitInstant(item);
     }
 
+    handleTaskSnapshot = async (task: TaskSnapshot): Promise<void> => {
+        if (task.kind !== "agent") return;
+        const runId = `subagent:${task.id}:run:${task.progress.runCount}`;
+        if (this.completedSubagentRuns.has(runId)) return;
+        const current = this.subagents.get(task.id);
+        const item: SubagentItem = {
+            id: current?.id ?? runId, type: "subagent", agentId: task.id, runCount: task.progress.runCount,
+            taskStatus: task.status,
+            status: task.status === "running" ? "in_progress"
+                : task.status === "cancelled" || task.status === "interrupted" ? "interrupted"
+                : task.status,
+            agentType: task.agentType, agentName: task.agentName,
+            description: task.description, parentToolCallId: task.owner.toolCallId,
+            reason: task.reason, iterations: task.progress.iterations,
+            toolUseCount: task.progress.toolUseCount, durationMs: agentRunTiming(task).runMs,
+            reportPreview: task.resultPreview === undefined ? undefined : boundedText(task.resultPreview),
+            transcriptPath: task.transcriptPath,
+            error: task.outputIssue === undefined ? undefined : boundedText(task.outputIssue),
+        };
+        const emissions: Promise<void>[] = [];
+        if (!current) {
+            emissions.push(this.emitItem("item.started", {...item, status: "in_progress"}));
+        }
+        if (task.status === "running") {
+            this.subagents.set(task.id, item);
+            // Queued followups keep the Task running; update its runCount without inventing an end.
+            if (current) emissions.push(this.emitItem("item.updated", item));
+        } else {
+            this.subagents.delete(task.id);
+            this.completedSubagentRuns.add(runId);
+            emissions.push(this.emitItem("item.completed", item));
+        }
+        // Enqueue synchronously in Task event order, including paired start/end for a resumed snapshot.
+        await Promise.all(emissions);
+    };
+
     async finish(reason: StopReason): Promise<void> {
         await this.flushEndedTools();
         const danglingStatus = reason === "interrupted"
@@ -410,6 +403,10 @@ export class SDKEventAdapter {
                 status: danglingStatus,
             });
             this.subagents.delete(agentId);
+        }
+        for (const [requestId, current] of this.interactions) {
+            this.interactions.delete(requestId);
+            await this.emitItem("item.completed", {...current, status: "interrupted"});
         }
         if (this.activeCompact) {
             await this.emitItem("item.completed", {

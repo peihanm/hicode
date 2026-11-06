@@ -8,6 +8,8 @@ import type {HookTrustRequest} from "../hooks/index.js";
 import type {MemoryChange} from "../memory/types.js";
 import type {McpApprovalRequest} from "../mcp/index.js";
 import type {AgentType} from "../subagents/types.js";
+import type {AgentTaskStatus} from "../tasks/types.js";
+import type {PermissionActor} from "../permissions/types.js";
 import type {Todo} from "../session/todo.js";
 import type {LLMRetryInfo} from "../llm/types.js";
 
@@ -65,6 +67,7 @@ export interface FileChangeItem extends ThreadItemBase {
 
 interface InteractionRequestBase {
     requestId: string;
+    actor?: PermissionActor;
 }
 
 export type InteractionRequest =
@@ -113,6 +116,9 @@ export interface InteractionItem extends ThreadItemBase {
 export interface SubagentItem extends ThreadItemBase {
     type: "subagent";
     agentId: string;
+    runCount: number;
+    /** Actual Task state; Item status may be interrupted when its Turn stream ends. */
+    taskStatus: AgentTaskStatus;
     agentType: AgentType;
     agentName?: string;
     description: string;

@@ -66,7 +66,7 @@ test.each(["missing", "forbidden"] as const)("Agent launch rejects %s task capab
         const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner, () => {
             launches++; throw new Error("must not execute");
         });
-        if (mode === "forbidden") ctx.tasks = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore, allowBackgroundTasks: false});
+        if (mode === "forbidden") ctx.tasks = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore, allowAgentTasks: false});
         ctx.subagentLauncher = createSubagentLauncher({parentContext: ctx, getHistory: () => []});
         try {
             const result = await executeToolResult("agent", JSON.stringify({description: "inspect", prompt: "inspect"}), ctx, "spawn");

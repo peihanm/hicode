@@ -17,6 +17,7 @@ import {limitPersistedUIEvents, type PersistedUIEvent,} from "../session/index.j
 import type {Todo} from "../session/todo.js";
 import {AsyncEventQueue} from "./eventQueue.js";
 import {SDKEventAdapter} from "./eventAdapter.js";
+import type {TaskSnapshot} from "../tasks/types.js";
 import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
 import type {
     InteractionRequest,
@@ -52,6 +53,8 @@ interface CreateSDKThreadOptions {
     host?: HiCodeHost;
     signal?: AbortSignal;
     shellContinuation?: boolean;
+    allowAgentTasks?: boolean;
+    allowBackgroundShell?: boolean;
     onClose(): void;
 }
 
@@ -80,7 +83,9 @@ export function createSDKThreadFactory(
         const session = createRootSessionRuntime({
             resources: options.resources,
             seed: {...options.seed, permissionMode: options.state.permissionMode},
-            allowBackgroundTasks: false,
+            allowBackgroundShell: options.allowBackgroundShell ?? true,
+            allowBackgroundMemory: false,
+            allowAgentTasks: options.allowAgentTasks ?? true,
             shellContinuation: options.shellContinuation ?? true,
         });
         await session.initialize();
@@ -126,6 +131,7 @@ class SDKThreadImpl implements SessionThread {
     private closed = false;
     private preparing: {controller: AbortController; settled: Promise<MessageContent>} | undefined;
     private lastEndReason = "shutdown";
+    private projection: {turnId: string; adapter: SDKEventAdapter} | undefined;
 
     constructor(private readonly options: SDKThreadImplOptions) {
         this.id = options.session.sessionId;
@@ -301,12 +307,34 @@ class SDKThreadImpl implements SessionThread {
             ...(imageReferences(prompt).length ? {images: imageReferences(prompt)} : {}),
         });
         const adapter = new SDKEventAdapter(turnId, emit);
+        this.projection = {turnId, adapter};
+        const taskEvents = new Set<Promise<void>>();
+        const projectTask = (task: TaskSnapshot): void => {
+            if (controller.signal.aborted) return;
+            const pending = adapter.handleTaskSnapshot(task).catch(error => {
+                queue.discard(error instanceof Error ? error : new Error(String(error)));
+                controller.abort("user-cancel");
+            }).finally(() => taskEvents.delete(pending));
+            taskEvents.add(pending);
+        };
+        const unsubscribeTasks = this.options.session.taskSession.subscribe(event => projectTask(event.task));
+        const finishProjection = async (reason: Parameters<SDKEventAdapter["finish"]>[0]) => {
+            unsubscribeTasks();
+            if (this.projection?.adapter === adapter) this.projection = undefined;
+            await Promise.all(taskEvents);
+            await adapter.finish(reason);
+        };
         let adapterCommitted = false;
-        if (turnOptions.permissionMode !== undefined) {
-            this.options.session.permissions.setMode(turnOptions.permissionMode);
-        }
-
         try {
+            if (turnOptions.permissionMode !== undefined) {
+                this.options.session.permissions.setMode(turnOptions.permissionMode);
+            }
+            // Include tasks retained after a cancelled or budget-limited Turn.
+            for (const task of await this.options.session.taskSession.list()) {
+                if (task.kind === "agent" && task.status === "running") {
+                    projectTask(task);
+                }
+            }
             const result = await this.options.dependencies.runTurn({
                 turnId,
                 resources: this.options.resources,
@@ -340,7 +368,7 @@ class SDKThreadImpl implements SessionThread {
                     this.options.sessionStartContextBlocks,
                 maxIterations: turnOptions.maxIterations,
             });
-            await adapter.finish(result.reason);
+            await finishProjection(result.reason);
             this.commitUIEvents(adapter);
             adapterCommitted = true;
             this.lastEndReason = result.reason;
@@ -359,11 +387,14 @@ class SDKThreadImpl implements SessionThread {
         } catch (error) {
             const interrupted = controller.signal.aborted;
             this.lastEndReason = interrupted ? "interrupted" : "error";
-            await adapter.finish(interrupted ? "interrupted" : "max_turns");
+            await finishProjection(interrupted ? "interrupted" : "max_turns");
             this.commitUIEvents(adapter);
             adapterCommitted = true;
             const info = toSDKErrorInfo(error, controller.signal);
             await emit({type: "turn.failed", turnId, error: info});
+        } finally {
+            unsubscribeTasks();
+            if (this.projection?.adapter === adapter) this.projection = undefined;
         }
     }
 
@@ -374,15 +405,20 @@ class SDKThreadImpl implements SessionThread {
     ): ToolContextHost {
         return {
             canUseTool: async (toolName, message, input, options) => {
+                if (this.closed) return {behavior: "deny", message: "SDK Thread is closed"};
                 const network = options?.presentation?.kind === "network_access"
                     ? options.presentation : undefined;
                 const asyncQuestion = toolName === "ask_user" && options?.questionDelivery === "async";
-                const signal = asyncQuestion && options?.signal ? options.signal : options?.signal
+                // Child Tasks own their requests independently of the originating Root Turn.
+                if (options?.actor && !options.signal) return {behavior: "deny", message: "Child permission request has no cancellation signal"};
+                const projection = options?.actor ? this.projection : {turnId, adapter};
+                const signal = (options?.actor || asyncQuestion) && options?.signal ? options.signal : options?.signal
                     ? AbortSignal.any([ownerSignal, options.signal])
                     : ownerSignal;
                 const request: InteractionRequest = toolName === "ask_user"
                     ? {
                         requestId: randomUUID(),
+                        ...(options?.actor ? {actor: options.actor} : {}),
                         kind: "question",
                         delivery: asyncQuestion ? "async" : "sync",
                         toolName,
@@ -391,18 +427,20 @@ class SDKThreadImpl implements SessionThread {
                     }
                     : {
                         requestId: randomUUID(),
+                        ...(options?.actor ? {actor: options.actor} : {}),
                         kind: "permission",
                         toolName,
                         message,
                         input,
                         ...(network ? {networkAccess: {host: network.host, port: network.port}} : {}),
                     };
-                if (!asyncQuestion) await adapter?.emitInteractionStart(request);
+                if (!asyncQuestion) await projection?.adapter?.emitInteractionStart(request);
                 let response = await this.requestInteraction(
                     request,
-                    turnId,
+                    projection?.turnId,
                     signal
                 );
+                if (this.closed) response = {behavior: "deny", message: "SDK Thread is closed"};
                 if (network && response.behavior === "allow" && (
                     response.persistence === "always" || response.directoryScope !== undefined ||
                     response.answers !== undefined
@@ -414,7 +452,9 @@ class SDKThreadImpl implements SessionThread {
                     : response.behavior === "deny"
                         ? "denied"
                         : "completed";
-                if (!asyncQuestion) await adapter?.emitInteractionEnd(request, response, status);
+                if (!asyncQuestion && (!options?.actor || this.projection === projection)) {
+                    await projection?.adapter?.emitInteractionEnd(request, response, status);
+                }
                 return toPermissionDecision(response);
             },
             getPermissionRules: () =>
@@ -431,7 +471,7 @@ class SDKThreadImpl implements SessionThread {
 
     private async requestInteraction(
         request: InteractionRequest,
-        turnId: string,
+        turnId: string | undefined,
         signal: AbortSignal
     ): Promise<InteractionResponse> {
         const callback = this.options.host?.onInteraction;

@@ -222,7 +222,9 @@ export interface TaskSessionBinding {
     messageQueue?: RuntimeMessageQueue;
     sessionId: string;
     toolResultStore: ToolResultStore;
-    allowBackgroundTasks?: boolean;
+    allowBackgroundShell?: boolean;
+    allowBackgroundMemory?: boolean;
+    allowAgentTasks?: boolean;
     shellContinuation?: boolean;
 }
 

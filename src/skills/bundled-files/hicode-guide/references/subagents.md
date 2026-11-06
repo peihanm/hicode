@@ -90,7 +90,7 @@ For another round, ask Root to continue the **same** Agents. `agent_followup` qu
 | Stop a child | Closes the thread; it cannot be followed up. |
 | Exit HiCode | Closes owned tasks; later `/resume` restores records, not live child threads. |
 
-`/tasks` exposes task status/output and stopping. Interrupt/followup are model tools, not extra slash commands. Every Agent is a retained TaskRuntime thread and starts asynchronously; there is no foreground mode or run_in_background argument. Completion delivers a notification with its Task ID, summary and saved report path. Current headless/SDK Hosts reject Agent launches because they do not allow managed Agent tasks.
+`/tasks` exposes task status/output and stopping. Interrupt/followup are model tools, not extra slash commands. Every Agent is a retained TaskRuntime thread and starts asynchronously; there is no foreground mode or run_in_background argument. Completion delivers a notification with its Task ID, summary and saved report path. SDK Threads support these Agent tasks and collect required reports before normal completion. Child permissions use the parent Host callback; closing the Thread cleans up its tasks. One-shot headless CLI still rejects Agent launches.
 
 ## Diagnose configuration or execution
 

@@ -20,10 +20,19 @@ describe("SDK event adapter", async () => {
     test.each(["completed", "interrupted"] as const)("子 Agent %s 投影运行状态并原样保留审查结论", async reason => {
         const events: ThreadEventPayload[] = [];
         const adapter = new SDKEventAdapter("turn-review", event => {events.push(event);});
-        await adapter.handleAgentEvent({type: "subagent_start", agentId: "reviewer", agentType: "project-reviewer",
-            parentToolCallId: "review-call", description: "检查并发写入"});
-        await adapter.handleAgentEvent({type: "subagent_end", agentId: "reviewer", agentType: "project-reviewer",
-            reason, iterations: 2, toolUseCount: 1, durationMs: 10, report: "发现并发写入风险。\nVERDICT: FAIL"});
+        const task: import("../../src/tasks/types.js").AgentTaskSnapshot = {
+            id: "reviewer", kind: "agent", cwd: "/workspace", status: "running",
+            owner: {sessionId: "parent", toolCallId: "review-call"},
+            agentType: "project-reviewer", description: "检查并发写入", startedAt: "2026-11-06T00:00:00Z",
+            progress: {runCount: 1, runStartedAt: "2026-11-06T00:00:00Z", previousDurationMs: 0,
+                todosUpdated: false, iterations: 0, toolUseCount: 0, pendingMessages: 0},
+        };
+        await adapter.handleTaskSnapshot(task);
+        const completed = {...task, status: reason, reason, completedAt: "2026-11-06T00:00:01Z",
+            resultPreview: "发现并发写入风险。\nVERDICT: FAIL", progress: {...task.progress, iterations: 2, toolUseCount: 1}};
+        await adapter.handleTaskSnapshot(completed);
+        await adapter.handleTaskSnapshot(completed);
+        expect(events.filter(event => event.type === "item.completed")).toHaveLength(1);
         const event = events.find(event => event.type === "item.completed");
         expect(event?.type).toBe("item.completed");
         if (event?.type !== "item.completed") throw new Error("缺少子 Agent 完成事件");

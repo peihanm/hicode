@@ -92,7 +92,9 @@ export class TaskSession implements TaskSessionLike {
         }
         const child = new TaskSession(this.runtime, {
             sessionId: store.sessionId, toolResultStore: store,
-            allowBackgroundTasks: this.binding.allowBackgroundTasks,
+            allowBackgroundShell: this.binding.allowBackgroundShell,
+            allowBackgroundMemory: false,
+            allowAgentTasks: false,
             shellContinuation: this.binding.shellContinuation,
         });
         this.children.add(child);
@@ -114,10 +116,10 @@ export class TaskSession implements TaskSessionLike {
     initialize(): Promise<void> {
         return this.ready;
     }
-    get shellContinuation(): boolean {return this.binding.shellContinuation ?? this.binding.allowBackgroundTasks !== false;}
+    get shellContinuation(): boolean {return this.binding.shellContinuation ?? this.binding.allowBackgroundShell !== false;}
 
     async startShell(input: StartShellTaskInput): Promise<ShellTaskSnapshot> {
-        if (this.binding.allowBackgroundTasks === false) {
+        if (this.binding.allowBackgroundShell === false) {
             throw new Error("This execution mode does not support background tasks");
         }
         await this.ready;
@@ -141,8 +143,8 @@ export class TaskSession implements TaskSessionLike {
     }
 
     async startAgent(input: StartAgentTaskInput): Promise<AgentTaskSnapshot> {
-        if (this.binding.allowBackgroundTasks === false) {
-            throw new Error("This execution mode does not support background tasks");
+        if (this.binding.allowAgentTasks === false) {
+            throw new Error("This execution mode does not support Agent tasks");
         }
         await this.ready;
         this.assertOpen();
@@ -150,7 +152,7 @@ export class TaskSession implements TaskSessionLike {
     }
 
     async startMemory(input:StartMemoryTaskInput):Promise<MemoryTaskSnapshot|undefined> {
-        if(input.background&&this.binding.allowBackgroundTasks===false)return undefined;
+        if(input.background&&this.binding.allowBackgroundMemory===false)return undefined;
         await this.ready;this.assertOpen();return this.trackStart(() => this.runtime.startMemory(this.binding, input));
     }
 
@@ -187,6 +189,7 @@ export class TaskSession implements TaskSessionLike {
     }
 
     async followup(id: string, message: string): Promise<AgentFollowupResult> {
+        if (this.binding.allowAgentTasks === false) throw new Error("This execution mode does not support Agent tasks");
         await this.ready;
         this.assertOpen();
         return this.trackStart(() => this.runtime.followupAgent(this.binding, id, message));

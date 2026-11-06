@@ -431,7 +431,7 @@ test("advisory review remains available in one-shot Hosts and archived results d
         const base = createTestContext(cwd);
         const factory: TaskReviewRunner = async () => report;
         const runtime = createTaskRuntimeForTest(cwd, base.shellRunner, undefined, undefined, undefined, undefined, factory);
-        const binding = {sessionId: base.sessionId, toolResultStore: base.toolResultStore, allowBackgroundTasks: false};
+        const binding = {sessionId: base.sessionId, toolResultStore: base.toolResultStore, allowBackgroundShell: false, allowBackgroundMemory: false, allowAgentTasks: false};
         try {
             const result = await runtime.forSession(binding).startReview({parentContext: base, signal: base.signal,
                 evidence: {fromRound: 1, toRound: 10, requirements: "task", activity: "evidence"}});

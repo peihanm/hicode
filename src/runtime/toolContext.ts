@@ -67,7 +67,8 @@ interface ToolContextSession {
     contextUsage: ContextUsageTracker;
     toolResultStore: ToolResultStore;
     toolResultFiles?: ToolContext["toolResultFiles"];
-    allowBackgroundTasks?: boolean;
+    allowBackgroundShell?: boolean;
+    allowBackgroundMemory?: boolean;
     hookSession?: HookSessionRuntime;
     directoryAccess?: DirectoryAccessRuntimeLike;
 }
@@ -100,7 +101,8 @@ export function createToolContext({
     const tasks: ToolContext["tasks"] = resources.tasks ?? resources.taskRuntime?.forSession({
         sessionId: session.sessionId,
         toolResultStore: session.toolResultStore,
-        allowBackgroundTasks: session.allowBackgroundTasks,
+        allowBackgroundShell: session.allowBackgroundShell,
+        allowBackgroundMemory: session.allowBackgroundMemory,
     });
     const taskJoin = tasks ? new TaskJoin(tasks) : undefined;
     return {

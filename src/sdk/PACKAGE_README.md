@@ -50,3 +50,9 @@ the same schema, permission, Hook, cancellation, and result-budget chain as
 built-in Tools. `fileSources` arrays select sources but do not redefine their
 canonical precedence. They are Root-only and must not directly modify workspace
 files.
+
+## Subagents
+
+The main Agent can delegate through `agent`, coordinate with `agent_message`, and continue a retained child with `agent_followup`. Required reports are collected before normal Turn completion. Streamed `subagent` items identify the `agentId` and current `runCount`, include the actual `taskStatus`, and expose available transcript paths. Queued followups update the active Item; restarting an idle child creates a new Item. An interrupted Item can describe a task that is still running when its Turn stream ends.
+
+Child permission requests use `host.onInteraction` and identify the child in `request.actor`. Root Turn cancellation does not cancel independent child requests; stopping the child or closing the Thread does. Cross-turn followup uses the current Turn's interaction stream. Always close the HiCode instance to clean up owned tasks. Background Shell commands (`run_in_background: true`) return a Task ID and survive normal Turn completion. Later turns can inspect or stop them with `task`; `Thread.close()` cleans up all owned processes. Completed work is delivered on a later run without starting a model request automatically. Live processes are not restored across application restarts. Background Memory maintenance remains separately disabled.

@@ -330,11 +330,11 @@ test("explicit finite background work survives a normal reply and delivers its c
     });
 });
 
-test("SDK finite continuation is available while services stay disabled; Thread.close cleans pending Shell", async () => {
+test("SDK supports services and finite continuation; Thread.close cleans both Shell processes", async () => {
     await withTempProject(async (cwd, storage) => {
         const resources = createTestRuntimeResources(cwd, {storage});
         const fake = createFakeLLM([
-            assistantToolCall("bash", {command: "sleep 30", run_in_background: true}, "service"),
+            assistantToolCall("bash", {command: 'printf "%s" "$$" > service-pid; sleep 30', run_in_background: true}, "service"),
             assistantToolCall("bash", {command: 'printf "%s" "$$" > sdk-pid; sleep 30', yield_time_ms: 100}, "finite"),
         ]);
         resources.agentRuntime.runAgent = createAgentRunner({callLLM: fake.callLLM,
@@ -344,13 +344,101 @@ test("SDK finite continuation is available while services stay disabled; Thread.
         const tasks = resources.taskRuntime.forSession({sessionId: thread.id, toolResultStore: createTestToolResultStore(cwd, thread.id, {hicodeHome: storage.hicodeHome})});
         try {
             expect((await thread.run("run", {maxIterations: 2})).stopReason).toBe("max_turns");
-            expect((await tasks.list()).filter(task => task.status === "running")).toHaveLength(1);
+            expect((await tasks.list()).filter(task => task.status === "running")).toHaveLength(2);
+            const servicePid = Number(await readFile(join(cwd, "service-pid"), "utf8"));
+            expect(servicePid).toBeGreaterThan(0);
             const pid = Number(await readFile(join(cwd, "sdk-pid"), "utf8"));
             expect(pid).toBeGreaterThan(0);
             await thread.close();
             expect(() => process.kill(pid, 0)).toThrow();
+            expect(() => process.kill(servicePid, 0)).toThrow();
             expect(resources.taskRuntime.hasRunning()).toBe(false);
         } finally {await thread.close(); await resources.close();}
+    });
+});
+
+test("SDK background service survives replies, is visible next Turn, and stops through task or Thread.close", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const resources = createTestRuntimeResources(cwd, {storage});
+        let taskId = "";
+        const fake = createFakeLLM([
+            assistantToolCall("bash", {command: 'printf "%s" "$$" > persistent-pid; printf SERVICE_READY; sleep 30', run_in_background: true}, "start-service"),
+            options => {
+                taskId = JSON.stringify(options.messages).match(/task_id: (t_[a-f0-9]{12})/)![1]!;
+                return assistantText("Service started");
+            },
+            () => assistantToolCall("task", {action: "status", task_id: taskId}, "inspect-service"),
+            options => {
+                const output = options.messages.find(message => message.role === "tool" && message.tool_call_id === "inspect-service");
+                expect(JSON.stringify(output)).toContain("status: running");
+                expect(JSON.stringify(output)).toContain("SERVICE_READY");
+                return assistantText("The same service is running");
+            },
+            () => assistantToolCall("task", {action: "stop", task_id: taskId}, "stop-service"),
+            assistantText("Service stopped"),
+            assistantToolCall("bash", {command: 'printf "%s" "$$" > closing-pid; sleep 30', run_in_background: true}, "another-service"),
+            assistantText("Another service started"),
+        ]);
+        resources.agentRuntime.runAgent = createAgentRunner({callLLM: fake.callLLM,
+            compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: Number.MAX_SAFE_INTEGER})});
+        const thread = await createSDKThread({resources, seed: {sessionId: "sdk-service", history: [{role: "system", content: "fixture"}], compactState: createCompactState()},
+            state: {todos: [], permissionMode: "full-access", uiEvents: []}, resumed: false, onClose() {}});
+        const tasks = resources.taskRuntime.forSession({sessionId: thread.id, toolResultStore: createTestToolResultStore(cwd, thread.id, {hicodeHome: storage.hicodeHome})});
+        try {
+            expect((await thread.run("Start a service and leave it running")).finalResponse).toBe("Service started");
+            const pid = Number(await readFile(join(cwd, "persistent-pid"), "utf8"));
+            expect(pid).toBeGreaterThan(0);
+            expect(() => process.kill(pid, 0)).not.toThrow();
+            expect((await thread.run("Check that service")).finalResponse).toBe("The same service is running");
+            expect((await tasks.list()).map(task => task.id)).toEqual([taskId]);
+            expect(() => process.kill(pid, 0)).not.toThrow();
+            await thread.run("Stop that service");
+            expect((await tasks.get(taskId))?.status).toBe("cancelled");
+            expect(() => process.kill(pid, 0)).toThrow();
+            await thread.run("Start another service and keep it running");
+            const closingPid = Number(await readFile(join(cwd, "closing-pid"), "utf8"));
+            expect(closingPid).toBeGreaterThan(0);
+            await thread.close();
+            expect(() => process.kill(closingPid, 0)).toThrow();
+            expect(resources.taskRuntime.hasRunning()).toBe(false);
+        } finally {await thread.close(); await resources.close();}
+    });
+});
+
+test("SDK receives a background Shell completion once on a later Turn", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const resources = createTestRuntimeResources(cwd, {storage});
+        const fake = createFakeLLM([
+            assistantToolCall("bash", {command: 'node -e \'const fs = require("fs"); const timer = setInterval(() => {if (fs.existsSync("release-sdk")) {clearInterval(timer); process.stdout.write("SDK_BACKGROUND_DONE");}}, 10);\'', run_in_background: true}, "background"),
+            assistantText("Started in background"),
+            options => {
+                expect(options.messages.filter(message => message.role === "user" && contentText(message.content).includes("<task-notification>"))).toHaveLength(1);
+                expect(JSON.stringify(options.messages)).toContain("SDK_BACKGROUND_DONE");
+                return assistantText("Collected completion");
+            },
+            options => {
+                expect(options.messages.filter(message => message.role === "user" && contentText(message.content).includes("<task-notification>"))).toHaveLength(1);
+                return assistantText("No duplicate delivery");
+            },
+        ]);
+        resources.agentRuntime.runAgent = createAgentRunner({callLLM: fake.callLLM,
+            compactHistory: async ({preTokenCount}) => ({compacted: false, preTokenCount, threshold: Number.MAX_SAFE_INTEGER})});
+        const thread = await createSDKThread({resources, seed: {sessionId: "sdk-background-result", history: [{role: "system", content: "fixture"}], compactState: createCompactState()},
+            state: {todos: [], permissionMode: "full-access", uiEvents: []}, resumed: false, onClose() {}});
+        const tasks = resources.taskRuntime.forSession({sessionId: thread.id, toolResultStore: createTestToolResultStore(cwd, thread.id, {hicodeHome: storage.hicodeHome})});
+        let finished!: () => void;
+        const completion = new Promise<void>(resolve => {finished = resolve;});
+        const unsubscribe = tasks.subscribe(event => {if (event.type === "task_finished") finished();});
+        try {
+            expect((await thread.run("Run this work in the background; report later")).stopReason).toBe("completed");
+            await writeFile(join(cwd, "release-sdk"), "go");
+            await completion;
+            expect(fake.calls).toHaveLength(2);
+            expect((await thread.run("Collect its result")).finalResponse).toBe("Collected completion");
+            expect(await tasks.pendingNotifications()).toEqual([]);
+            await thread.run("Any more results?");
+            expect(fake.calls).toHaveLength(4);
+        } finally {unsubscribe(); await thread.close(); await resources.close();}
     });
 });
 
@@ -473,7 +561,7 @@ test("one-shot Host omits hard timeout and rejects explicit yield without starti
     await withTempProject(async cwd => {
         const {resources, ctx} = fixture(cwd);
         const tasks = resources.taskRuntime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore,
-            allowBackgroundTasks: false, shellContinuation: false});
+            allowBackgroundShell: false, shellContinuation: false});
         const limits: Array<number | null | undefined> = [];
         const runner: ShellRunnerLike = {...ctx.shellRunner, async run(input) {limits.push(input.timeoutMs); return ctx.shellRunner.run(input);}};
         const oneShot = {...ctx, tasks, shellRunner: runner};

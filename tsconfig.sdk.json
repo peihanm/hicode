@@ -4,7 +4,7 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "noEmit": false,
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
   "include": ["src/sdk/index.ts"]
 }

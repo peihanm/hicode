@@ -102,12 +102,16 @@ export interface RootSessionRuntime {
 export function createRootSessionRuntime({
     resources,
     seed,
-    allowBackgroundTasks = true,
-    shellContinuation = allowBackgroundTasks,
+    allowBackgroundShell = true,
+    allowBackgroundMemory = true,
+    allowAgentTasks = true,
+    shellContinuation = allowBackgroundShell,
 }: {
     resources: RootRuntimeResources;
     seed: RootSessionSeed;
-    allowBackgroundTasks?: boolean;
+    allowBackgroundShell?: boolean;
+    allowBackgroundMemory?: boolean;
+    allowAgentTasks?: boolean;
     shellContinuation?: boolean;
 }): RootSessionRuntime {
     const webSources = new WebSources();
@@ -127,7 +131,7 @@ export function createRootSessionRuntime({
         taskReceipts: seed.taskNotificationReceipts,
     });
     const taskSession = resources.taskRuntime.forSession({
-        sessionId: seed.sessionId, toolResultStore, allowBackgroundTasks, shellContinuation, messageQueue,
+        sessionId: seed.sessionId, toolResultStore, allowBackgroundShell, allowBackgroundMemory, allowAgentTasks, shellContinuation, messageQueue,
     });
     const hookSession = createHookSessionRuntime();
     const networkAccess = new NetworkAccessSession();
@@ -210,7 +214,8 @@ export function createRootSessionRuntime({
                     contextUsage,
                     toolResultStore,
                     fileState,
-                    allowBackgroundTasks,
+                    allowBackgroundShell,
+                    allowBackgroundMemory,
                     hookSession,
                     directoryAccess,
                     networkAccess,

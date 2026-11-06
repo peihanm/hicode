@@ -59,7 +59,7 @@ For Turn permissions, ordinary allow/deny applies to the original validated inpu
 
 Listen to `context.signal` so cancelled requests close promptly and late approvals have no effect. No callback, an invalid response or callback failure is fail-closed. Preauthorize intended paths/policies in Host configuration where appropriate; use the independent reviewer if explicitly selected. Full Access requires explicit Host opt-in and still cannot bypass hard boundaries or server trust.
 
-Current SDK/headless execution does not allow managed Agent tasks and rejects Agent launches. Agent execution is asynchronous only; these Hosts do not provide a foreground fallback.
+SDK Threads support asynchronous Agent tasks, messages and followup through the standard tools. TaskJoin collects required reports before normal completion; inspect task outcomes rather than assuming every child succeeded. Child permission requests use the same Host callback and include request.actor. Root Turn cancellation does not stop independent children; Thread.close() cleans up owned tasks and pending child requests. Explicit background Shell services return a Task ID, survive normal replies, and can be inspected or stopped in later runs. Thread.close() cleans them up. Completion delivery is deduplicated and does not automatically start a new model turn. Live processes are not restored across process restarts. One-shot headless CLI execution still rejects Agent launches and background Shell services.
 
 ## Results and cancellation
 
