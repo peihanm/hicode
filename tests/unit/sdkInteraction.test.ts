@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {normalizeInteractionResponse, raceInteractionWithAbort} from "../../src/sdk/interaction.js";
+import {normalizeInteractionResponse, raceInteractionWithAbort, requestHostInteraction} from "../../src/sdk/interaction.js";
 
 describe("SDK network response validation", () => {
     test("答案使用独立字段，拒绝无效答案和问题参数替换", () => {
@@ -82,5 +82,32 @@ test("SDK accepts structured multiple answers and rejects invalid arrays", () =>
     expect(normalizeInteractionResponse(response)).toEqual(response);
     for (const answer of [[], ["A", "A"], [" "], [1], ["A", "B", "C", "D", "E", "F"]]) {
         expect(normalizeInteractionResponse({behavior: "allow", answers: {Platforms: answer}}).behavior).toBe("deny");
+    }
+});
+
+
+test("shared Host invocation fails closed without a handler or when Host/diagnostic throws", async () => {
+    const request = {kind: "permission", requestId: "request", toolName: "bash", message: "approve", input: {}} as const;
+    const context = {cwd: "/tmp", signal: new AbortController().signal};
+    expect((await requestHostInteraction(undefined, request, context)).behavior).toBe("deny");
+    const response = await requestHostInteraction({
+        onInteraction: async () => { throw new Error("host failure"); },
+        onDiagnostic: () => { throw new Error("diagnostic failure"); },
+    }, request, context);
+    expect(response).toEqual({behavior: "deny", message: "SDK Host interaction failed: host failure"});
+});
+
+test("shared Host invocation passes root/Turn context and rejects late approval", async () => {
+    for (const identity of [{}, {threadId: "thread", turnId: "turn"}]) {
+        const owner = new AbortController();
+        const response = await requestHostInteraction({onInteraction: async (_request, context) => {
+            expect(context.threadId).toBe(identity.threadId);
+            expect(context.turnId).toBe(identity.turnId);
+            expect(context.cwd).toBe("/tmp");
+            owner.abort();
+            return {behavior: "allow"};
+        }}, {kind: "question", requestId: "question", toolName: "ask_user", delivery: "sync", message: "answer", input: {}},
+        {cwd: "/tmp", ...identity, signal: owner.signal});
+        expect(response.behavior).toBe("deny");
     }
 });

@@ -5,13 +5,12 @@ import {createRootRuntimeResources, type RootRuntimeResources,} from "../runtime
 import {isHiCodeRootConfiguration} from "../runtime/rootConfiguration.js";
 import {loadSession} from "../session/index.js";
 import {formatAgentLoadIssue} from "../subagents/diagnostics.js";
-import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
-import type {InteractionRequest, InteractionResponse} from "./protocol.js";
+import {requestHostInteraction, reportHostDiagnostic,} from "./interaction.js";
+import type {InteractionRequest} from "./protocol.js";
 import {createSDKThread, prepareThreadSession} from "./thread.js";
 import {adaptHiCodeHostTools} from "./hostTools.js";
 import {
     HiCodeSDKError,
-    type HostDiagnostic,
     type HiCodeOptions,
     type StartThreadOptions,
     type Thread,
@@ -177,36 +176,28 @@ export class HiCode {
 
     private async reportStartupDiagnostics(): Promise<void> {
         if (this.resources.sandbox.status.kind === "unavailable") {
-            await this.reportDiagnostic({
+            await reportHostDiagnostic(this.options.host, {
                 severity: "warning",
                 scope: "sandbox",
                 message: this.resources.sandbox.status.reason,
             });
         }
         for (const issue of this.resources.skillIssues) {
-            await this.reportDiagnostic({severity: "warning", scope: "runtime", message: `Skill ${issue.path}: ${issue.message}`});
+            await reportHostDiagnostic(this.options.host, {severity: "warning", scope: "runtime", message: `Skill ${issue.path}: ${issue.message}`});
         }
         for (const issue of this.resources.subagents.issues) {
-            await this.reportDiagnostic({
+            await reportHostDiagnostic(this.options.host, {
                 severity: issue.severity,
                 scope: "agent",
                 message: formatAgentLoadIssue(issue),
             });
         }
         for (const issue of this.resources.hooks.issues) {
-            await this.reportDiagnostic({
+            await reportHostDiagnostic(this.options.host, {
                 severity: "warning",
                 scope: "hook",
                 message: issue.message,
             });
-        }
-    }
-
-    private async reportDiagnostic(diagnostic: HostDiagnostic): Promise<void> {
-        try {
-            await this.options.host?.onDiagnostic?.(diagnostic);
-        } catch {
-            // Host diagnostic sinks cannot disrupt the Root lifecycle.
         }
     }
 
@@ -240,28 +231,9 @@ async function requestRootApproval(
         {kind: "mcp_approval" | "hook_trust"}
     >
 ): Promise<"once" | "always" | "deny"> {
-    const callback = options.host?.onInteraction;
-    if (!callback) return "deny";
-    let response: InteractionResponse;
-    try {
-        response = normalizeInteractionResponse(
-            await raceInteractionWithAbort(
-                requestSignal => callback(request, {cwd: options.configuration.cwd, signal: requestSignal}),
-                signal
-            )
-        );
-    } catch (error) {
-        try {
-            await options.host?.onDiagnostic?.({
-                severity: "warning",
-                scope: "runtime",
-                message: `Root interaction failed; denied: ${error instanceof Error ? error.message : String(error)}`,
-            });
-        } catch {
-            // Host diagnostic sinks cannot broaden approval results.
-        }
-        return "deny";
-    }
+    const response = await requestHostInteraction(options.host, request, {
+        cwd: options.configuration.cwd, signal,
+    });
     return response.behavior === "allow"
         ? response.persistence ?? "once"
         : "deny";

@@ -1,5 +1,10 @@
+import {randomUUID} from "node:crypto";
+import type {PermissionDecision} from "../permissions/index.js";
+import type {ToolContextHost} from "../runtime/toolContext.js";
+import type {SDKEventAdapter} from "./eventAdapter.js";
+import type {HiCodeHost, HostDiagnostic, InteractionContext} from "./types.js";
 import {validUserAnswer} from "../runtime/userQuestions.js";
-import type {InteractionResponse} from "./protocol.js";
+import type {InteractionRequest, InteractionResponse} from "./protocol.js";
 
 export function normalizeInteractionResponse(value: unknown): InteractionResponse {
     if (typeof value !== "object" || value === null || !("behavior" in value)) {
@@ -108,4 +113,115 @@ export async function raceInteractionWithAbort<T>(
         if (rejectAbort) request.signal.removeEventListener("abort", rejectAbort);
         request.abort("interaction-ended");
     }
+}
+
+export async function reportHostDiagnostic(host: HiCodeHost | undefined, diagnostic: HostDiagnostic): Promise<void> {
+    try {
+        await host?.onDiagnostic?.(diagnostic);
+    } catch {
+        // Host diagnostics cannot disrupt runtime lifecycle or approval decisions.
+    }
+}
+
+export async function requestHostInteraction(
+    host: HiCodeHost | undefined,
+    request: InteractionRequest,
+    context: InteractionContext
+): Promise<InteractionResponse> {
+    const callback = host?.onInteraction;
+    if (!callback) return {behavior: "deny", message: "SDK Host did not provide onInteraction; interaction-required operation denied"};
+    try {
+        return normalizeInteractionResponse(await raceInteractionWithAbort(
+            signal => callback(request, {...context, signal}), context.signal
+        ));
+    } catch (error) {
+        const message = context.signal.aborted ? "Interaction cancelled"
+            : `SDK Host interaction failed: ${error instanceof Error ? error.message : String(error)}`;
+        if (!context.signal.aborted) await reportHostDiagnostic(host, {severity: "warning", scope: "runtime", message});
+        return {behavior: "deny", message};
+    }
+}
+
+interface InteractionProjection {
+    turnId: string;
+    adapter?: Pick<SDKEventAdapter, "emitInteractionStart" | "emitInteractionEnd">;
+}
+
+export function createToolInteractionHandler(context: {
+    host: HiCodeHost | undefined;
+    cwd: string;
+    threadId: string;
+    projection: InteractionProjection;
+    ownerSignal: AbortSignal;
+    isClosed(): boolean;
+    getProjection(): InteractionProjection | undefined;
+}): ToolContextHost["canUseTool"] {
+    return async (toolName, message, input, options) => {
+        if (context.isClosed()) return {behavior: "deny", message: "SDK Thread is closed"};
+        const network = options?.presentation?.kind === "network_access"
+            ? options.presentation : undefined;
+        const asyncQuestion = toolName === "ask_user" && options?.questionDelivery === "async";
+        // Child Tasks own their requests independently of the originating Root Turn.
+        if (options?.actor && !options.signal) return {behavior: "deny", message: "Child permission request has no cancellation signal"};
+        const projection = options?.actor ? context.getProjection() : context.projection;
+        const signal = (options?.actor || asyncQuestion) && options?.signal ? options.signal : options?.signal
+            ? AbortSignal.any([context.ownerSignal, options.signal])
+            : context.ownerSignal;
+        const request: InteractionRequest = toolName === "ask_user"
+            ? {
+                requestId: randomUUID(),
+                ...(options?.actor ? {actor: options.actor} : {}),
+                kind: "question",
+                delivery: asyncQuestion ? "async" : "sync",
+                toolName,
+                message,
+                input,
+            }
+            : {
+                requestId: randomUUID(),
+                ...(options?.actor ? {actor: options.actor} : {}),
+                kind: "permission",
+                toolName,
+                message,
+                input,
+                ...(network ? {networkAccess: {host: network.host, port: network.port}} : {}),
+            };
+        if (!asyncQuestion) await projection?.adapter?.emitInteractionStart(request);
+        let response = await requestHostInteraction(context.host, request, {
+            cwd: context.cwd, threadId: context.threadId, turnId: projection?.turnId, signal,
+        });
+        if (context.isClosed()) response = {behavior: "deny", message: "SDK Thread is closed"};
+        if (network && response.behavior === "allow" && (
+            response.persistence === "always" || response.directoryScope !== undefined ||
+            response.answers !== undefined
+        )) {
+            response = {behavior: "deny", message: "Network connections do not support permanent tool grants, directory grants or input changes"};
+        }
+        const status = signal.aborted
+            ? "interrupted"
+            : response.behavior === "deny"
+                ? "denied"
+                : "completed";
+        if (!asyncQuestion && (!options?.actor || context.getProjection() === projection)) {
+            await projection?.adapter?.emitInteractionEnd(request, response, status);
+        }
+        return toPermissionDecision(response);
+    };
+}
+
+function toPermissionDecision(
+    response: InteractionResponse
+): PermissionDecision {
+    return response.behavior === "allow"
+        ? {
+            behavior: "allow",
+            ...(response.networkScope === undefined ? {} : {networkScope: response.networkScope}),
+            ...(response.directoryScope === undefined
+                ? {}
+                : {directoryScope: response.directoryScope}),
+            ...(response.answers === undefined
+                ? {}
+                : {answers: response.answers}),
+        }
+        : {behavior: "deny", message: response.message};
 }

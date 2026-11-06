@@ -99,17 +99,9 @@ export function createToolCatalog(
     }
 
     const combinedTools = builtins.map((tool) => overrides.get(tool.name) ?? tool);
-    const names = new Set(combinedTools.map((tool) => tool.name));
-    for (const tool of options.additionalTools ?? []) {
-        if (tool.name === TOOL_SEARCH_NAME || tool.name === MCP_CALL_NAME) {
-            throw new Error(`Tool name ${tool.name} is reserved by the Runtime`);
-        }
-        if (names.has(tool.name)) {
-            throw new Error(`Duplicate tool name: ${tool.name}`);
-        }
-        names.add(tool.name);
-        combinedTools.push(tool);
-    }
+    validateAdditionalToolNames(options.additionalTools ?? [], builtinNames);
+    combinedTools.push(...(options.additionalTools ?? []));
+    const names = new Set(combinedTools.map(tool => tool.name));
 
     const allowed = options.allowedToolNames
         ? new Set(options.allowedToolNames)
@@ -131,4 +123,18 @@ export function createToolCatalog(
             schema: schemaSourceForTool(tool),
         })),
     };
+}
+
+export function validateAdditionalToolNames(
+    tools: readonly Pick<Tool, "name">[],
+    existingNames: Iterable<string> = createBuiltinTools().map(tool => tool.name)
+): void {
+    const names = new Set(existingNames);
+    for (const tool of tools) {
+        if (tool.name === TOOL_SEARCH_NAME || tool.name === MCP_CALL_NAME) {
+            throw new Error(`Tool name ${tool.name} is reserved by the Runtime`);
+        }
+        if (names.has(tool.name)) throw new Error(`Duplicate tool name: ${tool.name}`);
+        names.add(tool.name);
+    }
 }

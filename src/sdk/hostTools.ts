@@ -1,8 +1,7 @@
 import {z} from "zod";
 import type {ToolOutput} from "../toolResults/index.js";
 import {DEFAULT_MAX_RESULT_CHARS} from "../toolResults/types.js";
-import {schemaForTool} from "../tools/catalog.js";
-import {createToolRuntime} from "../tools/registry.js";
+import {schemaForTool, validateAdditionalToolNames} from "../tools/catalog.js";
 import type {Tool} from "../tools/types.js";
 import {
     HiCodeSDKError,
@@ -43,7 +42,6 @@ export function adaptHiCodeHostTools(
     }
 
     const tools: Tool[] = [];
-    const names = new Set<string>();
     let totalSchemaChars = 0;
     for (const [index, candidate] of input.entries()) {
         if (!isRecord(candidate)) {
@@ -66,10 +64,6 @@ export function adaptHiCodeHostTools(
                 `tools[${index}].name must be 1–64 letters, digits or underscores, start with a letter and not use the mcp__ prefix`
             );
         }
-        if (names.has(candidate.name)) {
-            throw invalidTool(`Duplicate Host Tool name: ${candidate.name}`);
-        }
-        names.add(candidate.name);
         if (
             typeof candidate.description !== "string" ||
             candidate.description.trim().length === 0 ||
@@ -172,11 +166,12 @@ export function adaptHiCodeHostTools(
                 `Combined Host Tool parameter schemas exceed ${MAX_TOTAL_SCHEMA_CHARS} characters`
             );
         }
+        tool.inputJsonSchema = schema;
         tools.push(tool);
     }
 
     try {
-        createToolRuntime({additionalTools: tools});
+        validateAdditionalToolNames(tools);
     } catch (error) {
         throw invalidTool(
             error instanceof Error ? error.message : String(error),

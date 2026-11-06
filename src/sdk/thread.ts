@@ -7,7 +7,7 @@ import {contentText, imageReferences, type MessageContent} from "../images/conte
 import {supportsToolImages} from "../images/request.js";
 import {randomUUID} from "node:crypto";
 import {getHookExecutionIssues, formatHookContext} from "../hooks/index.js";
-import {isPermissionMode, type PermissionDecision, type PermissionMode,} from "../permissions/index.js";
+import {isPermissionMode, type PermissionMode,} from "../permissions/index.js";
 import {normalizeTurnAbortReason} from "../runtime/abort.js";
 import type {RootRuntimeResources} from "../runtime/resources.js";
 import {createRootSessionRuntime, type RootSessionRuntime, type RootSessionSeed,} from "../runtime/sessionRuntime.js";
@@ -18,17 +18,14 @@ import type {Todo} from "../session/todo.js";
 import {AsyncEventQueue} from "./eventQueue.js";
 import {SDKEventAdapter} from "./eventAdapter.js";
 import type {TaskSnapshot} from "../tasks/types.js";
-import {normalizeInteractionResponse, raceInteractionWithAbort,} from "./interaction.js";
+import {createToolInteractionHandler, reportHostDiagnostic,} from "./interaction.js";
 import type {
-    InteractionRequest,
-    InteractionResponse,
     ThreadEvent,
     ThreadEventPayload,
 } from "./protocol.js";
 import {collectTurnResult} from "./resultCollector.js";
 import {
     HiCodeSDKError,
-    type HostDiagnostic,
     type HiCodeHost,
     type StreamedTurn,
     type Thread,
@@ -60,7 +57,6 @@ interface CreateSDKThreadOptions {
 
 interface SDKThreadDependencies {
     runTurn: typeof runRootTurn;
-    now(): number;
 }
 
 interface ActiveRun {
@@ -69,13 +65,8 @@ interface ActiveRun {
 }
 
 export function createSDKThreadFactory(
-    overrides: Partial<SDKThreadDependencies> = {}
+    dependencies: SDKThreadDependencies
 ) {
-    const dependencies: SDKThreadDependencies = {
-        runTurn: overrides.runTurn ?? runRootTurn,
-        now: overrides.now ?? Date.now,
-    };
-
     return async function createSDKThread(
         options: CreateSDKThreadOptions
     ): Promise<SessionThread> {
@@ -286,7 +277,7 @@ class SDKThreadImpl implements SessionThread {
         controller: AbortController,
         queue: AsyncEventQueue
     ): Promise<void> {
-        const startedAt = this.options.dependencies.now();
+        const startedAt = performance.now();
         const emit = (payload: ThreadEventPayload): Promise<void> => {
             return queue.push({
                 ...payload,
@@ -346,7 +337,7 @@ class SDKThreadImpl implements SessionThread {
                 onHookResult: async (hookResult) => {
                     for (const issue of getHookExecutionIssues(hookResult)) {
                         await adapter.emitDiagnostic("hook", issue);
-                        await this.reportDiagnostic({
+                        await reportHostDiagnostic(this.options.host, {
                             severity: "warning",
                             scope: "hook",
                             message: issue,
@@ -379,10 +370,7 @@ class SDKThreadImpl implements SessionThread {
                 stopReason: result.reason,
                 abortReason: result.abortReason,
                 iterations: result.iterations,
-                durationMs: Math.max(
-                    0,
-                    this.options.dependencies.now() - startedAt
-                ),
+                durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
             });
         } catch (error) {
             const interrupted = controller.signal.aborted;
@@ -404,59 +392,15 @@ class SDKThreadImpl implements SessionThread {
         ownerSignal: AbortSignal
     ): ToolContextHost {
         return {
-            canUseTool: async (toolName, message, input, options) => {
-                if (this.closed) return {behavior: "deny", message: "SDK Thread is closed"};
-                const network = options?.presentation?.kind === "network_access"
-                    ? options.presentation : undefined;
-                const asyncQuestion = toolName === "ask_user" && options?.questionDelivery === "async";
-                // Child Tasks own their requests independently of the originating Root Turn.
-                if (options?.actor && !options.signal) return {behavior: "deny", message: "Child permission request has no cancellation signal"};
-                const projection = options?.actor ? this.projection : {turnId, adapter};
-                const signal = (options?.actor || asyncQuestion) && options?.signal ? options.signal : options?.signal
-                    ? AbortSignal.any([ownerSignal, options.signal])
-                    : ownerSignal;
-                const request: InteractionRequest = toolName === "ask_user"
-                    ? {
-                        requestId: randomUUID(),
-                        ...(options?.actor ? {actor: options.actor} : {}),
-                        kind: "question",
-                        delivery: asyncQuestion ? "async" : "sync",
-                        toolName,
-                        message,
-                        input,
-                    }
-                    : {
-                        requestId: randomUUID(),
-                        ...(options?.actor ? {actor: options.actor} : {}),
-                        kind: "permission",
-                        toolName,
-                        message,
-                        input,
-                        ...(network ? {networkAccess: {host: network.host, port: network.port}} : {}),
-                    };
-                if (!asyncQuestion) await projection?.adapter?.emitInteractionStart(request);
-                let response = await this.requestInteraction(
-                    request,
-                    projection?.turnId,
-                    signal
-                );
-                if (this.closed) response = {behavior: "deny", message: "SDK Thread is closed"};
-                if (network && response.behavior === "allow" && (
-                    response.persistence === "always" || response.directoryScope !== undefined ||
-                    response.answers !== undefined
-                )) {
-                    response = {behavior: "deny", message: "Network connections do not support permanent tool grants, directory grants or input changes"};
-                }
-                const status = signal.aborted
-                    ? "interrupted"
-                    : response.behavior === "deny"
-                        ? "denied"
-                        : "completed";
-                if (!asyncQuestion && (!options?.actor || this.projection === projection)) {
-                    await projection?.adapter?.emitInteractionEnd(request, response, status);
-                }
-                return toPermissionDecision(response);
-            },
+            canUseTool: createToolInteractionHandler({
+                host: this.options.host,
+                cwd: this.options.resources.cwd,
+                threadId: this.id,
+                projection: {turnId, adapter},
+                ownerSignal,
+                isClosed: () => this.closed,
+                getProjection: () => this.projection,
+            }),
             getPermissionRules: () =>
                 this.options.session.permissions.getRules(),
             getPermissionMode: () => this.options.session.permissions.getMode(),
@@ -467,39 +411,6 @@ class SDKThreadImpl implements SessionThread {
                 await adapter?.emitTodos(todos);
             },
         };
-    }
-
-    private async requestInteraction(
-        request: InteractionRequest,
-        turnId: string | undefined,
-        signal: AbortSignal
-    ): Promise<InteractionResponse> {
-        const callback = this.options.host?.onInteraction;
-        if (!callback) {
-            return {
-                behavior: "deny",
-                message: "SDK Host did not provide onInteraction; interaction-required operation denied",
-            };
-        }
-        try {
-            const response = await raceInteractionWithAbort(
-                requestSignal => callback(request, {
-                    signal: requestSignal,
-                    cwd: this.options.resources.cwd,
-                    threadId: this.id,
-                    turnId,
-                }),
-                signal
-            );
-            return normalizeInteractionResponse(response);
-        } catch (error) {
-            return {
-                behavior: "deny",
-                message: signal.aborted
-                    ? "Turn cancelled"
-                    : `SDK Host interaction failed: ${error instanceof Error ? error.message : String(error)}`,
-            };
-        }
     }
 
     private commitUIEvents(adapter: SDKEventAdapter): void {
@@ -515,19 +426,11 @@ class SDKThreadImpl implements SessionThread {
     ): Promise<void> {
         const message = `${issue.message}: ${issue.error instanceof Error ? issue.error.message : String(issue.error)}`;
         await adapter.emitDiagnostic(issue.scope, message, "error");
-        await this.reportDiagnostic({
+        await reportHostDiagnostic(this.options.host, {
             severity: "error",
             scope: issue.scope === "host" ? "runtime" : issue.scope,
             message,
         });
-    }
-
-    private async reportDiagnostic(diagnostic: HostDiagnostic): Promise<void> {
-        try {
-            await this.options.host?.onDiagnostic?.(diagnostic);
-        } catch {
-            // Host diagnostic sinks cannot alter the Turn lifecycle.
-        }
     }
 
     private async closeInternal(): Promise<void> {
@@ -549,7 +452,7 @@ class SDKThreadImpl implements SessionThread {
                 );
                 await reportHookIssues(this.options.host, result);
             } catch (error) {
-                await this.reportDiagnostic({
+                await reportHostDiagnostic(this.options.host, {
                     severity: "warning",
                     scope: "hook",
                     message: `SessionEnd failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -568,7 +471,7 @@ class SDKThreadImpl implements SessionThread {
     }
 }
 
-export const createSDKThread = createSDKThreadFactory();
+export const createSDKThread = createSDKThreadFactory({runTurn: runRootTurn});
 
 function validateTurnOptions(options: TurnOptions): void {
     if (
@@ -598,23 +501,6 @@ function boundedInputSummary(input: string): string {
     return oneLine.length <= 240
         ? oneLine
         : `${oneLine.slice(0, 239)}…`;
-}
-
-function toPermissionDecision(
-    response: InteractionResponse
-): PermissionDecision {
-    return response.behavior === "allow"
-        ? {
-            behavior: "allow",
-            ...(response.networkScope === undefined ? {} : {networkScope: response.networkScope}),
-            ...(response.directoryScope === undefined
-                ? {}
-                : {directoryScope: response.directoryScope}),
-            ...(response.answers === undefined
-                ? {}
-                : {answers: response.answers}),
-        }
-        : {behavior: "deny", message: response.message};
 }
 
 function linkAbortSignal(
@@ -654,23 +540,10 @@ async function reportHookIssues(
     result: Parameters<typeof getHookExecutionIssues>[0]
 ): Promise<void> {
     for (const execution of result.executions) {
-        if (!execution.userMessage) continue;
-        try {
-            await host?.onDiagnostic?.({severity: "info", scope: "hook", message: execution.userMessage});
-        } catch {
-            // Session notifications are independent of the Host diagnostic sink.
-        }
+        if (execution.userMessage) await reportHostDiagnostic(host, {severity: "info", scope: "hook", message: execution.userMessage});
     }
     for (const issue of getHookExecutionIssues(result)) {
-        try {
-            await host?.onDiagnostic?.({
-                severity: "warning",
-                scope: "hook",
-                message: issue,
-            });
-        } catch {
-            // Host diagnostic sinks cannot disrupt the Session lifecycle.
-        }
+        await reportHostDiagnostic(host, {severity: "warning", scope: "hook", message: issue});
     }
 }
 

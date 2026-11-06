@@ -180,6 +180,10 @@ describe("SDK Host Tools", () => {
             ...mutable,
             name: "read_file",
         }])).toThrow("Duplicate tool name");
+        expect(() => adaptHiCodeHostTools([mutable, mutable])).toThrow("Duplicate tool name");
+        for (const name of ["tool_search", "mcp_call"]) {
+            expect(() => adaptHiCodeHostTools([{...mutable, name}])).toThrow("reserved");
+        }
         expect(() => adaptHiCodeHostTools([{
             ...mutable,
             name: "mcp__forbidden",
