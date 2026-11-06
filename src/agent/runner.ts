@@ -6,7 +6,7 @@ import {HookControlError, formatHookContext} from "../hooks/index.js";
 import {ResponseDraft} from "./draft.js";
 import type {ToolContext} from "../tools/types.js";
 import type {LLMCaller, LLMCallKind, Message, ToolCall} from "../llm/types.js";
-import {hasCompleteToolPairs} from "../session/codec.js";
+import {hasCompleteToolPairs} from "../session/store/codec.js";
 import {formatInterruptedToolResult} from "../tools/registry.js";
 import {getTokenWarningState} from "../context/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason, throwIfTurnAborted,} from "../runtime/abort.js";

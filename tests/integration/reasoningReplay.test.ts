@@ -1,8 +1,8 @@
 import {afterEach, expect, test} from "bun:test";
 import {createLLMCaller} from "../../src/llm/index.js";
 import type {LLMSourceConnection, Message, OpenAITool} from "../../src/llm/types.js";
-import {createSessionPersistence, loadSession} from "../../src/session/storage.js";
-import {decodeSessionContentBlock} from "../../src/session/codec.js";
+import {createSessionPersistence, loadSession} from "../../src/session/store/sessionStore.js";
+import {decodeSessionContentBlock} from "../../src/session/store/codec.js";
 import {estimateMessageTokens} from "../../src/context/tokens.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {compactHistoryForTest} from "../helpers/compact.js";

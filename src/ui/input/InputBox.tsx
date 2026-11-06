@@ -8,7 +8,7 @@ import {Box, Text} from "ink";
 import {COLORS, SYMBOLS} from "../theme.js";
 import {getSlashCommandSuggestions} from "../../slash/index.js";
 import {MultilineTextInput, type InputBoundaryReplacement, type InputBoundaryState,} from "./MultilineTextInput.js";
-import type {InputHistoryStore} from "../../session/inputHistory/index.js";
+import type {InputHistoryStore} from "../../session/inputHistory.js";
 import {useTerminalWidth} from "../terminalSize.js";
 import {pastedImagePath} from "./pastedImage.js";
 import {

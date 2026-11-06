@@ -1,5 +1,5 @@
-import {SessionUIEventCollector} from "../../src/session/uiEventCollector.js";
-import {decodeSessionContentBlock} from "../../src/session/codec.js";
+import {SessionUIEventCollector} from "../../src/session/uiEvents.js";
+import {decodeSessionContentBlock} from "../../src/session/store/codec.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import { createFileChange } from "../../src/fileChanges/index.js";

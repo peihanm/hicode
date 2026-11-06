@@ -8,7 +8,7 @@ import {serializeMemoryTopic} from "../../src/memory/topic.js";
 import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
 import {createHash} from "node:crypto";
 import {saveSessionSnapshot} from "./sessionStorage.js";
-import {readSessionSourceIds} from "../../src/session/snapshotStore.js";
+import {readSessionSourceIds} from "../../src/session/store/snapshotStore.js";
 import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";
 import {createTestStorage} from "./tempProject.js";

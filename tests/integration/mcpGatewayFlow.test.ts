@@ -6,7 +6,7 @@ import {threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";
 import type {AgentEvent} from "../../src/agent/types.js";
 import type {Message, ToolCall} from "../../src/llm/types.js";
 import type {Tool} from "../../src/tools/types.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {createTestContext} from "../helpers/testContext.js";

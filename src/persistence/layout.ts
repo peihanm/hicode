@@ -119,6 +119,22 @@ export function getSessionStorageDirectory(
     );
 }
 
+export function getSessionIndexPath(storage: HiCodeStorageLayout, cwd: string): string {
+    return join(getProjectSessionsDirectory(storage, cwd), "index.json");
+}
+
+export function getSessionIndexLockPath(storage: HiCodeStorageLayout, cwd: string): string {
+    return join(getProjectSessionsDirectory(storage, cwd), ".index.lock");
+}
+
+export function getSessionSnapshotPath(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), "snapshot.json");
+}
+
+export function getSessionPersistenceLockPath(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): string {
+    return join(getSessionStorageDirectory(storage, cwd, sessionId), ".persistence.lock");
+}
+
 export function getSessionContentDirectory(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): string {
     return join(getSessionStorageDirectory(storage, cwd, sessionId), "content");
 }

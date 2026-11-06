@@ -3,7 +3,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
 import {continuityFixture, continuityHost, continuityState} from "../helpers/continuity.js";
 import {runRootTurn} from "../../src/runtime/turnRuntime.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {ContextLengthError, isContextLengthResponse} from "../../src/llm/errors.js";
 import type {Message} from "../../src/llm/types.js";
 

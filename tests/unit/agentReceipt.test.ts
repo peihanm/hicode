@@ -1,8 +1,8 @@
 import {notificationFor} from "../../src/tasks/notifications.js";
 import {expect, test} from "bun:test";
 import {createAgentReceipt} from "../../src/tools/agent/receipt.js";
-import {SessionUIEventCollector} from "../../src/session/uiEventCollector.js";
-import {decodeSessionContentBlock} from "../../src/session/codec.js";
+import {SessionUIEventCollector} from "../../src/session/uiEvents.js";
+import {decodeSessionContentBlock} from "../../src/session/store/codec.js";
 import {threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";
 import {toolFileChanges} from "../../src/toolResults/uiData.js";
 

@@ -12,7 +12,7 @@ import {
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
-import {hasCompleteToolPairs} from "../../src/session/codec.js";
+import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 
 function initialHistory(): Message[] {
   return [{ role: "system", content: "test system prompt" }];

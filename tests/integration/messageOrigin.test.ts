@@ -3,7 +3,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {assistantText, createFakeLLM} from "../helpers/fakeLLM.js";
 import {continuityFixture, continuityHost, continuityState} from "../helpers/continuity.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {createMemorySourceExtractorFactory} from "../../src/memory/sourceExtractor.js";
 import {encodeImageMessages} from "../../src/images/request.js";
 import {threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";

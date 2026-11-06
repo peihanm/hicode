@@ -7,9 +7,9 @@ import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
 import {continuityFixture, continuityHost, continuityState} from "../helpers/continuity.js";
 import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLLM.js";
-import {loadSession} from "../../src/session/storage.js";
-import {getSessionSnapshotPath} from "../../src/session/paths.js";
-import {hasCompleteToolPairs} from "../../src/session/codec.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
+import {getSessionSnapshotPath} from "../../src/persistence/layout.js";
+import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 import {runRootTurn} from "../../src/runtime/turnRuntime.js";
 
 for (const mode of ["batch", "half"]) test(`真实子进程强制退出后恢复 ${mode}`, async () => {

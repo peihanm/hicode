@@ -16,7 +16,7 @@ import {prepareImage} from "../../src/images/prepare.js";
 import {ToolResultStore, createToolResultStore} from "../../src/toolResults/store.js";
 import {applyBatchToolResultBudget, processToolOutput} from "../../src/toolResults/budget.js";
 import type {Message} from "../../src/llm/types.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {prepareSessionArchive, createSessionArchiveAccess} from "../../src/session/archive.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {createCompactState} from "../../src/context/state.js";

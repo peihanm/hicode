@@ -9,11 +9,11 @@ import {createCompactState} from "../../src/context/state.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {createCompactSummaryGenerator} from "../../src/context/compactSummary.js";
 import {createFakeLLM,assistantText} from "../helpers/fakeLLM.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {readArchiveMessages} from "../../src/session/archive.js";
-import {SessionContentStore} from "../../src/session/contentStore.js";
+import {SessionContentStore} from "../../src/session/store/contentStore.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
-import {hasCompleteToolPairs} from "../../src/session/codec.js";
+import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 const scenarios=z.array(z.object({id:z.string(),goal:z.string(),stages:z.array(z.object({request:z.string(),evidence:z.string(),constraint:z.string()})).length(5)})).length(2)
  .parse(JSON.parse(await readFile(new URL("../fixtures/context-memory/scenarios.json",import.meta.url),"utf8")));
 // The summarizer is a deterministic oracle. This verifies evidence transport, not model understanding.

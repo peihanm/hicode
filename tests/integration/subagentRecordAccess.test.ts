@@ -14,7 +14,7 @@ import {createToolRuntime} from "../../src/tools/runtime.js";
 import {prepareCommandReadAccess} from "../../src/tools/bash/readAccess.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {PermissionRules} from "../../src/permissions/types.js";
-import {createSessionPersistence} from "../../src/session/storage.js";
+import {createSessionPersistence} from "../../src/session/store/sessionStore.js";
 import {createSubagentRecordAccess} from "../../src/subagents/recordView.js";
 import {createSandboxRuntime} from "../../src/sandbox/index.js";
 import {createShellRunner} from "../../src/tools/bash/shellRunner.js";

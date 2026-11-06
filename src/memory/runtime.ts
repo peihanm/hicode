@@ -1,7 +1,7 @@
 import {contentText} from "../images/content.js";
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { selectSessionMemorySource, readSessionSourceIds, readSessionSourceMessages, withSessionPersistenceLock } from "../session/snapshotStore.js";
+import { selectSessionMemorySource, readSessionSourceIds, readSessionSourceMessages, withSessionPersistenceLock } from "../session/store/snapshotStore.js";
 import { ensurePrivateStorageDirectory } from "../persistence/index.js";
 import { getMemoryWorkspacePaths } from "../persistence/layout.js";
 import { createMemorySourceExtractor, type MemorySourceExtractor } from "./sourceExtractor.js";

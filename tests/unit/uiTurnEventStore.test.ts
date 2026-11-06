@@ -618,7 +618,7 @@ describe("UITurnEventStore", () => {
 });
 
 test("TUI and shared Session collector persist the same paired events", async () => {
-    const {SessionUIEventCollector} = await import("../../src/session/uiEventCollector.js");
+    const {SessionUIEventCollector} = await import("../../src/session/uiEvents.js");
     const shared = new SessionUIEventCollector();
     const tui = new UITurnEventStore();
     const events: import("../../src/agent/types.js").AgentEvent[] = [

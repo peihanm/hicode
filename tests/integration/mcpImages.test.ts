@@ -1,5 +1,5 @@
 import {HiCode, loadHiCodeHostConfig} from "../../src/sdk/index.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {processToolOutput} from "../../src/toolResults/budget.js";
 import {ToolResultStore, createToolResultStore} from "../../src/toolResults/store.js";
 import {expect, test} from "bun:test";

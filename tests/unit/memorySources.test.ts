@@ -2,7 +2,7 @@ import {saveSessionSnapshot} from "../helpers/sessionStorage.js";
 import {unlink} from "node:fs/promises";
 import {expect,test} from "bun:test";
 
-import {readSessionSourceIds,readSessionSourceMessages} from "../../src/session/snapshotStore.js";
+import {readSessionSourceIds,readSessionSourceMessages} from "../../src/session/store/snapshotStore.js";
 import {MemoryPublicationStore} from "../../src/memory/publicationStore.js";
 import {createMemorySourceExtractorFactory} from "../../src/memory/sourceExtractor.js";
 import {createFakeLLM,assistantText} from "../helpers/fakeLLM.js";

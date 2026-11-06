@@ -1,4 +1,4 @@
-import {createSessionPersistence} from "../../src/session/storage.js";
+import {createSessionPersistence} from "../../src/session/store/sessionStore.js";
 import type {HiCodeStorageLayout} from "../../src/persistence/layout.js";
 import type {SaveSessionSnapshotInput} from "../../src/session/types.js";
 import type {SessionArchiveDraft} from "../../src/session/archive.js";

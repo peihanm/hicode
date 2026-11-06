@@ -9,7 +9,7 @@ import {createHiCodeStorageLayout} from "../../src/persistence/index.js";
 import {loadHiCodeSettings} from "../../src/settings/index.js";
 import {supportsToolImages} from "../../src/images/request.js";
 import {imageReferences} from "../../src/images/content.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 
 async function main() {
     const [flag, imagePath, reportPath] = process.argv.slice(2);

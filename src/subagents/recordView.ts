@@ -5,7 +5,7 @@ import {getProjectKey, getSessionStorageDirectory, getSubagentRecordPaths, hashS
 import type {HiCodeStorageLayout} from "../persistence/layout.js";
 import {readPrivateStorageTextFile} from "../persistence/privateStorage.js";
 import {writeFileAtomically} from "../persistence/atomicFile.js";
-import {readLatestSessionSnapshot, withSessionPersistenceLock} from "../session/snapshotStore.js";
+import {readLatestSessionSnapshot, withSessionPersistenceLock} from "../session/store/snapshotStore.js";
 import type {SubagentRecordAccess} from "./recordAccess.js";
 
 const RECORD_BYTES = 64 * 1024 * 1024;

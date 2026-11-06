@@ -10,7 +10,7 @@ import {withTempProject} from "../helpers/tempProject.js";
 import {runAgentForTest} from "../helpers/agent.js";
 import {createTestContext} from "../helpers/testContext.js";
 import type {AgentEvent} from "../../src/agent/types.js";
-import {hasCompleteToolPairs} from "../../src/session/codec.js";
+import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 
 const originalFetch = globalThis.fetch;
 function mockFetch(handler: (url: Parameters<typeof fetch>[0], init?: RequestInit) => Promise<Response>): void {

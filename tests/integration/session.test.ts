@@ -16,7 +16,7 @@ import type { Message } from "../../src/llm/types.js";
 import { createFileChange } from "../../src/fileChanges/index.js";
 import {createInitialHistory} from "../../src/prompt/index.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import {getSessionIndexPath, getSessionSnapshotPath} from "../../src/session/paths.js";
+import {getSessionIndexPath, getSessionSnapshotPath} from "../../src/persistence/layout.js";
 import {getProjectSessionsDirectory} from "../../src/persistence/index.js";
 
 describe("session persistence", () => {

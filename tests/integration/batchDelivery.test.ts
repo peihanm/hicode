@@ -1,8 +1,8 @@
 import {expect, test} from "bun:test";
 import {executeToolCallBatch} from "../../src/agent/toolBatch.js";
 import {processToolOutput} from "../../src/toolResults/budget.js";
-import {createSessionPersistence} from "../../src/session/storage.js";
-import {SessionUIEventCollector} from "../../src/session/uiEventCollector.js";
+import {createSessionPersistence} from "../../src/session/store/sessionStore.js";
+import {SessionUIEventCollector} from "../../src/session/uiEvents.js";
 import {SDKEventAdapter} from "../../src/sdk/eventAdapter.js";
 import {reduceThreads} from "../../src/ui/conversation/threadReducer.js";
 import type {UIThread} from "../../src/ui/conversation/types.js";

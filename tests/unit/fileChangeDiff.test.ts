@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {createFileChange, mergeFileChange} from "../../src/fileChanges/index.js";
 import {limitPersistedUIEvents} from "../../src/session/index.js";
-import {decodeSessionContentBlock, limitSessionUIEvents} from "../../src/session/codec.js";
+import {decodeSessionContentBlock, limitSessionUIEvents} from "../../src/session/store/codec.js";
 
 describe("file change diff", () => {
   test.each([

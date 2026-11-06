@@ -1,22 +1,20 @@
-import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
+import {getSessionSnapshotPath, getSessionPersistenceLockPath, sessionStorageId, type SessionStorageOwner} from "../../persistence/layout.js";
 import {dirname} from "node:path";
 import {
     ensurePrivateStorageDirectory, getProjectKey, readPrivateStorageTextFile,
     type HiCodeStorageLayout, withFileLock, writeFileAtomically,
-} from "../persistence/index.js";
+} from "../../persistence/index.js";
 import {decodeSessionEntry, hasCompleteToolPairs} from "./codec.js";
-import {ensureSessionsDirectory, getSessionSnapshotPath, getSessionPersistenceLockPath} from "./paths.js";
 import {SessionContentStore, isSessionContentId, MAX_SESSION_CONTENT_BYTES} from "./contentStore.js";
-import type {SessionEntry, SessionSnapshotEntry} from "./types.js";
-import {collectArchiveViews, readArchiveMessages, type SessionArchiveDraft} from "./archive.js";
-import {throwIfTurnAborted} from "../runtime/abort.js";
+import type {SessionSnapshotEntry} from "../types.js";
+import {collectArchiveViews, readArchiveMessages, type SessionArchiveDraft} from "../archive.js";
+import {throwIfTurnAborted} from "../../runtime/abort.js";
 
-const MAX_SESSION_LOG_BYTES = 16 * 1024 * 1024;
+const MAX_SESSION_SNAPSHOT_BYTES = 16 * 1024 * 1024;
 const MAX_SESSION_ENTRY_BYTES = 72 * 1024 * 1024;
 type StoredEntry = Omit<SessionSnapshotEntry, "conversation" | "uiEvents"> & {conversation: string[]; uiEvents: string[]};
 
 export function withSessionPersistenceLock<T>(storage: HiCodeStorageLayout, cwd: string, sessionIds: SessionStorageOwner | readonly SessionStorageOwner[], action: () => Promise<T>): Promise<T> {
-    ensureSessionsDirectory(storage, cwd);
     const owners = typeof sessionIds === "string" || "parentSessionId" in sessionIds ? [sessionIds] : sessionIds;
     const paths=[...new Set(owners.map(id => getSessionPersistenceLockPath(storage,cwd,id)))].sort();
     const acquire=(index:number):Promise<T> => {
@@ -27,9 +25,9 @@ export function withSessionPersistenceLock<T>(storage: HiCodeStorageLayout, cwd:
     return acquire(0);
 }
 
-function references(entries: readonly StoredEntry[]): Set<string> {
-    return new Set(entries.flatMap(entry => [...entry.conversation, ...entry.uiEvents,
-        ...(entry.compactState?.archives ?? []).flatMap(record => record.messages)]));
+function references(entry: StoredEntry | null): Set<string> {
+    return new Set(entry ? [...entry.conversation, ...entry.uiEvents,
+        ...(entry.compactState?.archives ?? []).flatMap(record => record.messages)] : []);
 }
 
 function decodeReferenceEntry(value: unknown): StoredEntry {
@@ -43,20 +41,20 @@ function decodeReferenceEntry(value: unknown): StoredEntry {
     return {...metadata, conversation: value.conversation, uiEvents: value.uiEvents};
 }
 
-function readReferences(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): StoredEntry[] {
+function readReferenceSnapshot(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): StoredEntry | null {
     const path = getSessionSnapshotPath(storage, cwd, sessionId);
-    const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_LOG_BYTES);
-    if (content === null) return [];
+    const content = readPrivateStorageTextFile(storage, path, MAX_SESSION_SNAPSHOT_BYTES);
+    if (content === null) return null;
     let value: unknown;
     try { value = JSON.parse(content); }
     catch { throw new Error(`Invalid Session snapshot JSON: ${path}`); }
     const entry = decodeReferenceEntry(value);
     if (entry.sessionId !== sessionStorageId(sessionId) || getProjectKey(entry.cwd) !== getProjectKey(cwd) ||
         (typeof sessionId !== "string" && entry.visibility !== "internal")) throw new Error(`Session owner mismatch: ${path}`);
-    return [entry];
+    return entry;
 }
 
-function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry {
+function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionSnapshotEntry {
     for (const archive of entry.compactState?.archives ?? []) readArchiveMessages(archive, blocks);
     const conversation = entry.conversation.map(id => {
         const block = blocks.read(id);
@@ -77,53 +75,53 @@ function hydrate(entry: StoredEntry, blocks: SessionContentStore): SessionEntry 
     return {...entry, conversation, uiEvents};
 }
 
-/** Called under the project persistence lock; one Session owns this committer. */
+/** Called under this Session's persistence lock; one Session owns this committer. */
 export function createSessionSnapshotCommitter(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner) {
     const blocks = new SessionContentStore(storage, cwd, sessionId);
     let lastCommit: string | undefined;
     let needsSweep = true;
-    return async (entry: SessionEntry, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, preserveConversation: boolean): Promise<boolean> => {
+    return async (entry: SessionSnapshotEntry, compaction: {draft: SessionArchiveDraft; signal: AbortSignal} | undefined, preserveConversation: boolean): Promise<boolean> => {
         if (entry.sessionId !== sessionStorageId(sessionId) || getProjectKey(entry.cwd) !== getProjectKey(cwd) ||
             (typeof sessionId !== "string" && entry.visibility !== "internal")) throw new Error("Session writer owner mismatch");
         const normalized = decodeSessionEntry({...entry, conversation: [], uiEvents: []});
         if (!normalized || !hasCompleteToolPairs(entry.conversation) || entry.conversation.length > 20_000 || entry.uiEvents.length > 4_096) throw new Error("Refusing to persist invalid or oversized session entry");
-        const previous = readReferences(storage, cwd, sessionId);
-        const prior = previous.at(-1);
-        if (preserveConversation && !prior) return false;
-        if (preserveConversation) normalized.compactState = prior!.compactState;
+        const previous = readReferenceSnapshot(storage, cwd, sessionId);
+        if (preserveConversation) {
+            if (!previous) return false;
+            normalized.compactState = previous.compactState;
+        }
         const previousKey = JSON.stringify(previous);
         if (lastCommit !== undefined && previousKey !== lastCommit) throw new Error("Session snapshot changed outside its writer");
-        if (lastCommit === undefined) for (const old of previous) hydrate(old, blocks);
-        else blocks.verifyStored(references(previous));
         const oldRefs = references(previous);
+        if (lastCommit === undefined) {
+            if (previous) hydrate(previous, blocks);
+        } else blocks.verifyStored(oldRefs);
         if (compaction) {
-            const prior = previous.findLast(item => item.type === "snapshot");
             const archives = normalized.compactState?.archives ?? [];
             if (archives.at(-1)?.id !== compaction.draft.record.id ||
-                JSON.stringify(archives.slice(0, -1)) !== JSON.stringify(prior?.compactState?.archives ?? [])) {
+                JSON.stringify(archives.slice(0, -1)) !== JSON.stringify(previous?.compactState?.archives ?? [])) {
                 throw new Error("Session archive base changed before compaction commit");
             }
             for (const value of compaction.draft.messages) blocks.stage({kind: "message", value});
         }
-        const knownArchives = new Set(previous.flatMap(old => (old.compactState?.archives ?? []).map(archive => JSON.stringify(archive))));
+        const knownArchives = new Set((previous?.compactState?.archives ?? []).map(archive => JSON.stringify(archive)));
         for (const archive of normalized.compactState?.archives ?? []) {
             if (!knownArchives.has(JSON.stringify(archive))) readArchiveMessages(archive, blocks);
         }
         const stored: StoredEntry = {...normalized,
-            conversation: preserveConversation ? prior!.conversation : entry.conversation.map(value => {
+            conversation: preserveConversation && previous ? previous.conversation : entry.conversation.map(value => {
                 if (value.role === "system") throw new Error("Session cannot persist system messages");
                 return blocks.stage({kind: "message", value});
             }),
-            uiEvents: preserveConversation ? prior!.uiEvents : entry.uiEvents.map(value => blocks.stage({kind: "ui", value})),
+            uiEvents: preserveConversation && previous ? previous.uiEvents : entry.uiEvents.map(value => blocks.stage({kind: "ui", value})),
         };
         const conversationBytes = blocks.arrayBytes(stored.conversation);
         const uiBytes = blocks.arrayBytes(stored.uiEvents);
         if (conversationBytes > 64 * 1024 * 1024 || uiBytes > 20 * 1024 * 1024 ||
             conversationBytes + uiBytes + Buffer.byteLength(JSON.stringify(normalized)) - 4 > MAX_SESSION_ENTRY_BYTES) throw new Error("Invalid Session conversation or UI budget");
-        const entries = [stored];
         const content = JSON.stringify(stored) + "\n";
-        const ids = references(entries);
-        if (Buffer.byteLength(content) > MAX_SESSION_LOG_BYTES || blocks.bytes(ids) + Buffer.byteLength(content) > MAX_SESSION_CONTENT_BYTES || ids.size > 131_072) {
+        const ids = references(stored);
+        if (Buffer.byteLength(content) > MAX_SESSION_SNAPSHOT_BYTES || blocks.bytes(ids) + Buffer.byteLength(content) > MAX_SESSION_CONTENT_BYTES || ids.size > 131_072) {
             throw new Error("Session current state exceeds storage budget");
         }
         const path = getSessionSnapshotPath(storage, cwd, sessionId);
@@ -134,33 +132,33 @@ export function createSessionSnapshotCommitter(storage: HiCodeStorageLayout, cwd
         await blocks.persist(ids);
         if (compaction) throwIfTurnAborted(compaction.signal);
         await writeFileAtomically(path, content, 0o600);
-        lastCommit = JSON.stringify(entries);
+        lastCommit = JSON.stringify(stored);
         blocks.releaseBodies(ids);
         // Reference commit is the truth; failed reclamation must not invalidate an already committed snapshot.
         if (sweep) await blocks.collect(ids).catch(() => undefined);
         needsSweep = false;
-        if ([...previous, ...entries].some(item => item.compactState?.archives?.length)) {
-            await collectArchiveViews(storage, cwd, sessionId, new Set(entries.flatMap(item =>
-                item.compactState?.archives?.map(record => record.id) ?? []))).catch(() => undefined);
+        if (previous?.compactState?.archives?.length || stored.compactState?.archives?.length) {
+            await collectArchiveViews(storage, cwd, sessionId, new Set(
+                stored.compactState?.archives?.map(record => record.id) ?? []
+            )).catch(() => undefined);
         }
         return true;
     };
 }
 
 export function hasNewerSessionCompaction(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner, count: number): boolean {
-    const previous = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
+    const previous = readReferenceSnapshot(storage, cwd, sessionId);
     return (previous?.compactState?.compactCount ?? 0) > count;
 }
 
 export function readLatestSessionSnapshot(storage: HiCodeStorageLayout, cwd: string, sessionId: SessionStorageOwner): SessionSnapshotEntry | null {
-    const entry = readReferences(storage, cwd, sessionId).at(-1);
+    const entry = readReferenceSnapshot(storage, cwd, sessionId);
     if (!entry) return null;
-    const result = hydrate(entry, new SessionContentStore(storage, cwd, sessionId));
-    return result.type === "snapshot" ? result : null;
+    return hydrate(entry, new SessionContentStore(storage, cwd, sessionId));
 }
 
 export function readSessionSourceIds(storage: HiCodeStorageLayout, cwd: string, sessionId: string): string[] {
-    const entry = readReferences(storage, cwd, sessionId).findLast(entry => entry.type === "snapshot");
+    const entry = readReferenceSnapshot(storage, cwd, sessionId);
     return entry ? [...new Set([...(entry.compactState?.archives ?? []).flatMap(archive => archive.messages), ...entry.conversation])] : [];
 }
 

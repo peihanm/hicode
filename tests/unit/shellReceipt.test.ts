@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {shellResultReceipt} from "../../src/tools/bash/receipt.js";
-import {SessionUIEventCollector} from "../../src/session/uiEventCollector.js";
-import {decodeSessionContentBlock} from "../../src/session/codec.js";
+import {SessionUIEventCollector} from "../../src/session/uiEvents.js";
+import {decodeSessionContentBlock} from "../../src/session/store/codec.js";
 import {reduceThreads, threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";
 import type {ShellTermination} from "../../src/tools/bash/process.js";
 import type {AgentEvent} from "../../src/agent/types.js";

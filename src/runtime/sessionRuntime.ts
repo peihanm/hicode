@@ -9,7 +9,7 @@ import {ContextUsageTracker} from "../context/usage.js";
 import {ApprovalEpoch} from "../permissions/approval.js";
 import type {MessageContent} from "../images/content.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
-import {createSessionPersistence} from "../session/storage.js";
+import {createSessionPersistence} from "../session/store/sessionStore.js";
 import {createFileStateTracker} from "../tools/files/state.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
@@ -33,7 +33,7 @@ import {RuntimeMessageQueue} from "./messageQueue.js";
 import type {RootRuntimeResources} from "./resources.js";
 import {createToolContext, type ToolContextHost} from "./toolContext.js";
 import {NetworkAccessSession} from "../permissions/networkAccess.js";
-import {hasCompleteToolPairs} from "../session/codec.js";
+import {hasCompleteToolPairs} from "../session/store/codec.js";
 
 export interface RootSessionSeed {
     permissionMode?: PermissionMode;

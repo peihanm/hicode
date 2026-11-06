@@ -11,10 +11,10 @@ import {createCompactHistoryRunner} from "../../src/context/compact.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {prepareSessionArchive, readArchiveMessages} from "../../src/session/archive.js";
 
-import {SessionContentStore} from "../../src/session/contentStore.js";
-import {loadSession} from "../../src/session/storage.js";
+import {SessionContentStore} from "../../src/session/store/contentStore.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {getSessionContentDirectory, type HiCodeStorageLayout} from "../../src/persistence/index.js";
-import {getSessionSnapshotPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/persistence/layout.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {Message} from "../../src/llm/types.js";
 import {buildPersistedToolResultMessage} from "../../src/toolResults/format.js";

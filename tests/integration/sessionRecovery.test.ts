@@ -6,7 +6,7 @@ import {join} from "node:path";
 import {createCompactState} from "../../src/context/index.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import {loadSession, listSessionIndex} from "../../src/session/index.js";
-import {getSessionSnapshotPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/persistence/layout.js";
 import {getSessionStorageDirectory, getSessionContentDirectory} from "../../src/persistence/index.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";

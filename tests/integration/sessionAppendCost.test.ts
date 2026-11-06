@@ -3,9 +3,9 @@ import * as fs from "node:fs";
 import {readFile, writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {withTempProject} from "../helpers/tempProject.js";
-import {createSessionPersistence, loadSession} from "../../src/session/storage.js";
+import {createSessionPersistence, loadSession} from "../../src/session/store/sessionStore.js";
 import {prepareSessionArchive} from "../../src/session/archive.js";
-import {getSessionSnapshotPath} from "../../src/session/paths.js";
+import {getSessionSnapshotPath} from "../../src/persistence/layout.js";
 import {getSessionContentDirectory} from "../../src/persistence/layout.js";
 import type {SaveSessionSnapshotInput} from "../../src/session/types.js";
 
@@ -49,5 +49,23 @@ test("跨提交缓存不能掩盖磁盘内容被篡改", async () => {
         await writeFile(join(getSessionContentDirectory(storage, cwd, "tamper"), `${record.conversation[0]}.json`), '{}');
         await expect(writer.save(input)).rejects.toThrow("changed since last commit");
         expect(() => loadSession(storage, cwd, "tamper")).toThrow();
+    });
+});
+
+
+test("a stale writer cannot replace another writer's committed current snapshot", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const input: SaveSessionSnapshotInput = {cwd, sessionId: "writer-conflict", model: "test", todos: [], permissionMode: "ask",
+            history: [{role: "user", origin: "user", content: "original"}]};
+        const first = createSessionPersistence(storage, cwd, input.sessionId);
+        await first.save(input);
+        const second = createSessionPersistence(storage, cwd, input.sessionId);
+        await second.save({...input, history: [...input.history, {role: "assistant", content: "second writer result"}]});
+        const path = getSessionSnapshotPath(storage, cwd, input.sessionId);
+        const committed = await readFile(path, "utf8");
+        await expect(first.save({...input, history: [...input.history, {role: "assistant", content: "stale result"}]}))
+            .rejects.toThrow("changed outside its writer");
+        expect(await readFile(path, "utf8")).toBe(committed);
+        expect(loadSession(storage, cwd, input.sessionId)?.history.at(-1)?.content).toBe("second writer result");
     });
 });

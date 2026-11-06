@@ -19,7 +19,7 @@ import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLL
 import {loadHiCodeSettings} from "../../src/settings/index.js";
 import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {getUserSettingsPath} from "../../src/persistence/layout.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";
 import {selectCompactInput} from "../../src/context/compactInput.js";
 import type {HiCodeStorageLayout} from "../../src/persistence/index.js";

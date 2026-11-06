@@ -41,8 +41,6 @@ export interface SessionSnapshotEntry {
 }
 
 
-export type SessionEntry = SessionSnapshotEntry;
-
 export interface LoadedSession {
     sessionId: string;
     cwd: string;

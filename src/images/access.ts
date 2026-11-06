@@ -2,7 +2,7 @@ import type {Message} from "../llm/types.js";
 import type {CompactState} from "../context/state.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {ToolResultStore} from "../toolResults/store.js";
-import {SessionContentStore} from "../session/contentStore.js";
+import {SessionContentStore} from "../session/store/contentStore.js";
 import {readArchiveMessages} from "../session/archive.js";
 import {imageReferences, type ImageReference} from "./content.js";
 

@@ -1,8 +1,8 @@
 import {realpath} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
 import {z} from "zod";
-import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../../persistence/index.js";
-import {getSessionInputHistoryPath} from "../../persistence/layout.js";
+import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
+import {getSessionInputHistoryPath} from "../persistence/layout.js";
 
 const MAX_HISTORY_BYTES = 2 * 1024 * 1024;
 const MAX_INPUT_BYTES = 1024 * 1024;

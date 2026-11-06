@@ -17,7 +17,7 @@ import {imageReferences, contentText} from "../../src/images/content.js";
 import {importSelectedImages} from "../../src/runtime/imageInput.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
 import {RuntimeMessageQueue, normalizeRuntimeQueuedMessages} from "../../src/runtime/messageQueue.js";
-import {loadSession} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
 import {createUITurnSessionRuntime} from "../../src/ui/turn/sessionRuntime.js";
 import {getProjectStorageDirectory} from "../../src/persistence/layout.js";
 import {withFileLock} from "../../src/persistence/fileLock.js";

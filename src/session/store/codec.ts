@@ -1,22 +1,21 @@
-import {shellResultReceiptSchema} from "../tools/bash/receipt.js";
-import {fileReadReceiptSchema} from "../tools/files/receipt.js";
-import {agentReceiptSchema} from "../tools/agent/receipt.js";
-import {contentText, imageReferenceSchema} from "../images/content.js";
+import {shellResultReceiptSchema} from "../../tools/bash/receipt.js";
+import {fileReadReceiptSchema} from "../../tools/files/receipt.js";
+import {agentReceiptSchema} from "../../tools/agent/receipt.js";
+import {contentText, imageReferenceSchema} from "../../images/content.js";
 import {z} from "zod";
-import {FILE_CHANGE_LIMITS} from "../fileChanges/index.js";
-import {reasoningStateSchema} from "../llm/reasoning.js";
-import {archiveRecordSchema} from "./archiveSchema.js";
-import type {Message} from "../llm/types.js";
-import {isPermissionMode} from "../permissions/index.js";
-import {getProjectKey} from "../persistence/index.js";
-import {normalizeRuntimeQueuedMessages} from "../runtime/messageQueue.js";
-import {limitPersistedUIEvents, type PersistedUIEvent,} from "./uiEvents.js";
+import {FILE_CHANGE_LIMITS} from "../../fileChanges/index.js";
+import {reasoningStateSchema} from "../../llm/reasoning.js";
+import {archiveRecordSchema} from "../archiveSchema.js";
+import type {Message} from "../../llm/types.js";
+import {isPermissionMode} from "../../permissions/index.js";
+import {getProjectKey} from "../../persistence/index.js";
+import {normalizeRuntimeQueuedMessages} from "../../runtime/messageQueue.js";
+import {limitPersistedUIEvents, type PersistedUIEvent,} from "../uiEvents.js";
 import {
     SESSION_ENTRY_VERSION,
-    type SessionEntry,
     type SessionIndexEntry,
     type SessionSnapshotEntry,
-} from "./types.js";
+} from "../types.js";
 
 const MAX_PERSISTED_TOOL_NAME_CHARS = 256;
 const MAX_SESSION_MESSAGES = 20_000;
@@ -251,7 +250,7 @@ export function createSessionUIEventLimiter() {
     };
 }
 
-export function decodeSessionEntry(value: unknown): SessionEntry | undefined {
+export function decodeSessionEntry(value: unknown): SessionSnapshotEntry | undefined {
     const snapshot = sessionSnapshotSchema.safeParse(value);
     if (snapshot.success) {
         const queuedInputs = snapshot.data.queuedInputs === undefined

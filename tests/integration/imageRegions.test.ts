@@ -17,8 +17,8 @@ import {imageAssetId} from "../../src/images/persist.js";
 import {prepareImage} from "../../src/images/prepare.js";
 import type {Message} from "../../src/llm/types.js";
 import {createToolResultStore} from "../../src/toolResults/store.js";
-import {loadSession} from "../../src/session/storage.js";
-import {createSessionPersistence} from "../../src/session/storage.js";
+import {loadSession} from "../../src/session/store/sessionStore.js";
+import {createSessionPersistence} from "../../src/session/store/sessionStore.js";
 import {prepareSessionArchive} from "../../src/session/archive.js";
 import {sessionStorageId} from "../../src/persistence/layout.js";
 

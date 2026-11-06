@@ -7,7 +7,7 @@ import {
   InputBox,
 } from "../../src/ui/input/InputBox.js";
 import { layoutInputRows } from "../../src/ui/input/MultilineTextInput.js";
-import type { InputHistoryStore } from "../../src/session/inputHistory/index.js";
+import type { InputHistoryStore } from "../../src/session/inputHistory.js";
 import {getSlashCommandSuggestions} from "../../src/slash/registry.js";
 
 afterEach(() => cleanup());

@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
 import {writeFile} from "node:fs/promises";
-import {createSessionPersistence, loadSession} from "../../src/session/storage.js";
-import {getSessionIndexPath} from "../../src/session/paths.js";
+import {createSessionPersistence, loadSession} from "../../src/session/store/sessionStore.js";
+import {getSessionIndexPath} from "../../src/persistence/layout.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {SESSION_INDEX_VERSION, type SaveSessionSnapshotInput} from "../../src/session/types.js";
 

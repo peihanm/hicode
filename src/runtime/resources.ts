@@ -36,7 +36,7 @@ import {createMemoryRuntime, type MemoryRuntimeLike,} from "../memory/index.js";
 import {createGitWorkspaceRuntime, type GitWorkspaceRuntimeLike,} from "../git/index.js";
 import {createPrimaryModelRuntime, type PrimaryModelRuntime,} from "./primaryModel.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
-import {createInputHistoryStore, type InputHistoryStore,} from "../session/inputHistory/index.js";
+import {createInputHistoryStore, type InputHistoryStore,} from "../session/inputHistory.js";
 import {
     createChildProcessEnvironment,
 } from "./childEnvironment.js";

@@ -1,10 +1,10 @@
-import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
-import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
-import type {SessionArchiveDraft} from "./archive.js";
+import {sessionStorageId, type SessionStorageOwner} from "../../persistence/layout.js";
+import {ensureSessionIdentity} from "../../persistence/storageIdentity.js";
+import type {SessionArchiveDraft} from "../archive.js";
 import {randomUUID} from "node:crypto";
-import {createInitialHistory} from "../prompt/index.js";
-import type {HiCodeStorageLayout} from "../persistence/index.js";
-import {getProjectKey} from "../persistence/index.js";
+import {createInitialHistory} from "../../prompt/index.js";
+import type {HiCodeStorageLayout} from "../../persistence/index.js";
+import {getProjectKey} from "../../persistence/index.js";
 import {
     countSessionConversationMessages,
     hasCompleteToolPairs,
@@ -27,7 +27,7 @@ import {
     SESSION_ENTRY_VERSION,
     type SessionIndexEntry,
     type SessionSnapshotEntry,
-} from "./types.js";
+} from "../types.js";
 import {createSessionValueFreezer} from "./contentStore.js";
 
 /** Serial persistence belongs to the Session, shared by tools, compaction and every Host. */

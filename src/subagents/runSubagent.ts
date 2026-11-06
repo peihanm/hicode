@@ -2,7 +2,7 @@ import {realpath} from "node:fs/promises";
 import {commitDirectoryApproval} from "../permissions/directoryAccess.js";
 import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
 import {WebSources} from "../tools/webFetch/state.js";
-import {createSessionPersistence} from "../session/storage.js";
+import {createSessionPersistence} from "../session/store/sessionStore.js";
 import {createSessionArchiveAccess, prepareSessionArchive} from "../session/archive.js";
 import {childTaskTool} from "../tools/task/task.js";
 import {createToolCatalog} from "../tools/catalog.js";

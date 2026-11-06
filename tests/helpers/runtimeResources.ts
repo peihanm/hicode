@@ -45,7 +45,7 @@ import { createGitWorkspaceRuntime } from "../../src/git/index.js";
 import { createPrimaryModelRuntime } from "../../src/runtime/primaryModel.js";
 import {testChildEnvironment} from "./childEnvironment.js";
 import {createTestStorage} from "./tempProject.js";
-import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
+import {createInputHistoryStore} from "../../src/session/inputHistory.js";
 import {
   CLI_FILE_SOURCES,
   createHiCodeRootConfiguration,

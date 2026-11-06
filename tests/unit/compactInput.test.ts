@@ -3,7 +3,7 @@ import {selectCompactInput} from "../../src/context/compactInput.js";
 import {buildCompactSummaryMessage} from "../../src/context/compactPrompt.js";
 import {getCompactTarget, getModelInputBudget} from "../../src/context/window.js";
 import {tokenCountWithEstimation} from "../../src/context/tokens.js";
-import {hasCompleteToolPairs} from "../../src/session/codec.js";
+import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 import type {Message} from "../../src/llm/types.js";
 
 const system = {role: "system", content: "system"} as const;

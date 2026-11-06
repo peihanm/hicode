@@ -3,7 +3,7 @@ export {
     listSessionIndex,
     loadLatestSession,
     loadSession,
-} from "./storage.js";
+} from "./store/sessionStore.js";
 
 export type {
     LoadedSession,
@@ -13,9 +13,8 @@ export type {
 
 export {
     limitPersistedUIEvents,
+    SessionUIEventCollector,
 } from "./uiEvents.js";
-
-export {SessionUIEventCollector} from "./uiEventCollector.js";
 
 export type {
     PersistedFileChangeUIEvent,

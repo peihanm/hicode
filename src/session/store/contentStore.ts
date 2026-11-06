@@ -1,9 +1,9 @@
-import type {SessionStorageOwner} from "../persistence/layout.js";
+import type {SessionStorageOwner} from "../../persistence/layout.js";
 import {createHash} from "node:crypto";
 import {lstatSync} from "node:fs";
 import {readdir, unlink} from "node:fs/promises";
 import {join} from "node:path";
-import {ensurePrivateStorageDirectory, getSessionContentDirectory, readPrivateStorageTextFile, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
+import {ensurePrivateStorageDirectory, getSessionContentDirectory, readPrivateStorageTextFile, writeFileAtomically, type HiCodeStorageLayout} from "../../persistence/index.js";
 import {decodeSessionContentBlock} from "./codec.js";
 
 type ContentBlock = ReturnType<typeof decodeSessionContentBlock>;

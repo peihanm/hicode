@@ -1,7 +1,7 @@
 import {expect,test} from "bun:test";
 import {mkdir,readFile,stat,symlink,writeFile} from "node:fs/promises";
 import {dirname,join} from "node:path";
-import {createInputHistoryStore} from "../../src/session/inputHistory/index.js";
+import {createInputHistoryStore} from "../../src/session/inputHistory.js";
 import {getSessionInputHistoryPath} from "../../src/persistence/layout.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

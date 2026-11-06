@@ -7,10 +7,10 @@ import type {Message} from "../llm/types.js";
 import type {CompactState} from "../context/state.js";
 import {getSessionArchiveDirectory} from "../persistence/layout.js";
 import {ensurePrivateStorageDirectory, readPrivateStorageTextFile, withFileLock, writeFileAtomically, type HiCodeStorageLayout} from "../persistence/index.js";
-import {getSessionPersistenceLockPath} from "./paths.js";
+import {getSessionPersistenceLockPath} from "../persistence/layout.js";
 import {isSessionArchivePath, archiveIndexPath, type SessionArchiveAccess} from "./archiveAccess.js";
-import {SessionContentStore} from "./contentStore.js";
-import {hasCompleteToolPairs} from "./codec.js";
+import {SessionContentStore} from "./store/contentStore.js";
+import {hasCompleteToolPairs} from "./store/codec.js";
 
 import type {SessionArchiveRecord} from "./archiveSchema.js";
 export interface SessionArchiveDraft {
