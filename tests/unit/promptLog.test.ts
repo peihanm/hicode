@@ -84,7 +84,7 @@ describe("prompt log lifecycle", () => {
                 contextUsage: {
                 inputTokens: 5,
                     tokenCount: 7,
-                    contextWindow: 1_050_000,
+
                 },
                 rawMessage: {
                     role: "assistant",
@@ -134,7 +134,7 @@ describe("prompt log lifecycle", () => {
             expect(logged.response.contextUsage).toEqual({
                 inputTokens: 5,
                 tokenCount: 7,
-                contextWindow: 1_050_000,
+
             });
             expect(content).toContain("/private/source.ts");
             expect(content).not.toContain("重复的长描述");

@@ -1,3 +1,4 @@
+import type {ContextSettings} from "../../src/context/budget.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {createAgentRunner} from "../../src/agent/index.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
@@ -14,8 +15,9 @@ export const continuityHost: ToolContextHost = {canUseTool: async () => ({behavi
     getPermissionPromptPolicy: () => "never",
     setTodos() {}};
 
-export function continuityFixture(cwd: string, storage: HiCodeStorageLayout, callLLM: LLMCaller, history: Message[] = [{role: "system", content: "fixture"}]) {
+export function continuityFixture(cwd: string, storage: HiCodeStorageLayout, callLLM: LLMCaller, history: Message[] = [{role: "system", content: "fixture"}], contextSettings?: ContextSettings) {
     const resources = createTestRuntimeResources(cwd, {storage, toolRuntime: createToolRuntime({allowedToolNames: ["bash", "write_file"]})});
+    if (contextSettings) resources.settings.context = contextSettings;
     let compactions = 0;
     const compact = createCompactHistoryRunner({generateSummary: async () => {compactions++; return "工作继续，详细来源见档案";}});
     resources.agentRuntime.runAgent = createAgentRunner({callLLM, compactHistory: compact});

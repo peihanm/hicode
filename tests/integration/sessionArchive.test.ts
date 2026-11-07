@@ -231,7 +231,7 @@ test("生产交接链校验引用、保留纠正原话，Resume 保持可回查�
     });
 });
 
-import {getCompactTarget} from "../../src/context/window.js";
+import {getContextBudget} from "../../src/context/budget.js";
 
 test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果不会触发历史命令回放", async () => {
     await withTempProject(async (cwd, storage) => {
@@ -261,7 +261,7 @@ test("五次完整生成链保留早期引用与逐轮纠正，缺失大结果�
                 f.session.history.push({role: "assistant", content: "中间证据\n".repeat(4000)}, {role: "user", origin: "user" as const, content: `纠正_${round}：允许显式丢弃，默认仍不丢弃`});
                 const result = await compact({history: f.session.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, force: true});
                 expect(result.compacted).toBe(true);
-                expect(result.postTokenCount!).toBeLessThan(getCompactTarget(f.ctx.model));
+                expect(result.postTokenCount!).toBeLessThan(getContextBudget(f.ctx.contextSettings).compactTarget);
                 expect(f.session.history[1]!.content).toContain(`[[${firstSource}]]`);
                 expect(f.session.history[1]!.content).toContain(`采用纠正_${round}`);
             }

@@ -21,7 +21,7 @@ import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {getUserSettingsPath} from "../../src/persistence/layout.js";
 import {loadSession} from "../../src/session/store/sessionStore.js";
 import {threadsFromHistory} from "../../src/ui/conversation/threadReducer.js";
-import {selectCompactInput} from "../../src/context/compactInput.js";
+import {selectCompactInput} from "../../src/context/selection.js";
 import type {HiCodeStorageLayout} from "../../src/persistence/index.js";
 import type {ToolContextHost} from "../../src/runtime/toolContext.js";
 import type {Message} from "../../src/llm/types.js";
@@ -262,7 +262,7 @@ for (const trigger of ["auto", "manual"] as const) test(`实际 ${trigger} 压�
 
 test("PostCompact 超预算上下文不会抵消压缩或再次触发摘要", async () => {
     await withTempProject(async cwd => {
-        const ctx = createTestContext(cwd);
+        const ctx = createTestContext(cwd, {contextSettings: {windowTokens: 4096, autoCompactTokenLimit: 3000}});
         const oversized = "界".repeat(10000);
         const events: string[] = [];
         ctx.runHook = async input => {
@@ -273,7 +273,7 @@ test("PostCompact 超预算上下文不会抵消压缩或再次触发摘要", as
         const compact = createCompactHistoryRunner({generateSummary: async () => {summaries++; return "summary";}});
         const history: Message[] = [{role: "system", content: "test"}, {role: "user", origin: "user" as const, content: "old".repeat(20000)},
             {role: "assistant", content: "old answer"}, {role: "user", origin: "user" as const, content: "latest task"}];
-        const result = await compact({history, ctx, tools: [], preTokenCount: 20000, contextWindow: 4096, force: true});
+        const result = await compact({history, ctx, tools: [], preTokenCount: 20000, force: true});
         expect(result.compacted).toBe(true);
         expect(result.postTokenCount).toBeLessThan(result.threshold);
         expect(JSON.stringify(history)).not.toContain(oversized);

@@ -13,7 +13,6 @@ describe("restored session token info", () => {
       [],
       EMPTY_PROJECT_INSTRUCTIONS,
       [],
-      "glm-5.2"
     );
     const withTool = estimateRestoredTokenInfo(
       [
@@ -33,7 +32,6 @@ describe("restored session token info", () => {
           },
         },
       ],
-      "glm-5.2"
     );
 
     expect(withoutTool.status).toBe("estimated");
@@ -45,8 +43,8 @@ describe("restored session token info", () => {
 
 test("恢复和模型切换后的 UI 百分比使用配置窗口", () => {
   const messages = [{role: "user" as const, origin: "user" as const, content: "x".repeat(2000)}];
-  const normal = estimateRestoredTokenInfo(messages, [], EMPTY_PROJECT_INSTRUCTIONS, [], "deepseek-flash");
-  const configured = estimateRestoredTokenInfo(messages, [], EMPTY_PROJECT_INSTRUCTIONS, [], "deepseek-flash",
+  const normal = estimateRestoredTokenInfo(messages, [], EMPTY_PROJECT_INSTRUCTIONS, []);
+  const configured = estimateRestoredTokenInfo(messages, [], EMPTY_PROJECT_INSTRUCTIONS, [],
     {windowTokens: 1_000_000, autoCompactTokenLimit: 900_000});
   expect(normal.percentUsed).toBeCloseTo(normal.count / 480_000);
   expect(configured.percentUsed).toBeCloseTo(configured.count / 980_000);

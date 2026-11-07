@@ -275,9 +275,9 @@ test.each(["activity", "requirements"] as const)("over-budget %s skips model cal
     });
 });
 
-test("review respects a smaller fast-model input window without truncating history", async () => {
+test("review respects a smaller configured input budget without truncating history", async () => {
     await withTempProject(async cwd => {
-        const ctx = createTestContext(cwd);
+        const ctx = createTestContext(cwd, {contextSettings: {windowTokens: 128_000, autoCompactTokenLimit: 95_000}});
         const fake = createFakeLLM([]);
         const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner, undefined, undefined, undefined, undefined,
             createTaskReviewRunner({callLLM: fake.callLLM}));

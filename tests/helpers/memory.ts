@@ -1,4 +1,4 @@
-import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/budget.js";
 import type {MemorySourceExtractor} from "../../src/memory/sourceExtractor.js";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join} from "node:path";

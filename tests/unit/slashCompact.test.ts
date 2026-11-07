@@ -62,15 +62,14 @@ describe("/compact runtime binding", () => {
 
 import type {AgentEvent} from "../../src/agent/types.js";
 
-test("手动 compact 传递同一配置和 Provider 窗口，成功后更新百分比", async () => {
+test("手动 compact 传递同一配置，成功后更新百分比", async () => {
     await withTempProject(async cwd => {
         const ctx = createTestContext(cwd, {model: "deepseek-pro", provider: "deepseek",
             contextSettings: {windowTokens: 1_000_000, autoCompactTokenLimit: 800_000}});
-        ctx.contextUsage.record({model: ctx.model, provider: ctx.provider, compactCount: 0}, [], [], 10, 900_000);
+        ctx.contextUsage.record({model: ctx.model, provider: ctx.provider, compactCount: 0}, [], [], 10);
         const events: AgentEvent[] = [];
         const processor = createSlashCommandProcessor({getToolSchemas: () => [], subagents: BUILTIN_SUBAGENT_REGISTRY,
             compactHistory: async input => {
-                expect(input.contextWindow).toBe(900_000);
                 expect(input.ctx.contextSettings).toBe(ctx.contextSettings);
                 input.history.splice(1, input.history.length - 1, {role: "user", origin: "compaction", content: "summary"});
                 return {compacted: true, preTokenCount: input.preTokenCount, threshold: 800_000};
@@ -79,6 +78,6 @@ test("手动 compact 传递同一配置和 Provider 窗口，成功后更新百�
             onEvent: event => {events.push(event);}});
         expect(events[0]).toMatchObject({type: "compact_start", threshold: 800_000});
         const update = events.find(event => event.type === "token_update");
-        expect(update?.percentUsed).toBeCloseTo(update!.tokenCount / 880_000, 8);
+        expect(update?.percentUsed).toBeCloseTo(update!.tokenCount / 980_000, 8);
     });
 });

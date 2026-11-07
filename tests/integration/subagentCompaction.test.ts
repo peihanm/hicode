@@ -12,7 +12,7 @@ import {createSessionPersistence, listSessionIndex, loadSession} from "../../src
 import {createSessionArchiveAccess, prepareSessionArchive} from "../../src/session/archive.js";
 import {createCompactState} from "../../src/context/state.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
-import {selectCompactInput} from "../../src/context/compactInput.js";
+import {selectCompactInput} from "../../src/context/selection.js";
 import {tokenCountWithEstimation} from "../../src/context/tokens.js";
 import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
 import type {AgentRunner} from "../../src/agent/runner.js";

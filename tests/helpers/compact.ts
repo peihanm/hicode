@@ -1,4 +1,4 @@
-import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/budget.js";
 import { createCompactHistoryRunner } from "../../src/context/compact.js";
 import { createCompactSummaryGenerator } from "../../src/context/compactSummary.js";
 import type { LLMCaller } from "../../src/llm/types.js";

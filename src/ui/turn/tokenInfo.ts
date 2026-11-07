@@ -1,5 +1,5 @@
-import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../context/config.js";
-import {getTokenWarningState, tokenCountWithEstimation,} from "../../context/index.js";
+import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../context/budget.js";
+import {getContextBudget, getTokenWarningState, tokenCountWithEstimation,} from "../../context/index.js";
 import {getUserContextBlocks, buildInvokeMessages} from "../../prompt/messages.js";
 import type {LoadedSkill} from "../../skills/types.js";
 import type {ProjectInstructions} from "../../prompt/instructions.js";
@@ -11,7 +11,6 @@ export function estimateRestoredTokenInfo(
     skills: LoadedSkill[],
     instructions: ProjectInstructions,
     tools: OpenAITool[],
-    model: string,
     contextSettings: ContextSettings = DEFAULT_CONTEXT_SETTINGS
 ): UITokenInfo {
     const invokeMessages = buildInvokeMessages(
@@ -19,7 +18,7 @@ export function estimateRestoredTokenInfo(
         getUserContextBlocks(skills, instructions)
     );
     const count = tokenCountWithEstimation(invokeMessages, tools);
-    const state = getTokenWarningState(count, model, undefined, contextSettings);
+    const state = getTokenWarningState(count, getContextBudget(contextSettings));
 
     return {
         count,

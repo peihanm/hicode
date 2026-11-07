@@ -1,5 +1,5 @@
 import type {ReasoningEffort, ReasoningPreference} from "../llm/reasoningPolicy.js";
-import type {ContextSettings} from "../context/config.js";
+import type {ContextSettings} from "../context/budget.js";
 import type {LLMProviderName} from "../llm/providerRegistry.js";
 import type {PermissionMode, PermissionRules,} from "../permissions/types.js";
 import type {HooksSettingsFile, ResolvedHookSettings,} from "../hooks/types.js";

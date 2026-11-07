@@ -20,7 +20,7 @@ import {loadSession} from "../../src/session/store/sessionStore.js";
 import {prepareSessionArchive, createSessionArchiveAccess} from "../../src/session/archive.js";
 import {archiveIndexPath} from "../../src/session/archiveAccess.js";
 import {createCompactState} from "../../src/context/state.js";
-import {selectCompactInput} from "../../src/context/compactInput.js";
+import {selectCompactInput} from "../../src/context/selection.js";
 import {estimateMessageTokens, tokenCountWithEstimation} from "../../src/context/tokens.js";
 import {prepareAgentInvoke} from "../../src/agent/invokePreparation.js";
 import {createCompactHistoryRunner} from "../../src/context/compact.js";
@@ -96,7 +96,7 @@ test("压缩删除回复后旧图片仍只作为引用，Resume 和显式重看�
             {role: "assistant", content: "Observed blue pixels. " + "x".repeat(150_000)},
             {role: "user", origin: "runtime", content: "Continue the current task"});
         const compact = createCompactHistoryRunner({generateSummary: async () => "The image showed blue pixels; continue implementation."});
-        const result = await compact({history: f.history, ctx: f.ctx, tools: [], preTokenCount: 100_000, contextWindow: 40_000, force: true});
+        const result = await compact({history: f.history, ctx: {...f.ctx, contextSettings: {windowTokens: 40_000, autoCompactTokenLimit: 30_000}}, tools: [], preTokenCount: 100_000, force: true});
         expect(result.compacted).toBe(true);
         expect(f.history.some(m => m.role === "assistant")).toBe(false);
         expect(f.history.flatMap(m => imageReferences(m.content))).toHaveLength(1);

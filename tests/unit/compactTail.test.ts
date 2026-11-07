@@ -1,77 +1,37 @@
-import { describe, expect, test } from "bun:test";
-import type { Message, ToolCall } from "../../src/llm/types.js";
-import {
-  findCompactTailStart,
-} from "../../src/context/compactTail.js";
+import {expect, test} from "bun:test";
+import type {Message, ToolCall} from "../../src/llm/types.js";
+import {selectCompactedHistory} from "../../src/context/selection.js";
+import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 
-function toolCall(id: string): ToolCall {
-  return {
-    id,
-    type: "function",
-    function: { name: "read_file", arguments: "{}" },
-  };
+const system = {role: "system", content: "system"} as const;
+function select(conversation: Message[], target: number) {
+    return selectCompactedHistory({history: [system, ...conversation], system,
+        summaryMessage: {role: "user", origin: "compaction", content: "summary"},
+        latestUserIndex: -1, fixedTokens: 5, summaryTokens: 4, target, actualPreTokens: 100000});
 }
+const toolCall = (id: string): ToolCall => ({id, type: "function", function: {name: "read_file", arguments: "{}"}});
 
-describe("Compact recent tail", () => {
-  test("同时满足 min tokens/text 后停止，max tokens 可以提前截断", () => {
-    const history: Message[] = [
-      { role: "system", content: "system" },
-      { role: "user", origin: "user" as const, content: "old" },
-      { role: "assistant", content: "result" },
-      { role: "assistant", content: "recent" },
-    ];
-    expect(
-      findCompactTailStart(history, {
-        minTokens: 5,
-        minTextMessages: 2,
-        maxTokens: 100,
-      })
-    ).toBe(2);
-    expect(
-      findCompactTailStart(history, {
-        minTokens: 100,
-        minTextMessages: 10,
-        maxTokens: 4,
-      })
-    ).toBe(3);
-  });
+test("尾部保留近期消息，并在预算不足时缩小而非超限", () => {
+    const messages: Message[] = Array.from({length: 10}, (_, index) => ({role: "assistant", content: `${index}:` + "x".repeat(18)}));
+    expect(select(messages, 100)?.slice(2)).toEqual(messages.slice(-5));
+    expect(select(messages, 20)?.slice(2)).toEqual(messages.slice(-1));
+    expect(select(messages, 0)).toBeUndefined();
+});
 
-  test("tool call/result 整组在预算内保留，超限不拆分", () => {
-    const history: Message[] = [
-      { role: "system", content: "system" },
-      { role: "user", origin: "user" as const, content: "task" },
-      {
-        role: "assistant",
-        content: null,
-        tool_calls: [toolCall("a"), toolCall("b")],
-      },
-      { role: "tool", content: "a-result", tool_call_id: "a" },
-      { role: "tool", content: "b-result", tool_call_id: "b" },
-    ];
-    expect(
-      findCompactTailStart(history, {
-        minTokens: 0,
-        minTextMessages: 0,
-        maxTokens: 1,
-      })
-    ).toBe(history.length);
-    expect(findCompactTailStart(history, {minTokens: 0, minTextMessages: 0, maxTokens: 1_000})).toBe(2);
-  });
+test("多个 tool call/result 整组保留，超预算时整组交给摘要", () => {
+    const messages: Message[] = [{role: "assistant", content: null, tool_calls: [toolCall("a"), toolCall("b")]},
+        {role: "tool", content: "a-result", tool_call_id: "a"}, {role: "tool", content: "b-result", tool_call_id: "b"}];
+    const large = select(messages, 1000)!;
+    expect(large.slice(2)).toEqual(messages);
+    expect(hasCompleteToolPairs(large)).toBe(true);
+    const small = select(messages, 20)!;
+    expect(small).toHaveLength(2);
+    expect(hasCompleteToolPairs(small)).toBe(true);
+});
 
-  test("空/禁用预算不保留 tail；孤儿结果与缺失结果不能进入 tail", () => {
-    const history: Message[] = [
-      { role: "system", content: "system" },
-      { role: "tool", content: "orphan", tool_call_id: "missing" },
-    ];
-    expect(
-      findCompactTailStart(history, {
-        minTokens: 0,
-        minTextMessages: 0,
-        maxTokens: 0,
-      })
-    ).toBe(history.length);
-    expect(() => findCompactTailStart(history, {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("unpaired");
-    expect(() => findCompactTailStart([history[0]!, {role: "assistant", content: null, tool_calls: [toolCall("missing")]}],
-      {minTokens: 0, minTextMessages: 0, maxTokens: 100})).toThrow("missing");
-  });
+test("孤儿结果、遗漏结果与重复结果不能进入候选上下文", () => {
+    expect(() => select([{role: "tool", content: "orphan", tool_call_id: "missing"}], 1000)).toThrow("unpaired");
+    expect(() => select([{role: "assistant", content: null, tool_calls: [toolCall("missing")]}], 1000)).toThrow("missing");
+    expect(() => select([{role: "assistant", content: null, tool_calls: [toolCall("a"), toolCall("b")]},
+        {role: "tool", content: "a", tool_call_id: "a"}, {role: "tool", content: "a again", tool_call_id: "a"}], 1000)).toThrow("pairing");
 });

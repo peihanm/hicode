@@ -4,7 +4,7 @@ import type {LLMSourceConnection, Message, OpenAITool} from "../../src/llm/types
 import {createSessionPersistence, loadSession} from "../../src/session/store/sessionStore.js";
 import {decodeSessionContentBlock} from "../../src/session/store/codec.js";
 import {estimateMessageTokens} from "../../src/context/tokens.js";
-import {getModelInputBudget} from "../../src/context/window.js";
+import {getContextBudget} from "../../src/context/budget.js";
 import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
 import {listConfiguredPrimaryModels} from "../../src/llm/modelCatalog.js";
 import {withTempProject} from "../helpers/tempProject.js";
@@ -29,7 +29,7 @@ function sse(chunks: unknown[]) {
     }}));
 }
 
-test("OpenRouter catalog uses its own credential and the free model's actual context budget", () => {
+test("OpenRouter catalog uses its own credential and the configured context budget", () => {
     const settings = resolveHiCodeSettings([], {source: "openrouter", model}).values;
     expect(settings.sources.openrouter.apiKeyEnv).toBe("OPENROUTER_API_KEY");
     expect(settings.models.primary).toMatchObject({source: "openrouter", model});
@@ -37,7 +37,7 @@ test("OpenRouter catalog uses its own credential and the free model's actual con
         {source: "openrouter", model, label: "Nemotron 3 Super (free)"},
     ]);
     expect(listConfiguredPrimaryModels(settings.sources, {})).toEqual([]);
-    expect(getModelInputBudget(model)).toBe(262_144 - 20_000);
+    expect(getContextBudget(settings.context).inputTokens).toBe(480_000);
 });
 
 test("streamed tool arguments and exact reasoning fragments survive restore and replay only to the same target", async () => {

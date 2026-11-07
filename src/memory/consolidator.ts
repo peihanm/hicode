@@ -1,6 +1,6 @@
 import {WebSources} from "../tools/webFetch/state.js";
 import {finishPromptLogRun} from "../llm/promptLog.js";
-import type {ContextSettings} from "../context/config.js";
+import type {ContextSettings} from "../context/budget.js";
 import {ContextUsageTracker} from "../context/usage.js";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";

@@ -8,11 +8,10 @@ const messages: Message[] = [{role: "system", content: "system"}, {role: "user",
 
 test.each([100, 7900])("实报 %i 校准低估/高估，未知 usage 保持有依据的增量估算", input => {
     const tracker = new ContextUsageTracker();
-    tracker.record(scope, messages, [], input, 10000);
+    tracker.record(scope, messages, [], input);
     const next: Message[] = [...messages, {role: "assistant", content: "新增内容"}];
     tracker.record(scope, next, [], undefined);
     expect(tracker.estimate(scope, next, [])).toBe(input + tokenCountWithEstimation(next, []) - tokenCountWithEstimation(messages, []));
-    expect(tracker.contextWindow(scope)).toBe(10000);
 });
 
 test("模型/压缩/工具变化重建基线；其他 Session 不继承它", () => {
@@ -24,5 +23,5 @@ test("模型/压缩/工具变化重建基线；其他 Session 不继承它", () 
     const tracker = new ContextUsageTracker(); tracker.record(scope, messages, [], 7900);
     expect(tracker.estimate(scope, messages, [tool])).toBe(tokenCountWithEstimation(messages, [tool]));
     expect(new ContextUsageTracker().estimate(scope, messages, [])).toBe(tokenCountWithEstimation(messages, []));
-    tracker.reset(); expect(tracker.contextWindow(scope)).toBeUndefined();
+    tracker.reset(); expect(tracker.estimate(scope, messages, [])).toBe(tokenCountWithEstimation(messages, []));
 });

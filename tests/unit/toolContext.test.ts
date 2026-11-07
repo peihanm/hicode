@@ -1,5 +1,5 @@
 import {WebSources} from "../../src/tools/webFetch/state.js";
-import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/budget.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
 import {createFileStateTracker} from "../../src/tools/files/state.js";
 import {FileCommitCoordinator} from "../../src/tools/files/io.js";

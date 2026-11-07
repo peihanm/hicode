@@ -73,7 +73,7 @@ export function useTurnController({
                                           openProviders,
                                           openPermissions,
                                       }: UseTurnControllerOptions) {
-        const {cwd, model, toolRuntime} = resources;
+        const {cwd, toolRuntime} = resources;
         const interactiveHost = useContext(InteractiveEvents);
         const observe = interactiveHost?.emit;
         const messageQueue = rootSession.messageQueue;
@@ -113,7 +113,6 @@ export function useTurnController({
                         resources.skills,
                         resources.instructions,
                         toolRuntime.getToolSchemas(),
-                        model,
                         resources.settings.context
                     )
                     : undefined,
@@ -518,7 +517,6 @@ export function useTurnController({
                     resources.skills,
                     resources.instructions,
                     toolRuntime.getToolSchemas(),
-                    target.model,
                     resources.settings.context
                 ));
                 eventStore.appendNotice(

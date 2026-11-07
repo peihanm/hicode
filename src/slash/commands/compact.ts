@@ -1,5 +1,5 @@
 import {buildInvokeMessages, getUserContextBlocks} from "../../prompt/messages.js";
-import {getAutoCompactThreshold, getTokenWarningState, tokenCountWithEstimation,} from "../../context/index.js";
+import {getContextBudget, getTokenWarningState, tokenCountWithEstimation,} from "../../context/index.js";
 import type {SlashCommand} from "../types.js";
 
 export const compactCommand: SlashCommand = {
@@ -12,7 +12,7 @@ export const compactCommand: SlashCommand = {
         {history, ctx, onEvent, compactHistory, getToolSchemas}
     ) {
         const tools = getToolSchemas();
-        const contextWindow = ctx.contextUsage.contextWindow({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
+        const budget = getContextBudget(ctx.contextSettings);
         const invokeMessages = buildInvokeMessages(
             history,
             getUserContextBlocks(ctx.skills, ctx.instructions)
@@ -22,7 +22,7 @@ export const compactCommand: SlashCommand = {
         await onEvent({
             type: "compact_start",
             tokenCount: preTokenCount,
-            threshold: getAutoCompactThreshold(ctx.model, contextWindow, ctx.contextSettings),
+            threshold: budget.compactThreshold,
             trigger: "manual",
         });
 
@@ -31,7 +31,6 @@ export const compactCommand: SlashCommand = {
             ctx,
             tools,
             preTokenCount,
-            contextWindow,
             force: true,
             trigger: "manual",
             customInstructions: args.trim() || undefined,
@@ -51,7 +50,7 @@ export const compactCommand: SlashCommand = {
             getUserContextBlocks(ctx.skills, ctx.instructions)
         );
         const postTokenCount = tokenCountWithEstimation(postInvokeMessages, tools);
-        const postState = getTokenWarningState(postTokenCount, ctx.model, contextWindow, ctx.contextSettings);
+        const postState = getTokenWarningState(postTokenCount, budget);
 
         await onEvent({
             type: "compact_end",

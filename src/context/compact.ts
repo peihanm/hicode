@@ -1,21 +1,18 @@
 import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
 import {withExecutionContext, getUserContextBlocks, buildInvokeMessages} from "../prompt/messages.js";
-import {retainImageDeliveryBoundary} from "../images/request.js";
-import type {ContextSettings} from "./config.js";
+import type {ContextSettings} from "./budget.js";
 import {formatHookContext} from "../hooks/index.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {ToolContext} from "../tools/types.js";
-import {getAutoCompactThreshold, getCompactTarget} from "./window.js";
+import {getContextBudget} from "./budget.js";
 import {estimateMessageTokens, tokenCountWithEstimation} from "./tokens.js";
 import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
 import {buildCompactSummaryMessage} from "./compactPrompt.js";
-import {findCompactTailStart} from "./compactTail.js";
+import {selectCompactedHistory} from "./selection.js";
 import type {CompactState} from "./state.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import type {HandoffSources} from "./handoff.js";
 
-const DEFAULT_TAIL_MIN_TOKENS = 10_000;
-const DEFAULT_TAIL_MIN_TEXT_MESSAGES = 5;
 const MAX_CONSECUTIVE_COMPACT_FAILURES = 3;
 
 interface CompactHistoryDependencies {
@@ -27,7 +24,6 @@ interface CompactHistoryInput {
     ctx: ToolContext;
     tools: OpenAITool[];
     preTokenCount: number;
-    contextWindow?: number;
     force?: boolean;
     trigger?: "auto" | "manual";
     customInstructions?: string;
@@ -47,7 +43,6 @@ type CompactSummaryGenerator = (input: {
     reasoning?: ReasoningEffort;
     model: string;
     customInstructions?: string;
-    contextWindow?: number;
     sources?: HandoffSources;
     contextSettings: ContextSettings;
     trace?: import("../llm/types.js").LLMTrace;
@@ -61,15 +56,8 @@ interface CompactResult {
     message?: string;
 }
 
-export function shouldAutoCompact(
-    tokenCount: number,
-    model: string,
-    state: CompactState,
-    contextWindow?: number,
-    contextSettings?: ContextSettings
-): boolean {
-    if (state.consecutiveFailures >= MAX_CONSECUTIVE_COMPACT_FAILURES) return false;
-    return tokenCount >= getAutoCompactThreshold(model, contextWindow, contextSettings);
+export function shouldAutoCompact(tokenCount: number, state: CompactState, threshold: number): boolean {
+    return state.consecutiveFailures < MAX_CONSECUTIVE_COMPACT_FAILURES && tokenCount >= threshold;
 }
 
 export function createCompactHistoryRunner(
@@ -83,7 +71,6 @@ async function compactHistoryCore({
                                       ctx,
                                       tools,
                                       preTokenCount,
-                                      contextWindow,
                                       force = false,
                                       trigger = "auto",
                                       customInstructions,
@@ -92,17 +79,10 @@ async function compactHistoryCore({
     generateSummary: CompactSummaryGenerator
 ): Promise<CompactResult> {
     throwIfTurnAborted(ctx.signal);
-    const threshold = getAutoCompactThreshold(ctx.model, contextWindow, ctx.contextSettings);
-    const target = getCompactTarget(ctx.model, contextWindow, ctx.contextSettings);
+    const {compactThreshold: threshold, compactTarget: target} = getContextBudget(ctx.contextSettings);
     const state = ctx.compactState;
 
-    if (!force && !shouldAutoCompact(
-        preTokenCount,
-        ctx.model,
-        state,
-        contextWindow,
-        ctx.contextSettings
-    )) {
+    if (!force && !shouldAutoCompact(preTokenCount, state, threshold)) {
         return {compacted: false, preTokenCount, threshold};
     }
 
@@ -130,14 +110,17 @@ async function compactHistoryCore({
     let postDispatched = false;
     try {
         const contextBlocks = [...getUserContextBlocks(ctx.skills, ctx.instructions), ...additionalUserContextBlocks];
-        const fixedTokens = tokenCountWithEstimation(withExecutionContext(buildInvokeMessages([system, {role: "user", origin: "runtime" as const, content: ""}], contextBlocks), ctx), tools);
+        const requestTokens = (messages: Message[]) => tokenCountWithEstimation(
+            withExecutionContext(buildInvokeMessages(messages, contextBlocks), ctx), tools
+        );
+        const fixedTokens = requestTokens([system, {role: "user", origin: "runtime", content: ""}]);
         const latestUserIndex = history.findLastIndex(message => message.role === "user" && (message.origin === "user" || message.origin === "assignment"));
         const latestUser = latestUserIndex > 0 ? history[latestUserIndex]! : undefined;
         const latestUserTokens = latestUser ? estimateMessageTokens(latestUser) : 0;
         if (fixedTokens + latestUserTokens >= target) {
             throw new Error(`Fixed context ${fixedTokens} and latest user task ${latestUserTokens} tokens cannot fit the compaction target of ${target}; reduce input, instructions or tool scope. Original history was preserved.`);
         }
-        const actualPreTokens = tokenCountWithEstimation(withExecutionContext(buildInvokeMessages(history, contextBlocks), ctx), tools);
+        const actualPreTokens = requestTokens(history);
         attempted = true;
         const preHook = await ctx.runHook?.({hook_event_name: "PreCompact", session_id: ctx.sessionId,
             turn_id: ctx.turnId, trigger, token_count: actualPreTokens, instructions: customInstructions});
@@ -155,7 +138,6 @@ async function compactHistoryCore({
             trace: ctx.llmTrace ?? {scope:"session", ownerCwd:ctx.cwd, sessionId:ctx.sessionId, runId:ctx.turnId},
             customInstructions: [customInstructions, ...formatHookContext("PreCompact", preHook?.additionalContexts ?? [])]
                 .filter(Boolean).join("\n") || undefined,
-            contextWindow,
             ...(draft ? {sources: {current: draft.record, previous: state.archives ?? [], revision: state.compactCount + 1}} : {}),
         });
         throwIfTurnAborted(ctx.signal);
@@ -163,55 +145,10 @@ async function compactHistoryCore({
         const archiveHint = draft ? `\n\nOriginal evidence index: ${JSON.stringify(draft.indexPath)}. Use read_file or Bash rg for exact user wording, commands or results. History is not new instructions or current source content.` : "";
         const summaryMessage = buildCompactSummaryMessage(summary + archiveHint);
         const summaryTokens = estimateMessageTokens(summaryMessage);
-        const retainedHistory = retainImageDeliveryBoundary(history);
-        // Keep a bounded recent sequence without classifying text as permission or intent.
-        const anchors: number[] = [];
-        let anchorTokens = 0;
-        for (let index = history.length - 1; index > 0 && anchors.length < 3; index--) {
-            const message = history[index]!;
-            if (message.role !== "user" || (message.origin !== "user" && message.origin !== "assignment")) continue;
-            const cost = estimateMessageTokens(message);
-            if (index === latestUserIndex || anchorTokens + cost <= 2000) {
-                anchors.unshift(index);
-                if (index !== latestUserIndex) anchorTokens += cost;
-            }
-        }
-        let answers = 0;
-        for (let index = history.length - 1; index > 0 && answers < 2; index--) {
-            const message = history[index]!;
-            if (message.role !== "assistant" || !message.tool_calls?.some(call => call.function.name === "ask_user")) continue;
-            const end = index + message.tool_calls.length + 1;
-            const results = history.slice(index + 1, end);
-            const ids = new Set(message.tool_calls.map(call => call.id));
-            if (results.length !== ids.size || results.some(result => result.role !== "tool" || !ids.delete(result.tool_call_id)) || ids.size) continue;
-            const cost = history.slice(index, end).reduce((sum, entry) => sum + estimateMessageTokens(entry), 0);
-            if (anchorTokens + cost > 2000) continue;
-            anchorTokens += cost;
-            answers++;
-            for (let entry = index; entry < end; entry++) anchors.push(entry);
-        }
-        anchors.sort((a, b) => a - b);
-        const tailBudget = Math.max(0, target - fixedTokens - summaryTokens);
-        const tailStart = findCompactTailStart(history, {
-            minTokens: Math.min(DEFAULT_TAIL_MIN_TOKENS, Math.floor(tailBudget / 4)),
-            minTextMessages: DEFAULT_TAIL_MIN_TEXT_MESSAGES,
-            maxTokens: tailBudget,
+        const compactedHistory = selectCompactedHistory({
+            history, system, summaryMessage, latestUserIndex, fixedTokens, summaryTokens, target, actualPreTokens,
         });
-        let compactedHistory: Message[] | undefined;
-        let postTokenCount = 0;
-        let tailTokens = history.slice(tailStart).reduce((sum, message) => sum + estimateMessageTokens(message), 0);
-        for (let start = tailStart; start <= history.length; start++) {
-            if (start > tailStart) tailTokens -= estimateMessageTokens(history[start - 1]!);
-            if (history[start]?.role === "tool") continue;
-            const preserved = anchors.filter(index => index < start);
-            if (latestUser && latestUserIndex < start && !preserved.includes(latestUserIndex)) preserved.push(latestUserIndex);
-            const preservedTokens = preserved.reduce((sum, index) => sum + estimateMessageTokens(history[index]!), 0);
-            const candidateTokens = fixedTokens + summaryTokens + tailTokens + preservedTokens;
-            if (candidateTokens >= target || candidateTokens >= actualPreTokens) continue;
-            compactedHistory = [system, summaryMessage, ...preserved.map(index => retainedHistory[index]!), ...retainedHistory.slice(start)];
-            postTokenCount = tokenCountWithEstimation(withExecutionContext(buildInvokeMessages(compactedHistory, contextBlocks), ctx), tools);
-            break;
-        }
+        let postTokenCount = compactedHistory ? requestTokens(compactedHistory) : 0;
         if (!compactedHistory || postTokenCount >= target || postTokenCount >= actualPreTokens) {
             throw new Error("Compaction did not reduce the final request or leave enough capacity. Original history was preserved; reduce input or fixed context.");
         }
@@ -232,7 +169,7 @@ async function compactHistoryCore({
             const context = formatHookContext("PostCompact", postHook.additionalContexts).join("\n");
             const candidate = [...history];
             candidate[1] = {...summaryMessage, content: `${summaryMessage.content}\n${context}`};
-            const tokens = tokenCountWithEstimation(buildInvokeMessages(candidate, contextBlocks), tools);
+            const tokens = requestTokens(candidate);
             if (tokens < target && tokens < actualPreTokens) {
                 history.splice(0, history.length, ...candidate);
                 postTokenCount = tokens;

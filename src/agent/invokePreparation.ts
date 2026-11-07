@@ -1,7 +1,7 @@
 import {stripVTControlCharacters} from "node:util";
 import type {CompactHistoryRunner} from "../context/compact.js";
 import {shouldAutoCompact} from "../context/compact.js";
-import {getAutoCompactThreshold, getModelInputBudget, getTokenWarningState,} from "../context/window.js";
+import {getContextBudget} from "../context/budget.js";
 import {getUserContextBlocks, buildInvokeMessages, withExecutionContext} from "../prompt/messages.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import type {ToolContext} from "../tools/types.js";
@@ -20,7 +20,6 @@ interface PrepareAgentInvokeInput {
     onEvent: (event: AgentEvent) => void | Promise<void>;
     getToolSchemas: ToolSchemaProvider;
     compactHistory: CompactHistoryRunner;
-    contextWindow?: number;
     forceCompact?: boolean;
     /** Monotonic Turn start, supplied only on elapsed-time reminder iterations. */
     elapsedTaskStartedAt?: number;
@@ -42,7 +41,6 @@ export async function prepareAgentInvoke({
                                              onEvent,
                                              getToolSchemas,
                                              compactHistory,
-                                             contextWindow,
                                              forceCompact = false,
                                              elapsedTaskStartedAt,
                                              taskReviewReminder,
@@ -77,29 +75,14 @@ export async function prepareAgentInvoke({
     let invokeMessages = buildMessages(userContextBlocks);
     const tools = getToolSchemas();
     const scope = () => ({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
-    contextWindow ??= ctx.contextUsage.contextWindow(scope());
+    const budget = getContextBudget(ctx.contextSettings);
     let estimatedTokens = ctx.contextUsage.estimate(scope(), invokeMessages, tools);
-    const preState = getTokenWarningState(
-        estimatedTokens,
-        ctx.model,
-        contextWindow,
-        ctx.contextSettings
-    );
 
-    if (
-        forceCompact || (preState.critical &&
-        shouldAutoCompact(
-            estimatedTokens,
-            ctx.model,
-            ctx.compactState,
-            contextWindow,
-            ctx.contextSettings
-        ))
-    ) {
+    if (forceCompact || shouldAutoCompact(estimatedTokens, ctx.compactState, budget.compactThreshold)) {
         await onEvent({
             type: "compact_start",
             tokenCount: estimatedTokens,
-            threshold: getAutoCompactThreshold(ctx.model, contextWindow, ctx.contextSettings),
+            threshold: budget.compactThreshold,
             trigger: "auto",
         });
         const compactResult = await compactHistory({
@@ -107,7 +90,6 @@ export async function prepareAgentInvoke({
             ctx,
             tools,
             preTokenCount: estimatedTokens,
-            contextWindow,
             additionalUserContextBlocks: runtimeBlocks,
             force: forceCompact,
         });
@@ -138,8 +120,8 @@ export async function prepareAgentInvoke({
         if (forceCompact && !compactResult.compacted) throw new Error(`Context overflow recovery failed: ${compactResult.message ?? "Compaction failed"}; request retries stopped and original history preserved`);
     }
 
-    if (estimatedTokens > getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)) {
-        throw new Error(`Current request is estimated at ${estimatedTokens} tokens, exceeding the available input budget of ${getModelInputBudget(ctx.model, contextWindow, ctx.contextSettings)}; model request stopped. Shorten the latest input, reduce fixed instructions/tools or continue in a new Session. Original history is preserved.`);
+    if (estimatedTokens > budget.inputTokens) {
+        throw new Error(`Current request is estimated at ${estimatedTokens} tokens, exceeding the available input budget of ${budget.inputTokens}; model request stopped. Shorten the latest input, reduce fixed instructions/tools or continue in a new Session. Original history is preserved.`);
     }
     return {invokeMessages, tools, estimatedTokens};
 }

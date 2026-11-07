@@ -12,7 +12,7 @@ import type {
     SettingsOrigins,
 } from "./types.js";
 
-import {DEFAULT_CONTEXT_SETTINGS, validateContextSettings} from "../context/config.js";
+import {DEFAULT_CONTEXT_SETTINGS, validateContextSettings} from "../context/budget.js";
 
 export const DEFAULT_MODEL = "qwen3.8-flash";
 

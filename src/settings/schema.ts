@@ -1,6 +1,6 @@
 import {REASONING_EFFORTS} from "../llm/reasoningPolicy.js";
 import {z} from "zod";
-import {contextSettingsFileSchema} from "../context/config.js";
+import {contextSettingsFileSchema} from "../context/budget.js";
 import type {HiCodeSettingsFile} from "./types.js";
 import {hooksSettingsFileSchema} from "../hooks/schema.js";
 import {LLM_PROVIDER_NAMES} from "../llm/providerRegistry.js";

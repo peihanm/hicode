@@ -41,7 +41,6 @@ interface LLMContextUsage {
     /** Input of the last successful request, excluding retry billing and generated output. */
     inputTokens: number;
     tokenCount: number;
-    contextWindow?: number;
 }
 
 export interface OpenAITool {

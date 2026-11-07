@@ -1,6 +1,6 @@
 import {WebSources} from "../../src/tools/webFetch/state.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
-import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../src/context/config.js";
+import {DEFAULT_CONTEXT_SETTINGS, type ContextSettings} from "../../src/context/budget.js";
 import {ContextUsageTracker} from "../../src/context/usage.js";
 import {FileCommitCoordinator} from "../../src/tools/files/io.js";
 import { createCompactState } from "../../src/context/index.js";

@@ -1,5 +1,5 @@
 import {queueSource} from "../helpers/memory.js";
-import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/config.js";
+import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/budget.js";
 import {contentText} from "../../src/images/content.js";
 import {expect, test} from "bun:test";
 import {access, writeFile} from "node:fs/promises";

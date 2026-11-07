@@ -22,7 +22,7 @@ test("三条后台通知不抢占长用户原话，重复压缩/Resume 保持来
             const ctx = f.session.createContext({signal: new AbortController().signal, host: continuityHost, onEvent() {}, getSnapshotState: continuityState});
             for (let i = 0; i < 2; i++) {
                 if (i) f.session.history.push({role: "assistant", content: "后续调查 ".repeat(12000)});
-                const result = await compact({history: f.session.history, ctx, tools: [], preTokenCount: 100000, contextWindow: 20000, force: true});
+                const result = await compact({history: f.session.history, ctx: {...ctx, contextSettings: {windowTokens: 20000, autoCompactTokenLimit: 14000}}, tools: [], preTokenCount: 100000, force: true});
                 expect(result.compacted).toBe(true);
                 expect(f.session.history).toContainEqual({role: "user", origin: "user", content: original});
             }

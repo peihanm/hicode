@@ -936,6 +936,7 @@ test("SDK 自动压缩保存有界交接，关闭 Resume 后经标准工具回�
         const runtime = {...createFakeAgentRuntime(fake), compactHistory,
             runAgent: createAgentRunner({callLLM: fake.callLLM, compactHistory})};
         const resources = createTestRuntimeResources(cwd, {storage, agentRuntime: runtime});
+        resources.settings.context = {windowTokens: 128_000, autoCompactTokenLimit: 95_000};
         const sessionId = createSessionId();
         const first = await createSDKThread({resources, seed: {sessionId,
             history: [...createInitialHistory(cwd), {role: "user", origin: "user" as const, content: "原始目标\n" + "x".repeat(250_000)},

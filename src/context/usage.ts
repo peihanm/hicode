@@ -9,13 +9,8 @@ interface Baseline {key: string; schema: string; estimated: number; input: numbe
 /** Session-owned calibration; never reuse billable totals as request input usage. */
 export class ContextUsageTracker {
     private baseline?: Baseline;
-    private window?: {key: string; tokens: number};
 
-    reset(): void { this.baseline = undefined; this.window = undefined; }
-
-    contextWindow(scope: Scope): number | undefined {
-        return this.window?.key === JSON.stringify([scope.provider, scope.model]) ? this.window.tokens : undefined;
-    }
+    reset(): void { this.baseline = undefined; }
 
     estimate(scope: Scope, messages: Message[], tools: OpenAITool[]): number {
         const raw = tokenCountWithEstimation(messages, tools);
@@ -28,10 +23,7 @@ export class ContextUsageTracker {
         return Math.max(0, this.baseline.input + raw - this.baseline.estimated);
     }
 
-    record(scope: Scope, messages: Message[], tools: OpenAITool[], input: number | undefined, contextWindow?: number): void {
-        if (contextWindow !== undefined && Number.isSafeInteger(contextWindow) && contextWindow > 0) {
-            this.window = {key: JSON.stringify([scope.provider, scope.model]), tokens: contextWindow};
-        }
+    record(scope: Scope, messages: Message[], tools: OpenAITool[], input: number | undefined): void {
         if (input === undefined || !Number.isSafeInteger(input) || input <= 0) return;
         this.baseline = {key: JSON.stringify([scope.provider, scope.model, scope.compactCount]),
             schema: this.schema(messages, tools), estimated: tokenCountWithEstimation(messages, tools), input};

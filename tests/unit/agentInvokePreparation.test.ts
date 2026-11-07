@@ -10,7 +10,7 @@ import type { AgentEvent } from "../../src/agent/types.js";
 import type { Message, OpenAITool } from "../../src/llm/types.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
-import { getAutoCompactThreshold } from "../../src/context/window.js";
+import { getContextBudget } from "../../src/context/budget.js";
 import type {Todo} from "../../src/session/todo.js";
 
 function history(overThreshold = false): Message[] {
@@ -18,7 +18,7 @@ function history(overThreshold = false): Message[] {
     { role: "system", content: "system" },
     ...(overThreshold
       ? [{role: "user" as const, origin: "user" as const, content: "x".repeat(
-          getAutoCompactThreshold("glm-test") * 2 + 100
+          getContextBudget().compactThreshold * 2 + 100
         )}]
       : []),
     { role: "user", origin: "user" as const, content: "real user message" },
@@ -40,7 +40,7 @@ function noCompactResult(preTokenCount: number, message?: string) {
   return {
     compacted: false,
     preTokenCount,
-    threshold: getAutoCompactThreshold("glm-test"),
+    threshold: getContextBudget().compactThreshold,
     ...(message ? { message } : {}),
   };
 }
@@ -168,7 +168,7 @@ describe("Agent invoke preparation", () => {
         ctx,
         onEvent: () => {},
         getToolSchemas: () => [tool("x".repeat(
-          getAutoCompactThreshold("glm-test") * 2
+          getContextBudget().compactThreshold * 2
         ))],
         compactHistory: async ({ preTokenCount }) => {
           compactCalls += 1;
@@ -181,14 +181,14 @@ describe("Agent invoke preparation", () => {
     });
   });
 
-  test("Provider 实报大窗口会阻止按默认 128K 过早 Compact", async () => {
+  test.each(["glm-new-model", "qwen3-coder-next", "custom-model"])("配置窗口不会因模型名称 %s 提前压缩", async model => {
     await withTempProject(async (cwd) => {
       let compactCalls = 0;
 
       await prepareAgentInvoke({
         history: history(true),
-        ctx: createTestContext(cwd, {model: "qwen3.6-flash"}),
-        contextWindow: 1_050_000,
+        ctx: createTestContext(cwd, {model, contextSettings: {windowTokens: 1_000_000, autoCompactTokenLimit: 900_000}}),
+
         onEvent: () => {},
         getToolSchemas: () => [],
         compactHistory: async ({preTokenCount}) => {
@@ -363,7 +363,7 @@ test("实际请求准备使用配置阈值，DeepSeek 默认不会在 95k 压缩
         contextSettings: {windowTokens: 500_000, autoCompactTokenLimit: limit}});
       const events: AgentEvent[] = [];
       let compactions = 0;
-      await prepareAgentInvoke({ctx, history: history(true), onEvent: event => {events.push(event);}, getToolSchemas: () => [],
+      await prepareAgentInvoke({ctx, history: [{role: "system", content: "system"}, {role: "user", origin: "user", content: "x".repeat(200_000)}], onEvent: event => {events.push(event);}, getToolSchemas: () => [],
         compactHistory: async ({preTokenCount}) => {
           compactions++;
           return {compacted: false, preTokenCount, threshold: limit, message: "fixture preserved history"};

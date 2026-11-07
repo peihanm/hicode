@@ -31,7 +31,7 @@ import type {DirectoryAccessRuntimeLike} from "../permissions/directoryAccess.js
 import type {NetworkAccessSession} from "../permissions/networkAccess.js";
 import type {ApprovalBudget, ApprovalEpoch, ApprovalEvent, ApprovalReviewer} from "../permissions/approval.js";
 import type {ApprovalEvidence} from "../permissions/reviewer/evidence.js";
-import type {ContextSettings} from "../context/config.js";
+import type {ContextSettings} from "../context/budget.js";
 import type {ModelTargetSettings} from "../settings/types.js";
 
 export type PermissionRuleBehavior = "allow" | "ask" | "deny";

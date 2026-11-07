@@ -1,7 +1,7 @@
 export {
-    getAutoCompactThreshold,
+    getContextBudget,
     getTokenWarningState,
-} from "./window.js";
+} from "./budget.js";
 
 export {
     tokenCountWithEstimation,

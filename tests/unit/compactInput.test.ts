@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test";
-import {selectCompactInput} from "../../src/context/compactInput.js";
+import {selectCompactInput} from "../../src/context/selection.js";
 import {buildCompactSummaryMessage} from "../../src/context/compactPrompt.js";
-import {getCompactTarget, getModelInputBudget} from "../../src/context/window.js";
+import {getContextBudget} from "../../src/context/budget.js";
 import {tokenCountWithEstimation} from "../../src/context/tokens.js";
 import {hasCompleteToolPairs} from "../../src/session/store/codec.js";
 import type {Message} from "../../src/llm/types.js";
@@ -42,6 +42,8 @@ test("正常输入完整覆盖且不携带隐藏推理，压缩目标独立于�
     expect(result.coverage).toBe("");
     expect(JSON.stringify(result.messages)).not.toContain("private");
     for (const window of [12_000, 128_000, 1_000_000]) {
-        expect(getCompactTarget("unknown", window)).toBe(Math.floor(getModelInputBudget("unknown", window) * 0.65));
+        const budget = getContextBudget({windowTokens: window, autoCompactTokenLimit: Math.floor(window * 0.8)});
+        expect(budget.compactTarget).toBeLessThan(budget.compactThreshold);
+        expect(budget.compactTarget).toBeLessThan(budget.inputTokens);
     }
 });

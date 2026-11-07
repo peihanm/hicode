@@ -1,5 +1,5 @@
 import {tokenCountWithEstimation} from "../../context/tokens.js";
-import {getModelInputBudget} from "../../context/window.js";
+import {getContextBudget} from "../../context/budget.js";
 import type {ManagedReviewTask} from "../managed.js";
 import type {StartTaskReviewInput} from "../types.js";
 import type {LLMCallOptions, LLMCaller, Message} from "../../llm/types.js";
@@ -70,10 +70,8 @@ export async function runReviewTask(
     try {
         signal.throwIfAborted();
         const inputTokens = tokenCountWithEstimation(reviewMessages(evidence));
-        const modelWindow = parentContext.contextUsage.contextWindow({model: parentContext.fastModel,
-            provider: parentContext.fastProvider, compactCount: parentContext.compactState.compactCount});
         const limit = Math.min(MAX_REVIEW_INPUT_TOKENS,
-            getModelInputBudget(parentContext.fastModel, modelWindow, parentContext.contextSettings));
+            getContextBudget(parentContext.contextSettings).inputTokens);
         if (inputTokens > limit) {
             task.status = "cancelled";
             task.outputIssue = `Background task review skipped: estimated input ${inputTokens} tokens exceeds limit ${limit}; the main task continues. Budget is checked again at the next review interval.`;

@@ -7,10 +7,10 @@ import { assistantText, createFakeLLM } from "../helpers/fakeLLM.js";
 import { createTestContext } from "../helpers/testContext.js";
 import { withTempProject } from "../helpers/tempProject.js";
 import { createTurnAbortController, throwIfTurnAborted } from "../../src/runtime/abort.js";
-import { getAutoCompactThreshold } from "../../src/context/window.js";
+import { getContextBudget } from "../../src/context/budget.js";
 
-function overThresholdInput(model = "glm-test"): string {
-  return "x".repeat(getAutoCompactThreshold(model) * 2 + 100);
+function overThresholdInput(): string {
+  return "x".repeat(getContextBudget().compactThreshold * 2 + 100);
 }
 function historyWithToolPair(): Message[] {
   const toolCall: ToolCall = {

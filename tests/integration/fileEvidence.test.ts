@@ -85,11 +85,11 @@ test.each(["failed", "cancelled", "iteration-limit", "compacted"])("未交付的
         const path = join(cwd, "file.txt");
         await writeFile(path, "original");
         const controller = createTurnAbortController();
-        const ctx = createTestContext(cwd, {signal: controller.signal});
+        const ctx = createTestContext(cwd, {signal: controller.signal, contextSettings: {windowTokens: 10_000, autoCompactTokenLimit: 6_800}});
         let compacted = false;
         const read = assistantToolCall("read_file", {path}, "read");
         const fake = createFakeLLM([
-            {...read, ...(mode === "compacted" ? {contextUsage: {inputTokens: 7600, tokenCount: 7600, contextWindow: 10_000}} : {})},
+            {...read, ...(mode === "compacted" ? {contextUsage: {inputTokens: 7600, tokenCount: 7600}} : {})},
             options => {
                 if (mode === "failed") throw new Error("offline failure");
                 if (mode === "cancelled") controller.abort("user-cancel");

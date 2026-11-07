@@ -8,7 +8,7 @@ import type {ToolContext} from "../tools/types.js";
 import type {LLMCaller, LLMCallKind, Message, ToolCall} from "../llm/types.js";
 import {hasCompleteToolPairs} from "../session/store/codec.js";
 import {formatInterruptedToolResult} from "../tools/registry.js";
-import {getTokenWarningState} from "../context/index.js";
+import {getContextBudget, getTokenWarningState} from "../context/index.js";
 import {isTurnInterruptedError, normalizeTurnAbortReason, throwIfTurnAborted,} from "../runtime/abort.js";
 import type {AgentEvent, AgentResult} from "./types.js";
 import {executeToolCallBatch, type ToolExecutor,} from "./toolBatch.js";
@@ -149,7 +149,7 @@ async function runAgentCore(
     let usageEstimated = false;
     let contextLengthRecoveryUsed = false;
     let forceCompact = false;
-    let providerContextWindow = ctx.contextUsage.contextWindow({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount});
+    const contextBudget = getContextBudget(ctx.contextSettings);
 
     let pendingToolCalls: readonly ToolCall[] = [];
     const resultUsage = () => usageCalls === 0
@@ -228,7 +228,6 @@ async function runAgentCore(
                 onEvent,
                 getToolSchemas: () => toolSchemas,
                 compactHistory: compactHistoryImpl,
-                contextWindow: providerContextWindow,
                 forceCompact,
                 elapsedTaskStartedAt: iterations % 4 === 0 ? taskStartedAt : undefined,
                 taskReviewReminder: taskReview.takeReminder(),
@@ -303,21 +302,13 @@ async function runAgentCore(
             const hasActualContextUsage = contextTokenCount !== undefined &&
                 Number.isFinite(contextTokenCount) &&
                 contextTokenCount > 0;
-            const reportedContextWindow = contextUsage?.contextWindow;
-            if (
-                reportedContextWindow !== undefined &&
-                Number.isSafeInteger(reportedContextWindow) &&
-                reportedContextWindow > 0
-            ) {
-                providerContextWindow = reportedContextWindow;
-            }
             const tokenCount = hasActualContextUsage
                 ? contextTokenCount
                 : hasActualUsage
                     ? usage.prompt_tokens
                     : estimatedTokens;
             ctx.contextUsage.record({model: ctx.model, provider: ctx.provider, compactCount: ctx.compactState.compactCount},
-                invokeMessages, tools, contextUsage?.inputTokens ?? (hasActualUsage ? usage.prompt_tokens : undefined), providerContextWindow);
+                invokeMessages, tools, contextUsage?.inputTokens ?? (hasActualUsage ? usage.prompt_tokens : undefined));
             usageCalls += 1;
             if (hasActualUsage) {
                 usageInputTokens += usage.prompt_tokens;
@@ -327,12 +318,7 @@ async function runAgentCore(
                 usageInputTokens += tokenCount;
                 usageEstimated = true;
             }
-            const postState = getTokenWarningState(
-                tokenCount,
-                ctx.model,
-                providerContextWindow,
-                ctx.contextSettings
-            );
+            const postState = getTokenWarningState(tokenCount, contextBudget);
             await onEvent({
                 type: "token_update",
                 tokenCount,
