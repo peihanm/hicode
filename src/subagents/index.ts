@@ -9,7 +9,6 @@ export type {
     AgentDefinition,
     LoadedCustomAgents,
 } from "./types.js";
-export {formatSubagentModel} from "./model.js";
 export {
     createSubagentCatalog,
     type SubagentCatalog,

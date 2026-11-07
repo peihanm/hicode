@@ -5,8 +5,9 @@
 | Role | Model | Intended work |
 | --- | --- | --- |
 | Worker | Main model captured when the thread is created | Bounded implementation or investigation. |
-| Explore | Effective fast model, following main when no fast target is configured | Independent read-only code exploration using read_file and restricted Bash. |
 | Custom role | Main model captured at thread creation | User-defined responsibility; tools inherit permitted capabilities unless narrowed. |
+
+Worker is the only built-in role. Use `agent` with `read_only: true` for read-only investigation; it inherits the parent model and available Skills, while the execution pipeline enforces read-only file, Bash and MCP restrictions.
 
 No custom role model tier or maximum-turn field is supported. Changing the Root model later does not reconfigure a live child's existing thread. Role definitions describe reusable behavior; each assignment still needs a concrete goal and file ownership.
 

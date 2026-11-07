@@ -113,7 +113,7 @@ describe("multiline input box", () => {
   test("长粘贴折叠为 Capsule 并完整提交", async () => {
     let submitted: string | undefined;
     const input = [
-      "请在同一条 assistant 消息中，同时启动两个 Explore 子 Agent：",
+      "请在同一条 assistant 消息中，同时启动两个 Worker 子 Agent：",
       "",
       "1. medium 深度调查 Session 保存与恢复链路",
       "2. medium 深度调查权限系统的完整链路",

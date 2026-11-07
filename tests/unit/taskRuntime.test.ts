@@ -91,7 +91,7 @@ describe("TaskRuntime", () => {
             const starts = Array.from({length: 5}, (_, index) =>
                 session.startAgent({
                     request: {
-                        agentType: "Explore",
+                        agentType: "Worker",
                         description: `并发调查 ${index}`,
                         prompt: "等待 Runtime 关闭",
                         parentToolCallId: `concurrent-agent-${index}`,

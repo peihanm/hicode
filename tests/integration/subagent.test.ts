@@ -121,12 +121,12 @@ describe("managed Agent and isolated child threads", () => {
     });
   });
 
-  test("Explore 继承项目指令，隔离对话，并通过任务通知返回报告", async () => {
+  test("Worker 继承项目指令，隔离对话，并通过任务通知返回报告", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/target.ts`, "export const target = 42;\n");
       const child = createFakeLLM([
         (options) => {
-          expect(options.model).toBe("glm-fast-test");
+          expect(options.model).toBe("glm-test");
           return assistantToolCall(
             "read_file",
             { path: "target.ts", offset: 1, limit: 20 },
@@ -140,13 +140,24 @@ describe("managed Agent and isolated child threads", () => {
               contentText(message.content).includes("root-only CODE instruction")
             )
           ).toBe(true);
-          expect(options.tools.map((tool) => tool.function.name)).toEqual(["read_file", "bash"]);
+          expect(options.tools.map((tool) => tool.function.name)).toEqual(expect.arrayContaining(["read_file", "bash"]));
+          expect(options.tools.map((tool) => tool.function.name)).not.toContain("agent");
           expect(
             options.messages.some(
               (message) =>
                 message.role === "tool" && message.tool_call_id === "child-read"
             )
           ).toBe(true);
+          return assistantToolCall("write_file", {path: "forbidden.txt", content: "must not write"}, "child-write");
+        },
+        (options) => {
+          expect(options.messages.find(message => message.role === "tool" && message.tool_call_id === "child-write")?.content)
+            .toContain("This Agent only allows read-only tool calls");
+          return assistantToolCall("bash", {command: "touch forbidden.txt"}, "child-shell-write");
+        },
+        (options) => {
+          expect(options.messages.find(message => message.role === "tool" && message.tool_call_id === "child-shell-write")?.content)
+            .toContain("Permission denied");
           return assistantText("证据：target.ts 导出 target 常量。");
         },
       ]);
@@ -156,7 +167,7 @@ describe("managed Agent and isolated child threads", () => {
           {
             description: "调查 target",
             prompt: "读取 target.ts，说明它导出了什么，并给出文件证据。",
-            subagent_type: "Explore",
+            subagent_type: "Worker", read_only: true,
           },
           "parent-agent-call"
         ),
@@ -225,7 +236,7 @@ describe("managed Agent and isolated child threads", () => {
     });
   });
 
-  test("父 signal 取消会中断正在请求模型的 Explore", async () => {
+  test("父 signal 取消会中断正在请求模型的 Worker", async () => {
     await withTempProject(async (cwd) => {
       const controller = createTurnAbortController();
       let started!: () => void;
@@ -252,7 +263,7 @@ describe("managed Agent and isolated child threads", () => {
       });
 
       const running = runner({
-        agentType: "Explore",
+        agentType: "Worker", readOnly: true,
         description: "等待取消",
         prompt: "调查长任务",
         parentToolCallId: "parent-call",
@@ -298,7 +309,7 @@ describe("managed Agent and isolated child threads", () => {
       });
 
       const result = await runner({
-        agentType: "Explore",
+        agentType: "Worker", readOnly: true,
         description: "权限收窄",
         prompt: "读取 guarded.ts",
         parentToolCallId: "parent-call",
@@ -309,7 +320,7 @@ describe("managed Agent and isolated child threads", () => {
     });
   });
 
-  test("Explore 超过 30 轮仍保留工具并正常完成", async () => {
+  test("Worker 超过 30 轮仍保留工具并正常完成", async () => {
     await withTempProject(async (cwd) => {
       await writeFile(`${cwd}/loop.ts`, "export {};\n");
       const child = createFakeLLM(
@@ -343,7 +354,7 @@ describe("managed Agent and isolated child threads", () => {
         toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       });
       const result = await runner({
-        agentType: "Explore",
+        agentType: "Worker", readOnly: true,
         description: "轮次上限",
         prompt: "持续读取",
         parentToolCallId: "parent-call",
@@ -369,7 +380,7 @@ describe("managed Agent and isolated child threads", () => {
         toolResultStoreOptions: { hicodeHome: `${cwd}/tool-results` },
       });
       const result = await runner({
-        agentType: "Explore",
+        agentType: "Worker", readOnly: true,
         description: "transcript 降级",
         prompt: "返回报告",
         parentToolCallId: "parent-call",

@@ -11,7 +11,7 @@ function runtime(fake: ReturnType<typeof createFakeLLM>) {
         model: "glm-test",
         instructions: EMPTY_PROJECT_INSTRUCTIONS,
         availableToolNames: ["read_file", "bash", "edit_file"],
-        getExistingAgentNames: () => ["Explore"],
+        getExistingAgentNames: () => ["Worker"],
     });
 }
 
@@ -54,7 +54,7 @@ describe("agent authoring", () => {
         await expect(runtime(createFakeLLM([assistantToolCall(
             "submit_agent_definition",
             {
-                name: "Explore",
+                name: "Worker",
                 description: "duplicate",
                 system_prompt: "duplicate",
                 read_only: false,

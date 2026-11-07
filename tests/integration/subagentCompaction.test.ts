@@ -58,7 +58,7 @@ test("child owns durable compaction and reads only inherited parent archives acr
    }
    return {reason:"completed",reply:"done",iterations:1};
   };
-  const factory=createSubagentFactories({primaryRunAgent:runner,fastRunAgent:runner,registry:BUILTIN_SUBAGENT_REGISTRY,
+  const factory=createSubagentFactories({primaryRunAgent:runner,registry:BUILTIN_SUBAGENT_REGISTRY,
     createToolResultStore:(cwd,id)=>createToolResultStore(storage,cwd,id)});
   const thread=factory.createSubagentThread({parentContext:ctx,onEvent:()=>{},agentId:"compact-child",storageCwd:cwd},
     {agentType:"Worker",cwd:childCwd,description:"bounded work",prompt:"KEEP_CHILD_DIRECTIVE",parentToolCallId:"spawn",contextSnapshot:{history:inherited}});

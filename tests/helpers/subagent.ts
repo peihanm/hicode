@@ -43,7 +43,6 @@ export function createSubagentRunnerForTest({
   });
   const factory = createSubagentFactories({
     primaryRunAgent: runAgent,
-    fastRunAgent: runAgent,
     createToolResultStore: (cwd, sessionId) =>
       createTestToolResultStore(cwd, sessionId, toolResultStoreOptions),
     registry,
@@ -85,7 +84,6 @@ export function createSubagentThreadForTest(
   });
   return createSubagentFactories({
     primaryRunAgent: runAgent,
-    fastRunAgent: runAgent,
     createToolResultStore: (cwd, sessionId) =>
       createTestToolResultStore(cwd, sessionId, toolResultStoreOptions),
     registry,

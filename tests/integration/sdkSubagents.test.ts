@@ -56,8 +56,8 @@ test("SDK joins parallel real subagents before the final reply and preserves rep
             await release.promise;
             return assistantText(`child-${index} evidence`);
         }]));
-        const first = assistantToolCall("agent", {name: "reader-0", subagent_type: "Explore", description: "first", prompt: "inspect first"}, "spawn-0");
-        const second = assistantToolCall("agent", {name: "reader-1", subagent_type: "Explore", description: "second", prompt: "inspect second"}, "spawn-1");
+        const first = assistantToolCall("agent", {name: "reader-0", subagent_type: "Worker", read_only: true, description: "first", prompt: "inspect first"}, "spawn-0");
+        const second = assistantToolCall("agent", {name: "reader-1", subagent_type: "Worker", read_only: true, description: "second", prompt: "inspect second"}, "spawn-1");
         const root = createFakeLLM([
             {...first, message: {...first.message, tool_calls: [...first.message.tool_calls!, ...second.message.tool_calls!]}},
             async () => {

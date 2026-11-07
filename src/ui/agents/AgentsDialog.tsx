@@ -11,7 +11,6 @@ import type {
     StoredAgentFile,
     SubagentCatalog,
 } from "../../subagents/index.js";
-import {formatSubagentModel} from "../../subagents/index.js";
 import {MultilineTextInput} from "../input/MultilineTextInput.js";
 import {COLORS} from "../theme.js";
 import {usePanelLayout} from "../panelLayout.js";
@@ -40,7 +39,6 @@ interface DialogItem {
 
 function agentDescription(definition: AgentDefinition): string {
     if (definition.source === "builtin") {
-        if (definition.agentType === "Explore") return "Explore code and trace behavior without changing files.";
         if (definition.agentType === "Worker") return "Implement changes or investigate a focused task.";
     }
     return definition.whenToUse;
@@ -104,13 +102,11 @@ export function AgentsDialog({
     manager,
     authoring,
     catalog,
-    fastModel,
     onClose,
 }: {
     manager: AgentDefinitionManager;
     authoring: AgentAuthoringRuntime;
     catalog: SubagentCatalog;
-    fastModel: string;
     onClose(): void;
 }) {
     const {width: terminalWidth, height, padding, contentWidth: width} = usePanelLayout();
@@ -452,7 +448,7 @@ export function AgentsDialog({
                         <Text color={COLORS.dim}>{sourceLabel(selected)}{selected.source === "builtin" || selected.source === "host" ? " · Definition cannot be edited" : ""}</Text>
                         <Box marginTop={1}><Text>{agentDescription(selected)}</Text></Box>
                         <Box marginY={1} flexDirection="column">
-                            <Text><Text color={COLORS.dim}>Model       </Text>{formatSubagentModel(selected, fastModel)}</Text>
+                            <Text><Text color={COLORS.dim}>Model       </Text>Same as main agent</Text>
                             <Text><Text color={COLORS.dim}>Access      </Text>{selected.readOnly ? "Read-only" : "Parent-authorized work"}</Text>
                         </Box>
                         <Text color={COLORS.dim}>Tools · {selected.allowedTools?.length ?? "Inherited"}</Text>

@@ -15,7 +15,7 @@ import {createTestToolResultStore} from "../helpers/toolResultStore.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {attachSubagentLauncher} from "../helpers/subagentLauncher.js";
 
-describe("background Explore", () => {
+describe("background Worker", () => {
     test("Agent Tool 立即返回，后台结果进入 Task 并只通知一次", async () => {
         await withTempProject(async (cwd) => {
             let release!: () => void;
@@ -48,17 +48,17 @@ describe("background Explore", () => {
                 sessionId: "root-session",
                 toolResultStore: store,
             });
-            const ctx = createTestContext(cwd, {tasks});
+            const ctx = createTestContext(cwd, {tasks, sessionId: "root-session"});
             attachSubagentLauncher(ctx, async () => {
-                throw new Error("后台 Explore 不应走同步 runner");
+                throw new Error("后台 Worker 不应走同步 runner");
             });
 
             const launched = await executeToolResult("agent", JSON.stringify({
                 description: "后台调查",
                 prompt: "调查代码结构",
-                subagent_type: "Explore",
+                subagent_type: "Worker", read_only: true,
             }), ctx, "background-agent-call");
-            expect(launched.outcome).toBe("ok");
+            expect(launched.outcome, JSON.stringify(launched.modelContent)).toBe("ok");
             expect(launched.uiData).toMatchObject({type: "agent_receipt", receipt: {delivery: "started"}});
             expect(launched.modelContent).toContain("Agent Task started");
             const running = await tasks.list();
@@ -66,7 +66,7 @@ describe("background Explore", () => {
             expect(running[0]).toMatchObject({
                 kind: "agent",
                 status: "running",
-                agentType: "Explore",
+                agentType: "Worker",
             });
 
             let finish!: () => void;
@@ -135,17 +135,17 @@ describe("background Explore", () => {
             });
             const parent = new AbortController();
             const ctx = createTestContext(cwd, {
-                tasks,
+                tasks, sessionId: "root-session",
                 signal: parent.signal,
             });
             attachSubagentLauncher(ctx, async () => {
-                throw new Error("后台 Explore 不应走同步 runner");
+                throw new Error("后台 Worker 不应走同步 runner");
             });
 
             await executeToolResult("agent", JSON.stringify({
                 description: "等待取消",
                 prompt: "持续调查直到被停止",
-                subagent_type: "Explore",
+                subagent_type: "Worker", read_only: true,
             }), ctx, "background-stop-call");
             await llmStarted;
             const [running] = await tasks.list();
@@ -217,14 +217,14 @@ describe("background Explore", () => {
                     hicodeHome: `${cwd}/root-results`,
                 }),
             });
-            const ctx = createTestContext(cwd, {tasks});
+            const ctx = createTestContext(cwd, {tasks, sessionId: "message-session"});
             attachSubagentLauncher(ctx, async () => {
-                throw new Error("后台 Explore 不应走同步 runner");
+                throw new Error("后台 Worker 不应走同步 runner");
             });
             await executeToolResult("agent", JSON.stringify({
                 description: "验证运行中消息",
                 prompt: "先列出项目文件",
-                subagent_type: "Explore",
+                subagent_type: "Worker", read_only: true,
             }), ctx, "running-message-call");
             await started;
             const [task] = await tasks.list();
@@ -290,9 +290,9 @@ describe("background Explore", () => {
                     hicodeHome: `${cwd}/root-results`,
                 }),
             });
-            const ctx = createTestContext(cwd, {tasks});
+            const ctx = createTestContext(cwd, {tasks, sessionId: "continue-session"});
             attachSubagentLauncher(ctx, async () => {
-                throw new Error("后台 Explore 不应走同步 runner");
+                throw new Error("后台 Worker 不应走同步 runner");
             });
             let finishedCount = 0;
             let resolveFinished!: () => void;
@@ -307,7 +307,7 @@ describe("background Explore", () => {
             await executeToolResult("agent", JSON.stringify({
                 description: "验证完成后继续",
                 prompt: "先给出第一轮结论",
-                subagent_type: "Explore",
+                subagent_type: "Worker", read_only: true,
             }), ctx, "continue-agent-call");
             const [started] = await tasks.list();
             if (!started || started.kind !== "agent") {
@@ -390,9 +390,9 @@ describe("background Explore", () => {
                 sessionId: "restore-agent",
                 toolResultStore: store,
             });
-            const ctx = createTestContext(cwd, {tasks: firstTasks});
+            const ctx = createTestContext(cwd, {tasks: firstTasks, sessionId: "restore-agent"});
             attachSubagentLauncher(ctx, async () => {
-                throw new Error("后台 Explore 不应走同步 runner");
+                throw new Error("后台 Worker 不应走同步 runner");
             });
             const finished = new Promise<void>((resolve) => {
                 const unsubscribe = firstTasks.subscribe((event) => {
@@ -404,7 +404,7 @@ describe("background Explore", () => {
             await executeToolResult("agent", JSON.stringify({
                 description: "验证 archived 边界",
                 prompt: "生成一份报告",
-                subagent_type: "Explore",
+                subagent_type: "Worker", read_only: true,
             }), ctx, "archived-agent-call");
             const [started] = await firstTasks.list();
             await finished;

@@ -108,7 +108,7 @@ test.each(["ask","auto-review","full-access"] as const)("child uses live parent 
             expect(options.messages.find(m=>m.role==="tool"&&m.tool_call_id==="read")?.content).toContain("SOURCE");
             return assistantText("done");}]);
         const thread=createSubagentThreadForTest({parentContext:parent,agentId:"explorer",onEvent(){},agentOptions:{callLLM:fake.callLLM}},
-            {agentType:"Explore",description:"read",prompt:"read",parentToolCallId:"spawn"});
+            {agentType:"Worker", readOnly: true,description:"read",prompt:"read",parentToolCallId:"spawn"});
         try {await thread.run({prompt:"read",signal:new AbortController().signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
             expect(prompts).toBe(mode==="ask"?1:0);expect(reviews).toBe(mode==="auto-review"?1:0);
         } finally {await thread.close();}

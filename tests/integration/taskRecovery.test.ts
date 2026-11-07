@@ -46,7 +46,7 @@ test.each(["shell", "agent"])("invalid Task IDs prioritize running %s over revie
             const active = kind === "shell"
                 ? await session.startShell({command: "pending", cwd, toolCallId: "pending"})
                 : await session.startAgent({parentContext: ctx, request: {
-                    agentType: "Explore", description: "pending", prompt: "wait", parentToolCallId: "pending",
+                    agentType: "Worker", readOnly: true, description: "pending", prompt: "wait", parentToolCallId: "pending",
                 }});
             const before = (await session.list()).map(task => task.id);
             for (const id of ["shell-3", "t_ffffffffffff"]) {

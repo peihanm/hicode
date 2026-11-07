@@ -47,7 +47,7 @@ function textStream(content: string): Response {
 }
 
 describe("AgentRuntime model targets", () => {
-    test("inherit 使用 primary Provider，fast 使用独立 Provider", async () => {
+    test("只读 Worker 和自定义角色继承 primary Provider，不使用 fast", async () => {
         await withTempProject(async (cwd, storage) => {
             process.env.DASHSCOPE_API_KEY = "qwen-key";
             process.env.GLM_API_KEY = "glm-key";
@@ -97,8 +97,8 @@ describe("AgentRuntime model targets", () => {
                 try {return await thread.run({prompt: request.prompt, signal: parentContext.signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL});}
                 finally {await thread.close();}
             };
-            const fast = await runChild(parentContext, {
-                agentType: "Explore",
+            const readOnly = await runChild(parentContext, {
+                agentType: "Worker", readOnly: true,
                 description: "快速调查",
                 prompt: "直接总结",
                 parentToolCallId: "fast-call",
@@ -122,14 +122,14 @@ describe("AgentRuntime model targets", () => {
                 parentToolCallId: "switched-primary-call",
             });
 
-            expect(fast.reply).toBe("reply from glm-fast-test");
+            expect(readOnly.reply).toBe("reply from qwen-primary-test");
             expect(primary.reply).toBe("reply from qwen-primary-test");
             expect(switchedPrimary.reply).toBe("reply from deepseek-pro");
             expect(calls).toEqual([
                 {
-                    url: "https://glm.test/v1/chat/completions",
-                    model: "glm-fast-test",
-                    authorization: "Bearer glm-key",
+                    url: "https://qwen.test/v1/chat/completions",
+                    model: "qwen-primary-test",
+                    authorization: "Bearer qwen-key",
                 },
                 {
                     url: "https://qwen.test/v1/chat/completions",
@@ -157,7 +157,7 @@ test("new child uses refreshed connection while an existing child retains its or
         const memory = createTestMemoryRuntime(cwd, {enabled: false});
         const runtime = createAgentRuntime({storage, getSources: () => structuredClone(sources), subagents: createWriterRegistry(), memory});
         const parent = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", fastModel: "qwen3.8-flash", fastProvider: "qwen"});
-        const request = {agentType: "Explore", prompt: "inspect", description: "inspect", parentToolCallId: "spawn"};
+        const request = {agentType: "Worker", readOnly: true, prompt: "inspect", description: "inspect", parentToolCallId: "spawn"};
         const old = runtime.createSubagentThread({parentContext: parent, agentId: "old", onEvent() {}}, request);
         sources = {...sources, qwen: {...sources.qwen, baseUrl: "https://second.test/v1"}};
         const next = runtime.createSubagentThread({parentContext: parent, agentId: "new", onEvent() {}}, request);
@@ -168,7 +168,7 @@ test("new child uses refreshed connection while an existing child retains its or
     });
 });
 
-test("ordinary children freeze primary reasoning; Explore freezes fast reasoning across followups", async () => {
+test("custom and read-only children freeze parent reasoning across followups", async () => {
     await withTempProject(async (cwd, storage) => {
         process.env.DASHSCOPE_API_KEY = "fixture-key";
         process.env.DEEPSEEK_API_KEY = "fixture-key";
@@ -177,14 +177,14 @@ test("ordinary children freeze primary reasoning; Explore freezes fast reasoning
         const memory = createTestMemoryRuntime(cwd, {enabled: false});
         const runtime = createAgentRuntime({storage, getSources: () => createTestSettings().sources, subagents: createWriterRegistry(), memory});
         const parent = createTestContext(cwd, {model: "qwen3.8-flash", provider: "qwen", reasoning: "medium", fastModel: "deepseek-flash", fastProvider: "deepseek", fastReasoning: "max"});
-        const create = (agentType: string, agentId: string) => runtime.createSubagentThread({parentContext: parent, agentId, onEvent() {}}, {agentType, prompt: "inspect", description: "inspect", parentToolCallId: "spawn"});
-        const ordinary = create("FixtureWriter", "ordinary"), explore = create("Explore", "explore");
+        const create = (agentType: string, agentId: string) => runtime.createSubagentThread({parentContext: parent, agentId, onEvent() {}}, {agentType, prompt: "inspect", description: "inspect", parentToolCallId: "spawn", readOnly: true});
+        const ordinary = create("FixtureWriter", "ordinary"), readOnly = create("Worker", "read-only");
         parent.reasoning = "low"; parent.fastReasoning = "off";
         const input = {prompt: "inspect", signal: new AbortController().signal, inputChannel: EMPTY_AGENT_INPUT_CHANNEL};
         try {
-            await ordinary.run(input); await explore.run(input); await ordinary.run({...input, prompt: "continue"}); await explore.run({...input, prompt: "continue"});
+            await ordinary.run(input); await readOnly.run(input); await ordinary.run({...input, prompt: "continue"}); await readOnly.run({...input, prompt: "continue"});
             expect(bodies.map(body => [body.model, body.reasoning_effort])).toEqual([
-                ["qwen3.8-flash", "medium"], ["deepseek-flash", "max"], ["qwen3.8-flash", "medium"], ["deepseek-flash", "max"],
+                ["qwen3.8-flash", "medium"], ["qwen3.8-flash", "medium"], ["qwen3.8-flash", "medium"], ["qwen3.8-flash", "medium"],
             ]);
         } finally {await memory.close();}
     });

@@ -36,13 +36,11 @@ import type {
     SubagentThread,
 } from "./types.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
-import {usesFastSubagentModel} from "./model.js";
 import {createFileStateTracker} from "../tools/files/state.js";
 import {resolveSubagentDirectory, subagentInstructions, subagentPermissionRules} from "./workspace.js";
 
 interface SubagentThreadDependencies {
     primaryRunAgent: AgentRunner;
-    fastRunAgent: AgentRunner;
     registry: SubagentRegistry;
 
     createToolResultStore(cwd: string, owner: SessionStorageOwner): ToolResultStore;
@@ -104,15 +102,14 @@ export function createSubagentFactories(
             getAdditionalTools: () => [...fixedAdditional,
                 ...parentContext.mcpManager?.getTools().filter(tool => allowedNames.has(tool.name)) ?? []],
         });
-        const childSkills = definition.source === "builtin" && definition.agentType === "Explore" ? [] : structuredClone(parentContext.skills);
+        const childSkills = structuredClone(parentContext.skills);
         const initialToolNames = runtime.getToolSchemas()
             .map((tool) => tool.function.name);
-        const useFastModel = usesFastSubagentModel(definition);
-        const childReasoning = useFastModel ? parentContext.fastReasoning : parentContext.reasoning;
+        const childReasoning = parentContext.reasoning;
         const childFastReasoning = parentContext.fastReasoning;
-        const childModel = useFastModel ? parentContext.fastModel : parentContext.model;
-        const runChildAgent = useFastModel ? dependencies.fastRunAgent : dependencies.primaryRunAgent;
-        const childProvider = useFastModel ? parentContext.fastProvider : parentContext.provider;
+        const childModel = parentContext.model;
+        const runChildAgent = dependencies.primaryRunAgent;
+        const childProvider = parentContext.provider;
         const childOwner = Object.freeze({parentSessionId: parentContext.sessionId, agentId});
         const childSessionId = sessionStorageId(childOwner);
         const childHistory: Message[] = request.contextSnapshot !== undefined

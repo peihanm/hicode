@@ -93,25 +93,25 @@ body`,
     });
 
     test("内置名称保留，Markdown 定义不能覆盖", () => {
-        const customExplore = definition(
-            "explore",
+        const customWorker = definition(
+            "worker",
             "project",
-            "/project/explore.md"
+            "/project/worker.md"
         );
         const registry = createSubagentRegistry({
-            definitions: [customExplore],
+            definitions: [customWorker],
             issues: [],
         });
 
-        expect(registry.get("Explore")?.definition.source).toBe("builtin");
+        expect(registry.get("Worker")?.definition.source).toBe("builtin");
         expect(registry.issues).toEqual([
             expect.objectContaining({severity: "error", field: "name"}),
         ]);
         expect(Object.isFrozen(registry)).toBe(true);
         expect(Object.isFrozen(registry.listDefinitions())).toBe(true);
-        expect(Object.isFrozen(registry.get("Explore")?.definition)).toBe(true);
+        expect(Object.isFrozen(registry.get("Worker")?.definition)).toBe(true);
         expect(Object.isFrozen(
-            registry.get("Explore")?.definition.allowedTools
+            registry.get("Worker")?.definition.allowedTools
         )).toBe(true);
     });
 

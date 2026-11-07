@@ -27,7 +27,7 @@ test("existing child rediscovery uses the reconnected MCP capability", async () 
    expect(typeof result !== "string" && result.outcome).toBe("ok");
    return {reason:'completed',reply:'done',iterations:1};
   };
-  const factory=createSubagentFactories({primaryRunAgent:fake,fastRunAgent:fake,registry:BUILTIN_SUBAGENT_REGISTRY,createToolResultStore:(cwd,id)=>createToolResultStore(storage,cwd,id)});
+  const factory=createSubagentFactories({primaryRunAgent:fake,registry:BUILTIN_SUBAGENT_REGISTRY,createToolResultStore:(cwd,id)=>createToolResultStore(storage,cwd,id)});
   const child=factory.createSubagentThread({parentContext:ctx,onEvent:()=>{},agentId:'real-mcp'},{agentType:'Worker',description:'reconnect',prompt:'read',parentToolCallId:'spawn'});
   await child.run({prompt:'read',signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
   await manager.reconnect('fixture');

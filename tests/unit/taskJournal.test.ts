@@ -145,7 +145,7 @@ describe("TaskJournal", () => {
             for (const runCount of [1, 2]) {
                 await journal.append("session-a", {version: 8, type: "task_finished", sequence: runCount, sessionId: "session-a",
                     task: {id: "agent-a", kind: "agent", cwd, owner: {sessionId: "session-a", toolCallId: "call"},
-                        agentType: "Explore", description: "test", status: "completed", startedAt: "2026-09-05T00:00:00.000Z",
+                        agentType: "Worker", description: "test", status: "completed", startedAt: "2026-09-05T00:00:00.000Z",
                         completedAt: "2026-09-05T00:00:01.000Z", resultPreview: `run ${runCount}`,
                         progress: {runCount, runStartedAt: "2026-09-05T00:00:00.000Z", previousDurationMs: 0, todosUpdated: false, iterations: 1, toolUseCount: 0, pendingMessages: 0}}});
             }

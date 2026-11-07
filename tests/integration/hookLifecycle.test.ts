@@ -289,7 +289,7 @@ test("子 Agent 两次真实运行携带 runCount/taskId，父 Hook 能力不进
         ctx.runHook = async input => {inputs.push(input); return {blocked: false, executions: [], additionalContexts: []};};
         const fake = createFakeLLM([assistantText("first"), assistantText("second")]);
         const thread = createSubagentThreadForTest({agentId: "child-id", parentContext: ctx, onEvent() {}, agentOptions: {callLLM: fake.callLLM}}, {
-             agentType: "Explore", description: "read", prompt: "read", parentToolCallId: "parent",
+             agentType: "Worker", readOnly: true, description: "read", prompt: "read", parentToolCallId: "parent",
         });
         expect(inputs).toHaveLength(0);
         const signal = new AbortController().signal;
@@ -366,7 +366,7 @@ test("delegated tools enforce approved policies and keep independent once state 
         for(const prompt of ["read","read again","try blocked write"])await worker.run({prompt,signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
         const explorerModel=createFakeLLM([assistantToolCall("read_file",{path:"allowed.txt"},"explore-read"),assistantText("done")]);
         const explorer=createSubagentThreadForTest({parentContext:ctx,onEvent:()=>{},agentId:"policy-explore",agentOptions:{callLLM:explorerModel.callLLM}},
-            {agentType:"Explore",cwd:childCwd,description:"explore",prompt:"read",parentToolCallId:"spawn-explore"});
+            {agentType:"Worker", readOnly: true,cwd:childCwd,description:"explore",prompt:"read",parentToolCallId:"spawn-explore"});
         await explorer.run({prompt:"read",signal:ctx.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
         expect(await Bun.file(join(childCwd,"blocked.txt")).exists()).toBe(false);
         expect((await resources.toolRuntime.executeTool("read_file",JSON.stringify({path:join(childCwd,"allowed.txt")}),ctx,"root-read")).outcome).toBe("ok");

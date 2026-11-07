@@ -321,7 +321,6 @@ export function App({
                         manager={resources.agentDefinitions}
                         authoring={resources.agentAuthoring}
                         catalog={resources.subagents}
-                        fastModel={resources.fastModel}
                         onClose={() => setActivePanel(undefined)}
                     />
                 ) : (activePanel === "diff") ? (

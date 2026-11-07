@@ -30,7 +30,7 @@ test.each(["parent", "child"])("image inheritance follows the child run signal w
         }};
         let entered = false;
         const runner: AgentRunner = async () => {entered = true; return {reply: "done", reason: "completed", iterations: 1};};
-        const factories = createSubagentFactories({primaryRunAgent: runner, fastRunAgent: runner, registry: BUILTIN_SUBAGENT_REGISTRY,
+        const factories = createSubagentFactories({primaryRunAgent: runner, registry: BUILTIN_SUBAGENT_REGISTRY,
             createToolResultStore: (ownerCwd, id) => createTestToolResultStore(ownerCwd, id)});
         const thread = factories.createSubagentThread({parentContext: parent, agentId: "images", onEvent() {}},
             {agentType: "Worker", name: "images", description: "fixture", prompt: "fixture", parentToolCallId: "spawn", contextSnapshot: {history}});

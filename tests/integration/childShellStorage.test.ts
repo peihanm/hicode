@@ -46,7 +46,7 @@ test.each([false, true])("child Shell owns readable inline and background output
             expect((await journal.load(parent.sessionId)).tasks).toHaveLength(0);
             return {reply: "verified", reason: "completed", iterations: 1};
         };
-        const factories = createSubagentFactories({primaryRunAgent: runner, fastRunAgent: runner,
+        const factories = createSubagentFactories({primaryRunAgent: runner,
             registry: BUILTIN_SUBAGENT_REGISTRY,
             createToolResultStore: (ownerCwd, id) => createTestToolResultStore(ownerCwd, id, {hicodeHome})});
         try {
@@ -137,7 +137,7 @@ test("interrupt preserves child services for followup; permanent Agent stop clos
         if (!ctx.signal.aborted) await new Promise<void>(resolve => ctx.signal.addEventListener("abort", () => resolve(), {once: true}));
         return {reply: "interrupted", reason: "interrupted", iterations: 1};
     };
-    const factories = createSubagentFactories({primaryRunAgent: runner, fastRunAgent: runner,
+    const factories = createSubagentFactories({primaryRunAgent: runner,
         registry: BUILTIN_SUBAGENT_REGISTRY, createToolResultStore: (ownerCwd, id) => createTestToolResultStore(ownerCwd, id)});
     const runtime = createTaskRuntimeForTest(cwd, parent.shellRunner, factories.createSubagentThread);
     const tasks = runtime.forSession({sessionId: parent.sessionId, toolResultStore: parent.toolResultStore});

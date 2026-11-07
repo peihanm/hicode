@@ -83,7 +83,6 @@ export function createAgentRuntime({storage, getSources, subagents, memory}: {
         const child = createPrimaryRouter(() => sources);
         return createSubagentFactories({
             primaryRunAgent: child.runAgent,
-            fastRunAgent: child.runAgent,
             registry: subagents,
             createToolResultStore: (cwd, sessionId) => createToolResultStore(storage, cwd, sessionId),
         });

@@ -185,7 +185,7 @@ describe("headless integration", () => {
           {
             description: "调查入口",
             prompt: "调查 CLI 入口并简要报告",
-            subagent_type: "Explore",
+            subagent_type: "Worker", read_only: true,
           },
           "headless-agent"
         ),

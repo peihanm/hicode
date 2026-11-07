@@ -13,9 +13,9 @@ import { createTurnAbortController } from "../../src/runtime/abort.js";
 import { attachSubagentLauncher } from "../helpers/subagentLauncher.js";
 
 describe("tool registry contract", () => {
-  test("内置清单和执行入口均不再提供 Verification", async () => {
+  test.each(["Verification", "Explore"])("内置清单和执行入口不提供 %s", async role => {
     const schema = getToolSchemas().find(tool => tool.function.name === "agent");
-    expect(JSON.stringify(schema)).not.toContain("Verification");
+    expect(JSON.stringify(schema)).not.toContain(role);
     await withTempProject(async cwd => {
       const ctx = createTestContext(cwd);
       let launched = false;
@@ -24,7 +24,7 @@ describe("tool registry contract", () => {
         throw new Error("未注册的 Agent 不得启动");
       });
       const result = await executeToolResult("agent", JSON.stringify({
-        subagent_type: "Verification", description: "验证", prompt: "检查项目",
+        subagent_type: role, description: "验证", prompt: "检查项目",
       }), ctx, "unknown-agent");
       expect(result.outcome).toBe("failed");
       expect(result.modelContent).toContain("Unknown Agent type");
@@ -91,7 +91,7 @@ describe("tool registry contract", () => {
         JSON.stringify({
           description: "调查主循环",
           prompt: "调查主循环的工具执行路径并报告证据",
-          subagent_type: "Explore",
+          subagent_type: "Worker", read_only: true,
         }),
         ctx,
         "agent-call"
@@ -107,7 +107,7 @@ describe("tool registry contract", () => {
         JSON.stringify({
           description: "调查",
           prompt: "调查代码",
-          subagent_type: "Explore",
+          subagent_type: "Worker", read_only: true,
         }),
         createTestContext(cwd),
         "agent-no-runner"
@@ -154,14 +154,14 @@ describe("tool registry contract", () => {
         JSON.stringify({
           description: "快速调查",
           prompt: "调查一个边界明确的问题",
-          subagent_type: "Explore",
+          subagent_type: "Worker", read_only: true,
         }),
         ctx,
         "agent-model-call"
       );
 
       expect(result.outcome).toBe("ok");
-      expect(selectedModel).toBe("Explore");
+      expect(selectedModel).toBe("Worker");
     });
   });
 

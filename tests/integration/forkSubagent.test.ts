@@ -299,22 +299,23 @@ describe("fork subagent", () => {
                 {role: "user", origin: "user", content: "shared background"},
                 {role: "assistant", content: null, tool_calls: [{id: "spawn", type: "function", function: {name: "agent", arguments: "{}"}}]},
             ];
-            for (const role of ["Worker", "Explore"]) {
+            for (const readOnly of [false, true]) {
                 for (const context of ["fresh", "inherit"] as const) {
                     attachSubagentLauncher(ctx, async request => {
-                        expect(request.agentType).toBe(role);
+                        expect(request.agentType).toBe("Worker");
                         expect(request).not.toHaveProperty("model");
+                        expect(request.readOnly).toBe(readOnly);
                         expect(request.contextSnapshot !== undefined).toBe(context === "inherit");
                         if (request.contextSnapshot) {
                             expect(request.contextSnapshot.history[1]?.content).toBe("shared background");
                             expect(request.contextSnapshot.history.at(-1)?.role).toBe("tool");
                         }
-                        return {agentId: "child", agentType: role, description: "inspect", reply: "done",
+                        return {agentId: "child", agentType: "Worker", description: "inspect", reply: "done",
                             reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
                     }, () => history);
                     const result = await executeToolResult("agent", JSON.stringify({
-                        description: "inspect", prompt: "inspect", subagent_type: role,
-                        context, read_only: true,
+                        description: "inspect", prompt: "inspect", subagent_type: "Worker",
+                        context, read_only: readOnly,
                     }), ctx, "spawn");
                     expect(result.outcome).toBe("ok");
                 }

@@ -17,7 +17,7 @@ describe("Agents dialog", () => {
             const resources = createTestRuntimeResources(cwd);
             const view = render(<AgentsDialog manager={resources.agentDefinitions}
                 authoring={resources.agentAuthoring} catalog={resources.subagents}
-                fastModel="Qwen 3.8 Flash" onClose={() => {}}/>);
+                onClose={() => {}}/>);
             let columns = 100;
             Object.defineProperty(view.stdout, "columns", {configurable: true, get: () => columns});
             try {
@@ -26,7 +26,7 @@ describe("Agents dialog", () => {
                     view.stdout.emit("resize");
                     await new Promise(resolve => setTimeout(resolve, 100));
                     const list = view.lastFrame() ?? "";
-                    expect(list).toContain("Explore");
+                    expect(list).not.toContain("Explore");
                     expect(list).toContain("Worker");
                     expect(list).not.toMatch(/[╭╰│]/);
                     expect(list).not.toContain("Current revision");
@@ -35,14 +35,13 @@ describe("Agents dialog", () => {
                     view.stdin.write("\r"); await tick();
                     const detail = view.lastFrame() ?? "";
                     expect(detail.replace(/\s+/g, " ")).toContain("Definition cannot be edited");
-                    expect(detail).toContain("Read-only");
+                    expect(detail).toContain("Inherited");
                 expect(detail).not.toContain("Turn limit");
-                    expect(detail).toContain("Tools · 2");
+                    expect(detail).toContain("Tools · Inherited");
                     expect(detail).not.toContain("Root");
                     expect(detail.split("\n").every(line => stringWidth(line) <= width)).toBe(true);
                     view.stdin.write("\u001b"); await tick();
                 }
-                view.stdin.write("\u001b[B"); await tick();
                 view.stdin.write("\r"); await tick();
                 const worker = view.lastFrame() ?? "";
                 expect(worker).toContain("Worker");
@@ -56,11 +55,11 @@ describe("Agents dialog", () => {
         await withTempProject(async cwd => {
             const resources = createTestRuntimeResources(cwd);
             const view = render(<AgentsDialog manager={resources.agentDefinitions}
-                authoring={resources.agentAuthoring} catalog={resources.subagents} fastModel="fast" onClose={() => {}}/>);
+                authoring={resources.agentAuthoring} catalog={resources.subagents} onClose={() => {}}/>);
             const press = async (key: string) => {view.stdin.write(key); await tick();};
             try {
                 await tick();
-                for (const key of ["\u001b[B", "\u001b[B", "\r", "\u001b[B", "\r"]) await press(key);
+                for (const key of ["\u001b[B", "\r", "\u001b[B", "\r"]) await press(key);
                 expect(view.lastFrame()).toContain("New Agent");
                 expect(view.lastFrame()).toContain("Save Agent");
                 expect(view.lastFrame()).toContain("Tools · Inherited");
@@ -89,12 +88,12 @@ describe("Agents dialog", () => {
             let closed = false;
             const view = render(<AgentsDialog manager={resources.agentDefinitions}
                 authoring={resources.agentAuthoring} catalog={resources.subagents}
-                fastModel="Qwen 3.8 Flash" onClose={() => {closed = true;}}/>);
+                onClose={() => {closed = true;}}/>);
             try {
                 await tick();
-                expect(view.lastFrame()).toContain("12 available");
+                expect(view.lastFrame()).toContain("11 available");
                 expect(view.lastFrame()).not.toContain("reviewer-9");
-                for (let index = 0; index < 11; index++) {
+                for (let index = 0; index < 10; index++) {
                     view.stdin.write("\u001b[B"); await tick();
                 }
                 expect(view.lastFrame()).toContain("❯ reviewer-9");
@@ -167,11 +166,11 @@ test("generated candidates go straight to preview and save without model, turn o
             return {name: "reviewer", description: "Review real defects", systemPrompt: "Report evidence and do not edit files.", readOnly: true};
         }}});
         const view = render(<AgentsDialog manager={resources.agentDefinitions} authoring={resources.agentAuthoring}
-            catalog={resources.subagents} fastModel="fast" onClose={() => {}}/>);
+            catalog={resources.subagents} onClose={() => {}}/>);
         const press = async (key: string) => {view.stdin.write(key); await tick();};
         try {
             await tick();
-            for (const key of ["\u001b[B", "\u001b[B", "\r", "\r", "Create a reviewer", "\r"]) await press(key);
+            for (const key of ["\u001b[B", "\r", "\r", "Create a reviewer", "\r"]) await press(key);
             expect(view.lastFrame()).toContain("Save Agent");
             expect(view.lastFrame()).toContain("Read-only");
             expect(view.lastFrame()).not.toContain("Maximum turns");

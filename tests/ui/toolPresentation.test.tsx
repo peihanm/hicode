@@ -306,14 +306,14 @@ describe("phase-based tool presentation", () => {
             toolCallId: "agent",
             name: "agent",
             args: JSON.stringify({
-                subagent_type: "Explore",
+                subagent_type: "Worker", read_only: true,
                 description: "调查 Runtime",
             }),
         });
         threads = reduceThreads(threads, {
             type: "subagent_start",
             agentId: "child",
-            agentType: "Explore",
+            agentType: "Worker",
             description: "调查 Runtime",
             parentToolCallId: "agent",
         });
@@ -351,7 +351,7 @@ describe("phase-based tool presentation", () => {
                 toolCallId: "a1",
                 name: "agent",
                 args: JSON.stringify({
-                    subagent_type: "Explore",
+                    subagent_type: "Worker", read_only: true,
                     description: "调查前端",
                 }),
                 status: "done",
@@ -365,7 +365,7 @@ describe("phase-based tool presentation", () => {
                 toolCallId: "a2",
                 name: "agent",
                 args: JSON.stringify({
-                    subagent_type: "Explore",
+                    subagent_type: "Worker", read_only: true,
                     description: "调查后端",
                 }),
                 status: "done",
@@ -375,8 +375,8 @@ describe("phase-based tool presentation", () => {
         ];
         const frame = render(<MessageList threads={threads}/>).lastFrame() ?? "";
         expect(frame).not.toContain("agents finished");
-        expect(frame).toContain("● Agent Explore · 调查前端");
-        expect(frame).toContain("● Agent Explore · 调查后端");
+        expect(frame).toContain("● Agent Worker · 调查前端");
+        expect(frame).toContain("● Agent Worker · 调查后端");
     });
 
     test("命令非零退出显示为命令结果，框架故障仍显示任务失败", () => {

@@ -1,7 +1,6 @@
 import {basename} from "node:path";
 import stringWidth from "string-width";
 import type {SubagentRegistry} from "./registry.js";
-import {formatSubagentModel} from "./model.js";
 import type {AgentLoadIssue} from "./types.js";
 
 const MAX_DIAGNOSTIC_MESSAGE_CHARS = 240;
@@ -68,18 +67,15 @@ export function formatAgentLoadWarning(
 }
 
 export function formatAgentRegistryReport(
-    registry: SubagentRegistry,
-    fastModel?: string
+    registry: SubagentRegistry
 ): string {
     const definitions = registry.listDefinitions();
     const active = definitions.flatMap((definition, index) => {
-        const model = formatSubagentModel(definition, fastModel);
-
         return [
             ...(index > 0 ? [""] : []),
             `  ${definition.agentType} · ${definition.source}`,
             ...wrapDetail(definition.whenToUse),
-            `    Model ${model}`,
+            "    Model Same as main agent",
             ...wrapDetail(
                 definition.allowedTools ? `Tools (${definition.allowedTools.length}) ${definition.allowedTools.join(" · ")}` : "Tools inherited from the main agent"
             ),

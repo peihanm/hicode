@@ -23,8 +23,7 @@ export const agentsCommand: SlashCommand = {
                     `Agents Reload · revision ${result.revision}`,
                     `Added ${result.added.length} · updated ${result.updated.length} · removed ${result.removed.length} · loading issues ${result.issues.length}`,
                     formatAgentRegistryReport(
-                        context.subagents,
-                        context.ctx.fastModel
+                        context.subagents
                     ),
                 ].join("\n\n"),
             });
@@ -44,8 +43,7 @@ export const agentsCommand: SlashCommand = {
         await context.onEvent({
             type: "assistant_text",
             content: formatAgentRegistryReport(
-                context.subagents,
-                context.ctx.fastModel
+                context.subagents
             ),
         });
     },

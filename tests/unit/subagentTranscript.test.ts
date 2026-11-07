@@ -55,7 +55,7 @@ test("subagent followups preserve history deltas while latest state contains onl
  await withTempProject(async(cwd,storage)=>{
   const writer=new SubagentTranscriptWriter(storage,cwd,"parent","agent");
   const history:Message[]=[{role:"user",origin:"user",content:"x".repeat(100_000)}];
-  const result:SubagentResult={agentId:"agent",agentType:"Explore",description:"test",reply:"ok",reason:"completed",iterations:1,toolUseCount:0,durationMs:1};
+  const result:SubagentResult={agentId:"agent",agentType:"Worker",description:"test",reply:"ok",reason:"completed",iterations:1,toolUseCount:0,durationMs:1};
   for(let i=0;i<10;i++){
    history.push({role:"assistant",content:`reply ${i}`});
    await writer.append({type:"snapshot",timestamp:new Date().toISOString(),history,result});
@@ -78,7 +78,7 @@ test("subagent followups preserve history deltas while latest state contains onl
 test("failed history append does not publish a newer report state", async () => {
   await withTempProject(async (cwd, storage) => {
     const writer = new SubagentTranscriptWriter(storage, cwd, "parent", "agent");
-    const result: SubagentResult = {agentId: "agent", agentType: "Explore", description: "test", reply: "first",
+    const result: SubagentResult = {agentId: "agent", agentType: "Worker", description: "test", reply: "first",
       reason: "completed", iterations: 1, toolUseCount: 0, durationMs: 1};
     await writer.append({type: "snapshot", timestamp: new Date().toISOString(), history: [{role: "assistant", content: "first"}], result});
     const path = join(dirname(writer.path), "state.json");

@@ -39,7 +39,7 @@ describe("subagent UI", () => {
   test("异步创建回执保持 Started，完整 Task ID 仅在 transcript 展示", () => {
     let threads = reduceThreads([], {
       type: "tool_call_start", turnId: "turn-1", toolCallId: "agent-call", name: "agent",
-      args: JSON.stringify({description: "调查 Session", prompt: "调查 Session", subagent_type: "Explore"}),
+      args: JSON.stringify({description: "调查 Session", prompt: "调查 Session", subagent_type: "Worker", read_only: true}),
     });
     threads = reduceThreads(threads, {
       type: "tool_call_end", turnId: "turn-1", toolCallId: "agent-call", outcome: "ok",
@@ -47,7 +47,7 @@ describe("subagent UI", () => {
     });
     expect(threads).toHaveLength(1);
     const frame = render(<MessageList threads={threads} />).lastFrame();
-    expect(frame).toContain("Agent Explore · 调查 Session");
+    expect(frame).toContain("Agent Worker · 调查 Session");
     expect(frame).toContain("Started · /tasks");
     expect(frame).not.toContain("t_123456789abc");
     expect(render(<MessageList threads={threads} transcript />).lastFrame()).toContain("t_123456789abc");
@@ -144,7 +144,7 @@ describe("subagent UI", () => {
           args: JSON.stringify({
             description: "调查 Session",
             prompt: "调查 Session",
-            subagent_type: "Explore",
+            subagent_type: "Worker", read_only: true,
           }),
         });
         onEvent({
@@ -207,13 +207,13 @@ describe("subagent UI", () => {
           name: "agent",
           args: JSON.stringify({
             description: "调查刷题网站项目现状",
-            subagent_type: "Explore",
+            subagent_type: "Worker", read_only: true,
           }),
         });
         onEvent({
           type: "subagent_start",
           agentId: "child-running",
-          agentType: "Explore",
+          agentType: "Worker",
           description: "调查刷题网站项目现状",
           parentToolCallId: "agent-call",
         });
@@ -232,7 +232,7 @@ describe("subagent UI", () => {
         onEvent({
           type: "subagent_end",
           agentId: "child-running",
-          agentType: "Explore",
+          agentType: "Worker",
           reason: "completed",
           iterations: 1,
           toolUseCount: 1,
@@ -265,10 +265,10 @@ describe("subagent UI", () => {
         instance.stdin.write("\x0f");
         await new Promise((resolve) => setTimeout(resolve, 30));
         const frame = instance.lastFrame() ?? "";
-        expect(frame.match(/● Agent Explore/g) ?? []).toHaveLength(1);
+        expect(frame.match(/● Agent Worker/g) ?? []).toHaveLength(1);
         const rootListIndex = frame.indexOf("● List ls .");
         const agentIndex = frame.indexOf(
-          "● Agent Explore · 调查刷题网站项目现状",
+          "● Agent Worker · 调查刷题网站项目现状",
           rootListIndex
         );
         expect(rootListIndex).toBeGreaterThanOrEqual(0);

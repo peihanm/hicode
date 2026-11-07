@@ -4,8 +4,8 @@ import {createInitialHistory, createSubagentInstructions} from "../../src/prompt
 import {withExecutionContext} from "../../src/prompt/messages.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createAgentSystemPrompt} from "../../src/subagents/prompt.js";
-import {EXPLORE_SUBAGENT} from "../../src/subagents/builtins/explore/index.js";
-const EXPLORE_AGENT = EXPLORE_SUBAGENT.definition;
+import {WORKER_SUBAGENT} from "../../src/subagents/builtins/worker/index.js";
+const WORKER_AGENT = WORKER_SUBAGENT.definition;
 
 const root = () => contentText(createInitialHistory("/project")[0]!.content);
 const toolDescription = (name: string) => createToolCatalog({}).tools.find(tool => tool.name === name)!.description;
@@ -28,7 +28,7 @@ describe("English prompt contracts", () => {
             permissionMode: "ask",
             permissionPromptPolicy: "onRequest", readOnlyTools: true,
         });
-        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["read_file"]);
+        const worker = createAgentSystemPrompt(WORKER_AGENT, "/child", ["read_file"]);
         for (const prompt of [contentText(history[0]!.content), contentText(readOnly[0]!.content), worker]) {
             expect(prompt.match(/# Task execution/g)).toHaveLength(1);
             expect(prompt).toContain("For implementation work");
@@ -73,13 +73,13 @@ describe("English prompt contracts", () => {
         expect(worker).toContain("Do not spawn agents");
         expect(worker).not.toContain("# Tools and coordination");
         expect(worker).not.toContain("Use an available agent");
-        const custom = createAgentSystemPrompt({...EXPLORE_AGENT, systemPrompt: "用户自己的角色内容"}, "/child", ["read_file"]);
+        const custom = createAgentSystemPrompt({...WORKER_AGENT, systemPrompt: "用户自己的角色内容"}, "/child", ["read_file"]);
         expect(custom).toContain("用户自己的角色内容");
         expect(custom).toContain("Working directory: /child");
         expect(custom).toContain("Available tools: read_file");
     });
     test("Root and dispatched workers cannot improvise image-review infrastructure from view_image availability", () => {
-        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["view_image", "bash"]);
+        const worker = createAgentSystemPrompt(WORKER_AGENT, "/child", ["view_image", "bash"]);
         for (const prompt of [root(), worker]) {
             expect(prompt).toContain("Screenshot or generated-image review requires an explicit user request");
             expect(prompt).toContain("or an available dedicated capture/render tool");
@@ -111,7 +111,7 @@ describe("English prompt contracts", () => {
         expect(JSON.stringify(history)).not.toContain("execution_context");
     });
     test("Root and subagent prompts omit model identity while retaining environment and tools", () => {
-        const worker = createAgentSystemPrompt(EXPLORE_AGENT, "/child", ["read_file"]);
+        const worker = createAgentSystemPrompt(WORKER_AGENT, "/child", ["read_file"]);
         for (const prompt of [root(), worker]) expect(prompt).not.toMatch(/^Model:/m);
         expect(root()).toContain("Working directory: /project");
         expect(root()).toContain("Platform:");
