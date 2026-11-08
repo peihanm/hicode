@@ -7,7 +7,7 @@ import {assistantText, assistantToolCall, createFakeLLM} from "../helpers/fakeLL
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
-const item: Todo = {content: "完成验证", activeForm: "正在验证", status: "in_progress"};
+const item: Todo = {content: "完成验证", status: "in_progress"};
 
 test("连续三次声称完成仍被拦截，实际清空 Todo 后才发布最终回答", async () => {
     await withTempProject(async cwd => {

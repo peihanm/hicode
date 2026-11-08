@@ -82,7 +82,7 @@ describe("session persistence", () => {
         model: "glm-test",
         sessionId: "session-1",
         history,
-        todos: [],
+        todos: [{content: "验证恢复后的待办", status: "in_progress"}],
         permissionMode: "ask",
 
         compactState: createCompactState(),
@@ -97,6 +97,7 @@ describe("session persistence", () => {
 
       const loaded = loadSession(storage, cwd, "session-1");
       expect(loaded?.model).toBe("glm-test");
+      expect(loaded?.todos).toEqual([{content: "验证恢复后的待办", status: "in_progress"}]);
       expect(loaded?.history[0]).toEqual(createInitialHistory(cwd)[0]);
       expect(loaded?.history[0]?.role).toBe("system");
       expect(loaded?.history.filter((message) => message.role === "system")).toHaveLength(1);

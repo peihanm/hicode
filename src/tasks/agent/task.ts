@@ -185,7 +185,7 @@ async function recordAgentProgress(
         shouldPublish = true;
     } else if (event.type === "subagent_progress" && event.event.type === "todos") {
         task.todosUpdated = true;
-        task.todos = event.event.todos.slice(0, 100).map(todo => ({...todo, content: todo.content.slice(0, 1024), activeForm: todo.activeForm.slice(0, 1024)}));
+        task.todos = event.event.todos.slice(0, 100).map(todo => ({...todo, content: todo.content.slice(0, 1024)}));
         shouldPublish = true;
     } else if (event.type === "iteration") {
         task.iterations = event.current;

@@ -18,7 +18,7 @@ function finished(tasks: TaskSessionLike): Promise<void> {
     });
 }
 const request = {agentType: "Worker", name: "board", description: "Board logic", prompt: "Implement", parentToolCallId: "spawn"};
-const todo = {content: "Check board", activeForm: "Checking board", status: "in_progress"};
+const todo = {content: "Check board", status: "in_progress"};
 
 test("followup has a strict standalone tool, respects ownership and never relaunches on invalid input", async () => {
     await withTempProject(async cwd => {

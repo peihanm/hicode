@@ -12,8 +12,8 @@ test("Root 执行中提醒实时清单，真实 Todo 工具更新后停止提醒
         await writeFile(`${cwd}/fixture.txt`, "fixture");
         let todos: Todo[] = [];
         const initial: Todo[] = [
-            {content: "项目骨架", activeForm: "搭建骨架", status: "in_progress"},
-            {content: "核心逻辑", activeForm: "实现核心逻辑", status: "pending"},
+            {content: "项目骨架", status: "in_progress"},
+            {content: "核心逻辑", status: "pending"},
         ];
         const next: Todo[] = [{...initial[0]!, status: "completed"}, {...initial[1]!, status: "in_progress"}];
         const fake = createFakeLLM([

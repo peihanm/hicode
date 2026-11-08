@@ -40,7 +40,7 @@ for (const [width, height, answer] of cases) {
             await emit({type: "assistant_draft", responseId: "draft", text: Array.from({length: 8}, (_, index) => `Preparing implementation ${index}`).join("\n"), truncated: false});
             await tick(80);
             await ctx.setTodos(Array.from({length: 5}, (_, index) => ({
-                content: `Stage ${index}`, activeForm: `Stage ${index}`,
+                content: `Stage ${index}`,
                 status: index ? "pending" as const : "in_progress" as const,
             })));
             await emit({type: "tool_call_start", turnId: "turn", toolCallId: "write",

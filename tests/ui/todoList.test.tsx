@@ -10,8 +10,8 @@ describe("TodoList", () => {
     test("真实 Todo 工具推进阶段后显示完成项和下一进行项，全部完成清空", async () => {
         await withTempProject(async cwd => {
             const initial: Todo[] = [
-                {content: "项目骨架", activeForm: "搭建骨架", status: "in_progress"},
-                {content: "核心逻辑", activeForm: "实现核心逻辑", status: "pending"},
+                {content: "项目骨架", status: "in_progress"},
+                {content: "核心逻辑", status: "pending"},
             ];
             const instance = render(<TodoList todos={initial}/>);
             try {
@@ -21,8 +21,8 @@ describe("TodoList", () => {
                 expect(result.outcome).toBe("ok");
                 await new Promise(resolve => setTimeout(resolve, 0));
                 expect(instance.lastFrame()).toContain("✓ 项目骨架");
-                expect(instance.lastFrame()).toContain("实现核心逻辑");
-                expect(instance.lastFrame()).not.toContain("搭建骨架");
+                expect(instance.lastFrame()).toContain("核心逻辑");
+                expect(instance.lastFrame()).not.toContain("☐ 核心逻辑");
                 await executeToolResult("todo_write", JSON.stringify({todos: next.map(todo => ({...todo, status: "completed"}))}), ctx, "done");
                 await new Promise(resolve => setTimeout(resolve, 0));
                 expect(instance.lastFrame()?.trim()).toBe("");
@@ -36,11 +36,10 @@ describe("TodoList", () => {
         const instance = render(
             <TodoList todos={[{
                 content: "检查实现",
-                activeForm: "正在检查实现",
                 status: "in_progress",
             }]}/>
         );
-        expect(instance.lastFrame()).toContain("正在检查实现");
+        expect(instance.lastFrame()).toContain("检查实现");
 
         instance.rerender(<TodoList todos={[]}/>);
         expect(instance.lastFrame()?.trim()).toBe("");

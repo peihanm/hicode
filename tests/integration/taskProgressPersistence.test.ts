@@ -1,3 +1,4 @@
+import {createTaskJournal} from "../../src/tasks/journal.js";
 import {expect, test} from "bun:test";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
@@ -17,6 +18,8 @@ test("ordinary Agent progress is live-only while start, finish and notification 
                     await options.onChildEvent?.({type: "iteration", current, max: 5});
                     await options.onChildEvent?.({type: "token_update", tokenCount: current * 500, percentUsed: 0.1, warning: false, status: "actual"});
                 }
+                await options.onChildEvent?.({type: "subagent_progress", agentId: options.agentId,
+                    event: {type: "todos", todos: [{content: "验证任务进度", status: "completed"}]}});
                 return {agentId: options.agentId, agentType: request.agentType, description: request.description,
                     reply: "done", reason: "completed", iterations: 5, toolUseCount: 0, durationMs: 1};
             },
@@ -33,12 +36,15 @@ test("ordinary Agent progress is live-only while start, finish and notification 
             await session.startAgent({parentContext: ctx, request: { agentType: "Worker",
                 description: "progress", prompt: "inspect", parentToolCallId: "start-progress"}});
             await completed;
-            expect(progress).toBe(10);
+            expect(progress).toBe(11);
             const text = await readFile(join(getSessionStorageDirectory(createHiCodeStorageLayout({hicodeHome: home}), cwd, ctx.sessionId), "tasks", "events.jsonl"), "utf8");
             expect(text).toContain('"type":"task_started"');
             expect(text).toContain('"type":"task_finished"');
             expect(text).not.toContain('"type":"task_progress"');
             expect(await session.pendingNotifications()).toHaveLength(1);
+            const restored = await createTaskJournal(createHiCodeStorageLayout({hicodeHome: home}), cwd).load(ctx.sessionId);
+            expect(restored.tasks[0]).toMatchObject({progress: {todosUpdated: true,
+                todos: [{content: "验证任务进度", status: "completed"}]}});
         } finally {unsubscribe(); await runtime.close();}
     });
 });

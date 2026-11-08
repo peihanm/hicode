@@ -108,7 +108,7 @@ export function TasksDialog({tasks, stopTask, onClose}: {
     const titles = items.map(task => wrapPanelText(clean(title(task)), Math.max(1, panelWidth - 2)));
     const summaries = items.map(task => {
         const progress = task.kind === "agent" && task.progress.todosUpdated ? task.progress.todos?.find(todo => todo.status === "in_progress") : undefined;
-        return wrapPanelText(`  ${badge(task)} · ${metadata(task)}${progress ? ` · ${clean(progress.activeForm)}` : ""}`, panelWidth);
+        return wrapPanelText(`  ${badge(task)} · ${metadata(task)}${progress ? ` · ${clean(progress.content)}` : ""}`, panelWidth);
     });
     const window = panelWindow(items.map((_, i) => titles[i]!.length + summaries[i]!.length + 1), index, height - 10 - wrapPanelText(`${actions} · ${secondaryActions}`, panelWidth).length);
     return <Box flexDirection="column" marginTop={1} marginBottom={1} paddingX={padding} width={width}>

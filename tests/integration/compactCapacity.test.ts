@@ -105,7 +105,7 @@ test("压缩后从 Host 重新装配当前 Todo，不把运行时状态写入 Hi
         const history = largeHistory();
         let phase: "pending" | "completed" = "pending";
         const prepared = await prepareAgentInvoke({history, ctx, onEvent() {}, getToolSchemas: () => [],
-            getTodos: () => [{content: "CURRENT_TODO_DATA", status: phase, activeForm: "执行任务"}],
+            getTodos: () => [{content: "CURRENT_TODO_DATA", status: phase}],
             compactHistory: async () => {
                 history.splice(1, history.length - 1, {role: "user", origin: "user" as const, content: "恢复工作"});
                 phase = "completed";

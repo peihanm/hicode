@@ -114,7 +114,6 @@ const conversationSchema = z.array(messageSchema)
 const todoSchema = z.object({
     content: boundedString(64 * 1024, false),
     status: z.enum(["pending", "in_progress", "completed"]),
-    activeForm: boundedString(64 * 1024, false),
 }).strict();
 
 const diffLineSchema = z.object({

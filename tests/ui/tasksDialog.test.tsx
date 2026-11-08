@@ -234,3 +234,27 @@ test("advisory task review displays its covered rounds rather than a Memory or o
     } finally {view?.unmount(); await runtime.close();}
   });
 });
+
+test("Agent list shows in-progress Todo content without separate display wording", async () => {
+  await withTempProject(async cwd => {
+    const ctx = createTestContext(cwd);
+    const gate = Promise.withResolvers<void>();
+    const runtime = createTaskRuntimeForTest(cwd, ctx.shellRunner, (options, request) => ({
+      agentId: options.agentId, async close() {gate.resolve();}, async run() {
+        await options.onChildEvent?.({type: "subagent_progress", agentId: options.agentId,
+          event: {type: "todos", todos: [{content: "核对登录逻辑", status: "in_progress"}]}});
+        await gate.promise;
+        return {agentId: options.agentId, agentType: request.agentType, description: request.description,
+          reply: "stopped", reason: "interrupted", iterations: 1, toolUseCount: 0, durationMs: 1};
+      },
+    }));
+    const tasks = runtime.forSession({sessionId: ctx.sessionId, toolResultStore: ctx.toolResultStore});
+    let view: ReturnType<typeof render> | undefined;
+    try {
+      await tasks.startAgent({parentContext: ctx, request: {agentType: "Worker", description: "调查登录",
+        prompt: "inspect", parentToolCallId: "spawn"}});
+      view = render(<TasksDialog tasks={tasks} stopTask={async () => {}} onClose={() => {}}/>);
+      await until(() => view?.lastFrame()?.includes("核对登录逻辑") === true);
+    } finally {view?.unmount(); gate.resolve(); await runtime.close();}
+  });
+});

@@ -135,7 +135,6 @@ describe("UITurnController", () => {
     let todos: Todo[] = [{
       content: "完成验证",
       status: "in_progress",
-      activeForm: "正在完成验证",
     }];
     const harness = createHarness({
       getTodos: () => todos,

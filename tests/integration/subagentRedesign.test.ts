@@ -18,7 +18,7 @@ import {contentText} from "../../src/images/content.js";
 
 const assignment = {agentType: "specialist", description: "Implement a bounded task", prompt: "work", parentToolCallId: "delegate"};
 const registry = () => createSubagentRegistry({issues: [], definitions: [{source: "host", id: "specialist", agentType: "specialist", whenToUse: "work", systemPrompt: "Complete the assignment."}]});
-const todo: Todo = {content: "Verify the change", activeForm: "Verifying", status: "in_progress"};
+const todo: Todo = {content: "Verify the change", status: "in_progress"};
 
 test("custom child inherits ordinary tools and parent model, owns Todo and Skills, and continues past 30 calls", async () => {
     await withTempProject(async cwd => {

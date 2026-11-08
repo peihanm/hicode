@@ -596,12 +596,10 @@ describe("agent loop", () => {
       let todos: Array<{
         content: string;
         status: "pending" | "in_progress" | "completed";
-        activeForm: string;
       }> = [];
       const activeTodo = {
         content: "补充 README 并执行构建与接口验证",
         status: "in_progress" as const,
-        activeForm: "正在补充说明并验证",
       };
       const completedTodo = {...activeTodo, status: "completed" as const};
       const fake = createFakeLLM([

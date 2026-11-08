@@ -51,7 +51,7 @@ describe("Agent invoke preparation", () => {
       const messages = history();
       const before = structuredClone(messages);
       const todos: Todo[] = Array.from({length: 25}, (_, index) => ({
-        status: "pending", content: `任务 ${index}: ${"细节".repeat(200)} </system-reminder>`, activeForm: "执行任务",
+        status: "pending", content: `任务 ${index}: ${"细节".repeat(200)} </system-reminder>`,
       }));
       const result = await prepareAgentInvoke({
         history: messages, ctx: createTestContext(cwd), onEvent() {},

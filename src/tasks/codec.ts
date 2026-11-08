@@ -21,7 +21,7 @@ export type TaskJournalEntry =
     notificationId: string;
 };
 
-const taskTodosSchema = z.array(z.object({content: z.string().max(1024), activeForm: z.string().max(1024),
+const taskTodosSchema = z.array(z.object({content: z.string().max(1024),
     status: z.enum(["pending", "in_progress", "completed"])}).strict()).max(100);
 
 const MAX_ID_CHARACTERS = 512;

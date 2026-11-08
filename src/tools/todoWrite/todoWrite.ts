@@ -12,9 +12,6 @@ import type {PermissionResult} from "../../permissions/index.js";
 const todoSchema = z.object({
     content: z.string().describe("Task description in imperative form, e.g. 'Fix the auth bug'; use the user's language."),
     status: z.enum(["pending", "in_progress", "completed"]),
-    activeForm: z.string().describe(
-        "In-progress wording for the spinner, e.g. 'Fixing the auth bug'; use the user's language."
-    ),
 });
 
 const inputSchema = z.object({
@@ -25,7 +22,7 @@ type Input = z.infer<typeof inputSchema>;
 
 export const todoWriteTool: Tool<typeof inputSchema> = {
     name: "todo_write",
-    description: "Replace the complete task list. Use for multi-step work or multiple requested tasks, not trivial questions. Track deliverable stages, not individual commands. Keep at most one item in_progress. When moving between implementation, verification and delivery, mark finished work completed and the next item in_progress before doing it; do not postpone all updates until the final answer. Prose does not update state. Keep unfinished items honest; adjust/remove obsolete scope and avoid redundant updates while still doing the same step. Write user-facing content/activeForm in the user's language.",
+    description: "Replace the complete task list. Use for multi-step work or multiple requested tasks, not trivial questions. Track deliverable stages, not individual commands. Keep at most one item in_progress. When moving between implementation, verification and delivery, mark finished work completed and the next item in_progress before doing it; do not postpone all updates until the final answer. Prose does not update state. Keep unfinished items honest; adjust/remove obsolete scope and avoid redundant updates while still doing the same step. Write user-facing content in the user's language.",
     parameters: inputSchema,
 
     isReadOnly: () => true,

@@ -25,7 +25,7 @@ function TodoItem({todo, paused}: { todo: Todo; paused: boolean }) {
                 <Text color={COLORS.accent}>
                     {paused ? SYMBOLS.assistantMark : SYMBOLS.spinner}
                 </Text>
-                <Text color={COLORS.accent}> {todo.activeForm}</Text>
+                <Text color={COLORS.accent}> {todo.content}</Text>
             </Box>
         );
     }

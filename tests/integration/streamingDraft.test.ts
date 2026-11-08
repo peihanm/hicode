@@ -42,7 +42,7 @@ test.each(["complete", "retry", "failure", "cancel", "revision"])("正文草稿�
             callLLM: async ({onText}) => {
                 calls++;
                 if (mode === "revision" && (calls === 1 || calls === 3)) return assistantToolCall("todo_write", {
-                    todos: [{content: "完成任务", activeForm: "正在完成任务", status: calls === 1 ? "in_progress" : "completed"}],
+                    todos: [{content: "完成任务", status: calls === 1 ? "in_progress" : "completed"}],
                 }, `todo-${calls}`);
                 await onText?.({type: "reset"});
                 await onText?.({type: "delta", text: "Generating"});
