@@ -5,13 +5,14 @@ import type {LLMCaller, Message} from "../llm/types.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {getContextBudget} from "./budget.js";
 import {estimateMessageTokens} from "./tokens.js";
-import {buildCompactPrompt, parseCompactSummary} from "./compactPrompt.js";
-import {HandoffFormatError, renderHandoff, type HandoffSources} from "./handoff.js";
+import {buildCompactPrompt, parseCompactSummary, HandoffFormatError, renderHandoff, type HandoffSources} from "./handoff.js";
 import {selectCompactInput} from "./selection.js";
 
 interface CompactSummaryDependencies {
     callLLM: LLMCaller;
 }
+
+export type CompactSummaryGenerator = ReturnType<typeof createCompactSummaryGenerator>;
 
 export function createCompactSummaryGenerator(dependencies: CompactSummaryDependencies) {
     return (input: Parameters<typeof generateCompactSummaryCore>[0]) =>

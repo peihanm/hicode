@@ -96,7 +96,7 @@ test("尾部已有内容不重复补回；最多重读三文件，沿最近 offs
     });
 });
 
-test.each(["deny", "deleted", "oversize", "hook-oversize"] as const)("补回 %s 如实失败或省略，不产生源码观察凭证", async mode => {
+test.each(["deny", "deleted", "oversize", "hook-oversize"] as const)("补回 %s 保留可用内容及真实失败，不把部分读取当完整读取", async mode => {
     await withTempProject(async (cwd, storage) => {
         const f = fixture(cwd, storage);
         try {
@@ -112,10 +112,27 @@ test.each(["deny", "deleted", "oversize", "hook-oversize"] as const)("补回 %s 
             expect(f.restored()).toHaveLength(1);
             const text = JSON.stringify(f.restored());
             expect(text).not.toContain("old\\n");
-            if (mode === "oversize" || mode === "hook-oversize") expect(text).toContain("omitted due to budget");
-            else expect(f.events.some(event => event.type === "tool_call_end" && event.outcome !== "ok")).toBe(true);
+            if (mode === "oversize") {
+                expect(text).toContain("remaining output omitted");
+                expect(text).toContain("a".repeat(100));
+                const output = String(f.restored()[0]!.content);
+                const end = Number(output.match(/Line range: 1-(\d+)/)?.[1]);
+                expect(end).toBeGreaterThan(0);
+                expect(end).toBeLessThan(200);
+                expect(output).toContain(`offset=${end + 1}`);
+                const sourceLines = output.split("\n").filter(line => /^ *\d+\t/.test(line));
+                expect(sourceLines).toHaveLength(end);
+                expect(sourceLines.every(line => line.split("\t")[1] === "a".repeat(100))).toBe(true);
+                expect(loadSession(storage, cwd, "restore")!.history.slice(1)).toEqual(f.session.history.slice(1));
+            } else if (mode === "hook-oversize") {
+                expect(text).toContain("current");
+                expect(JSON.stringify(f.session.history)).toContain("Hook context is incomplete");
+                const hook = f.session.history.at(-1);
+                expect(String(hook?.content)).toEndWith("</system-reminder>");
+            } else expect(f.events.some(event => event.type === "tool_call_end" && event.outcome !== "ok")).toBe(true);
             f.ctx.fileState.commitVisible(f.session.history);
-            expect(f.ctx.fileState.check(path, current)).toEqual({ok: false, reason: "not_read"});
+            expect(f.ctx.fileState.check(path, mode === "oversize" ? current.repeat(200) : current, {requireFullRead: true}))
+                .toEqual(mode === "hook-oversize" ? {ok: true} : {ok: false, reason: "not_read"});
             expect(hasCompleteToolPairs(f.session.history)).toBe(true);
         } finally {await f.resources.close();}
     });
@@ -179,7 +196,51 @@ test("最多补回两个 Skill；文件与 Skill 共用 20k 总预算，超量�
             expect(skills.map(call => JSON.parse(call.function.arguments).skill)).toEqual(["guide2", "guide1"]);
             expect(calls.filter(call => call.function.name === "read_file")).toHaveLength(3);
             expect(tokenCountWithEstimation(f.session.history) - initial).toBeLessThanOrEqual(20_000);
-            expect(JSON.stringify(f.restored())).toContain("omitted due to budget");
+            expect(JSON.stringify(f.restored())).toContain("omitted");
+            expect(hasCompleteToolPairs(f.session.history)).toBe(true);
+        } finally {await f.resources.close();}
+    });
+});
+
+test("大 Skill 单行保留 Unicode 正文前缀，Hook 使用剩余空间，整组不超过 5k", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd, storage);
+        try {
+            f.ctx.skills[0]!.content = "Guidance start: " + "中文😀".repeat(6000) + "HIDDEN_END";
+            await f.tool("skill", {skill: "review"});
+            f.ctx.runHook = async input => ({blocked: false, executions: [],
+                additionalContexts: input.hook_event_name === "PostToolBatch" ? ["hook-start " + "x".repeat(3000)] : []});
+            expect((await f.compact()).compacted).toBe(true);
+            const text = String(f.restored()[0]!.content);
+            expect(text).toContain("Guidance start: 中文😀");
+            expect(text).toContain("</skill-source>");
+            expect(text).not.toContain("HIDDEN_END");
+            expect(text).toContain("Restoration excerpt is incomplete");
+            expect(text.isWellFormed()).toBe(true);
+            const start = f.session.history.findIndex(message => message.role === "assistant" && message.tool_calls?.[0]?.id.startsWith("restore-"));
+            expect(tokenCountWithEstimation(f.session.history.slice(start))).toBeLessThanOrEqual(5000);
+            expect(JSON.stringify(f.session.history.slice(start))).toContain("Hook context");
+            expect(hasCompleteToolPairs(f.session.history)).toBe(true);
+        } finally {await f.resources.close();}
+    });
+});
+
+test("文件补回服从较小的完整请求余量；单行放不下时给出原 offset，不伪造半行", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const f = fixture(cwd, storage);
+        try {
+            const path = join(cwd, "large.ts");
+            await writeFile(path, "skip\n" + "x".repeat(2000) + "\nlast\n");
+            await f.tool("read_file", {path, offset: 2});
+            const previous = [...f.session.history];
+            f.session.history.splice(2);
+            const initial = tokenCountWithEstimation(f.session.history);
+            await f.ctx.restoreAfterCompaction!(previous, f.session.history, messages => tokenCountWithEstimation(messages) <= initial + 500);
+            const text = String(f.restored()[0]!.content);
+            expect(text).toContain("Line range: none");
+            expect(text).toContain("offset=2");
+            expect(text).not.toContain("x".repeat(10));
+            expect(tokenCountWithEstimation(f.session.history) - initial).toBeLessThanOrEqual(500);
             expect(hasCompleteToolPairs(f.session.history)).toBe(true);
         } finally {await f.resources.close();}
     });

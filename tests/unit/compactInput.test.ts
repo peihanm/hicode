@@ -1,6 +1,6 @@
 import {expect, test} from "bun:test";
 import {selectCompactInput} from "../../src/context/selection.js";
-import {buildCompactSummaryMessage} from "../../src/context/compactPrompt.js";
+import {buildCompactSummaryMessage} from "../../src/context/handoff.js";
 import {getContextBudget} from "../../src/context/budget.js";
 import {tokenCountWithEstimation} from "../../src/context/tokens.js";
 import {hasCompleteToolPairs} from "../../src/session/store/codec.js";

@@ -1,17 +1,14 @@
-import type {ReasoningEffort} from "../llm/reasoningPolicy.js";
+import type {CompactSummaryGenerator} from "./compactSummary.js";
 import {withExecutionContext, getUserContextBlocks, buildInvokeMessages} from "../prompt/messages.js";
-import type {ContextSettings} from "./budget.js";
 import {formatHookContext} from "../hooks/index.js";
 import type {Message, OpenAITool} from "../llm/types.js";
 import type {ToolContext} from "../tools/types.js";
 import {getContextBudget} from "./budget.js";
 import {estimateMessageTokens, tokenCountWithEstimation} from "./tokens.js";
 import {isTurnInterruptedError, throwIfTurnAborted,} from "../runtime/abort.js";
-import {buildCompactSummaryMessage} from "./compactPrompt.js";
+import {buildCompactSummaryMessage} from "./handoff.js";
 import {selectCompactedHistory} from "./selection.js";
 import type {CompactState} from "./state.js";
-import type {HiCodeStorageLayout} from "../persistence/index.js";
-import type {HandoffSources} from "./handoff.js";
 
 const MAX_CONSECUTIVE_COMPACT_FAILURES = 3;
 
@@ -33,20 +30,6 @@ interface CompactHistoryInput {
 export type CompactHistoryRunner = (
     input: CompactHistoryInput
 ) => Promise<CompactResult>;
-
-type CompactSummaryGenerator = (input: {
-    system: Extract<Message, { role: "system" }>;
-    conversation: Message[];
-    signal: AbortSignal;
-    storage: HiCodeStorageLayout;
-    cwd: string;
-    reasoning?: ReasoningEffort;
-    model: string;
-    customInstructions?: string;
-    sources?: HandoffSources;
-    contextSettings: ContextSettings;
-    trace?: import("../llm/types.js").LLMTrace;
-}) => Promise<string>;
 
 interface CompactResult {
     compacted: boolean;

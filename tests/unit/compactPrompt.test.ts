@@ -1,6 +1,5 @@
 import {describe, expect, test} from "bun:test";
-import {buildCompactPrompt, buildCompactSummaryMessage, parseCompactSummary} from "../../src/context/compactPrompt.js";
-import {labelHandoffSources, renderHandoff} from "../../src/context/handoff.js";
+import {buildCompactPrompt, buildCompactSummaryMessage, parseCompactSummary, labelHandoffSources, renderHandoff} from "../../src/context/handoff.js";
 
 const current = {id: "a".repeat(64), createdAt: "2026-09-07T00:00:00.000Z", messages: ["b".repeat(64)]};
 const sources = {current, previous: [], revision: 1};

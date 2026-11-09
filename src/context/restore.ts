@@ -1,9 +1,10 @@
-import {randomUUID} from "node:crypto";
+import {createHash, randomUUID} from "node:crypto";
 import {resolve} from "node:path";
 import {contentText} from "../images/content.js";
 import {executeToolCallBatch, type ToolExecutor} from "../agent/toolBatch.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {Message, ToolCall} from "../llm/types.js";
+import type {FileReadReceipt} from "../tools/files/receipt.js";
 import type {ToolContext} from "../tools/types.js";
 import {throwIfTurnAborted} from "../runtime/abort.js";
 import {tokenCountWithEstimation} from "./tokens.js";
@@ -52,6 +53,53 @@ function recentTargets(history: readonly Message[], ctx: ToolContext): RestoreTa
     return targets;
 }
 
+/** Select the longest prefix that fits, including its continuation notice. */
+function fitPrefix(length: number, render: (length: number) => string, fits: (text: string) => boolean): string | undefined {
+    if (fits(render(length))) return render(length);
+    if (!fits(render(0))) return undefined;
+    let low = 0, high = length;
+    while (low < high) {
+        const middle = Math.ceil((low + high) / 2);
+        if (fits(render(middle))) low = middle;
+        else high = middle - 1;
+    }
+    return render(low);
+}
+
+function fitText(text: string, fits: (text: string) => boolean, notice: string): string | undefined {
+    if (fits(text)) return text;
+    // Keep resource-path guidance intact and close a truncated Hook reminder.
+    const sourceEnd = text.startsWith("<skill-source>") ? text.indexOf("</skill-source>") : -1;
+    const minimum = sourceEnd < 0 ? 0 : sourceEnd + "</skill-source>".length;
+    const closing = text.startsWith("<system-reminder>") && text.endsWith("</system-reminder>") ? "\n</system-reminder>" : "";
+    const body = closing ? text.slice(0, -"</system-reminder>".length) : text;
+    return fitPrefix(body.length - minimum, count => {
+        let end = minimum + count;
+        // Do not split a UTF-16 surrogate pair when a single line exceeds the budget.
+        if (end > minimum && /[\uD800-\uDBFF]/.test(body[end - 1]!)) end--;
+        return `${body.slice(0, end)}\n\n[${notice}]${closing}`;
+    }, fits);
+}
+
+function fitFile(text: string, receipt: FileReadReceipt, fits: (text: string) => boolean): string | undefined {
+    if (fits(text)) return text;
+    const header = text.slice(0, receipt.contentStart);
+    if (createHash("sha256").update(header).digest("hex") !== receipt.headerHash) return undefined;
+    const lines = text.slice(receipt.contentStart).split("\n").slice(0, receipt.end - receipt.start + 1);
+    if (lines.length !== receipt.end - receipt.start + 1 ||
+        lines.some((line, index) => !line.startsWith(`${String(receipt.start + index).padStart(6, " ")}\t`))) return undefined;
+    return fitPrefix(lines.length, count => {
+        const end = receipt.start + count - 1;
+        const range = count ? `${receipt.start}-${end}` : "none";
+        const adjusted = header.replace(/\nLine range: \d+-\d+ \/ \d+\n\n$/, `\nLine range: ${range} / ${receipt.total}\n\n`);
+        const next = end + 1;
+        const notice = next <= receipt.total
+            ? `Restoration budget reached; remaining output omitted. Continue with read_file path=${JSON.stringify(receipt.path)}, offset=${next}.`
+            : "Additional tool/Hook output omitted due to restoration budget; all source lines from this read are shown.";
+        return adjusted + lines.slice(0, count).join("\n") + `\n\n[${notice}]`;
+    }, fits);
+}
+
 /** Session capability: reuse the same scoped executor, events, Hook and result-budget chain as normal tools. */
 export async function restoreCompactedContext(input: {
     previous: readonly Message[];
@@ -71,35 +119,52 @@ export async function restoreCompactedContext(input: {
         throwIfTurnAborted(ctx.signal);
         const call: ToolCall = {id: `restore-${randomUUID()}`, type: "function", function: {name: target.name, arguments: target.arguments}};
         const group: Message[] = [{role: "assistant", content: "Reloading recent context after compaction.", tool_calls: [call]}];
-        const omitted = {role: "tool", tool_call_id: call.id, content: "Context restoration output (including any Hook context) omitted due to budget. Read it explicitly if needed."} as const;
-        const minimumTokens = tokenCountWithEstimation([...group, omitted]);
-        if (minimumTokens > RESULT_TOKENS || usedTokens + minimumTokens > RESTORE_TOKENS || !fits([...history, ...group, omitted])) continue;
+        const omitted = {role: "tool", tool_call_id: call.id, content: "No complete restoration excerpt fits the budget. Read it explicitly if needed."} as const;
+        const hookNotice = {role: "user", origin: "runtime", content: "[PostToolBatch Hook context omitted due to restoration budget.]"} as const;
+        const minimumTokens = tokenCountWithEstimation([...group, omitted, hookNotice]);
+        if (minimumTokens > RESULT_TOKENS || usedTokens + minimumTokens > RESTORE_TOKENS || !fits([...history, ...group, omitted, hookNotice])) continue;
+        let receipt: FileReadReceipt | undefined;
         try {
             await executeToolCallBatch({toolCalls: [call], history: group, ctx, turnId: ctx.turnId, onEvent,
                 isToolConcurrencySafe: () => false,
-                executeTool,
+                executeTool: async (...args) => {
+                    const result = await executeTool(...args);
+                    if (typeof result !== "string" && result.outcome === "ok" && result.uiData?.type === "file_read") receipt = result.uiData.receipt;
+                    return result;
+                },
             });
         } finally {
-            // Keep complete tool evidence even if an event/Hook fails after execution.
-            const paired = group.filter(message => message.role === "assistant" || message.role === "tool");
-            const withinBudget = (messages: Message[]) => usedTokens + tokenCountWithEstimation(messages) <= RESTORE_TOKENS &&
-                tokenCountWithEstimation(messages) <= RESULT_TOKENS && fits([...history, ...messages]);
+            // Keep paired results on cancellation/errors. Tool content gets priority over batch Hook context.
+            const withinBudget = (messages: Message[]) => {
+                const tokens = tokenCountWithEstimation(messages);
+                return usedTokens + tokens <= RESTORE_TOKENS && tokens <= RESULT_TOKENS && fits([...history, ...messages]);
+            };
+            const result = group.find(message => message.role === "tool");
+            if (!result || result.role !== "tool") throw new Error("Context restoration has no paired tool result");
+            const hooks = group.filter(message => message.role === "user");
             let accepted = group;
-            if (!withinBudget(accepted)) {
-                // Never turn omitted file bytes into delivered read evidence. This also bounds
-                // executor failures and PostToolBatch output.
-                for (const message of paired) {
-                    if (message.role !== "tool") continue;
-                    ctx.fileState.bindOutput(message.tool_call_id, contentText(message.content), {modelContent: omitted.content});
+            let delivered = result.content;
+            if (!withinBudget(group)) {
+                const canFit = (content: string) => withinBudget([group[0]!, {...result, content}, ...(hooks.length ? [hookNotice] : [])]);
+                const text = contentText(result.content);
+                delivered = (receipt ? fitFile(text, receipt, canFit)
+                    : fitText(text, canFit, "Restoration excerpt is incomplete; remaining output omitted due to budget. Read the tool/Skill explicitly for full content.")) ?? omitted.content;
+                accepted = [group[0]!, {...result, content: delivered}];
+                if (hooks.length) {
+                    const text = hooks.map(message => contentText(message.content)).join("\n\n");
+                    const content = fitText(text, content => withinBudget([...accepted, {...hookNotice, content}]),
+                        "PostToolBatch Hook context is incomplete; remaining content omitted due to restoration budget.") ?? hookNotice.content;
+                    accepted.push({...hookNotice, content});
                 }
-                accepted = [group[0]!, omitted];
+                // A shortened/reframed read must not preserve a whole-file observation.
+                if (delivered !== result.content) ctx.fileState.bindOutput(call.id, contentText(result.content), {modelContent: delivered});
             }
             if (!withinBudget(accepted)) throw new Error("Context restoration exceeded the current request budget");
             history.push(...accepted);
             usedTokens += tokenCountWithEstimation(accepted);
             try {
-                if (accepted !== group) await onEvent({type: "tool_result_delivery", toolCallId: call.id, status: "failed",
-                    outcome: "output_failed", result: omitted.content});
+                if (delivered !== result.content) await onEvent({type: "tool_result_delivery", toolCallId: call.id, status: "failed",
+                    outcome: "output_failed", result: contentText(delivered)});
             } finally {await ctx.commitToolBatch?.();}
         }
         throwIfTurnAborted(ctx.signal);
