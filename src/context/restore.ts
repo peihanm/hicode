@@ -129,7 +129,7 @@ export async function restoreCompactedContext(input: {
                 isToolConcurrencySafe: () => false,
                 executeTool: async (...args) => {
                     const result = await executeTool(...args);
-                    if (typeof result !== "string" && result.outcome === "ok" && result.uiData?.type === "file_read") receipt = result.uiData.receipt;
+                    if (result.outcome === "ok" && result.uiData?.type === "file_read") receipt = result.uiData.receipt;
                     return result;
                 },
             });

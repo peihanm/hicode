@@ -2,7 +2,7 @@ import {toolCallTarget} from "../tools/mcp/call.js";
 import {TaskReviewProgress} from "./taskReview.js";
 import {contentText, type MessageContent} from "../images/content.js";
 import {createImageAccess} from "../images/access.js";
-import {HookControlError, formatHookContext} from "../hooks/index.js";
+import {HookControlError} from "../hooks/index.js";
 import {ResponseDraft} from "./draft.js";
 import type {ToolContext} from "../tools/types.js";
 import type {LLMCaller, LLMCallKind, Message, ToolCall} from "../llm/types.js";
@@ -14,9 +14,7 @@ import type {AgentEvent, AgentResult} from "./types.js";
 import {executeToolCallBatch, type ToolExecutor,} from "./toolBatch.js";
 import {inlineToolResult} from "../tools/execute.js";
 import {type CompactHistoryRunner, prepareAgentInvoke, type ToolSchemaProvider,} from "./invokePreparation.js";
-import {
-    formatTodoCompletionReminder,
-} from "./turnCompletion.js";
+import {createTurnCompletion} from "./turnCompletion.js";
 import type {AgentInputChannel, QueuedAgentInput} from "./inputChannel.js";
 import type {Todo} from "../session/todo.js";
 import {TodoProgress} from "./todoProgress.js";
@@ -138,9 +136,7 @@ async function runAgentCore(
             ? undefined
             : Math.max(1, Math.floor(options.maxConsecutiveDeniedToolCalls));
     const todoProgress = new TodoProgress();
-    let hookContinuationUsed = false;
     let completionNudge: string | undefined;
-    let emptyResponseRetryUsed = false;
     let consecutiveDeniedToolCalls = 0;
     let usageInputTokens = 0;
     let usageOutputTokens = 0;
@@ -189,6 +185,9 @@ async function runAgentCore(
             if (input.source === "agent_message") await onEvent({type: "coordination_message", messageId: input.id, text: contentText(input.content)});
         }
     };
+
+    const completeTurn = createTurnCompletion({history, ctx, inputChannel, draft, onEvent, appendQueuedInputs,
+        getTodos: () => options.getTodos?.() ?? []});
 
     // Completed-task notifications precede new questions as transient runtime messages, not separate LLM turns.
     const initialDelivery = appendQueuedInputs(inputChannel.drainInitial());
@@ -282,16 +281,14 @@ async function runAgentCore(
             const {message, usage, contextUsage} = llmResult;
             const toolCalls = message.tool_calls ?? [];
             throwIfTurnAborted(ctx.signal);
+            const textContent = typeof message.content === "string" && message.content.trim() ? message.content : "";
+            if (!textContent && toolCalls.length === 0) {
+                throw new Error("LLM caller returned an empty assistant response; response validation and retries belong to the LLM layer");
+            }
             ctx.fileState.commitVisible(invokeMessages);
             assertFreshToolCallIds(history, toolCalls);
-            // Append assistant messages and tool results as actual conversation content.
             history.push(message);
             pendingToolCalls = toolCalls;
-            const rawTextContent =
-                typeof message.content === "string" ? message.content : "";
-            const textContent = rawTextContent.trim().length > 0
-                ? rawTextContent
-                : "";
 
             // OpenAI-compatible gateways may omit streaming usage. prompt_tokens=0 cannot be valid
             // for a nonempty request; retain the preparation estimate rather than
@@ -329,116 +326,17 @@ async function runAgentCore(
                     : "estimated",
             });
 
-            // Without tool calls, the response is expected to be the final answer.
             if (toolCalls.length === 0) {
-                if (!hasNextIteration && ctx.taskJoin?.ids.length) {
-                    history.pop();
-                    await draft.finish("discarded");
-                    break;
-                }
-                if (hasNextIteration && ctx.taskJoin?.ids.length) {
-                    history.pop();
-                    await draft.finish("discarded");
-                    let queued = inputChannel.drainSafeBoundary().filter(input => !ctx.taskJoin || ctx.taskJoin.accepts(input));
-                    await appendQueuedInputs(queued);
-                    let ready = await ctx.taskJoin.collect();
-                    let taskWaitElapsed = false;
-                    while (!queued.length && !ready.length && ctx.taskJoin.ids.length) {
-                        await onEvent({type: "task_wait", taskIds: ctx.taskJoin.ids});
-                        try {
-                            taskWaitElapsed = await ctx.taskJoin.wait(ctx.signal, signal => inputChannel.waitForInput(signal)) === "timeout";
-                        } finally {
-                            await onEvent({type: "task_wait", taskIds: []});
-                        }
-                        throwIfTurnAborted(ctx.signal);
-                        queued = inputChannel.drainSafeBoundary().filter(input => !ctx.taskJoin || ctx.taskJoin.accepts(input));
-                        await appendQueuedInputs(queued);
-                        ready = await ctx.taskJoin.collect();
-                        if (taskWaitElapsed) break;
-                    }
-                    await appendQueuedInputs(ready);
-                    await ctx.commitToolBatch?.();
-                    completionNudge = taskWaitElapsed && ctx.taskJoin.ids.length
-                        ? `The task result wait window elapsed. Pending task IDs: ${ctx.taskJoin.ids.join(", ")}. These tasks have not been stopped or declared failed. Inspect progress with task wait and an explicit task_id, adjust wait_ms to the task, continue independent work, or stop an unnecessary command. Complete verification before the final answer.`
-                        : "Continue the current task. Inspect task results, integrate changes, and run the remaining checks before the final answer.";
+                const decision = await completeTurn(textContent, hasNextIteration);
+                if (decision.action === "limit") break;
+                if (decision.action === "continue") {
+                    completionNudge = decision.reminder;
                     continue;
                 }
-                if (!textContent && !emptyResponseRetryUsed && hasNextIteration) {
-                    history.pop();
-                    emptyResponseRetryUsed = true;
-                    completionNudge = [
-                        "<system-reminder>",
-                        "The previous response had neither valid text nor tool calls. Continue from the current task state: use an appropriate tool if work remains, or give a complete final answer in the user's language if finished. Do not return blank content.",
-                        "</system-reminder>",
-                    ].join("\n");
-                    continue;
-                }
-                const completionReminder = textContent
-                    ? formatTodoCompletionReminder(
-                        textContent,
-                        options.getTodos?.() ?? []
-                    )
-                    : undefined;
-                if (completionReminder) {
-                    history.pop();
-                    await draft.finish("discarded");
-                    if (!hasNextIteration) break;
-                    completionNudge = completionReminder;
-                    await appendQueuedInputs(inputChannel.drainSafeBoundary());
-                    continue;
-                }
-                if (hasNextIteration) {
-                    const queued = inputChannel.drainSafeBoundary().filter(input => !ctx.taskJoin || ctx.taskJoin.accepts(input));
-                    if (queued.length > 0) {
-                        if (textContent) {
-                            await onEvent({
-                                type: "assistant_text",
-                                content: textContent,
-                                phase: "final",
-                            });
-                        }
-                        await appendQueuedInputs(queued);
-                        continue;
-                    }
-                }
-                if (textContent && ctx.runHook) {
-                    const hook = await ctx.runHook({hook_event_name: "Stop", session_id: ctx.sessionId,
-                        turn_id: turnId, candidate: textContent, continuation_used: hookContinuationUsed});
-                    if (ctx.signal.aborted) return interruptedResult();
-                    if (hook.error || hook.continueReason) {
-                        if (!hook.error && !hookContinuationUsed && hasNextIteration) {
-                            history.pop();
-                            hookContinuationUsed = true;
-                            completionNudge = formatHookContext("Stop", [hook.continueReason!, ...hook.additionalContexts]).join("\n");
-                            continue;
-                        }
-                        const reply = `${textContent}\n\nHook ${hook.error ? "Check failed" : "Continuation limit reached"}: ${hook.error ?? hook.continueReason}`;
-                        // Keep the candidate as evidence, with the failed acceptance explicitly attached.
-                        history[history.length - 1] = {role: "assistant", content: reply};
-                        await onEvent({type: "assistant_text", content: reply, phase: "final"});
-                        return {reply, reason: hook.error ? "hook_error" : "hook_limit", iterations: i + 1, ...resultUsage()};
-                    }
-                }
-                if (textContent) {
-                    await onEvent({type: "assistant_text", content: textContent, phase: "final"});
-                }
-                let reply = textContent || "Model returned no valid text or tool calls twice in a row; this turn has stopped.";
-                if (!textContent) {
-                    await onEvent({
-                        type: "assistant_text",
-                        content: reply,
-                        phase: "final",
-                    });
-                }
-                if (postState.critical) {
-                    reply += `\n\n⚠️ Context usage is ${Math.round(postState.percentUsed * 100)}%; consider starting a new session after this turn.`;
-                }
-                return {
-                    reply,
-                    reason: textContent ? "completed" : "no_tool_calls",
-                    iterations: i + 1,
-                    ...resultUsage(),
-                };
+                const reply = decision.reason === "completed" && postState.critical
+                    ? `${decision.reply}\n\n⚠️ Context usage is ${Math.round(postState.percentUsed * 100)}%; consider starting a new session after this turn.`
+                    : decision.reply;
+                return {reply, reason: decision.reason, iterations, ...resultUsage()};
             }
 
             // OpenAI-compatible providers may return user-facing text together

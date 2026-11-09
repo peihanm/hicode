@@ -35,7 +35,7 @@ const TASK_STATUSES = new Set<AgentTaskStatus>([
 ]);
 const STOP_REASONS = new Set<StopReason>([
     "completed", "incomplete", "max_turns", "permission_denied", "hook_blocked", "hook_error", "hook_limit",
-    "no_tool_calls", "interrupted",
+    "interrupted",
 ]);
 const ABORT_REASONS = new Set([
     "user-cancel", "sigint", "timeout", "shutdown",

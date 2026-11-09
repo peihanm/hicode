@@ -22,7 +22,7 @@ export type ToolExecutor = (
     argsJson: string,
     ctx: ToolContext,
     toolCallId: string
-) => Promise<ToolExecutionResult | string>;
+) => Promise<ToolExecutionResult>;
 
 interface ExecuteToolCallBatchInput {
     toolCalls: ToolCall[];
@@ -149,19 +149,7 @@ export async function executeToolCallBatch({
         await emitStart(toolCall);
         if (failure) return {modelContent: "Tool was not executed because the batch failed", displayContent: "Tool was not executed because the batch failed", outcome: "failed"};
         try {
-            const execution = await executeTool(
-                toolCall.function.name,
-                toolCall.function.arguments,
-                ctx,
-                toolCall.id
-            );
-            return typeof execution === "string"
-                ? {
-                    modelContent: execution,
-                    displayContent: execution,
-                    outcome: "ok",
-                }
-                : execution;
+            return await executeTool(toolCall.function.name, toolCall.function.arguments, ctx, toolCall.id);
         } catch (error) {
             failure ??= {error};
             const content = isTurnInterruptedError(error, ctx.signal) ? formatInterruptedToolResult(ctx.signal)

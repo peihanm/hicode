@@ -409,7 +409,7 @@ export function createSubagentFactories(
                     );
                     try { await persistence.save(snapshot()); }
                     catch { transcriptIssue = "Subagent snapshot could not be saved; the report is available only in this process."; }
-                    if ((result.reason === "completed" || result.reason === "no_tool_calls") &&
+                    if (result.reason === "completed" &&
                         childTodos.some(todo => todo.status !== "completed")) {
                         result = {...result, reason: "incomplete",
                             reply: `${result.reply}\n\nUnfinished child tasks:\n${childTodos.filter(todo => todo.status !== "completed").map(todo => `- ${todo.content}`).join("\n")}`};
@@ -461,7 +461,7 @@ export function createSubagentFactories(
                     });
                     hookReason = subagentResult.reason;
                     hookStatus = subagentResult.reason === "interrupted" ? "cancelled"
-                        : subagentResult.reason === "completed" || subagentResult.reason === "no_tool_calls" ? "completed" : "failed";
+                        : subagentResult.reason === "completed" ? "completed" : "failed";
                     return subagentResult;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);

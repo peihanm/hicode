@@ -1,3 +1,5 @@
+import {inlineToolResult} from "../../src/tools/execute.js";
+import type {ToolExecutor} from "../../src/agent/toolBatch.js";
 import type {MessageContent} from "../../src/images/content.js";
 import {
   createAgentRunner,
@@ -15,7 +17,8 @@ import { createToolRuntime } from "../../src/tools/registry.js";
 
 export interface AgentTestOptions
   extends Omit<AgentRunOptions, keyof AgentToolBindings>,
-    Partial<AgentToolBindings> {
+    Partial<Omit<AgentToolBindings, "executeTool">> {
+  executeTool?: (...args: Parameters<ToolExecutor>) => Promise<Awaited<ReturnType<ToolExecutor>> | string>;
   callLLM?: LLMCaller;
   compactHistory?: CompactHistoryRunner;
   inputChannel?: AgentInputChannel;
@@ -53,7 +56,10 @@ export function runAgentForTest(
   })(userInput, history, onEvent, ctx, inputChannel, {
     ...options,
     getToolSchemas: test.getToolSchemas ?? toolRuntime.getToolSchemas,
-    executeTool: test.executeTool ?? toolRuntime.executeTool,
+    executeTool: async (...args) => {
+      const result = await (test.executeTool ?? toolRuntime.executeTool)(...args);
+      return typeof result === "string" ? inlineToolResult(result, "ok") : result;
+    },
     isToolConcurrencySafe:
       test.isToolConcurrencySafe ?? toolRuntime.isConcurrencySafe,
   });

@@ -115,7 +115,7 @@ export async function runAgentTask(
             task.resultPreview = result.reply;
             finalStatus = result.reason === "interrupted"
                 ? task.interruptRequested ? "interrupted" : "cancelled"
-                : result.reason === "completed" || result.reason === "no_tool_calls"
+                : result.reason === "completed"
                     ? "completed"
                     : "failed";
             try {

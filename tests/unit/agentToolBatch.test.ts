@@ -1,3 +1,4 @@
+import {inlineToolResult} from "../../src/tools/execute.js";
 import {contentText} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
 import { executeToolCallBatch } from "../../src/agent/toolBatch.js";
@@ -131,7 +132,7 @@ describe("Agent tool-call batch", () => {
           if (started === calls.length) allStarted.resolve();
           await releases.get(name)!.promise;
           completions.push(name);
-          return `${name} result`;
+          return inlineToolResult(`${name} result`, "ok");
         },
       });
 
@@ -177,7 +178,7 @@ describe("Agent tool-call batch", () => {
           starts.push(name);
           await new Promise((resolve) => setTimeout(resolve, 3));
           active.delete(name);
-          return name;
+          return inlineToolResult(name, "ok");
         },
       });
 
@@ -206,7 +207,7 @@ describe("Agent tool-call batch", () => {
         isToolConcurrencySafe: () => false,
         executeTool: async () => {
           executions += 1;
-          return "not reached";
+          return inlineToolResult("not reached", "ok");
         },
       });
 
@@ -241,7 +242,7 @@ describe("Agent tool-call batch", () => {
           executed.push(name);
           started.resolve();
           await abortableDelay(10_000, ctx.signal);
-          return "not reached";
+          return inlineToolResult("not reached", "ok");
         },
       });
 
@@ -273,7 +274,7 @@ describe("Agent tool-call batch", () => {
           executed.push(name);
           if (executed.length === 2) bothStarted.resolve();
           await abortableDelay(10_000, ctx.signal);
-          return "not reached";
+          return inlineToolResult("not reached", "ok");
         },
       });
 
@@ -344,7 +345,7 @@ describe("Agent tool-call batch", () => {
           executeTool: async (name) => {
             executed.push(name);
             if (name === "safe-fail") throw failure;
-            return "completed but not committed";
+            return inlineToolResult("completed but not committed", "ok");
           },
         });
       } catch (error) {
@@ -435,7 +436,7 @@ test.each([false, true])("observer failure preserves executed results and comple
     await expect(executeToolCallBatch({toolCalls: calls, history, ctx: createTestContext(cwd), turnId: "observer",
       isToolConcurrencySafe: name => parallel && name === "read_file",
       onEvent: event => {if (event.type === "tool_call_end") throw new Error("display unavailable");},
-      executeTool: async () => {executed++; return "committed";},
+      executeTool: async () => {executed++; return inlineToolResult("committed", "ok");},
     })).rejects.toThrow("display unavailable");
     const results = toolMessages(history);
     expect(results).toHaveLength(3);
@@ -453,7 +454,7 @@ test("a throwing parallel executor does not erase its successful sibling", async
     await expect(executeToolCallBatch({toolCalls: calls, history, ctx: createTestContext(cwd), turnId: "parallel-error",
       isToolConcurrencySafe: () => true, onEvent: () => {},
       executeTool: async (_name, _args, _ctx, id) => {if (++count === 2) bothStarted.resolve(); await bothStarted.promise;
-        if (id === "bad") throw new Error("executor failed"); return "observed";},
+        if (id === "bad") throw new Error("executor failed"); return inlineToolResult("observed", "ok");},
     })).rejects.toThrow("executor failed");
     expect(toolMessages(history).map(result => result.content)).toEqual(["Tool execution error: executor failed", "observed"]);
   });

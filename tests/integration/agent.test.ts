@@ -926,54 +926,18 @@ describe("agent loop", () => {
     });
   });
 
-  test("空 assistant 回复安全重试一次后恢复最终回答", async () => {
-    await withTempProject(async (cwd) => {
+  test.each([null, "   \n"])("LLM 层返回空消息时 Agent 立即报错，不重复请求或写入空 History：%s", async content => {
+    await withTempProject(async cwd => {
       const events: AgentEvent[] = [];
-      const fake = createFakeLLM([
-        assistantText(null),
-        (options) => {
-          expect(options.messages.some(
-            (message) =>
-              typeof message.content === "string" &&
-              message.content.includes("The previous response had neither valid text nor tool calls")
-          )).toBe(true);
-          return assistantText("恢复后的完整回答");
-        },
-      ]);
-      const result = await runAgent(
-        "空回复",
-        initialHistory(),
-        (event) => events.push(event),
-        createTestContext(cwd),
-        { callLLM: fake.callLLM }
-      );
-
-      expect(result.reason).toBe("completed");
-      expect(result.reply).toBe("恢复后的完整回答");
-      expect(fake.calls).toHaveLength(2);
-      expect(events.filter((event) => event.type === "assistant_text")).toHaveLength(1);
+      const history = initialHistory();
+      const fake = createFakeLLM([assistantText(content), assistantText("must not retry")]);
+      await expect(runAgent("空回复", history, event => events.push(event), createTestContext(cwd),
+        {callLLM: fake.callLLM})).rejects.toThrow("LLM caller returned an empty assistant response");
+      expect(fake.calls).toHaveLength(1);
+      expect(history.filter(message => message.role === "assistant")).toHaveLength(0);
+      expect(events.filter(event => event.type === "assistant_text")).toHaveLength(0);
+      expect(events.filter(event => event.type === "model_stream_end")).toHaveLength(1);
     });
   });
 
-  test("连续空 assistant 回复向用户显示明确错误", async () => {
-    await withTempProject(async (cwd) => {
-      const events: AgentEvent[] = [];
-      const fake = createFakeLLM([assistantText(null), assistantText("   \n")]);
-      const result = await runAgent(
-        "空回复",
-        initialHistory(),
-        (event) => events.push(event),
-        createTestContext(cwd),
-        { callLLM: fake.callLLM }
-      );
-
-      expect(result.reason).toBe("no_tool_calls");
-      expect(result.reply).toBe("Model returned no valid text or tool calls twice in a row; this turn has stopped.");
-      expect(events).toContainEqual({
-        type: "assistant_text",
-        content: "Model returned no valid text or tool calls twice in a row; this turn has stopped.",
-        phase: "final",
-      });
-    });
-  });
 });

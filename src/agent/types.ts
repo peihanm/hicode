@@ -17,7 +17,6 @@ export type StopReason =
     | "hook_blocked"
     | "hook_error"
     | "hook_limit"
-    | "no_tool_calls"
     | "interrupted";
 
 export interface AgentResult {

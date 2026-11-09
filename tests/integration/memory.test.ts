@@ -1,3 +1,4 @@
+import {inlineToolResult} from "../../src/tools/execute.js";
 import {contentText} from "../../src/images/content.js";
 import {expect,test} from "bun:test";
 import {join} from "node:path";
@@ -62,6 +63,6 @@ test("Memory overlay keeps live modes and revocations without granting Memory ac
   expect(scoped.permissionMode).toBe("full-access");
   expect(scoped.permissionPromptPolicy).toBe("never");expect(scoped.permissionRules).toBe(rules);
   return {reply:"done",reason:"completed",iterations:1};
- },memory)("忽略记忆",[],()=>{},ctx,EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:()=>[],executeTool:async()=>"",isToolConcurrencySafe:()=>false});}
+ },memory)("忽略记忆",[],()=>{},ctx,EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:()=>[],executeTool:async()=>inlineToolResult("", "ok"),isToolConcurrencySafe:()=>false});}
  finally {await memory.close();}
 }));

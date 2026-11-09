@@ -224,7 +224,7 @@ export function createRootTurnRunnerFactory(
             const input: Extract<HookInput, {hook_event_name: "TurnEnd"}> = {
                 hook_event_name: "TurnEnd", session_id: session.sessionId, turn_id: turnId,
                 status: signal.aborted || result?.reason === "interrupted" ? "cancelled"
-                    : failed || !result || result.reason === "hook_error" || result.reason === "no_tool_calls" ? "failed"
+                    : failed || !result || result.reason === "hook_error" ? "failed"
                     : result.reason === "hook_blocked" || result.reason === "permission_denied" ? "blocked"
                     : result.reason === "max_turns" || result.reason === "hook_limit" ? "limit" : "completed",
                 reason: signal.aborted ? normalizeTurnAbortReason(signal.reason) : failed ? "error" : result?.reason ?? "error",

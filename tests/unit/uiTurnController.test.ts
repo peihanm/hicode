@@ -1,3 +1,4 @@
+import {inlineToolResult} from "../../src/tools/execute.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {contentText, type MessageContent} from "../../src/images/content.js";
 import { describe, expect, test } from "bun:test";
@@ -91,7 +92,7 @@ function createHarness(overrides: {
           EMPTY_AGENT_INPUT_CHANNEL,
           {
             getToolSchemas: () => [],
-            executeTool: async () => "ok",
+            executeTool: async () => inlineToolResult("ok", "ok"),
             isToolConcurrencySafe: () => false,
             getTodos: overrides.getTodos ?? (() => []),
             additionalUserContextBlocks:
