@@ -154,6 +154,7 @@ async function compactHistoryCore({
         }
         throwIfTurnAborted(ctx.signal);
 
+        const previousHistory = [...history];
         const nextState: CompactState = {...state, consecutiveFailures: 0, compactCount: state.compactCount + 1,
             lastCompactAt: new Date().toISOString(),
             ...(draft ? {archives: [...state.archives ?? [], draft.record]} : {})};
@@ -174,6 +175,12 @@ async function compactHistoryCore({
                 history.splice(0, history.length, ...candidate);
                 postTokenCount = tokens;
             }
+        }
+
+        if (ctx.restoreAfterCompaction) {
+            await ctx.restoreAfterCompaction(previousHistory, history,
+                messages => requestTokens(messages) < Math.min(target, actualPreTokens));
+            postTokenCount = requestTokens(history);
         }
 
         return {

@@ -13,7 +13,7 @@ const toolCall = (id: string): ToolCall => ({id, type: "function", function: {na
 
 test("尾部保留近期消息，并在预算不足时缩小而非超限", () => {
     const messages: Message[] = Array.from({length: 10}, (_, index) => ({role: "assistant", content: `${index}:` + "x".repeat(18)}));
-    expect(select(messages, 100)?.slice(2)).toEqual(messages.slice(-5));
+    expect(select(messages, 100)?.slice(2)).toEqual(messages.slice(-9));
     expect(select(messages, 20)?.slice(2)).toEqual(messages.slice(-1));
     expect(select(messages, 0)).toBeUndefined();
 });
@@ -34,4 +34,29 @@ test("孤儿结果、遗漏结果与重复结果不能进入候选上下文", ()
     expect(() => select([{role: "assistant", content: null, tool_calls: [toolCall("missing")]}], 1000)).toThrow("missing");
     expect(() => select([{role: "assistant", content: null, tool_calls: [toolCall("a"), toolCall("b")]},
         {role: "tool", content: "a", tool_call_id: "a"}, {role: "tool", content: "a again", tool_call_id: "a"}], 1000)).toThrow("pairing");
+});
+
+test("近期尾部统一限制 20k，最新长请求只保留一次且不挤占尾部配额", () => {
+    const latest: Message = {role: "user", origin: "user", content: "任务".repeat(22_000)};
+    const tail: Extract<Message, {role: "assistant"}>[] = Array.from({length: 6}, (_, index) => ({role: "assistant", content: `${index}:` + "x".repeat(9_998)}));
+    for (const atEnd of [true, false]) {
+        const history = [system, ...(atEnd ? tail : [latest]), ...(atEnd ? [latest] : tail)];
+        const result = selectCompactedHistory({history, system,
+            summaryMessage: {role: "user", origin: "compaction", content: "summary"},
+            latestUserIndex: atEnd ? history.length - 1 : 1, fixedTokens: 5, summaryTokens: 4,
+            target: 90_000, actualPreTokens: 100_000})!;
+        expect(result.filter(message => message.content === latest.content)).toHaveLength(1);
+        expect(result.filter(message => message.role === "assistant")).toEqual(tail.slice(-4));
+    }
+});
+
+test("最近的 ask_user 问答和同批工具仍作为完整连续尾部保留", () => {
+    const calls = [toolCall("read"), {...toolCall("ask"), function: {name: "ask_user", arguments: "{}"}}];
+    const recent: Message[] = [{role: "assistant", content: null, tool_calls: calls},
+        {role: "tool", tool_call_id: "read", content: "source"},
+        {role: "tool", tool_call_id: "ask", content: "保留错误码"},
+        {role: "assistant", content: "继续"}];
+    const result = select([{role: "assistant", content: "x".repeat(50_000)}, ...recent], 1000)!;
+    expect(result.slice(2)).toEqual(recent);
+    expect(hasCompleteToolPairs(result)).toBe(true);
 });

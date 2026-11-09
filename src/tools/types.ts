@@ -1,3 +1,4 @@
+import type {Message} from "../llm/types.js";
 import type {SubagentRecordAccess} from "../subagents/recordAccess.js";
 import type {PermissionActor} from "../permissions/types.js";
 import type {commitDirectoryApproval} from "../permissions/directoryAccess.js";
@@ -147,6 +148,8 @@ export interface ToolContext {
     sessionArchives?: SessionArchiveAccess;
     subagentRecords?: SubagentRecordAccess;
     sessionCompaction?: SessionCompaction;
+    /** Root/child Sessions can reload scoped read context; internal review/maintenance Agents omit it. */
+    restoreAfterCompaction?: (previous: readonly Message[], history: Message[], fits: (messages: Message[]) => boolean) => Promise<void>;
     /** Root Session only: commit complete paired batches before the next model request. */
     commitToolBatch?: () => Promise<void>;
 

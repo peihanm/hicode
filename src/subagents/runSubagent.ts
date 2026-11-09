@@ -1,3 +1,4 @@
+import {restoreCompactedContext} from "../context/restore.js";
 import {realpath} from "node:fs/promises";
 import {commitDirectoryApproval} from "../permissions/directoryAccess.js";
 import {sessionStorageId, type SessionStorageOwner} from "../persistence/layout.js";
@@ -375,6 +376,9 @@ export function createSubagentFactories(
                         await onChildEvent?.(event);
                     };
                     childContext.onHookEvent = recordChildEvent;
+                    childContext.restoreAfterCompaction = (previous, current, fits) => restoreCompactedContext({
+                        previous, history: current, ctx: childContext, executeTool: executeChildTool, onEvent: recordChildEvent, fits,
+                    });
                     const childPrompt = firstRun && request.contextSnapshot !== undefined
                         ? createForkDirective({
                             name: request.name ?? definition.agentType,

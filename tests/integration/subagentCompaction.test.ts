@@ -84,3 +84,42 @@ test("worker coordination cannot displace the human request during Root compacti
     expect(result.compacted).toBe(true);
  expect(history.some(m=>m.role==="user"&&m.origin==="user"&&m.content==="Never modify authentication.")).toBe(true);
 }));
+
+test("child 自动补回使用自己的 cwd/Scoped Runtime 并重验父权限，不获得额外工具", async () => {
+ await withTempProject(async (cwd, storage) => {
+  const {writeFile} = await import("node:fs/promises");
+  const parent = createTestContext(cwd, {toolNames: ["read_file"]});
+  const childCwd = join(cwd, "child");
+  await mkdir(childCwd);
+  await writeFile(join(childCwd, "source.ts"), "child source\n");
+  await writeFile(join(cwd, "source.ts"), "parent source\n");
+  const events: import("../../src/agent/types.js").AgentEvent[] = [];
+  const runner: AgentRunner = async (_prompt, history, _onEvent, child, _channel, options) => {
+   const call = {id:"initial-read",type:"function" as const,function:{name:"read_file",arguments:'{"path":"source.ts"}'}};
+   const read = await options.executeTool("read_file",call.function.arguments,child,call.id);
+   if (typeof read === "string") throw new Error("Expected structured execution");
+   expect(read.modelContent).toContain("child source");
+   expect(read.modelContent).not.toContain("parent source");
+   const previous: Message[] = [...history,{role:"assistant",content:null,tool_calls:[call]},
+    {role:"tool",tool_call_id:call.id,content:read.modelContent}];
+   await child.restoreAfterCompaction!(previous,history,()=>true);
+   expect(history.at(-1)?.content).toContain("child source");
+   const last = history.at(-2);
+   expect(last?.role === "assistant" && last.tool_calls?.[0]?.function.arguments).toContain(childCwd);
+   expect(child.availableTools.map(tool=>tool.name)).toEqual(["read_file"]);
+   parent.permissionRules.deny.push({toolName:"read_file",source:"host"});
+   const denied: Message[] = [history[0]!];
+   await child.restoreAfterCompaction!(previous,denied,()=>true);
+   expect(denied.at(-1)?.content).toContain("Permission denied");
+   return {reason:"completed",reply:"done",iterations:1};
+  };
+  const factory=createSubagentFactories({primaryRunAgent:runner,registry:BUILTIN_SUBAGENT_REGISTRY,
+   createToolResultStore:(cwd,id)=>createToolResultStore(storage,cwd,id)});
+  const thread=factory.createSubagentThread({parentContext:parent,onEvent:event=>{events.push(event);},agentId:"restore-child",storageCwd:cwd},
+   {agentType:"Worker",cwd:childCwd,description:"read child source",prompt:"Read source",parentToolCallId:"spawn"});
+  try {
+   await thread.run({prompt:"Read source",signal:parent.signal,inputChannel:EMPTY_AGENT_INPUT_CHANNEL});
+   expect(events.some(event=>event.type==="subagent_progress" && event.event.type==="tool_start")).toBe(true);
+  } finally {await thread.close();}
+ });
+});

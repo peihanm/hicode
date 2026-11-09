@@ -1,3 +1,4 @@
+import {restoreCompactedContext} from "../context/restore.js";
 import {formatUserAnswers} from "./userQuestions.js";
 import {SessionPermissionPolicy} from "../permissions/sessionPolicy.js";
 import {PermissionRequests} from "../permissions/requests.js";
@@ -221,6 +222,9 @@ export function createRootSessionRuntime({
                     networkAccess,
                 },
                 host,
+            });
+            ctx.restoreAfterCompaction = (previous, current, fits) => restoreCompactedContext({
+                previous, history: current, ctx, executeTool: resources.toolRuntime.executeTool, onEvent, fits,
             });
             if (host.getPermissionPromptPolicy() === "onRequest") ctx.userQuestions = {
                 ask(input, requestId) {

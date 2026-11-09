@@ -33,9 +33,8 @@ export function selectCompactInput(input: {
     // At most three omitted ranges: a suffix plus the two required messages above.
     const remaining = budget - fixed - 512;
     if (remaining <= 0) throw new Error("Handoff input budget cannot fit the current request, prior handoff and fixed instructions. Original history was preserved.");
-    const start = findCompactTailStart([system, ...labelled], {
-        minTokens: Number.MAX_SAFE_INTEGER, minTextMessages: Number.MAX_SAFE_INTEGER, maxTokens: remaining,
-    }) - 1;
+    const start = findCompactTailStart([system, ...labelled], remaining,
+        new Set([...mandatory].map(index => index + 1))) - 1;
     const selected = new Set([...mandatory, ...Array.from({length: labelled.length - start}, (_, index) => start + index)]);
     const omitted: string[] = [];
     for (let index = 0; index < labelled.length;) {
@@ -51,18 +50,11 @@ export function selectCompactInput(input: {
     return {messages, coverage};
 }
 
-interface CompactTailOptions {
-    minTokens: number;
-    minTextMessages: number;
-    maxTokens: number;
-}
-
 /** Tool groups are admitted atomically, before spending the tail budget. */
-function findCompactTailStart(history: Message[], options: CompactTailOptions): number {
+function findCompactTailStart(history: Message[], maxTokens: number, reserved: ReadonlySet<number>): number {
     let start = history.length;
     let tokens = 0;
-    let textMessages = 0;
-    while (start > 1 && options.maxTokens > 0) {
+    while (start > 1 && maxTokens >= 0) {
         let groupStart = start - 1;
         if (history[groupStart]?.role === "tool") {
             while (groupStart > 1 && history[groupStart]?.role === "tool") groupStart--;
@@ -80,48 +72,15 @@ function findCompactTailStart(history: Message[], options: CompactTailOptions): 
             throw new Error("Compact tail is missing a tool result");
         }
         const group = history.slice(groupStart, start);
-        const cost = group.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
-        if (tokens + cost > options.maxTokens) break;
+        const cost = group.reduce((sum, message, index) => sum + (reserved.has(groupStart + index) ? 0 : estimateMessageTokens(message)), 0);
+        if (tokens + cost > maxTokens) break;
         tokens += cost;
-        textMessages += group.filter(message => (message.role === "user" || message.role === "assistant") &&
-            typeof message.content === "string" && message.content.trim().length > 0).length;
         start = groupStart;
-        if (tokens >= options.minTokens && textMessages >= options.minTextMessages) break;
     }
     return start;
 }
 
-/** Retain recent user wording and complete question/answer groups without duplicating the tail. */
-function selectOriginalAnchors(history: Message[], latestUserIndex: number): number[] {
-    // Keep a bounded recent sequence without classifying text as permission or intent.
-    const anchors: number[] = [];
-    let anchorTokens = 0;
-    for (let index = history.length - 1; index > 0 && anchors.length < 3; index--) {
-        const message = history[index]!;
-        if (message.role !== "user" || (message.origin !== "user" && message.origin !== "assignment")) continue;
-        const cost = estimateMessageTokens(message);
-        if (index === latestUserIndex || anchorTokens + cost <= 2000) {
-            anchors.unshift(index);
-            if (index !== latestUserIndex) anchorTokens += cost;
-        }
-    }
-    let answers = 0;
-    for (let index = history.length - 1; index > 0 && answers < 2; index--) {
-        const message = history[index]!;
-        if (message.role !== "assistant" || !message.tool_calls?.some(call => call.function.name === "ask_user")) continue;
-        const end = index + message.tool_calls.length + 1;
-        const results = history.slice(index + 1, end);
-        const ids = new Set(message.tool_calls.map(call => call.id));
-        if (results.length !== ids.size || results.some(result => result.role !== "tool" || !ids.delete(result.tool_call_id)) || ids.size) continue;
-        const cost = history.slice(index, end).reduce((sum, entry) => sum + estimateMessageTokens(entry), 0);
-        if (anchorTokens + cost > 2000) continue;
-        anchorTokens += cost;
-        answers++;
-        for (let entry = index; entry < end; entry++) anchors.push(entry);
-    }
-    anchors.sort((a, b) => a - b);
-    return anchors;
-}
+const RECENT_HISTORY_TOKEN_BUDGET = 20_000;
 
 export function selectCompactedHistory(input: {
     history: Message[];
@@ -134,25 +93,15 @@ export function selectCompactedHistory(input: {
     actualPreTokens: number;
 }): Message[] | undefined {
     const {history, system, summaryMessage, latestUserIndex, fixedTokens, summaryTokens, target, actualPreTokens} = input;
-    const latestUser = latestUserIndex > 0 ? history[latestUserIndex] : undefined;
     const retainedHistory = retainImageDeliveryBoundary(history);
-    const anchors = selectOriginalAnchors(history, latestUserIndex);
-    const tailBudget = Math.max(0, target - fixedTokens - summaryTokens);
-    const tailStart = findCompactTailStart(history, {
-        minTokens: Math.min(10_000, Math.floor(tailBudget / 4)),
-        minTextMessages: 5,
-        maxTokens: tailBudget,
-    });
-    let tailTokens = history.slice(tailStart).reduce((sum, message) => sum + estimateMessageTokens(message), 0);
-    for (let start = tailStart; start <= history.length; start++) {
-        if (start > tailStart) tailTokens -= estimateMessageTokens(history[start - 1]!);
-        if (history[start]?.role === "tool") continue;
-        const preserved = anchors.filter(index => index < start);
-        if (latestUser && latestUserIndex < start && !preserved.includes(latestUserIndex)) preserved.push(latestUserIndex);
-        const preservedTokens = preserved.reduce((sum, index) => sum + estimateMessageTokens(history[index]!), 0);
-        const candidateTokens = fixedTokens + summaryTokens + tailTokens + preservedTokens;
-        if (candidateTokens >= target || candidateTokens >= actualPreTokens) continue;
-        return [system, summaryMessage, ...preserved.map(index => retainedHistory[index]!), ...retainedHistory.slice(start)];
-    }
-    return undefined;
+    const latestUser = latestUserIndex > 0 ? retainedHistory[latestUserIndex] : undefined;
+    const latestTokens = latestUser ? estimateMessageTokens(latestUser) : 0;
+    // Reserve the latest request once, whether it lands inside or outside the contiguous tail.
+    const available = Math.min(target, actualPreTokens) - fixedTokens - summaryTokens - latestTokens - 1;
+    if (available < 0) return undefined;
+    const start = findCompactTailStart(retainedHistory, Math.min(RECENT_HISTORY_TOKEN_BUDGET, available),
+        new Set(latestUser ? [latestUserIndex] : []));
+    return [system, summaryMessage,
+        ...(latestUser && latestUserIndex < start ? [latestUser] : []),
+        ...retainedHistory.slice(start)];
 }
