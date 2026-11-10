@@ -101,3 +101,34 @@ describe("/memory slash command", () => {
         });
     });
 });
+
+test.each(["state", "yaml", "filename"] as const)("/memory status identifies unreadable %s without exposing content or claiming an empty store", async kind => {
+    await withTempProject(async cwd => {
+        const {mkdir, writeFile, readFile} = await import("node:fs/promises");
+        const {join} = await import("node:path");
+        const memory = createTestMemoryRuntime(cwd);
+        await mkdir(join(memory.directory, "topics"), {recursive:true});
+        const path = kind === "state" ? join(memory.directory,"state.json")
+            : join(memory.directory,"topics",kind === "yaml" ? "broken.md" : "Invalid Key.md");
+        const raw = kind === "state" ? '{"secret":"SECRET_MARKER"}'
+            : kind === "yaml" ? "---\nname: [SECRET_MARKER\n---\nbody" : "SECRET_MARKER";
+        await writeFile(path,raw);
+        const processor = createSlashCommandProcessor({memory,subagents:BUILTIN_SUBAGENT_REGISTRY,getToolSchemas:()=>[],
+            compactHistory:async ({preTokenCount})=>({compacted:false,preTokenCount,threshold:1000})});
+        const output:string[]=[];
+        try {
+            await processor.process("/memory status",{history:[],ctx:createTestContext(cwd),onEvent(event){if(event.type==="assistant_text")output.push(event.content);}});
+            expect(output).toHaveLength(1);
+            expect(output[0]).toContain("Memory: unavailable");
+            expect(output[0]).toContain(path);
+            expect(output[0]).toContain(kind === "state" ? "JSON or schema" : kind === "yaml" ? "YAML header" : "filename");
+            expect(output[0]).not.toContain("SECRET_MARKER");
+            expect(output[0]).not.toContain("Entries:");
+            const recall=await memory.contextForTurn("continue");
+            expect(recall.ignoredForTurn).toBe(true);
+            expect(recall.block).toContain(path);
+            expect(recall.block).not.toContain("SECRET_MARKER");
+            expect(await readFile(path,"utf8")).toBe(raw);
+        } finally {await memory.close();}
+    });
+});

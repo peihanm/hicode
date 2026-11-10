@@ -66,3 +66,51 @@ test("Memory overlay keeps live modes and revocations without granting Memory ac
  },memory)("忽略记忆",[],()=>{},ctx,EMPTY_AGENT_INPUT_CHANNEL,{getToolSchemas:()=>[],executeTool:async()=>inlineToolResult("", "ok"),isToolConcurrencySafe:()=>false});}
  finally {await memory.close();}
 }));
+
+test("Memory scans once per model request and sees external edits/deletions on the next request", async () => withTempProject(async cwd => {
+ const {spyOn} = await import("bun:test");
+ const {mkdir, writeFile, unlink} = await import("node:fs/promises");
+ const {MemoryPublicationStore} = await import("../../src/memory/publicationStore.js");
+ const {z} = await import("zod");
+ const memory = createTestMemoryRuntime(cwd);
+ const path = join(memory.directory, "topics", "style.md");
+ await mkdir(join(memory.directory, "topics"), {recursive:true});
+ await writeFile(path, "OLD_PREFERENCE");
+ const scans = spyOn(MemoryPublicationStore.prototype, "snapshot");
+ let executions = 0;
+ const tools = createToolRuntime({additionalTools: [{name:"fixture_change", description:"Test external edit", parameters:z.object({}),
+  isReadOnly:()=>true, checkPermissions:async()=>({behavior:"allow"}), async execute() {
+   if (++executions === 1) await writeFile(path,"NEW_PREFERENCE"); else await unlink(path);
+   return "changed";
+  }}]});
+ const fake = createFakeLLM([
+  options=>{expect(scans).toHaveBeenCalledTimes(1);expect(JSON.stringify(options.messages)).toContain("OLD_PREFERENCE");return assistantToolCall("fixture_change",{},"change");},
+  options=>{expect(scans).toHaveBeenCalledTimes(2);expect(JSON.stringify(options.messages)).toContain("NEW_PREFERENCE");expect(JSON.stringify(options.messages)).not.toContain("OLD_PREFERENCE");return assistantToolCall("fixture_change",{},"delete");},
+  options=>{expect(scans).toHaveBeenCalledTimes(3);expect(JSON.stringify(options.messages)).not.toContain("NEW_PREFERENCE");return assistantText("done");},
+ ]);
+ try {
+  await createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory)(
+   "use current memory",createInitialHistory(cwd),()=>{},createTestContext(cwd),EMPTY_AGENT_INPUT_CHANNEL,
+   {getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
+  expect(scans).toHaveBeenCalledTimes(3);
+ } finally {scans.mockRestore();await memory.close();}
+}));
+
+test("Unreadable Memory reports safe diagnosis and revokes file access for the turn", async () => withTempProject(async cwd => {
+ const {mkdir, writeFile} = await import("node:fs/promises");
+ const memory = createTestMemoryRuntime(cwd);
+ await mkdir(memory.directory,{recursive:true});
+ await writeFile(join(memory.directory,"state.json"), '{"secret":"SECRET_MARKER"}');
+ const ctx = createTestContext(cwd);ctx.memoryFiles=memory.fileAccess(ctx);
+ const tools = createToolRuntime();
+ const fake = createFakeLLM([
+  options=>{const text=JSON.stringify(options.messages);expect(text).toContain("state.json");expect(text).toContain("/memory status");expect(text).not.toContain("SECRET_MARKER");return assistantToolCall("read_file",{path:join(memory.directory,"MEMORY.md")},"read");},
+  options=>{expect(JSON.stringify(options.messages)).toContain("no Memory");return assistantText("Memory unavailable");},
+ ]);
+ try {
+  await createMemoryAwareAgentRunner(createAgentRunner({callLLM:fake.callLLM,compactHistory:noCompact}),memory)(
+   "continue",createInitialHistory(cwd),()=>{},ctx,EMPTY_AGENT_INPUT_CHANNEL,
+   {getToolSchemas:tools.getToolSchemas,executeTool:tools.executeTool,isToolConcurrencySafe:tools.isConcurrencySafe});
+  expect(ctx.memoryFiles).toBeDefined();
+ } finally {await memory.close();}
+}));

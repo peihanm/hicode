@@ -9,3 +9,16 @@ test("topics accept plain Markdown or small descriptive headers, never require w
 test("bad header errors do not echo secret values",()=>{
  try{parseMemoryTopic("---\nname: x\ndescription: x\ntype: SECRET_VALUE\n---\nbody","test");throw new Error("unexpected success");}catch(error){expect((error as Error).message).not.toContain("SECRET_VALUE");}
 });
+
+test("formal and draft topics share header/body constraints", async () => {
+ const {memoryDraftTopicSchema} = await import("../../src/memory/publicationSchema.js");
+ const {stringify} = await import("yaml");
+ const valid={name:"Style",description:"Response style",type:"feedback",content:"Keep it brief"};
+ for (const patch of [{name:"bad\nname"},{description:"bad\nsummary"},{description:"界".repeat(101)},{content:""},{content:"界".repeat(11000)},{type:"invalid"}]) {
+  const {content,...header}={...valid,...patch};
+  expect(()=>parseMemoryTopic(`---\n${stringify(header)}---\n${content}`,"style")).toThrow();
+  expect(memoryDraftTopicSchema.safeParse({...header,content,key:"style",sources:[]}).success).toBe(false);
+ }
+ expect(memoryDraftTopicSchema.safeParse({...valid,key:"style",sources:[]}).success).toBe(true);
+ expect(()=>parseMemoryTopic("---\nname: [SECRET_MARKER\n---\nbody","style")).toThrow("Invalid Memory YAML header");
+});

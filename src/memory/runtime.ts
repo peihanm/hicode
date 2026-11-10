@@ -1,3 +1,4 @@
+import {MemoryReadError} from "./types.js";
 import {contentText} from "../images/content.js";
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
@@ -102,8 +103,11 @@ class MemoryRuntime implements MemoryRuntimeLike {
         try {
             return { ignoredForTurn: false, block: formatPublicationContext(this.directory, this.store.snapshot()) };
         }
-        catch {
-            return { ignoredForTurn: true, block: "<system-reminder>Memory publication could not be read. Do not read or maintain Memory this turn, or assume saved content exists.</system-reminder>" };
+        catch (error) {
+            const issue = error instanceof MemoryReadError ? {path: error.path, message: error.detail}
+                : {path: this.directory, message: "Memory publication could not be read"};
+            const diagnostic = JSON.stringify(issue).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
+            return {ignoredForTurn: true, block: `<system-reminder>Memory is unavailable for this turn. Do not read, maintain or apply saved memories. Use /memory status for diagnosis. Diagnostic data: ${diagnostic}</system-reminder>`};
         }
     }
     fileAccess(owner: FileOwner): MemoryFileAccess {
@@ -254,20 +258,23 @@ export function createMemoryAwareAgentRunner(baseRunAgent: AgentRunner, memory: 
         if (!memory.enabled)
             return baseRunAgent(userInput, history, onEvent, ctx, channel, options);
         const revision = memory.getRevision();
-        const recalled = await memory.contextForTurn(contentText(userInput));
+        const prompt = contentText(userInput);
+        let unavailable: MemoryContextResult | undefined;
         const scoped: typeof ctx = {
             ...ctx,
             // The Memory overlay must not freeze the Host's live permission state.
             get permissionRules() {return ctx.permissionRules;},
             get permissionMode() {return ctx.permissionMode;},
             get permissionPromptPolicy() {return ctx.permissionPromptPolicy;},
-            memoryFiles: recalled.ignoredForTurn ? undefined : ctx.memoryFiles,
+            memoryFiles: SUPPRESS_MEMORY.some(pattern => pattern.test(prompt)) ? undefined : ctx.memoryFiles,
         };
         const result = await baseRunAgent(userInput, history, onEvent, scoped, channel, { ...options,
             getAdditionalUserContextBlocks: async () => {
-                const current = recalled.ignoredForTurn ? recalled : await memory.contextForTurn(contentText(userInput));
-                if (current.ignoredForTurn)
+                const current = unavailable ?? await memory.contextForTurn(prompt);
+                if (current.ignoredForTurn) {
+                    unavailable = current;
                     scoped.memoryFiles = undefined;
+                }
                 return [...(current.block ? [current.block] : []), ...(await options.getAdditionalUserContextBlocks?.() ?? [])];
             } });
         const changes = memory.explicitChangesSince(revision, ctx);

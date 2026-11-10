@@ -1,4 +1,4 @@
-import {MEMORY_TYPES, type MemoryType} from "../../memory/index.js";
+import {MEMORY_TYPES, MemoryReadError, type MemoryType} from "../../memory/index.js";
 import type {SlashCommand} from "../types.js";
 
 function isMemoryType(value: string): value is MemoryType {
@@ -29,7 +29,13 @@ export const memoryCommand: SlashCommand = {
         }
 
         if (action === "status") {
-            const status = await memory.status();
+            let status;
+            try {status = await memory.status();}
+            catch (error) {
+                if (!(error instanceof MemoryReadError)) throw error;
+                await context.onEvent({type: "assistant_text", content: `Memory: unavailable\n${error.message}\nCounts and maintenance status could not be loaded. Fix the file and retry /memory status; no files were changed.`});
+                return;
+            }
             const lines = [
                 `Memory: ${status.enabled ? "enabled" : "disabled"}`,
                 `Auto extract: ${status.autoExtract ? "enabled" : "disabled"}`,

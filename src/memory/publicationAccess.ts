@@ -1,8 +1,7 @@
 import { basename, dirname, relative, resolve } from "node:path";
 import { realpath } from "node:fs/promises";
 import type { HiCodeStorageLayout } from "../persistence/layout.js";
-import { memoryKeySchema } from "./schema.js";
-import {parseMemoryTopic} from "./topic.js";
+import {memoryKeySchema, parseMemoryTopic} from "./topic.js";
 import type { MemoryPublicationStore } from "./publicationStore.js";
 import type { MemoryChange } from "./types.js";
 type PublicationPath = {

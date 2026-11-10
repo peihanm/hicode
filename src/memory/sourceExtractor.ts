@@ -3,7 +3,7 @@ import { createLLMCaller } from "../llm/index.js";
 import type { LLMCaller, LLMSourceConnection, UserMessageOrigin } from "../llm/types.js";
 import type { ModelTargetSettings } from "../settings/types.js";
 import type { HiCodeStorageLayout } from "../persistence/index.js";
-import { memoryKeySchema } from "./schema.js";
+import { memoryKeySchema } from "./topic.js";
 import { MEMORY_TYPES } from "./types.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
 const factSchema = z.object({ key: memoryKeySchema, type: z.enum(MEMORY_TYPES), content: z.string().trim().min(1).max(8000).refine(s => Buffer.byteLength(s) <= 8000),

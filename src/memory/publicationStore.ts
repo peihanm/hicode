@@ -1,4 +1,6 @@
-import {parseMemoryTopic, serializeMemoryTopic} from "./topic.js";
+import {MemoryReadError} from "./types.js";
+import {hasFileSystemErrorCode} from "../persistence/errors.js";
+import {memoryKeySchema, parseMemoryTopic, serializeMemoryTopic} from "./topic.js";
 import {readdirSync, lstatSync} from "node:fs";
 import {prepareFileCommit} from "../tools/files/io.js";
 import {realpath} from "node:fs/promises";
@@ -12,7 +14,6 @@ import { ensurePrivateStorageDirectory, readPrivateStorageTextFile, createFileLo
 import { getMemoryWorkspacesDirectory, getMemoryWorkspacePaths, getMemoryStatePath, getMemoryIndexPath, getMemoryTopicsDirectory, getProjectMemoryDirectory } from "../persistence/layout.js";
 import { throwIfTurnAborted } from "../runtime/abort.js";
 import { memoryDraftTopicSchema, memoryPublicationSchema, memoryStateSchema, memorySourceRecordSchema, type MemoryDraftTopic, type MemoryLease, type MemoryPublication, type MemorySourceRecord } from "./publicationSchema.js";
-import { memoryKeySchema } from "./schema.js";
 const MAX_PUBLICATION_BYTES = 8 * 1024 * 1024;
 const LEASE_MS = 5 * 60000;
 function originHash(origin: MemorySourceRecord["origin"]): string {
@@ -33,10 +34,13 @@ export class MemoryPublicationStore {
         this.directory = getProjectMemoryDirectory(storage, cwd);
     }
     private readState() {
-        const raw = readPrivateStorageTextFile(this.storage, getMemoryStatePath(this.directory), MAX_PUBLICATION_BYTES);
+        const path = getMemoryStatePath(this.directory);
+        let raw: string | null;
+        try {raw = readPrivateStorageTextFile(this.storage, path, MAX_PUBLICATION_BYTES);}
+        catch {throw new MemoryReadError(path, "Cannot safely read workflow state; check file permissions, type and size");}
         if (raw === null) return memoryStateSchema.parse(emptyPublication());
-        try { return memoryStateSchema.parse(JSON.parse(raw)); }
-        catch { throw new Error("Invalid Memory workflow state; original files were preserved"); }
+        try {return memoryStateSchema.parse(JSON.parse(raw));}
+        catch {throw new MemoryReadError(path, "Invalid Memory workflow state (JSON or schema); original files were preserved");}
     }
     private scanFiles(): Map<string, {raw: string; hash: string; topic: ReturnType<typeof parseMemoryTopic>; date: string}> {
         const root = getMemoryTopicsDirectory(this.directory);
@@ -44,20 +48,33 @@ export class MemoryPublicationStore {
         // Validate the directory even when it is empty; aliases never grant access.
         try {
             const stat = lstatSync(root);
-            if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Memory topics must be a regular directory");
+            if (!stat.isDirectory() || stat.isSymbolicLink())
+                throw new MemoryReadError(root, "Memory topics must be a regular directory, not a symlink");
         } catch (error) {
-            if (error instanceof Error && "code" in error && error.code === "ENOENT") return files;
-            throw error;
+            if (hasFileSystemErrorCode(error, "ENOENT")) return files;
+            if (error instanceof MemoryReadError) throw error;
+            throw new MemoryReadError(root, "Cannot inspect topic directory; check filesystem permissions");
         }
-        const entries = readdirSync(root, {withFileTypes: true});
-        const topics = entries.filter(entry => entry.name.endsWith(".md"));
-        if (topics.length > 200) throw new Error("Memory topics exceed 200");
-        for (const entry of topics) {
-            const key = memoryKeySchema.parse(entry.name.slice(0, -3));
-            const path = join(root, entry.name);
-            const raw = readPrivateStorageTextFile(this.storage, path, 40 * 1024);
-            if (raw === null) throw new Error("Memory changed while scanning; retry");
-            files.set(key, {raw, hash: createHash("sha256").update(raw).digest("hex"), topic: parseMemoryTopic(raw, key), date: lstatSync(path).mtime.toISOString()});
+        let entries: string[];
+        try {entries = readdirSync(root);}
+        catch {throw new MemoryReadError(root, "Cannot list topic directory; check filesystem permissions");}
+        const topics = entries.filter(name => name.endsWith(".md"));
+        if (topics.length > 200) throw new MemoryReadError(root, "Memory topics exceed 200");
+        for (const name of topics) {
+            const path = join(root, name);
+            const key = memoryKeySchema.safeParse(name.slice(0, -3));
+            if (!key.success) throw new MemoryReadError(path, "Invalid topic filename; use lowercase kebab-case, at most 80 characters before .md");
+            let raw: string | null;
+            let date: string;
+            try {
+                raw = readPrivateStorageTextFile(this.storage, path, 40 * 1024);
+                date = lstatSync(path).mtime.toISOString();
+            } catch {throw new MemoryReadError(path, "Cannot safely read topic; check file existence, permissions, type and 40 KiB size limit");}
+            if (raw === null) throw new MemoryReadError(path, "Memory changed while scanning; retry");
+            let topic: ReturnType<typeof parseMemoryTopic>;
+            try {topic = parseMemoryTopic(raw, key.data);}
+            catch (error) {throw new MemoryReadError(path, error instanceof Error ? error.message : "Invalid topic format");}
+            files.set(key.data, {raw, hash: createHash("sha256").update(raw).digest("hex"), topic, date});
         }
         return files;
     }
@@ -90,7 +107,9 @@ export class MemoryPublicationStore {
             return {key, ...file.topic, sources: changed.has(key) ? [] : (old?.sources ?? []).filter(id => ids.has(id)),
                 createdAt: old?.createdAt ?? file.date, updatedAt: changed.has(key) ? file.date : old?.updatedAt ?? file.date};
         });
-        return memoryPublicationSchema.parse(state);
+        const parsed = memoryPublicationSchema.safeParse(state);
+        if (!parsed.success) throw new MemoryReadError(getMemoryStatePath(this.directory), "Inconsistent Memory workflow metadata; original files were preserved");
+        return parsed.data;
     }
     private async saveState(state: MemoryPublication): Promise<void> {
         this.collect(state);

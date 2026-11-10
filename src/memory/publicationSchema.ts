@@ -1,10 +1,9 @@
 import { z } from "zod";
 import { MEMORY_TYPES } from "./types.js";
-import { memoryKeySchema } from "./schema.js";
+import {memoryKeySchema, memoryTopicSchema} from "./topic.js";
 const id = z.string().uuid();
 const text = (max: number) => z.string().trim().min(1).max(max)
     .refine(value => Buffer.byteLength(value) <= max, `Exceeds ${max} bytes`);
-const singleLine = (max: number) => text(max).refine(value => !/[\r\n]/.test(value), "Must be single-line text");
 const originSchema = z.object({kind: z.literal("session"), sessionId: text(200),
     messageHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(100),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/), basis: z.enum(["user-stated", "assistant-claimed", "tool-observed"]),
@@ -14,9 +13,8 @@ export const memorySourceRecordSchema = z.object({
     origin: originSchema, createdAt: z.string().datetime(), consumed: z.boolean(),
 }).strict().refine(source => source.consumed ? source.content === "" : source.content.trim().length > 0 && Buffer.byteLength(source.content) <= 8000,
     "Consumed sources keep provenance only; pending facts require bounded text");
-export const memoryDraftTopicSchema = z.object({
-    key: memoryKeySchema, name: singleLine(120), description: singleLine(300),
-    type: z.enum(MEMORY_TYPES), content: text(32 * 1024),
+export const memoryDraftTopicSchema = memoryTopicSchema.extend({
+    key: memoryKeySchema,
     sources: z.array(id).max(32),
 }).strict();
 const topicSchema = memoryDraftTopicSchema.extend({ createdAt: z.string().datetime(), updatedAt: z.string().datetime() }).strict();

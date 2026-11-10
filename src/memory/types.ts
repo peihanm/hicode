@@ -47,3 +47,11 @@ export interface MemoryRuntimeStatus {
     counts: Record<MemoryType, number>;
     issues: MemoryIssue[];
 }
+
+/** Read diagnostics contain a path and a controlled reason, never raw file/YAML content. */
+export class MemoryReadError extends Error {
+    constructor(readonly path: string, readonly detail: string) {
+        super(`Memory read failed at ${JSON.stringify(path)}: ${detail}`);
+        this.name = "MemoryReadError";
+    }
+}
