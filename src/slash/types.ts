@@ -34,7 +34,7 @@ export interface SlashCommand {
     name: string;
     description: string;
     argumentHint?: string;
-    busyBehavior: "defer" | "immediate";
+    busyBehavior: SlashCommandBusyBehavior | ((args: string) => SlashCommandBusyBehavior);
 
     execute(
         args: string,

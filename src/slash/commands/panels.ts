@@ -6,13 +6,14 @@ type PanelContext = Parameters<SlashCommand["execute"]>[1];
 function panelCommand(options: {
     name: string;
     description: string;
+    busyBehavior: "immediate" | "defer";
     open: "openModel" | "openProviders" | "openPermissions" | "openResume" | "openGitDiff";
     fallback: (context: PanelContext) => string;
 }): SlashCommand {
     return {
         name: options.name,
         description: options.description,
-        busyBehavior: "defer",
+        busyBehavior: options.busyBehavior,
         async execute(args, context) {
             if (args.trim()) {
                 await context.onEvent({type: "assistant_text", content: `Usage: /${options.name}`});
@@ -30,6 +31,7 @@ function panelCommand(options: {
 
 export const modelCommand = panelCommand({
     name: "model",
+    busyBehavior: "defer",
     description: "View or switch the model",
     open: "openModel",
     fallback: ({ctx}) => `Current model: ${ctx.model}`,
@@ -37,6 +39,7 @@ export const modelCommand = panelCommand({
 
 export const providersCommand = panelCommand({
     name: "providers",
+    busyBehavior: "defer",
     description: "Configure provider credentials, API endpoints and model lists",
     open: "openProviders",
     fallback: () => "Provider setup is available in the interactive CLI. Configure credentials through the Host in SDK/headless mode.",
@@ -44,6 +47,7 @@ export const providersCommand = panelCommand({
 
 export const permissionsCommand = panelCommand({
     name: "permissions",
+    busyBehavior: "defer",
     description: "Choose who approves extra access",
     open: "openPermissions",
     fallback: ({ctx}) => [
@@ -54,6 +58,7 @@ export const permissionsCommand = panelCommand({
 
 export const resumeCommand = panelCommand({
     name: "resume",
+    busyBehavior: "defer",
     description: "Select and resume a previous session in this project",
     open: "openResume",
     fallback: () => "This Host does not support interactive /resume.",
@@ -61,6 +66,7 @@ export const resumeCommand = panelCommand({
 
 export const diffCommand = panelCommand({
     name: "diff",
+    busyBehavior: "immediate",
     description: "View current uncommitted Git changes",
     open: "openGitDiff",
     fallback: () => "This Host does not support interactive /diff. Use the interactive TUI or run read-only git diff through Bash.",

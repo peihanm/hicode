@@ -1,3 +1,7 @@
+import {waitForState} from "../helpers/waitForState.js";
+import {createTestMemoryRuntime, remember} from "../helpers/memory.js";
+import type {AgentRunner} from "../../src/agent/index.js";
+import type {Message} from "../../src/llm/types.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import {GitDiffDialog} from "../../src/ui/git/GitDiffDialog.js";
@@ -219,5 +223,69 @@ describe("GitDiffDialog", () => {
         view.unmount();
         await waitForRender();
         expect(signals[1]!.aborted).toBe(true);
+    });
+});
+
+
+test("busy Turn can view Diff and Memory without interruption; an arriving approval takes priority", async () => {
+    await withTempProject(async cwd => {
+        const memory = createTestMemoryRuntime(cwd);
+        await remember(memory, "style", "MEMORY_VIEW_WHILE_BUSY");
+        const resources = createTestRuntimeResources(cwd, {memory});
+        const configured = {...resources, gitWorkspace: {...resources.gitWorkspace, diff: async () => result()}};
+        let requestApproval!: () => void;
+        const approvalGate = new Promise<void>(resolve => {requestApproval = resolve;});
+        let finish!: () => void;
+        const finishGate = new Promise<void>(resolve => {finish = resolve;});
+        let signal: AbortSignal | undefined;
+        let history: Message[] | undefined;
+        let runs = 0;
+        let decision: string | undefined;
+        const runAgentImpl: AgentRunner = async (_prompt, messages, _event, ctx) => {
+            runs++;
+            signal = ctx.signal;
+            history = messages;
+            await approvalGate;
+            if (!ctx.signal.aborted) {
+                const result = await ctx.canUseTool("synthetic_write", "BUSY_DIFF_APPROVAL", {path: "file.ts"}, {signal: ctx.signal});
+                decision = result.behavior;
+            }
+            await finishGate;
+            return {reply: "done", reason: "completed", iterations: 1};
+        };
+        const view = render(<AppForTest resources={configured} runAgentImpl={runAgentImpl}/>);
+        const press = async (input: string) => {await waitForRender(); view.stdin.write(input); await waitForRender();};
+        try {
+            await waitForState(() => (view.lastFrame() ?? "").includes("Ask HiCode"), "chat input");
+            await press("work"); await press("\r");
+            await waitForState(() => signal !== undefined, "active Agent");
+            const before = structuredClone(history);
+            await press("/diff"); await press("\r");
+            await waitForState(() => (view.lastFrame() ?? "").includes("Enter view"), "Diff while Agent is running");
+            await press("\u001b");
+            expect(signal!.aborted).toBe(false);
+            await press("/memory show style"); await press("\r");
+            await waitForState(() => (view.lastFrame() ?? "").includes("MEMORY_VIEW_WHILE_BUSY"), "Memory while Agent is running");
+            expect(runs).toBe(1);
+            expect(history).toEqual(before);
+            expect(signal!.aborted).toBe(false);
+            await press("/diff"); await press("\r");
+            await waitForState(() => (view.lastFrame() ?? "").includes("Enter view"), "second Diff view");
+            requestApproval();
+            await waitForState(() => (view.lastFrame() ?? "").includes("BUSY_DIFF_APPROVAL"), "approval over Diff");
+            expect(view.lastFrame()).not.toContain("Enter view");
+            await press("\r");
+            await waitForState(() => decision !== undefined, "approval decision");
+            expect(decision).toBe("allow");
+            await waitForState(() => (view.lastFrame() ?? "").includes("Enter view"), "Diff returns after approval");
+            await press("\u001b");
+            expect(signal!.aborted).toBe(false);
+            expect(history).toEqual(before);
+        } finally {
+            requestApproval(); finish();
+            view.unmount();
+            await resources.close();
+            await memory.close();
+        }
     });
 });

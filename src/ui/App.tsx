@@ -323,7 +323,7 @@ export function App({
                         catalog={resources.subagents}
                         onClose={() => setActivePanel(undefined)}
                     />
-                ) : (activePanel === "diff") ? (
+                ) : (activePanel === "diff") && !turn.confirmRequest ? (
                     <GitDiffDialog
                         loadDiff={turn.loadGitDiff}
                         onClose={() => setActivePanel(undefined)}

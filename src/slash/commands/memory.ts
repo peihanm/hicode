@@ -6,7 +6,10 @@ function isMemoryType(value: string): value is MemoryType {
 }
 
 export const memoryCommand: SlashCommand = {
-    busyBehavior: "defer",
+    busyBehavior(args) {
+        const action = args.trim().split(/\s+/)[0] || "status";
+        return ["status", "list", "show"].includes(action) ? "immediate" : "defer";
+    },
     name: "memory",
     description: "View and maintain persistent Memory across Sessions",
     argumentHint: "[list [type] | show <key> | maintain]",

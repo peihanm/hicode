@@ -121,7 +121,8 @@ export function createSlashCommandProcessor({
                 return "immediate";
             }
             const command = findSlashCommand(parsed.name);
-            return command?.busyBehavior ?? "defer";
+            const behavior = command?.busyBehavior;
+            return typeof behavior === "function" ? behavior(parsed.args) : behavior ?? "defer";
         },
     };
 }

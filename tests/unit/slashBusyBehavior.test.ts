@@ -3,18 +3,26 @@ import {slashCommandProcessor} from "../helpers/slash.js";
 import {findSlashCommand} from "../../src/slash/registry.js";
 
 describe("Slash busy behavior", () => {
-    test("只有无对话状态依赖的本地查看命令立即执行", () => {
+    test("本地查看命令立即执行，包括只读面板和 Memory 子命令", () => {
         for (const input of [
             "/help",
             "/?",
             "/skills",
             "/tasks",
+            "/hooks",
+            "/diff",
+            "/memory",
+            "/memory status",
+            "/memory list",
+            "/memory list feedback",
+            "/memory show coding-style",
+            "  /memory   status  ",
         ]) {
             expect(slashCommandProcessor.getBusyBehavior(input)).toBe("immediate");
         }
     });
 
-    test("会改变对话或打开交互界面的命令等待当前 Turn 结束", () => {
+    test("修改会话或配置以及 Memory 维护等待当前 Turn 结束", () => {
         for (const input of [
             "/sandbox",
             "/mcp",
@@ -22,8 +30,13 @@ describe("Slash busy behavior", () => {
             "/compact",
             "/permissions",
             "/agents",
-            "/memory",
-            "/diff",
+            "/memory maintain",
+            "/memory maintain extra",
+            "/memory unknown",
+            "/resume",
+            "/model",
+            "/providers",
+            "/add-dir ../other",
             "/unknown",
         ]) {
             expect(slashCommandProcessor.getBusyBehavior(input)).toBe("defer");

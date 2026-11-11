@@ -1,3 +1,4 @@
+import {slashCommandProcessor} from "../helpers/slash.js";
 import {inlineToolResult} from "../../src/tools/execute.js";
 import {createToolRuntime} from "../../src/tools/runtime.js";
 import {contentText, type MessageContent} from "../../src/images/content.js";
@@ -194,7 +195,7 @@ describe("UITurnController", () => {
     expect(calls).toBe(2);
   });
 
-  test("运行中的即时本地 Slash 不取消也不等待主 Turn", async () => {
+  test.each(["/help", "/diff", "/memory", "/memory status", "/memory list", "/memory show style"])("运行中的即时本地 Slash %s 不取消也不等待主 Turn", async command => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -205,8 +206,7 @@ describe("UITurnController", () => {
         await gate;
         return {reply: "ok", reason: "completed", iterations: 1};
       }) as AgentRunner,
-      getSlashBusyBehavior: (input) =>
-        input === "/help" ? "immediate" : "defer",
+      getSlashBusyBehavior: slashCommandProcessor.getBusyBehavior,
       processSlashCommand: async (input) => {
         slashInputs.push(input);
         return true;
@@ -214,11 +214,11 @@ describe("UITurnController", () => {
     });
 
     const pending = harness.controller.submit("长任务");
-    expect(harness.controller.enqueue("/help")).toBe(true);
+    expect(harness.controller.enqueue(command)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(slashInputs).toEqual(["/help"]);
-    expect(harness.users).toEqual(["长任务", "/help"]);
+    expect(slashInputs).toEqual([command]);
+    expect(harness.users).toEqual(["长任务", command]);
     expect(harness.controller.getSnapshot().busy).toBe(true);
     expect(harness.messageQueue.list()).toEqual([]);
     expect(harness.signals).toHaveLength(2);
