@@ -161,7 +161,7 @@ async function compactHistoryCore({
         }
 
         if (ctx.restoreAfterCompaction) {
-            await ctx.restoreAfterCompaction(previousHistory, history,
+            await ctx.restoreAfterCompaction(ctx, previousHistory, history,
                 messages => requestTokens(messages) < Math.min(target, actualPreTokens));
             postTokenCount = requestTokens(history);
         }

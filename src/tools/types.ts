@@ -149,7 +149,7 @@ export interface ToolContext {
     subagentRecords?: SubagentRecordAccess;
     sessionCompaction?: SessionCompaction;
     /** Root/child Sessions can reload scoped read context; internal review/maintenance Agents omit it. */
-    restoreAfterCompaction?: (previous: readonly Message[], history: Message[], fits: (messages: Message[]) => boolean) => Promise<void>;
+    restoreAfterCompaction?: (ctx: ToolContext, previous: readonly Message[], history: Message[], fits: (messages: Message[]) => boolean) => Promise<void>;
     /** Root Session only: commit complete paired batches before the next model request. */
     commitToolBatch?: () => Promise<void>;
 

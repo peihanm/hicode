@@ -61,12 +61,12 @@ export function normalizeRuntimeQueuedMessages(
             (message.type !== "user_input" &&
                 message.type !== "task_notification" && message.type !== "agent_message" && message.type !== "runtime_message" && message.type !== "user_answer") ||
             (message.priority !== "next" && message.priority !== "later") ||
-            !messageContentSchema.safeParse(message.content).success ||
-            contentText(messageContentSchema.parse(message.content)).trim().length === 0 ||
             typeof message.createdAt !== "string" ||
             !isTimestamp(message.createdAt)
         ) return undefined;
-        const content = messageContentSchema.parse(message.content);
+        const parsed = messageContentSchema.safeParse(message.content);
+        if (!parsed.success || !contentText(parsed.data).trim()) return undefined;
+        const content = parsed.data;
         if (message.type !== "user_input" && typeof content !== "string") return undefined;
         const contentBytes = byteLength(content);
         totalBytes += contentBytes;

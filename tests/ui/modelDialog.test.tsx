@@ -1,3 +1,4 @@
+import {configuredModelSources} from "../helpers/modelSources.js";
 import {waitForState} from "../helpers/waitForState.js";
 import {afterEach, describe, expect, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
@@ -6,7 +7,7 @@ import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {createTestRuntimeResources, createTestSettings} from "../helpers/runtimeResources.js";
 import {readFile} from "node:fs/promises";
 import {join} from "node:path";
-import {withTempProject} from "../helpers/tempProject.js";
+import {withTempProject, registerTempCleanup} from "../helpers/tempProject.js";
 import {AppForTest as App} from "../helpers/AppForTest.js";
 import {createInitialHistory} from "../../src/prompt/index.js";
 import type {Message} from "../../src/llm/types.js";
@@ -18,7 +19,7 @@ test.each(["\u001b", "\u0003"])("/model back key %j discards reasoning draft and
         const current = {source: "qwen" as const, model: "qwen3.8-flash", label: "Qwen 3.8 Flash", reasoning: "medium" as const};
         const settings = createTestSettings();
         settings.models.reasoning = [{source: current.source, model: current.model, effort: current.reasoning}];
-        const primaryModel = createPrimaryModelRuntime(current, settings.sources, [current], settings.models.reasoning);
+        const primaryModel = createPrimaryModelRuntime(current, configuredModelSources(settings.sources, [current], registerTempCleanup), settings.models.reasoning);
         const resources = createTestRuntimeResources(cwd, {primaryModel, settings});
         let runs = 0;
         const instance = render(<App resources={resources} runAgentImpl={async () => {
@@ -59,20 +60,17 @@ describe("Model dialog", () => {
         await withTempProject(async (cwd) => {
             const qwen = {
                 source: "qwen" as const,
-                provider: "qwen" as const,
                 model: "qwen-primary",
                 label: "Qwen Primary",
             };
             const deepseek = {
                 source: "deepseek" as const,
-                provider: "deepseek" as const,
                 model: "deepseek-pro",
                 label: "DeepSeek Pro",
             };
             const primaryModel = createPrimaryModelRuntime(
                 qwen,
-                createTestSettings().sources,
-                [qwen, deepseek]
+                configuredModelSources(createTestSettings().sources, [qwen, deepseek], registerTempCleanup)
             );
             const settings = createTestSettings();
             if (!explicitFast) delete settings.models.fast;

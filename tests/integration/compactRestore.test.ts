@@ -1,3 +1,6 @@
+import {createMemoryAwareAgentRunner, type MemoryRuntimeLike} from "../../src/memory/runtime.js";
+import {createTestMemoryRuntime, remember} from "../helpers/memory.js";
+import {EMPTY_AGENT_INPUT_CHANNEL} from "../../src/agent/inputChannel.js";
 import {expect, test} from "bun:test";
 import {writeFile, unlink} from "node:fs/promises";
 import {join} from "node:path";
@@ -13,8 +16,8 @@ import {loadSession} from "../../src/session/store/sessionStore.js";
 import type {HiCodeStorageLayout} from "../../src/persistence/layout.js";
 import type {AgentEvent} from "../../src/agent/types.js";
 
-function fixture(cwd: string, storage: HiCodeStorageLayout) {
-    const resources = createTestRuntimeResources(cwd, {storage, skills: [
+function fixture(cwd: string, storage: HiCodeStorageLayout, memory?: MemoryRuntimeLike) {
+    const resources = createTestRuntimeResources(cwd, {storage, ...(memory ? {memory} : {}), skills: [
         {name: "review", source: "host", id: "review", description: "Review guidance", content: "Check $ARGUMENTS carefully."},
     ]});
     const session = createRootSessionRuntime({resources, seed: {sessionId: "restore", compactState: createCompactState(),
@@ -33,11 +36,11 @@ function fixture(cwd: string, storage: HiCodeStorageLayout) {
         await executeToolCallBatch({toolCalls: [call], history: session.history, ctx, turnId: ctx.turnId,
             onEvent() {}, executeTool: resources.toolRuntime.executeTool, isToolConcurrencySafe: () => false});
     };
-    const compact = async () => {
+    const compact = async (activeContext = ctx) => {
         session.history.push({role: "assistant", content: "Old investigation. ".repeat(12_000)},
             {role: "user", origin: "user", content: "Continue the review"});
         return createCompactHistoryRunner({generateSummary: async () => "Continue reviewing the source with the review Skill."})({
-            history: session.history, ctx, tools: resources.toolRuntime.getToolSchemas(), preTokenCount: 200_000, force: true});
+            history: session.history, ctx: activeContext, tools: resources.toolRuntime.getToolSchemas(), preTokenCount: 200_000, force: true});
     };
     const restored = () => session.history.filter(message => message.role === "tool" && message.tool_call_id.startsWith("restore-"));
     return {resources, session, ctx, controller, events, tool, compact, restored};
@@ -86,7 +89,7 @@ test("尾部已有内容不重复补回；最多重读三文件，沿最近 offs
             const previous = [...f.session.history];
             const retained = previous.slice(-4); // File 4 and Skill are still visible.
             f.session.history.splice(2, f.session.history.length - 2, ...retained);
-            await f.ctx.restoreAfterCompaction!(previous, f.session.history, () => true);
+            await f.ctx.restoreAfterCompaction!(f.ctx, previous, f.session.history, () => true);
             const calls = f.session.history.flatMap(message => message.role === "assistant" ? message.tool_calls ?? [] : [])
                 .filter(call => call.id.startsWith("restore-"));
             expect(calls.map(call => JSON.parse(call.function.arguments))).toEqual([3, 2, 1].map(n => ({path: join(cwd, `${n}.ts`), offset: n + 1, limit: 200})));
@@ -170,7 +173,7 @@ test("补回服从完整请求预算，没有余量不执行工具", async () =>
             const previous = [...f.session.history];
             f.session.history.splice(2);
             const limit = tokenCountWithEstimation(f.session.history);
-            await f.ctx.restoreAfterCompaction!(previous, f.session.history, messages => tokenCountWithEstimation(messages) <= limit);
+            await f.ctx.restoreAfterCompaction!(f.ctx, previous, f.session.history, messages => tokenCountWithEstimation(messages) <= limit);
             expect(f.restored()).toHaveLength(0);
             expect(f.events).toHaveLength(0);
         } finally {await f.resources.close();}
@@ -190,7 +193,7 @@ test("最多补回两个 Skill；文件与 Skill 共用 20k 总预算，超量�
             const previous = [...f.session.history];
             f.session.history.splice(2);
             const initial = tokenCountWithEstimation(f.session.history);
-            await f.ctx.restoreAfterCompaction!(previous, f.session.history, () => true);
+            await f.ctx.restoreAfterCompaction!(f.ctx, previous, f.session.history, () => true);
             const calls = f.session.history.flatMap(message => message.role === "assistant" ? message.tool_calls ?? [] : []);
             const skills = calls.filter(call => call.function.name === "skill");
             expect(skills.map(call => JSON.parse(call.function.arguments).skill)).toEqual(["guide2", "guide1"]);
@@ -235,12 +238,43 @@ test("文件补回服从较小的完整请求余量；单行放不下时给出�
             const previous = [...f.session.history];
             f.session.history.splice(2);
             const initial = tokenCountWithEstimation(f.session.history);
-            await f.ctx.restoreAfterCompaction!(previous, f.session.history, messages => tokenCountWithEstimation(messages) <= initial + 500);
+            await f.ctx.restoreAfterCompaction!(f.ctx, previous, f.session.history, messages => tokenCountWithEstimation(messages) <= initial + 500);
             const text = String(f.restored()[0]!.content);
             expect(text).toContain("Line range: none");
             expect(text).toContain("offset=2");
             expect(text).not.toContain("x".repeat(10));
             expect(tokenCountWithEstimation(f.session.history) - initial).toBeLessThanOrEqual(500);
+            expect(hasCompleteToolPairs(f.session.history)).toBe(true);
+        } finally {await f.resources.close();}
+    });
+});
+
+
+test.each(["ignored", "unavailable"] as const)("Memory %s 后压缩补回使用当前能力，普通文件仍可重读", async mode => {
+    await withTempProject(async (cwd, storage) => {
+        const memory = createTestMemoryRuntime(cwd);
+        const f = fixture(cwd, storage, memory);
+        try {
+            const path = await remember(memory, "private", "MEMORY_BODY_MUST_NOT_RETURN");
+            await writeFile(join(cwd, "source.ts"), "current source\n");
+            await f.tool("read_file", {path});
+            await f.tool("read_file", {path: "source.ts"});
+            expect(JSON.stringify(f.session.history)).toContain("MEMORY_BODY_MUST_NOT_RETURN");
+            if (mode === "unavailable") await writeFile(join(memory.directory, "state.json"), "invalid state");
+            const run = createMemoryAwareAgentRunner(async (_prompt, _history, _event, ctx, _channel, options) => {
+                await options.getAdditionalUserContextBlocks?.();
+                expect(ctx.memoryFiles).toBeUndefined();
+                expect((await f.compact(ctx)).compacted).toBe(true);
+                return {reply: "done", reason: "completed", iterations: 1};
+            }, memory);
+            await run(mode === "ignored" ? "本轮不要使用记忆" : "continue", f.session.history, () => {},
+                f.ctx, EMPTY_AGENT_INPUT_CHANNEL, {getToolSchemas: f.resources.toolRuntime.getToolSchemas,
+                    executeTool: f.resources.toolRuntime.executeTool, isToolConcurrencySafe: f.resources.toolRuntime.isConcurrencySafe});
+            expect(f.restored()).toHaveLength(2);
+            const text = JSON.stringify(f.restored());
+            expect(text).toContain("current source");
+            expect(text).not.toContain("MEMORY_BODY_MUST_NOT_RETURN");
+            expect(f.events.some(event => event.type === "tool_call_end" && event.outcome !== "ok")).toBe(true);
             expect(hasCompleteToolPairs(f.session.history)).toBe(true);
         } finally {await f.resources.close();}
     });

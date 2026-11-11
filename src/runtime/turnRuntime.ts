@@ -234,8 +234,7 @@ export function createRootTurnRunnerFactory(
                 await emitEvent({type: "turn_end", input});
                 // Cancellation reports a fact only; never create a fresh signal for notifications.
                 if (!signal.aborted) {
-                    const ctx = session.createContext({signal, host, onEvent: emitEvent, turnId, getSnapshotState});
-                    await onHookResult(await ctx.runHook!(input));
+                    await onHookResult(await session.runTurnHook(input, signal, emitEvent));
                 }
             } catch (error) {
                 try {await onLifecycleIssue({scope: "host", message: "TurnEnd Hook diagnostics failed", error});} catch {}

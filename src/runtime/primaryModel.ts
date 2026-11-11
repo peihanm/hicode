@@ -17,15 +17,13 @@ export interface PrimaryModelRuntime {
 export function createPrimaryModelRuntime(
     initial: ModelTargetSettings,
     initialSources: ResolvedHiCodeSettings["sources"],
-    available?: readonly ModelTargetSettings[],
     initialReasoning: readonly ReasoningPreference[] = []
 ): PrimaryModelRuntime {
     let target = {...initial};
     let preferences = initialReasoning.map(item => ({...item}));
     const reasoningFor = (source: ModelTargetSettings["source"], model: string) => preferences.find(item => item.source === source && item.model === model)?.effort;
     let sources = structuredClone(initialSources);
-    let supplied = available?.map(candidate => ({...candidate}));
-    const candidates = () => supplied ?? listConfiguredPrimaryModels(sources);
+    const candidates = () => listConfiguredPrimaryModels(sources);
     return {
         get target() {return {...target};},
         get isConfigured() {return candidates().some(item => item.source === target.source && item.model === target.model);},
@@ -45,7 +43,6 @@ export function createPrimaryModelRuntime(
         hasCredential(source) {return sourceIsAvailable(sources[source], process.env);},
         updateSources(next) {
             sources = structuredClone(next);
-            supplied = undefined;
         },
         select(next) {
             const selected = candidates().find(item => item.source === next.source && item.model === next.model);

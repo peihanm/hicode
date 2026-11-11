@@ -2,7 +2,7 @@ import {useTerminalInput} from "./terminalInput.js";
 import {basename, dirname} from "node:path";
 import stringWidth from "string-width";
 import {useFileSuggestions} from "./useFileSuggestions.js";
-import type {FileSuggestions} from "../../runtime/fileSuggestions.js";
+import type {FileSuggestions} from "./fileSuggestions.js";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {Box, Text} from "ink";
 import {COLORS, SYMBOLS} from "../theme.js";

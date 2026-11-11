@@ -376,8 +376,8 @@ export function createSubagentFactories(
                         await onChildEvent?.(event);
                     };
                     childContext.onHookEvent = recordChildEvent;
-                    childContext.restoreAfterCompaction = (previous, current, fits) => restoreCompactedContext({
-                        previous, history: current, ctx: childContext, executeTool: executeChildTool, onEvent: recordChildEvent, fits,
+                    childContext.restoreAfterCompaction = (activeContext, previous, current, fits) => restoreCompactedContext({
+                        previous, history: current, ctx: activeContext, executeTool: executeChildTool, onEvent: recordChildEvent, fits,
                     });
                     const childPrompt = firstRun && request.contextSnapshot !== undefined
                         ? createForkDirective({

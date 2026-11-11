@@ -102,14 +102,14 @@ test("child 自动补回使用自己的 cwd/Scoped Runtime 并重验父权限，
    expect(read.modelContent).not.toContain("parent source");
    const previous: Message[] = [...history,{role:"assistant",content:null,tool_calls:[call]},
     {role:"tool",tool_call_id:call.id,content:read.modelContent}];
-   await child.restoreAfterCompaction!(previous,history,()=>true);
+   await child.restoreAfterCompaction!(child, previous,history,()=>true);
    expect(history.at(-1)?.content).toContain("child source");
    const last = history.at(-2);
    expect(last?.role === "assistant" && last.tool_calls?.[0]?.function.arguments).toContain(childCwd);
    expect(child.availableTools.map(tool=>tool.name)).toEqual(["read_file"]);
    parent.permissionRules.deny.push({toolName:"read_file",source:"host"});
    const denied: Message[] = [history[0]!];
-   await child.restoreAfterCompaction!(previous,denied,()=>true);
+   await child.restoreAfterCompaction!(child, previous,denied,()=>true);
    expect(denied.at(-1)?.content).toContain("Permission denied");
    return {reason:"completed",reply:"done",iterations:1};
   };

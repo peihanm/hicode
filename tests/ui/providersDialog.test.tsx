@@ -1,3 +1,4 @@
+import {configuredModelSources} from "../helpers/modelSources.js";
 import {afterEach, expect, spyOn, test} from "bun:test";
 import {cleanup, render} from "ink-testing-library";
 import {readFile} from "node:fs/promises";
@@ -6,7 +7,7 @@ import {ProvidersDialog} from "../../src/ui/providers/ProvidersDialog.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
 import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
-import {withTempProject} from "../helpers/tempProject.js";
+import {withTempProject, registerTempCleanup} from "../helpers/tempProject.js";
 import {AppForTest} from "../helpers/AppForTest.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
 import {LLM_PROVIDER_NAMES} from "../../src/llm/providerRegistry.js";
@@ -20,7 +21,7 @@ async function until(check: () => boolean) {for (let i = 0; i < 100 && !check();
 test("model ID input wraps and expands while keeping the exact unsaved value", async () => {
     await withTempProject(async (cwd, storage) => {
         const settings = resolveHiCodeSettings([]).values;
-        const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources, [settings.models.primary]);
+        const runtime = createPrimaryModelRuntime(settings.models.primary, configuredModelSources(settings.sources, [settings.models.primary], registerTempCleanup));
         const configuration = createModelConfiguration(storage, cwd, runtime);
         const save = spyOn(configuration, "addModel");
         const view = render(<ProvidersDialog runtime={runtime} configuration={configuration} onSelect={async () => {}} onClose={() => {}}/>);
@@ -86,7 +87,9 @@ test("Ark provider saves a masked dedicated key and configures DeepSeek reasonin
 test("provider form masks secrets, cancels without saving, then adds a model with an optional label", async () => {
     await withTempProject(async (cwd, storage) => {
         const settings = resolveHiCodeSettings([]).values;
-        const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources, [settings.models.primary]);
+        process.env.GLM_API_KEY = "offline-existing-key";
+        const current = settings.sources.glm.models[0]!;
+        const runtime = createPrimaryModelRuntime({source: "glm", model: current.id, label: current.label}, settings.sources);
         const config = createModelConfiguration(storage, cwd, runtime);
         const app = render(<ProvidersDialog runtime={runtime} configuration={config} onSelect={async () => {}} onClose={() => {}}/>);
         await tick();
@@ -214,7 +217,7 @@ test("first setup saves Qwen, chooses its model and returns to chat without Esca
 test("provider list has a visible finish action and failed selection stays open", async () => {
     await withTempProject(async (cwd, storage) => {
         const settings = resolveHiCodeSettings([]).values;
-        const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources, [settings.models.primary]);
+        const runtime = createPrimaryModelRuntime(settings.models.primary, configuredModelSources(settings.sources, [settings.models.primary], registerTempCleanup));
         const config = createModelConfiguration(storage, cwd, runtime);
         let closed = 0;
         const app = render(<ProvidersDialog runtime={runtime} configuration={config}
@@ -248,7 +251,7 @@ test.each(["providers", "key", "model"] as const)("incomplete setup: Escape from
     await withTempProject(async (cwd, storage) => {
         const settings = resolveHiCodeSettings([]).values;
         const available = page === "model" ? [{source: "deepseek" as const, model: "deepseek-flash", label: "DeepSeek Flash"}] : [];
-        const runtime = createPrimaryModelRuntime(settings.models.primary, settings.sources, available);
+        const runtime = createPrimaryModelRuntime(settings.models.primary, configuredModelSources(settings.sources, available, registerTempCleanup));
         const resources = createTestRuntimeResources(cwd, {storage, settings, primaryModel: runtime});
         const shutdown = spyOn(resources, "beginShutdown");
         const app = render(<AppForTest resources={resources}/>);

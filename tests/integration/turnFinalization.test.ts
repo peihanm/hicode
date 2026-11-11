@@ -1,9 +1,9 @@
-import {expect, test} from "bun:test";
+import {expect, test, spyOn} from "bun:test";
 import {createRootTurnRunnerFactory} from "../../src/runtime/turnRuntime.js";
 import type {HookInput} from "../../src/hooks/types.js";
 import {withTempProject} from "../helpers/tempProject.js";
 import {continuityFixture, continuityHost, continuityState} from "../helpers/continuity.js";
-import {createFakeLLM} from "../helpers/fakeLLM.js";
+import {createFakeLLM, assistantText} from "../helpers/fakeLLM.js";
 
 test.each([false, true])("failed Turn reports persistence accurately (saveFailure=%s) without hiding the original error", async saveFailure => {
     await withTempProject(async (cwd, storage) => {
@@ -38,5 +38,35 @@ test("cancellation still finalizes exactly once after saving", async () => {
             expect(outcomes).toHaveLength(1);
             expect(outcomes[0]).toMatchObject({status: "cancelled", reason: "user-cancel", persistence_status: "saved"});
         } finally {await fixture.resources.close();}
+    });
+});
+
+
+test.each([false, true])("TurnEnd uses the Session Hook scope without reconstructing ToolContext (earlyFailure=%s)", async earlyFailure => {
+    await withTempProject(async (cwd, storage) => {
+        const fixture = continuityFixture(cwd, storage, createFakeLLM([assistantText("done")]).callLLM);
+        const contexts = spyOn(fixture.session, "createContext");
+        const hooks: Array<{input: HookInput; session: unknown}> = [];
+        const hookSpy = spyOn(fixture.resources.hooks, "execute").mockImplementation(async (input, _signal, context) => {
+            hooks.push({input, session: context?.session});
+            return {blocked: false, additionalContexts: [], executions: []};
+        });
+        const initialization = earlyFailure ? spyOn(fixture.session, "initialize").mockRejectedValue(new Error("initialization failed")) : undefined;
+        try {
+            const result = createRootTurnRunnerFactory()({resources: fixture.resources, session: fixture.session,
+                host: continuityHost, signal: new AbortController().signal, turnId: "single-context", prompt: "test",
+                getSnapshotState: continuityState, onEvent() {}, onHookResult() {}, onLifecycleIssue() {}});
+            if (earlyFailure) await expect(result).rejects.toThrow("initialization failed");
+            else await expect(result).resolves.toMatchObject({reason: "completed"});
+            expect(contexts).toHaveBeenCalledTimes(earlyFailure ? 0 : 1);
+            const end = hooks.filter(hook => hook.input.hook_event_name === "TurnEnd");
+            expect(end).toHaveLength(1);
+            expect(end[0]!.input).toMatchObject({session_id: fixture.session.sessionId, turn_id: "single-context",
+                status: earlyFailure ? "failed" : "completed"});
+            if (!earlyFailure) expect(end[0]!.session).toBe(hooks[0]!.session);
+        } finally {
+            initialization?.mockRestore(); contexts.mockRestore(); hookSpy.mockRestore();
+            await fixture.resources.close();
+        }
     });
 });

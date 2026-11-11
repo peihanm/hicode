@@ -1,7 +1,12 @@
-import {describe, expect, test} from "bun:test";
+import {configuredModelSources} from "../helpers/modelSources.js";
+import {afterEach, describe, expect, test} from "bun:test";
 import {listConfiguredPrimaryModels} from "../../src/llm/modelCatalog.js";
 import {createPrimaryModelRuntime} from "../../src/runtime/primaryModel.js";
 import {resolveHiCodeSettings} from "../../src/settings/resolve.js";
+
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(async () => {for (const cleanup of cleanups.splice(0)) await cleanup();});
+const registerCleanup = (cleanup: () => Promise<void>) => {cleanups.push(cleanup);};
 
 describe("primary model catalog", () => {
     test("Ark Agent Plan has independent credentials and a distinct DeepSeek catalog entry", () => {
@@ -14,7 +19,7 @@ describe("primary model catalog", () => {
         expect(listConfiguredPrimaryModels(sources, {QWEN_TOKEN_PLAN_API_KEY:"qwen"}).some(model => model.source === "ark-agent-plan")).toBe(false);
         expect(sources["ark-agent-plan"].models[0]?.imageInput).toBe(true);
         const available = listConfiguredPrimaryModels(sources, {ARK_AGENT_PLAN_API_KEY:"ark", QWEN_TOKEN_PLAN_API_KEY:"qwen"});
-        const runtime = createPrimaryModelRuntime(ark[0]!, sources, available);
+        const runtime = createPrimaryModelRuntime(ark[0]!, configuredModelSources(sources, available, registerCleanup));
         runtime.select(available.find(model => model.source === "qwen-token-plan" && model.model === "deepseek-v4.1-flash")!);
         expect(runtime.target.source).toBe("qwen-token-plan");
         runtime.select(ark[0]!);
@@ -33,7 +38,7 @@ describe("primary model catalog", () => {
         const ordinaryFlash = ordinary.find(model => model.model === "qwen3.8-flash")!;
         const planFlash = plan[0]!;
         expect(ordinaryFlash.label).not.toBe(planFlash.label);
-        const runtime = createPrimaryModelRuntime(ordinaryFlash, sources, available);
+        const runtime = createPrimaryModelRuntime(ordinaryFlash, configuredModelSources(sources, available, registerCleanup));
         runtime.select(planFlash);
         expect(runtime.target.source).toBe("qwen-token-plan");
         runtime.select(ordinaryFlash);
@@ -74,7 +79,7 @@ describe("primary model catalog", () => {
         ]);
     });
 
-    test("Runtime 只允许切换到启动时确认可用的候选", () => {
+    test("Runtime 只允许切换到有凭证且配置已声明的候选", () => {
         const sources = resolveHiCodeSettings([]).values.sources;
         const initial = {
             source: "qwen" as const,
@@ -88,8 +93,7 @@ describe("primary model catalog", () => {
         };
         const runtime = createPrimaryModelRuntime(
             initial,
-            sources,
-            [initial, alternative]
+            configuredModelSources(sources, [initial, alternative], registerCleanup)
         );
 
         runtime.select(alternative);
@@ -107,6 +111,6 @@ test("可信来源声明的别名不会被模型家族前缀过滤，未声明�
     sources.qwen = {...sources.qwen, models: [{id: "vendor/custom-alias", label: "Alias"}]};
     const available = listConfiguredPrimaryModels(sources, {DASHSCOPE_API_KEY: "fixture"});
     expect(available).toEqual([{source: "qwen", model: "vendor/custom-alias", label: "Alias"}]);
-    const runtime = createPrimaryModelRuntime(available[0]!, sources, available);
+    const runtime = createPrimaryModelRuntime(available[0]!, configuredModelSources(sources, available, registerCleanup));
     expect(() => runtime.select({...available[0]!, model: "undeclared"})).toThrow("is unavailable");
 });

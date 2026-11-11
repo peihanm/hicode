@@ -1,5 +1,5 @@
 import {restoreCompactedContext} from "../context/restore.js";
-import {formatUserAnswers} from "./userQuestions.js";
+import {createSessionUserQuestions} from "./userQuestions.js";
 import {SessionPermissionPolicy} from "../permissions/sessionPolicy.js";
 import {PermissionRequests} from "../permissions/requests.js";
 import {createSubagentRecordAccess} from "../subagents/recordView.js";
@@ -15,7 +15,7 @@ import {createFileStateTracker} from "../tools/files/state.js";
 import type {AgentEvent} from "../agent/types.js";
 import type {CompactState} from "../context/index.js";
 import type {PersistedUIEvent} from "../session/index.js";
-import {createHookSessionRuntime, type HookBatchResult, type HookExecutionContext} from "../hooks/index.js";
+import {createHookSessionRuntime, type HookBatchResult, type HookExecutionContext, type HookInput} from "../hooks/index.js";
 import type {Message} from "../llm/types.js";
 import {
     createDirectoryAccessRuntime,
@@ -97,6 +97,8 @@ export interface RootSessionRuntime {
         onEvent?: HookExecutionContext["onEvent"]
     ): Promise<HookBatchResult>;
 
+    runTurnHook(input: HookInput, signal: AbortSignal, onEvent?: HookExecutionContext["onEvent"]): Promise<HookBatchResult>;
+
     runSessionEnd(reason: string, onEvent?: HookExecutionContext["onEvent"]): Promise<HookBatchResult>;
 }
 
@@ -148,9 +150,6 @@ export function createRootSessionRuntime({
     const unsubscribeDirectoryGrants = directoryAccess.subscribe(() => {void permissionRequests.reconsider();});
     let initializePromise: Promise<void> | undefined;
     let turnActive = false;
-    const questionController = new AbortController();
-    const pendingQuestions = new Set<string>();
-    const questionIssues: string[] = [];
     let currentSnapshotState: (() => RootSessionSnapshotState) | undefined;
 
     const snapshot = (
@@ -169,6 +168,18 @@ export function createRootSessionRuntime({
         ...(state.allowEmpty ? {allowEmpty: true} : {}),
         ...(state.summaryHint ? {summaryHint: state.summaryHint} : {}),
     });
+
+    const questions = createSessionUserQuestions({
+        queue: messageQueue,
+        async persistIfIdle() {
+            if (turnActive) return;
+            if (!currentSnapshotState) throw new Error("Question delivery requires Session snapshot state");
+            await persistence.save(snapshot(currentSnapshotState()));
+        },
+    });
+    const runTurnHook = (input: HookInput, signal: AbortSignal, onEvent?: HookExecutionContext["onEvent"]) =>
+        resources.hooks.execute({...input, session_id: seed.sessionId}, signal,
+            {session: hookSession, store: toolResultStore, onEvent});
 
     return {
         invalidateApprovals: () => approvalEpoch.invalidate(),
@@ -223,44 +234,12 @@ export function createRootSessionRuntime({
                 },
                 host,
             });
-            ctx.restoreAfterCompaction = (previous, current, fits) => restoreCompactedContext({
-                previous, history: current, ctx, executeTool: resources.toolRuntime.executeTool, onEvent, fits,
+            ctx.restoreAfterCompaction = (activeContext, previous, current, fits) => restoreCompactedContext({
+                previous, history: current, ctx: activeContext, executeTool: resources.toolRuntime.executeTool, onEvent, fits,
             });
-            if (host.getPermissionPromptPolicy() === "onRequest") ctx.userQuestions = {
-                ask(input, requestId) {
-                    if (signal.aborted || questionController.signal.aborted) throw new Error("Question request cancelled");
-                    if (pendingQuestions.size >= 4 || pendingQuestions.has(requestId)) throw new Error("Too many pending questions or duplicate request ID");
-                    const frozen = structuredClone(input);
-                    pendingQuestions.add(requestId);
-                    const questionSignal = AbortSignal.any([signal, questionController.signal]);
-                    // Session owns outstanding questions; a normal turn end must not erase them.
-                    void Promise.resolve().then(() => {
-                        questionSignal.throwIfAborted();
-                        return host.canUseTool("ask_user", frozen.questions[0]!.question, structuredClone(frozen), {
-                            signal: questionSignal, allowPersistent: false, questionDelivery: "async",
-                        });
-                    }).then(async decision => {
-                        if (questionSignal.aborted) return;
-                        if (decision.behavior !== "allow") {
-                            messageQueue.enqueueRuntime(`Question request ${requestId} was declined or unavailable: ${decision.message}. No answer or authorization was supplied.`);
-                            if (!turnActive) await persistence.save(snapshot(currentSnapshotState!()));
-                            return;
-                        }
-                        const answer = formatUserAnswers(frozen.questions, decision.answers);
-                        if (!answer || decision.directoryScope || decision.networkScope) throw new Error("Invalid asynchronous user answers");
-                        messageQueue.enqueueUserAnswer(`Response to question request ${requestId}:\n${answer}`);
-                        if (!turnActive) await persistence.save(snapshot(currentSnapshotState!()));
-                    }).catch(error => {
-                        if (!questionSignal.aborted) {
-                            const issue = `Question ${requestId}: ${String(error)}`;
-                            questionIssues.push(issue);
-                            if (questionIssues.length > 32) questionIssues.shift();
-                            try {messageQueue.enqueueRuntime(issue);} catch { /* Storage diagnostics retain undeliverable failures. */ }
-                        }
-                    }).finally(() => pendingQuestions.delete(requestId));
-                    return requestId;
-                },
-            };
+            if (host.getPermissionPromptPolicy() === "onRequest") {
+                ctx.userQuestions = questions.forTurn(signal, host.canUseTool);
+            }
             ctx.sessionArchives = createSessionArchiveAccess(resources.storage, resources.cwd, seed.sessionId, () => compactState);
             ctx.subagentRecords = createSubagentRecordAccess(resources.storage, resources.cwd, seed.sessionId);
             ctx.approvalEvidence = () => captureApprovalEvidence(history);
@@ -292,11 +271,8 @@ export function createRootSessionRuntime({
             };
             ctx.holdHookConfiguration = resources.holdHookConfiguration;
             ctx.onHookEvent = onEvent;
-            ctx.runHook = async (input, hookSignal = signal) => {
-                const result = await resources.hooks.execute({...input, session_id: seed.sessionId, turn_id: ctx.turnId},
-                    hookSignal, {session: hookSession, store: toolResultStore, onEvent});
-                return result;
-            };
+            ctx.runHook = (input, hookSignal = signal) =>
+                runTurnHook({...input, turn_id: ctx.turnId}, hookSignal, onEvent);
             ctx.hookControl = {inspect: () => resources.hooks.inspect(), reload: async hookSignal => {
                 if (turnActive) throw new Error("Cannot reload Hooks before the turn ends");
                 await resources.reloadHooks(hookSignal);
@@ -310,7 +286,7 @@ export function createRootSessionRuntime({
         createSnapshot: snapshot,
         saveSnapshot: persistence.save,
         flushSnapshots: persistence.drain,
-        takeStorageIssues: () => [...persistence.takeIssues(), ...questionIssues.splice(0)],
+        takeStorageIssues: () => [...persistence.takeIssues(), ...questions.takeIssues()],
         async beginTurn(prompt, state) {
             await this.initialize();
             if (turnActive) throw new Error("This Session is already running");
@@ -329,9 +305,9 @@ export function createRootSessionRuntime({
                 model: resources.model,
             }, signal, {session: hookSession, store: toolResultStore, onEvent});
         },
+        runTurnHook,
         async runSessionEnd(reason, onEvent) {
-            questionController.abort("session-ended");
-            pendingQuestions.clear();
+            questions.close();
             unsubscribeDirectoryGrants();
             permissionRequests.dispose();
             const controller = new AbortController();

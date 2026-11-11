@@ -7,7 +7,7 @@ import {createChildProcessEnvironment} from "../../src/runtime/childEnvironment.
 import {createDisabledSandboxRuntime} from "../helpers/sandbox.js";
 import type {ShellTermination} from "../../src/tools/bash/process.js";
 import {testChildEnvironment} from "../helpers/childEnvironment.js";
-import {FileSuggestions} from "../../src/runtime/fileSuggestions.js";
+import {FileSuggestions} from "../../src/ui/input/fileSuggestions.js";
 import {createTestContext} from "../helpers/testContext.js";
 import {withTempProject} from "../helpers/tempProject.js";
 

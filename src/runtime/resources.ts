@@ -214,7 +214,7 @@ export function createRootRuntimeResourcesFactory(
             const shellRunner = createShellRunner(sandbox, childEnvironment);
             const primaryModel = createPrimaryModelRuntime(
                 settings.models.primary,
-                settings.sources, undefined, settings.models.reasoning
+                settings.sources, settings.models.reasoning
             );
             const gitWorkspace = createGitWorkspaceRuntime(
                 cwd,
@@ -331,7 +331,6 @@ export function createRootRuntimeResourcesFactory(
                 sandbox
             );
 
-            let finalClose: Promise<void> | undefined;
             let hookUsers = 0;
             let hooksReloading = false;
             return {
@@ -390,7 +389,7 @@ export function createRootRuntimeResourcesFactory(
                 fileCommits,
                 gitWorkspace,
                 beginShutdown: closeOwnedResources.beginShutdown,
-                close: () => finalClose ??= closeOwnedResources!.close(),
+                close: closeOwnedResources.close,
             };
         } catch (error) {
             if (closeOwnedResources) {

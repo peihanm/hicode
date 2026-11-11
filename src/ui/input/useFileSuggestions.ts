@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import type {Key} from "ink";
-import type {FileSuggestions, FileSuggestionResult} from "../../runtime/fileSuggestions.js";
+import type {FileSuggestions, FileSuggestionResult} from "./fileSuggestions.js";
 import type {InputAtomicRange, InputBoundaryState} from "./MultilineTextInput.js";
 import {completeFileMention, fileMentionAt} from "./fileMention.js";
 

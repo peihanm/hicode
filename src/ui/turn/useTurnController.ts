@@ -1,6 +1,6 @@
 import {InteractiveEvents} from "../interactiveEvents.js";
 import type {McpToolPolicy} from "../../mcp/types.js";
-import {FileSuggestions} from "../../runtime/fileSuggestions.js";
+import {FileSuggestions} from "../input/fileSuggestions.js";
 import {importSelectedImages} from "../../runtime/imageInput.js";
 import {supportsToolImages} from "../../images/request.js";
 import {imageReferences, type MessageContent} from "../../images/content.js";

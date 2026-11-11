@@ -1,3 +1,4 @@
+import {configuredModelSources} from "./modelSources.js";
 import {createModelConfiguration} from "../../src/settings/modelConfiguration.js";
 import {DEFAULT_CONTEXT_SETTINGS} from "../../src/context/budget.js";
 import {FileCommitCoordinator} from "../../src/tools/files/io.js";
@@ -132,10 +133,10 @@ export function createTestRuntimeResources(
   const shellRunner = createShellRunner(sandbox, testChildEnvironment);
   const settings = overrides.settings ?? createTestSettings();
   const storage = overrides.storage ?? createTestStorage(cwd);
+  let releaseModelSources = async () => {};
   const primaryModel = overrides.primaryModel ?? createPrimaryModelRuntime(
     settings.models.primary,
-    settings.sources,
-    [settings.models.primary], settings.models.reasoning
+    configuredModelSources(settings.sources, [settings.models.primary], cleanup => {releaseModelSources = cleanup;}), settings.models.reasoning
   );
   const defaultCatalog = createSubagentCatalog({
     load: async () => ({definitions: [], issues: []}),
@@ -231,6 +232,7 @@ export function createTestRuntimeResources(
       beginShutdown();
       await taskClosePromise;
       await sandbox.close();
+      await releaseModelSources();
     },
   };
   const result = {

@@ -6,7 +6,7 @@ import {InputBox} from "../../src/ui/input/InputBox.js";
 import {AppForTest} from "../helpers/AppForTest.js";
 import {createTestRuntimeResources} from "../helpers/runtimeResources.js";
 import {withTempProject} from "../helpers/tempProject.js";
-import type {FileSuggestionResult} from "../../src/runtime/fileSuggestions.js";
+import type {FileSuggestionResult} from "../../src/ui/input/fileSuggestions.js";
 
 afterEach(cleanup);
 const tick = () => new Promise(resolve => setTimeout(resolve, 100));
