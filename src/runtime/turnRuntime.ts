@@ -6,25 +6,14 @@ import {
     type AgentRunOptions,
 } from "../agent/index.js";
 import {formatHookContext, type HookBatchResult, type HookInput} from "../hooks/index.js";
-import type {PermissionMode} from "../permissions/index.js";
-import {
-    type SaveSessionSnapshotInput,
-    type PersistedUIEvent,
-} from "../session/index.js";
-import type {Todo} from "../session/todo.js";
+import type {SaveSessionSnapshotInput} from "../session/index.js";
 import type {ToolContextHost} from "./toolContext.js";
 import type {RootRuntimeResources} from "./resources.js";
-import type {RootSessionRuntime} from "./sessionRuntime.js";
+import type {RootSessionRuntime, RootSessionSnapshotState} from "./sessionRuntime.js";
 import {normalizeTurnAbortReason} from "./abort.js";
 import {randomUUID} from "node:crypto";
 import {createTaskNotificationDelivery} from "./taskNotificationDelivery.js";
 import type {TaskJoin} from "../tasks/taskJoin.js";
-
-interface RootTurnSnapshotState {
-    todos: readonly Todo[];
-    permissionMode: PermissionMode;
-    uiEvents: readonly PersistedUIEvent[];
-}
 
 export interface RootTurnLifecycleIssue {
     scope: "session" | "host";
@@ -44,7 +33,7 @@ interface RunRootTurnOptions {
     onLifecycleIssue(issue: RootTurnLifecycleIssue): void | Promise<void>;
     onTurnSettled?(result: AgentResult | undefined): void;
     onTurnFinalized?(outcome: Extract<HookInput, {hook_event_name: "TurnEnd"}>): void | Promise<void>;
-    getSnapshotState(): RootTurnSnapshotState;
+    getSnapshotState(): RootSessionSnapshotState;
     sessionStartContextBlocks?: readonly string[];
     inputChannel?: AgentInputChannel;
     maxIterations?: number;
@@ -100,21 +89,18 @@ export function createRootTurnRunnerFactory(
             return onEvent(event);
         };
 
+        const reportIssue = async (issue: RootTurnLifecycleIssue): Promise<void> => {
+            try {await onLifecycleIssue(issue);}
+            catch { /* Diagnostics must not prevent cleanup or replace the original Turn error. */ }
+        };
+
         const settleHost = async (): Promise<void> => {
             if (hostSettled) return;
             hostSettled = true;
             try {
                 onTurnSettled?.(result);
             } catch (error) {
-                try {
-                    await onLifecycleIssue({
-                        scope: "host",
-                        message: "Turn projection finalization failed",
-                        error,
-                    });
-                } catch {
-                    // Host diagnostic sinks cannot prevent Session saves.
-                }
+                await reportIssue({scope: "host", message: "Turn projection finalization failed", error});
             }
         };
 
@@ -171,9 +157,11 @@ export function createRootTurnRunnerFactory(
                 session.createSnapshot(getSnapshotState())
             );
             sessionSaved = true;
-            if(result.reason==="completed"&&!signal.aborted&&memoryBaseline){
-                try {await session.taskSession.startMemory({turnId,signal,background:true,baseline:memoryBaseline});}
-                catch(error){try{await onLifecycleIssue({scope:"host",message:"Memory source scheduling failed; main task result was saved",error});}catch{}}
+            if (result.reason === "completed" && !signal.aborted && memoryBaseline) {
+                try {await session.taskSession.startMemory({turnId, signal, background: true, baseline: memoryBaseline});}
+                catch (error) {
+                    await reportIssue({scope: "host", message: "Memory source scheduling failed; main task result was saved", error});
+                }
             }
             return result;
         } catch (error) {
@@ -201,24 +189,16 @@ export function createRootTurnRunnerFactory(
                     );
                     sessionSaved = true;
                 } catch (error) {
-                    try {
-                        await onLifecycleIssue({
-                            scope: "session",
-                            message: "Failed to save on the error path",
-                            error,
-                        });
-                    } catch {
-                        // Diagnostic sink failures must not replace the original Turn error.
-                    }
+                    await reportIssue({scope: "session", message: "Failed to save on the error path", error});
                 }
             }
             for (const message of session.takeStorageIssues()) {
-                try { await onLifecycleIssue({scope: "session", message, error: new Error(message)}); } catch {}
+                await reportIssue({scope: "session", message, error: new Error(message)});
             }
             if (sessionSaved) {
                 try {await taskJoin?.acknowledge();}
                 catch (error) {
-                    try {await onLifecycleIssue({scope: "session", message: "Task result notification acknowledgement failed; pending delivery is retained", error});} catch {}
+                    await reportIssue({scope: "session", message: "Task result notification acknowledgement failed; pending delivery is retained", error});
                 }
             }
             const input: Extract<HookInput, {hook_event_name: "TurnEnd"}> = {
@@ -237,12 +217,12 @@ export function createRootTurnRunnerFactory(
                     await onHookResult(await session.runTurnHook(input, signal, emitEvent));
                 }
             } catch (error) {
-                try {await onLifecycleIssue({scope: "host", message: "TurnEnd Hook diagnostics failed", error});} catch {}
+                await reportIssue({scope: "host", message: "TurnEnd Hook diagnostics failed", error});
             } finally {
                 releaseHookTurn();
                 try {await options.onTurnFinalized?.(input);}
                 catch (error) {
-                    try {await onLifecycleIssue({scope: "host", message: "Turn completion delivery failed", error});} catch {}
+                    await reportIssue({scope: "host", message: "Turn completion delivery failed", error});
                 }
             }
         }

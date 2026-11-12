@@ -1,4 +1,4 @@
-import {describe, expect, test} from "bun:test";
+import {describe, expect, test, spyOn} from "bun:test";
 import {createCompactState} from "../../src/context/index.js";
 import {createRootSessionRuntime} from "../../src/runtime/sessionRuntime.js";
 import type {HookRuntime} from "../../src/hooks/index.js";
@@ -105,4 +105,46 @@ describe("RootSessionRuntime", () => {
       await resources.close();
     });
   });
+});
+
+
+test("Root context reads only execution capabilities, freezes its model and keeps the tool catalog live", async () => {
+    await withTempProject(async cwd => {
+        const resources = createTestRuntimeResources(cwd);
+        let model = "first-model";
+        Object.defineProperty(resources, "model", {enumerable: true, get: () => model});
+        Object.defineProperty(resources, "modelConfiguration", {enumerable: true, get() {
+            throw new Error("Root configuration must not be read to build tool context");
+        }});
+        let tools = resources.toolRuntime.getTools();
+        const catalog = spyOn(resources.toolRuntime, "getTools").mockImplementation(() => tools);
+        const runtime = createRootSessionRuntime({resources, seed: {
+            sessionId: "explicit-capabilities", history: [{role: "system", content: "test"}], compactState: createCompactState(),
+        }});
+        const contextInput = {
+            signal: new AbortController().signal, onEvent() {},
+            getSnapshotState: () => ({todos: [], uiEvents: [], permissionMode: "ask" as const}),
+            host: {canUseTool: async () => ({behavior: "deny" as const, message: "test"}), setTodos() {},
+                getPermissionMode: () => "ask" as const, getPermissionPromptPolicy: () => "never" as const,
+                getPermissionRules: runtime.permissions.getRules},
+        };
+        try {
+            const current = runtime.createContext(contextInput);
+            expect(current.model).toBe("first-model");
+            expect(current.tasks).toBe(runtime.taskSession);
+            expect(current.availableTools.length).toBeGreaterThan(0);
+            model = "second-model";
+            tools = [];
+            expect(current.model).toBe("first-model");
+            expect(current.availableTools).toEqual([]);
+            const next = runtime.createContext(contextInput);
+            expect(next.model).toBe("second-model");
+            expect(next.tasks).toBe(current.tasks);
+            expect(next.taskJoin).not.toBe(current.taskJoin);
+        } finally {
+            catalog.mockRestore();
+            await runtime.runSessionEnd("test");
+            await resources.close();
+        }
+    });
 });

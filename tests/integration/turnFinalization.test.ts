@@ -70,3 +70,46 @@ test.each([false, true])("TurnEnd uses the Session Hook scope without reconstruc
         }
     });
 });
+
+
+test("failing diagnostic callbacks preserve the original error and do not stop later finalization", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const original = new Error("original model failure");
+        const fixture = continuityFixture(cwd, storage, createFakeLLM([() => {throw original;}]).callLLM);
+        const reports: string[] = [];
+        let released = 0;
+        let finalized = 0;
+        let finalOutcome: Extract<HookInput, {hook_event_name: "TurnEnd"}> | undefined;
+        let releasedAtFinalization = 0;
+        const hold = spyOn(fixture.resources, "holdHookConfiguration").mockImplementation(() => () => {released++;});
+        const hook = spyOn(fixture.resources.hooks, "execute").mockImplementation(async input => {
+            if (input.hook_event_name === "TurnEnd") throw new Error("end hook failed");
+            return {blocked: false, executions: [], additionalContexts: []};
+        });
+        try {
+            const run = createRootTurnRunnerFactory({saveSession: async () => {throw new Error("disk failed");}});
+            await expect(run({resources: fixture.resources, session: fixture.session, host: continuityHost,
+                signal: new AbortController().signal, prompt: "test", getSnapshotState: continuityState,
+                onEvent() {}, onHookResult() {},
+                onTurnSettled() {throw new Error("projection failed");},
+                async onLifecycleIssue(issue) {reports.push(issue.message); throw new Error("diagnostic sink failed");},
+                onTurnFinalized(outcome) {
+                    finalized++;
+                    releasedAtFinalization = released;
+                    finalOutcome = outcome;
+                    throw new Error("final observer failed");
+                },
+            })).rejects.toBe(original);
+            expect(reports).toEqual([
+                "Turn projection finalization failed",
+                "Failed to save on the error path",
+                "TurnEnd Hook diagnostics failed",
+                "Turn completion delivery failed",
+            ]);
+            expect(finalized).toBe(1);
+            expect(releasedAtFinalization).toBe(1);
+            expect(finalOutcome).toMatchObject({status: "failed", reason: "error", persistence_status: "failed"});
+            expect(released).toBe(1);
+        } finally {hold.mockRestore(); hook.mockRestore(); await fixture.resources.close();}
+    });
+});

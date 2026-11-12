@@ -14,7 +14,7 @@ import type {LoadedSkill} from "../skills/types.js";
 import type {ToolResultStore} from "../toolResults/index.js";
 import type {Todo} from "../session/todo.js";
 import type {Tool, ToolContext} from "../tools/types.js";
-import type {TaskRuntimeLike, TaskSessionLike} from "../tasks/index.js";
+import type {TaskSessionLike} from "../tasks/index.js";
 import type {ShellRunnerLike} from "../tools/bash/shellRunner.js";
 import type {FileStateTracker} from "../tools/files/state.js";
 import {EMPTY_PROJECT_INSTRUCTIONS, type ProjectInstructions,} from "../prompt/instructions.js";
@@ -50,7 +50,6 @@ interface ToolContextResources {
     skills: LoadedSkill[];
     instructions?: ProjectInstructions;
     mcpManager?: McpManagerLike;
-    taskRuntime?: TaskRuntimeLike;
     tasks?: TaskSessionLike | ChildTaskAccess;
     agentMessaging?: AgentMessaging;
     shellRunner: ShellRunnerLike;
@@ -67,8 +66,6 @@ interface ToolContextSession {
     contextUsage: ContextUsageTracker;
     toolResultStore: ToolResultStore;
     toolResultFiles?: ToolContext["toolResultFiles"];
-    allowBackgroundShell?: boolean;
-    allowBackgroundMemory?: boolean;
     hookSession?: HookSessionRuntime;
     directoryAccess?: DirectoryAccessRuntimeLike;
 }
@@ -85,25 +82,14 @@ export interface ToolContextHost {
     setTodos(todos: Todo[]): void | Promise<void>;
 }
 
-export function createToolContext({
-                                      signal,
-                                      turnId,
-                                      resources,
-                                      session,
-                                      host,
-                                  }: {
+export function createToolContext({signal, turnId, resources, session, host}: {
     signal: AbortSignal;
     turnId?: string;
     resources: ToolContextResources;
     session: ToolContextSession;
     host: ToolContextHost;
 }): ToolContext {
-    const tasks: ToolContext["tasks"] = resources.tasks ?? resources.taskRuntime?.forSession({
-        sessionId: session.sessionId,
-        toolResultStore: session.toolResultStore,
-        allowBackgroundShell: session.allowBackgroundShell,
-        allowBackgroundMemory: session.allowBackgroundMemory,
-    });
+    const tasks = resources.tasks;
     const taskJoin = tasks ? new TaskJoin(tasks) : undefined;
     return {
         signal,

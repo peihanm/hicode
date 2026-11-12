@@ -45,10 +45,13 @@ export interface RootSessionSeed {
     taskNotificationReceipts?: readonly string[];
 }
 
-interface RootSessionSnapshotState {
+export interface RootSessionSnapshotState {
     todos: readonly Todo[];
     permissionMode: PermissionMode;
     uiEvents: readonly PersistedUIEvent[];
+}
+
+interface RootSessionSnapshotOptions extends RootSessionSnapshotState {
     allowEmpty?: boolean;
     summaryHint?: string;
 }
@@ -79,14 +82,14 @@ export interface RootSessionRuntime {
         getSnapshotState(): RootSessionSnapshotState;
     }): ToolContext;
 
-    createSnapshot(state: RootSessionSnapshotState): SaveSessionSnapshotInput;
+    createSnapshot(state: RootSessionSnapshotOptions): SaveSessionSnapshotInput;
     saveSnapshot(input: SaveSessionSnapshotInput): Promise<void>;
     flushSnapshots(): Promise<void>;
     takeStorageIssues(): string[];
 
     beginTurn(
         prompt: MessageContent,
-        state: Omit<RootSessionSnapshotState, "allowEmpty" | "summaryHint">
+        state: RootSessionSnapshotState
     ): Promise<void>;
 
     endTurn(): void;
@@ -153,7 +156,7 @@ export function createRootSessionRuntime({
     let currentSnapshotState: (() => RootSessionSnapshotState) | undefined;
 
     const snapshot = (
-        state: RootSessionSnapshotState
+        state: RootSessionSnapshotOptions
     ): SaveSessionSnapshotInput => ({
         cwd: resources.cwd,
         model: resources.model,
@@ -217,7 +220,30 @@ export function createRootSessionRuntime({
             currentSnapshotState = getSnapshotState;
             const ctx = createToolContext({
                 signal, turnId,
-                resources: {...resources, get availableTools() { return resources.toolRuntime.getTools(); }, get toolNames() { return resources.toolRuntime.toolNames; }, contextSettings: resources.settings.context, taskReviewEnabled: resources.settings.taskReview.enabled, tasks: taskSession, agentMessaging: taskSession.messaging},
+                resources: {
+                    storage: resources.storage,
+                    cwd: resources.cwd,
+                    workspaceBoundary: resources.workspaceBoundary,
+                    model: resources.model,
+                    provider: resources.provider,
+                    reasoning: resources.reasoning,
+                    fastModel: resources.fastModel,
+                    fastProvider: resources.fastProvider,
+                    fastReasoning: resources.fastReasoning,
+                    allowFullAccess: resources.allowFullAccess,
+                    approvalReviewer: resources.approvalReviewer,
+                    skills: resources.skills,
+                    instructions: resources.instructions,
+                    shellRunner: resources.shellRunner,
+                    fileCommits: resources.fileCommits,
+                    mcpManager: resources.mcpManager,
+                    contextSettings: resources.settings.context,
+                    taskReviewEnabled: resources.settings.taskReview.enabled,
+                    get availableTools() {return resources.toolRuntime.getTools();},
+                    get toolNames() {return resources.toolRuntime.toolNames;},
+                    tasks: taskSession,
+                    agentMessaging: taskSession.messaging,
+                },
                 session: {
                     webSources,
                     approvalEpoch,
@@ -226,8 +252,6 @@ export function createRootSessionRuntime({
                     contextUsage,
                     toolResultStore,
                     fileState,
-                    allowBackgroundShell,
-                    allowBackgroundMemory,
                     hookSession,
                     directoryAccess,
                     networkAccess,
