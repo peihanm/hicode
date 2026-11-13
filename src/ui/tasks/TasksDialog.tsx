@@ -128,8 +128,8 @@ export function TasksDialog({tasks, stopTask, onClose}: {
                 lines={items.slice(window.start, window.end).flatMap((task, position) => {
                     const focused = index === window.start + position;
                     return [
-                        ...titles[window.start + position]!.map((line, i) => <Text key={`title-${i}`} backgroundColor={focused ? COLORS.surface : undefined}>
-                            <Text color={focused ? COLORS.accent : COLORS.dim}>{i === 0 && focused ? "❯ " : "  "}</Text><Text bold={focused}>{line}</Text>
+                        ...titles[window.start + position]!.map((line, i) => <Text key={`title-${i}`} backgroundColor={focused ? COLORS.accent : undefined} color={focused ? "white" : undefined}>
+                            <Text color={focused ? "white" : COLORS.dim}>{i === 0 && focused ? "❯ " : "  "}</Text><Text bold={focused}>{line}</Text>
                         </Text>),
                         ...summaries[window.start + position]!.map((line, i) => <Text key={`summary-${i}`} color={statusColors[task.status]}>{line}</Text>), " ",
                     ];

@@ -87,6 +87,28 @@ function nextOffset(value: string, cursor: number): number {
     return value.length;
 }
 
+function lineStartOffset(value: string, cursor: number): number {
+    if (cursor <= 0) return 0;
+    const newline = value.lastIndexOf("\n", cursor - 1);
+    return newline === -1 ? 0 : newline + 1;
+}
+
+function lineEndOffset(value: string, cursor: number): number {
+    const newline = value.indexOf("\n", cursor);
+    return newline === -1 ? value.length : newline;
+}
+
+// Whitespace-delimited words only: CJK text without spaces is treated as one word.
+function previousWordOffset(value: string, cursor: number): number {
+    const items = graphemes(value).filter((item) => item.index < cursor);
+    let index = items.length;
+    while (index > 0 && /\s/u.test(items[index - 1]!.segment)) index--;
+    while (index > 0 && !/\s/u.test(items[index - 1]!.segment)) index--;
+    if (index === 0) return 0;
+    const previous = items[index - 1]!;
+    return previous.index + previous.segment.length;
+}
+
 function offsetAtColumn(value: string, row: InputRow, column: number): number {
     let width = 0;
     for (const item of graphemes(value.slice(row.start, row.end))) {
@@ -213,6 +235,25 @@ export function MultilineTextInput({
         moveCursor(nextCursor);
     };
 
+    const deleteRange = (start: number, end: number) => {
+        const value = expectedValueRef.current;
+        let from = Math.max(0, Math.min(start, value.length));
+        let to = Math.max(from, Math.min(end, value.length));
+        // Atomic ranges are sorted and disjoint; expanding the bounds lets one
+        // pass swallow every capsule the deletion touches.
+        for (const range of atomicRanges) {
+            if (range.start >= to || range.end <= from) continue;
+            onAtomicRangeDelete?.(range);
+            from = Math.min(from, range.start);
+            to = Math.max(to, range.end);
+        }
+        if (from === to) return;
+        applyReplacement({
+            value: value.slice(0, from) + value.slice(to),
+            cursorOffset: from,
+        });
+    };
+
     const insert = (text: string, source: "input" | "paste" = "input") => {
         const value = expectedValueRef.current;
         const safeCursor = Math.min(cursorRef.current, value.length);
@@ -321,6 +362,33 @@ export function MultilineTextInput({
                 applyReplacement({value: nextValue, cursorOffset: previous});
             }
             return;
+        }
+        if (key.ctrl && !key.meta) {
+            const action = input.toLowerCase();
+            if (action === "a" || action === "e") {
+                const target = action === "a"
+                    ? lineStartOffset(value, safeCursor)
+                    : lineEndOffset(value, safeCursor);
+                const range = containingAtomicRange(
+                    atomicRanges,
+                    target,
+                    action === "e"
+                );
+                moveCursor(
+                    range
+                        ? action === "a" ? range.start : range.end
+                        : target
+                );
+                return;
+            }
+            if (action === "u" || action === "k" || action === "w") {
+                const start = action === "u"
+                    ? lineStartOffset(value, safeCursor)
+                    : action === "w" ? previousWordOffset(value, safeCursor) : safeCursor;
+                const end = action === "k" ? lineEndOffset(value, safeCursor) : safeCursor;
+                deleteRange(start, end);
+                return;
+            }
         }
         if (
             key.tab ||
