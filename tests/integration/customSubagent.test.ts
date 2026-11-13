@@ -17,14 +17,15 @@ import {attachSubagentLauncher} from "../helpers/subagentLauncher.js";
 function customDefinition(
     overrides: Partial<Pick<AgentDefinition,
         | "agentType"
-        | "whenToUse"
+        | "description"
         | "systemPrompt"
         | "allowedTools"
+        | "readOnly"
     >> = {}
 ): AgentDefinition {
     return {
         agentType: "project-reviewer",
-        whenToUse: "检查当前项目并返回结论",
+        description: "检查当前项目并返回结论",
         systemPrompt: "你是项目审查 Agent。",
         allowedTools: ["read_file"],
 
@@ -108,12 +109,13 @@ describe("custom subagent runtime", () => {
         });
     });
 
-    test("使用主模型和精确工具集，并在 default 模式拒绝嵌套写入确认", async () => {
+    test("使用主模型和精确工具集，只读角色拒绝写入且不申请审批", async () => {
         await withTempProject(async (cwd) => {
             let confirmations = 0;
             const registry = createSubagentRegistry({
                 definitions: [customDefinition({
                     allowedTools: ["read_file", "write_file"],
+                    readOnly: true,
 
                 })],
                 issues: [],
@@ -183,7 +185,7 @@ describe("custom subagent runtime", () => {
         });
     });
 
-    test("直接 Custom child 收窄 Default，且父 allow 不能绕过非交互边界", async () => {
+    test("自定义子 Agent 正常写入授权目录，父 allow 不能绕过只读限制", async () => {
         await withTempProject(async (cwd) => {
             const registry = createSubagentRegistry({
                 definitions: [customDefinition({
@@ -203,8 +205,8 @@ describe("custom subagent runtime", () => {
                         message.role === "tool" &&
                         message.tool_call_id === "allowed-write"
                     );
-                    expect(result?.content).toContain("This Agent only allows read-only tool calls");
-                    return assistantText("写入被拒绝");
+                    expect(result?.content).toContain("Wrote allowed.txt");
+                    return assistantText("写入完成");
                 },
             ]);
             const accepted = createSubagentRunnerForTest({
@@ -223,7 +225,7 @@ describe("custom subagent runtime", () => {
                 prompt: "创建 allowed.txt",
                 parentToolCallId: "custom-accept",
             });
-            expect(await Bun.file(`${cwd}/allowed.txt`).exists()).toBe(false);
+            expect(await Bun.file(`${cwd}/allowed.txt`).text()).toBe("written by child");
 
             const readOnlyLLM = createFakeLLM([
                 assistantToolCall(
@@ -320,6 +322,7 @@ describe("custom subagent runtime", () => {
             const readTool: Tool<typeof parameters> = {
                 name: "mcp__fixture__lookup",
                 description: "lookup",
+                mcp: {serverName: "fixture", annotations: {readOnlyHint: true}},
                 parameters,
                 isReadOnly: () => true,
                 isConcurrencySafe: () => true,
@@ -330,6 +333,7 @@ describe("custom subagent runtime", () => {
             const writeTool: Tool<typeof parameters> = {
                 name: "mcp__fixture__mutate",
                 description: "mutate",
+                mcp: {serverName: "fixture", annotations: {readOnlyHint: false}},
                 parameters,
                 isReadOnly: () => false,
                 async execute() {
@@ -349,16 +353,17 @@ describe("custom subagent runtime", () => {
                 definitions: [customDefinition({
                     agentType: "mcp-reader",
                     allowedTools: [readTool.name, writeTool.name],
+                    readOnly: true,
                 })],
                 issues: [],
             });
             const child = createFakeLLM([
                 (options) => {
                     expect(options.tools.map((tool) => tool.function.name))
-                        .toEqual([readTool.name, writeTool.name]);
+                        .toEqual(["tool_search", "mcp_call"]);
                     return assistantToolCall(
-                        readTool.name,
-                        {value: "safe"},
+                        "mcp_call",
+                        {tool: readTool.name, arguments: {value: "safe"}},
                         "mcp-read"
                     );
                 },
@@ -369,8 +374,8 @@ describe("custom subagent runtime", () => {
                     );
                     expect(result?.content).toContain("lookup:safe");
                     return assistantToolCall(
-                        writeTool.name,
-                        {value: "blocked"},
+                        "mcp_call",
+                        {tool: writeTool.name, arguments: {value: "blocked"}},
                         "mcp-write"
                     );
                 },

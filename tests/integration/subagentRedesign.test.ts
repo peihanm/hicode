@@ -17,7 +17,7 @@ import type {AgentEvent} from "../../src/agent/types.js";
 import {contentText} from "../../src/images/content.js";
 
 const assignment = {agentType: "specialist", description: "Implement a bounded task", prompt: "work", parentToolCallId: "delegate"};
-const registry = () => createSubagentRegistry({issues: [], definitions: [{source: "host", id: "specialist", agentType: "specialist", whenToUse: "work", systemPrompt: "Complete the assignment."}]});
+const registry = () => createSubagentRegistry({issues: [], definitions: [{source: "host", id: "specialist", agentType: "specialist", description: "work", systemPrompt: "Complete the assignment."}]});
 const todo: Todo = {content: "Verify the change", status: "in_progress"};
 
 test("custom child inherits ordinary tools and parent model, owns Todo and Skills, and continues past 30 calls", async () => {
@@ -89,7 +89,8 @@ test("child keeps the real permission-denied result without an extra model final
                 return {content: "Permission denied", outcome: "denied"};
             }};
         const parent = createTestContext(cwd, {toolNames: [...createToolRuntime().toolNames, probe.name]});
-        parent.availableTools = [...parent.availableTools, probe];
+        const availableTools = [...parent.availableTools, probe];
+        Object.defineProperty(parent, "availableTools", {get: () => availableTools});
         const fake = createFakeLLM([assistantToolCall("approval_probe", {}, "deny")]);
         const thread = createSubagentThreadForTest({agentId: "denied", parentContext: parent, onEvent() {}, registry: registry(),
             agentOptions: {callLLM: fake.callLLM}}, assignment);

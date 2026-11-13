@@ -11,7 +11,7 @@ export type AgentFileSource = Exclude<AgentSource, "builtin" | "host">;
 
 interface AgentDefinitionContent {
     agentType: AgentName;
-    whenToUse: string;
+    description: string;
     systemPrompt: string;
     /** Omission inherits parent tools eligible for delegation; an explicit list only narrows them. */
     allowedTools?: readonly string[];

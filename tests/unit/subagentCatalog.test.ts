@@ -10,7 +10,7 @@ import {createToolRuntime} from "../../src/tools/registry.js";
 function definition(name: string, description = `use ${name}`): AgentDefinition {
     return {
         agentType: name,
-        whenToUse: description,
+        description: description,
         systemPrompt: `you are ${name}`,
         allowedTools: ["read_file"],
 

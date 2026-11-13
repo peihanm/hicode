@@ -7,7 +7,7 @@ describe("agent definitions", () => {
     const worker = BUILTIN_SUBAGENT_REGISTRY.get("Worker")!.definition;
     expect(worker.allowedTools).toBeUndefined();
     expect(worker).not.toHaveProperty("maxIterations");
-    expect(worker.whenToUse).toContain("investigation");
+    expect(worker.description).toContain("investigation");
   });
 
   test("只接受已注册的 Agent 类型", () => {

@@ -8,7 +8,7 @@ import {createSessionArchiveAccess, prepareSessionArchive} from "../session/arch
 import {childTaskTool} from "../tools/task/task.js";
 import {createToolCatalog} from "../tools/catalog.js";
 import {isParentTaskSession} from "../tasks/session.js";
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
+import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./definition.js";
 import {ensureSessionIdentity} from "../persistence/storageIdentity.js";
 import {finishPromptLogRun} from "../llm/promptLog.js";
 import type {LLMTrace} from "../llm/types.js";
@@ -29,11 +29,10 @@ import type {Message} from "../llm/types.js";
 import {createToolContext} from "../runtime/toolContext.js";
 import {createAgentSystemPrompt} from "./prompt.js";
 import type {SubagentRegistry} from "./registry.js";
-import {SubagentTranscriptWriter} from "./transcript.js";
+import {SubagentTranscript} from "./transcript.js";
 import type {
     CreateSubagentThread,
     SubagentRequest,
-    SubagentResult,
     SubagentThread,
 } from "./types.js";
 import {createForkDirective, createForkResultFiles} from "./fork.js";
@@ -137,16 +136,12 @@ export function createSubagentFactories(
             ? createForkResultFiles(childHistory, parentContext.toolResultFiles, childToolResultStore)
             : undefined;
 
-        const transcript = new SubagentTranscriptWriter(
+        const transcript = new SubagentTranscript(
             parentContext.storage,
             options.storageCwd ?? parentContext.cwd,
             parentContext.sessionId,
             agentId
         );
-        let transcriptPath: string | undefined;
-        let transcriptStarted = false;
-        let transcriptDisabled = false;
-        let transcriptIssue: string | undefined;
         const hookSession = createHookSessionRuntime();
         let childTodos: Todo[] = [];
         let running = false;
@@ -198,7 +193,7 @@ export function createSubagentFactories(
                         }
                     }
                     try {await ensureSessionIdentity(parentContext.storage, options.storageCwd ?? parentContext.cwd, childOwner);}
-                    catch {transcriptIssue = "Subagent storage identity could not be recorded; task execution continues.";}
+                    catch {transcript.noteIssue("Subagent storage identity could not be recorded; task execution continues.");}
                     const firstRun = runCount === 0;
                     runCount += 1;
                     if (childTodos.every(todo => todo.status === "completed")) childTodos = [];
@@ -287,29 +282,15 @@ export function createSubagentFactories(
                         runId: childContext.turnId, agentId};
                     childContext.llmTrace = logTrace;
                     // Omitting subagentLauncher enforces the no-recursion boundary.
-                    if (!transcriptStarted && !transcriptDisabled) {
-                        try {
-                            await transcript.append({
-                                type: "start",
-                                version: 1,
-                                timestamp: new Date().toISOString(),
-                                parentSessionId: parentContext.sessionId,
-                                parentToolCallId: request.parentToolCallId,
-                                agentId,
-                                agentType: definition.agentType,
-                                ...(request.name ? {agentName: request.name} : {}),
-                                description: request.description,
-                                model: childModel,
-                                cwd,
-                                allowedTools: runtime.toolNames,
-                            });
-                            transcriptPath = transcript.path;
-                            transcriptStarted = true;
-                        } catch {
-                            transcriptDisabled = true;
-                            transcriptIssue = "Subagent transcript is incomplete or unavailable; task execution continues.";
-                        }
-                    }
+                    await transcript.start({
+                        parentToolCallId: request.parentToolCallId,
+                        agentType: definition.agentType,
+                        ...(request.name ? {agentName: request.name} : {}),
+                        description: request.description,
+                        model: childModel,
+                        cwd,
+                        allowedTools: runtime.toolNames,
+                    });
 
                     hookStart = {hook_event_name: "SubagentStart", session_id: parentContext.sessionId,
                         turn_id: parentContext.turnId, parent_turn_id: parentContext.turnId, agent_id: agentId,
@@ -328,20 +309,7 @@ export function createSubagentFactories(
                     let toolUseCount = 0;
                     const recordChildEvent = async (event: AgentEvent): Promise<void> => {
                         if (event.type === "tool_call_start") toolUseCount += 1;
-                        if (transcriptPath && event.type !== "assistant_draft" && event.type !== "assistant_draft_end" &&
-                            event.type !== "model_stream_start" && event.type !== "model_stream_progress" && event.type !== "model_stream_end") {
-                            try {
-                                await transcript.append({
-                                    type: "event",
-                                    timestamp: new Date().toISOString(),
-                                    event,
-                                });
-                            } catch {
-                                transcriptPath = undefined;
-                                transcriptDisabled = true;
-                            transcriptIssue = "Subagent transcript is incomplete or unavailable; task execution continues.";
-                            }
-                        }
+                        await transcript.recordEvent(event);
                         if (event.type === "tool_call_start") {
                             await emit(onEvent, {
                                 type: "subagent_progress",
@@ -408,13 +376,13 @@ export function createSubagentFactories(
                         }
                     );
                     try { await persistence.save(snapshot()); }
-                    catch { transcriptIssue = "Subagent snapshot could not be saved; the report is available only in this process."; }
+                    catch {transcript.noteIssue("Subagent snapshot could not be saved; the report is available only in this process.");}
                     if (result.reason === "completed" &&
                         childTodos.some(todo => todo.status !== "completed")) {
                         result = {...result, reason: "incomplete",
                             reply: `${result.reply}\n\nUnfinished child tasks:\n${childTodos.filter(todo => todo.status !== "completed").map(todo => `- ${todo.content}`).join("\n")}`};
                     }
-                    const subagentResult: SubagentResult = {
+                    const subagentResult = await transcript.finish(childHistory, {
                         agentId,
                         agentType: definition.agentType,
                         ...(request.name ? {agentName: request.name} : {}),
@@ -424,26 +392,7 @@ export function createSubagentFactories(
                         iterations: result.iterations,
                         toolUseCount,
                         durationMs: Date.now() - startedAt,
-                        ...(transcriptPath ? {transcriptPath} : {}),
-                        ...(transcriptIssue ? {transcriptIssue} : {}),
-                    };
-
-                    if (transcriptPath) {
-                        try {
-                            await transcript.append({
-                                type: "snapshot",
-                                timestamp: new Date().toISOString(),
-                                history: childHistory,
-                                result: subagentResult,
-                            });
-                        } catch {
-                            transcriptPath = undefined;
-                            transcriptDisabled = true;
-                            transcriptIssue = "Subagent transcript is incomplete or unavailable; task execution continues.";
-                            delete subagentResult.transcriptPath;
-                            subagentResult.transcriptIssue = transcriptIssue;
-                        }
-                    }
+                    });
 
                     await emit(onEvent, {
                         type: "subagent_end",
@@ -465,22 +414,7 @@ export function createSubagentFactories(
                     return subagentResult;
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
-                    if (transcriptPath) {
-                        try {
-                            await transcript.append({
-                                type: "event",
-                                timestamp: new Date().toISOString(),
-                                event: {
-                                    type: "subagent_error",
-                                    agentId,
-                                    agentType: definition.agentType,
-                                    message,
-                                },
-                            });
-                        } catch {
-                            // Preserve the original execution error.
-                        }
-                    }
+                    await transcript.recordEvent({type: "subagent_error", agentId, agentType: definition.agentType, message});
                     await emit(onEvent, {
                         type: "subagent_error",
                         agentId,

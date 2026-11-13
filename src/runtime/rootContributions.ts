@@ -1,4 +1,4 @@
-import {agentNameSchema, agentDescriptionSchema, agentPromptSchema} from "../subagents/definitionSchema.js";
+import {agentNameSchema, agentDescriptionSchema, agentPromptSchema} from "../subagents/definition.js";
 import {z} from "zod";
 import {hostMcpServerContributionSchema} from "../mcp/config.js";
 import type {HostMcpServerContribution} from "../mcp/types.js";

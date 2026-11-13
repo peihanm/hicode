@@ -1,11 +1,11 @@
-import {agentNameSchema, agentDescriptionSchema} from "./definitionSchema.js";
+import {agentNameSchema, agentDescriptionSchema, agentPromptSchema, agentToolIssues} from "./definition.js";
 import {basename, join} from "node:path";
 import {readdir} from "node:fs/promises";
 import {parse as parseYaml} from "yaml";
 import {z} from "zod";
 import type {AgentDefinition, AgentFileSource, AgentLoadIssue, AgentSource, LoadedCustomAgents,} from "./types.js";
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
 import {
+    getAgentDefinitionDirectory,
     ensureAgentDefinitionDirectory,
     readAgentDefinitionFile,
 } from "./fileAccess.js";
@@ -14,7 +14,6 @@ import type {HostAgentContribution} from "../runtime/rootContributions.js";
 
 export const MAX_AGENT_FILES_PER_SOURCE = 64;
 const MAX_ACTIVE_CUSTOM_AGENTS = 64;
-const MAX_AGENT_PROMPT_CHARS = 40_000;
 const MAX_AGENT_ISSUES = 50;
 const MAX_AGENT_ISSUE_MESSAGE_CHARS = 240;
 const MAX_AGENT_ISSUE_FIELD_CHARS = 80;
@@ -164,20 +163,9 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
         return {issues};
     }
 
-    const body = separated.body.trim();
-    if (!body) {
-        issues.push(issue(input, "error", "Markdown body must not be empty", "body"));
-        return {issues};
-    }
-    if (body.length > MAX_AGENT_PROMPT_CHARS) {
-        issues.push(
-            issue(
-                input,
-                "error",
-                `Markdown body exceeds the ${MAX_AGENT_PROMPT_CHARS} character limit`,
-                "body"
-            )
-        );
+    const body = agentPromptSchema.safeParse(separated.body);
+    if (!body.success) {
+        issues.push(issue(input, "error", body.error.issues[0]!.message, "body"));
         return {issues};
     }
 
@@ -185,8 +173,8 @@ export function parseCustomAgentDocument(input: AgentDocumentInput): {
     return {
         definition: {
             agentType: parsed.data.name,
-            whenToUse: parsed.data.description,
-            systemPrompt: body,
+            description: parsed.data.description,
+            systemPrompt: body.data,
             allowedTools,
             readOnly: parsed.data.read_only,
             source: input.source,
@@ -378,29 +366,9 @@ export function validateCustomAgentTools(
         if (definition.source === "builtin") {
             throw new Error("LoadedCustomAgents must not include built-in definitions");
         }
-        const forbidden = (definition.allowedTools ?? []).filter((name) =>
-            CUSTOM_AGENT_FORBIDDEN_TOOLS.has(name)
-        );
-        const unknown = (definition.allowedTools ?? []).filter(
-            (name) => !available.has(name)
-        );
-        if (forbidden.length > 0 || unknown.length > 0) {
-            if (forbidden.length > 0) {
-                issues.push(issueForDefinition(
-                    definition,
-                    "error",
-                    `Custom Agent cannot use tools: ${forbidden.join(", ")}`,
-                    "tools"
-                ));
-            }
-            if (unknown.length > 0) {
-                issues.push(issueForDefinition(
-                    definition,
-                    "error",
-                    `Tool does not exist in this Runtime: ${unknown.join(", ")}`,
-                    "tools"
-                ));
-            }
+        const problems = agentToolIssues(definition.allowedTools, available);
+        if (problems.length) {
+            for (const problem of problems) issues.push(issueForDefinition(definition, "error", problem, "tools"));
             continue;
         }
         definitions.push(definition);
@@ -419,10 +387,10 @@ export async function loadCustomAgentDefinitions(
 ): Promise<LoadedCustomAgents> {
     const [user, project] = await Promise.all([
         sources.includes("user")
-            ? loadAgentSourceDirectory(join(storage.hicodeHome, "agents"), "user")
+            ? loadAgentSourceDirectory(getAgentDefinitionDirectory(storage, cwd, "user"), "user")
             : {definitions: [], issues: []},
         sources.includes("project")
-            ? loadAgentSourceDirectory(join(cwd, ".hicode", "agents"), "project")
+            ? loadAgentSourceDirectory(getAgentDefinitionDirectory(storage, cwd, "project"), "project")
             : {definitions: [], issues: []},
     ]);
     return mergeCustomAgentSources(
@@ -430,7 +398,7 @@ export async function loadCustomAgentDefinitions(
         project.definitions,
         hostAgents.map((agent) => ({
             agentType: agent.name,
-            whenToUse: agent.description,
+            description: agent.description,
             systemPrompt: agent.systemPrompt,
             allowedTools: agent.tools ? [...new Set(agent.tools)] : undefined,
             readOnly: agent.readOnly,

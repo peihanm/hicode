@@ -1,7 +1,7 @@
-import {CUSTOM_AGENT_FORBIDDEN_TOOLS} from "./registration.js";
+import {CUSTOM_AGENT_FORBIDDEN_TOOLS, agentToolIssues} from "./definition.js";
 import type {AgentCatalogUpdate, SubagentCatalog} from "./catalog.js";
 import type {AgentDefinitionDraft, AgentDefinitionStore, StoredAgentFile,} from "./store.js";
-import type {AgentDefinitionScope} from "./paths.js";
+import type {AgentDefinitionScope} from "./fileAccess.js";
 
 export interface AgentDefinitionManager {
     read(scope: AgentDefinitionScope, name: string): Promise<StoredAgentFile>;
@@ -33,16 +33,8 @@ function validateTools(
     draft: AgentDefinitionDraft,
     availableTools: ReadonlySet<string>
 ): void {
-    const forbidden = (draft.tools ?? []).filter((tool) =>
-        CUSTOM_AGENT_FORBIDDEN_TOOLS.has(tool)
-    );
-    if (forbidden.length > 0) {
-        throw new Error(`Agent cannot use control-plane tools: ${forbidden.join(", ")}`);
-    }
-    const unknown = (draft.tools ?? []).filter((tool) => !availableTools.has(tool));
-    if (unknown.length > 0) {
-        throw new Error(`Tool does not exist in this Runtime: ${unknown.join(", ")}`);
-    }
+    const issues = agentToolIssues(draft.tools, availableTools);
+    if (issues.length) throw new Error(issues.join("\n"));
 }
 
 export function createAgentDefinitionManager({

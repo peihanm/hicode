@@ -1,7 +1,16 @@
-import {WORKER_SUBAGENT} from "./builtins/worker/index.js";
 import {boundAgentLoadIssues, normalizeAgentName} from "./load.js";
-import type {SubagentRegistration} from "./registration.js";
+import type {SubagentRegistration} from "./definition.js";
 import type {AgentDefinition, AgentLoadIssue, LoadedCustomAgents,} from "./types.js";
+
+const WORKER_SUBAGENT: SubagentRegistration = {
+    definition: {
+        agentType: "Worker",
+        source: "builtin",
+        description: "A bounded implementation or investigation with clear ownership and expected evidence. Choose fresh context for independent work or inherit for work that needs the parent background.",
+        systemPrompt: "Complete your assigned work within its scope. Coordinate interfaces with the parent, preserve other workers' changes, and report changed files, actual checks and remaining issues.",
+    },
+    concurrencySafe: true,
+};
 
 function immutableRegistration(
     registration: SubagentRegistration
@@ -33,7 +42,6 @@ function validateRegistration(registration: SubagentRegistration): void {
     if (definition.allowedTools?.length === 0) {
         throw new Error(`Agent ${definition.agentType} has no available tools`);
     }
-
 }
 
 export function createSubagentRegistry(
@@ -71,13 +79,7 @@ export function createSubagentRegistry(
             );
             continue;
         }
-        const runtimeDefinition = Object.freeze({
-            ...definition,
-            allowedTools: definition.allowedTools ? Object.freeze([...definition.allowedTools]) : undefined,
-        });
-        const registration = immutableRegistration(
-            {definition: runtimeDefinition, concurrencySafe: false}
-        );
+        const registration = immutableRegistration({definition, concurrencySafe: false});
         validateRegistration(registration);
         registrationMap.set(key, registration);
     }

@@ -83,7 +83,7 @@ test("未公开工具的取消批次仍完整配对", async () => {
 test("子 Agent 显式工具限制在后续请求中仍拒绝未提供的写入工具", async () => {
     await withTempProject(async cwd => {
         const registry = createSubagentRegistry({issues: [], definitions: [{
-            agentType: "writer", whenToUse: "fixture", systemPrompt: "fixture", allowedTools: ["bash"],
+            agentType: "writer", description: "fixture", systemPrompt: "fixture", allowedTools: ["bash"],
             source: "host", id: "writer",
         }]});
         const fake = createFakeLLM([

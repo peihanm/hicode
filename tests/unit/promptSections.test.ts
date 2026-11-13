@@ -4,8 +4,8 @@ import {createInitialHistory, createSubagentInstructions} from "../../src/prompt
 import {withExecutionContext} from "../../src/prompt/messages.js";
 import {createToolCatalog} from "../../src/tools/catalog.js";
 import {createAgentSystemPrompt} from "../../src/subagents/prompt.js";
-import {WORKER_SUBAGENT} from "../../src/subagents/builtins/worker/index.js";
-const WORKER_AGENT = WORKER_SUBAGENT.definition;
+import {BUILTIN_SUBAGENT_REGISTRY} from "../../src/subagents/registry.js";
+const WORKER_AGENT = BUILTIN_SUBAGENT_REGISTRY.get("Worker")!.definition;
 
 const root = () => contentText(createInitialHistory("/project")[0]!.content);
 const toolDescription = (name: string) => createToolCatalog({}).tools.find(tool => tool.name === name)!.description;

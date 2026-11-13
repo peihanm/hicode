@@ -74,7 +74,7 @@ export function formatAgentRegistryReport(
         return [
             ...(index > 0 ? [""] : []),
             `  ${definition.agentType} · ${definition.source}`,
-            ...wrapDetail(definition.whenToUse),
+            ...wrapDetail(definition.description),
             "    Model Same as main agent",
             ...wrapDetail(
                 definition.allowedTools ? `Tools (${definition.allowedTools.length}) ${definition.allowedTools.join(" · ")}` : "Tools inherited from the main agent"

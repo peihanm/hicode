@@ -8,11 +8,12 @@ import {
     normalizeAgentName,
     parseCustomAgentDocument,
 } from "./load.js";
-import {type AgentDefinitionScope, getAgentDefinitionDirectory,} from "./paths.js";
+import type {AgentDefinitionScope} from "./fileAccess.js";
 import {stringify as stringifyYaml} from "yaml";
 import type {AgentDefinition} from "./types.js";
 import type {HiCodeStorageLayout} from "../persistence/index.js";
 import {
+    getAgentDefinitionDirectory,
     ensureAgentDefinitionDirectory,
     readAgentDefinitionFile,
 } from "./fileAccess.js";

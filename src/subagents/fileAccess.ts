@@ -1,6 +1,7 @@
-import {constants} from "node:fs";
-import {chmod, lstat, mkdir, open} from "node:fs/promises";
-import {dirname} from "node:path";
+import {chmod, lstat, mkdir} from "node:fs/promises";
+import {dirname, join} from "node:path";
+import {readBoundedTextFile} from "../persistence/readTextFile.js";
+import type {HiCodeStorageLayout} from "../persistence/index.js";
 
 const MAX_AGENT_DEFINITION_BYTES = 64_000;
 
@@ -44,32 +45,17 @@ export async function ensureAgentDefinitionDirectory(
 }
 
 export async function readAgentDefinitionFile(path: string): Promise<string> {
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-        const metadata = await handle.stat();
-        if (!metadata.isFile()) {
-            throw new Error("Agent definition must be a regular file");
-        }
-        if (metadata.size > MAX_AGENT_DEFINITION_BYTES) {
-            throw new Error(`File exceeds the ${MAX_AGENT_DEFINITION_BYTES} byte limit`);
-        }
-        const buffer = Buffer.alloc(MAX_AGENT_DEFINITION_BYTES + 1);
-        let offset = 0;
-        while (offset < buffer.byteLength) {
-            const {bytesRead} = await handle.read(
-                buffer,
-                offset,
-                buffer.byteLength - offset,
-                offset
-            );
-            if (bytesRead === 0) break;
-            offset += bytesRead;
-        }
-        if (offset > MAX_AGENT_DEFINITION_BYTES) {
-            throw new Error(`File exceeds the ${MAX_AGENT_DEFINITION_BYTES} byte limit`);
-        }
-        return new TextDecoder("utf-8", {fatal: true}).decode(buffer.subarray(0, offset));
-    } finally {
-        await handle.close();
-    }
+    return readBoundedTextFile(path, MAX_AGENT_DEFINITION_BYTES);
+}
+
+export type AgentDefinitionScope = "user" | "project";
+
+export function getAgentDefinitionDirectory(
+    storage: HiCodeStorageLayout,
+    cwd: string,
+    scope: AgentDefinitionScope
+): string {
+    return scope === "project"
+        ? join(cwd, ".hicode", "agents")
+        : join(storage.hicodeHome, "agents");
 }

@@ -31,7 +31,7 @@ describe("agent definition store", () => {
                 `${cwd}/.hicode/agents/project-reviewer.md`
             );
             expect(await readFile(created.path, "utf8")).toContain(draft().systemPrompt);
-            expect(created.definition.whenToUse).toBe(draft().description);
+            expect(created.definition.description).toBe(draft().description);
 
             const updated = await store.update(
                 "project",
@@ -39,7 +39,7 @@ describe("agent definition store", () => {
                 created.contentHash,
                 draft("检查架构和回归风险")
             );
-            expect(updated.definition.whenToUse).toBe("检查架构和回归风险");
+            expect(updated.definition.description).toBe("检查架构和回归风险");
             await store.remove(
                 "project",
                 "project-reviewer",

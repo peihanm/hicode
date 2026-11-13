@@ -84,7 +84,6 @@ describe("ToolContext builder", () => {
       const skills = [{
         name: "test-skill",
         description: "test",
-        whenToUse: "test",
         content: "test",
         source: "project" as const,
         path: `${cwd}/SKILL.md`,

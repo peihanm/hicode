@@ -1,3 +1,7 @@
+import {execFileSync} from "node:child_process";
+import {readAgentDefinitionFile} from "../../src/subagents/fileAccess.js";
+import {createAgentDefinitionManager} from "../../src/subagents/manager.js";
+import {createAgentDefinitionStore} from "../../src/subagents/store.js";
 import {describe, expect, test} from "bun:test";
 import {mkdir, writeFile} from "node:fs/promises";
 import {join, resolve} from "node:path";
@@ -7,7 +11,7 @@ import {createSubagentRegistry} from "../../src/subagents/registry.js";
 import {parseCustomAgentDocument} from "../../src/subagents/load.js";
 import {
     CUSTOM_AGENT_FORBIDDEN_TOOLS,
-} from "../../src/subagents/registration.js";
+} from "../../src/subagents/definition.js";
 import {withTempProject} from "../helpers/tempProject.js";
 
 function definition(
@@ -19,7 +23,7 @@ function definition(
         agentType,
         source,
         path,
-        whenToUse: `${agentType} description`,
+        description: `${agentType} description`,
         systemPrompt: `${agentType} prompt`,
         allowedTools: ["read_file"],
 
@@ -253,7 +257,7 @@ project prompt`, "utf8");
             const oversized = loaded.issues.find((item) =>
                 item.source !== "host" && item.path.endsWith("oversized.md")
             );
-            expect(oversized?.message).toContain("64000 byte limit");
+            expect(oversized?.message).toContain("64000 byte size limit");
             expect(loaded.definitions.some((item) =>
                 item.agentType === "oversized"
             )).toBe(false);
@@ -335,5 +339,48 @@ changed project prompt`, "utf8");
                 item.message.includes("exceed 64")
             )).toBe(true);
         });
+    });
+});
+
+
+test("loading and saving use the same tool policy and reject before creating a definition", async () => {
+    await withTempProject(async (cwd, storage) => {
+        const catalog = createSubagentCatalog({load: () => loadCustomAgentDefinitions(storage, cwd)});
+        const manager = createAgentDefinitionManager({store: createAgentDefinitionStore(storage, cwd), catalog,
+            getAvailableToolNames: () => ["read_file", "agent"]});
+        const tools = ["agent", "missing_tool"];
+        const loaded = validateCustomAgentTools({issues: [], definitions: [{...definition("reviewer", "project", "fixture"), allowedTools: tools}]},
+            manager.listTools().concat("agent"));
+        const expected = loaded.issues.map(issue => issue.message).join("\n");
+        await expect(manager.create("project", {name: "reviewer", description: "Review", systemPrompt: "Review source", tools}))
+            .rejects.toThrow(expected);
+        expect((await loadCustomAgentDefinitions(storage, cwd)).definitions).toEqual([]);
+        const saved = await manager.create("project", {name: "reviewer", description: "Review", systemPrompt: "Review source", tools: ["read_file"]});
+        expect(saved.file.definition.description).toBe("Review");
+        expect(catalog.get("reviewer")?.definition.description).toBe("Review");
+    });
+});
+
+test("definition reads enforce byte and encoding bounds", async () => {
+    await withTempProject(async cwd => {
+        const path = join(cwd, "definition.md");
+        await writeFile(path, "x".repeat(64_000));
+        expect((await readAgentDefinitionFile(path)).length).toBe(64_000);
+        await writeFile(path, "x".repeat(64_001));
+        await expect(readAgentDefinitionFile(path)).rejects.toThrow("size limit");
+        await writeFile(path, Buffer.from([0xff, 0xfe]));
+        await expect(readAgentDefinitionFile(path)).rejects.toThrow();
+    });
+});
+
+test.skipIf(process.platform === "win32")("FIFO definitions are rejected promptly without waiting for a writer", async () => {
+    await withTempProject(async cwd => {
+        const path = join(cwd, "fifo.md");
+        execFileSync("mkfifo", [path]);
+        const moduleUrl = new URL("../../src/subagents/fileAccess.ts", import.meta.url).href;
+        const script = `import {readAgentDefinitionFile} from ${JSON.stringify(moduleUrl)};
+            try {await readAgentDefinitionFile(${JSON.stringify(path)}); process.exit(1);}
+            catch (error) {if (!String(error).includes("regular file")) throw error;}`;
+        expect(() => execFileSync(process.execPath, ["-e", script], {timeout: 2000})).not.toThrow();
     });
 });

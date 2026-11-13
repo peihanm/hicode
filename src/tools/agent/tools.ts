@@ -1,7 +1,7 @@
 import {createAgentReceipt} from "./receipt.js";
 import {z} from "zod";
 import type {SubagentRegistry} from "../../subagents/registry.js";
-import {hasAgentWriteTools,} from "../../subagents/registration.js";
+import {hasAgentWriteTools,} from "../../subagents/definition.js";
 import type {Tool} from "../types.js";
 import {resolveSubagentDirectory} from "../../subagents/workspace.js";
 import {taskLookupFailure} from "../task/recovery.js";
@@ -58,7 +58,7 @@ function formatAgentToolDescription(
     registry: SubagentRegistry
 ): string {
     const agents = registry.listDefinitions().map((definition) => {
-        const normalizedDescription = definition.whenToUse
+        const normalizedDescription = definition.description
             .replace(/\s+/g, " ")
             .trim();
         const description = normalizedDescription.length > 180

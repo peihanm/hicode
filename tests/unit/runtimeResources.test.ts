@@ -160,7 +160,7 @@ describe("RootRuntimeResources", () => {
             definitions: [
               {
                 agentType: "memory-reader",
-                whenToUse: "读取长期记忆",
+                description: "读取长期记忆",
                 systemPrompt: "读取长期记忆",
                 allowedTools: ["memory"],
 
@@ -187,7 +187,7 @@ describe("RootRuntimeResources", () => {
     await withTempProject(async (cwd) => {
       const custom = (agentType: string): AgentDefinition => ({
         agentType,
-        whenToUse: `使用 ${agentType} 检查代码`,
+        description: `使用 ${agentType} 检查代码`,
         systemPrompt: `你是 ${agentType}`,
         allowedTools: ["read_file", "bash"],
 
@@ -281,7 +281,7 @@ describe("RootRuntimeResources", () => {
         loadedCustomAgents: {
           definitions: [{
             agentType: "mcp-reader",
-            whenToUse: "读取 fixture MCP",
+            description: "读取 fixture MCP",
             systemPrompt: "read fixture",
             allowedTools: ["mcp__fixture__runtime"],
 

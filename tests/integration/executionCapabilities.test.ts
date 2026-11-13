@@ -42,7 +42,7 @@ describe("effective execution capabilities", () => {
             const workspace = `${cwd}/workspace`;
             await mkdir(workspace);
             const registry = createSubagentRegistry({issues: [], definitions: [{
-                source: "host", id: "fixture", agentType: "Writer", whenToUse: "fixture", systemPrompt: "fixture",
+                source: "host", id: "fixture", agentType: "Writer", description: "fixture", systemPrompt: "fixture",
                 allowedTools: ["write_file"],
             }]});
             let approvals = 0;
@@ -95,7 +95,7 @@ describe("effective execution capabilities", () => {
             const tool: Tool = {name: toolName, description: "fixture", parameters: z.object({}),
                 isReadOnly: () => false, async execute() { writes++; return "mutated"; }};
             const registry = createSubagentRegistry({issues: [], definitions: [{
-                source: "host", id: "fixture", agentType: "IndirectWriter", whenToUse: "fixture", systemPrompt: "fixture",
+                source: "host", id: "fixture", agentType: "IndirectWriter", description: "fixture", systemPrompt: "fixture",
                 allowedTools: [toolName],
             }]});
             let approvals = 0;
@@ -104,7 +104,7 @@ describe("effective execution capabilities", () => {
         async initialize() {}, getSnapshots: () => [], getTools: () => [tool], subscribe: () => () => {}, async setToolPolicy() {}, async reconnect() {}, async closeAll() {}},
                 canUseTool: async () => { approvals++; return {behavior: "allow"}; }});
             // Only MCP is supplied dynamically. Bash uses the production tool/runner.
-            if (toolName === "bash") {ctx.mcpManager = undefined; ctx.availableTools = createToolRuntime().getTools();}
+            if (toolName === "bash") {ctx.mcpManager = undefined; Object.defineProperty(ctx, "availableTools", {get: () => createToolRuntime().getTools()});}
             const child = createFakeLLM([
                 assistantToolCall(toolName, toolName === "bash" ? {command: "printf escaped > escaped.txt"} : {}, "write"),
                 options => {
@@ -155,7 +155,7 @@ describe("effective execution capabilities", () => {
     test.each(["ask", "auto-review", "full-access"] as const)("Read-only %s cannot escape via Bash Agent", async permissionMode => {
         await withTempProject(async cwd => {
             const registry = createSubagentRegistry({issues: [], definitions: [{
-                source: "host", id: "fixture", agentType: "ShellHelper", whenToUse: "fixture",
+                source: "host", id: "fixture", agentType: "ShellHelper", description: "fixture",
                 systemPrompt: "fixture", allowedTools: ["bash"],
             }]});
             let approvals = 0;

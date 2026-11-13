@@ -19,7 +19,7 @@ export interface SubagentCatalog extends SubagentRegistry {
 function definitionFingerprint(definition: AgentDefinition): string {
     return JSON.stringify({
         agentType: definition.agentType,
-        whenToUse: definition.whenToUse,
+        description: definition.description,
         systemPrompt: definition.systemPrompt,
         allowedTools: definition.allowedTools,
         readOnly: definition.readOnly,

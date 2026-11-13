@@ -100,7 +100,7 @@ describe("fork subagent", () => {
                     const system = contentText(options.messages[0]!.content);
                     expect(system).toContain("HiCode worker");
                     expect(system).toContain("restricted to read-only tools");
-                    expect(system).toContain("no interactive approval channel");
+                    expect(system).not.toContain("no interactive approval channel");
                     expect(system).not.toContain("root system");
                     expect(history[0]?.content).toBe("root system");
                     expect(options.messages.some((message) =>

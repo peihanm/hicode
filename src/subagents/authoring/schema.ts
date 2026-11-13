@@ -1,5 +1,5 @@
 import {zodToJsonSchema} from "zod-to-json-schema";
-import {agentNameSchema, agentDescriptionSchema, agentPromptSchema} from "../definitionSchema.js";
+import {agentNameSchema, agentDescriptionSchema, agentPromptSchema} from "../definition.js";
 import {z} from "zod";
 import type {OpenAITool} from "../../llm/types.js";
 

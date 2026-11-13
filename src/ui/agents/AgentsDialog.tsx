@@ -41,7 +41,7 @@ function agentDescription(definition: AgentDefinition): string {
     if (definition.source === "builtin") {
         if (definition.agentType === "Worker") return "Implement changes or investigate a focused task.";
     }
-    return definition.whenToUse;
+    return definition.description;
 }
 
 const EMPTY_DRAFT: AgentDefinitionDraft = {
@@ -67,7 +67,7 @@ function sourceLabel(definition: AgentDefinition): string {
 function draftFromStored(file: StoredAgentFile): AgentDefinitionDraft {
     return {
         name: file.definition.agentType,
-        description: file.definition.whenToUse,
+        description: file.definition.description,
         tools: file.definition.allowedTools,
         readOnly: file.definition.readOnly,
         systemPrompt: file.definition.systemPrompt,

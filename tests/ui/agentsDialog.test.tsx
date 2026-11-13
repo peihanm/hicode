@@ -81,7 +81,7 @@ describe("Agents dialog", () => {
             const subagents = createSubagentRegistry({definitions: Array.from({length: 10}, (_, index) => ({
                 agentType: `reviewer-${index}`, source: "project" as const,
                 path: `${cwd}/.hicode/agents/reviewer-${index}.md`,
-                whenToUse: "Review a focused module", systemPrompt: "Review only.",
+                description: "Review a focused module", systemPrompt: "Review only.",
                 allowedTools: ["read_file"],
             })), issues: []});
             const resources = createTestRuntimeResources(cwd, {subagents});

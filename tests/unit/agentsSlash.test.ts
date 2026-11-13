@@ -10,7 +10,7 @@ describe("/agents slash command", () => {
         await withTempProject(async (cwd) => {
             const reviewer: AgentDefinition = {
                 agentType: "reviewer",
-                whenToUse: "审查实现风险",
+                description: "审查实现风险",
                 systemPrompt: "review",
                 allowedTools: ["read_file", "bash"],
 
@@ -51,7 +51,7 @@ describe("/agents slash command", () => {
 
             expect(handled).toBe(true);
             expect(messages).toHaveLength(1);
-            expect(messages[0]).toContain("Agents · 3 available");
+            expect(messages[0]).toContain("Agents · 2 available");
             expect(messages[0]).toContain("reviewer · project");
             expect(messages[0]).toContain("Model Same as main agent");
             expect(messages[0]).toContain("Tools (2) read_file · bash");

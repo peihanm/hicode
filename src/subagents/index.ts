@@ -18,7 +18,7 @@ export {
     type AgentDefinitionDraft,
     type StoredAgentFile,
 } from "./store.js";
-export type {AgentDefinitionScope} from "./paths.js";
+export type {AgentDefinitionScope} from "./fileAccess.js";
 export {
     createAgentDefinitionManager,
     type AgentDefinitionManager,
@@ -26,4 +26,4 @@ export {
 export {
     createAgentAuthoringRuntime,
     type AgentAuthoringRuntime,
-} from "./authoring/index.js";
+} from "./authoring/generator.js";
