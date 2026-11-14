@@ -71,6 +71,14 @@ HiCode：本轮评测于 2026 年 10 月 22 日结束，累计通过 **108/113�
 
 ### 近期重点优化
 
+- 🧠 **11-14 · 长任务稳定性与终端体验**：优化上下文压缩与近期文件、Skill 的恢复，完善大文件分页和工具输出控制，改进输入快捷键与终端配色。
+
+- 🧩 **11-06 · SDK 与交互能力**：SDK 支持子 Agent 协作和跨轮后台 Shell，新增异步用户问答与交互终端输入。
+
+- 🔌 **11-01 · MCP 接入优化**：完善工具目录展示、按需发现与统一调用，简化服务启用和单工具权限设置。
+
+- 🤝 **10-31 · 子 Agent 与权限优化**：支持跨目录任务审批、授权后继续执行和会话授权复用，减少重复审批，完善子 Agent 对话与执行记录，方便追踪和排查。
+
 - 💻 **10-21 · WSL2 支持**：支持在 Windows 的 WSL2 环境运行。
 
 - 🛠️ **10-17 · 执行框架优化**：统一子 Agent 后台执行与结果通知，强化待办完成校验，优化后台复盘、请求异常恢复和工具结果展示，提升复杂任务的执行稳定性。
@@ -119,7 +127,7 @@ hicode
 
 没有需要的模型？通过 **Add model** 填写 Model ID 和可选展示名。之后可用 `/providers` 修改配置。
 
-**Qwen Token Plan** 是独立的模型来源，支持 Qwen 3.8 Flash 和 DeepSeek V4.1 Flash；连接与 API Key 均与普通百炼分别配置。详见 [模型设置](docs/reference/SETTINGS.md)。
+**Qwen Token Plan** 是独立的模型来源，支持 Qwen 3.8 Flash 和 DeepSeek V4.1 Flash；连接与 API Key 均与普通百炼分别配置。
 
 **方舟 Token Plan（Ark Agent Plan）** 已支持 DeepSeek V4.1 Flash 和 GLM 5.3 Flash，可在 `/providers` 配置专属 Key，在 `/model` 选择模型与思考强度。连接与凭据独立保存，支持图片、多轮工具调用和思考回放；GLM 5.3 Flash 始终开启思考，支持 low/high/max。
 

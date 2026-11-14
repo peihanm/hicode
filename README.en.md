@@ -71,6 +71,14 @@ Historical results: as of October 7, 2026, **39 Terminal-Bench 2.0 tasks** and *
 
 ### Recent improvements
 
+- 🧠 **11-14 · Long-task reliability and terminal experience**: improved context compaction and restoration of recent files and Skills, refined large-file pagination and tool output limits, and added input shortcuts and terminal color improvements.
+
+- 🧩 **11-06 · SDK and interaction capabilities**: enabled subagent collaboration and background Shell tasks across SDK turns, with asynchronous user questions and input to interactive terminal processes.
+
+- 🔌 **11-01 · MCP integration**: improved tool directory presentation, on-demand discovery, and unified invocation, while simplifying server activation and per-tool permissions.
+
+- 🤝 **10-31 · Subagents and permissions**: enabled approval requests for tasks outside the working directory, continuation after approval, and shared session grants; reduced repeated approvals and improved subagent conversation and execution records for troubleshooting.
+
 - 💻 **10-21 · WSL2 support**: HiCode now runs on Windows through WSL2.
 
 - 🛠️ **10-17 · Execution framework improvements**: unified background subagent execution and result notifications, strengthened todo completion checks, and improved background reviews, request error recovery, and tool result presentation for more reliable execution of complex tasks.
@@ -119,7 +127,7 @@ Run `hicode` from any project directory afterward. First launch opens model setu
 
 Model missing? Use **Add model** to enter its Model ID and an optional display name. Use `/providers` to change settings later.
 
-**Qwen Token Plan** is a separate model source for Qwen 3.8 Flash and DeepSeek V4.1 Flash, with its own connection and API key distinct from regular Bailian. See [model settings](docs/reference/SETTINGS.md).
+**Qwen Token Plan** is a separate model source for Qwen 3.8 Flash and DeepSeek V4.1 Flash, with its own connection and API key distinct from regular Bailian.
 
 **Ark Token Plan (Agent Plan)** supports DeepSeek V4.1 Flash and GLM 5.3 Flash. Configure its dedicated key through `/providers` and select the model and reasoning effort through `/model`. Its connection and credentials are stored independently, with support for images, multi-turn tool calls, and reasoning replay. GLM 5.3 Flash always uses thinking and supports low/high/max effort.
 
