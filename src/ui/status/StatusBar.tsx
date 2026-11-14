@@ -49,7 +49,7 @@ export function StatusBar({
         ? COLORS.error
         : percentUsed > 0.6
             ? COLORS.warning
-            : COLORS.surfaceText;
+            : COLORS.dim;
     const pct = Math.round(percentUsed * 100);
     const modeColor =
         permissionMode === "full-access"
@@ -86,12 +86,8 @@ export function StatusBar({
 
     return (
         <Box flexDirection="column" width={width}>
-            <Text
-                backgroundColor={COLORS.surface}
-                color={COLORS.surfaceText}
-                wrap="truncate-end"
-            >
-                {" "}<Text color={COLORS.surfaceAccent}>{model}</Text>
+            <Text color={COLORS.dim} wrap="truncate-end">
+                {" "}<Text color={COLORS.accent}>{model}</Text>
                 {showPermissionMode && (
                     <>
                         <Text> | </Text>
@@ -99,11 +95,11 @@ export function StatusBar({
                     </>
                 )}
                 <Text> | </Text>
-                <Text color={COLORS.surfaceAccent}>{cwd}</Text>
+                <Text color={COLORS.accent}>{cwd}</Text>
                 <Text> | </Text>
                 <Text color={tokenColor}>{tokenLabel}</Text>
                 {mcpTotal > 0 && (
-                    <Text color={mcpConnected === mcpTotal ? COLORS.surfaceText : COLORS.warning}>
+                    <Text color={mcpConnected === mcpTotal ? COLORS.dim : COLORS.warning}>
                         {` | MCP ${mcpConnected}/${mcpTotal}`}
                     </Text>
                 )}
@@ -113,15 +109,11 @@ export function StatusBar({
                     </Text>
                 )}
                 {backgroundTaskLabel && (
-                    <Text color={COLORS.surfaceText}>{` | ${backgroundTaskLabel}`}</Text>
+                    <Text color={COLORS.dim}>{` | ${backgroundTaskLabel}`}</Text>
                 )}
                 {firstPadding}
             </Text>
-            {showShortcuts && <Text
-                backgroundColor={COLORS.surface}
-                color={COLORS.surfaceText}
-                wrap="truncate-end"
-            >
+            {showShortcuts && <Text color={COLORS.dim} wrap="truncate-end">
                 {" "}{shortcuts}
                 {shortcutPadding}
             </Text>}

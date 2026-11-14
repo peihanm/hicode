@@ -13,18 +13,21 @@ for (const level of [0, 1, 2, 3]) test(`status and diff remain readable at color
     const frame: unknown = JSON.parse(output);
     if (typeof frame !== "string") throw new Error("Missing terminal frame");
     const plain = frame.replace(/\x1b\[[0-9;]*m/g, "");
+    // 底部提示栏只着色文字，不再铺浅色底，避免深色终端上出现白条。
+    expect(frame).not.toContain("\x1b[48;2;243;244;246m");
+    if (level === 1) expect(frame).not.toContain("\x1b[46m");
     expect(plain).toContain("STATUS");
     expect(plain).toContain("- const value = 'old';");
     expect(plain).toContain("+ const value = 'new';");
     if (level < 2) {
         if (level === 0) expect(frame).not.toContain("\x1b[");
         else {
-            for (const code of [41, 42, 46, 30]) expect(frame).toContain(`\x1b[${code}m`);
+            for (const code of [41, 42, 30]) expect(frame).toContain(`\x1b[${code}m`);
             expect(frame).toContain("\x1b[1m");
             expect(frame).not.toContain("\x1b[48;");
         }
     } else if (level === 3) {
-        for (const color of ["243;244;246", "244;194;194", "183;228;199", "229;152;155", "116;198;157"]) {
+        for (const color of ["244;194;194", "183;228;199", "229;152;155", "116;198;157"]) {
             expect(frame).toContain(`\x1b[48;2;${color}m`);
         }
     } else {
