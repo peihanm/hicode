@@ -63,6 +63,10 @@ function settingsSchema(strict: boolean): z.ZodType<HiCodeSettingsFile> {
             network: object({
                 mode: z.enum(["restricted", "open"]).optional(),
                 allowedDomains: z.array(z.string().trim().min(1)).optional(), allowLocalBinding: z.boolean().optional(),
+                allowUnixSockets: z.array(z.string().min(2).max(1024).refine(path =>
+                    path.startsWith("/") && !/[\x00-\x1f\x7f*?\[\]{}]/.test(path),
+                    "Unix Socket grants must be absolute literal paths without control characters or globs"
+                )).max(32).optional(),
             }).optional(),
         }).optional(),
     });

@@ -6,6 +6,7 @@ const files = [
     "tests/integration/sandbox.test.ts",
     "tests/integration/sandboxConcurrent.test.ts",
     "tests/integration/sandboxNetwork.test.ts",
+    "tests/integration/sandboxUnixSockets.test.ts",
     "tests/integration/sandboxInstall.test.ts",
     "tests/integration/dotenvSandbox.test.ts",
     "tests/integration/scopedMemorySandbox.test.ts",

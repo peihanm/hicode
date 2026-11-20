@@ -252,6 +252,7 @@ export function resolveHiCodeSettings(
     let sandboxDenyWrite = [".hicode", ".env"];
     let sandboxNetworkMode: "restricted" | "open" = "open";
     let sandboxAllowedDomains: string[] = [];
+    let sandboxAllowUnixSockets: string[] | undefined;
     let sandboxAllowLocalBinding = true;
     const origins: SettingsOrigins = {
         primaryModel: "default",
@@ -325,6 +326,9 @@ export function resolveHiCodeSettings(
         if (value.sandbox?.network?.allowedDomains !== undefined) {
             sandboxAllowedDomains = [...value.sandbox.network.allowedDomains];
         }
+        if (value.sandbox?.network?.allowUnixSockets !== undefined) {
+            sandboxAllowUnixSockets = [...value.sandbox.network.allowUnixSockets];
+        }
         if (value.sandbox?.network?.allowLocalBinding !== undefined) {
             sandboxAllowLocalBinding = value.sandbox.network.allowLocalBinding;
         }
@@ -384,6 +388,7 @@ export function resolveHiCodeSettings(
                 network: {
                     mode: sandboxNetworkMode,
                     allowedDomains: sandboxAllowedDomains,
+                    ...(sandboxAllowUnixSockets !== undefined ? {allowUnixSockets: sandboxAllowUnixSockets} : {}),
                     allowLocalBinding: sandboxAllowLocalBinding,
                 },
             },

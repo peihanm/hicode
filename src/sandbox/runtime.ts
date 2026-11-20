@@ -7,11 +7,12 @@ import {
     type SandboxAskCallback,
 } from "@anthropic-ai/sandbox-runtime";
 import {wrapCommandWithSandboxMacOS} from "@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js";
+import {macOSSandboxArgv} from "./macos.js";
 import {wrapCommandWithSandboxLinux, getLinuxDependencyStatus, checkLinuxDependencies} from "@anthropic-ai/sandbox-runtime/dist/sandbox/linux-sandbox-utils.js";
 import {whichSync} from "@anthropic-ai/sandbox-runtime/dist/utils/which.js";
 import {runShellArgv} from "../tools/bash/process.js";
-import {isAbsolute, relative, resolve} from "node:path";
-import {realpath} from "node:fs/promises";
+import {basename, dirname, isAbsolute, relative, resolve} from "node:path";
+import {realpath, lstat} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {isPathInside} from "../permissions/pathGuard.js";
 import {getProjectBunCacheDirectory, getProjectNpmCacheDirectory, type HiCodeStorageLayout} from "../persistence/layout.js";
@@ -56,6 +57,16 @@ function platformName(): SandboxPlatform | undefined {
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+async function resolveUnixSockets(paths: readonly string[]): Promise<string[]> {
+    return Promise.all(paths.map(async path => {
+        // Bun realpath(socket) can fail with EOPNOTSUPP; resolve the parent
+        // and require a real socket leaf, never a directory or symlink grant.
+        const canonical = resolve(await realpath(dirname(path)), basename(path));
+        if (!(await lstat(canonical)).isSocket()) throw new Error(`Configured Unix Socket must be a socket, not a symlink or directory: ${path}`);
+        return canonical;
+    }));
 }
 
 class InactiveSandboxRuntime implements SandboxRuntimeLike {
@@ -113,6 +124,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             }, this.baseConfig.filesystem.denyRead, cwd, {root, writable: options.fileWorkspace.writable, deniedWrites: this.configuredDenyWrite}, this.baseConfig.bwrapPath), env: {}};
         }
         const deniedReadRoots = options?.deniedReadRoots ?? [];
+        const allowedSockets = await resolveUnixSockets(this.baseConfig.network.allowUnixSockets ?? []);
         const shell = bashExecutable();
         const baseWritableRoots = this.baseConfig.filesystem.allowWrite
             .map((path) => resolve(path));
@@ -130,6 +142,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
             ? undefined
             : {
                 ...this.baseConfig,
+                network: {...this.baseConfig.network, allowUnixSockets: allowedSockets},
                 filesystem: {
                     ...this.baseConfig.filesystem,
                     allowWrite: writableRoots,
@@ -167,7 +180,7 @@ class ActiveSandboxRuntime implements SandboxRuntimeLike {
                 },
             };
             const wrapped = this.status.networkMode === "open" && this.status.platform === "macos"
-                ? {argv: [shell, "-c", wrapCommandWithSandboxMacOS(openOptions)], env: {}}
+                ? {argv: macOSSandboxArgv(wrapCommandWithSandboxMacOS(openOptions), openOptions.command, allowedSockets), env: {}}
                 : await this.backend.wrapWithSandboxArgv(
                     bashCommand(preparedCommand), shell, customConfig, signal, cwd, this.status.networkMode,
                     [...new Set([...this.protectedRoots, ...(options?.writableRoots ?? [])])]
@@ -288,6 +301,9 @@ export function createSandboxRuntimeFactory(backend: SandboxBackend) {
             ensurePrivateStorageDirectory(storage, npmCachePath);
             const npmCacheDirectory = await realpath(npmCachePath);
             const config = {...createSandboxRuntimeConfig(cwd, settings, [...writableRoots, bunCacheDirectory, npmCacheDirectory]), ...tools};
+            if (config.network.allowUnixSockets?.length) {
+                config.network.allowUnixSockets = await resolveUnixSockets(config.network.allowUnixSockets);
+            }
             if (platform === "linux" && settings.network.allowLocalBinding) {
                 config.network.allowedDomains.push("localhost", "127.0.0.1", "[::1]");
             }
@@ -329,7 +345,12 @@ export const createSandboxRuntime = createSandboxRuntimeFactory({
     async wrapWithSandboxArgv(command, shell, customConfig, signal, cwd, networkMode, protectedRoots) {
         const base = SandboxManager.getConfig();
         if (process.platform !== "linux") {
-            return SandboxManager.wrapWithSandboxArgv(command, shell, customConfig, signal, cwd);
+            const wrapped = await SandboxManager.wrapWithSandboxArgv(command, shell, customConfig, signal, cwd);
+            if (process.platform !== "darwin") return wrapped;
+            if (wrapped.argv.length !== 3 || wrapped.argv[1] !== "-c" || !wrapped.argv[2]) {
+                throw new Error("Unsupported ASRT macOS launch format");
+            }
+            return {...wrapped, argv: macOSSandboxArgv(wrapped.argv[2], command, customConfig?.network?.allowUnixSockets ?? base?.network.allowUnixSockets ?? [])};
         }
         if (!base) throw new Error("Linux Sandbox configuration is unavailable");
         const config = await linuxFilesystemPolicy({...base, ...customConfig}, signal, protectedRoots);

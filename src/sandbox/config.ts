@@ -40,6 +40,13 @@ export function createSandboxRuntimeConfig(
     settings: ResolvedSandboxSettings,
     writableRoots: readonly string[] = []
 ): SandboxRuntimeConfig {
+    const sockets = settings.network.allowUnixSockets ?? [];
+    if (sockets.length && process.platform !== "darwin") {
+        throw new Error("Per-path Unix Socket grants currently require macOS; Linux retains Unix Socket blocking");
+    }
+    if (sockets.length > 32 || sockets.some(path => !path.startsWith("/") || path.length > 1024 || /[\x00-\x1f\x7f*?\[\]{}]/.test(path))) {
+        throw new Error("Unix Socket grants must be bounded absolute literal paths");
+    }
     return {
         filesystem: {
             allowWrite: resolveSandboxPaths(cwd, [".", ...writableRoots]),
@@ -56,6 +63,7 @@ export function createSandboxRuntimeConfig(
             allowedDomains: [...settings.network.allowedDomains],
             deniedDomains: [],
             allowLocalBinding: settings.network.allowLocalBinding,
+            ...(sockets.length ? {allowUnixSockets: [...new Set(sockets)]} : {}),
         },
     };
 }

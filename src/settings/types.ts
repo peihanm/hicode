@@ -34,6 +34,7 @@ interface SandboxSettingsFile {
         mode?: "restricted" | "open";
         allowedDomains?: string[];
         allowLocalBinding?: boolean;
+        allowUnixSockets?: string[];
     };
 }
 
@@ -138,6 +139,7 @@ export interface ResolvedHiCodeSettings {
             mode: "restricted" | "open";
             allowedDomains: string[];
             allowLocalBinding: boolean;
+            allowUnixSockets?: string[];
         };
     };
 }
