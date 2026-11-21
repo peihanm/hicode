@@ -138,6 +138,13 @@ export async function resolvePermission(
     if (tool.name === "ask_user") return toolResult;
     if (mode === "full-access") return {behavior: "allow"};
 
+    const operation = tool.operationReviewReason?.(input, ctx);
+    if (operation) {
+        const extra = toolResult.behavior === "ask" && tool.requiresExplicitApproval?.(input, ctx)
+            ? "\n" + toolResult.message : "";
+        return {behavior: "ask", message: operation + extra, allowPersistent: false};
+    }
+
     // 3. Explicit ask still goes to the current reviewer.
     for (const rule of rules.ask) {
         if (ruleMatches(rule, tool.name, matcher, "ask") || (readsSource && ruleMatches(rule, "read_file", matcher, "ask"))) {

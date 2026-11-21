@@ -1,4 +1,5 @@
 import {approveWriteDirectories, validateWriteDirectories} from "./writeAccess.js";
+import {bashOperationReview} from "./highImpact.js";
 import {shellResultUI} from "./receipt.js";
 import {captureApprovalEvidence} from "../../permissions/reviewer/evidence.js";
 import {noMatchSearch, shellOutcome} from "./result.js";
@@ -241,6 +242,13 @@ export const bashTool: Tool<typeof inputSchema> = {
         !tty && sandbox_permissions !== "require_escalated" &&
         (!!analyzeReadCommand(command) || isShellCommandReadOnly(command)),
     requiresExplicitApproval: ({sandbox_permissions}) => sandbox_permissions === "require_escalated",
+    operationReviewReason: ({command, cwd, sandbox_permissions}, ctx) => {
+        const directory = resolve(ctx.cwd, cwd ?? ".");
+        const reason = bashOperationReview(command, directory, ctx.cwd);
+        if (!reason) return;
+        // The host-execution prompt already includes the exact command.
+        return sandbox_permissions === "require_escalated" ? reason : `${reason}\nWorking directory: ${directory}\nCommand: ${command}`;
+    },
     getDefaultApprovalScope: ({sandbox_permissions}, ctx) =>
         sandbox_permissions !== "require_escalated" &&
             ctx.shellRunner.sandboxStatus.kind === "ready"

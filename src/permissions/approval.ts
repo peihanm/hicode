@@ -142,7 +142,10 @@ export async function requestApproval(
         await emit("start");
         try {
             const directory = options.presentation?.kind === "filesystem_access" ? options.presentation.suggestedDirectory : undefined;
-            const decision = await withAbort(ctx.canUseTool(toolName, message, structuredClone(input), {...options, signal, actor: ctx.permissionActor,
+            // A reviewer referral must still show the operation the user would approve.
+            const question = message !== reason && toolName === "bash" && options.allowPersistent === false && !options.presentation
+                ? `${reason}\n\n${message}` : message;
+            const decision = await withAbort(ctx.canUseTool(toolName, question, structuredClone(input), {...options, signal, actor: ctx.permissionActor,
                 ...(directory ? {revalidate: async () => !signal.aborted && await ctx.directoryAccess.canAccess(directory)} : {}),
             }), signal);
             signal.throwIfAborted();

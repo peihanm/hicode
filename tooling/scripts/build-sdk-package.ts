@@ -19,6 +19,7 @@ const runtimeDependencies = [
     "picomatch",
     "string-width",
     "turndown",
+    "unbash",
     "yaml",
     "zod",
     "zod-to-json-schema",

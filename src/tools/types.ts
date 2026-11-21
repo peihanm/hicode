@@ -243,6 +243,9 @@ export interface Tool<T extends z.ZodType = z.ZodType> {
     // ask_user answers still come only from the Host.
     requiresExplicitApproval?(input: z.infer<T>, ctx: ToolContext): boolean;
 
+    // Describe an operation that needs invocation-only review in Ask/Agent review modes.
+    operationReviewReason?(input: z.infer<T>, ctx: ToolContext): string | undefined;
+
     // Host answers arrive through invocation, not model parameters, and cannot replace original questions.
     acceptsUserAnswers?: boolean;
 
